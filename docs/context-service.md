@@ -1,0 +1,7 @@
+# Context Service, Material, and Initial Context
+
+Context Service owns shared, versioned Material. A Material record has a kind, scope, evidence state, immutable content reference/hash, source Task and Execution, provenance, version, and an optional `supersedes` link. Publishing a revision creates a new `material_id`; the old record remains readable. Agent requests for `checked` or `accepted` evidence are stored as `proposed` unless the actor is a trusted Judge/System prefix.
+
+`freeze_initial_context` receives the Task spec/version/hash, initial prompt, ordered Material references with their hashes, and service/environment information. It verifies every reference, computes a deterministic `input_snapshot_hash`, and stores one immutable manifest for the Execution. Later Material publication does not change that manifest. Freeze operation IDs and freeze keys replay the original result; a different payload under an existing key or a different manifest for an already frozen Execution returns `CONFLICT`.
+
+The Context Service stores small MVP content in SQLite behind an immutable `content_ref`; larger adapters can replace that storage while preserving the recorded hash. It rejects secret-bearing fields before persistence. It only exposes Material reads, Material publication, and Initial Context freezing. Task claim/state and Workspace Manager methods are outside this service. `ServicesRouter` combines the Task Service and Context Service behind the existing Agent-facing SDK without exposing private Runtime capabilities.
