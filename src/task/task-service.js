@@ -419,6 +419,14 @@ export class TaskService {
     if (payload.wait_condition.type === 'parent_review' && !task.parent_id) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent_review requires a child Task');
     }
+    if (payload.wait_condition.type === 'child_task_terminal') {
+      const childTaskId = requireString(payload.wait_condition.child_task_id ?? payload.wait_condition.task_id, 'wait_condition.child_task_id');
+      const child = this.getTask(childTaskId);
+      if (!child || child.parent_id !== task.task_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'child_task_terminal must reference a direct child Task');
+    }
+    if (payload.wait_condition.type === 'check_result_arrived') {
+      requireString(payload.wait_condition.check_request_key ?? payload.wait_condition.request_key, 'wait_condition.check_request_key');
+    }
     const waitDeadline = payload.wait_deadline ?? payload.wait_condition.deadline ?? null;
     if (payload.wait_condition.type === 'timer' && !waitDeadline) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timer wait requires a deadline');

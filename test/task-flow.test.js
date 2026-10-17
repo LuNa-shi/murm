@@ -193,7 +193,7 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
   let currentSdk = run.sdk.withContext({ stateVersion: current.execution.state_version });
   let waited = currentSdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
     wait_key: 'proof-check-1', checkpoint_ref: checkpointed.checkpoint_ref, checkpoint_hash: checkpointed.checkpoint_hash,
-    wait_condition: { type: 'check_result_arrived' },
+    wait_condition: { type: 'check_result_arrived', check_request_key: 'proof-request-1' },
   }, { operationId: 'proof-wait-1' });
   const firstResult = await env.judgeService.judgeCandidate({
     request_key: 'proof-request-1', candidate_material_id: firstCandidate.material_id, target_task_id: task.task_id, target_spec_version: task.spec_version,
@@ -221,7 +221,7 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
   checkpointed = saveCheckpoint(env, current.execution, 'proof-checkpoint-2');
   waited = currentSdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
     wait_key: 'proof-check-2', checkpoint_ref: checkpointed.checkpoint_ref, checkpoint_hash: checkpointed.checkpoint_hash,
-    wait_condition: { type: 'check_result_arrived' },
+    wait_condition: { type: 'check_result_arrived', check_request_key: 'proof-request-2' },
   }, { operationId: 'proof-wait-2' });
   const secondResult = await env.judgeService.judgeCandidate({
     request_key: 'proof-request-2', candidate_material_id: secondMaterial.material_id, target_task_id: task.task_id, target_spec_version: 1,
