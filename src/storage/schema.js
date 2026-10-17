@@ -1,7 +1,7 @@
 export const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
-PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
+PRAGMA journal_mode = WAL;
 
 CREATE TABLE IF NOT EXISTS tasks (
   task_id TEXT PRIMARY KEY,
