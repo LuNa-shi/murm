@@ -21,6 +21,9 @@ export class AgentCoreSession extends EventEmitter {
     this.stdout = '';
     this.stderr = '';
     this.closed = false;
+    this.expectedStop = false;
+    this.processError = null;
+    this.exitResult = null;
     child.stdout?.on('data', (chunk) => {
       this.stdout += chunk.toString();
       this.emit('stdout', chunk.toString());
@@ -29,10 +32,14 @@ export class AgentCoreSession extends EventEmitter {
       this.stderr += chunk.toString();
       this.emit('stderr', chunk.toString());
     });
-    child.on('error', (error) => this.emit('error', new SwarmEnvError(ERROR_CODES.PROCESS_EXITED, `Pi process error: ${error.message}`, undefined, { cause: error })));
+    child.on('error', (error) => {
+      this.processError = new SwarmEnvError(ERROR_CODES.PROCESS_EXITED, `Pi process error: ${error.message}`, undefined, { cause: error });
+      this.emit('processError', this.processError);
+    });
     child.on('close', (code, signal) => {
       this.closed = true;
-      this.emit('close', { code, signal, stdout: this.stdout, stderr: this.stderr });
+      this.exitResult = { code, signal, stdout: this.stdout, stderr: this.stderr };
+      this.emit('close', this.exitResult);
     });
   }
 
@@ -48,8 +55,11 @@ export class AgentCoreSession extends EventEmitter {
   }
 
   async wait() {
-    if (this.closed) return { stdout: this.stdout, stderr: this.stderr };
-    const [result] = await once(this, 'close');
+    const [result] = this.closed ? [this.exitResult] : await once(this, 'close');
+    if (this.processError) throw this.processError;
+    if (!this.expectedStop && (result.code !== 0 || result.signal !== null)) {
+      throw new SwarmEnvError(ERROR_CODES.PROCESS_EXITED, 'Pi process exited unexpectedly', result);
+    }
     return result;
   }
 
@@ -72,7 +82,10 @@ export class AgentCoreSession extends EventEmitter {
   }
 
   stop(signal = 'SIGTERM') {
-    if (!this.closed) this.child.kill(signal);
+    if (!this.closed) {
+      this.expectedStop = true;
+      this.child.kill(signal);
+    }
   }
 }
 

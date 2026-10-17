@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { AgentCoreAdapter, ERROR_CODES, SwarmEnvError } from '../src/index.js';
 
@@ -10,10 +11,7 @@ function fakeChild() {
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
   child.kill = () => queueMicrotask(() => child.emit('close', 0, null));
-  queueMicrotask(() => {
-    child.emit('spawn');
-    child.stdout.write('{"type":"ready"}\n');
-  });
+  queueMicrotask(() => child.emit('spawn'));
   return child;
 }
 
@@ -34,6 +32,7 @@ test('adapter launches the required NuRouter Pi RPC shape and binds the session 
   });
 
   const session = await adapter.start({ executionId: 'execution-42' });
+  session.child.stdout.write('{"type":"ready"}\n');
   await session.waitForReady();
   session.sendRpc({ type: 'ping', execution_id: 'execution-42' });
   assert.equal(command, 'nurouter');
@@ -64,6 +63,44 @@ test('adapter reports a stable startup error', async () => {
   await assert.rejects(() => adapter.start({ executionId: 'execution-fails' }), (error) => {
     assert.ok(error instanceof SwarmEnvError);
     assert.equal(error.code, ERROR_CODES.START_FAILED);
+    return true;
+  });
+});
+
+test('adapter smoke test starts and releases a real child process', async () => {
+  const adapter = new AgentCoreAdapter({
+    command: resolve('test/fixtures/fake-nurouter'),
+    provider: 'openai',
+    model: 'gpt-test',
+    account: 'local-account',
+    group: 'research',
+    sessionDir: '/tmp/swarmenv-real-child-session',
+    manifestVersions: { piVersion: '1.3.0', nurouterVersion: '0.2.12' },
+  });
+  const session = await adapter.start({ executionId: 'execution-real-child' });
+  await session.waitForReady();
+  session.stop();
+  const result = await session.wait();
+  assert.equal(result.code, 0);
+  assert.equal(result.signal, null);
+});
+
+test('unexpected non-zero process exit is mapped to PROCESS_EXITED', async () => {
+  let child;
+  const adapter = new AgentCoreAdapter({
+    provider: 'openai', model: 'gpt-test', account: 'account', group: 'group', sessionDir: '/tmp/swarmenv-test-sessions',
+    spawnProcess: () => {
+      child = fakeChild();
+      return child;
+    },
+    manifestVersions: { piVersion: '1.3.0', nurouterVersion: '0.2.12' },
+  });
+  const session = await adapter.start({ executionId: 'execution-crashes' });
+  child.kill = () => queueMicrotask(() => child.emit('close', 9, null));
+  child.kill();
+  await assert.rejects(() => session.wait(), (error) => {
+    assert.ok(error instanceof SwarmEnvError);
+    assert.equal(error.code, ERROR_CODES.PROCESS_EXITED);
     return true;
   });
 });
