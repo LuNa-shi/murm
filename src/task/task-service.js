@@ -11,7 +11,7 @@ import {
 
 const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'fence_execution', 'heartbeat', 'request_wait', 'resume_execution', 'start_execution', 'stop_execution']);
 const CLAIM_OPERATION = 'claim';
-const TASK_MUTATING_OPERATIONS = new Set(['accept_task', 'create_child_task', 'propose_task']);
+const TASK_MUTATING_OPERATIONS = new Set(['create_child_task', 'propose_task']);
 
 function json(value) {
   return JSON.stringify(value ?? null);
@@ -55,12 +55,6 @@ function requireString(value, field) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
   }
   return value;
-}
-
-function requireVersion(value, field) {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} must be a non-negative integer`);
-  }
 }
 
 export class TaskService {
@@ -397,8 +391,13 @@ export class TaskService {
       .run(terminalState, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) {
-      this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?')
-        .run(terminalState === 'CANCELLED' ? 'CANCELLED' : 'OPEN', updatedAt, execution.task_id);
+      if (terminalState === 'CANCELLED') {
+        this.db.prepare('UPDATE tasks SET state = ?, cancelled_at = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?')
+          .run('CANCELLED', updatedAt, updatedAt, execution.task_id);
+      } else {
+        this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?')
+          .run('OPEN', updatedAt, execution.task_id);
+      }
     }
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
   }

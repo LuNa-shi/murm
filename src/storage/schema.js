@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   completion_contract_json TEXT NOT NULL,
   parallel_quota INTEGER NOT NULL DEFAULT 1 CHECK (parallel_quota = 1),
   state_version INTEGER NOT NULL DEFAULT 0,
-  state TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED')),
   block_reason TEXT,
   max_depth INTEGER NOT NULL,
   max_children INTEGER NOT NULL,
@@ -29,14 +29,15 @@ CREATE TABLE IF NOT EXISTS tasks (
   cancelled_at TEXT,
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  CHECK ((state = 'BLOCKED' AND block_reason IS NOT NULL) OR (state <> 'BLOCKED' AND block_reason IS NULL))
 );
 
 CREATE TABLE IF NOT EXISTS executions (
   execution_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   owner_ref TEXT NOT NULL,
-  state TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED')),
   state_version INTEGER NOT NULL DEFAULT 0,
   attempt_no INTEGER NOT NULL,
   fencing_version INTEGER NOT NULL,
