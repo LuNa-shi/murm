@@ -9,6 +9,10 @@ const keep = args.has('--keep');
 const realAgent = args.has('--real-agent');
 const fixturePath = resolve('fixtures/putnam-1966-a1/fixture-manifest.json');
 const fixtureManifest = JSON.parse(await readFile(fixturePath, 'utf8'));
+const [firstCandidate, fixedCandidate] = await Promise.all([
+  readFile(resolve('fixtures/putnam-1966-a1/invalid-candidate.lean'), 'utf8'),
+  readFile(resolve('fixtures/putnam-1966-a1/valid-candidate.lean'), 'utf8'),
+]);
 const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-mvp-'));
 let report;
 
@@ -24,7 +28,7 @@ try {
         : { verdict: 'PASS', evidence: { exit_code: 0, stdout: 'compiled', stderr: '', diagnostic: 'deterministic script success' } },
     });
     try {
-      report = await new ScriptExecutor({ environment, fixtureManifest }).run();
+      report = await new ScriptExecutor({ environment, fixtureManifest, firstCandidate, fixedCandidate }).run();
     } finally {
       environment.taskService.close();
     }
