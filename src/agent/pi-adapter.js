@@ -206,22 +206,22 @@ export class AgentCoreAdapter {
     for (const [name, value] of Object.entries({
       provider: this.config.provider,
       model: this.config.model,
-      account: this.config.account,
-      group: this.config.group,
       sessionDir,
     })) required(value, name);
-    return [
-      'pi',
-      '--provider', this.config.provider,
-      '--model', this.config.model,
-      '--account', this.config.account,
-      '--group', this.config.group,
+    const managedKimiRoute = this.config.provider === 'kimi';
+    const args = ['pi'];
+    if (managedKimiRoute) args.push('--provider', this.config.provider, '--model', this.config.model);
+    if (this.config.account) args.push('--account', this.config.account);
+    if (this.config.group) args.push('--group', this.config.group);
+    args.push(
       '--',
       '--mode', 'rpc',
       '--session-dir', sessionDir,
       '--session-id', executionId,
       ...(this.config.extensionPath ? ['--extension', this.config.extensionPath] : []),
-    ];
+    );
+    if (!managedKimiRoute) args.push('--provider', this.config.provider, '--model', this.config.model);
+    return args;
   }
 
   async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd } = {}) {

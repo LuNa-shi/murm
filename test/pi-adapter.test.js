@@ -37,14 +37,61 @@ test('adapter launches the required NuRouter Pi RPC shape and binds the session 
   session.sendRpc({ type: 'ping', execution_id: 'execution-42' });
   assert.equal(command, 'nurouter');
   assert.deepEqual(args, [
-    'pi', '--provider', 'openai', '--model', 'gpt-test', '--account', 'local-account', '--group', 'research',
+    'pi', '--account', 'local-account', '--group', 'research',
     '--', '--mode', 'rpc', '--session-dir', '/tmp/swarmenv-test-sessions', '--session-id', 'execution-42',
+    '--provider', 'openai', '--model', 'gpt-test',
   ]);
   assert.equal(session.manifest.pi_version, '1.3.0');
   assert.equal(session.manifest.nurouter_version, '0.2.12');
   assert.equal(session.manifest.node_version, process.versions.node);
   session.stop();
   assert.deepEqual(await session.wait(), { code: 0, signal: null, stdout: '{"type":"ready"}\n', stderr: '' });
+});
+
+test('adapter keeps managed Kimi routing in the NuRouter argument segment', async () => {
+  let args;
+  const adapter = new AgentCoreAdapter({
+    provider: 'kimi',
+    model: 'k3',
+    account: 'local-account',
+    group: 'research',
+    sessionDir: '/tmp/swarmenv-kimi-session',
+    spawnProcess: (...values) => {
+      [, args] = values;
+      return fakeChild();
+    },
+    manifestVersions: { piVersion: '1.3.0', nurouterVersion: '0.2.12' },
+  });
+
+  const session = await adapter.start({ executionId: 'execution-kimi' });
+  assert.deepEqual(args, [
+    'pi', '--provider', 'kimi', '--model', 'k3', '--account', 'local-account', '--group', 'research',
+    '--', '--mode', 'rpc', '--session-dir', '/tmp/swarmenv-kimi-session', '--session-id', 'execution-kimi',
+  ]);
+  session.stop();
+  await session.wait();
+});
+
+test('adapter allows route defaults when account and group are omitted', async () => {
+  let args;
+  const adapter = new AgentCoreAdapter({
+    provider: 'openai',
+    model: 'gpt-6.1-sol',
+    sessionDir: '/tmp/swarmenv-default-route-session',
+    spawnProcess: (...values) => {
+      [, args] = values;
+      return fakeChild();
+    },
+    manifestVersions: { piVersion: '1.3.0', nurouterVersion: '0.2.12' },
+  });
+
+  const session = await adapter.start({ executionId: 'execution-default-route' });
+  assert.deepEqual(args, [
+    'pi', '--', '--mode', 'rpc', '--session-dir', '/tmp/swarmenv-default-route-session',
+    '--session-id', 'execution-default-route', '--provider', 'openai', '--model', 'gpt-6.1-sol',
+  ]);
+  session.stop();
+  await session.wait();
 });
 
 test('session translates prompt and readiness into Pi RPC commands and observes settlement', async () => {

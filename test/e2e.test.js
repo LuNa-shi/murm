@@ -54,7 +54,7 @@ test('real-agent probe reports missing local configuration without exposing secr
   const probe = await probeRealAgentConfig({ env: {} });
   assert.equal(probe.status, 'BLOCKED');
   assert.deepEqual(probe.missing, [
-    'NUROUTER_PI_PROVIDER', 'NUROUTER_PI_MODEL', 'NUROUTER_PI_ACCOUNT', 'NUROUTER_PI_GROUP',
+    'NUROUTER_PI_PROVIDER', 'NUROUTER_PI_MODEL',
   ]);
   assert.equal(probe.secret_values_recorded, false);
 });

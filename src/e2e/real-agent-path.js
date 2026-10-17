@@ -19,8 +19,6 @@ const extensionPath = fileURLToPath(new URL('../agent/swarmenv-extension.mjs', i
 const ROUTING_FIELDS = Object.freeze([
   'NUROUTER_PI_PROVIDER',
   'NUROUTER_PI_MODEL',
-  'NUROUTER_PI_ACCOUNT',
-  'NUROUTER_PI_GROUP',
 ]);
 
 function present(value) {
