@@ -198,7 +198,11 @@ export class Runtime {
   }
 
   async #launch(execution, workspace) {
-    const session = await this.agentAdapter.start({ executionId: execution.execution_id, sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session') });
+    const session = await this.agentAdapter.start({
+      executionId: execution.execution_id,
+      sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
+      cwd: workspace.workspace_ref,
+    });
     const manifestContent = JSON.stringify(session.manifest ?? {}, null, 2);
     const nextWorkspace = await this.workspaceManager.saveWorkspaceRevision({
       workspaceRef: workspace.workspace_ref,
