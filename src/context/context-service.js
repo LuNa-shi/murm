@@ -51,10 +51,11 @@ function rejectSecrets(value, path = 'payload') {
 }
 
 export class ContextService {
-  constructor(database = ':memory:', { trustedActorPrefixes = TRUSTED_ACTOR_PREFIXES } = {}) {
+  constructor(database = ':memory:', { trustedActorPrefixes = TRUSTED_ACTOR_PREFIXES, taskService = null } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(CONTEXT_SCHEMA_SQL);
     this.trustedActorPrefixes = trustedActorPrefixes;
+    this.taskService = taskService;
   }
 
   close() {
@@ -117,6 +118,7 @@ export class ContextService {
   }
 
   #publishMaterial(payload, envelope) {
+    this.#assertExecutionFence(envelope);
     rejectSecrets(payload);
     for (const field of ['kind', 'scope']) requireString(payload[field], field);
     if (!EVIDENCE_STATES.has(payload.evidence_state ?? 'proposed')) {
@@ -173,6 +175,16 @@ export class ContextService {
       .run(material.material_id, material.kind, material.scope, material.evidence_state, material.content_ref, material.content_hash,
         json(material.content), material.version, material.source_task, material.source_execution, json(material.provenance), material.supersedes, material.created_at);
     return { material: cloneMaterial(this.db.prepare('SELECT * FROM materials WHERE material_id = ?').get(materialId)) };
+  }
+
+  #assertExecutionFence(envelope) {
+    if (!this.taskService || envelope.execution_id === null) return;
+    const execution = this.taskService.getExecution(envelope.execution_id);
+    if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material source execution does not exist');
+    if (execution.task_id !== envelope.task_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material source task does not match execution');
+    if (execution.spec_version !== envelope.spec_version) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'material source spec_version is stale');
+    if (execution.fencing_version !== envelope.fencing_version) throw new SwarmEnvError(ERROR_CODES.FENCED, 'material source fencing_version is stale', { expected: execution.fencing_version });
+    if (execution.state_version !== envelope.state_version) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'material source state_version is stale', { expected: execution.state_version });
   }
 
   #freezeInitialContext(payload, envelope, fingerprint) {

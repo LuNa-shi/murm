@@ -9,7 +9,7 @@ import {
   validateTaskProposal,
 } from './task-types.js';
 
-const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'fence_execution', 'heartbeat', 'request_wait', 'resume_execution', 'start_execution', 'stop_execution']);
+const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'expire_execution', 'fence_execution', 'heartbeat', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution']);
 const CLAIM_OPERATION = 'claim';
 const TASK_MUTATING_OPERATIONS = new Set(['create_child_task', 'propose_task']);
 
@@ -105,6 +105,10 @@ export class TaskService {
     return this.db.prepare('SELECT * FROM tasks WHERE parent_id = ? ORDER BY created_at, task_id').all(parentTaskId).map(rowToTask);
   }
 
+  listActiveExecutions() {
+    return this.db.prepare("SELECT * FROM executions WHERE state IN ('CREATED', 'RUNNING', 'WAITING') ORDER BY created_at, execution_id").all().map(rowToExecution);
+  }
+
   #read(operation, payload, envelope) {
     if (operation === 'get_task') {
       const taskId = payload.task_id ?? envelope.task_id;
@@ -127,7 +131,10 @@ export class TaskService {
       case 'start_execution': return this.#startExecution(payload, envelope);
       case 'resume_execution': return this.#resumeExecution(payload, envelope);
       case 'request_wait': return this.#requestWait(payload, envelope);
+      case 'save_workspace_revision': return this.#saveWorkspaceRevision(payload, envelope);
+      case 'save_checkpoint': return this.#saveCheckpoint(payload, envelope);
       case 'stop_execution': return this.#stopExecution(payload, envelope);
+      case 'expire_execution': return this.#expireExecution(payload, envelope);
       case 'fence_execution': return this.#fenceExecution(payload, envelope);
       case 'abort': return this.#stopExecution({ ...payload, terminal_state: 'CANCELLED' }, envelope);
       default: throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service operation: ${operation}`);
@@ -295,6 +302,7 @@ export class TaskService {
       input_snapshot_hash: inputSnapshotHash,
       workspace_ref: null,
       workspace_revision: null,
+      workspace_content_hash: null,
       checkpoint_ref: null,
       checkpoint_hash: null,
       instruction_version: 1,
@@ -308,14 +316,14 @@ export class TaskService {
     this.db.prepare(`INSERT INTO executions (
       execution_id, task_id, owner_ref, state, state_version, attempt_no, fencing_version, runtime_generation,
       lease_expires_at, heartbeat_at, launch_token, spec_version, spec_hash, initial_prompt, initial_context_ref,
-      input_material_refs_json, input_snapshot_hash, workspace_ref, workspace_revision, checkpoint_ref, checkpoint_hash,
+      input_material_refs_json, input_snapshot_hash, workspace_ref, workspace_revision, workspace_content_hash, checkpoint_ref, checkpoint_hash,
       instruction_version, steer_material_refs_json, wait_condition_json, wait_deadline, resume_token, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(execution.execution_id, execution.task_id, execution.owner_ref, execution.state, execution.state_version,
         execution.attempt_no, execution.fencing_version, execution.runtime_generation, execution.lease_expires_at,
         execution.heartbeat_at, execution.launch_token, execution.spec_version, execution.spec_hash, execution.initial_prompt,
         execution.initial_context_ref, json(execution.input_material_refs), execution.input_snapshot_hash, execution.workspace_ref,
-        execution.workspace_revision, execution.checkpoint_ref, execution.checkpoint_hash, execution.instruction_version,
+        execution.workspace_revision, execution.workspace_content_hash, execution.checkpoint_ref, execution.checkpoint_hash, execution.instruction_version,
         json(execution.steer_material_refs), json(execution.wait_condition), execution.wait_deadline, execution.resume_token,
         execution.created_at, execution.updated_at);
     this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
@@ -374,12 +382,48 @@ export class TaskService {
     const allowed = new Set(['child_task_terminal', 'parent_review', 'check_result_arrived', 'timer']);
     if (!allowed.has(payload.wait_condition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
     const updatedAt = now();
-    this.db.prepare(`UPDATE executions SET state = 'WAITING', checkpoint_ref = ?, checkpoint_hash = ?, workspace_ref = COALESCE(?, workspace_ref), workspace_revision = COALESCE(?, workspace_revision), wait_condition_json = ?, wait_deadline = ?, resume_token = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
-      .run(payload.checkpoint_ref, payload.checkpoint_hash, payload.workspace_ref ?? null, payload.workspace_revision ?? null,
+    this.db.prepare(`UPDATE executions SET state = 'WAITING', checkpoint_ref = ?, checkpoint_hash = ?, workspace_ref = COALESCE(?, workspace_ref), workspace_revision = COALESCE(?, workspace_revision), workspace_content_hash = COALESCE(?, workspace_content_hash), wait_condition_json = ?, wait_deadline = ?, resume_token = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
+      .run(payload.checkpoint_ref, payload.checkpoint_hash, payload.workspace_ref ?? null, payload.workspace_revision ?? null, payload.workspace_content_hash ?? null,
         json(payload.wait_condition), payload.wait_deadline ?? null, payload.resume_token ?? randomUUID(), updatedAt, execution.execution_id);
     this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
       .run('WAITING', updatedAt, execution.task_id);
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
+  }
+
+  #saveWorkspaceRevision(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    requireString(payload.workspace_ref, 'workspace_ref');
+    requireString(payload.workspace_content_hash, 'workspace_content_hash');
+    if (!Number.isInteger(payload.workspace_revision) || payload.workspace_revision < 1) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_revision must be a positive integer');
+    }
+    if (execution.workspace_ref && execution.workspace_ref !== payload.workspace_ref) {
+      throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace_ref does not match the Execution workspace');
+    }
+    const expectedRevision = execution.workspace_revision === null ? 1 : execution.workspace_revision + 1;
+    if (payload.workspace_revision !== expectedRevision) {
+      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'workspace_revision is not the next revision', { expected: expectedRevision });
+    }
+    const updatedAt = now();
+    this.db.prepare('UPDATE executions SET workspace_ref = ?, workspace_revision = ?, workspace_content_hash = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run(payload.workspace_ref, payload.workspace_revision, payload.workspace_content_hash, updatedAt, execution.execution_id);
+    return { execution: this.getExecution(execution.execution_id) };
+  }
+
+  #saveCheckpoint(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    requireString(payload.checkpoint_ref, 'checkpoint_ref');
+    requireString(payload.checkpoint_hash, 'checkpoint_hash');
+    if (payload.workspace_ref && execution.workspace_ref && payload.workspace_ref !== execution.workspace_ref) {
+      throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace_ref does not match the Execution workspace');
+    }
+    if (payload.workspace_revision !== undefined && payload.workspace_revision !== execution.workspace_revision) {
+      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'checkpoint workspace_revision is stale', { expected: execution.workspace_revision });
+    }
+    const updatedAt = now();
+    this.db.prepare('UPDATE executions SET checkpoint_ref = ?, checkpoint_hash = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run(payload.checkpoint_ref, payload.checkpoint_hash, updatedAt, execution.execution_id);
+    return { execution: this.getExecution(execution.execution_id) };
   }
 
   #stopExecution(payload, envelope) {
@@ -402,11 +446,24 @@ export class TaskService {
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
   }
 
+  #expireExecution(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    const updatedAt = now();
+    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run('EXPIRED', payload.runtime_generation ?? null, updatedAt, execution.execution_id);
+    const task = this.getTask(execution.task_id);
+    if (!TERMINAL_TASK_STATES.includes(task.state)) {
+      this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
+        .run('OPEN', updatedAt, execution.task_id);
+    }
+    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
+  }
+
   #fenceExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('FENCED', updatedAt, execution.execution_id);
+    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run('FENCED', payload.runtime_generation ?? null, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) {
       this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')

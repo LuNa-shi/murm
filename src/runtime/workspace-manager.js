@@ -1,0 +1,188 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { stableStringify } from '../protocol/envelope.js';
+
+const META_DIR = '.swarm';
+const META_FILE = 'workspace.json';
+
+function hash(value) {
+  return createHash('sha256').update(stableStringify(value)).digest('hex');
+}
+
+function textHash(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function requireString(value, field) {
+  if (typeof value !== 'string' || value.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
+  return value;
+}
+
+function safePath(relativePath) {
+  requireString(relativePath, 'workspace file path');
+  if (isAbsolute(relativePath) || relativePath.includes('\0')) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace file path must be relative');
+  if (relativePath.split(/[\\/]/).includes('..')) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace files cannot address parent directories');
+  const normalized = resolve('/', relativePath).slice(1);
+  if (!normalized || normalized === META_DIR || normalized.startsWith(`${META_DIR}/`)) {
+    throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace files cannot address Runtime metadata or parent directories');
+  }
+  return normalized;
+}
+
+async function exists(path) {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export class WorkspaceManager {
+  constructor({ rootDir }) {
+    this.rootDir = resolve(requireString(rootDir, 'rootDir'));
+  }
+
+  workspacePath(executionId) {
+    return join(this.rootDir, requireString(executionId, 'execution_id'));
+  }
+
+  async createWorkspace({ executionId, fencingVersion, initialContext, initialPrompt, inputSnapshotManifest, runtimeManifest = {} }) {
+    const workspaceRef = this.workspacePath(executionId);
+    await mkdir(this.rootDir, { recursive: true });
+    await mkdir(join(workspaceRef, META_DIR, 'revisions'), { recursive: true });
+    await mkdir(join(workspaceRef, META_DIR, 'checkpoints'), { recursive: true });
+    const metadataPath = join(workspaceRef, META_DIR, META_FILE);
+    if (await exists(metadataPath)) {
+      const existing = await this.#readMetadata(workspaceRef);
+      if (existing.execution_id !== executionId || existing.fencing_version !== fencingVersion) {
+        throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace already belongs to another execution fence');
+      }
+      return this.#publicMetadata(existing);
+    }
+    const files = {
+      'initial-context.json': JSON.stringify(initialContext, null, 2),
+      'initial-prompt.txt': requireString(initialPrompt, 'initial_prompt'),
+      'input-snapshot.json': JSON.stringify(inputSnapshotManifest, null, 2),
+      'runtime-manifest.json': JSON.stringify(runtimeManifest, null, 2),
+    };
+    const fileManifest = {};
+    for (const [relativePath, content] of Object.entries(files)) {
+      const target = join(workspaceRef, relativePath);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, content, 'utf8');
+      fileManifest[relativePath] = { content_hash: textHash(content), bytes: Buffer.byteLength(content) };
+    }
+    const metadata = {
+      execution_id: executionId,
+      workspace_ref: workspaceRef,
+      fencing_version: fencingVersion,
+      workspace_revision: 1,
+      content_hash: hash({ revision: 1, files: fileManifest }),
+      files: fileManifest,
+      checkpoint_ref: null,
+      checkpoint_hash: null,
+      released_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    await this.#writeMetadata(workspaceRef, metadata);
+    await writeFile(join(workspaceRef, META_DIR, 'revisions', '1.json'), JSON.stringify(metadata, null, 2), 'utf8');
+    return this.#publicMetadata(metadata);
+  }
+
+  async saveWorkspaceRevision({ workspaceRef, executionId, fencingVersion, files = {} }) {
+    const metadata = await this.#assertWritable(workspaceRef, executionId, fencingVersion);
+    const revision = metadata.workspace_revision + 1;
+    const nextFiles = { ...metadata.files };
+    for (const [inputPath, rawContent] of Object.entries(files)) {
+      const relativePath = safePath(inputPath);
+      const content = Buffer.isBuffer(rawContent) ? rawContent : String(rawContent);
+      const target = join(workspaceRef, relativePath);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, content);
+      nextFiles[relativePath] = { content_hash: textHash(content), bytes: Buffer.byteLength(content) };
+    }
+    const next = {
+      ...metadata,
+      workspace_revision: revision,
+      content_hash: hash({ revision, files: nextFiles }),
+      files: nextFiles,
+      released_at: null,
+      updated_at: new Date().toISOString(),
+    };
+    await this.#writeMetadata(workspaceRef, next);
+    await writeFile(join(workspaceRef, META_DIR, 'revisions', `${revision}.json`), JSON.stringify(next, null, 2), 'utf8');
+    return this.#publicMetadata(next);
+  }
+
+  async saveCheckpoint({ workspaceRef, executionId, fencingVersion, checkpoint = {}, checkpointRef = randomUUID() }) {
+    const metadata = await this.#assertWritable(workspaceRef, executionId, fencingVersion);
+    const content = JSON.stringify({ execution_id: executionId, workspace_revision: metadata.workspace_revision, checkpoint }, null, 2);
+    const checkpointHash = textHash(content);
+    const ref = join(workspaceRef, META_DIR, 'checkpoints', `${checkpointRef}.json`);
+    await writeFile(ref, content, 'utf8');
+    const next = { ...metadata, checkpoint_ref: ref, checkpoint_hash: checkpointHash, updated_at: new Date().toISOString() };
+    await this.#writeMetadata(workspaceRef, next);
+    return { checkpoint_ref: ref, checkpoint_hash: checkpointHash, workspace_revision: metadata.workspace_revision };
+  }
+
+  async restoreWorkspace({ workspaceRef, executionId, fencingVersion = undefined }) {
+    const metadata = await this.#readMetadata(workspaceRef);
+    if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
+    if (fencingVersion !== undefined && metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace fence is stale');
+    return this.#publicMetadata(metadata);
+  }
+
+  async releaseWorkspace({ workspaceRef, executionId, fencingVersion }) {
+    const metadata = await this.#assertWritable(workspaceRef, executionId, fencingVersion);
+    const next = { ...metadata, released_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    await this.#writeMetadata(workspaceRef, next);
+    return this.#publicMetadata(next);
+  }
+
+  async fenceWorkspace({ workspaceRef, executionId, fencingVersion, newFencingVersion }) {
+    const metadata = await this.#readMetadata(workspaceRef);
+    if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
+    if (metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace fence is stale');
+    if (!Number.isInteger(newFencingVersion) || newFencingVersion <= fencingVersion) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'new fencing version must increase');
+    const next = { ...metadata, fencing_version: newFencingVersion, released_at: null, updated_at: new Date().toISOString() };
+    await this.#writeMetadata(workspaceRef, next);
+    return this.#publicMetadata(next);
+  }
+
+  async #assertWritable(workspaceRef, executionId, fencingVersion) {
+    const metadata = await this.#readMetadata(workspaceRef);
+    if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
+    if (metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace write uses an old fencing version');
+    return metadata;
+  }
+
+  async #readMetadata(workspaceRef) {
+    requireString(workspaceRef, 'workspace_ref');
+    try {
+      return JSON.parse(await readFile(join(workspaceRef, META_DIR, META_FILE), 'utf8'));
+    } catch (error) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `workspace metadata is unavailable: ${error.message}`, undefined, { cause: error });
+    }
+  }
+
+  async #writeMetadata(workspaceRef, metadata) {
+    await writeFile(join(workspaceRef, META_DIR, META_FILE), JSON.stringify(metadata, null, 2), 'utf8');
+  }
+
+  #publicMetadata(metadata) {
+    return {
+      workspace_ref: metadata.workspace_ref,
+      execution_id: metadata.execution_id,
+      fencing_version: metadata.fencing_version,
+      workspace_revision: metadata.workspace_revision,
+      content_hash: metadata.content_hash,
+      checkpoint_ref: metadata.checkpoint_ref,
+      checkpoint_hash: metadata.checkpoint_hash,
+      released_at: metadata.released_at,
+    };
+  }
+}
