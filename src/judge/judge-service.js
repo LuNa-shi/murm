@@ -55,18 +55,17 @@ export class JudgeService {
   async judgeCandidate(input, { operationId = randomUUID(), actorRef = 'judge:lean' } = {}) {
     const normalized = this.#validateRequest(input);
     const requestHash = hash(normalized);
-    const existing = this.getByRequestKey(normalized.request_key);
-    if (existing) {
-      if (existing.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
-      return existing;
-    }
-    const requested = this.#insertRequested(normalized, requestHash);
-    this.db.prepare('UPDATE check_results SET status = ?, updated_at = ? WHERE check_result_id = ?').run('RUNNING', now(), requested.check_result_id);
+    const request = this.#beginRequest(normalized, requestHash);
+    if (!request.shouldCheck) return request.result;
+    const requested = request.result;
     let checked;
     try {
       checked = await this.checker.check({ candidate: normalized.candidate, targetTask: normalized.target_task, initialContext: normalized.initial_context, fixtureManifest: normalized.fixture_manifest });
     } catch (error) {
       checked = { verdict: 'ERROR', evidence: { diagnostic: error.message, error: error.name } };
+    }
+    if (!checked || !['PASS', 'FAIL', 'INCONCLUSIVE', 'ERROR'].includes(checked.verdict)) {
+      checked = { verdict: 'ERROR', evidence: { diagnostic: 'checker returned an invalid verdict' } };
     }
     const envelope = {
       operation_id: operationId,
@@ -162,16 +161,23 @@ export class JudgeService {
     return resultFromRow(this.db.prepare('SELECT * FROM check_results WHERE check_result_id = ?').get(checkResultId));
   }
 
-  #insertRequested(normalized, requestHash) {
-    const checkResultId = randomUUID();
-    const createdAt = now();
-    this.db.prepare(`INSERT INTO check_results (
-      check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
-      input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict, evidence_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REQUESTED', NULL, ?, ?, ?)`)
-      .run(checkResultId, normalized.request_key, requestHash, normalized.candidate_material_id, normalized.target_task_id, normalized.target_spec_version,
-        normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref, json({}), createdAt, createdAt);
-    return this.getCheckResult(checkResultId);
+  #beginRequest(normalized, requestHash) {
+    return this.#transaction(() => {
+      const existing = this.getByRequestKey(normalized.request_key);
+      if (existing) {
+        if (existing.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
+        return { result: existing, shouldCheck: false };
+      }
+      const checkResultId = randomUUID();
+      const createdAt = now();
+      this.db.prepare(`INSERT INTO check_results (
+        check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
+        input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict, evidence_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', NULL, ?, ?, ?)`)
+        .run(checkResultId, normalized.request_key, requestHash, normalized.candidate_material_id, normalized.target_task_id, normalized.target_spec_version,
+          normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref, json({}), createdAt, createdAt);
+      return { result: this.getCheckResult(checkResultId), shouldCheck: true };
+    });
   }
 
   #replay(operationId, fingerprint) {

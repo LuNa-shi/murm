@@ -94,6 +94,31 @@ test('JudgeService stores CheckResult truth, keeps Task untouched, and deduplica
   judge.close();
 });
 
+test('concurrent checks for one request_key elect one checker invocation', async () => {
+  let checks = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    checker: { check: async () => { checks += 1; await gate; return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+  });
+  const input = {
+    request_key: 'concurrent-check', candidate_material_id: 'material-1', target_task_id: targetTask.task_id, target_spec_version: 1,
+    input_snapshot_hash: initialContext.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    environment_ref: fixtureManifest.environment_ref, candidate: candidate('theorem concurrent : True := by trivial'), target_task: targetTask,
+    initial_context: initialContext, fixture_manifest: fixtureManifest,
+  };
+  const firstPromise = judge.judgeCandidate(input, { operationId: 'concurrent-1' });
+  await new Promise((resolve) => setImmediate(resolve));
+  const second = await judge.judgeCandidate(input, { operationId: 'concurrent-2' });
+  assert.equal(second.status, 'RUNNING');
+  assert.equal(checks, 1);
+  release();
+  const first = await firstPromise;
+  assert.equal(first.status, 'RECEIVED');
+  assert.equal(first.check_result_id, second.check_result_id);
+  judge.close();
+});
+
 test('Judge rejects results whose frozen Task or Initial Context binding has drifted', async () => {
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
     checker: { check: async () => ({ verdict: 'PASS', evidence: {} }) },
