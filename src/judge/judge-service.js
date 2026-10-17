@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
-import { JUDGE_SCHEMA_SQL } from '../storage/judge-schema.js';
+import { ensureJudgeSchema } from '../storage/judge-schema.js';
 import { validateFixtureManifest } from './fixture.js';
 import { LeanChecker } from './lean-adapter.js';
 
@@ -24,7 +24,7 @@ function resultFromRow(row) {
 export class JudgeService {
   constructor(database = ':memory:', { checker } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
-    this.db.exec(JUDGE_SCHEMA_SQL);
+    ensureJudgeSchema(this.db);
     this.checker = checker ?? new LeanChecker();
   }
 
@@ -154,10 +154,12 @@ export class JudgeService {
     const createdAt = now();
     this.db.prepare(`INSERT INTO check_results (
       check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
-      input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict, evidence_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RECEIVED', ?, ?, ?, ?)`)
+      execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict, evidence_json,
+      applied_task_state_version, applied_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RECEIVED', ?, ?, NULL, NULL, ?, ?)`)
       .run(checkResultId, normalized.request_key, requestHash, normalized.candidate_material_id, normalized.target_task_id, normalized.target_spec_version,
-        normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref, payload.verdict, json(payload.evidence ?? {}), createdAt, createdAt);
+        normalized.execution_id, normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref,
+        payload.verdict, json(payload.evidence ?? {}), createdAt, createdAt);
     return resultFromRow(this.db.prepare('SELECT * FROM check_results WHERE check_result_id = ?').get(checkResultId));
   }
 
@@ -172,10 +174,12 @@ export class JudgeService {
       const createdAt = now();
       this.db.prepare(`INSERT INTO check_results (
         check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
-        input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict, evidence_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', NULL, ?, ?, ?)`)
+        execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict, evidence_json,
+        applied_task_state_version, applied_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', NULL, ?, NULL, NULL, ?, ?)`)
         .run(checkResultId, normalized.request_key, requestHash, normalized.candidate_material_id, normalized.target_task_id, normalized.target_spec_version,
-          normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref, json({}), createdAt, createdAt);
+          normalized.execution_id, normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref,
+          json({}), createdAt, createdAt);
       return { result: this.getCheckResult(checkResultId), shouldCheck: true };
     });
   }

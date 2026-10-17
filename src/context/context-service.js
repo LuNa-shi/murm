@@ -83,6 +83,10 @@ export class ContextService {
     return cloneMaterial(this.db.prepare('SELECT * FROM materials WHERE material_id = ?').get(materialId));
   }
 
+  readMaterials(filters = {}) {
+    return this.#readMaterials(filters);
+  }
+
   getInitialContext(executionId) {
     const row = this.db.prepare('SELECT * FROM initial_contexts WHERE execution_id = ?').get(executionId);
     if (!row) return null;
@@ -99,12 +103,19 @@ export class ContextService {
     };
   }
 
+  // Task Flow uses this while its SQLite transaction is open so a steer
+  // Material and the corresponding Execution update commit together.
+  publishMaterialForTask(payload, envelope) {
+    validateEnvelope(envelope, { executionWrite: true });
+    return this.#publishMaterial(payload, envelope);
+  }
+
   #readMaterials(filters = {}) {
-    const materialId = filters.material_id ?? filters.materialId;
-    const kind = filters.kind;
-    const scope = filters.scope;
-    const sourceTask = filters.source_task ?? filters.sourceTask;
-    const sourceExecution = filters.source_execution ?? filters.sourceExecution;
+    const materialId = filters.material_id ?? filters.materialId ?? null;
+    const kind = filters.kind ?? null;
+    const scope = filters.scope ?? null;
+    const sourceTask = filters.source_task ?? filters.sourceTask ?? null;
+    const sourceExecution = filters.source_execution ?? filters.sourceExecution ?? null;
     return this.db.prepare(`SELECT * FROM materials
       WHERE (? IS NULL OR material_id = ?)
         AND (? IS NULL OR kind = ?)
@@ -112,8 +123,7 @@ export class ContextService {
         AND (? IS NULL OR source_task = ?)
         AND (? IS NULL OR source_execution = ?)
       ORDER BY created_at, material_id`)
-      .all(materialId, materialId, kind ?? null, kind ?? null, scope ?? null, scope ?? null,
-        sourceTask ?? null, sourceTask ?? null, sourceExecution ?? null, sourceExecution ?? null)
+      .all(materialId, materialId, kind, kind, scope, scope, sourceTask, sourceTask, sourceExecution, sourceExecution)
       .map(cloneMaterial);
   }
 

@@ -60,6 +60,22 @@ export class ServicesSDK {
     return this.#write('submit_candidate', payload, options);
   }
 
+  acceptTask(payload = {}, options = {}) {
+    return this.#write('accept_task', payload, options);
+  }
+
+  requestRework(payload, options = {}) {
+    return this.#write('request_rework', payload, options);
+  }
+
+  applyCheckResult(payload, options = {}) {
+    return this.#write('apply_check_result', payload, options);
+  }
+
+  wakeExecution(payload = {}, options = {}) {
+    return this.#write('wake_execution', payload, options);
+  }
+
   publishMaterial(material, options = {}) {
     return this.#write('publish_material', material, options);
   }
