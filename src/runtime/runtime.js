@@ -33,7 +33,9 @@ export class Runtime {
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only start CREATED executions, got ${execution.state}`);
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
     const workspace = await this.#prepareWorkspace(execution);
-    let current = this.#saveWorkspaceReference(execution, workspace);
+    // A recovery start restores the already persisted revision. Rewriting that
+    // same revision would violate the Workspace Manager's monotonic CAS rule.
+    let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
     const started = this.taskService.dispatch('start_execution', {}, this.#executionEnvelope(current, operationId('start')));
     current = started.execution;
     try {
@@ -166,6 +168,13 @@ export class Runtime {
     const context = this.contextService.getInitialContext(execution.execution_id);
     if (!context || execution.initial_context_ref !== `sqlite://initial-context/${execution.execution_id}`) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Execution Initial Context is missing or does not match its reference');
+    }
+    if (execution.workspace_ref) {
+      return this.workspaceManager.restoreWorkspace({
+        workspaceRef: execution.workspace_ref,
+        executionId: execution.execution_id,
+        fencingVersion: execution.fencing_version,
+      });
     }
     return this.workspaceManager.createWorkspace({
       executionId: execution.execution_id,
