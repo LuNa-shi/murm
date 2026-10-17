@@ -22,7 +22,6 @@ test('adapter launches the required NuRouter Pi RPC shape and binds the session 
     provider: 'openai',
     model: 'gpt-test',
     account: 'local-account',
-    group: 'research',
     sessionDir: '/tmp/swarmenv-test-sessions',
     spawnProcess: (...values) => {
       [command, args] = values;
@@ -37,7 +36,7 @@ test('adapter launches the required NuRouter Pi RPC shape and binds the session 
   session.sendRpc({ type: 'ping', execution_id: 'execution-42' });
   assert.equal(command, 'nurouter');
   assert.deepEqual(args, [
-    'pi', '--account', 'local-account', '--group', 'research',
+    'pi', '--account', 'local-account',
     '--', '--mode', 'rpc', '--session-dir', '/tmp/swarmenv-test-sessions', '--session-id', 'execution-42',
     '--provider', 'openai', '--model', 'gpt-test',
   ]);
@@ -94,10 +93,30 @@ test('adapter allows route defaults when account and group are omitted', async (
   await session.wait();
 });
 
+test('adapter rejects unsupported providers and conflicting OpenAI selectors before spawning', () => {
+  const conflicting = new AgentCoreAdapter({
+    provider: 'openai', model: 'gpt-test', account: '1', group: 'research', sessionDir: '/tmp/swarmenv-invalid-route',
+  });
+  assert.throws(() => conflicting.buildLaunchArgs({ executionId: 'execution-invalid-route' }), (error) => {
+    assert.ok(error instanceof SwarmEnvError);
+    assert.equal(error.code, ERROR_CODES.INVALID_CONTRACT);
+    assert.match(error.message, /both account and group/);
+    return true;
+  });
+
+  const unsupported = new AgentCoreAdapter({ provider: 'anthropic', model: 'claude', sessionDir: '/tmp/swarmenv-unsupported-route' });
+  assert.throws(() => unsupported.buildLaunchArgs({ executionId: 'execution-unsupported-route' }), (error) => {
+    assert.ok(error instanceof SwarmEnvError);
+    assert.equal(error.code, ERROR_CODES.INVALID_CONTRACT);
+    assert.match(error.message, /unsupported NuRouter\/Pi provider/);
+    return true;
+  });
+});
+
 test('session translates prompt and readiness into Pi RPC commands and observes settlement', async () => {
   let child;
   const adapter = new AgentCoreAdapter({
-    provider: 'openai', model: 'gpt-test', account: 'local-account', group: 'research', sessionDir: '/tmp/swarmenv-rpc-session',
+    provider: 'openai', model: 'gpt-test', account: 'local-account', sessionDir: '/tmp/swarmenv-rpc-session',
     spawnProcess: () => {
       child = fakeChild();
       return child;
@@ -131,7 +150,7 @@ test('session translates prompt and readiness into Pi RPC commands and observes 
 
 test('adapter reports a stable startup error', async () => {
   const adapter = new AgentCoreAdapter({
-    provider: 'openai', model: 'gpt-test', account: 'account', group: 'group', sessionDir: '/tmp/swarmenv-test-sessions',
+    provider: 'openai', model: 'gpt-test', account: 'account', sessionDir: '/tmp/swarmenv-test-sessions',
     spawnProcess: () => {
       const child = new EventEmitter();
       child.stdin = new PassThrough();
@@ -155,7 +174,6 @@ test('adapter smoke test starts and releases a real child process', async () => 
     provider: 'openai',
     model: 'gpt-test',
     account: 'local-account',
-    group: 'research',
     sessionDir: '/tmp/swarmenv-real-child-session',
     manifestVersions: { piVersion: '1.3.0', nurouterVersion: '0.2.12' },
   });
@@ -170,7 +188,7 @@ test('adapter smoke test starts and releases a real child process', async () => 
 test('unexpected non-zero process exit is mapped to PROCESS_EXITED', async () => {
   let child;
   const adapter = new AgentCoreAdapter({
-    provider: 'openai', model: 'gpt-test', account: 'account', group: 'group', sessionDir: '/tmp/swarmenv-test-sessions',
+    provider: 'openai', model: 'gpt-test', account: 'account', sessionDir: '/tmp/swarmenv-test-sessions',
     spawnProcess: () => {
       child = fakeChild();
       return child;

@@ -12,6 +12,19 @@ function required(value, name) {
   return value;
 }
 
+const PROVIDER_ARG_PLACEMENT = Object.freeze({ openai: 'pi', kimi: 'nurouter' });
+
+export function resolveAgentCoreRoute({ provider, account, group } = {}) {
+  const placement = PROVIDER_ARG_PLACEMENT[provider];
+  if (!placement) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported NuRouter/Pi provider: ${provider}`);
+  }
+  if (provider === 'openai' && account && group) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'OpenAI NuRouter routing cannot set both account and group');
+  }
+  return placement;
+}
+
 export class AgentCoreSession extends EventEmitter {
   constructor(child, { executionId, launchArgs, manifest }) {
     super();
@@ -208,9 +221,11 @@ export class AgentCoreAdapter {
       model: this.config.model,
       sessionDir,
     })) required(value, name);
-    const managedKimiRoute = this.config.provider === 'kimi';
-    const args = ['pi'];
-    if (managedKimiRoute) args.push('--provider', this.config.provider, '--model', this.config.model);
+    const placement = resolveAgentCoreRoute(this.config);
+    const modelArgs = ['--provider', this.config.provider, '--model', this.config.model];
+    const nuRouterModelArgs = placement === 'nurouter' ? modelArgs : [];
+    const piModelArgs = placement === 'pi' ? modelArgs : [];
+    const args = ['pi', ...nuRouterModelArgs];
     if (this.config.account) args.push('--account', this.config.account);
     if (this.config.group) args.push('--group', this.config.group);
     args.push(
@@ -219,8 +234,8 @@ export class AgentCoreAdapter {
       '--session-dir', sessionDir,
       '--session-id', executionId,
       ...(this.config.extensionPath ? ['--extension', this.config.extensionPath] : []),
+      ...piModelArgs,
     );
-    if (!managedKimiRoute) args.push('--provider', this.config.provider, '--model', this.config.model);
     return args;
   }
 
