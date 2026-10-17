@@ -162,3 +162,18 @@ test('Workspace Manager rejects execution and file paths that escape its root', 
   );
   await rm(rootDir, { recursive: true, force: true });
 });
+
+test('lease sweep fences an expired running Execution and releases its process slot', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir } = fixtureData;
+  const started = await runtime.startExecution(claimed.execution.execution_id);
+  taskService.db.prepare('UPDATE executions SET lease_expires_at = ? WHERE execution_id = ?').run(new Date(0).toISOString(), claimed.execution.execution_id);
+  const expired = await runtime.sweepExpired(new Date());
+  assert.equal(expired.length, 1);
+  assert.equal(expired[0].execution.state, 'EXPIRED');
+  assert.equal(taskService.getExecution(claimed.execution.execution_id).fencing_version, 2);
+  assert.equal(runtime.getActiveProcessCount(), 0);
+  assert.ok(started.workspace.workspace_ref);
+  await rm(rootDir, { recursive: true, force: true });
+  fixtureData.taskService.close();
+});
