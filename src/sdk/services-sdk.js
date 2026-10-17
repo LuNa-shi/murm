@@ -32,6 +32,14 @@ export class ServicesSDK {
     return this.#read('read_materials', filters);
   }
 
+  proposeTask(task, options = {}) {
+    return this.#write('propose_task', task, { ...options, taskId: null, executionId: null, fencingVersion: null });
+  }
+
+  createChildTask(task, options = {}) {
+    return this.#write('create_child_task', task, options);
+  }
+
   claim(payload = {}, options = {}) {
     return this.#write('claim', payload, options);
   }
@@ -54,6 +62,22 @@ export class ServicesSDK {
 
   abort(payload = {}, options = {}) {
     return this.#write('abort', payload, options);
+  }
+
+  startExecution(payload = {}, options = {}) {
+    return this.#write('start_execution', payload, options);
+  }
+
+  resumeExecution(payload = {}, options = {}) {
+    return this.#write('resume_execution', payload, options);
+  }
+
+  stopExecution(payload = {}, options = {}) {
+    return this.#write('stop_execution', payload, options);
+  }
+
+  fenceExecution(payload = {}, options = {}) {
+    return this.#write('fence_execution', payload, options);
   }
 
   #read(operation, payload) {
