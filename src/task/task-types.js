@@ -1,0 +1,173 @@
+import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+
+export const REGISTERED_TASK_TYPES = Object.freeze(['default', 'research', 'proof', 'implementation']);
+export const TASK_TYPE_VERSION = '1.0';
+export const TASK_STATES = Object.freeze(['OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
+export const EXECUTION_STATES = Object.freeze(['CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED']);
+export const ACTIVE_EXECUTION_STATES = Object.freeze(['CREATED', 'RUNNING', 'WAITING']);
+export const TERMINAL_TASK_STATES = Object.freeze(['SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
+export const TERMINAL_EXECUTION_STATES = Object.freeze(['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED']);
+
+const CONTRACT_KEYS = new Set(['required_children', 'required_materials', 'required_candidate', 'required_check', 'parent_review']);
+const CHECK_KEYS = new Set(['checker_ref', 'checker_version', 'environment_ref', 'input_snapshot_hash']);
+const MATERIAL_KEYS = new Set(['kind', 'kinds', 'scope', 'min_count']);
+const CANDIDATE_KEYS = new Set(['kind', 'scope']);
+
+function assertPlainObject(value, field) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} must be an object`);
+  }
+}
+
+function assertNoUnknownKeys(value, allowed, field) {
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field}.${key} is not supported`);
+  }
+}
+
+function normalizeMaterials(value) {
+  if (!Array.isArray(value)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'required_materials must be an array');
+  return value.map((item, index) => {
+    assertPlainObject(item, `required_materials[${index}]`);
+    assertNoUnknownKeys(item, MATERIAL_KEYS, `required_materials[${index}]`);
+    const kinds = item.kinds ?? (item.kind ? [item.kind] : []);
+    if (!Array.isArray(kinds) || kinds.length === 0 || kinds.some((kind) => typeof kind !== 'string' || !kind)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}] needs kind or kinds`);
+    }
+    const minCount = item.min_count ?? 1;
+    if (!Number.isInteger(minCount) || minCount < 1) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].min_count must be positive`);
+    }
+    return { kinds: [...kinds], ...(item.scope ? { scope: item.scope } : {}), min_count: minCount };
+  });
+}
+
+function normalizeCheck(value) {
+  assertPlainObject(value, 'required_check');
+  assertNoUnknownKeys(value, CHECK_KEYS, 'required_check');
+  for (const field of ['checker_ref', 'checker_version']) {
+    if (typeof value[field] !== 'string' || !value[field]) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_check.${field} is required`);
+    }
+  }
+  return { ...value };
+}
+
+function normalizeCandidate(value) {
+  if (value === true) return { kind: 'artifact' };
+  assertPlainObject(value, 'required_candidate');
+  assertNoUnknownKeys(value, CANDIDATE_KEYS, 'required_candidate');
+  if (typeof value.kind !== 'string' || !value.kind) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'required_candidate.kind is required');
+  }
+  return { ...value };
+}
+
+export function validateCompletionContract(contract, { taskType, parentId = null } = {}) {
+  assertPlainObject(contract, 'completion_contract');
+  assertNoUnknownKeys(contract, CONTRACT_KEYS, 'completion_contract');
+  const normalized = {};
+  if (contract.required_children !== undefined) {
+    if (!Array.isArray(contract.required_children) || contract.required_children.some((id) => typeof id !== 'string' || !id)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'required_children must contain task IDs');
+    }
+    normalized.required_children = [...new Set(contract.required_children)];
+  }
+  if (contract.required_materials !== undefined) normalized.required_materials = normalizeMaterials(contract.required_materials);
+  if (contract.required_candidate !== undefined) normalized.required_candidate = normalizeCandidate(contract.required_candidate);
+  if (contract.required_check !== undefined) normalized.required_check = normalizeCheck(contract.required_check);
+  if (contract.parent_review !== undefined) {
+    if (typeof contract.parent_review !== 'boolean') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent_review must be boolean');
+    }
+    if (contract.parent_review && !parentId) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent_review requires a parent task');
+    }
+    normalized.parent_review = contract.parent_review;
+  }
+  if (taskType === 'proof' && !normalized.required_check) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'proof tasks require required_check');
+  }
+  if (normalized.required_check && !normalized.required_candidate) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'required_check requires required_candidate');
+  }
+  return normalized;
+}
+
+export function defaultCompletionContract(taskType, { parentId = null, requiredCheck = undefined } = {}) {
+  switch (taskType) {
+    case 'default':
+      return parentId ? { parent_review: true } : {};
+    case 'research':
+      return {
+        required_materials: [{ kinds: ['fact', 'experience', 'conjecture', 'artifact'], min_count: 1 }],
+        ...(parentId ? { parent_review: true } : {}),
+      };
+    case 'proof':
+      return {
+        required_candidate: { kind: 'artifact' },
+        required_check: requiredCheck ?? { checker_ref: 'lean', checker_version: 'mvp-1' },
+      };
+    case 'implementation':
+      return requiredCheck
+        ? { required_candidate: { kind: 'artifact' }, required_check: requiredCheck }
+        : (parentId ? { parent_review: true } : {});
+    default:
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task_type: ${taskType}`);
+  }
+}
+
+export function prepareTaskContract({ taskType, taskTypeVersion = TASK_TYPE_VERSION, completionContract, parentId = null, requiredCheck } = {}) {
+  if (!REGISTERED_TASK_TYPES.includes(taskType)) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `task_type must be one of ${REGISTERED_TASK_TYPES.join(', ')}`);
+  }
+  if (taskTypeVersion !== TASK_TYPE_VERSION) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported task_type_version: ${taskTypeVersion}`);
+  }
+  const defaults = defaultCompletionContract(taskType, { parentId, requiredCheck });
+  const selected = completionContract === undefined ? defaults : completionContract;
+  return validateCompletionContract(selected, { taskType, parentId });
+}
+
+export function validateTaskProposal(input, { parentId = null } = {}) {
+  if (!input || typeof input !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task proposal is required');
+  for (const field of ['task_type', 'goal', 'expected_output', 'acceptance_conditions']) {
+    if (input[field] === undefined || input[field] === null || input[field] === '') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
+    }
+  }
+  if (typeof input.goal !== 'string' || typeof input.expected_output !== 'string') {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'goal and expected_output must be strings');
+  }
+  if (!input.owner_ref || typeof input.owner_ref !== 'string') {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'owner_ref is required');
+  }
+  const taskType = input.task_type;
+  const taskTypeVersion = input.task_type_version ?? TASK_TYPE_VERSION;
+  const completionContract = prepareTaskContract({
+    taskType,
+    taskTypeVersion,
+    completionContract: input.completion_contract,
+    parentId,
+    requiredCheck: input.required_check,
+  });
+  if (input.parallel_quota !== undefined && input.parallel_quota !== 1) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'MVP parallel_quota is fixed at 1');
+  }
+  return {
+    task_type: taskType,
+    task_type_version: taskTypeVersion,
+    goal: input.goal,
+    expected_output: input.expected_output,
+    acceptance_conditions: input.acceptance_conditions,
+    owner_ref: input.owner_ref,
+    input_material_refs: input.input_material_refs ?? [],
+    completion_contract: completionContract,
+    parallel_quota: 1,
+    max_depth: input.max_depth ?? 8,
+    max_children: input.max_children ?? 32,
+    max_attempts: input.max_attempts ?? 8,
+    retry_policy: input.retry_policy ?? {},
+    root_deadline: input.root_deadline ?? null,
+  };
+}
