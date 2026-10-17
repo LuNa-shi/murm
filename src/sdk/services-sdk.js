@@ -32,6 +32,10 @@ export class ServicesSDK {
     return this.#read('read_materials', filters);
   }
 
+  freezeInitialContext(payload, options = {}) {
+    return this.#write('freeze_initial_context', payload, options);
+  }
+
   proposeTask(task, options = {}) {
     return this.#write('propose_task', task, { ...options, taskId: null, executionId: null, fencingVersion: null });
   }
