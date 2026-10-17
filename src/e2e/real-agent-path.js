@@ -1,7 +1,7 @@
 import { execFile as defaultExecFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { AgentCoreAdapter } from '../agent/pi-adapter.js';
+import { AgentCoreAdapter, resolveAgentCoreRoute } from '../agent/pi-adapter.js';
 import { ContextService } from '../context/context-service.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
 import { ServicesRouter } from '../sdk/service-router.js';
@@ -19,8 +19,6 @@ const extensionPath = fileURLToPath(new URL('../agent/swarmenv-extension.mjs', i
 const ROUTING_FIELDS = Object.freeze([
   'NUROUTER_PI_PROVIDER',
   'NUROUTER_PI_MODEL',
-  'NUROUTER_PI_ACCOUNT',
-  'NUROUTER_PI_GROUP',
 ]);
 
 function present(value) {
@@ -42,6 +40,18 @@ async function commandVersion(command) {
 
 export async function probeRealAgentConfig({ env = process.env } = {}) {
   const missing = ROUTING_FIELDS.filter((field) => !present(env[field]));
+  const routeBlockers = [];
+  if (present(env.NUROUTER_PI_PROVIDER)) {
+    try {
+      resolveAgentCoreRoute({
+        provider: env.NUROUTER_PI_PROVIDER,
+        account: env.NUROUTER_PI_ACCOUNT,
+        group: env.NUROUTER_PI_GROUP,
+      });
+    } catch (error) {
+      routeBlockers.push(error.message);
+    }
+  }
   const [node, nurouter, pi, lean, lake] = await Promise.all([
     Promise.resolve({ available: true, version: process.version }),
     commandVersion('nurouter'),
@@ -54,6 +64,7 @@ export async function probeRealAgentConfig({ env = process.env } = {}) {
   ].filter(([, result]) => !result.available).map(([name]) => name);
   const blockers = [];
   if (missing.length > 0) blockers.push('missing NuRouter/Pi routing configuration');
+  blockers.push(...routeBlockers);
   if (unavailableTools.length > 0) blockers.push(`missing local commands: ${unavailableTools.join(', ')}`);
   return {
     status: blockers.length === 0 ? 'READY_TO_LAUNCH' : 'BLOCKED',

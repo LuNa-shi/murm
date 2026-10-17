@@ -54,7 +54,21 @@ test('real-agent probe reports missing local configuration without exposing secr
   const probe = await probeRealAgentConfig({ env: {} });
   assert.equal(probe.status, 'BLOCKED');
   assert.deepEqual(probe.missing, [
-    'NUROUTER_PI_PROVIDER', 'NUROUTER_PI_MODEL', 'NUROUTER_PI_ACCOUNT', 'NUROUTER_PI_GROUP',
+    'NUROUTER_PI_PROVIDER', 'NUROUTER_PI_MODEL',
   ]);
+  assert.equal(probe.secret_values_recorded, false);
+});
+
+test('real-agent probe rejects conflicting OpenAI route selectors before launch', async () => {
+  const probe = await probeRealAgentConfig({
+    env: {
+      NUROUTER_PI_PROVIDER: 'openai',
+      NUROUTER_PI_MODEL: 'gpt-6.1-sol',
+      NUROUTER_PI_ACCOUNT: '1',
+      NUROUTER_PI_GROUP: 'research',
+    },
+  });
+  assert.equal(probe.status, 'BLOCKED');
+  assert.ok(probe.blockers.some((reason) => reason.includes('both account and group')));
   assert.equal(probe.secret_values_recorded, false);
 });

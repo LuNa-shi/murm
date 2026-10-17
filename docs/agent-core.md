@@ -1,10 +1,23 @@
 # Agent Core and Services SDK
 
-The Runtime starts every real Agent Core through the local NuRouter entry point. `AgentCoreAdapter` builds the stable launch shape
+The Runtime starts every real Agent Core through the local NuRouter entry point. `AgentCoreAdapter` chooses the launch shape for the configured route.
+
+For the OpenAI route exposed by current NuRouter releases, the provider and model
+are Pi arguments after the separator:
 
 ```text
-nurouter pi --provider <provider> --model <model> --account <account> --group <group> -- --mode rpc --session-dir <dir> --session-id <execution_id>
+nurouter pi [--account <account> | --group <group>] -- --mode rpc --session-dir <dir> --session-id <execution_id> --provider openai --model <model>
 ```
+
+Managed Kimi routes keep their provider and model in NuRouter's argument segment:
+
+```text
+nurouter pi --provider kimi --model <model> [--account <account>] [--group <group>] -- --mode rpc --session-dir <dir> --session-id <execution_id>
+```
+
+`AgentCoreAdapter` selects the form from the configured provider and rejects
+unknown providers. The OpenAI route accepts at most one account/group selector;
+both forms still run through the local NuRouter entry point.
 
 Provider routing and credentials are Runtime-local configuration. They are never put into Task, Material, CheckResult, or public checkpoint data. The adapter returns a session bound to the Execution ID, collects process output, sends newline-delimited RPC messages, and maps startup, process, and RPC failures to stable error codes.
 

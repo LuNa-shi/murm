@@ -12,6 +12,19 @@ function required(value, name) {
   return value;
 }
 
+const PROVIDER_ARG_PLACEMENT = Object.freeze({ openai: 'pi', kimi: 'nurouter' });
+
+export function resolveAgentCoreRoute({ provider, account, group } = {}) {
+  if (!Object.hasOwn(PROVIDER_ARG_PLACEMENT, provider)) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported NuRouter/Pi provider: ${provider}`);
+  }
+  const placement = PROVIDER_ARG_PLACEMENT[provider];
+  if (provider === 'openai' && account && group) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'OpenAI NuRouter routing cannot set both account and group');
+  }
+  return placement;
+}
+
 export class AgentCoreSession extends EventEmitter {
   constructor(child, { executionId, launchArgs, manifest }) {
     super();
@@ -206,22 +219,24 @@ export class AgentCoreAdapter {
     for (const [name, value] of Object.entries({
       provider: this.config.provider,
       model: this.config.model,
-      account: this.config.account,
-      group: this.config.group,
       sessionDir,
     })) required(value, name);
-    return [
-      'pi',
-      '--provider', this.config.provider,
-      '--model', this.config.model,
-      '--account', this.config.account,
-      '--group', this.config.group,
+    const placement = resolveAgentCoreRoute(this.config);
+    const modelArgs = ['--provider', this.config.provider, '--model', this.config.model];
+    const nuRouterModelArgs = placement === 'nurouter' ? modelArgs : [];
+    const piModelArgs = placement === 'pi' ? modelArgs : [];
+    const args = ['pi', ...nuRouterModelArgs];
+    if (this.config.account) args.push('--account', this.config.account);
+    if (this.config.group) args.push('--group', this.config.group);
+    args.push(
       '--',
       '--mode', 'rpc',
       '--session-dir', sessionDir,
       '--session-id', executionId,
       ...(this.config.extensionPath ? ['--extension', this.config.extensionPath] : []),
-    ];
+      ...piModelArgs,
+    );
+    return args;
   }
 
   async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd } = {}) {

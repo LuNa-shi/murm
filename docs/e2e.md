@@ -16,14 +16,16 @@ The real Agent Core path is available through:
 node scripts/run-mvp-fixture.mjs --real-agent --keep
 ```
 
-It uses the local `nurouter pi -- ... --mode rpc` adapter only after these local routing variables are present:
+It uses the local `nurouter pi -- ... --mode rpc` adapter only after the required local routing variables are present:
 
 ```sh
 export NUROUTER_PI_PROVIDER=...
 export NUROUTER_PI_MODEL=...
-export NUROUTER_PI_ACCOUNT=...
-export NUROUTER_PI_GROUP=...
 ```
+
+`NUROUTER_PI_ACCOUNT` and `NUROUTER_PI_GROUP` are optional route selectors. Set
+the one required by the local NuRouter route; current OpenAI ChatGPT routing
+rejects setting both at once.
 
 It also requires `nurouter`, `pi`, `lean`, and `lake` on `PATH`, plus a local checkout of the locked PutnamBench commit. Set its path explicitly when it is not the current directory:
 

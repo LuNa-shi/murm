@@ -22,7 +22,6 @@ test('adapter launches the required NuRouter Pi RPC shape and binds the session 
     provider: 'openai',
     model: 'gpt-test',
     account: 'local-account',
-    group: 'research',
     sessionDir: '/tmp/swarmenv-test-sessions',
     spawnProcess: (...values) => {
       [command, args] = values;
@@ -37,8 +36,9 @@ test('adapter launches the required NuRouter Pi RPC shape and binds the session 
   session.sendRpc({ type: 'ping', execution_id: 'execution-42' });
   assert.equal(command, 'nurouter');
   assert.deepEqual(args, [
-    'pi', '--provider', 'openai', '--model', 'gpt-test', '--account', 'local-account', '--group', 'research',
+    'pi', '--account', 'local-account',
     '--', '--mode', 'rpc', '--session-dir', '/tmp/swarmenv-test-sessions', '--session-id', 'execution-42',
+    '--provider', 'openai', '--model', 'gpt-test',
   ]);
   assert.equal(session.manifest.pi_version, '1.3.0');
   assert.equal(session.manifest.nurouter_version, '0.2.12');
@@ -47,10 +47,84 @@ test('adapter launches the required NuRouter Pi RPC shape and binds the session 
   assert.deepEqual(await session.wait(), { code: 0, signal: null, stdout: '{"type":"ready"}\n', stderr: '' });
 });
 
+test('adapter keeps managed Kimi routing in the NuRouter argument segment', async () => {
+  let args;
+  const adapter = new AgentCoreAdapter({
+    provider: 'kimi',
+    model: 'k3',
+    account: 'local-account',
+    group: 'research',
+    sessionDir: '/tmp/swarmenv-kimi-session',
+    spawnProcess: (...values) => {
+      [, args] = values;
+      return fakeChild();
+    },
+    manifestVersions: { piVersion: '1.3.0', nurouterVersion: '0.2.12' },
+  });
+
+  const session = await adapter.start({ executionId: 'execution-kimi' });
+  assert.deepEqual(args, [
+    'pi', '--provider', 'kimi', '--model', 'k3', '--account', 'local-account', '--group', 'research',
+    '--', '--mode', 'rpc', '--session-dir', '/tmp/swarmenv-kimi-session', '--session-id', 'execution-kimi',
+  ]);
+  session.stop();
+  await session.wait();
+});
+
+test('adapter allows route defaults when account and group are omitted', async () => {
+  let args;
+  const adapter = new AgentCoreAdapter({
+    provider: 'openai',
+    model: 'gpt-6.1-sol',
+    sessionDir: '/tmp/swarmenv-default-route-session',
+    spawnProcess: (...values) => {
+      [, args] = values;
+      return fakeChild();
+    },
+    manifestVersions: { piVersion: '1.3.0', nurouterVersion: '0.2.12' },
+  });
+
+  const session = await adapter.start({ executionId: 'execution-default-route' });
+  assert.deepEqual(args, [
+    'pi', '--', '--mode', 'rpc', '--session-dir', '/tmp/swarmenv-default-route-session',
+    '--session-id', 'execution-default-route', '--provider', 'openai', '--model', 'gpt-6.1-sol',
+  ]);
+  session.stop();
+  await session.wait();
+});
+
+test('adapter rejects unsupported providers and conflicting OpenAI selectors before spawning', () => {
+  const conflicting = new AgentCoreAdapter({
+    provider: 'openai', model: 'gpt-test', account: '1', group: 'research', sessionDir: '/tmp/swarmenv-invalid-route',
+  });
+  assert.throws(() => conflicting.buildLaunchArgs({ executionId: 'execution-invalid-route' }), (error) => {
+    assert.ok(error instanceof SwarmEnvError);
+    assert.equal(error.code, ERROR_CODES.INVALID_CONTRACT);
+    assert.match(error.message, /both account and group/);
+    return true;
+  });
+
+  const unsupported = new AgentCoreAdapter({ provider: 'anthropic', model: 'claude', sessionDir: '/tmp/swarmenv-unsupported-route' });
+  assert.throws(() => unsupported.buildLaunchArgs({ executionId: 'execution-unsupported-route' }), (error) => {
+    assert.ok(error instanceof SwarmEnvError);
+    assert.equal(error.code, ERROR_CODES.INVALID_CONTRACT);
+    assert.match(error.message, /unsupported NuRouter\/Pi provider/);
+    return true;
+  });
+
+  const prototypeProperty = new AgentCoreAdapter({ provider: '__proto__', model: 'unexpected', sessionDir: '/tmp/swarmenv-prototype-route' });
+  assert.throws(() => prototypeProperty.buildLaunchArgs({ executionId: 'execution-prototype-route' }), (error) => {
+    assert.ok(error instanceof SwarmEnvError);
+    assert.equal(error.code, ERROR_CODES.INVALID_CONTRACT);
+    assert.match(error.message, /unsupported NuRouter\/Pi provider/);
+    return true;
+  });
+});
+
 test('session translates prompt and readiness into Pi RPC commands and observes settlement', async () => {
   let child;
   const adapter = new AgentCoreAdapter({
-    provider: 'openai', model: 'gpt-test', account: 'local-account', group: 'research', sessionDir: '/tmp/swarmenv-rpc-session',
+    provider: 'openai', model: 'gpt-test', account: 'local-account', sessionDir: '/tmp/swarmenv-rpc-session',
     spawnProcess: () => {
       child = fakeChild();
       return child;
@@ -84,7 +158,7 @@ test('session translates prompt and readiness into Pi RPC commands and observes 
 
 test('adapter reports a stable startup error', async () => {
   const adapter = new AgentCoreAdapter({
-    provider: 'openai', model: 'gpt-test', account: 'account', group: 'group', sessionDir: '/tmp/swarmenv-test-sessions',
+    provider: 'openai', model: 'gpt-test', account: 'account', sessionDir: '/tmp/swarmenv-test-sessions',
     spawnProcess: () => {
       const child = new EventEmitter();
       child.stdin = new PassThrough();
@@ -108,7 +182,6 @@ test('adapter smoke test starts and releases a real child process', async () => 
     provider: 'openai',
     model: 'gpt-test',
     account: 'local-account',
-    group: 'research',
     sessionDir: '/tmp/swarmenv-real-child-session',
     manifestVersions: { piVersion: '1.3.0', nurouterVersion: '0.2.12' },
   });
@@ -123,7 +196,7 @@ test('adapter smoke test starts and releases a real child process', async () => 
 test('unexpected non-zero process exit is mapped to PROCESS_EXITED', async () => {
   let child;
   const adapter = new AgentCoreAdapter({
-    provider: 'openai', model: 'gpt-test', account: 'account', group: 'group', sessionDir: '/tmp/swarmenv-test-sessions',
+    provider: 'openai', model: 'gpt-test', account: 'account', sessionDir: '/tmp/swarmenv-test-sessions',
     spawnProcess: () => {
       child = fakeChild();
       return child;
