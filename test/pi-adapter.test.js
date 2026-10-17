@@ -111,6 +111,14 @@ test('adapter rejects unsupported providers and conflicting OpenAI selectors bef
     assert.match(error.message, /unsupported NuRouter\/Pi provider/);
     return true;
   });
+
+  const prototypeProperty = new AgentCoreAdapter({ provider: '__proto__', model: 'unexpected', sessionDir: '/tmp/swarmenv-prototype-route' });
+  assert.throws(() => prototypeProperty.buildLaunchArgs({ executionId: 'execution-prototype-route' }), (error) => {
+    assert.ok(error instanceof SwarmEnvError);
+    assert.equal(error.code, ERROR_CODES.INVALID_CONTRACT);
+    assert.match(error.message, /unsupported NuRouter\/Pi provider/);
+    return true;
+  });
 });
 
 test('session translates prompt and readiness into Pi RPC commands and observes settlement', async () => {

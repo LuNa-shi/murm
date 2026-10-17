@@ -15,10 +15,10 @@ function required(value, name) {
 const PROVIDER_ARG_PLACEMENT = Object.freeze({ openai: 'pi', kimi: 'nurouter' });
 
 export function resolveAgentCoreRoute({ provider, account, group } = {}) {
-  const placement = PROVIDER_ARG_PLACEMENT[provider];
-  if (!placement) {
+  if (!Object.hasOwn(PROVIDER_ARG_PLACEMENT, provider)) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported NuRouter/Pi provider: ${provider}`);
   }
+  const placement = PROVIDER_ARG_PLACEMENT[provider];
   if (provider === 'openai' && account && group) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'OpenAI NuRouter routing cannot set both account and group');
   }
