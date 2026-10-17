@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS executions (
   initial_context_ref TEXT NOT NULL,
   input_material_refs_json TEXT NOT NULL,
   input_snapshot_hash TEXT NOT NULL,
+  candidate_material_id TEXT,
   workspace_ref TEXT,
   workspace_revision INTEGER,
   workspace_content_hash TEXT,
@@ -89,6 +90,20 @@ CREATE TABLE IF NOT EXISTS claim_keys (
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   fingerprint TEXT NOT NULL,
   execution_id TEXT NOT NULL UNIQUE REFERENCES executions(execution_id),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS wait_keys (
+  request_key TEXT PRIMARY KEY,
+  execution_id TEXT NOT NULL REFERENCES executions(execution_id),
+  fingerprint TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS wake_keys (
+  request_key TEXT PRIMARY KEY,
+  execution_id TEXT NOT NULL REFERENCES executions(execution_id),
+  fingerprint TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
 `;

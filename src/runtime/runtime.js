@@ -47,11 +47,16 @@ export class Runtime {
     }
   }
 
-  async wakeExecution(executionId) {
+  async wakeExecution(executionId, { wakeKey = null } = {}) {
     const waiting = this.#getExecution(executionId);
-    if (waiting.state !== 'WAITING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only wake WAITING executions, got ${waiting.state}`);
+    const key = wakeKey ?? waiting.resume_token ?? `wake:${executionId}`;
+    if (waiting.state !== 'WAITING') {
+      const active = this.activeProcesses.get(executionId);
+      if (active) return { execution: active.execution, workspace: active.workspace, session: active.session };
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only wake WAITING executions, got ${waiting.state}`);
+    }
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
-    const resumed = this.taskService.dispatch('resume_execution', {}, this.#executionEnvelope(waiting, operationId('resume'))).execution;
+    const resumed = this.taskService.dispatch('wake_execution', { wake_key: key }, this.#executionEnvelope(waiting, operationId('wake'))).execution;
     const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'), executionId, fencingVersion: resumed.fencing_version });
     return this.#launch(resumed, workspace);
   }
@@ -76,7 +81,7 @@ export class Runtime {
       workspace_revision: workspace.workspace_revision,
       workspace_content_hash: workspace.content_hash,
       wait_condition: waitCondition,
-      wait_deadline: deadline,
+      wait_deadline: deadline ?? waitCondition?.deadline ?? null,
     }, this.#executionEnvelope(current, operationId('wait')));
     active.session.stop();
     this.activeProcesses.delete(executionId);

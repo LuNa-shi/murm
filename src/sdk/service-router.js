@@ -1,6 +1,7 @@
 const TASK_OPERATIONS = new Set([
   'abort', 'claim', 'create_child_task', 'fence_execution', 'get_execution', 'get_task', 'heartbeat', 'list_children',
-  'propose_task', 'request_wait', 'resume_execution', 'start_execution', 'stop_execution',
+  'propose_task', 'request_wait', 'resume_execution', 'start_execution', 'stop_execution', 'submit_candidate',
+  'accept_task', 'request_rework', 'apply_check_result', 'wake_execution',
 ]);
 const CONTEXT_OPERATIONS = new Set(['freeze_initial_context', 'publish_material', 'read_materials']);
 
