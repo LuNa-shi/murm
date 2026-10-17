@@ -152,3 +152,13 @@ test('startup failure preserves the prepared workspace and ends the Execution wi
   await rm(rootDir, { recursive: true, force: true });
   fixtureData.taskService.close();
 });
+
+test('Workspace Manager rejects execution and file paths that escape its root', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-path-'));
+  const manager = new WorkspaceManager({ rootDir });
+  await assert.rejects(
+    () => manager.createWorkspace({ executionId: '../outside', fencingVersion: 1, initialContext: {}, initialPrompt: 'p', inputSnapshotManifest: {} }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
+  );
+  await rm(rootDir, { recursive: true, force: true });
+});

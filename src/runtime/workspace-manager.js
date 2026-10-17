@@ -46,7 +46,9 @@ export class WorkspaceManager {
   }
 
   workspacePath(executionId) {
-    return join(this.rootDir, requireString(executionId, 'execution_id'));
+    const id = requireString(executionId, 'execution_id');
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'execution_id is not a safe workspace path segment');
+    return join(this.rootDir, id);
   }
 
   async createWorkspace({ executionId, fencingVersion, initialContext, initialPrompt, inputSnapshotManifest, runtimeManifest = {} }) {
@@ -162,8 +164,12 @@ export class WorkspaceManager {
 
   async #readMetadata(workspaceRef) {
     requireString(workspaceRef, 'workspace_ref');
+    const resolvedWorkspace = resolve(workspaceRef);
+    if (resolvedWorkspace !== this.rootDir && !resolvedWorkspace.startsWith(`${this.rootDir}/`)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace_ref is outside Runtime rootDir');
+    }
     try {
-      return JSON.parse(await readFile(join(workspaceRef, META_DIR, META_FILE), 'utf8'));
+      return JSON.parse(await readFile(join(resolvedWorkspace, META_DIR, META_FILE), 'utf8'));
     } catch (error) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `workspace metadata is unavailable: ${error.message}`, undefined, { cause: error });
     }
