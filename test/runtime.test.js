@@ -35,9 +35,12 @@ class FakeSession extends EventEmitter {
 class FakeAgentAdapter {
   constructor() {
     this.sessions = [];
+    this.starts = [];
   }
 
-  async start({ executionId }) {
+  async start(options) {
+    this.starts.push(options);
+    const { executionId } = options;
     const session = new FakeSession(executionId);
     this.sessions.push(session);
     return session;
@@ -72,6 +75,8 @@ test('Runtime creates an isolated workspace before Pi, saves checkpoint before w
   const started = await runtime.startExecution(claimed.execution.execution_id);
   assert.equal(started.execution.state, 'RUNNING');
   assert.equal(runtime.getActiveProcessCount(), 1);
+  assert.equal(fixtureData.adapter.starts[0].cwd, started.workspace.workspace_ref);
+  assert.equal(fixtureData.adapter.starts[0].sessionDir, join(started.workspace.workspace_ref, '.swarm', 'pi-session'));
   assert.equal(JSON.parse(await readFile(join(started.workspace.workspace_ref, 'initial-context.json'), 'utf8')).execution_id, claimed.execution.execution_id);
   assert.equal(await readFile(join(started.workspace.workspace_ref, 'initial-prompt.txt'), 'utf8'), 'run the fixture');
   assert.equal(await readFile(join(started.workspace.workspace_ref, 'input-snapshot.json'), 'utf8').then(JSON.parse).then((value) => value.input_snapshot_hash), claimed.execution.input_snapshot_hash);

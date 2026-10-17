@@ -47,6 +47,41 @@ test('adapter launches the required NuRouter Pi RPC shape and binds the session 
   assert.deepEqual(await session.wait(), { code: 0, signal: null, stdout: '{"type":"ready"}\n', stderr: '' });
 });
 
+test('session translates prompt and readiness into Pi RPC commands and observes settlement', async () => {
+  let child;
+  const adapter = new AgentCoreAdapter({
+    provider: 'openai', model: 'gpt-test', account: 'local-account', group: 'research', sessionDir: '/tmp/swarmenv-rpc-session',
+    spawnProcess: () => {
+      child = fakeChild();
+      return child;
+    },
+    manifestVersions: { piVersion: '1.3.0', nurouterVersion: '0.2.12' },
+  });
+  const session = await adapter.start({ executionId: 'execution-rpc' });
+  const commands = [];
+  child.stdin.on('data', (chunk) => {
+    const command = JSON.parse(chunk.toString());
+    commands.push(command);
+    if (command.type === 'get_state') {
+      child.stdout.write(JSON.stringify({ type: 'response', id: command.id, success: true, data: { mode: 'rpc' } }) + '\n');
+    } else if (command.type === 'prompt') {
+      child.stdout.write(JSON.stringify({ type: 'response', id: command.id, success: true, data: { disposition: 'started' } }) + '\n');
+      child.stdout.write(JSON.stringify({ type: 'agent_settled', reason: 'idle' }) + '\n');
+    }
+  });
+
+  await session.waitForReady();
+  const sequence = session.rpcRecords.length;
+  const response = await session.prompt('submit the candidate', { timeoutMs: 1_000 });
+  const settled = await session.waitForSettled({ afterSequence: sequence });
+  assert.equal(response.data.disposition, 'started');
+  assert.equal(settled.type, 'agent_settled');
+  assert.equal(commands.at(-1).message, 'submit the candidate');
+  assert.equal('timeoutMs' in commands.at(-1), false);
+  session.stop();
+  await session.wait();
+});
+
 test('adapter reports a stable startup error', async () => {
   const adapter = new AgentCoreAdapter({
     provider: 'openai', model: 'gpt-test', account: 'account', group: 'group', sessionDir: '/tmp/swarmenv-test-sessions',
