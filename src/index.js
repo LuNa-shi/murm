@@ -8,3 +8,5 @@ export * from './task/task-types.js';
 export * from './task/task-service.js';
 export * from './context/context-service.js';
 export * from './sdk/service-router.js';
+export * from './runtime/workspace-manager.js';
+export * from './runtime/runtime.js';

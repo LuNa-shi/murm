@@ -1,0 +1,7 @@
+# Runtime and Workspace Manager
+
+Runtime owns physical process capacity, lease/fencing effects, and the private Workspace Manager. Before starting an Agent Core, it reads the Execution's frozen Initial Context, creates or restores the isolated workspace, writes `initial-context.json`, `initial-prompt.txt`, `input-snapshot.json`, and a local runtime manifest, then starts the Agent adapter. The workspace directory is derived from the Execution ID and cannot be shared by another Execution.
+
+Workspace revisions and checkpoints are stored under the private `.swarm` directory and are referenced by Execution fields. Every filesystem write checks the Execution ID and fencing version. A fence update changes both the Task Service Execution fence and the Workspace metadata fence; an old process therefore receives `FENCED` before it can overwrite a current revision. Released workspaces remain on disk for audit and recovery.
+
+`requestWait` saves the next workspace revision and checkpoint, records those references through Runtime-internal Task Service operations, changes the Execution and Task to `WAITING` in the public state transaction, stops the Agent process, and releases the Runtime process slot. A waiting Execution continues to occupy the Task's logical claim because the Task Service active Execution index includes `WAITING`. Runtime restart increments its generation, fences `CREATED`/`RUNNING` owners, and leaves `WAITING` responsibilities available for a single wake operation.

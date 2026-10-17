@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS executions (
   input_snapshot_hash TEXT NOT NULL,
   workspace_ref TEXT,
   workspace_revision INTEGER,
+  workspace_content_hash TEXT,
   checkpoint_ref TEXT,
   checkpoint_hash TEXT,
   instruction_version INTEGER NOT NULL DEFAULT 1,
