@@ -12,7 +12,7 @@ nurouter pi [--account <account> | --group <group>] -- --mode rpc --session-dir 
 Managed Kimi routes keep their provider and model in NuRouter's argument segment:
 
 ```text
-nurouter pi --provider kimi --model <model> --account <account> --group <group> -- --mode rpc --session-dir <dir> --session-id <execution_id>
+nurouter pi --provider kimi --model <model> [--account <account>] [--group <group>] -- --mode rpc --session-dir <dir> --session-id <execution_id>
 ```
 
 `AgentCoreAdapter` selects the form from the configured provider and rejects
