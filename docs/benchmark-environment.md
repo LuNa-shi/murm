@@ -78,6 +78,6 @@ surface and never export those fields.
 The completed 12-problem baseline is recorded in
 [`experiments/putnambench-4core-2026-10-18-rerun`](../experiments/putnambench-4core-2026-10-18-rerun/).
 The final-code four-core acceptance run is recorded in
-[`experiments/putnambench-4core-2026-10-18-pilot-real-v3`](../experiments/putnambench-4core-2026-10-18-pilot-real-v3/),
+[`experiments/putnambench-4core-2026-10-18-pilot-real-v5`](../experiments/putnambench-4core-2026-10-18-pilot-real-v5/),
 with its sanitized report in
-[`reports/putnambench-4core-2026-10-18-pilot-real-v3`](../reports/putnambench-4core-2026-10-18-pilot-real-v3/).
+[`reports/putnambench-4core-2026-10-18-pilot-real-v5`](../reports/putnambench-4core-2026-10-18-pilot-real-v5/).
