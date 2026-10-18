@@ -27,9 +27,10 @@ needed.
 
 A core slot is released when its Execution waits, succeeds, fails, or is
 fenced after lease expiry. Waiting preserves the Task, Workspace, checkpoint,
-and responsibility lineage. A later claim creates a replacement Execution
-according to the retry policy. An Execution is therefore a lease over a Task,
-not a permanent identity for a core.
+and responsibility lineage. A later explicit claim either hands a ready
+waiting Execution to the next Agent or creates a new Execution according to
+the retry policy after fencing/expiry. An Execution is therefore a lease over
+a Task, not a permanent identity for a core.
 
 Raw experiment evidence is stored below the experiment directory, including
 service logs, agent logs, Runtime state, SQLite, Workspaces, and checker

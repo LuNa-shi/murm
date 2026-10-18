@@ -350,9 +350,9 @@ function resourceSnapshot() {
   };
 }
 
-async function publishFeedback(state, core, material, result) {
-  const execution = state.taskService.getExecution(core.executionId);
-  if (!execution || !['CREATED', 'RUNNING'].includes(execution.state)) return;
+async function publishFeedback(state, core, material, result, { taskId = core.taskId, executionId = core.executionId } = {}) {
+  const execution = state.taskService.getExecution(executionId);
+  if (!execution || !['CREATED', 'RUNNING', 'WAITING'].includes(execution.state)) return;
   state.contextService.dispatch('publish_material', {
     kind: 'experience',
     scope: 'judge_feedback',
@@ -364,7 +364,7 @@ async function publishFeedback(state, core, material, result) {
       check_result_id: result.check_result_id,
       diagnostic_class: safeDiagnostic(result.evidence?.diagnostic),
     },
-    provenance: { actor_ref: 'judge:lean', project: state.problem.id, target_task_id: core.taskId },
+    provenance: { actor_ref: 'judge:lean', project: state.problem.id, target_task_id: taskId },
   }, makeEnvelope({
     operationId: `benchmark:feedback:${state.runId}:${core.index}:${result.check_result_id}`,
     actorRef: 'judge:lean',
@@ -377,11 +377,16 @@ async function publishFeedback(state, core, material, result) {
 }
 
 async function judgeCandidate(state, core) {
-  const task = state.taskService.getTask(core.taskId);
-  const execution = state.taskService.getExecution(core.executionId);
-  if (!task || !execution || !['CREATED', 'RUNNING'].includes(execution.state)) return;
+  const pending = [...core.claimHistory].reverse().map((claim) => ({
+    taskId: claim.task_id,
+    executionId: claim.execution_id,
+    execution: state.taskService.getExecution(claim.execution_id),
+  })).find(({ execution }) => execution && ['CREATED', 'RUNNING', 'WAITING'].includes(execution.state) && execution.candidate_material_id && !core.checked.has(execution.candidate_material_id));
+  if (!pending) return;
+  const task = state.taskService.getTask(pending.taskId);
+  const execution = pending.execution;
+  if (!task) return;
   const candidateId = execution.candidate_material_id;
-  if (!candidateId || core.checked.has(candidateId)) return;
   const material = state.contextService.getMaterial(candidateId);
   if (!material) return;
   core.checked.add(candidateId);
@@ -390,7 +395,7 @@ async function judgeCandidate(state, core) {
     core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: material.content_hash });
   }
   const workspace = {
-    execution_id: core.executionId,
+    execution_id: pending.executionId,
     task_id: task.task_id,
     input_snapshot_hash: execution.input_snapshot_hash,
     workspace_ref: execution.workspace_ref,
@@ -411,7 +416,7 @@ async function judgeCandidate(state, core) {
     checker_ref: state.fixtureManifest.checker_ref,
     checker_version: state.fixtureManifest.checker_version,
     environment_ref: state.fixtureManifest.environment_ref,
-    execution_id: core.executionId,
+    execution_id: pending.executionId,
     state_version: execution.state_version,
     candidate: { material_id: candidateId, content },
     target_task: task,
@@ -421,14 +426,14 @@ async function judgeCandidate(state, core) {
     operationId: `benchmark:judge:${state.runId}:${core.index}:${candidateId}`,
     actorRef: 'judge:lean',
   });
-  const fresh = state.taskService.getExecution(core.executionId);
+  const fresh = state.taskService.getExecution(pending.executionId);
   const applied = executionContext(state.router, fresh, 'judge:controller').applyCheckResult({
     check_result_id: result.check_result_id,
   }, {
     operationId: `benchmark:apply:${state.runId}:${core.index}:${candidateId}`,
   });
   core.checks.push({ ...sanitizedCheck(result, material), check_elapsed_ms: Date.now() - checkStartedAt });
-  await publishFeedback(state, core, material, result);
+  await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
   if (result.verdict === 'PASS' && applied.task.state === 'SATISFIED') {
     state.solvedAt = Date.now();
     state.solvedBy = core.index;
@@ -514,8 +519,9 @@ function projectReport(state, startedAt, deadline) {
     };
   });
   const toolViolation = cores.some((core) => core.tool_events.some((tool) => tool !== 'swarmenv_call' && !String(tool).startsWith('swarmenv_')));
-  const workspaceRefs = claimHistory.map((claim) => state.taskService.getExecution(claim.execution_id)?.workspace_ref).filter(Boolean);
-  const workspaceBoundaryViolation = workspaceRefs.length !== new Set(claimHistory.map((claim) => claim.execution_id)).size || new Set(workspaceRefs).size !== workspaceRefs.length;
+  const claimedExecutionIds = [...new Set(claimHistory.map((claim) => claim.execution_id))];
+  const workspaceRefs = claimedExecutionIds.map((executionId) => state.taskService.getExecution(executionId)?.workspace_ref).filter(Boolean);
+  const workspaceBoundaryViolation = workspaceRefs.length !== claimedExecutionIds.length || new Set(workspaceRefs).size !== workspaceRefs.length;
   const candidateBoundaryViolation = claimHistory.some((claim) => {
     const execution = state.taskService.getExecution(claim.execution_id);
     if (!execution?.candidate_material_id) return false;
@@ -688,7 +694,10 @@ async function createProjectState(problem, config, options) {
         sessionDir: join(coreDir, '.swarm', 'pi-session'),
         env: childEnv,
       });
-    const workspaceManager = new WorkspaceManager({ rootDir: coreDir });
+    // All reusable slots must be able to resume an Execution created by any
+    // other slot. The physical Workspace is execution-owned and unique, but
+    // its Runtime root is project-wide rather than core-private.
+    const workspaceManager = new WorkspaceManager({ rootDir: workspaceRoot });
     const runtime = new Runtime({
       taskService,
       contextService,
@@ -747,37 +756,40 @@ async function createProjectState(problem, config, options) {
         const workerSession = core.session;
         if (!workerSession) throw new Error('Agent claimed a Task before its session was registered');
         await runtime.bindAgentExecution(claim.execution.execution_id, null, {
-          workspaceRef: join(coreDir, 'workspaces', claim.execution.execution_id),
+          workspaceRef: join(workspaceRoot, claim.execution.execution_id),
           startSession: async ({ execution, workspace }) => {
             const session = await core.adapter.start({
               executionId: execution.execution_id,
               sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
               cwd: workspace.workspace_ref,
-              agentPrompt: GENERIC_AGENT_PROMPT,
               logger: new DurableEventLog(join(logRoot, 'agents', `core-${core.index}.ndjson`), { raw: true, scope: `agent:core-${core.index}` }),
             });
             core.session = session;
             core.sessionHistory.push(session);
             core.versionManifest = session.manifest ?? null;
-            core.turnInFlight = true;
-            void (async () => {
-              try {
-                if (typeof session.waitForSettled === 'function') await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
-              } catch (error) {
-                const expectedHandoff = session.expectedStop || core.session !== session || core.stopping;
-                if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
-              } finally {
-                collectToolEvents(core, session.rpcRecords ?? []);
-                if (core.session === session) {
-                  core.turns += 1;
-                  core.turnInFlight = false;
-                  core.nextTurnAt = Date.now();
-                }
-              }
-            })();
             return session;
           },
+          agentPrompt: GENERIC_AGENT_PROMPT,
         });
+        const boundSession = core.session;
+        if (boundSession && core.runtime.activeProcesses.has(claim.execution.execution_id)) {
+          core.turnInFlight = true;
+          void (async () => {
+            try {
+              if (typeof boundSession.waitForSettled === 'function') await boundSession.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
+            } catch (error) {
+              const expectedHandoff = boundSession.expectedStop || core.session !== boundSession || core.stopping;
+              if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
+            } finally {
+              collectToolEvents(core, boundSession.rpcRecords ?? []);
+              if (core.session === boundSession) {
+                core.turns += 1;
+                core.turnInFlight = false;
+                core.nextTurnAt = Date.now();
+              }
+            }
+          })();
+        }
         core.claimHistory.push({ task_id: claim.task.task_id, execution_id: claim.execution.execution_id });
         // The worker session is only the claim transport. Its handoff is
         // completed after its current prompt settles; the bound session is

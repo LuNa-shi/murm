@@ -60,6 +60,9 @@ export class Runtime {
     try {
       return await this.#launch(current, workspace);
     } catch (error) {
+      const active = this.activeProcesses.get(executionId);
+      active?.session.stop?.();
+      this.activeProcesses.delete(executionId);
       const failed = this.#getExecution(executionId);
       if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('start-failed')));
@@ -68,7 +71,7 @@ export class Runtime {
     }
   }
 
-  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null } = {}) {
+  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null } = {}) {
     this.logger?.append({ event: 'runtime.bind_execution', execution_id: executionId });
     if ((!session || typeof session.stop !== 'function') && typeof startSession !== 'function') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Agent session or startSession is required');
@@ -84,9 +87,11 @@ export class Runtime {
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
       if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
       this.#registerActiveProcess(current, workspace, boundSession);
+      await this.#sendInitialPrompt(boundSession, agentPrompt);
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
       boundSession?.stop?.();
+      this.activeProcesses.delete(executionId);
       const failed = this.#getExecution(executionId);
       if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('bind-failed')));
@@ -276,7 +281,6 @@ export class Runtime {
       executionId: execution.execution_id,
       sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
       cwd: workspace.workspace_ref,
-      agentPrompt: execution.agent_prompt,
       logger: this.agentLogger,
     });
     const manifestContent = JSON.stringify(session.manifest ?? {}, null, 2);
@@ -288,8 +292,15 @@ export class Runtime {
     });
     const current = this.#saveWorkspaceReference(execution, nextWorkspace);
     this.#registerActiveProcess(current, nextWorkspace, session);
+    await this.#sendInitialPrompt(session, execution.agent_prompt);
     const active = this.activeProcesses.get(execution.execution_id);
     return { execution: current, workspace: nextWorkspace, session };
+  }
+
+  async #sendInitialPrompt(session, prompt) {
+    if (!prompt || typeof session.prompt !== 'function') return;
+    await session.waitForReady?.({ timeoutMs: 30_000 });
+    await session.prompt(prompt, { timeoutMs: 30_000 });
   }
 
   #registerActiveProcess(execution, workspace, session) {

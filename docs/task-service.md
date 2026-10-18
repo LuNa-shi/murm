@@ -27,4 +27,10 @@ Task list. The parent does not preallocate a fixed number of proof children.
 
 `claim_next` is retained for old clients but is not used by the PutnamBench
 runner or the generic Agent prompt. Version checks, idempotency keys, leases,
-and fencing still protect every write.
+and fencing still protect every write. A waiting Execution whose wait condition
+is ready for work appears in the available Task list. An explicit claim can
+hand that same Execution and Workspace to the next Agent, incrementing its
+attempt and changing it back to `CREATED`; timer waits and parent-review waits
+remain unavailable until their controlling condition is satisfied. A failed
+Judge result preserves this resumable waiting lineage so the next slot can
+continue after reading the feedback.

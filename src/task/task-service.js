@@ -74,6 +74,29 @@ export class TaskService {
   constructor(database = ':memory:', { contextService = null, logger = null } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(SCHEMA_SQL);
+    // Older MVP databases made execution_id unique in claim_keys. A waiting
+    // Execution can now be claimed again by a later Agent, so idempotency is
+    // keyed by claim request rather than by the reusable Execution identity.
+    const claimIndexes = this.db.prepare("PRAGMA index_list('claim_keys')").all();
+    const hasExecutionUnique = claimIndexes.some((index) => {
+      if (index.unique !== 1) return false;
+      const safeName = String(index.name).replaceAll('"', '""');
+      return this.db.prepare(`PRAGMA index_info("${safeName}")`).all().some((column) => column.name === 'execution_id');
+    });
+    if (hasExecutionUnique) {
+      this.db.exec(`
+        CREATE TABLE claim_keys_migrated (
+          request_key TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL REFERENCES tasks(task_id),
+          fingerprint TEXT NOT NULL,
+          execution_id TEXT NOT NULL REFERENCES executions(execution_id),
+          created_at TEXT NOT NULL
+        );
+        INSERT INTO claim_keys_migrated SELECT request_key, task_id, fingerprint, execution_id, created_at FROM claim_keys;
+        DROP TABLE claim_keys;
+        ALTER TABLE claim_keys_migrated RENAME TO claim_keys;
+      `);
+    }
     const taskColumns = new Set(this.db.prepare('PRAGMA table_info(tasks)').all().map((column) => column.name));
     if (!taskColumns.has('priority')) this.db.exec("ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 0 CHECK (priority >= 0)");
     if (!taskColumns.has('task_instructions')) {
@@ -178,16 +201,26 @@ export class TaskService {
       conditions.push('t.task_type = ?');
       params.push(taskType);
     }
-    if (availableOnly) {
-      conditions.push(`(SELECT COUNT(*) FROM executions e
-        WHERE e.task_id = t.task_id AND e.state IN ('CREATED', 'RUNNING', 'WAITING')) < t.parallel_quota`);
-    }
-    params.push(limit);
-    return this.db.prepare(`SELECT t.* FROM tasks t WHERE ${conditions.join(' AND ')}
+    params.push(availableOnly ? 100 : limit);
+    const tasks = this.db.prepare(`SELECT t.* FROM tasks t WHERE ${conditions.join(' AND ')}
       ORDER BY t.priority DESC, t.created_at ASC, t.task_id ASC LIMIT ?`).all(...params).map((row) => ({
       ...rowToTask(row),
       latest_execution: this.#latestExecution(row.task_id),
     }));
+    if (!availableOnly) return tasks;
+    const nowMs = Date.now();
+    return tasks.filter((task) => {
+      const executions = this.listExecutions(task.task_id, { includeTerminal: false });
+      const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
+      if (active.length >= task.parallel_quota) return false;
+      const waiting = executions.filter((execution) => execution.state === 'WAITING');
+      if (waiting.length === 0) return true;
+      const resumableWaiting = waiting.some((execution) => {
+        const type = execution.wait_condition?.type;
+        return type !== 'parent_review' && (type !== 'timer' || !execution.wait_deadline || Date.parse(execution.wait_deadline) <= nowMs);
+      });
+      return resumableWaiting || active.length + waiting.length < task.parallel_quota;
+    }).slice(0, limit);
   }
 
   listExecutions(taskId, { includeTerminal = true } = {}) {
@@ -449,14 +482,34 @@ export class TaskService {
     if (workspaceMode === 'resume' && payload.workspace_revision !== undefined && !sourceWorkspaceRef) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'resume Workspace selection with a revision requires a source Workspace');
     }
+    const waitingExecution = this.db.prepare("SELECT * FROM executions WHERE task_id = ? AND state = 'WAITING' ORDER BY updated_at DESC, execution_id DESC LIMIT 1").get(task.task_id);
+    const waitingCondition = waitingExecution ? parse(waitingExecution.wait_condition_json) : null;
     const inputSnapshotHash = payload.input_snapshot_hash ?? hash({
       task_id: task.task_id,
       spec_hash: task.spec_hash,
       workspace: task.workspace,
       input_material_refs: inputMaterialRefs,
     });
-    const activeCount = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'WAITING')").get(task.task_id).count;
-    if (activeCount >= task.parallel_quota) {
+    const activeCount = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')").get(task.task_id).count;
+    const resumableWaiting = waitingExecution && waitingCondition?.type !== 'parent_review' &&
+      (waitingCondition?.type !== 'timer' || !waitingExecution.wait_deadline || Date.parse(waitingExecution.wait_deadline) <= Date.now());
+    if (waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting) {
+      if (workspaceMode === 'clean' || sourceExecutionId || sourceWorkspaceRef || payload.workspace_revision !== undefined) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'a waiting Execution must be resumed with its existing Workspace');
+      }
+      const updatedAt = now();
+      const nextLease = payload.lease_expires_at ?? new Date(Date.now() + 30_000).toISOString();
+      this.db.prepare(`UPDATE executions SET owner_ref = ?, state = 'CREATED', attempt_no = attempt_no + 1,
+        lease_expires_at = ?, heartbeat_at = ?, agent_prompt = ?, wait_condition_json = NULL,
+        wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ?
+        WHERE execution_id = ?`).run(ownerRef, nextLease, updatedAt, agentPrompt, updatedAt, waitingExecution.execution_id);
+      this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
+        .run('RUNNING', updatedAt, task.task_id);
+      this.db.prepare('INSERT INTO claim_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(claimKey, task.task_id, keyFingerprint, waitingExecution.execution_id, updatedAt);
+      return { task: this.getTask(task.task_id), execution: this.getExecution(waitingExecution.execution_id) };
+    }
+    if (activeCount + (waitingExecution ? 1 : 0) >= task.parallel_quota) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Task has reached its active Execution quota', { parallel_quota: task.parallel_quota });
     }
     if (task.state === 'BLOCKED') {
@@ -823,7 +876,10 @@ export class TaskService {
           .run(updatedAt, task.task_id);
       }
     } else if (execution.state === 'WAITING') {
-      this.db.prepare("UPDATE executions SET state = 'CREATED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
+      // A failed check wakes the responsibility for another Agent. Keep the
+      // durable Workspace and wait lineage visible as a resumable WAITING
+      // Execution; the next explicit claim will hand it over and bind it.
+      this.db.prepare("UPDATE executions SET state = 'WAITING', wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
         .run(updatedAt, execution.execution_id);
       this.#refreshTaskState(task.task_id, { updatedAt });
     }

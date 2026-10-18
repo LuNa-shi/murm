@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS claim_keys (
   request_key TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   fingerprint TEXT NOT NULL,
-  execution_id TEXT NOT NULL UNIQUE REFERENCES executions(execution_id),
+  execution_id TEXT NOT NULL REFERENCES executions(execution_id),
   created_at TEXT NOT NULL
 );
 

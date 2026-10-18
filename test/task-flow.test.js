@@ -202,8 +202,8 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
     .applyCheckResult({ check_result_id: firstResult.check_result_id }, { operationId: 'apply-fail' });
   assert.equal(failed.check_result.verdict, 'FAIL');
   assert.equal(failed.check_result.status, 'APPLIED');
-  assert.equal(failed.task.state, 'OPEN');
-  assert.equal(failed.execution.state, 'CREATED');
+  assert.equal(failed.task.state, 'WAITING');
+  assert.equal(failed.execution.state, 'WAITING');
 
   verdict = 'PASS';
   const secondMaterial = env.contextService.dispatch('publish_material', { kind: 'artifact', scope: 'proof_relevant', content: { source: 'fixed proof' } }, makeEnvelope({

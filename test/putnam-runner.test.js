@@ -172,7 +172,7 @@ test('benchmark project starts four isolated cores and redacts candidate content
     assert.ok(report.project.task_tree.length >= 2);
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'proof' && task.parent_id === null));
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'research'));
-    assert.ok(adapters.some((adapter) => adapter.starts.some((start) => start.executionId && start.cwd?.includes('/workspaces/'))));
+    assert.ok(adapters.some((adapter) => adapter.starts.some((start) => start.executionId && start.cwd?.includes('/workspaces/projects/putnam_test/') && !start.cwd.includes('/core-'))));
     assert.equal(report.run.solved, true);
     assert.equal(report.audit.invalid, false);
     assert.equal(report.cores.length, 4);

@@ -22,6 +22,14 @@ class FakeSession extends EventEmitter {
     this.executionId = executionId;
     this.manifest = { pi_package: '@earendil-works/pi-coding-agent', pi_version: '1.3.0', nurouter_version: '0.2.12', node_version: process.versions.node, launch_args: ['fake'] };
     this.closed = false;
+    this.prompts = [];
+  }
+
+  async waitForReady() {}
+
+  async prompt(message) {
+    this.prompts.push(message);
+    return { data: { disposition: 'handled' } };
   }
 
   stop() {
@@ -71,6 +79,7 @@ test('Runtime creates an isolated workspace before Pi, saves checkpoint before w
   assert.equal(runtime.getActiveProcessCount(), 1);
   assert.equal(fixtureData.adapter.starts[0].cwd, started.workspace.workspace_ref);
   assert.equal(fixtureData.adapter.starts[0].sessionDir, join(started.workspace.workspace_ref, '.swarm', 'pi-session'));
+  assert.equal(fixtureData.adapter.sessions[0].prompts[0], 'run the fixture');
   const workspaceManifest = JSON.parse(await readFile(join(started.workspace.workspace_ref, 'workspace-manifest.json'), 'utf8'));
   assert.equal(workspaceManifest.task_id, claimed.execution.task_id);
   assert.match(await readFile(join(started.workspace.workspace_ref, 'README.md'), 'utf8'), /Task instructions:/);

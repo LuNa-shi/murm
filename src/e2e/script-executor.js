@@ -125,7 +125,7 @@ export class ScriptExecutor {
       taskId: task.task_id, executionId: this.executionId, specVersion: current.spec_version,
       stateVersion: firstWait.execution.state_version, fencingVersion: firstWait.execution.fencing_version,
     }).applyCheckResult({ check_result_id: firstResult.check_result_id }, { operationId: 'script:apply:fail' });
-    const restored = await runtime.startExecution(this.executionId);
+    const restored = await runtime.wakeExecution(this.executionId);
     current = restored.execution;
     const secondMaterial = agent.withContext({ stateVersion: current.state_version }).publishMaterial({
       kind: 'artifact', scope: 'proof_relevant', content: this.fixedCandidate, supersedes: firstMaterial.material_id,

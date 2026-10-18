@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { ERROR_CODES, ServicesSDK, SwarmEnvError, TaskService } from '../src/index.js';
+import { ERROR_CODES, makeEnvelope, ServicesSDK, SwarmEnvError, TaskService } from '../src/index.js';
 
 function rootService() {
   const service = new TaskService(new DatabaseSync(':memory:'));
@@ -209,6 +209,42 @@ test('execution heartbeat and lifecycle writes enforce state and fencing version
     () => runningSdk.heartbeat({}, { operationId: 'late-heartbeat' }),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.FENCED,
   );
+  service.close();
+});
+
+test('a resumable waiting Execution is visible and explicit claim hands it to the next Agent', () => {
+  const { service, sdk } = rootService();
+  const task = sdk.proposeTask(proofInput(), { operationId: 'propose-wait-takeover' }).task;
+  const claimed = sdk.withContext({ taskId: task.task_id, specVersion: 1, stateVersion: 0 }).claim({
+    claim_key: 'wait-takeover-first', owner_ref: 'agent:first', workspace_mode: 'clean',
+  }, { operationId: 'wait-takeover-first' });
+  const started = service.dispatch('start_execution', {}, makeEnvelope({
+    operationId: 'wait-takeover-start', actorRef: 'agent:first', taskId: task.task_id, executionId: claimed.execution.execution_id,
+    specVersion: 1, stateVersion: 0, fencingVersion: 1,
+  }));
+  const checkpointed = service.dispatch('save_checkpoint', {
+    checkpoint_ref: 'checkpoint:wait-takeover', checkpoint_hash: 'hash:wait-takeover', workspace_revision: null,
+  }, makeEnvelope({
+    operationId: 'wait-takeover-checkpoint', actorRef: 'agent:first', taskId: task.task_id, executionId: claimed.execution.execution_id,
+    specVersion: 1, stateVersion: started.execution.state_version, fencingVersion: 1,
+  }));
+  const waited = service.dispatch('request_wait', {
+    checkpoint_ref: checkpointed.execution.checkpoint_ref, checkpoint_hash: checkpointed.execution.checkpoint_hash,
+    wait_condition: { type: 'check_result_arrived', check_request_key: 'check:wait-takeover' },
+  }, makeEnvelope({
+    operationId: 'wait-takeover-wait', actorRef: 'agent:first', taskId: task.task_id, executionId: claimed.execution.execution_id,
+    specVersion: 1, stateVersion: checkpointed.execution.state_version, fencingVersion: 1,
+  }));
+  const listed = sdk.withContext({ actorRef: 'agent:second' }).listTasks({ limit: 10 });
+  assert.equal(listed[0].task_id, task.task_id);
+  assert.equal(listed[0].latest_execution.state, 'WAITING');
+  const resumed = sdk.withContext({ actorRef: 'agent:second', taskId: task.task_id, specVersion: 1, stateVersion: waited.task.state_version }).claim({
+    claim_key: 'wait-takeover-second', workspace_mode: 'resume',
+  }, { operationId: 'wait-takeover-second' });
+  assert.equal(resumed.execution.execution_id, claimed.execution.execution_id);
+  assert.equal(resumed.execution.owner_ref, 'agent:second');
+  assert.equal(resumed.execution.state, 'CREATED');
+  assert.equal(resumed.execution.attempt_no, 2);
   service.close();
 });
 
