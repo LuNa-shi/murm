@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { cpus, freemem, totalmem } from 'node:os';
@@ -15,6 +16,13 @@ import { ServicesRouter } from '../sdk/service-router.js';
 import { ServicesSDK } from '../sdk/services-sdk.js';
 import { TaskService } from '../task/task-service.js';
 import { makeEnvelope } from '../protocol/envelope.js';
+
+const execFileAsync = (command, args) => new Promise((resolvePromise, reject) => {
+  execFile(command, args, { encoding: 'utf8' }, (error, stdout) => {
+    if (error) reject(error);
+    else resolvePromise(String(stdout).trim());
+  });
+});
 
 const DEFAULT_ROLES = Object.freeze([
   'independent proof planner',
@@ -105,19 +113,34 @@ function restrictedArgs(args) {
   ];
 }
 
+function collectToolEvents(core, records) {
+  for (const record of records) {
+    const tool = record.tool_name ?? record.name;
+    if (record.type === 'tool_call' || record.type === 'tool_result' || tool) {
+      core.toolEvents.push(tool ?? record.type);
+    }
+  }
+}
+
 export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
   buildLaunchArgs(options) {
     return restrictedArgs(super.buildLaunchArgs(options));
   }
 }
 
-export async function loadBenchmarkConfig(configPath, { putnamBenchRoot } = {}) {
+export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyPinnedCheckout = false } = {}) {
   const config = JSON.parse(await readFile(resolve(configPath), 'utf8'));
   required(putnamBenchRoot, 'putnamBenchRoot');
   if (!Array.isArray(config.problems) || config.problems.length !== 12) {
     throw new TypeError('benchmark config must contain exactly 12 problems');
   }
   const root = resolve(putnamBenchRoot);
+  if (verifyPinnedCheckout) {
+    const actualCommit = await execFileAsync('git', ['-C', root, 'rev-parse', 'HEAD']);
+    if (actualCommit !== config.putnambench_commit) {
+      throw new TypeError(`PutnamBench checkout does not match pinned commit ${config.putnambench_commit}`);
+    }
+  }
   const leanProjectRoot = resolve(root, 'lean4');
   const projectRoot = await readFile(join(leanProjectRoot, 'lean-toolchain'), 'utf8')
     .then(() => leanProjectRoot)
@@ -128,6 +151,10 @@ export async function loadBenchmarkConfig(configPath, { putnamBenchRoot } = {}) 
     if (seen.has(problem.id)) throw new TypeError(`duplicate problem id: ${problem.id}`);
     seen.add(problem.id);
     const sourcePath = join(root, problem.problem_file);
+    const sourceRelativePath = relative(root, sourcePath);
+    if (sourceRelativePath.startsWith('..') || sourceRelativePath.includes('\\')) {
+      throw new TypeError(`problem file escapes PutnamBench root: ${problem.problem_file}`);
+    }
     const source = await readFile(sourcePath, 'utf8');
     validateProblemInput(problem, source);
     problems.push({
@@ -164,27 +191,24 @@ async function runTurn(core, prompt, timeoutMs) {
     if (response?.data?.disposition !== 'handled') {
       await core.session.waitForSettled({ timeoutMs, afterSequence: sequence });
     }
-    const records = core.session.rpcRecords.slice(sequence);
     core.turns += 1;
-    for (const record of records) {
-      const tool = record.tool_name ?? record.name;
-      if (record.type === 'tool_call' || record.type === 'tool_result' || tool) {
-        core.toolEvents.push(tool ?? record.type);
-      }
-    }
     core.lastTurn = { status: 'settled', elapsed_ms: Date.now() - core.turnStartedAt };
+    core.turnDurationsMs.push(core.lastTurn.elapsed_ms);
   } catch (error) {
     core.turns += 1;
     core.errors.push({
       code: error.code ?? error.name,
       class: safeDiagnostic(error.message) ?? 'agent_turn_error',
     });
+    if (/timeout|timed out/i.test(`${error.code ?? ''} ${error.message ?? ''}`)) core.turnTimeoutCount += 1;
     core.lastTurn = {
       status: 'error',
       code: error.code ?? error.name,
       class: safeDiagnostic(error.message) ?? 'agent_turn_error',
     };
+    core.turnDurationsMs.push(Date.now() - core.turnStartedAt);
   } finally {
+    collectToolEvents(core, core.session.rpcRecords.slice(sequence));
     core.turnInFlight = false;
     core.nextTurnAt = Date.now() + core.turnIntervalMs;
   }
@@ -198,11 +222,48 @@ function scheduleTurn(core, prompt, timeoutMs) {
 
 function sanitizedCheck(result, material) {
   return {
+    candidate_material_id: material.material_id,
     material_hash: material.content_hash,
     verdict: result.verdict,
     check_result_id: result.check_result_id,
     diagnostic_class: safeDiagnostic(result.evidence?.diagnostic),
   };
+}
+
+function sanitizedVersionManifest(manifest) {
+  if (!manifest) return null;
+  return {
+    pi_package: manifest.pi_package ?? null,
+    pi_version: manifest.pi_version ?? null,
+    nurouter_version: manifest.nurouter_version ?? null,
+    node_version: manifest.node_version ?? null,
+  };
+}
+
+function reportKeyViolations(value, path = 'report', violations = []) {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => reportKeyViolations(item, `${path}[${index}]`, violations));
+    return violations;
+  }
+  if (!value || typeof value !== 'object') return violations;
+  const forbiddenKeys = new Set(['formal_source', 'candidate_content', 'proof_text', 'raw_transcript', 'stdout', 'stderr']);
+  for (const [key, child] of Object.entries(value)) {
+    if (forbiddenKeys.has(key)) violations.push(`${path}.${key}`);
+    reportKeyViolations(child, `${path}.${key}`, violations);
+  }
+  return violations;
+}
+
+export function validateBenchmarkReport(report) {
+  if (!report || report.schema_version !== 1 || !report.protocol || !report.project || !report.run || !report.audit) {
+    throw new TypeError('benchmark report has an invalid schema');
+  }
+  const violations = reportKeyViolations(report);
+  if (violations.length > 0) throw new TypeError(`benchmark report contains redacted fields: ${violations.join(', ')}`);
+  if (report.audit.raw_transcript_exported || report.audit.proof_contents_exported) {
+    throw new TypeError('benchmark report export policy was violated');
+  }
+  return true;
 }
 
 function resourceSnapshot() {
@@ -294,6 +355,12 @@ async function stopCore(state, core) {
     active.session.stop();
     core.runtime.activeProcesses.delete(core.executionId);
   }
+  if (core.turnPromise) {
+    await Promise.race([
+      core.turnPromise.catch(() => undefined),
+      sleep(5_000),
+    ]);
+  }
   if (execution?.workspace_ref) {
     await core.workspaceManager.releaseWorkspace({
       workspaceRef: execution.workspace_ref,
@@ -310,6 +377,19 @@ async function stopCore(state, core) {
 
 function projectReport(state, startedAt, deadline) {
   const materials = state.contextService.readMaterials({});
+  const allowedTaskIds = new Set([state.rootTaskId, ...state.cores.map((core) => core.taskId)]);
+  const allowedExecutionIds = new Set([state.rootExecutionId, ...state.cores.map((core) => core.executionId)]);
+  const materialBoundaryViolation = materials.some((material) =>
+    !allowedTaskIds.has(material.source_task) || !allowedExecutionIds.has(material.source_execution));
+  const inputMaterial = state.contextService.getMaterial(state.inputMaterialId);
+  const inputMaterialViolation = !inputMaterial || inputMaterial.content_hash !== state.inputMaterialHash ||
+    inputMaterial.source_task !== state.rootTaskId || inputMaterial.source_execution !== state.rootExecutionId;
+  const initialContextViolation = state.cores.some((core) => {
+    const execution = state.taskService.getExecution(core.executionId);
+    const initialContext = state.contextService.getInitialContext(core.executionId);
+    return !execution || !initialContext || execution.input_snapshot_hash !== initialContext.input_snapshot_hash ||
+      !execution.input_material_refs.some((reference) => reference === state.inputMaterialId);
+  });
   const cores = state.cores.map((core) => {
     const task = state.taskService.getTask(core.taskId);
     const execution = state.taskService.getExecution(core.executionId);
@@ -318,6 +398,8 @@ function projectReport(state, startedAt, deadline) {
       task_id: core.taskId,
       execution_id: core.executionId,
       turns: core.turns,
+      turn_durations_ms: core.turnDurationsMs,
+      turn_timeout_count: core.turnTimeoutCount,
       checks: core.checks,
       errors: core.errors,
       cheating_flags: core.cheatingFlags,
@@ -326,11 +408,21 @@ function projectReport(state, startedAt, deadline) {
       execution_state: execution?.state ?? null,
       input_snapshot_hash: execution?.input_snapshot_hash ?? null,
       workspace_ref: execution?.workspace_ref ?? null,
+      versions: sanitizedVersionManifest(core.versionManifest),
     };
   });
   const toolViolation = cores.some((core) => core.tool_events.some((tool) => tool !== 'swarmenv_call'));
-  const invalid = toolViolation || cores.some((core) => core.cheating_flags.length > 0);
-  return {
+  const workspaceRefs = cores.map((core) => core.workspace_ref).filter(Boolean);
+  const workspaceBoundaryViolation = workspaceRefs.length !== 4 || new Set(workspaceRefs).size !== workspaceRefs.length;
+  const candidateBoundaryViolation = state.cores.some((core) => {
+    const execution = state.taskService.getExecution(core.executionId);
+    if (!execution?.candidate_material_id) return false;
+    const material = state.contextService.getMaterial(execution.candidate_material_id);
+    return !material || material.source_task !== core.taskId || material.source_execution !== core.executionId;
+  });
+  const invalid = toolViolation || materialBoundaryViolation || inputMaterialViolation || initialContextViolation || workspaceBoundaryViolation ||
+    candidateBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
+  const report = {
     schema_version: 1,
     protocol: {
       project_isolation: true,
@@ -350,6 +442,7 @@ function projectReport(state, startedAt, deadline) {
       checker_version: state.fixtureManifest.checker_version,
       run_id: state.runId,
       database_path: state.databasePath,
+      input_material_hash: state.inputMaterialHash,
     },
     run: {
       started_at: new Date(startedAt).toISOString(),
@@ -362,9 +455,14 @@ function projectReport(state, startedAt, deadline) {
       material_count: materials.length,
       project_material_count: materials.filter((material) => material.source_task === state.rootTaskId).length,
       candidate_count: cores.reduce((count, core) => count + core.checks.length, 0),
-      ended_early: state.solvedAt !== null,
+      ended_early: state.stopOnSolved && state.solvedAt !== null,
+      deadline_reached: Date.now() >= deadline,
+      cleanup_elapsed_ms: state.cleanupElapsedMs,
       resources_at_start: state.resourcesAtStart,
       resources_at_end: resourceSnapshot(),
+      heartbeat_count: state.heartbeatCount,
+      heartbeat_error_count: state.heartbeatErrorCount,
+      candidate_check_count: cores.reduce((count, core) => count + core.checks.length, 0),
     },
     cores,
     audit: {
@@ -374,6 +472,11 @@ function projectReport(state, startedAt, deadline) {
       invalid,
       invalid_reasons: [
         ...(toolViolation ? ['non_swarmenv_tool_event'] : []),
+        ...(materialBoundaryViolation ? ['material_boundary_violation'] : []),
+        ...(inputMaterialViolation ? ['input_material_violation'] : []),
+        ...(initialContextViolation ? ['initial_context_violation'] : []),
+        ...(workspaceBoundaryViolation ? ['workspace_boundary_violation'] : []),
+        ...(candidateBoundaryViolation ? ['candidate_provenance_violation'] : []),
         ...(cores.some((core) => core.cheating_flags.length > 0) ? ['forbidden_placeholder'] : []),
       ],
       candidate_materials: cores.flatMap((core) => core.checks),
@@ -381,6 +484,8 @@ function projectReport(state, startedAt, deadline) {
       proof_contents_exported: false,
     },
   };
+  validateBenchmarkReport(report);
+  return report;
 }
 
 async function createProjectState(problem, config, options) {
@@ -395,6 +500,14 @@ async function createProjectState(problem, config, options) {
   const router = new ServicesRouter({ taskService, contextService });
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
+  const inputMetadata = {
+    putnambench_commit: fixture.putnambench_commit,
+    lean_toolchain: fixture.lean_toolchain,
+    mathlib_version: fixture.mathlib_version,
+    checker_ref: fixture.checker_ref,
+    checker_version: fixture.checker_version,
+    environment_ref: fixture.environment_ref,
+  };
   const judgeService = new JudgeService(database, {
     checker: options.checker ?? new LeanChecker({
       workRoot: projectDir,
@@ -421,7 +534,7 @@ async function createProjectState(problem, config, options) {
     task_spec: { task_id: root.task_id, task_type: root.task_type, project: problem.id },
     initial_prompt: 'The benchmark controller owns orchestration only.',
     material_refs: [],
-    service_environment: { project: problem.id, checker: fixture.checker_ref },
+    service_environment: { project: problem.id, ...inputMetadata },
   }, {
     operationId: `benchmark:root:freeze:${runId}`,
     taskId: root.task_id,
@@ -447,6 +560,7 @@ async function createProjectState(problem, config, options) {
       project: problem.id,
       source_path: problem.problem_file,
       source_hash: problem.source_hash,
+      input_metadata: inputMetadata,
       formal_source: problem.source,
     },
     provenance: { actor_ref: 'owner:benchmark', input: 'official_formalization_only' },
@@ -486,9 +600,7 @@ async function createProjectState(problem, config, options) {
       material_refs: [{ material_id: sourceMaterial.material_id, content_hash: sourceMaterial.content_hash }],
       service_environment: {
         project: problem.id,
-        checker_ref: fixture.checker_ref,
-        checker_version: fixture.checker_version,
-        environment_ref: fixture.environment_ref,
+        ...inputMetadata,
         tool_policy: 'swarmenv_call_only',
       },
     }, {
@@ -562,6 +674,9 @@ async function createProjectState(problem, config, options) {
       checks: [],
       checked: new Set(),
       cheatingFlags: [],
+      turnDurationsMs: [],
+      turnTimeoutCount: 0,
+      versionManifest: null,
       role: DEFAULT_ROLES[index - 1],
     });
   }
@@ -574,6 +689,8 @@ async function createProjectState(problem, config, options) {
     projectDir,
     rootTaskId: root.task_id,
     rootExecutionId: controllerExecutionId,
+    inputMaterialId: sourceMaterial.material_id,
+    inputMaterialHash: sourceMaterial.content_hash,
     taskService,
     contextService,
     router,
@@ -581,6 +698,10 @@ async function createProjectState(problem, config, options) {
     cores,
     solvedAt: null,
     solvedBy: null,
+    stopOnSolved: options.stopOnSolved === true,
+    cleanupElapsedMs: null,
+    heartbeatCount: 0,
+    heartbeatErrorCount: 0,
     resourcesAtStart: resourceSnapshot(),
   };
 }
@@ -607,6 +728,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     await Promise.all(state.cores.map(async (core) => {
       const run = await core.runtime.startExecution(core.executionId);
       core.session = run.session;
+      core.versionManifest = run.session.manifest ?? null;
       core.nextTurnAt = Date.now();
       scheduleTurn(core, core.prompt, turnTimeoutMs);
     }));
@@ -616,14 +738,16 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         if (execution && ['CREATED', 'RUNNING'].includes(execution.state)) {
           try {
             core.runtime.heartbeat(core.executionId);
+            state.heartbeatCount += 1;
           } catch (error) {
+            state.heartbeatErrorCount += 1;
             core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'heartbeat_error' });
           }
         }
       }
     }, options.heartbeatMs ?? 10_000);
     try {
-      while (Date.now() < deadline && (state.solvedAt === null || options.stopOnSolved === false)) {
+      while (Date.now() < deadline && (!state.stopOnSolved || state.solvedAt === null)) {
         await sleep(options.pollMs ?? 5_000);
         for (const core of state.cores) {
           await judgeCandidate(state, core).catch((error) => {
@@ -643,7 +767,9 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       });
     }
   } finally {
+    const cleanupStartedAt = Date.now();
     for (const core of state.cores) await stopCore(state, core);
+    state.cleanupElapsedMs = Date.now() - cleanupStartedAt;
     await stopRoot(state).catch(() => undefined);
   }
   const report = projectReport(state, startedAt, deadline);
@@ -664,13 +790,25 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
       try {
         reports[index] = await runBenchmarkProject(problems[index], config, options);
       } catch (error) {
-        reports[index] = {
+        const report = {
           schema_version: 1,
-          project: { problem_id: problems[index].id, source_hash: problems[index].source_hash },
-          run: { solved: false, elapsed_ms: null },
+          protocol: {
+            project_isolation: true,
+            core_count: 4,
+            input_policy: 'pinned formalization only; no candidate or solution input',
+            tool_policy: 'swarmenv_call only',
+            cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
+          },
+          project: { problem_id: problems[index].id, source_hash: problems[index].source_hash ?? null },
+          run: { solved: false, elapsed_ms: null, deadline_reached: false, cleanup_elapsed_ms: null },
           audit: { invalid: true, invalid_reasons: ['project_runner_error'], raw_transcript_exported: false, proof_contents_exported: false },
           error: { code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'project_runner_error' },
         };
+        validateBenchmarkReport(report);
+        reports[index] = report;
+        const projectDir = join(resolve(options.reportDir), problems[index].id);
+        await mkdir(projectDir, { recursive: true });
+        await writeFile(join(projectDir, 'report.json'), JSON.stringify(report, null, 2));
       }
     }
   }

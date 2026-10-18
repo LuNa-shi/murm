@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "protocol": {
+    "project_isolation": true,
+    "core_count": 4,
+    "input_policy": "pinned formalization only; no candidate or solution input",
+    "tool_policy": "swarmenv_call only",
+    "cheating_policy": "placeholder or non-SwarmEnv tool event invalidates the project"
+  },
+  "project": {
+    "problem_id": "putnam_2025_b1",
+    "source_hash": "sha256-of-the-pinned-formalization",
+    "input_material_hash": "sha256-of-the-shared-material",
+    "run_id": "example-run",
+    "database_path": "/private/report-dir/putnam_2025_b1/project.sqlite"
+  },
+  "run": {
+    "solved": false,
+    "elapsed_ms": 3600000,
+    "candidate_check_count": 6,
+    "heartbeat_count": 360,
+    "heartbeat_error_count": 0,
+    "deadline_reached": true,
+    "cleanup_elapsed_ms": 1250,
+    "resources_at_start": {
+      "logical_cpus": 250,
+      "total_memory_bytes": 0,
+      "available_memory_bytes": 0
+    },
+    "resources_at_end": {
+      "logical_cpus": 250,
+      "total_memory_bytes": 0,
+      "available_memory_bytes": 0
+    }
+  },
+  "cores": [
+    {
+      "core": 1,
+      "task_id": "task-id",
+      "execution_id": "execution-id",
+      "turns": 1,
+      "turn_durations_ms": [1000],
+      "turn_timeout_count": 0,
+      "checks": [
+        {
+          "candidate_material_id": "material-id",
+          "material_hash": "sha256-of-candidate",
+          "verdict": "FAIL",
+          "check_result_id": "check-id",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 2500
+        }
+      ],
+      "errors": [],
+      "cheating_flags": [],
+      "tool_events": ["swarmenv_call"],
+      "task_state": "FAILED",
+      "execution_state": "FAILED",
+      "input_snapshot_hash": "sha256-of-frozen-input",
+      "workspace_ref": "/private/report-dir/putnam_2025_b1/core-1",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    }
+  ],
+  "audit": {
+    "input_source_hash": "sha256-of-the-pinned-formalization",
+    "prompt_hashes": [{ "core": 1, "prompt_hash": "sha256-of-prompt" }],
+    "all_tool_events": ["swarmenv_call"],
+    "invalid": false,
+    "invalid_reasons": [],
+    "candidate_materials": [],
+    "raw_transcript_exported": false,
+    "proof_contents_exported": false
+  }
+}

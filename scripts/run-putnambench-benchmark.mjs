@@ -71,7 +71,10 @@ if (!Number.isInteger(options.projectParallelism) || options.projectParallelism 
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
 
 await mkdir(resolve(options.reportDir), { recursive: true });
-const config = await loadBenchmarkConfig(options.configPath, { putnamBenchRoot: options.putnamBenchRoot });
+const config = await loadBenchmarkConfig(options.configPath, {
+  putnamBenchRoot: options.putnamBenchRoot,
+  verifyPinnedCheckout: true,
+});
 const problems = options.problemId
   ? config.problems.filter((problem) => problem.id === options.problemId)
   : config.problems;

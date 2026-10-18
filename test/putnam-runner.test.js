@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { runBenchmarkBatch, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
+import { runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport } from '../src/benchmark/putnam-runner.js';
 
 const source = 'import Mathlib\ntheorem benchmark : True := by\n  sorry\n';
 const config = {
@@ -150,4 +149,14 @@ test('batch runner isolates projects and preserves per-project results', async (
   } finally {
     await rm(reportDir, { recursive: true, force: true });
   }
+});
+
+test('report validator rejects proof-bearing fields', () => {
+  assert.throws(() => validateBenchmarkReport({
+    schema_version: 1,
+    protocol: {},
+    project: {},
+    run: {},
+    audit: { formal_source: 'leaked proof', raw_transcript_exported: false, proof_contents_exported: false },
+  }), /redacted fields/);
 });
