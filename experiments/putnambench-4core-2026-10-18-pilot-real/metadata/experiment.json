@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "experiment_id": "putnambench-4core-2026-10-18-pilot-real",
+  "started_at": "2026-10-18T14:00:59.121Z",
+  "repository_commit": "cd23528ad5dee740242ef9fa9d613e96a7a4879c",
+  "putnambench_commit": "a635813f5edf297d928f9bd5ef8324a26bdde09c",
+  "protocol": {
+    "problem_count": 1,
+    "core_count": 4,
+    "project_parallelism": 1,
+    "timebox_ms": 600000,
+    "turn_timeout_ms": 120000,
+    "provider": "openai",
+    "model": "openai/gpt-6-luna",
+    "input_policy": "pinned formalization in Task-owned Workspace; no candidate or solution input",
+    "raw_evidence_layout": "logs/, state/, workspaces/",
+    "report_layout": "/home/ubuntu/SwarmEnv/reports/putnambench-4core-2026-10-18-pilot-real"
+  },
+  "ended_at": "2026-10-18T14:11:01.861Z",
+  "report_path": "/home/ubuntu/SwarmEnv/reports/putnambench-4core-2026-10-18-pilot-real/aggregate-report.json",
+  "environment": {
+    "putnambench_root": "/home/ubuntu/PutnamBench",
+    "lean_project_root": "/home/ubuntu/PutnamBench/lean4",
+    "putnambench_commit": "a635813f5edf297d928f9bd5ef8324a26bdde09c",
+    "lean_toolchain": "leanprover/lean4:v4.33.1",
+    "mathlib_revision": "0df444a360eaa60ab8c11dca51a86af692955474",
+    "checker_ref": "lean",
+    "checker_version": "mvp-1",
+    "environment_ref": "putnambench-lean4@a635813f5edf297d928f9bd5ef8324a26bdde09c",
+    "lake_cache_get": "passed",
+    "lake_build": "passed"
+  },
+  "status": "completed",
+  "valid_for_analysis": true,
+  "result": {
+    "project_count": 1,
+    "solved_count": 0,
+    "invalid_count": 0
+  },
+  "repository_worktree_dirty": true
+}

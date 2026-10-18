@@ -16,6 +16,7 @@ import { ServicesRouter } from '../sdk/service-router.js';
 import { ServicesSDK } from '../sdk/services-sdk.js';
 import { TaskService } from '../task/task-service.js';
 import { makeEnvelope } from '../protocol/envelope.js';
+import { DurableEventLog } from '../observability/durable-event-log.js';
 
 const execFileAsync = (command, args) => new Promise((resolvePromise, reject) => {
   execFile(command, args, { encoding: 'utf8' }, (error, stdout) => {
@@ -169,11 +170,12 @@ export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyP
 
 function projectPrompt(problem, coreIndex, role) {
   return [
-    `You are Agent Core ${coreIndex} of 4 in the isolated SwarmEnv project ${problem.id}.`,
-    `Your role is ${role}. The only mathematical input is the shared Context Service Material with scope=problem_statement.`,
-    'That Material is the pinned formal theorem statement with a sorry placeholder and contains no solution.',
+    `You are a reusable Agent Core slot in the isolated SwarmEnv project ${problem.id}. Current slot label: ${coreIndex}.`,
+    `Your role is ${role}. The only mathematical input is the Task-owned Workspace and Materials published through the public Context Service.`,
+    'The Task-owned Workspace contains the pinned formal theorem statement with a sorry placeholder and contains no solution. Read get_task and get_execution before working.',
     'Use only the public swarmenv_call tool. Built-in filesystem, shell, web, skill, prompt-template, and context-file tools are disabled.',
     'Do not use external references, hidden files, answer corpora, known candidates, or any solution-derived input.',
+    'If a line of work needs decomposition, create a direct child Task with a unique child_creation_key and max_children greater than zero.',
     'Do not use sorry, admit, axiom, or any placeholder. The submitted artifact must be a real Lean source candidate.',
     'At the start of each turn call get_task, get_execution, and read_materials. Read sibling Materials before proposing a route.',
     'Publish reasoning as kind=experience or conjecture, scope=proof_relevant. Publish a complete source as kind=artifact, scope=proof_relevant, then submit_candidate.',
@@ -313,7 +315,16 @@ async function judgeCandidate(state, core) {
   if (FORBIDDEN_PLACEHOLDER.test(content)) {
     core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: material.content_hash });
   }
-  const initialContext = state.contextService.getInitialContext(core.executionId);
+  const initialContext = state.contextService.getInitialContext(core.executionId) ?? {
+    execution_id: core.executionId,
+    task_id: task.task_id,
+    input_snapshot_hash: execution.input_snapshot_hash,
+    manifest: {
+      input_snapshot_hash: execution.input_snapshot_hash,
+      task_spec: task,
+      workspace: task.workspace,
+    },
+  };
   const checkStartedAt = Date.now();
   const result = await state.judgeService.judgeCandidate({
     request_key: `benchmark:check:${state.runId}:${core.index}:${candidateId}`,
@@ -381,14 +392,16 @@ function projectReport(state, startedAt, deadline) {
   const allowedExecutionIds = new Set([state.rootExecutionId, ...state.cores.map((core) => core.executionId)]);
   const materialBoundaryViolation = materials.some((material) =>
     !allowedTaskIds.has(material.source_task) || !allowedExecutionIds.has(material.source_execution));
-  const inputMaterial = state.contextService.getMaterial(state.inputMaterialId);
-  const inputMaterialViolation = !inputMaterial || inputMaterial.content_hash !== state.inputMaterialHash ||
-    inputMaterial.source_task !== state.rootTaskId || inputMaterial.source_execution !== state.rootExecutionId;
+  const rootTask = state.taskService.getTask(state.rootTaskId);
+  const inputMaterialViolation = !rootTask?.workspace || rootTask.workspace.source_hash !== state.inputMaterialHash;
   const initialContextViolation = state.cores.some((core) => {
     const execution = state.taskService.getExecution(core.executionId);
+    const task = state.taskService.getTask(core.taskId);
     const initialContext = state.contextService.getInitialContext(core.executionId);
-    return !execution || !initialContext || execution.input_snapshot_hash !== initialContext.input_snapshot_hash ||
-      !execution.input_material_refs.some((reference) => reference === state.inputMaterialId);
+    const taskWorkspaceClaim = execution?.initial_context_ref === `task://workspace/${core.taskId}` && Boolean(task?.workspace);
+    const frozenContextClaim = initialContext && execution?.initial_context_ref === `sqlite://initial-context/${execution.execution_id}` &&
+      execution.input_snapshot_hash === initialContext.input_snapshot_hash;
+    return !execution || (!taskWorkspaceClaim && !frozenContextClaim) || execution.input_material_refs.length !== 0;
   });
   const cores = state.cores.map((core) => {
     const task = state.taskService.getTask(core.taskId);
@@ -442,7 +455,7 @@ function projectReport(state, startedAt, deadline) {
       checker_version: state.fixtureManifest.checker_version,
       run_id: state.runId,
       database_path: state.databasePath,
-      input_material_hash: state.inputMaterialHash,
+      input_workspace_hash: state.inputMaterialHash,
     },
     run: {
       started_at: new Date(startedAt).toISOString(),
@@ -490,14 +503,30 @@ function projectReport(state, startedAt, deadline) {
 
 async function createProjectState(problem, config, options) {
   const runId = options.runId ?? randomUUID();
-  const projectDir = join(resolve(options.reportDir), problem.id);
-  await mkdir(projectDir, { recursive: true });
+  const experimentRoot = resolve(options.experimentDir ?? options.reportDir);
+  const reportRoot = resolve(options.reportDir ?? join(experimentRoot, 'reports'));
+  const projectDir = join(experimentRoot, 'state', 'projects', problem.id);
+  const reportProjectDir = join(reportRoot, problem.id);
+  const workspaceRoot = join(experimentRoot, 'workspaces', 'projects', problem.id);
+  const logRoot = join(experimentRoot, 'logs', 'projects', problem.id);
+  await Promise.all([
+    mkdir(projectDir, { recursive: true }),
+    mkdir(reportProjectDir, { recursive: true }),
+    mkdir(workspaceRoot, { recursive: true }),
+    mkdir(logRoot, { recursive: true }),
+  ]);
   const databasePath = join(projectDir, 'project.sqlite');
+  const serviceLogger = (name) => new DurableEventLog(join(logRoot, 'services', `${name}.ndjson`), { scope: name });
+  const taskLogger = serviceLogger('task-service');
+  const contextLogger = serviceLogger('context-service');
+  const routerLogger = serviceLogger('service-router');
+  const judgeLogger = serviceLogger('judge-service');
+  const checkerLogger = new DurableEventLog(join(logRoot, 'judge', 'lean-checker.ndjson'), { raw: true, scope: 'judge:lean-checker' });
   const database = new DatabaseSync(databasePath);
-  const contextService = new ContextService(database);
-  const taskService = new TaskService(database, { contextService });
+  const contextService = new ContextService(database, { logger: contextLogger });
+  const taskService = new TaskService(database, { contextService, logger: taskLogger });
   contextService.taskService = taskService;
-  const router = new ServicesRouter({ taskService, contextService });
+  const router = new ServicesRouter({ taskService, contextService, logger: routerLogger });
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
   const inputMetadata = {
@@ -509,8 +538,10 @@ async function createProjectState(problem, config, options) {
     environment_ref: fixture.environment_ref,
   };
   const judgeService = new JudgeService(database, {
+    logger: judgeLogger,
     checker: options.checker ?? new LeanChecker({
-      workRoot: projectDir,
+      workRoot: join(projectDir, 'judge-work'),
+      logger: checkerLogger,
       command: options.leanCommand ?? 'lake',
       timeoutMs: options.checkerTimeoutMs ?? 120_000,
     }),
@@ -518,10 +549,18 @@ async function createProjectState(problem, config, options) {
   const root = owner.proposeTask({
     task_type: 'default',
     goal: `Run four collaborative proof cores for ${problem.id}`,
-    expected_output: 'Four isolated proof Executions sharing Context Service Material',
+    expected_output: 'Four reusable proof slots sharing Task Workspace and published Materials',
     acceptance_conditions: { project: problem.id, core_count: 4, source_hash: problem.source_hash },
     owner_ref: 'owner:benchmark',
-    max_children: 4,
+    initial_prompt: 'Coordinate the root Task and allow worker slots to claim dynamically created child Tasks.',
+    workspace: {
+      project: problem.id,
+      problem_file: problem.problem_file,
+      source_hash: problem.source_hash,
+      input_metadata: inputMetadata,
+      formal_source: problem.source,
+    },
+    max_children: 32,
     max_depth: 3,
   }, { operationId: `benchmark:root:propose:${runId}` }).task;
   const controllerExecutionId = `benchmark-${problem.id}-controller`;
@@ -551,20 +590,6 @@ async function createProjectState(problem, config, options) {
     input_snapshot_hash: rootFrozen.initial_context.input_snapshot_hash,
     input_material_refs: [],
   }, { operationId: `benchmark:root:claim:${runId}` });
-  const rootExecutionSdk = executionContext(router, rootClaim.execution, 'owner:benchmark');
-  const sourceMaterial = rootExecutionSdk.publishMaterial({
-    kind: 'fact',
-    scope: 'problem_statement',
-    evidence_state: 'observed',
-    content: {
-      project: problem.id,
-      source_path: problem.problem_file,
-      source_hash: problem.source_hash,
-      input_metadata: inputMetadata,
-      formal_source: problem.source,
-    },
-    provenance: { actor_ref: 'owner:benchmark', input: 'official_formalization_only' },
-  }, { operationId: `benchmark:input:${runId}` }).material;
   let parentSdk = taskContext(router, taskService.getTask(root.task_id), 'owner:benchmark');
   const cores = [];
   for (let index = 1; index <= 4; index += 1) {
@@ -574,8 +599,10 @@ async function createProjectState(problem, config, options) {
       goal: `Produce a real Lean proof candidate for ${problem.id}`,
       expected_output: 'A compiled Lean source with no placeholders',
       acceptance_conditions: { project: problem.id, core: index, source_hash: problem.source_hash },
-      owner_ref: `agent:core-${index}`,
-      input_material_refs: [sourceMaterial.material_id],
+      owner_ref: 'queue:putnambench',
+      initial_prompt: projectPrompt(problem, index, DEFAULT_ROLES[index - 1]),
+      workspace: root.workspace,
+      input_material_refs: [],
       completion_contract: {
         required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
         required_check: {
@@ -584,48 +611,25 @@ async function createProjectState(problem, config, options) {
           environment_ref: fixture.environment_ref,
         },
       },
-      max_children: 0,
+      max_children: 32,
     }, { operationId: `benchmark:child:create:${runId}:${index}` }).task;
     parentSdk = parentSdk.withContext({ stateVersion: taskService.getTask(root.task_id).state_version });
-    const executionId = `benchmark-${problem.id}-core-${index}`;
-    const prompt = projectPrompt(problem, index, DEFAULT_ROLES[index - 1]);
-    const frozen = owner.freezeInitialContext({
-      freeze_key: `benchmark:context:${runId}:${index}`,
-      task_id: child.task_id,
-      execution_id: executionId,
-      spec_version: child.spec_version,
-      spec_hash: child.spec_hash,
-      task_spec: { task_id: child.task_id, task_type: child.task_type, project: problem.id, core: index },
-      initial_prompt: prompt,
-      material_refs: [{ material_id: sourceMaterial.material_id, content_hash: sourceMaterial.content_hash }],
-      service_environment: {
-        project: problem.id,
-        ...inputMetadata,
-        tool_policy: 'swarmenv_call_only',
-      },
-    }, {
-      operationId: `benchmark:context:freeze:${runId}:${index}`,
-      taskId: child.task_id,
-      executionId,
-      specVersion: child.spec_version,
-      fencingVersion: 1,
-    });
-    const claim = taskContext(router, child, `agent:core-${index}`).claim({
-      execution_id: executionId,
+    const claim = owner.claimNext({
+      root_id: root.task_id,
       claim_key: `benchmark:claim:${runId}:${index}`,
       owner_ref: `agent:core-${index}`,
-      initial_prompt: prompt,
-      initial_context_ref: frozen.initial_context_ref,
-      input_snapshot_hash: frozen.initial_context.input_snapshot_hash,
-      input_material_refs: [sourceMaterial.material_id],
     }, { operationId: `benchmark:claim:${runId}:${index}` });
-    const coreDir = join(projectDir, `core-${index}`);
+    if (!claim.task || !claim.execution) throw new Error(`worker slot ${index} could not claim a queued Task`);
+    const executionId = claim.execution.execution_id;
+    const task = claim.task;
+    const prompt = task.initial_prompt;
+    const coreDir = join(workspaceRoot, `core-${index}`);
     const childEnv = { ...process.env };
     const adapter = options.agentAdapterFactory
       ? options.agentAdapterFactory({ index, problem, executionId, coreDir, env: childEnv })
       : new BenchmarkAgentCoreAdapter({
         command: options.command ?? 'nurouter',
-        provider: options.provider ?? process.env.NUROUTER_PI_PROVIDER ?? 'openai',
+        provider: options.provider ?? process.env.NUROUTER_PI_PROVIDER,
         model: options.model ?? process.env.NUROUTER_PI_MODEL,
         account: options.account ?? process.env.NUROUTER_PI_ACCOUNT,
         group: options.group ?? process.env.NUROUTER_PI_GROUP,
@@ -642,6 +646,8 @@ async function createProjectState(problem, config, options) {
       agentAdapter: adapter,
       maxWorkers: 1,
       actorRef: `runtime:core-${index}`,
+      logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
+      agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
     });
     const bridge = new ServicesBridge({
       taskService,
@@ -649,13 +655,14 @@ async function createProjectState(problem, config, options) {
       runtime,
       router,
       actorRef: `agent:core-${index}`,
-      taskId: child.task_id,
+      taskId: task.task_id,
       executionId,
+      logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),
     });
     Object.assign(childEnv, await bridge.start());
     cores.push({
       index,
-      taskId: child.task_id,
+      taskId: task.task_id,
       executionId,
       prompt,
       claim,
@@ -689,8 +696,11 @@ async function createProjectState(problem, config, options) {
     projectDir,
     rootTaskId: root.task_id,
     rootExecutionId: controllerExecutionId,
-    inputMaterialId: sourceMaterial.material_id,
-    inputMaterialHash: sourceMaterial.content_hash,
+    reportProjectDir,
+    experimentDir: experimentRoot,
+    logRoot,
+    inputMaterialId: null,
+    inputMaterialHash: problem.source_hash,
     taskService,
     contextService,
     router,
@@ -773,7 +783,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     await stopRoot(state).catch(() => undefined);
   }
   const report = projectReport(state, startedAt, deadline);
-  await writeFile(join(state.projectDir, 'report.json'), JSON.stringify(report, null, 2));
+  await writeFile(join(state.reportProjectDir, 'report.json'), JSON.stringify(report, null, 2));
   state.taskService.close();
   return report;
 }
@@ -806,7 +816,7 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
         };
         validateBenchmarkReport(report);
         reports[index] = report;
-        const projectDir = join(resolve(options.reportDir), problems[index].id);
+        const projectDir = join(resolve(options.reportDir ?? options.experimentDir), problems[index].id);
         await mkdir(projectDir, { recursive: true });
         await writeFile(join(projectDir, 'report.json'), JSON.stringify(report, null, 2));
       }

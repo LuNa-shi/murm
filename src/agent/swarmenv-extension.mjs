@@ -1,6 +1,6 @@
 const OPERATIONS = [
   'get_task', 'get_execution', 'read_materials', 'publish_material',
-  'submit_candidate', 'heartbeat', 'create_child_task', 'request_wait',
+  'submit_candidate', 'heartbeat', 'create_child_task', 'request_wait', 'claim_next',
 ];
 
 function text(value) {
@@ -12,7 +12,7 @@ export default function swarmenvExtension(pi) {
   pi.registerTool({
     name: 'swarmenv_call',
     label: 'SwarmEnv Service Call',
-    description: 'Call the public SwarmEnv Services SDK for the current Task and Execution. Use this to read the task, read shared Materials, publish Materials, submit proof candidates, heartbeat, create child Tasks, or request a durable wait.',
+    description: 'Call the public SwarmEnv Services SDK for the current Task and Execution. Use this to claim the next queued Task, read the task, read shared Materials, publish Materials, submit proof candidates, heartbeat, create child Tasks, or request a durable wait.',
     promptSnippet: 'Use the public SwarmEnv Services SDK bridge',
     promptGuidelines: [
       'Use swarmenv_call for every Task, Execution, Material, and candidate lifecycle operation.',

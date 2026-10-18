@@ -78,6 +78,59 @@ test('claim atomically creates one active Execution and is idempotent by operati
   service.close();
 });
 
+test('claimNext atomically takes the oldest queued Task and derives its Execution workspace input', () => {
+  const { service, sdk } = rootService();
+  const proposed = sdk.proposeTask({
+    ...proofInput(),
+    initial_prompt: 'Use the Task workspace and public services',
+    workspace: { problem_id: 'putnam-queued', source_hash: 'b'.repeat(64) },
+  }, { operationId: 'propose-queued' }).task;
+  const worker = sdk.withContext({ actorRef: 'agent:slot-1' });
+  const claim = worker.claimNext({ owner_ref: 'agent:slot-1', claim_key: 'claim-next-1' }, { operationId: 'claim-next-1' });
+  assert.equal(claim.task.task_id, proposed.task_id);
+  assert.equal(claim.execution.initial_prompt, proposed.initial_prompt);
+  assert.equal(claim.execution.initial_context_ref, `task://workspace/${proposed.task_id}`);
+  assert.deepEqual(claim.task.workspace, proposed.workspace);
+  assert.equal(service.listActiveExecutions().length, 1);
+  service.close();
+});
+
+test('claimNext with a root_id selects a child Task instead of claiming the root controller Task', () => {
+  const { service, sdk } = rootService();
+  const root = sdk.proposeTask({
+    ...proofInput({ task_type: 'default' }),
+    max_children: 2,
+  }, { operationId: 'propose-claim-root' }).task;
+  const rootSdk = sdk.withContext({ taskId: root.task_id, specVersion: root.spec_version, stateVersion: root.state_version });
+  const rootClaim = rootSdk.claim({
+    claim_key: 'claim-root-controller',
+    owner_ref: 'owner:root',
+    initial_prompt: 'Coordinate children',
+    initial_context_ref: 'context://root-controller',
+    input_snapshot_hash: 'root-snapshot',
+    input_material_refs: [],
+  }, { operationId: 'claim-root-controller' });
+  const child = sdk.withContext({
+    taskId: root.task_id,
+    executionId: rootClaim.execution.execution_id,
+    specVersion: root.spec_version,
+    stateVersion: rootClaim.task.state_version,
+    fencingVersion: rootClaim.execution.fencing_version,
+  }).createChildTask({
+    child_creation_key: 'child-for-claim-root',
+    ...proofInput({ owner_ref: 'queue:proof', initial_prompt: 'Solve as a child' }),
+    max_children: 2,
+  }, { operationId: 'create-claim-root-child' }).task;
+  const claim = sdk.withContext({ actorRef: 'agent:slot-1' }).claimNext({
+    root_id: root.task_id,
+    owner_ref: 'agent:slot-1',
+    claim_key: 'claim-child-under-root',
+  }, { operationId: 'claim-child-under-root' });
+  assert.equal(claim.task.task_id, child.task_id);
+  assert.equal(claim.task.parent_id, root.task_id);
+  service.close();
+});
+
 test('execution heartbeat and lifecycle writes enforce state and fencing versions', () => {
   const { service, sdk } = rootService();
   const task = sdk.proposeTask(proofInput(), { operationId: 'propose-lifecycle' }).task;

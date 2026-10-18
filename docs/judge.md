@@ -6,4 +6,10 @@ Each fixture manifest pins the full PutnamBench commit, problem file hash, Lean 
 
 The request lifecycle is `REQUESTED` → `RUNNING` → `RECEIVED`. `PASS`, `FAIL`, `INCONCLUSIVE`, and `ERROR` are verdicts carried by a received result. `request_key` makes repeated checks idempotent: the same key and request hash return the original result, while a different request is rejected with `CONFLICT`. Operation envelopes provide a second idempotency boundary for `submit_check_result`.
 
+For a durable benchmark experiment, candidate checker workspaces and checker
+stdout/stderr are retained under that experiment's ignored `state/` and
+`logs/` directories for audit and recovery. The shareable report contains
+hashes, verdicts, and diagnostic classes only. The generic fixture adapter may
+still use a temporary directory when no experiment logger is supplied.
+
 The current repository fixture is `fixtures/putnam-1966-a1/fixture-manifest.json`. Its source and manifest are reviewable inputs; running the real checker requires the manifest's Lean environment to be installed and available through the configured checker command.

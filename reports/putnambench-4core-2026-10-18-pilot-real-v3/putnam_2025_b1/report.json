@@ -1,0 +1,233 @@
+{
+  "schema_version": 1,
+  "protocol": {
+    "project_isolation": true,
+    "core_count": 4,
+    "input_policy": "pinned formalization only; no candidate or solution input",
+    "tool_policy": "swarmenv_call only",
+    "cheating_policy": "placeholder or non-SwarmEnv tool event invalidates the project"
+  },
+  "project": {
+    "problem_id": "putnam_2025_b1",
+    "tags": [
+      "geometry",
+      "combinatorics"
+    ],
+    "source_hash": "80d035ae3e86493d3a09f8acc39601e6dba4e380e217c085c491e202b7ced6c7",
+    "fixture_id": "putnam-putnam_2025_b1",
+    "putnambench_commit": "a635813f5edf297d928f9bd5ef8324a26bdde09c",
+    "lean_toolchain": "leanprover/lean4:v4.33.1",
+    "mathlib_version": "0df444a360eaa60ab8c11dca51a86af692955474",
+    "checker_version": "mvp-1",
+    "run_id": "8f0eb5a4-9e99-47f4-9b06-7970a0328280",
+    "database_path": "/home/ubuntu/SwarmEnv/experiments/putnambench-4core-2026-10-18-pilot-real-v3/state/projects/putnam_2025_b1/project.sqlite",
+    "input_workspace_hash": "80d035ae3e86493d3a09f8acc39601e6dba4e380e217c085c491e202b7ced6c7"
+  },
+  "run": {
+    "started_at": "2026-10-18T14:28:25.824Z",
+    "ended_at": "2026-10-18T14:30:26.556Z",
+    "elapsed_ms": 120732,
+    "deadline_ms": 120000,
+    "solved": false,
+    "solved_by_core": null,
+    "solved_at_ms": null,
+    "material_count": 7,
+    "project_material_count": 0,
+    "candidate_count": 2,
+    "ended_early": false,
+    "deadline_reached": true,
+    "cleanup_elapsed_ms": 35,
+    "resources_at_start": {
+      "logical_cpus": 250,
+      "total_memory_bytes": 483183820800,
+      "available_memory_bytes": 460425889792
+    },
+    "resources_at_end": {
+      "logical_cpus": 250,
+      "total_memory_bytes": 483183820800,
+      "available_memory_bytes": 460342086656
+    },
+    "heartbeat_count": 44,
+    "heartbeat_error_count": 0,
+    "candidate_check_count": 2
+  },
+  "cores": [
+    {
+      "core": 1,
+      "task_id": "05e6e755-6818-4f9c-8470-8df8a097f319",
+      "execution_id": "06343b67-459b-4f12-9408-ea6c6eb78824",
+      "turns": 1,
+      "turn_durations_ms": [
+        60254
+      ],
+      "turn_timeout_count": 1,
+      "checks": [],
+      "errors": [
+        {
+          "code": "RPC_ERROR",
+          "class": "checker_timeout"
+        }
+      ],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "OPEN",
+      "execution_state": "FAILED",
+      "input_snapshot_hash": "392b87591dff378f6296a7550b3751cca23d6bb0040ca57dc92c156c18d933c6",
+      "workspace_ref": "/home/ubuntu/SwarmEnv/experiments/putnambench-4core-2026-10-18-pilot-real-v3/workspaces/projects/putnam_2025_b1/core-1/06343b67-459b-4f12-9408-ea6c6eb78824",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 2,
+      "task_id": "12b192c0-afc1-46b3-86f3-783d3e29d93f",
+      "execution_id": "4726d50d-9cb7-423f-8a53-d25c57590d5e",
+      "turns": 1,
+      "turn_durations_ms": [
+        60263
+      ],
+      "turn_timeout_count": 1,
+      "checks": [],
+      "errors": [
+        {
+          "code": "RPC_ERROR",
+          "class": "checker_timeout"
+        }
+      ],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "OPEN",
+      "execution_state": "FAILED",
+      "input_snapshot_hash": "e2e74bfdfafa980b137d2e757a51cbde77c4e79c5b6559048d3b3286852fc1ff",
+      "workspace_ref": "/home/ubuntu/SwarmEnv/experiments/putnambench-4core-2026-10-18-pilot-real-v3/workspaces/projects/putnam_2025_b1/core-2/4726d50d-9cb7-423f-8a53-d25c57590d5e",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 3,
+      "task_id": "452fa650-e024-431b-a66c-30267f16167d",
+      "execution_id": "019274de-95da-49ac-a6e0-b670aaa3b3f4",
+      "turns": 1,
+      "turn_durations_ms": [
+        60259
+      ],
+      "turn_timeout_count": 1,
+      "checks": [],
+      "errors": [
+        {
+          "code": "RPC_ERROR",
+          "class": "checker_timeout"
+        }
+      ],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "OPEN",
+      "execution_state": "FAILED",
+      "input_snapshot_hash": "a3fbaf47d00095dce670132d003334537cf64141a5395b71489821c032278966",
+      "workspace_ref": "/home/ubuntu/SwarmEnv/experiments/putnambench-4core-2026-10-18-pilot-real-v3/workspaces/projects/putnam_2025_b1/core-3/019274de-95da-49ac-a6e0-b670aaa3b3f4",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 4,
+      "task_id": "59976ff6-74f3-46b3-a299-8cf09b05d6a8",
+      "execution_id": "37ea06d6-c80f-405a-bd9b-be47705d026f",
+      "turns": 1,
+      "turn_durations_ms": [
+        60253
+      ],
+      "turn_timeout_count": 1,
+      "checks": [
+        {
+          "candidate_material_id": "3da5b503-4018-401f-b477-5a43b20a3903",
+          "material_hash": "a6c98d2c44f19ee520c7f7ba7d71228a5c9c72b71a2e4c59bfaf82fc6d3493d3",
+          "verdict": "FAIL",
+          "check_result_id": "20a9d1e3-e2f5-43f7-a0f3-6c9ddb91704f",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 4752
+        },
+        {
+          "candidate_material_id": "173a05c4-910e-41bd-ba87-c8d98039ea29",
+          "material_hash": "e21f19b1fe43842d925b015760f562ac9dab486d2c680c35165ca980013a3a08",
+          "verdict": "FAIL",
+          "check_result_id": "09489d53-a263-4882-ba43-1a4c2bae2514",
+          "diagnostic_class": "forbidden_placeholder",
+          "check_elapsed_ms": 4840
+        }
+      ],
+      "errors": [
+        {
+          "code": "RPC_ERROR",
+          "class": "checker_timeout"
+        }
+      ],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "OPEN",
+      "execution_state": "FAILED",
+      "input_snapshot_hash": "9ff1e9a74078b60b7f40255a5c809f1705928c184912295bbc52b1dc77123d6a",
+      "workspace_ref": "/home/ubuntu/SwarmEnv/experiments/putnambench-4core-2026-10-18-pilot-real-v3/workspaces/projects/putnam_2025_b1/core-4/37ea06d6-c80f-405a-bd9b-be47705d026f",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    }
+  ],
+  "audit": {
+    "input_source_hash": "80d035ae3e86493d3a09f8acc39601e6dba4e380e217c085c491e202b7ced6c7",
+    "prompt_hashes": [
+      {
+        "core": 1,
+        "prompt_hash": "c007e38159eda3ec4ca6f5fa505d597f1d587dc78c67c504dbf4498eb964123d"
+      },
+      {
+        "core": 2,
+        "prompt_hash": "0eeb19517ff70ebb261444ea76dba2245f14f581385b1c3a65b6637b1bdc6d86"
+      },
+      {
+        "core": 3,
+        "prompt_hash": "876e335e8a76ddce134f91e9181023b8655350a6f70c5eb269d9eeb28c336b1d"
+      },
+      {
+        "core": 4,
+        "prompt_hash": "74d0b52ed7356e5b489ab43c1dfb8e478823e77549d4773566b7531176267771"
+      }
+    ],
+    "all_tool_events": [],
+    "invalid": false,
+    "invalid_reasons": [],
+    "candidate_materials": [
+      {
+        "candidate_material_id": "3da5b503-4018-401f-b477-5a43b20a3903",
+        "material_hash": "a6c98d2c44f19ee520c7f7ba7d71228a5c9c72b71a2e4c59bfaf82fc6d3493d3",
+        "verdict": "FAIL",
+        "check_result_id": "20a9d1e3-e2f5-43f7-a0f3-6c9ddb91704f",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 4752
+      },
+      {
+        "candidate_material_id": "173a05c4-910e-41bd-ba87-c8d98039ea29",
+        "material_hash": "e21f19b1fe43842d925b015760f562ac9dab486d2c680c35165ca980013a3a08",
+        "verdict": "FAIL",
+        "check_result_id": "09489d53-a263-4882-ba43-1a4c2bae2514",
+        "diagnostic_class": "forbidden_placeholder",
+        "check_elapsed_ms": 4840
+      }
+    ],
+    "raw_transcript_exported": false,
+    "proof_contents_exported": false
+  }
+}

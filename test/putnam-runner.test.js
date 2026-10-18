@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, rm } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import { runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport } from '../src/benchmark/putnam-runner.js';
@@ -74,15 +74,17 @@ class FakeAdapter {
     this.cheat = cheat;
   }
 
-  async start() {
+  async start({ logger } = {}) {
+    logger?.append({ type: 'fake-agent-start' });
     const session = new FakeSession(this.env, this.cheat);
     session.manifest = { fake: true, pi_version: 'fake' };
     return session;
   }
 }
 
-async function runFixture({ reportDir, id = 'putnam_test', cheat = false }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false }) {
   return runBenchmarkProject(problem(id), config, {
+    experimentDir,
     reportDir,
     timeboxMs: 500,
     pollMs: 1,
@@ -99,9 +101,10 @@ async function runFixture({ reportDir, id = 'putnam_test', cheat = false }) {
 }
 
 test('benchmark project starts four isolated cores and redacts candidate content', async () => {
-  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-test-');
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-report-');
   try {
-    const report = await runFixture({ reportDir });
+    const report = await runFixture({ reportDir, experimentDir });
     assert.equal(report.protocol.core_count, 4);
     assert.equal(report.run.solved, true);
     assert.equal(report.audit.invalid, false);
@@ -111,7 +114,19 @@ test('benchmark project starts four isolated cores and redacts candidate content
     assert.equal(JSON.stringify(report).includes('formal_source'), false);
     assert.equal(JSON.stringify(report).includes('benchmarkArtifact'), false);
     assert.equal(JSON.stringify(report).includes('candidate contents'), false);
+    assert.match(report.project.database_path, /state\/projects\/putnam_test\/project\.sqlite$/);
+    await access(`${reportDir}/putnam_test/report.json`);
+    for (const path of [
+      `${experimentDir}/logs/projects/putnam_test/services/task-service.ndjson`,
+      `${experimentDir}/logs/projects/putnam_test/services/context-service.ndjson`,
+      `${experimentDir}/logs/projects/putnam_test/services/service-router.ndjson`,
+      `${experimentDir}/logs/projects/putnam_test/services/judge-service.ndjson`,
+      `${experimentDir}/logs/projects/putnam_test/runtime/core-1.ndjson`,
+      `${experimentDir}/logs/projects/putnam_test/bridge/core-1.ndjson`,
+      `${experimentDir}/logs/projects/putnam_test/agents/core-1.ndjson`,
+    ]) await access(path);
   } finally {
+    await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
   }
 });

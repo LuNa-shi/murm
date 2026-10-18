@@ -1,0 +1,46 @@
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { createHash } from 'node:crypto';
+
+const SENSITIVE_KEY = /^(?:content|formal_source|initial_prompt|candidate|proof|stdout|stderr|raw_transcript|authorization|token|secret|password|api[_-]?key|credential|private[_-]?key)$/i;
+
+function digest(value) {
+  return createHash('sha256').update(String(value)).digest('hex');
+}
+
+function sanitize(value, key = '') {
+  if (SENSITIVE_KEY.test(key)) {
+    return { redacted: true, sha256: digest(typeof value === 'string' ? value : JSON.stringify(value)) };
+  }
+  if (Array.isArray(value)) return value.map((item) => sanitize(item));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, sanitize(child, childKey)]));
+}
+
+export function redactEvent(value) {
+  return sanitize(value);
+}
+
+/**
+ * Append-only NDJSON evidence for one experiment component.
+ * Service logs are redacted by default. Agent and checker adapters may opt into
+ * raw records, but those files must stay under the private experiment folder.
+ */
+export class DurableEventLog {
+  constructor(filePath, { raw = false, scope = null } = {}) {
+    if (typeof filePath !== 'string' || filePath.length === 0) throw new TypeError('filePath is required');
+    this.filePath = filePath;
+    this.raw = raw;
+    this.scope = scope;
+    mkdirSync(dirname(filePath), { recursive: true });
+  }
+
+  append(event = {}) {
+    const record = {
+      timestamp: new Date().toISOString(),
+      ...(this.scope ? { scope: this.scope } : {}),
+      ...(this.raw ? event : redactEvent(event)),
+    };
+    appendFileSync(this.filePath, `${JSON.stringify(record)}\n`, 'utf8');
+  }
+}

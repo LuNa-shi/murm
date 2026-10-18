@@ -7,6 +7,10 @@ Runtime Workspaces, four Pi session directories, and one redacted report.
 Agents share the problem statement and later feedback through Context Service
 Materials. They do not share private Workspace files or session state.
 
+For a detailed end-to-end walkthrough of root Task creation, child Execution
+allocation, Agent Core service calls, Judge feedback, and success/failure
+cleanup, see [PutnamBench Four-Core System Walkthrough](putnambench-four-core-system-walkthrough.md).
+
 The locked configuration in
 [`config/putnambench-12.json`](../config/putnambench-12.json) contains twelve
 recent B-part formalizations from PutnamBench commit
@@ -32,7 +36,8 @@ node scripts/run-putnambench-benchmark.mjs \\
   --cores 4 \\
   --timebox-ms 3600000 \\
   --project-parallelism 1 \\
-  --report-dir /tmp/swarmenv-putnambench-pilot
+  --experiment-dir experiments/putnambench-4core-YYYY-MM-DD-pilot \\
+  --report-dir reports/putnambench-4core-YYYY-MM-DD-pilot
 ```
 
 Run the full selection in bounded project groups:
@@ -44,12 +49,14 @@ node scripts/run-putnambench-benchmark.mjs \\
   --cores 4 \\
   --timebox-ms 3600000 \\
   --project-parallelism 3 \\
-  --report-dir /tmp/swarmenv-putnambench-rerun
+  --experiment-dir experiments/putnambench-4core-YYYY-MM-DD-rerun \\
+  --report-dir reports/putnambench-4core-YYYY-MM-DD-rerun
 ```
 
-`--putnambench-root` is the checkout root containing `lean4/`. The runner
-requires a NuRouter/Pi model through `--model` or `NUROUTER_PI_MODEL`; the
-provider defaults to `NUROUTER_PI_PROVIDER` or `openai`. Each project runs to
+Before a real Agent Core run, load the route from [the benchmark environment
+guide](benchmark-environment.md). `--putnambench-root` is the checkout root containing `lean4/`. The runner
+requires a NuRouter/Pi model through `--model` or `NUROUTER_PI_MODEL`, and a
+provider through `--provider` or `NUROUTER_PI_PROVIDER`. Each project runs to
 its timebox unless the library caller explicitly enables early stop after a
 verified solution. Each project has an independent deadline and cleanup path.
 A failed project is recorded and does not cancel its siblings.

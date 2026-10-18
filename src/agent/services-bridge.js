@@ -2,11 +2,12 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { ServicesSDK } from '../sdk/services-sdk.js';
+import { makeEnvelope } from '../protocol/envelope.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const AGENT_OPERATIONS = new Set([
   'get_task', 'get_execution', 'read_materials', 'publish_material', 'submit_candidate',
-  'heartbeat', 'create_child_task', 'request_wait',
+  'heartbeat', 'create_child_task', 'request_wait', 'claim_next',
 ]);
 
 function json(value) {
@@ -41,7 +42,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId, executionId, host = '127.0.0.1' } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId, executionId, host = '127.0.0.1', logger = null } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -51,6 +52,7 @@ export class ServicesBridge {
     this.taskId = taskId;
     this.executionId = executionId;
     this.host = host;
+    this.logger = logger;
     this.token = randomUUID();
     this.server = null;
     this.address = null;
@@ -109,36 +111,61 @@ export class ServicesBridge {
   }
 
   async call({ operation, payload = {}, operation_id: operationId = null } = {}) {
-    if (!AGENT_OPERATIONS.has(operation)) throw new Error(`Agent operation is not allowed: ${operation}`);
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('bridge payload must be an object');
-    const execution = this.taskService.getExecution(this.executionId);
-    if (!execution) throw new Error(`unknown execution: ${this.executionId}`);
-    if (execution.task_id !== this.taskId) throw new Error('bridge execution does not match task');
-    if (operation === 'request_wait') {
-      return this.runtime.requestWait(this.executionId, payload);
-    }
-    const service = this.router ?? { dispatch: (name, body, envelope) => {
-      if (['get_task', 'get_execution', 'submit_candidate', 'heartbeat', 'create_child_task'].includes(name)) return this.taskService.dispatch(name, body, envelope);
-      return this.contextService.dispatch(name, body, envelope);
-    } };
-    const sdk = new ServicesSDK(service, {
-      actorRef: this.actorRef,
-      taskId: this.taskId,
-      executionId: this.executionId,
-      specVersion: execution.spec_version,
-      stateVersion: execution.state_version,
-      fencingVersion: execution.fencing_version,
-    });
-    const options = { operationId: operationId ?? `bridge:${operation}:${randomUUID()}` };
-    switch (operation) {
-      case 'get_task': return sdk.getTask(payload.task_id ?? this.taskId);
-      case 'get_execution': return sdk.getExecution(payload.execution_id ?? this.executionId);
-      case 'read_materials': return sdk.readMaterials(payload);
-      case 'publish_material': return sdk.publishMaterial(payload, options);
-      case 'submit_candidate': return sdk.submitCandidate(payload, options);
-      case 'heartbeat': return sdk.heartbeat(payload, options);
-      case 'create_child_task': return sdk.createChildTask(payload, options);
-      default: throw new Error(`unsupported Agent operation: ${operation}`);
+    this.logger?.append({ event: 'bridge.start', operation, operation_id: operationId, task_id: this.taskId, execution_id: this.executionId, payload });
+    try {
+      if (!AGENT_OPERATIONS.has(operation)) throw new Error(`Agent operation is not allowed: ${operation}`);
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('bridge payload must be an object');
+      if (operation === 'claim_next') {
+        if (this.taskId || this.executionId) throw new Error('claim_next is only available to an unbound worker bridge');
+        const result = this.taskService.dispatch('claim_next', payload, makeEnvelope({
+          operationId: operationId ?? `bridge:claim_next:${randomUUID()}`,
+          actorRef: this.actorRef,
+        }));
+        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+        return result;
+      }
+      const execution = this.taskService.getExecution(this.executionId);
+      if (!execution) throw new Error(`unknown execution: ${this.executionId}`);
+      if (execution.task_id !== this.taskId) throw new Error('bridge execution does not match task');
+      if (operation === 'request_wait') {
+        const result = await this.runtime.requestWait(this.executionId, payload);
+        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+        return result;
+      }
+      const service = this.router ?? { dispatch: (name, body, envelope) => {
+        if (['get_task', 'get_execution', 'submit_candidate', 'heartbeat', 'create_child_task'].includes(name)) return this.taskService.dispatch(name, body, envelope);
+        return this.contextService.dispatch(name, body, envelope);
+      } };
+      const sdk = new ServicesSDK(service, {
+        actorRef: this.actorRef,
+        taskId: this.taskId,
+        executionId: this.executionId,
+        specVersion: execution.spec_version,
+        stateVersion: execution.state_version,
+        fencingVersion: execution.fencing_version,
+      });
+      const options = { operationId: operationId ?? `bridge:${operation}:${randomUUID()}` };
+      let result;
+      switch (operation) {
+        case 'get_task': result = sdk.getTask(payload.task_id ?? this.taskId); break;
+        case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
+        case 'read_materials': result = sdk.readMaterials(payload); break;
+        case 'publish_material': result = sdk.publishMaterial(payload, options); break;
+        case 'submit_candidate': result = sdk.submitCandidate(payload, options); break;
+        case 'heartbeat': result = sdk.heartbeat(payload, options); break;
+        case 'create_child_task': result = sdk.createChildTask(payload, options); break;
+        default: throw new Error(`unsupported Agent operation: ${operation}`);
+      }
+      this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+      return result;
+    } catch (error) {
+      this.logger?.append({
+        event: 'bridge.complete',
+        operation,
+        ok: false,
+        error: { name: error.name, code: error.code, message: error.message },
+      });
+      throw error;
     }
   }
 }

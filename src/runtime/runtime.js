@@ -13,7 +13,7 @@ function operationId(prefix) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, runtimeGeneration = 1, actorRef = 'runtime:local' }) {
+  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -21,6 +21,8 @@ export class Runtime {
     this.maxWorkers = maxWorkers;
     this.runtimeGeneration = runtimeGeneration;
     this.actorRef = actorRef;
+    this.logger = logger;
+    this.agentLogger = agentLogger;
     this.activeProcesses = new Map();
   }
 
@@ -29,6 +31,7 @@ export class Runtime {
   }
 
   async startExecution(executionId) {
+    this.logger?.append({ event: 'runtime.start_execution', execution_id: executionId });
     const execution = this.#getExecution(executionId);
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only start CREATED executions, got ${execution.state}`);
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
@@ -50,6 +53,7 @@ export class Runtime {
   }
 
   async wakeExecution(executionId, { wakeKey = null } = {}) {
+    this.logger?.append({ event: 'runtime.wake_execution', execution_id: executionId, wake_key: wakeKey });
     const waiting = this.#getExecution(executionId);
     const key = wakeKey ?? waiting.resume_token ?? `wake:${executionId}`;
     if (waiting.state !== 'WAITING') {
@@ -64,6 +68,7 @@ export class Runtime {
   }
 
   async requestWait(executionId, { waitCondition, checkpoint = {}, files = {}, deadline = null }) {
+    this.logger?.append({ event: 'runtime.request_wait', execution_id: executionId, wait_condition: waitCondition, deadline });
     const active = this.activeProcesses.get(executionId);
     const execution = this.#getExecution(executionId);
     if (!active || execution.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime process can request wait');
@@ -92,6 +97,7 @@ export class Runtime {
   }
 
   heartbeat(executionId, payload = {}) {
+    this.logger?.append({ event: 'runtime.heartbeat', execution_id: executionId });
     const execution = this.#getExecution(executionId);
     const result = this.taskService.dispatch('heartbeat', payload, this.#executionEnvelope(execution, operationId('heartbeat')));
     const active = this.activeProcesses.get(executionId);
@@ -100,6 +106,7 @@ export class Runtime {
   }
 
   async stopExecution(executionId, terminalState = 'CANCELLED') {
+    this.logger?.append({ event: 'runtime.stop_execution', execution_id: executionId, terminal_state: terminalState });
     const execution = this.#getExecution(executionId);
     const active = this.activeProcesses.get(executionId);
     if (active) {
@@ -114,6 +121,7 @@ export class Runtime {
   }
 
   async fenceExecution(executionId) {
+    this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId });
     const execution = this.#getExecution(executionId);
     const newFencingVersion = execution.fencing_version + 1;
     if (execution.workspace_ref) {
@@ -129,6 +137,7 @@ export class Runtime {
   }
 
   async sweepExpired(at = new Date()) {
+    this.logger?.append({ event: 'runtime.sweep_expired', at: at.toISOString() });
     const expired = [];
     for (const execution of this.taskService.listActiveExecutions()) {
       if (!['CREATED', 'RUNNING'].includes(execution.state) || Date.parse(execution.lease_expires_at) > at.getTime()) continue;
@@ -165,10 +174,12 @@ export class Runtime {
   }
 
   async #prepareWorkspace(execution) {
+    const task = this.taskService.getTask(execution.task_id);
     const context = this.contextService.getInitialContext(execution.execution_id);
-    if (!context || execution.initial_context_ref !== `sqlite://initial-context/${execution.execution_id}`) {
+    if (!context && execution.initial_context_ref !== `task://workspace/${execution.task_id}`) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Execution Initial Context is missing or does not match its reference');
     }
+    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Task is missing for execution: ${execution.execution_id}`);
     if (execution.workspace_ref) {
       return this.workspaceManager.restoreWorkspace({
         workspaceRef: execution.workspace_ref,
@@ -179,7 +190,12 @@ export class Runtime {
     return this.workspaceManager.createWorkspace({
       executionId: execution.execution_id,
       fencingVersion: execution.fencing_version,
-      initialContext: context.manifest,
+      initialContext: context?.manifest ?? {
+        task_id: task.task_id,
+        task_spec: task,
+        workspace: task.workspace,
+        input_snapshot_hash: execution.input_snapshot_hash,
+      },
       initialPrompt: execution.initial_prompt,
       inputSnapshotManifest: {
         input_snapshot_hash: execution.input_snapshot_hash,
@@ -202,6 +218,7 @@ export class Runtime {
       executionId: execution.execution_id,
       sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
       cwd: workspace.workspace_ref,
+      logger: this.agentLogger,
     });
     const manifestContent = JSON.stringify(session.manifest ?? {}, null, 2);
     const nextWorkspace = await this.workspaceManager.saveWorkspaceRevision({

@@ -51,11 +51,12 @@ function rejectSecrets(value, path = 'payload') {
 }
 
 export class ContextService {
-  constructor(database = ':memory:', { trustedActorPrefixes = TRUSTED_ACTOR_PREFIXES, taskService = null } = {}) {
+  constructor(database = ':memory:', { trustedActorPrefixes = TRUSTED_ACTOR_PREFIXES, taskService = null, logger = null } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(CONTEXT_SCHEMA_SQL);
     this.trustedActorPrefixes = trustedActorPrefixes;
     this.taskService = taskService;
+    this.logger = logger;
   }
 
   close() {
@@ -63,20 +64,27 @@ export class ContextService {
   }
 
   dispatch(operation, payload = {}, envelope) {
-    const executionWrite = operation === 'publish_material' && envelope?.execution_id !== null;
-    validateEnvelope(envelope, { executionWrite });
-    if (operation === 'read_materials') return this.#readMaterials(payload);
-    return this.#transaction(() => {
-      const fingerprint = operationPayload(operation, payload, envelope);
-      const replay = this.#replay(envelope.operation_id, fingerprint);
-      if (replay) return replay;
-      let result;
-      if (operation === 'publish_material') result = this.#publishMaterial(payload, envelope);
-      else if (operation === 'freeze_initial_context') result = this.#freezeInitialContext(payload, envelope, fingerprint);
-      else throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Context Service operation: ${operation}`);
-      this.#saveOperation(envelope.operation_id, operation, fingerprint, result);
+    this.logger?.append({ event: 'dispatch.start', service: 'context', operation, envelope });
+    try {
+      const executionWrite = operation === 'publish_material' && envelope?.execution_id !== null;
+      validateEnvelope(envelope, { executionWrite });
+      const result = operation === 'read_materials' ? this.#readMaterials(payload) : this.#transaction(() => {
+        const fingerprint = operationPayload(operation, payload, envelope);
+        const replay = this.#replay(envelope.operation_id, fingerprint);
+        if (replay) return replay;
+        let value;
+        if (operation === 'publish_material') value = this.#publishMaterial(payload, envelope);
+        else if (operation === 'freeze_initial_context') value = this.#freezeInitialContext(payload, envelope, fingerprint);
+        else throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Context Service operation: ${operation}`);
+        this.#saveOperation(envelope.operation_id, operation, fingerprint, value);
+        return value;
+      });
+      this.logger?.append({ event: 'dispatch.complete', service: 'context', operation, ok: true, result });
       return result;
-    });
+    } catch (error) {
+      this.logger?.append({ event: 'dispatch.complete', service: 'context', operation, ok: false, error: { name: error.name, code: error.code, message: error.message } });
+      throw error;
+    }
   }
 
   getMaterial(materialId) {
