@@ -203,6 +203,35 @@ test('Workspace resume copies a selected revision into a new lineage', async () 
   await rm(rootDir, { recursive: true, force: true });
 });
 
+test('Runtime binds a selected Workspace revision when a new Execution forks a prior one', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, sdk } = fixtureData;
+  const started = await runtime.startExecution(claimed.execution.execution_id);
+  const waited = await runtime.requestWait(claimed.execution.execution_id, {
+    waitCondition: { type: 'timer', deadline: new Date(Date.now() + 60_000).toISOString() },
+    checkpoint: { phase: 'fork-source' },
+    files: { 'progress.txt': 'source revision' },
+  });
+  const fenced = await runtime.fenceExecution(claimed.execution.execution_id);
+  const source = taskService.getExecution(claimed.execution.execution_id);
+  const task = taskService.getTask(fixtureData.task.task_id);
+  const forkClaim = sdk.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
+    claim_key: 'runtime-fork-claim', owner_ref: 'runtime:fork', workspace_mode: 'resume',
+    workspace_source_execution_id: source.execution_id, workspace_revision: source.workspace_revision,
+  }, { operationId: 'runtime-fork-claim' });
+  const forked = await runtime.startExecution(forkClaim.execution.execution_id);
+  assert.equal(forked.execution.workspace_revision, source.workspace_revision + 1);
+  assert.equal(forked.workspace.parent_workspace_ref, source.workspace_ref);
+  assert.equal(forked.workspace.parent_workspace_revision, source.workspace_revision);
+  assert.equal(await readFile(join(forked.workspace.workspace_ref, 'progress.txt'), 'utf8'), 'source revision');
+  assert.equal(fenced.execution.state, 'FENCED');
+  await runtime.stopExecution(forked.execution.execution_id);
+  await rm(rootDir, { recursive: true, force: true });
+  fixtureData.taskService.close();
+  assert.ok(waited.execution.workspace_ref);
+  assert.ok(started.workspace.workspace_ref);
+});
+
 test('lease sweep fences an expired running Execution and releases its process slot', async () => {
   const fixtureData = await fixture();
   const { runtime, taskService, claimed, rootDir } = fixtureData;

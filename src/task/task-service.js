@@ -682,7 +682,7 @@ export class TaskService {
     if (execution.workspace_ref && execution.workspace_ref !== payload.workspace_ref) {
       throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace_ref does not match the Execution workspace');
     }
-    const expectedRevision = execution.workspace_revision === null ? 1 : execution.workspace_revision + 1;
+    const expectedRevision = execution.workspace_revision === null ? payload.workspace_revision : execution.workspace_revision + 1;
     if (payload.workspace_revision !== expectedRevision) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'workspace_revision is not the next revision', { expected: expectedRevision });
     }

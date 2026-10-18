@@ -139,3 +139,34 @@ test('ServicesBridge binds an explicit claim to the bridge Agent and keeps the r
     taskService.close();
   }
 });
+
+test('ServicesBridge rolls back a Task claim when Runtime handoff fails', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:root' });
+  const task = owner.proposeTask({
+    task_type: 'proof', goal: 'rollback handoff', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:root',
+    completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixture().environment_ref } },
+  }, { operationId: 'bridge:rollback:propose' }).task;
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: { requestWait: async () => ({}) },
+    router,
+    actorRef: 'agent:rollback',
+    onClaim: async () => { throw new Error('controlled handoff failure'); },
+  });
+  try {
+    await assert.rejects(() => bridge.call({ operation: 'claim', payload: { task_id: task.task_id, claim_key: 'bridge:rollback:claim', workspace_mode: 'clean' } }), /controlled handoff failure/);
+    assert.equal(bridge.taskId, null);
+    assert.equal(bridge.executionId, null);
+    assert.equal(taskService.listActiveExecutions().length, 0);
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});

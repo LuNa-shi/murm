@@ -183,6 +183,24 @@ export class ServicesBridge {
         try {
           if (this.onClaim) await this.onClaim(result);
         } catch (error) {
+          const claimedExecution = this.taskService.getExecution(result.execution.execution_id);
+          if (claimedExecution && ['CREATED', 'RUNNING', 'WAITING'].includes(claimedExecution.state)) {
+            try {
+              service.dispatch('stop_execution', { terminal_state: 'FAILED' }, makeEnvelope({
+                operationId: `bridge:claim-rollback:${claimedExecution.execution_id}`,
+                actorRef: this.actorRef,
+                taskId: claimedExecution.task_id,
+                executionId: claimedExecution.execution_id,
+                specVersion: claimedExecution.spec_version,
+                stateVersion: claimedExecution.state_version,
+                fencingVersion: claimedExecution.fencing_version,
+              }));
+            } catch {
+              // Preserve the binding failure as the Agent-visible error. The
+              // Runtime startup path already fences or stops its own process
+              // when it owns the failed handoff.
+            }
+          }
           this.taskId = null;
           this.executionId = null;
           await this.onRelease?.({ taskId: result.task.task_id, executionId: result.execution.execution_id, result: null });
