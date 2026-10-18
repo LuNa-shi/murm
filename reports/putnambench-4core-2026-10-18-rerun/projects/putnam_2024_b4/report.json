@@ -1,0 +1,395 @@
+{
+  "schema_version": 1,
+  "protocol": {
+    "project_isolation": true,
+    "core_count": 4,
+    "input_policy": "pinned formalization only; no candidate or solution input",
+    "tool_policy": "swarmenv_call only",
+    "cheating_policy": "placeholder or non-SwarmEnv tool event invalidates the project"
+  },
+  "project": {
+    "problem_id": "putnam_2024_b4",
+    "tags": [
+      "probability"
+    ],
+    "source_hash": "a0be7dcfa3c6930da112307f2a374d90e1deed74e2fbfc17fda4dcc158bb5ed2",
+    "fixture_id": "putnam-putnam_2024_b4",
+    "putnambench_commit": "a635813f5edf297d928f9bd5ef8324a26bdde09c",
+    "lean_toolchain": "leanprover/lean4:v4.33.1",
+    "mathlib_version": "0df444a360eaa60ab8c11dca51a86af692955474",
+    "checker_version": "mvp-1",
+    "run_id": "6d0d764e-3b0d-40ea-8f00-ceb0a7eda179",
+    "database_path": "/tmp/swarmenv-putnambench-rerun/putnam_2024_b4/project.sqlite",
+    "input_material_hash": "bf329d06a8bbbb60e78da9ccd5db925e058e6b4262558c3ed388e84cd61117f0"
+  },
+  "run": {
+    "started_at": "2026-10-18T04:07:29.233Z",
+    "ended_at": "2026-10-18T05:07:31.393Z",
+    "elapsed_ms": 3602160,
+    "deadline_ms": 3600000,
+    "solved": false,
+    "solved_by_core": null,
+    "solved_at_ms": null,
+    "material_count": 48,
+    "project_material_count": 1,
+    "candidate_count": 12,
+    "ended_early": false,
+    "deadline_reached": true,
+    "cleanup_elapsed_ms": 13,
+    "resources_at_start": {
+      "logical_cpus": 250,
+      "total_memory_bytes": 483183820800,
+      "available_memory_bytes": 461354723328
+    },
+    "resources_at_end": {
+      "logical_cpus": 250,
+      "total_memory_bytes": 483183820800,
+      "available_memory_bytes": 460622160896
+    },
+    "heartbeat_count": 1440,
+    "heartbeat_error_count": 0,
+    "candidate_check_count": 12
+  },
+  "cores": [
+    {
+      "core": 1,
+      "task_id": "8b042a15-d9ee-4c4a-8fe8-a6c9b6c70506",
+      "execution_id": "benchmark-putnam_2024_b4-core-1",
+      "turns": 6,
+      "turn_durations_ms": [
+        292824,
+        85031,
+        85677,
+        22733,
+        27725,
+        25375
+      ],
+      "turn_timeout_count": 0,
+      "checks": [
+        {
+          "candidate_material_id": "31ca34ff-2636-4486-bd99-62f4ab570d6a",
+          "material_hash": "9474392b2752e398d13110c382dddc46e327933c0e0dd7681887b9289663ba47",
+          "verdict": "FAIL",
+          "check_result_id": "41492628-43ab-4993-9a78-b2195f7dc6c2",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 5615
+        },
+        {
+          "candidate_material_id": "35ce7a59-e6ac-46eb-bcc2-e91a15c67c56",
+          "material_hash": "c87d4fe2b95fcbade0fb348560ed188afe489319b48748ecf7e4fa3d893338af",
+          "verdict": "FAIL",
+          "check_result_id": "3d1d1aa5-1e54-4092-a75d-58c788f30ea7",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 5843
+        },
+        {
+          "candidate_material_id": "4dbefb2b-116e-49fa-afa7-8fee04c4b33d",
+          "material_hash": "e988181879cc9e746a0364b4c44631ff5583337b288ef0b5d9754eb4fd35226a",
+          "verdict": "FAIL",
+          "check_result_id": "1e65b8ff-68cc-4ef5-9b5f-7a93546f9684",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 5459
+        }
+      ],
+      "errors": [],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "OPEN",
+      "execution_state": "FAILED",
+      "input_snapshot_hash": "f9b43fc02211752a97bcf4b64efb9b477f950526ba1000e6f3fc9d2c893d7874",
+      "workspace_ref": "/tmp/swarmenv-putnambench-rerun/putnam_2024_b4/core-1/benchmark-putnam_2024_b4-core-1",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 2,
+      "task_id": "e7eab461-ec54-4a31-a5c1-327193546b21",
+      "execution_id": "benchmark-putnam_2024_b4-core-2",
+      "turns": 6,
+      "turn_durations_ms": [
+        273917,
+        72340,
+        36277,
+        29863,
+        42852,
+        23603
+      ],
+      "turn_timeout_count": 0,
+      "checks": [
+        {
+          "candidate_material_id": "7d9dca15-7e35-4007-9288-52d330b6cf5e",
+          "material_hash": "767468b53283426159bdb33d939aa862aeee692707d4d8ae907775eeb5c15086",
+          "verdict": "FAIL",
+          "check_result_id": "dbe4ce4e-ed4e-49c1-9696-4f17204df95c",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 5990
+        },
+        {
+          "candidate_material_id": "2781106a-bbc2-4da0-bb2d-401d09292991",
+          "material_hash": "c2f8d352022fd7e7d26b1fa2ba176c650e2325e7789be3394e7104ee4360fce5",
+          "verdict": "FAIL",
+          "check_result_id": "a2dbada2-fc05-478c-8aaf-d4ac9fd9d8cc",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 5974
+        },
+        {
+          "candidate_material_id": "c0198c81-3f3e-4ee6-8ddb-1891de3c049d",
+          "material_hash": "c2f8d352022fd7e7d26b1fa2ba176c650e2325e7789be3394e7104ee4360fce5",
+          "verdict": "FAIL",
+          "check_result_id": "e2ae13a4-d073-49ba-b83f-bc99bc5265d0",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 6040
+        }
+      ],
+      "errors": [],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "OPEN",
+      "execution_state": "FAILED",
+      "input_snapshot_hash": "c0354731787474dd0bfdd4f9a57ae3f47cbdb565be2e0f67ece1a71d9aa699cb",
+      "workspace_ref": "/tmp/swarmenv-putnambench-rerun/putnam_2024_b4/core-2/benchmark-putnam_2024_b4-core-2",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 3,
+      "task_id": "1a1d740d-f962-4bdb-97c8-40760c72d72b",
+      "execution_id": "benchmark-putnam_2024_b4-core-3",
+      "turns": 6,
+      "turn_durations_ms": [
+        151414,
+        61282,
+        27741,
+        35528,
+        17397,
+        36665
+      ],
+      "turn_timeout_count": 0,
+      "checks": [
+        {
+          "candidate_material_id": "60a2084c-843f-44ca-930a-34e435cf7e3b",
+          "material_hash": "17687aa0df029e106105272a327e618ae110b51830f8ac00f041fe5967a9c418",
+          "verdict": "FAIL",
+          "check_result_id": "5e64db83-9780-42e3-b030-e759d9affa9b",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 5775
+        },
+        {
+          "candidate_material_id": "7f9c676e-a37d-4d76-a1c5-7b8193a9ae8a",
+          "material_hash": "767468b53283426159bdb33d939aa862aeee692707d4d8ae907775eeb5c15086",
+          "verdict": "FAIL",
+          "check_result_id": "5f62b961-1d48-44be-981f-4220eeef4d1e",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 5776
+        },
+        {
+          "candidate_material_id": "e2fa80cc-c522-4ac0-ab48-68234427b078",
+          "material_hash": "58a364255f388849c55431d8aac8a9ea0d5696484f3a7d4c7a61ec9e653edf29",
+          "verdict": "FAIL",
+          "check_result_id": "b7e50d4c-1818-4dd3-a089-6b68812277cd",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 5609
+        },
+        {
+          "candidate_material_id": "1d444668-8863-4f9d-9d6e-664c52263694",
+          "material_hash": "c2f8d352022fd7e7d26b1fa2ba176c650e2325e7789be3394e7104ee4360fce5",
+          "verdict": "FAIL",
+          "check_result_id": "a9f0370b-53f2-4412-a90b-13c2bcf58eb9",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 5992
+        }
+      ],
+      "errors": [],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "OPEN",
+      "execution_state": "FAILED",
+      "input_snapshot_hash": "93a76437317c6df3615bc5464aafbbd179ecd341042c0ca7584de00a62e30486",
+      "workspace_ref": "/tmp/swarmenv-putnambench-rerun/putnam_2024_b4/core-3/benchmark-putnam_2024_b4-core-3",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 4,
+      "task_id": "d76a56a3-5d7d-4021-b3d4-1583187a6a6b",
+      "execution_id": "benchmark-putnam_2024_b4-core-4",
+      "turns": 6,
+      "turn_durations_ms": [
+        321137,
+        73055,
+        40123,
+        23507,
+        22076,
+        24473
+      ],
+      "turn_timeout_count": 0,
+      "checks": [
+        {
+          "candidate_material_id": "e9eec4bc-23a9-404b-a68b-213407620b1c",
+          "material_hash": "dfc182a7cc1740194dd20262144894badeee9f68148dd5553941f40f69ce5e8b",
+          "verdict": "FAIL",
+          "check_result_id": "9988e446-fb10-41ab-914d-c193b191e32c",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 5487
+        },
+        {
+          "candidate_material_id": "09ff6374-e9b3-4aa6-83f0-ed30c326e91c",
+          "material_hash": "e988181879cc9e746a0364b4c44631ff5583337b288ef0b5d9754eb4fd35226a",
+          "verdict": "FAIL",
+          "check_result_id": "78ad7e02-7ea2-4d0d-931d-5f9aadc4c6f5",
+          "diagnostic_class": "lean_proof_error",
+          "check_elapsed_ms": 5520
+        }
+      ],
+      "errors": [],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "OPEN",
+      "execution_state": "FAILED",
+      "input_snapshot_hash": "784654c9e982985ce1d349feac9f53ba8d7d7b9f8e7438809b79296760f33d9b",
+      "workspace_ref": "/tmp/swarmenv-putnambench-rerun/putnam_2024_b4/core-4/benchmark-putnam_2024_b4-core-4",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    }
+  ],
+  "audit": {
+    "input_source_hash": "a0be7dcfa3c6930da112307f2a374d90e1deed74e2fbfc17fda4dcc158bb5ed2",
+    "prompt_hashes": [
+      {
+        "core": 1,
+        "prompt_hash": "9c5ac1fcffb9a3b5bf5383a5ee833a9aface5cb725721193d4d6d3b3a4a4267d"
+      },
+      {
+        "core": 2,
+        "prompt_hash": "7536e1bff1f68b008884c5d6b7b82c67494e8bed1d01de9ba6063b5be9dc23ca"
+      },
+      {
+        "core": 3,
+        "prompt_hash": "dca4d479fcf87d5afd2c67f2750563192ec46b363157e7257e38908c132b8589"
+      },
+      {
+        "core": 4,
+        "prompt_hash": "7257c3befc1d9bc6b1da43e7adade3552b1bf875d768e30b69d302c38f4a97bf"
+      }
+    ],
+    "all_tool_events": [],
+    "invalid": false,
+    "invalid_reasons": [],
+    "candidate_materials": [
+      {
+        "candidate_material_id": "31ca34ff-2636-4486-bd99-62f4ab570d6a",
+        "material_hash": "9474392b2752e398d13110c382dddc46e327933c0e0dd7681887b9289663ba47",
+        "verdict": "FAIL",
+        "check_result_id": "41492628-43ab-4993-9a78-b2195f7dc6c2",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 5615
+      },
+      {
+        "candidate_material_id": "35ce7a59-e6ac-46eb-bcc2-e91a15c67c56",
+        "material_hash": "c87d4fe2b95fcbade0fb348560ed188afe489319b48748ecf7e4fa3d893338af",
+        "verdict": "FAIL",
+        "check_result_id": "3d1d1aa5-1e54-4092-a75d-58c788f30ea7",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 5843
+      },
+      {
+        "candidate_material_id": "4dbefb2b-116e-49fa-afa7-8fee04c4b33d",
+        "material_hash": "e988181879cc9e746a0364b4c44631ff5583337b288ef0b5d9754eb4fd35226a",
+        "verdict": "FAIL",
+        "check_result_id": "1e65b8ff-68cc-4ef5-9b5f-7a93546f9684",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 5459
+      },
+      {
+        "candidate_material_id": "7d9dca15-7e35-4007-9288-52d330b6cf5e",
+        "material_hash": "767468b53283426159bdb33d939aa862aeee692707d4d8ae907775eeb5c15086",
+        "verdict": "FAIL",
+        "check_result_id": "dbe4ce4e-ed4e-49c1-9696-4f17204df95c",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 5990
+      },
+      {
+        "candidate_material_id": "2781106a-bbc2-4da0-bb2d-401d09292991",
+        "material_hash": "c2f8d352022fd7e7d26b1fa2ba176c650e2325e7789be3394e7104ee4360fce5",
+        "verdict": "FAIL",
+        "check_result_id": "a2dbada2-fc05-478c-8aaf-d4ac9fd9d8cc",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 5974
+      },
+      {
+        "candidate_material_id": "c0198c81-3f3e-4ee6-8ddb-1891de3c049d",
+        "material_hash": "c2f8d352022fd7e7d26b1fa2ba176c650e2325e7789be3394e7104ee4360fce5",
+        "verdict": "FAIL",
+        "check_result_id": "e2ae13a4-d073-49ba-b83f-bc99bc5265d0",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 6040
+      },
+      {
+        "candidate_material_id": "60a2084c-843f-44ca-930a-34e435cf7e3b",
+        "material_hash": "17687aa0df029e106105272a327e618ae110b51830f8ac00f041fe5967a9c418",
+        "verdict": "FAIL",
+        "check_result_id": "5e64db83-9780-42e3-b030-e759d9affa9b",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 5775
+      },
+      {
+        "candidate_material_id": "7f9c676e-a37d-4d76-a1c5-7b8193a9ae8a",
+        "material_hash": "767468b53283426159bdb33d939aa862aeee692707d4d8ae907775eeb5c15086",
+        "verdict": "FAIL",
+        "check_result_id": "5f62b961-1d48-44be-981f-4220eeef4d1e",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 5776
+      },
+      {
+        "candidate_material_id": "e2fa80cc-c522-4ac0-ab48-68234427b078",
+        "material_hash": "58a364255f388849c55431d8aac8a9ea0d5696484f3a7d4c7a61ec9e653edf29",
+        "verdict": "FAIL",
+        "check_result_id": "b7e50d4c-1818-4dd3-a089-6b68812277cd",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 5609
+      },
+      {
+        "candidate_material_id": "1d444668-8863-4f9d-9d6e-664c52263694",
+        "material_hash": "c2f8d352022fd7e7d26b1fa2ba176c650e2325e7789be3394e7104ee4360fce5",
+        "verdict": "FAIL",
+        "check_result_id": "a9f0370b-53f2-4412-a90b-13c2bcf58eb9",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 5992
+      },
+      {
+        "candidate_material_id": "e9eec4bc-23a9-404b-a68b-213407620b1c",
+        "material_hash": "dfc182a7cc1740194dd20262144894badeee9f68148dd5553941f40f69ce5e8b",
+        "verdict": "FAIL",
+        "check_result_id": "9988e446-fb10-41ab-914d-c193b191e32c",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 5487
+      },
+      {
+        "candidate_material_id": "09ff6374-e9b3-4aa6-83f0-ed30c326e91c",
+        "material_hash": "e988181879cc9e746a0364b4c44631ff5583337b288ef0b5d9754eb4fd35226a",
+        "verdict": "FAIL",
+        "check_result_id": "78ad7e02-7ea2-4d0d-931d-5f9aadc4c6f5",
+        "diagnostic_class": "lean_proof_error",
+        "check_elapsed_ms": 5520
+      }
+    ],
+    "raw_transcript_exported": false,
+    "proof_contents_exported": false
+  }
+}

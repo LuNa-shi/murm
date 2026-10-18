@@ -22,10 +22,11 @@ function resultFromRow(row) {
 }
 
 export class JudgeService {
-  constructor(database = ':memory:', { checker } = {}) {
+  constructor(database = ':memory:', { checker, logger = null } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     ensureJudgeSchema(this.db);
     this.checker = checker ?? new LeanChecker();
+    this.logger = logger;
   }
 
   close() { this.db.close(); }
@@ -53,6 +54,7 @@ export class JudgeService {
   }
 
   async judgeCandidate(input, { operationId = randomUUID(), actorRef = 'judge:lean' } = {}) {
+    this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: operationId, target_task_id: input?.target_task_id, candidate_material_id: input?.candidate_material_id });
     const normalized = this.#validateRequest(input);
     const requestHash = hash(normalized);
     const request = this.#beginRequest(normalized, requestHash);
@@ -75,7 +77,9 @@ export class JudgeService {
       spec_version: normalized.target_spec_version,
       state_version: normalized.state_version ?? null,
     };
-    return this.dispatch('submit_check_result', { ...normalized, status: 'RECEIVED', verdict: checked.verdict, evidence: checked.evidence, check_result_id: requested.check_result_id, request_hash: requestHash }, envelope);
+    const result = this.dispatch('submit_check_result', { ...normalized, status: 'RECEIVED', verdict: checked.verdict, evidence: checked.evidence, check_result_id: requested.check_result_id, request_hash: requestHash }, envelope);
+    this.logger?.append({ event: 'judge.complete', service: 'judge', operation_id: operationId, ok: true, verdict: result.verdict, check_result_id: result.check_result_id, candidate_material_id: result.candidate_material_id });
+    return result;
   }
 
   #validateRequest(input) {

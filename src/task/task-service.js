@@ -12,6 +12,7 @@ import {
 
 const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'expire_execution', 'fence_execution', 'heartbeat', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
 const CLAIM_OPERATION = 'claim';
+const CLAIM_NEXT_OPERATION = 'claim_next';
 const TASK_MUTATING_OPERATIONS = new Set(['accept_task', 'apply_check_result', 'create_child_task', 'propose_task', 'request_rework', 'submit_candidate']);
 
 function json(value) {
@@ -37,6 +38,7 @@ function rowToTask(row) {
     acceptance_conditions: parse(row.acceptance_conditions_json),
     input_material_refs: parse(row.input_material_refs_json),
     completion_contract: parse(row.completion_contract_json),
+    workspace: parse(row.workspace_json),
     retry_policy: parse(row.retry_policy_json),
   };
 }
@@ -64,13 +66,17 @@ function requireString(value, field) {
 }
 
 export class TaskService {
-  constructor(database = ':memory:', { contextService = null } = {}) {
+  constructor(database = ':memory:', { contextService = null, logger = null } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(SCHEMA_SQL);
+    const taskColumns = new Set(this.db.prepare('PRAGMA table_info(tasks)').all().map((column) => column.name));
+    if (!taskColumns.has('initial_prompt')) this.db.exec("ALTER TABLE tasks ADD COLUMN initial_prompt TEXT NOT NULL DEFAULT ''");
+    if (!taskColumns.has('workspace_json')) this.db.exec("ALTER TABLE tasks ADD COLUMN workspace_json TEXT NOT NULL DEFAULT '{}'");
     const executionColumns = new Set(this.db.prepare('PRAGMA table_info(executions)').all().map((column) => column.name));
     if (!executionColumns.has('candidate_material_id')) this.db.exec('ALTER TABLE executions ADD COLUMN candidate_material_id TEXT');
     ensureJudgeSchema(this.db);
     this.contextService = contextService;
+    this.logger = logger;
   }
 
   close() {
@@ -78,21 +84,31 @@ export class TaskService {
   }
 
   dispatch(operation, payload = {}, envelope) {
-    validateEnvelope(envelope, { executionWrite: EXECUTION_WRITE_OPERATIONS.has(operation) });
-    if (['get_task', 'get_execution', 'list_children'].includes(operation)) {
-      return this.#read(operation, payload, envelope);
-    }
-    if (!TASK_MUTATING_OPERATIONS.has(operation) && !EXECUTION_WRITE_OPERATIONS.has(operation) && operation !== CLAIM_OPERATION) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service operation: ${operation}`);
-    }
-    return this.#transaction(() => {
-      const fingerprint = operationPayload(operation, payload, envelope);
-      const replay = this.#replay(envelope.operation_id, fingerprint);
-      if (replay) return replay;
-      const result = this.#mutate(operation, payload, envelope);
-      this.#saveOperation(envelope.operation_id, operation, fingerprint, result);
+    this.logger?.append({ event: 'dispatch.start', service: 'task', operation, envelope });
+    try {
+      validateEnvelope(envelope, { executionWrite: EXECUTION_WRITE_OPERATIONS.has(operation) });
+      let result;
+      if (['get_task', 'get_execution', 'list_children'].includes(operation)) {
+        result = this.#read(operation, payload, envelope);
+      } else {
+        if (!TASK_MUTATING_OPERATIONS.has(operation) && !EXECUTION_WRITE_OPERATIONS.has(operation) && ![CLAIM_OPERATION, CLAIM_NEXT_OPERATION].includes(operation)) {
+          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service operation: ${operation}`);
+        }
+        result = this.#transaction(() => {
+          const fingerprint = operationPayload(operation, payload, envelope);
+          const replay = this.#replay(envelope.operation_id, fingerprint);
+          if (replay) return replay;
+          const value = this.#mutate(operation, payload, envelope);
+          this.#saveOperation(envelope.operation_id, operation, fingerprint, value);
+          return value;
+        });
+      }
+      this.logger?.append({ event: 'dispatch.complete', service: 'task', operation, ok: true, result });
       return result;
-    });
+    } catch (error) {
+      this.logger?.append({ event: 'dispatch.complete', service: 'task', operation, ok: false, error: { name: error.name, code: error.code, message: error.message } });
+      throw error;
+    }
   }
 
   proposeTask(input, envelope = makeEnvelope({ actorRef: input?.owner_ref ?? 'unknown' })) {
@@ -141,6 +157,7 @@ export class TaskService {
       case 'propose_task': return this.#proposeTask(payload, envelope);
       case 'create_child_task': return this.#createChildTask(payload, envelope);
       case 'claim': return this.#claim(payload, envelope);
+      case 'claim_next': return this.#claimNext(payload, envelope);
       case 'heartbeat': return this.#heartbeat(payload, envelope);
       case 'start_execution': return this.#startExecution(payload, envelope);
       case 'resume_execution': return this.#resumeExecution(payload, envelope);
@@ -176,6 +193,8 @@ export class TaskService {
       task_type_version: input.task_type_version,
       goal: input.goal,
       expected_output: input.expected_output,
+      initial_prompt: input.initial_prompt,
+      workspace: input.workspace,
       acceptance_conditions: input.acceptance_conditions,
       input_material_refs: input.input_material_refs,
       completion_contract: input.completion_contract,
@@ -188,15 +207,15 @@ export class TaskService {
       root_deadline: input.root_deadline,
     };
     this.db.prepare(`INSERT INTO tasks (
-      task_id, root_id, parent_id, owner_ref, task_type, task_type_version, goal, expected_output,
+      task_id, root_id, parent_id, owner_ref, task_type, task_type_version, goal, expected_output, initial_prompt, workspace_json,
       acceptance_conditions_json, input_material_refs_json, spec_version, spec_hash,
       completion_contract_json, parallel_quota, state_version, state, block_reason,
       max_depth, max_children, max_attempts, retry_policy_json, root_deadline, created_by, created_at, updated_at
-    ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1, 0, 'OPEN', NULL, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(taskId, taskId, input.owner_ref, input.task_type, input.task_type_version, input.goal, input.expected_output,
-        json(input.acceptance_conditions), json(input.input_material_refs), hash(spec), json(input.completion_contract),
-        input.max_depth, input.max_children, input.max_attempts, json(input.retry_policy), input.root_deadline,
-        envelope.actor_ref, createdAt, createdAt);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(taskId, taskId, null, input.owner_ref, input.task_type, input.task_type_version, input.goal, input.expected_output,
+        input.initial_prompt, json(input.workspace), json(input.acceptance_conditions), json(input.input_material_refs), 1, hash(spec),
+        json(input.completion_contract), 1, 0, 'OPEN', null, input.max_depth, input.max_children, input.max_attempts,
+        json(input.retry_policy), input.root_deadline, envelope.actor_ref, createdAt, createdAt);
     return { task: this.getTask(taskId) };
   }
 
@@ -242,6 +261,8 @@ export class TaskService {
       task_type_version: childInput.task_type_version,
       goal: childInput.goal,
       expected_output: childInput.expected_output,
+      initial_prompt: childInput.initial_prompt,
+      workspace: childInput.workspace,
       acceptance_conditions: childInput.acceptance_conditions,
       input_material_refs: childInput.input_material_refs,
       completion_contract: childInput.completion_contract,
@@ -254,15 +275,15 @@ export class TaskService {
       root_deadline: childInput.root_deadline,
     };
     this.db.prepare(`INSERT INTO tasks (
-      task_id, root_id, parent_id, owner_ref, task_type, task_type_version, goal, expected_output,
+      task_id, root_id, parent_id, owner_ref, task_type, task_type_version, goal, expected_output, initial_prompt, workspace_json,
       acceptance_conditions_json, input_material_refs_json, spec_version, spec_hash,
       completion_contract_json, parallel_quota, state_version, state, block_reason,
       max_depth, max_children, max_attempts, retry_policy_json, root_deadline, created_by, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1, 0, 'OPEN', NULL, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(taskId, parent.root_id, parentId, childInput.owner_ref, childInput.task_type, childInput.task_type_version,
-        childInput.goal, childInput.expected_output, json(childInput.acceptance_conditions), json(childInput.input_material_refs),
-        hash(spec), json(childInput.completion_contract), childInput.max_depth, childInput.max_children, childInput.max_attempts,
-        json(childInput.retry_policy), childInput.root_deadline, envelope.actor_ref, createdAt, createdAt);
+        childInput.goal, childInput.expected_output, childInput.initial_prompt, json(childInput.workspace), json(childInput.acceptance_conditions), json(childInput.input_material_refs),
+        1, hash(spec), json(childInput.completion_contract), 1, 0, 'OPEN', null, childInput.max_depth, childInput.max_children,
+        childInput.max_attempts, json(childInput.retry_policy), childInput.root_deadline, envelope.actor_ref, createdAt, createdAt);
     this.db.prepare('INSERT INTO task_creation_keys (request_key, parent_task_id, fingerprint, task_id, created_at) VALUES (?, ?, ?, ?, ?)')
       .run(key, parentId, fingerprint, taskId, createdAt);
     this.db.prepare('UPDATE tasks SET state_version = state_version + 1, updated_at = ? WHERE task_id = ?')
@@ -275,6 +296,36 @@ export class TaskService {
     if (envelope.execution_id !== null) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim cannot target an execution');
     const task = this.getTask(envelope.task_id);
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${envelope.task_id}`);
+    return this.#claimTask(task, payload, envelope);
+  }
+
+  #claimNext(payload, envelope) {
+    if (envelope.task_id !== null || envelope.execution_id !== null) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim_next cannot target a task or execution');
+    }
+    const ownerRef = requireString(payload.owner_ref ?? envelope.actor_ref, 'owner_ref');
+    const rootId = payload.root_id ?? null;
+    const includeRoot = payload.include_root === true;
+    const row = this.db.prepare(`SELECT t.* FROM tasks t
+      WHERE t.state = 'OPEN'
+        AND (? IS NULL OR t.root_id = ?)
+        AND (? = 1 OR ? IS NULL OR t.task_id <> t.root_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM executions e
+          WHERE e.task_id = t.task_id AND e.state IN ('CREATED', 'RUNNING', 'WAITING')
+        )
+      ORDER BY t.created_at, t.task_id LIMIT 1`).get(rootId, rootId, includeRoot ? 1 : 0, rootId);
+    if (!row) return { task: null, execution: null };
+    const task = rowToTask(row);
+    return this.#claimTask(task, { ...payload, owner_ref: ownerRef }, {
+      ...envelope,
+      task_id: task.task_id,
+      spec_version: task.spec_version,
+      state_version: task.state_version,
+    });
+  }
+
+  #claimTask(task, payload, envelope) {
     if (TERMINAL_TASK_STATES.includes(task.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be claimed');
     const claimKey = requireString(payload.claim_key ?? payload.request_key, 'claim_key');
     const keyFingerprint = operationPayload('claim', payload, envelope);
@@ -289,10 +340,16 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Task claim version is stale', { expected_state_version: task.state_version, expected_spec_version: task.spec_version });
     }
     const ownerRef = payload.owner_ref ?? envelope.actor_ref;
-    const initialPrompt = requireString(payload.initial_prompt, 'initial_prompt');
-    const initialContextRef = requireString(payload.initial_context_ref, 'initial_context_ref');
-    const inputSnapshotHash = requireString(payload.input_snapshot_hash, 'input_snapshot_hash');
-    if (!Array.isArray(payload.input_material_refs)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'input_material_refs must be an array');
+    const initialPrompt = requireString(payload.initial_prompt ?? task.initial_prompt, 'initial_prompt');
+    const initialContextRef = payload.initial_context_ref ?? `task://workspace/${task.task_id}`;
+    const inputMaterialRefs = payload.input_material_refs ?? task.input_material_refs;
+    if (!Array.isArray(inputMaterialRefs)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'input_material_refs must be an array');
+    const inputSnapshotHash = payload.input_snapshot_hash ?? hash({
+      task_id: task.task_id,
+      spec_hash: task.spec_hash,
+      workspace: task.workspace,
+      input_material_refs: inputMaterialRefs,
+    });
     const active = this.db.prepare(`SELECT * FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'WAITING')`).get(task.task_id);
     if (active) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Task already has an active Execution', { execution_id: active.execution_id });
     if (task.state === 'BLOCKED') {
@@ -317,7 +374,7 @@ export class TaskService {
       spec_hash: task.spec_hash,
       initial_prompt: initialPrompt,
       initial_context_ref: initialContextRef,
-      input_material_refs: payload.input_material_refs,
+      input_material_refs: inputMaterialRefs,
       input_snapshot_hash: inputSnapshotHash,
       candidate_material_id: null,
       workspace_ref: null,

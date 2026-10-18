@@ -26,12 +26,13 @@ export function resolveAgentCoreRoute({ provider, account, group } = {}) {
 }
 
 export class AgentCoreSession extends EventEmitter {
-  constructor(child, { executionId, launchArgs, manifest }) {
+  constructor(child, { executionId, launchArgs, manifest, logger = null }) {
     super();
     this.child = child;
     this.executionId = executionId;
     this.launchArgs = launchArgs;
     this.manifest = manifest;
+    this.logger = logger;
     this.stdout = '';
     this.stderr = '';
     this.closed = false;
@@ -44,12 +45,15 @@ export class AgentCoreSession extends EventEmitter {
     child.stdout?.on('data', (chunk) => {
       const text = chunk.toString();
       this.stdout += text;
+      this.logger?.append({ type: 'stdout', text });
       this.emit('stdout', text);
       this.#consumeRpc(text);
     });
     child.stderr?.on('data', (chunk) => {
-      this.stderr += chunk.toString();
-      this.emit('stderr', chunk.toString());
+      const text = chunk.toString();
+      this.stderr += text;
+      this.logger?.append({ type: 'stderr', text });
+      this.emit('stderr', text);
     });
     child.on('error', (error) => {
       this.processError = new SwarmEnvError(ERROR_CODES.PROCESS_EXITED, `Pi process error: ${error.message}`, undefined, { cause: error });
@@ -72,6 +76,7 @@ export class AgentCoreSession extends EventEmitter {
       throw new SwarmEnvError(ERROR_CODES.RPC_ERROR, 'Pi RPC session is not writable');
     }
     try {
+      this.logger?.append({ type: 'rpc_request', message });
       this.child.stdin.write(`${JSON.stringify(message)}\n`);
     } catch (error) {
       throw new SwarmEnvError(ERROR_CODES.RPC_ERROR, `could not write Pi RPC request: ${error.message}`, undefined, { cause: error });
@@ -179,6 +184,7 @@ export class AgentCoreSession extends EventEmitter {
         continue;
       }
       this.rpcRecords.push(record);
+      this.logger?.append({ type: 'rpc_record', record });
       if (record.type === 'response' && record.id && this.pendingRpc.has(record.id)) {
         const pending = this.pendingRpc.get(record.id);
         this.pendingRpc.delete(record.id);
@@ -239,7 +245,7 @@ export class AgentCoreAdapter {
     return args;
   }
 
-  async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd } = {}) {
+  async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd, logger = null } = {}) {
     const launchArgs = this.buildLaunchArgs({ executionId, sessionDir });
     await mkdir(sessionDir, { recursive: true });
     const manifest = await createVersionManifest({ ...this.manifestVersions, launchArgs });
@@ -265,6 +271,6 @@ export class AgentCoreAdapter {
       child.once('spawn', onSpawn);
       child.once('error', onError);
     });
-    return new AgentCoreSession(child, { executionId, launchArgs, manifest });
+    return new AgentCoreSession(child, { executionId, launchArgs, manifest, logger });
   }
 }

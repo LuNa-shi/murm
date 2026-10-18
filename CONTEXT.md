@@ -30,6 +30,14 @@ _Avoid_: schedulable dependency
 **Execution**:
 One replaceable period of responsibility for carrying out a Task.
 
+**Core slot**:
+Reusable worker capacity that claims one queued Task at a time. A slot is not
+a Task and is not permanently assigned to one child.
+
+**Task queue**:
+Claimable `OPEN` Tasks in a root Task tree. A queue claim atomically creates an
+Execution for the selected Task.
+
 **Agent Core**:
 The active model and tool loop that carries out an Execution. In the MVP, a local NuRouter/Pi Agent Core Adapter starts Pi for the Execution; the adapter is an execution mechanism, not a fifth core domain object.
 
@@ -64,13 +72,16 @@ A versioned piece of shared work, evidence, input, observation, or artifact that
 An independent, structured judgment about a candidate Material under a specified Task, input, checker, and environment.
 
 **Context Service**:
-The shared service that stores, versions, reads, and publishes immutable Material for Agents. It does not claim Tasks, schedule Executions, or manage private Workspaces.
+The shared service that stores, versions, reads, and publishes immutable Material for Agents. It does not own a problem's initial Workspace, claim Tasks, schedule Executions, or manage private Workspaces.
+
+**Workspace**:
+The Task-owned initial input bundle, including the initial prompt and problem input, plus the private files materialized for one Execution. Runtime owns the private materialization and its lifecycle. Later shared Material does not silently change the Task Workspace; parent rework appends steer instructions.
 
 **Initial Context**:
-The frozen input bundle for one Execution. It contains the Task specification, initial prompt, selected Material references and hashes, input snapshot hash, and the service/environment information needed by that run. Later shared Material does not silently change it; parent rework appends steer instructions.
+A compatibility snapshot for an Execution's frozen Task specification and selected Material references. It is derived from the Task Workspace when an integration needs a snapshot; it is not the owner of the problem input.
 
 **Workspace Manager**:
-The Runtime-owned component that creates, saves, restores, releases, and fences an Execution's private Workspace and checkpoint files. It is not exposed through the Agent-facing Services SDK.
+The Runtime-owned component that materializes, saves, restores, releases, and fences an Execution's private Workspace and checkpoint files. It is not exposed through the Agent-facing Services SDK and does not own the Task's initial input.
 
 **Services SDK**:
 The Agent-facing client boundary for Task/Execution operations and Context Service Material operations. It carries operation, version, and fencing metadata and does not expose Workspace Manager operations.

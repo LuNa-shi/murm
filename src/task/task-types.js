@@ -159,6 +159,8 @@ export function validateTaskProposal(input, { parentId = null } = {}) {
     task_type_version: taskTypeVersion,
     goal: input.goal,
     expected_output: input.expected_output,
+    initial_prompt: input.initial_prompt ?? input.goal,
+    workspace: input.workspace ?? {},
     acceptance_conditions: input.acceptance_conditions,
     owner_ref: input.owner_ref,
     input_material_refs: input.input_material_refs ?? [],

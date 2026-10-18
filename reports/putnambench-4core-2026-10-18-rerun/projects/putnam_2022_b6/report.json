@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "protocol": {
+    "project_isolation": true,
+    "core_count": 4,
+    "input_policy": "pinned formalization only; no candidate or solution input",
+    "tool_policy": "swarmenv_call only",
+    "cheating_policy": "placeholder or non-SwarmEnv tool event invalidates the project"
+  },
+  "project": {
+    "problem_id": "putnam_2022_b6",
+    "tags": [
+      "analysis"
+    ],
+    "source_hash": "0735f368ea6c423998d8335e1716a611a95c0527e96ff219dc21501fa9f09332",
+    "fixture_id": "putnam-putnam_2022_b6",
+    "putnambench_commit": "a635813f5edf297d928f9bd5ef8324a26bdde09c",
+    "lean_toolchain": "leanprover/lean4:v4.33.1",
+    "mathlib_version": "0df444a360eaa60ab8c11dca51a86af692955474",
+    "checker_version": "mvp-1",
+    "run_id": "7d2c2083-ac6a-449d-bd96-d86ac9498268",
+    "database_path": "/tmp/swarmenv-putnambench-rerun/putnam_2022_b6/project.sqlite",
+    "input_material_hash": "eed68385451f713363c8e78f73c9d163c0fa2ef7fce006792d7dbc1cd7b45efe"
+  },
+  "run": {
+    "started_at": "2026-10-18T06:07:33.890Z",
+    "ended_at": "2026-10-18T07:07:34.092Z",
+    "elapsed_ms": 3600202,
+    "deadline_ms": 3600000,
+    "solved": true,
+    "solved_by_core": 2,
+    "solved_at_ms": 68017,
+    "material_count": 9,
+    "project_material_count": 1,
+    "candidate_count": 4,
+    "ended_early": false,
+    "deadline_reached": true,
+    "cleanup_elapsed_ms": 5,
+    "resources_at_start": {
+      "logical_cpus": 250,
+      "total_memory_bytes": 483183820800,
+      "available_memory_bytes": 461020180480
+    },
+    "resources_at_end": {
+      "logical_cpus": 250,
+      "total_memory_bytes": 483183820800,
+      "available_memory_bytes": 460401088512
+    },
+    "heartbeat_count": 20,
+    "heartbeat_error_count": 0,
+    "candidate_check_count": 4
+  },
+  "cores": [
+    {
+      "core": 1,
+      "task_id": "2111c3be-d107-4acc-888b-af649321e9de",
+      "execution_id": "benchmark-putnam_2022_b6-core-1",
+      "turns": 1,
+      "turn_durations_ms": [
+        56987
+      ],
+      "turn_timeout_count": 0,
+      "checks": [
+        {
+          "candidate_material_id": "9380a8ef-b062-406c-95f0-47d556f28ec3",
+          "material_hash": "6ada7870e523557ee9636f1b268531c71ef10f7f46df64c2f36e38e00ade5cfa",
+          "verdict": "PASS",
+          "check_result_id": "7779263f-9842-41bc-ac8a-8e4da8fb1a23",
+          "diagnostic_class": "lean_checker_error",
+          "check_elapsed_ms": 5531
+        }
+      ],
+      "errors": [],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "SATISFIED",
+      "execution_state": "SUCCEEDED",
+      "input_snapshot_hash": "4c93512434aa5366ed2b3d85e4f66c75b64b9b8fa8fca4cfb7dae9074ee5a7b3",
+      "workspace_ref": "/tmp/swarmenv-putnambench-rerun/putnam_2022_b6/core-1/benchmark-putnam_2022_b6-core-1",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 2,
+      "task_id": "fb47927c-2d36-457d-bfe7-babf24d34178",
+      "execution_id": "benchmark-putnam_2022_b6-core-2",
+      "turns": 1,
+      "turn_durations_ms": [
+        70677
+      ],
+      "turn_timeout_count": 0,
+      "checks": [
+        {
+          "candidate_material_id": "8ebe64b8-7bdf-4b5a-ada9-dbf5432abde3",
+          "material_hash": "05f7fb6c5f5f02a472acb38d521a698dfe228d97234f8ef98c16469e794d9c4d",
+          "verdict": "PASS",
+          "check_result_id": "024eb99a-391a-423f-8988-b25a8ec9629d",
+          "diagnostic_class": "lean_checker_error",
+          "check_elapsed_ms": 5497
+        }
+      ],
+      "errors": [],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "SATISFIED",
+      "execution_state": "SUCCEEDED",
+      "input_snapshot_hash": "0e625bb62a0adc8c05db2406d42ba76c091263f1f2f478c51185ab2452e35577",
+      "workspace_ref": "/tmp/swarmenv-putnambench-rerun/putnam_2022_b6/core-2/benchmark-putnam_2022_b6-core-2",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 3,
+      "task_id": "e2f0a26a-88f3-4a01-9aa8-8e694ad4a224",
+      "execution_id": "benchmark-putnam_2022_b6-core-3",
+      "turns": 1,
+      "turn_durations_ms": [
+        59872
+      ],
+      "turn_timeout_count": 0,
+      "checks": [
+        {
+          "candidate_material_id": "3d73768d-de86-4dd2-8949-8f7c17139019",
+          "material_hash": "784718c8ce533c564697902a407d17cc5a59265dde4d4121f00dfe5b1f1f5941",
+          "verdict": "PASS",
+          "check_result_id": "2f32d021-63d2-49c2-8ae6-c6dbde93b47f",
+          "diagnostic_class": "lean_checker_error",
+          "check_elapsed_ms": 5505
+        }
+      ],
+      "errors": [],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "SATISFIED",
+      "execution_state": "SUCCEEDED",
+      "input_snapshot_hash": "4c0150638ed3a336a9cee3994d9e3e4cc8ea4760477b0ec99019a8efabc30f9a",
+      "workspace_ref": "/tmp/swarmenv-putnambench-rerun/putnam_2022_b6/core-3/benchmark-putnam_2022_b6-core-3",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 4,
+      "task_id": "3761b690-ff75-4cd0-939f-45f53168d3f1",
+      "execution_id": "benchmark-putnam_2022_b6-core-4",
+      "turns": 1,
+      "turn_durations_ms": [
+        74352
+      ],
+      "turn_timeout_count": 0,
+      "checks": [
+        {
+          "candidate_material_id": "47e9b048-9e6b-4ff7-9323-4258d9d4232a",
+          "material_hash": "f3a5a44425b3cf0c32899c986731c8591233d60a774d380ca3b7cf3f70408819",
+          "verdict": "PASS",
+          "check_result_id": "6878d3df-698d-4478-b0ad-78c46304fbf9",
+          "diagnostic_class": "lean_checker_error",
+          "check_elapsed_ms": 5447
+        }
+      ],
+      "errors": [],
+      "cheating_flags": [],
+      "tool_events": [],
+      "task_state": "SATISFIED",
+      "execution_state": "SUCCEEDED",
+      "input_snapshot_hash": "961afc2934d90db9fa85f8b1d383b0fd4d9677ea2d1543a12f32ccd18b21f7a6",
+      "workspace_ref": "/tmp/swarmenv-putnambench-rerun/putnam_2022_b6/core-4/benchmark-putnam_2022_b6-core-4",
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.3.0",
+        "nurouter_version": "0.2.12",
+        "node_version": "24.21.0"
+      }
+    }
+  ],
+  "audit": {
+    "input_source_hash": "0735f368ea6c423998d8335e1716a611a95c0527e96ff219dc21501fa9f09332",
+    "prompt_hashes": [
+      {
+        "core": 1,
+        "prompt_hash": "5a82ae2880b916c97afa050866bee55a07089af17b3d731318e7c67e24a121ad"
+      },
+      {
+        "core": 2,
+        "prompt_hash": "32d6647a1c8106f61247506d9f0ed6d47985a1d1a024c5db5c7f03e412c0af7d"
+      },
+      {
+        "core": 3,
+        "prompt_hash": "6c853e92117fd51486df3e64b63b0ed5caba78de7e0aa74d5a4b67e5d1169d10"
+      },
+      {
+        "core": 4,
+        "prompt_hash": "6780c0790fc81558479ebc170c07f032ef18a2fa3a463e2e2dfe6a87912b8063"
+      }
+    ],
+    "all_tool_events": [],
+    "invalid": false,
+    "invalid_reasons": [],
+    "candidate_materials": [
+      {
+        "candidate_material_id": "9380a8ef-b062-406c-95f0-47d556f28ec3",
+        "material_hash": "6ada7870e523557ee9636f1b268531c71ef10f7f46df64c2f36e38e00ade5cfa",
+        "verdict": "PASS",
+        "check_result_id": "7779263f-9842-41bc-ac8a-8e4da8fb1a23",
+        "diagnostic_class": "lean_checker_error",
+        "check_elapsed_ms": 5531
+      },
+      {
+        "candidate_material_id": "8ebe64b8-7bdf-4b5a-ada9-dbf5432abde3",
+        "material_hash": "05f7fb6c5f5f02a472acb38d521a698dfe228d97234f8ef98c16469e794d9c4d",
+        "verdict": "PASS",
+        "check_result_id": "024eb99a-391a-423f-8988-b25a8ec9629d",
+        "diagnostic_class": "lean_checker_error",
+        "check_elapsed_ms": 5497
+      },
+      {
+        "candidate_material_id": "3d73768d-de86-4dd2-8949-8f7c17139019",
+        "material_hash": "784718c8ce533c564697902a407d17cc5a59265dde4d4121f00dfe5b1f1f5941",
+        "verdict": "PASS",
+        "check_result_id": "2f32d021-63d2-49c2-8ae6-c6dbde93b47f",
+        "diagnostic_class": "lean_checker_error",
+        "check_elapsed_ms": 5505
+      },
+      {
+        "candidate_material_id": "47e9b048-9e6b-4ff7-9323-4258d9d4232a",
+        "material_hash": "f3a5a44425b3cf0c32899c986731c8591233d60a774d380ca3b7cf3f70408819",
+        "verdict": "PASS",
+        "check_result_id": "6878d3df-698d-4478-b0ad-78c46304fbf9",
+        "diagnostic_class": "lean_checker_error",
+        "check_elapsed_ms": 5447
+      }
+    ],
+    "raw_transcript_exported": false,
+    "proof_contents_exported": false
+  }
+}

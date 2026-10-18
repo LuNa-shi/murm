@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   task_type_version TEXT NOT NULL,
   goal TEXT NOT NULL,
   expected_output TEXT NOT NULL,
+  initial_prompt TEXT NOT NULL DEFAULT '',
+  workspace_json TEXT NOT NULL DEFAULT '{}',
   acceptance_conditions_json TEXT NOT NULL,
   input_material_refs_json TEXT NOT NULL,
   spec_version INTEGER NOT NULL,

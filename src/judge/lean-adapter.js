@@ -1,8 +1,9 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
 import { validateFixtureManifest } from './fixture.js';
@@ -44,13 +45,14 @@ export function runProcess(command, args, { cwd, env = process.env, timeoutMs = 
 }
 
 export class LeanChecker {
-  constructor({ command = 'lake', timeoutMs = 120_000, maxOutputBytes = 1_000_000, workRoot = tmpdir(), runner = runProcess, rejectSorry = true } = {}) {
+  constructor({ command = 'lake', timeoutMs = 120_000, maxOutputBytes = 1_000_000, workRoot = tmpdir(), runner = runProcess, rejectSorry = true, logger = null } = {}) {
     this.command = command;
     this.timeoutMs = timeoutMs;
     this.maxOutputBytes = maxOutputBytes;
     this.workRoot = workRoot;
     this.runner = runner;
     this.rejectSorry = rejectSorry;
+    this.logger = logger;
   }
 
   async check({ candidate, targetTask, initialContext, fixtureManifest }) {
@@ -60,21 +62,28 @@ export class LeanChecker {
     if (candidate.content_hash && candidate.content_hash !== candidateHash) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate content_hash does not match content');
     const inputSnapshotHash = initialContext?.input_snapshot_hash ?? initialContext?.manifest?.input_snapshot_hash;
     if (!inputSnapshotHash) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Initial Context input_snapshot_hash is required');
-    const directory = await mkdtemp(join(this.workRoot, 'swarmenv-lean-'));
+    await mkdir(this.workRoot, { recursive: true });
+    const directory = this.logger
+      ? join(this.workRoot, `candidate-${candidateHash}-${randomUUID()}`)
+      : await mkdtemp(join(this.workRoot, 'swarmenv-lean-'));
+    await mkdir(directory, { recursive: true });
     const candidatePath = join(directory, 'Candidate.lean');
     await writeFile(candidatePath, candidate.content, 'utf8');
+    this.logger?.append({ event: 'checker.start', candidate_hash: candidateHash, target_task_id: targetTask?.task_id ?? null, input_snapshot_hash: inputSnapshotHash, candidate_path: candidatePath });
     try {
       if (this.rejectSorry && /\bsorry\b/.test(candidate.content)) {
-        return {
+        const result = {
           verdict: 'FAIL',
           evidence: { exit_code: null, stdout: '', stderr: 'candidate contains forbidden sorry placeholder', diagnostic: 'sorry is not an accepted proof artifact', candidate_hash: candidateHash, input_snapshot_hash: inputSnapshotHash },
         };
+        this.logger?.append({ event: 'checker.complete', verdict: result.verdict, evidence: result.evidence });
+        return result;
       }
       const projectRoot = fixtureManifest.project_root ?? directory;
       const result = await this.runner(this.command, ['env', 'lean', candidatePath], { cwd: projectRoot, timeoutMs: this.timeoutMs, maxOutputBytes: this.maxOutputBytes });
       const verdict = result.error || result.timed_out ? 'ERROR' : result.exit_code === 0 ? 'PASS' : 'FAIL';
       const diagnostic = [result.stderr, result.stdout, result.error, result.timed_out ? 'checker timed out' : ''].filter(Boolean).join('\n');
-      return {
+      const checked = {
         verdict,
         evidence: {
           exit_code: result.exit_code,
@@ -91,8 +100,10 @@ export class LeanChecker {
           target_spec_version: targetTask?.spec_version ?? null,
         },
       };
+      this.logger?.append({ event: 'checker.complete', verdict: checked.verdict, evidence: checked.evidence });
+      return checked;
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      if (!this.logger) await rm(directory, { recursive: true, force: true });
     }
   }
 }
