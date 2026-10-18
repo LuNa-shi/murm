@@ -25,8 +25,9 @@ separate responsibility is useful.
 **Material** is immutable shared work or evidence published through Context
 Service.
 
-**Service** is a named group of tools. Agents can list Services, inspect a
-Service's metadata, and list all named tools before choosing work.
+**Service** is a named group of tools. Agents can use the Service Catalog to
+list Services, inspect a Service's metadata, and list all named tools before
+choosing work.
 
 **Lease** is the time-bounded ownership period of an Execution. Heartbeats
 extend it; expiry fences the old owner and makes the Task claimable again.

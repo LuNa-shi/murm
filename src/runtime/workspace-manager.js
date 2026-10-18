@@ -82,6 +82,9 @@ export class WorkspaceManager {
         JSON.stringify(task.acceptance_conditions ?? {}, null, 2),
         '```',
         '',
+        'Task instructions:',
+        task.task_instructions ?? '',
+        '',
       ].join('\n'),
       'workspace-manifest.json': JSON.stringify({
         task_id: task.task_id,

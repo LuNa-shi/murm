@@ -1,5 +1,23 @@
 const TOOL_DEFINITIONS = Object.freeze([
   {
+    name: 'catalog_list_services', service: 'catalog', operation: 'list_services', version: '1.0',
+    description: 'List every available SwarmEnv Service and its tool count.',
+    scope: 'public-read', side_effect: false,
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'catalog_get_service_metadata', service: 'catalog', operation: 'get_service_metadata', version: '1.0',
+    description: 'Read one Service description and its complete named tool metadata.',
+    scope: 'public-read', side_effect: false,
+    parameters: { type: 'object', required: ['service'], properties: { service: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'catalog_list_tools', service: 'catalog', operation: 'list_tools', version: '1.0',
+    description: 'List all named Service tools or only the tools owned by one Service.',
+    scope: 'public-read', side_effect: false,
+    parameters: { type: 'object', properties: { service: { type: 'string' } }, additionalProperties: false },
+  },
+  {
     name: 'task_list', service: 'task', operation: 'list_tasks', version: '1.0',
     description: 'List the highest-priority claimable Tasks in a root Task tree.',
     scope: 'public-read', side_effect: false,
@@ -85,6 +103,7 @@ const SERVICE_DEFINITIONS = Object.freeze([
   { name: 'workspace', version: '1.0', description: 'Workspace materialization, revisions and checkpoint lineage.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace') },
   { name: 'context', version: '1.0', description: 'Shared immutable Materials and their provenance.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'context') },
   { name: 'judge', version: '1.0', description: 'Candidate submission and independent completion checks.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge') },
+  { name: 'catalog', version: '1.0', description: 'Service and named tool discovery metadata.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'catalog') },
 ]);
 
 function clone(value) {

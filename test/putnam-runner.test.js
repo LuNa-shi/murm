@@ -127,9 +127,12 @@ class FakeAdapter {
   constructor({ env, cheat = false }) {
     this.env = env;
     this.cheat = cheat;
+    this.starts = [];
   }
 
-  async start({ logger } = {}) {
+  async start(options = {}) {
+    this.starts.push(options);
+    const { logger } = options;
     logger?.append({ type: 'fake-agent-start' });
     const session = new FakeSession(this.env, this.cheat);
     session.manifest = { fake: true, pi_version: 'fake' };
@@ -137,7 +140,7 @@ class FakeAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, onAdapter = null }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -146,7 +149,11 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     turnTimeoutMs: 100,
     turnIntervalMs: 10_000,
     stopOnSolved: true,
-    agentAdapterFactory: ({ env }) => new FakeAdapter({ env, cheat }),
+    agentAdapterFactory: ({ env }) => {
+      const adapter = new FakeAdapter({ env, cheat });
+      onAdapter?.(adapter);
+      return adapter;
+    },
     checker: {
       async check() {
         return { verdict: 'PASS', evidence: { exit_code: 0 } };
@@ -159,11 +166,13 @@ test('benchmark project starts four isolated cores and redacts candidate content
   const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-experiment-');
   const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-report-');
   try {
-    const report = await runFixture({ reportDir, experimentDir });
+    const adapters = [];
+    const report = await runFixture({ reportDir, experimentDir, onAdapter: (adapter) => adapters.push(adapter) });
     assert.equal(report.protocol.core_count, 4);
     assert.ok(report.project.task_tree.length >= 2);
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'proof' && task.parent_id === null));
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'research'));
+    assert.ok(adapters.some((adapter) => adapter.starts.some((start) => start.executionId && start.cwd?.includes('/workspaces/'))));
     assert.equal(report.run.solved, true);
     assert.equal(report.audit.invalid, false);
     assert.equal(report.cores.length, 4);

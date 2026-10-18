@@ -167,7 +167,11 @@ export class ServicesBridge {
         if (typeof taskId !== 'string' || taskId.length === 0) throw new Error('claim requires payload.task_id');
         const task = this.taskService.getTask(taskId);
         if (!task) throw new Error(`unknown task: ${taskId}`);
-        const result = service.dispatch('claim', { ...payload, agent_prompt: payload.agent_prompt ?? this.agentPrompt }, makeEnvelope({
+        // The bridge is the Agent identity boundary. A model may choose the
+        // Task and Workspace lineage, but it cannot claim on behalf of a
+        // different owner or replace the reusable startup prompt with
+        // task-specific transport data.
+        const result = service.dispatch('claim', { ...payload, owner_ref: this.actorRef, agent_prompt: this.agentPrompt }, makeEnvelope({
           operationId: bridgeOperationId,
           actorRef: this.actorRef,
           taskId: task.task_id,
@@ -176,7 +180,14 @@ export class ServicesBridge {
         }));
         this.taskId = result.task.task_id;
         this.executionId = result.execution.execution_id;
-        if (this.onClaim) await this.onClaim(result);
+        try {
+          if (this.onClaim) await this.onClaim(result);
+        } catch (error) {
+          this.taskId = null;
+          this.executionId = null;
+          await this.onRelease?.({ taskId: result.task.task_id, executionId: result.execution.execution_id, result: null });
+          throw error;
+        }
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }

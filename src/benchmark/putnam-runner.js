@@ -192,10 +192,13 @@ async function runTurn(core, prompt, timeoutMs) {
   } catch (error) {
     core.turns += 1;
     if (!core.stopping) {
-      core.errors.push({
-        code: error.code ?? error.name,
-        class: safeDiagnostic(error.message) ?? 'agent_turn_error',
-      });
+      const expectedHandoff = session.expectedStop || core.session !== session;
+      if (!expectedHandoff) {
+        core.errors.push({
+          code: error.code ?? error.name,
+          class: safeDiagnostic(error.message) ?? 'agent_turn_error',
+        });
+      }
     }
     if (/timeout|timed out/i.test(`${error.code ?? ''} ${error.message ?? ''}`)) core.turnTimeoutCount += 1;
     core.lastTurn = {
@@ -241,20 +244,28 @@ async function startAgentSession(core) {
       }
       core.lastTurn = { status: 'settled', elapsed_ms: Date.now() - core.turnStartedAt };
     } catch (error) {
-      if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
+      const expectedHandoff = session.expectedStop || core.session !== session;
+      if (!core.stopping && !expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
       core.lastTurn = { status: 'error', code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' };
       if (/timeout|timed out/i.test(`${error.code ?? ''} ${error.message ?? ''}`)) core.turnTimeoutCount += 1;
     } finally {
       collectToolEvents(core, session.rpcRecords.slice(initialSequence));
       core.turns += 1;
       core.turnDurationsMs.push(core.lastTurn.elapsed_ms ?? Date.now() - core.turnStartedAt);
-      core.turnInFlight = false;
-      core.nextTurnAt = Date.now();
+      if (core.session === session) {
+        core.turnInFlight = false;
+        core.nextTurnAt = Date.now();
+      }
+      if (core.session !== session && !session.closed) session.stop();
     }
   })();
 }
 
 async function ensureAgentSession(core) {
+  if (core.releasedSession) {
+    if (!core.releasedSession.closed) return;
+    core.releasedSession = null;
+  }
   if (core.session?.closed) core.session = null;
   if (core.stopping || core.session || core.turnInFlight) return;
   try {
@@ -433,6 +444,8 @@ async function stopCore(state, core) {
     core.runtime.activeProcesses.delete(core.executionId);
   } else if (core.session) {
     core.session.stop();
+  } else if (core.releasedSession) {
+    core.releasedSession.stop?.();
   }
   if (core.turnPromise) {
     await Promise.race([
@@ -636,7 +649,7 @@ async function createProjectState(problem, config, options) {
     task_type: 'proof',
     goal: `Prove ${problem.id}`,
     expected_output: 'A verified Lean proof for the locked PutnamBench problem',
-    task_instructions: 'Attempt the proof in the Workspace and submit only a real Lean proof artifact. Do not submit sorry, admit, axiom, or placeholder code; if the route is incomplete, publish the blocker and wait or create a focused child Task.',
+    task_instructions: 'Attempt the proof in the Workspace and submit only a real Lean proof artifact. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. If the route is incomplete, publish the blocker and either create a focused child Task or wait according to the Task contract.',
     completion_contract: {
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
       required_check: {
@@ -700,6 +713,7 @@ async function createProjectState(problem, config, options) {
       workspaceManager,
       bridge: null,
       session: null,
+      releasedSession: null,
       sessionHistory: [],
       sessionNumber: 0,
       startConfig: { problem, logRoot, options },
@@ -730,18 +744,54 @@ async function createProjectState(problem, config, options) {
         core.taskId = claim.task.task_id;
         core.executionId = claim.execution.execution_id;
         core.claim = claim;
-        core.claimHistory.push({ task_id: claim.task.task_id, execution_id: claim.execution.execution_id });
-        if (!core.session) throw new Error('Agent claimed a Task before its session was registered');
-        await runtime.bindAgentExecution(claim.execution.execution_id, core.session, {
+        const workerSession = core.session;
+        if (!workerSession) throw new Error('Agent claimed a Task before its session was registered');
+        await runtime.bindAgentExecution(claim.execution.execution_id, null, {
           workspaceRef: join(coreDir, 'workspaces', claim.execution.execution_id),
+          startSession: async ({ execution, workspace }) => {
+            const session = await core.adapter.start({
+              executionId: execution.execution_id,
+              sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
+              cwd: workspace.workspace_ref,
+              agentPrompt: GENERIC_AGENT_PROMPT,
+              logger: new DurableEventLog(join(logRoot, 'agents', `core-${core.index}.ndjson`), { raw: true, scope: `agent:core-${core.index}` }),
+            });
+            core.session = session;
+            core.sessionHistory.push(session);
+            core.versionManifest = session.manifest ?? null;
+            core.turnInFlight = true;
+            void (async () => {
+              try {
+                if (typeof session.waitForSettled === 'function') await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
+              } catch (error) {
+                const expectedHandoff = session.expectedStop || core.session !== session || core.stopping;
+                if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
+              } finally {
+                collectToolEvents(core, session.rpcRecords ?? []);
+                if (core.session === session) {
+                  core.turns += 1;
+                  core.turnInFlight = false;
+                  core.nextTurnAt = Date.now();
+                }
+              }
+            })();
+            return session;
+          },
         });
+        core.claimHistory.push({ task_id: claim.task.task_id, execution_id: claim.execution.execution_id });
+        // The worker session is only the claim transport. Its handoff is
+        // completed after its current prompt settles; the bound session is
+        // already running in the selected Workspace.
+        if (core.session === workerSession) core.session = null;
       },
       onRelease: async ({ taskId, executionId }) => {
         if (core.taskId === taskId && core.executionId === executionId) {
+          core.releasedSession = core.session;
           core.taskId = null;
           core.executionId = null;
           core.claim = null;
           core.session = null;
+          core.turnInFlight = false;
         }
       },
       logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),

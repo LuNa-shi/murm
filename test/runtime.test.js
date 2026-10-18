@@ -73,6 +73,7 @@ test('Runtime creates an isolated workspace before Pi, saves checkpoint before w
   assert.equal(fixtureData.adapter.starts[0].sessionDir, join(started.workspace.workspace_ref, '.swarm', 'pi-session'));
   const workspaceManifest = JSON.parse(await readFile(join(started.workspace.workspace_ref, 'workspace-manifest.json'), 'utf8'));
   assert.equal(workspaceManifest.task_id, claimed.execution.task_id);
+  assert.match(await readFile(join(started.workspace.workspace_ref, 'README.md'), 'utf8'), /Task instructions:/);
   await assert.rejects(() => readFile(join(started.workspace.workspace_ref, 'initial-context.json'), 'utf8'), { code: 'ENOENT' });
   await assert.rejects(() => readFile(join(started.workspace.workspace_ref, 'initial-prompt.txt'), 'utf8'), { code: 'ENOENT' });
   assert.equal(workspaceManifest.input_snapshot.workspace_snapshot_hash, claimed.execution.input_snapshot_hash);

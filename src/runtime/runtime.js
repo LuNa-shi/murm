@@ -68,17 +68,31 @@ export class Runtime {
     }
   }
 
-  async bindAgentExecution(executionId, session, { workspaceRef } = {}) {
+  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null } = {}) {
     this.logger?.append({ event: 'runtime.bind_execution', execution_id: executionId });
-    if (!session || typeof session.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Agent session is required');
+    if ((!session || typeof session.stop !== 'function') && typeof startSession !== 'function') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Agent session or startSession is required');
+    }
     const execution = this.#getExecution(executionId);
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only bind CREATED executions, got ${execution.state}`);
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
     const workspace = await this.#prepareWorkspace(execution, workspaceRef);
     let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
     current = this.taskService.dispatch('start_execution', {}, this.#executionEnvelope(current, operationId('bind'))).execution;
-    this.#registerActiveProcess(current, workspace, session);
-    return { execution: current, workspace, session };
+    let boundSession = session;
+    try {
+      if (!boundSession) boundSession = await startSession({ execution: current, workspace });
+      if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
+      this.#registerActiveProcess(current, workspace, boundSession);
+      return { execution: current, workspace, session: boundSession };
+    } catch (error) {
+      boundSession?.stop?.();
+      const failed = this.#getExecution(executionId);
+      if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
+        this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('bind-failed')));
+      }
+      throw error;
+    }
   }
 
   async wakeExecution(executionId, { wakeKey = null } = {}) {

@@ -100,3 +100,42 @@ test('ServicesBridge accepts the named execution_wait snake_case payload and rel
     taskService.close();
   }
 });
+
+test('ServicesBridge binds an explicit claim to the bridge Agent and keeps the reusable prompt', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:root' });
+  const task = owner.proposeTask({
+    task_type: 'proof', goal: 'bridge claim identity', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:root',
+    task_instructions: 'Task-specific instructions belong to this Task.',
+    completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixture().environment_ref } },
+  }, { operationId: 'bridge:identity:propose' }).task;
+  let claimed;
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: { requestWait: async () => ({}) },
+    router,
+    actorRef: 'agent:bridge-identity',
+    agentPrompt: 'shared worker prompt',
+    onClaim: async (result) => { claimed = result; },
+  });
+  try {
+    const result = await bridge.call({ operation: 'claim', payload: {
+      task_id: task.task_id,
+      claim_key: 'bridge:identity:claim',
+      owner_ref: 'agent:forged',
+      agent_prompt: 'task-specific prompt smuggled through transport',
+      workspace_mode: 'clean',
+    } });
+    assert.equal(result.execution.owner_ref, 'agent:bridge-identity');
+    assert.equal(result.execution.agent_prompt, 'shared worker prompt');
+    assert.equal(claimed.execution.execution_id, result.execution.execution_id);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});

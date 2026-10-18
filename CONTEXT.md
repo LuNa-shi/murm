@@ -53,8 +53,9 @@ the Task's Workspace snapshot and locked checker environment.
 
 **Service** is a named collection of related Agent tools. The catalog exposes
 all Services, each Service's metadata, and its named tools. Task, Execution,
-Workspace, Context, and Judge are separate public capability groups. Runtime
-keeps process capacity, fencing, and filesystem enforcement behind the bridge.
+Workspace, Context, Judge, and Service Catalog are separate public capability
+groups. Runtime keeps process capacity, fencing, and filesystem enforcement
+behind the bridge.
 
 **Waiting** means an active Execution has saved its checkpoint and released
 physical process capacity. **Blocked** means the Task cannot currently be

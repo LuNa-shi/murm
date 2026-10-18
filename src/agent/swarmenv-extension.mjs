@@ -44,14 +44,6 @@ function registerTool(pi, { name, operation, description, parameters, promptGuid
 }
 
 export default function swarmenvExtension(pi) {
-  registerTool(pi, {
-    name: 'list_services', operation: 'list_services', description: 'List all available SwarmEnv Services and their tool counts.',
-    parameters: { type: 'object', properties: {}, additionalProperties: false },
-  });
-  registerTool(pi, {
-    name: 'list_tools', operation: 'list_tools', description: 'List the tools exposed by all Services or one selected Service.',
-    parameters: { type: 'object', properties: { service: { type: 'string' } }, additionalProperties: false },
-  });
   for (const tool of listTools()) registerTool(pi, tool);
 
   // Keep the transport-level call during the migration so older Pi sessions
