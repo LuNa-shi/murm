@@ -1,0 +1,112 @@
+const TOOL_DEFINITIONS = Object.freeze([
+  {
+    name: 'task_list', service: 'task', operation: 'list_tasks', version: '1.0',
+    description: 'List the highest-priority claimable Tasks in a root Task tree.',
+    scope: 'public-read', side_effect: false,
+    parameters: { type: 'object', properties: { root_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, task_type: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, available_only: { type: 'boolean' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_get', service: 'task', operation: 'get_task', version: '1.0',
+    description: 'Read the current Task specification and state.',
+    scope: 'task-read', side_effect: false,
+    parameters: { type: 'object', properties: { task_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_list_executions', service: 'task', operation: 'list_executions', version: '1.0',
+    description: 'List prior and active Executions for a Task so a worker can choose a Workspace lineage.',
+    scope: 'task-read', side_effect: false,
+    parameters: { type: 'object', properties: { task_id: { type: 'string' }, include_terminal: { type: 'boolean' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_claim', service: 'task', operation: 'claim', version: '1.0',
+    description: 'Claim one explicitly selected Task and create its Execution.',
+    scope: 'task-claim', side_effect: true,
+    parameters: { type: 'object', required: ['task_id', 'claim_key'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, owner_ref: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_create_child', service: 'task', operation: 'create_child_task', version: '1.0',
+    description: 'Create a bounded direct child Task for a genuinely separate responsibility.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['child_creation_key', 'task_type', 'goal', 'expected_output', 'acceptance_conditions'], properties: { child_creation_key: { type: 'string' }, task_type: { type: 'string' }, goal: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { type: 'object' }, priority: { type: 'integer', minimum: 0 } }, additionalProperties: true },
+  },
+  {
+    name: 'execution_get', service: 'execution', operation: 'get_execution', version: '1.0',
+    description: 'Read the current Execution lease, Workspace revision and checkpoint.',
+    scope: 'execution-read', side_effect: false,
+    parameters: { type: 'object', properties: { execution_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'execution_heartbeat', service: 'execution', operation: 'heartbeat', version: '1.0',
+    description: 'Extend the current Execution lease.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', properties: { lease_expires_at: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'execution_wait', service: 'execution', operation: 'request_wait', version: '1.0',
+    description: 'Save a checkpoint and release the active Execution for a durable wait. Use wait_condition type timer or check_result_arrived; time and judge_result kind aliases are accepted.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['wait_condition'], properties: { wait_condition: { type: 'object' }, checkpoint: { type: 'object' }, files: { type: 'object' }, wait_deadline: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_get', service: 'workspace', operation: 'get_workspace', version: '1.0',
+    description: 'Read the current Workspace materialization and revision.',
+    scope: 'execution-read', side_effect: false,
+    parameters: { type: 'object', additionalProperties: false },
+  },
+  {
+    name: 'workspace_revisions', service: 'workspace', operation: 'list_workspace_revisions', version: '1.0',
+    description: 'List Workspace revisions available to the current Execution.',
+    scope: 'execution-read', side_effect: false,
+    parameters: { type: 'object', additionalProperties: false },
+  },
+  {
+    name: 'context_read', service: 'context', operation: 'read_materials', version: '1.0',
+    description: 'Read immutable shared Materials published by other Executions.',
+    scope: 'public-read', side_effect: false,
+    parameters: { type: 'object', additionalProperties: true },
+  },
+  {
+    name: 'context_publish', service: 'context', operation: 'publish_material', version: '1.0',
+    description: 'Publish a versioned shared Material for other Executions.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['kind', 'scope', 'content'], properties: { kind: { type: 'string' }, scope: { type: 'string' }, content: {}, evidence_state: { type: 'string' } }, additionalProperties: true },
+  },
+  {
+    name: 'judge_submit_candidate', service: 'judge', operation: 'submit_candidate', version: '1.0',
+    description: 'Submit a candidate Material for the Task completion checker.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['candidate_material_id'], properties: { candidate_material_id: { type: 'string' } }, additionalProperties: false },
+  },
+]);
+
+const SERVICE_DEFINITIONS = Object.freeze([
+  { name: 'task', version: '1.0', description: 'Task goals, contracts, decomposition, browsing and explicit claim.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'task') },
+  { name: 'execution', version: '1.0', description: 'Lease, heartbeat, wait and execution responsibility lifecycle.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'execution') },
+  { name: 'workspace', version: '1.0', description: 'Workspace materialization, revisions and checkpoint lineage.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace') },
+  { name: 'context', version: '1.0', description: 'Shared immutable Materials and their provenance.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'context') },
+  { name: 'judge', version: '1.0', description: 'Candidate submission and independent completion checks.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge') },
+]);
+
+function clone(value) {
+  return structuredClone(value);
+}
+
+export function listServices() {
+  return clone(SERVICE_DEFINITIONS.map(({ name, version, description, tools }) => ({ name, version, description, tool_count: tools.length })));
+}
+
+export function getServiceMetadata(name) {
+  const service = SERVICE_DEFINITIONS.find((candidate) => candidate.name === name);
+  return service ? clone(service) : null;
+}
+
+export function listTools(service = null) {
+  const tools = service === null
+    ? TOOL_DEFINITIONS
+    : TOOL_DEFINITIONS.filter((tool) => tool.service === service);
+  return clone(tools);
+}
+
+export function serviceCatalog() {
+  return { services: listServices(), tools: listTools() };
+}

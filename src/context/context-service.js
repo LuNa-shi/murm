@@ -74,7 +74,6 @@ export class ContextService {
         if (replay) return replay;
         let value;
         if (operation === 'publish_material') value = this.#publishMaterial(payload, envelope);
-        else if (operation === 'freeze_initial_context') value = this.#freezeInitialContext(payload, envelope, fingerprint);
         else throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Context Service operation: ${operation}`);
         this.#saveOperation(envelope.operation_id, operation, fingerprint, value);
         return value;
@@ -93,22 +92,6 @@ export class ContextService {
 
   readMaterials(filters = {}) {
     return this.#readMaterials(filters);
-  }
-
-  getInitialContext(executionId) {
-    const row = this.db.prepare('SELECT * FROM initial_contexts WHERE execution_id = ?').get(executionId);
-    if (!row) return null;
-    return {
-      execution_id: row.execution_id,
-      task_id: row.task_id,
-      spec_version: row.spec_version,
-      spec_hash: row.spec_hash,
-      input_snapshot_hash: row.input_snapshot_hash,
-      manifest_hash: row.manifest_hash,
-      freeze_key: row.freeze_key,
-      manifest: parse(row.manifest_json),
-      created_at: row.created_at,
-    };
   }
 
   // Task Flow uses this while its SQLite transaction is open so a steer
@@ -203,67 +186,6 @@ export class ContextService {
     if (execution.spec_version !== envelope.spec_version) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'material source spec_version is stale');
     if (execution.fencing_version !== envelope.fencing_version) throw new SwarmEnvError(ERROR_CODES.FENCED, 'material source fencing_version is stale', { expected: execution.fencing_version });
     if (execution.state_version !== envelope.state_version) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'material source state_version is stale', { expected: execution.state_version });
-  }
-
-  #freezeInitialContext(payload, envelope, fingerprint) {
-    rejectSecrets(payload);
-    const executionId = requireString(payload.execution_id ?? envelope.execution_id, 'execution_id');
-    const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
-    if (envelope.execution_id !== null && envelope.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'execution_id must match the operation envelope');
-    if (envelope.task_id !== null && envelope.task_id !== taskId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_id must match the operation envelope');
-    if (!Number.isInteger(payload.spec_version) || payload.spec_version < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'spec_version is required');
-    requireString(payload.spec_hash, 'spec_hash');
-    requireString(payload.initial_prompt, 'initial_prompt');
-    if (!payload.task_spec || typeof payload.task_spec !== 'object' || Array.isArray(payload.task_spec)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task_spec is required');
-    }
-    if (!Array.isArray(payload.material_refs)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material_refs must be an array');
-    if (!payload.service_environment || typeof payload.service_environment !== 'object' || Array.isArray(payload.service_environment)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'service_environment is required');
-    }
-    const freezeKey = requireString(payload.freeze_key ?? payload.request_key, 'freeze_key');
-    const existingKey = this.db.prepare('SELECT * FROM initial_context_keys WHERE request_key = ?').get(freezeKey);
-    if (existingKey) {
-      if (existingKey.fingerprint !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'freeze_key was reused with another payload');
-      return { initial_context: this.getInitialContext(existingKey.execution_id), initial_context_ref: `sqlite://initial-context/${existingKey.execution_id}` };
-    }
-    const materials = payload.material_refs.map((reference, index) => {
-      const materialId = typeof reference === 'string' ? reference : reference?.material_id;
-      requireString(materialId, `material_refs[${index}].material_id`);
-      const material = this.getMaterial(materialId);
-      if (!material) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown material: ${materialId}`);
-      if (reference?.content_hash && reference.content_hash !== material.content_hash) {
-        throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, `material hash is stale: ${materialId}`);
-      }
-      return { material_id: material.material_id, version: material.version, kind: material.kind, scope: material.scope, content_hash: material.content_hash };
-    });
-    const baseManifest = {
-      execution_id: executionId,
-      task_id: taskId,
-      spec_version: payload.spec_version,
-      spec_hash: payload.spec_hash,
-      task_spec: payload.task_spec,
-      initial_prompt: payload.initial_prompt,
-      material_refs: materials,
-      service_environment: payload.service_environment,
-      instruction_version: payload.instruction_version ?? 1,
-    };
-    const inputSnapshotHash = sha256(baseManifest);
-    const manifest = { ...baseManifest, input_snapshot_hash: inputSnapshotHash, frozen_at: now() };
-    const manifestHash = sha256(baseManifest);
-    const existingContext = this.getInitialContext(executionId);
-    if (existingContext) {
-      if (existingContext.manifest_hash !== manifestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Initial Context is already frozen with different input');
-      return { initial_context: existingContext, initial_context_ref: `sqlite://initial-context/${executionId}` };
-    }
-    const createdAt = now();
-    this.db.prepare(`INSERT INTO initial_contexts (
-      execution_id, task_id, spec_version, spec_hash, input_snapshot_hash, manifest_hash, manifest_json, freeze_key, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(executionId, taskId, payload.spec_version, payload.spec_hash, inputSnapshotHash, manifestHash, json(manifest), freezeKey, createdAt);
-    this.db.prepare('INSERT INTO initial_context_keys (request_key, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?)')
-      .run(freezeKey, fingerprint, executionId, createdAt);
-    return { initial_context: this.getInitialContext(executionId), initial_context_ref: `sqlite://initial-context/${executionId}`, input_snapshot_hash: inputSnapshotHash };
   }
 
   #replay(operationId, fingerprint) {

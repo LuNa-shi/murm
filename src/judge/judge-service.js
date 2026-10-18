@@ -62,7 +62,7 @@ export class JudgeService {
     const requested = request.result;
     let checked;
     try {
-      checked = await this.checker.check({ candidate: normalized.candidate, targetTask: normalized.target_task, initialContext: normalized.initial_context, fixtureManifest: normalized.fixture_manifest });
+      checked = await this.checker.check({ candidate: normalized.candidate, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest });
     } catch (error) {
       checked = { verdict: 'ERROR', evidence: { diagnostic: error.message, error: error.name } };
     }
@@ -106,8 +106,9 @@ export class JudgeService {
     if (input.candidate.content_hash !== undefined && input.candidate.content_hash !== contentHash(input.candidate.content)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate content_hash does not match content');
     }
-    if (input.initial_context?.input_snapshot_hash !== undefined && input.initial_context.input_snapshot_hash !== input.input_snapshot_hash) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'initial_context does not match input_snapshot_hash');
+    const workspace = input.workspace ?? null;
+    if (workspace?.input_snapshot_hash !== undefined && workspace.input_snapshot_hash !== input.input_snapshot_hash) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace does not match input_snapshot_hash');
     }
     const requestKey = required(input.request_key ?? hash({
       candidate_material_id: input.candidate_material_id,
@@ -129,7 +130,7 @@ export class JudgeService {
       environment_ref: input.environment_ref,
       candidate: input.candidate,
       target_task: input.target_task ?? null,
-      initial_context: input.initial_context ?? null,
+      workspace,
       fixture_manifest: input.fixture_manifest,
       execution_id: input.execution_id ?? null,
       state_version: input.state_version ?? null,

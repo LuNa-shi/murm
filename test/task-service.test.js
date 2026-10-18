@@ -50,7 +50,7 @@ test('claim atomically creates one active Execution and is idempotent by operati
     claim_key: 'claim-key-1',
     owner_ref: 'runtime:one',
     initial_prompt: 'Solve the fixture',
-    initial_context_ref: 'context://execution-1',
+    workspace_manifest_ref: 'context://execution-1',
     input_snapshot_hash: 'snapshot-hash-1',
     input_material_refs: [],
   }, { operationId: 'claim-1' });
@@ -58,23 +58,46 @@ test('claim atomically creates one active Execution and is idempotent by operati
   assert.equal(claim.execution.state, 'CREATED');
   assert.equal(claim.execution.fencing_version, 1);
   assert.equal(claim.execution.spec_hash, task.spec_hash);
-  assert.equal(claim.execution.initial_context_ref, 'context://execution-1');
+  assert.equal(claim.execution.workspace_manifest_ref, 'context://execution-1');
 
   const replay = context.claim({
     claim_key: 'claim-key-1', owner_ref: 'runtime:one', initial_prompt: 'Solve the fixture',
-    initial_context_ref: 'context://execution-1', input_snapshot_hash: 'snapshot-hash-1', input_material_refs: [],
+    workspace_manifest_ref: 'context://execution-1', input_snapshot_hash: 'snapshot-hash-1', input_material_refs: [],
   }, { operationId: 'claim-1' });
   assert.equal(replay.execution.execution_id, claim.execution.execution_id);
 
   const freshContext = sdk.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: claim.task.state_version });
   assert.throws(
     () => freshContext.claim({
-      claim_key: 'claim-key-2', owner_ref: 'runtime:two', initial_prompt: 'another', initial_context_ref: 'context://two',
+      claim_key: 'claim-key-2', owner_ref: 'runtime:two', initial_prompt: 'another', workspace_manifest_ref: 'context://two',
       input_snapshot_hash: 'snapshot-two', input_material_refs: [],
     }, { operationId: 'claim-2' }),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.CONFLICT,
   );
   assert.equal(service.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED','RUNNING','WAITING')").get(task.task_id).count, 1);
+  service.close();
+});
+
+test('a Task can expose multiple parallel Executions up to its quota', () => {
+  const { service, sdk } = rootService();
+  const task = sdk.proposeTask(proofInput({ parallel_quota: 2 }), { operationId: 'propose-parallel' }).task;
+  const first = sdk.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
+    claim_key: 'parallel-claim-one', owner_ref: 'agent:one', workspace_mode: 'clean',
+  }, { operationId: 'parallel-claim-one' });
+  const available = sdk.withContext({ actorRef: 'agent:two' }).listTasks({ limit: 10 });
+  assert.equal(available[0].task_id, task.task_id);
+  const second = sdk.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: first.task.state_version }).claim({
+    claim_key: 'parallel-claim-two', owner_ref: 'agent:two', workspace_mode: 'clean',
+  }, { operationId: 'parallel-claim-two' });
+  assert.notEqual(second.execution.execution_id, first.execution.execution_id);
+  assert.equal(service.listExecutions(task.task_id, { includeTerminal: false }).length, 2);
+  assert.equal(service.listTasks({ limit: 10 }).length, 0);
+  assert.throws(
+    () => sdk.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: second.task.state_version }).claim({
+      claim_key: 'parallel-claim-three', owner_ref: 'agent:three', workspace_mode: 'clean',
+    }, { operationId: 'parallel-claim-three' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.CONFLICT,
+  );
   service.close();
 });
 
@@ -88,8 +111,8 @@ test('claimNext atomically takes the oldest queued Task and derives its Executio
   const worker = sdk.withContext({ actorRef: 'agent:slot-1' });
   const claim = worker.claimNext({ owner_ref: 'agent:slot-1', claim_key: 'claim-next-1' }, { operationId: 'claim-next-1' });
   assert.equal(claim.task.task_id, proposed.task_id);
-  assert.equal(claim.execution.initial_prompt, proposed.initial_prompt);
-  assert.equal(claim.execution.initial_context_ref, `task://workspace/${proposed.task_id}`);
+  assert.equal(claim.execution.agent_prompt, proposed.task_instructions);
+  assert.equal(claim.execution.workspace_manifest_ref, `workspace://task/${proposed.task_id}`);
   assert.deepEqual(claim.task.workspace, proposed.workspace);
   assert.equal(service.listActiveExecutions().length, 1);
   service.close();
@@ -106,7 +129,7 @@ test('claimNext with a root_id selects a child Task instead of claiming the root
     claim_key: 'claim-root-controller',
     owner_ref: 'owner:root',
     initial_prompt: 'Coordinate children',
-    initial_context_ref: 'context://root-controller',
+    workspace_manifest_ref: 'context://root-controller',
     input_snapshot_hash: 'root-snapshot',
     input_material_refs: [],
   }, { operationId: 'claim-root-controller' });
@@ -131,11 +154,43 @@ test('claimNext with a root_id selects a child Task instead of claiming the root
   service.close();
 });
 
+test('workers browse prioritized Tasks and explicitly claim the selected Task', () => {
+  const { service, sdk } = rootService();
+  const root = sdk.proposeTask({
+    ...proofInput({ task_type: 'default' }),
+    max_children: 4,
+  }, { operationId: 'browse-root' }).task;
+  const rootRun = sdk.withContext({ taskId: root.task_id, specVersion: root.spec_version, stateVersion: root.state_version }).claim({
+    claim_key: 'browse-root-claim', owner_ref: 'agent:planner', agent_prompt: 'generic agent prompt',
+  }, { operationId: 'browse-root-claim' });
+  const rootOwner = sdk.withContext({
+    actorRef: 'agent:planner', taskId: root.task_id, executionId: rootRun.execution.execution_id,
+    specVersion: rootRun.execution.spec_version, stateVersion: rootRun.execution.state_version, fencingVersion: rootRun.execution.fencing_version,
+  });
+  const low = rootOwner.withContext({ stateVersion: service.getTask(root.task_id).state_version }).createChildTask({
+    child_creation_key: 'browse-low', task_type: 'research', goal: 'low priority research', expected_output: 'material', acceptance_conditions: {}, priority: 10,
+  }, { operationId: 'browse-low' }).task;
+  const high = rootOwner.withContext({ stateVersion: service.getTask(root.task_id).state_version }).createChildTask({
+    child_creation_key: 'browse-high', task_type: 'research', goal: 'high priority research', expected_output: 'material', acceptance_conditions: {}, priority: 90,
+  }, { operationId: 'browse-high' }).task;
+  const listed = sdk.withContext({ actorRef: 'agent:worker' }).listTasks({ root_id: root.task_id, limit: 10 });
+  assert.deepEqual(listed.map((task) => task.task_id), [high.task_id, low.task_id]);
+  assert.equal(listed[0].latest_execution, null);
+  const selected = listed[0];
+  const claimed = sdk.withContext({ actorRef: 'agent:worker', taskId: selected.task_id, specVersion: selected.spec_version, stateVersion: selected.state_version }).claim({
+    claim_key: 'browse-explicit-claim', owner_ref: 'agent:worker', workspace_mode: 'clean',
+  }, { operationId: 'browse-explicit-claim' });
+  assert.equal(claimed.task.task_id, high.task_id);
+  assert.equal(service.listTasks({ rootId: root.task_id, limit: 10 }).length, 1);
+  assert.equal(service.listExecutions(high.task_id)[0].workspace_selection.mode, 'clean');
+  service.close();
+});
+
 test('execution heartbeat and lifecycle writes enforce state and fencing versions', () => {
   const { service, sdk } = rootService();
   const task = sdk.proposeTask(proofInput(), { operationId: 'propose-lifecycle' }).task;
   const taskSdk = sdk.withContext({ taskId: task.task_id, specVersion: 1, stateVersion: 0 });
-  const claimed = taskSdk.claim({ claim_key: 'claim-lifecycle', owner_ref: 'runtime:one', initial_prompt: 'p', initial_context_ref: 'context://x', input_snapshot_hash: 'hash', input_material_refs: [] }, { operationId: 'claim-lifecycle' });
+  const claimed = taskSdk.claim({ claim_key: 'claim-lifecycle', owner_ref: 'runtime:one', initial_prompt: 'p', workspace_manifest_ref: 'context://x', input_snapshot_hash: 'hash', input_material_refs: [] }, { operationId: 'claim-lifecycle' });
   const execSdk = sdk.withContext({ taskId: task.task_id, executionId: claimed.execution.execution_id, specVersion: 1, stateVersion: 0, fencingVersion: 1 });
   const started = execSdk.startExecution({}, { operationId: 'start-lifecycle' });
   assert.equal(started.execution.state, 'RUNNING');
@@ -161,7 +216,7 @@ test('child creation requires a registered type and parent execution owner, then
   const { service, sdk } = rootService();
   const parent = sdk.proposeTask({ ...proofInput(), task_type: 'default', completion_contract: { required_children: [] } }, { operationId: 'propose-parent' }).task;
   const parentSdk = sdk.withContext({ taskId: parent.task_id, specVersion: 1, stateVersion: 0 });
-  const claim = parentSdk.claim({ claim_key: 'parent-claim', owner_ref: 'owner:root', initial_prompt: 'parent', initial_context_ref: 'context://parent', input_snapshot_hash: 'parent-hash', input_material_refs: [] }, { operationId: 'parent-claim-op' });
+  const claim = parentSdk.claim({ claim_key: 'parent-claim', owner_ref: 'owner:root', initial_prompt: 'parent', workspace_manifest_ref: 'context://parent', input_snapshot_hash: 'parent-hash', input_material_refs: [] }, { operationId: 'parent-claim-op' });
   const childSdk = sdk.withContext({ taskId: parent.task_id, specVersion: 1, stateVersion: claim.task.state_version });
   const child = childSdk.createChildTask({
     child_creation_key: 'child-key-1', task_type: 'research', goal: 'Find a useful lemma', expected_output: 'Sourced material',

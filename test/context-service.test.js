@@ -42,34 +42,12 @@ test('Material revisions create a new immutable version and preserve supersedes'
   context.close();
 });
 
-test('freeze_initial_context captures ordered Material hashes and remains unchanged after later publication', () => {
+test('Context Service keeps shared Materials immutable after later publication', () => {
   const { context, sdk } = fixture();
   const material = sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { fact: 'fixed' } }, { operationId: 'freeze-material' }).material;
-  const frozen = sdk.freezeInitialContext({
-    freeze_key: 'freeze-key-1',
-    task_id: 'task-1', execution_id: 'execution-1', spec_version: 1, spec_hash: 'task-spec-hash',
-    task_spec: { goal: 'prove fixed', task_type: 'proof', completion_contract: { required_check: { checker_ref: 'lean', checker_version: 'mvp-1' } } },
-    initial_prompt: 'Use only the frozen input', material_refs: [{ material_id: material.material_id, content_hash: material.content_hash }],
-    service_environment: { context_service: 'local', checker: 'lean-mvp' },
-  }, { operationId: 'freeze-1', taskId: 'task-1', executionId: 'execution-1', specVersion: 1, fencingVersion: 1 });
-  assert.equal(frozen.initial_context.input_snapshot_hash, frozen.input_snapshot_hash);
-  assert.equal(frozen.initial_context.manifest.material_refs[0].content_hash, material.content_hash);
   const later = sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { fact: 'later' } }, { operationId: 'later-material' });
-  assert.notEqual(later.material.content_hash, frozen.initial_context.input_snapshot_hash);
-  const replay = sdk.freezeInitialContext({
-    freeze_key: 'freeze-key-1', task_id: 'task-1', execution_id: 'execution-1', spec_version: 1, spec_hash: 'task-spec-hash',
-    task_spec: { goal: 'prove fixed', task_type: 'proof', completion_contract: { required_check: { checker_ref: 'lean', checker_version: 'mvp-1' } } },
-    initial_prompt: 'Use only the frozen input', material_refs: [{ material_id: material.material_id, content_hash: material.content_hash }],
-    service_environment: { context_service: 'local', checker: 'lean-mvp' },
-  }, { operationId: 'freeze-1', taskId: 'task-1', executionId: 'execution-1', specVersion: 1, fencingVersion: 1 });
-  assert.equal(replay.initial_context.input_snapshot_hash, frozen.initial_context.input_snapshot_hash);
-  assert.throws(
-    () => sdk.freezeInitialContext({
-      freeze_key: 'freeze-key-1', task_id: 'task-1', execution_id: 'execution-1', spec_version: 1, spec_hash: 'different',
-      task_spec: { goal: 'different' }, initial_prompt: 'changed', material_refs: [], service_environment: { context_service: 'local' },
-    }, { operationId: 'freeze-conflict', taskId: 'task-1', executionId: 'execution-1', specVersion: 1, fencingVersion: 1 }),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.CONFLICT,
-  );
+  assert.notEqual(later.material.content_hash, material.content_hash);
+  assert.deepEqual(context.getMaterial(material.material_id).content, { fact: 'fixed' });
   context.close();
 });
 

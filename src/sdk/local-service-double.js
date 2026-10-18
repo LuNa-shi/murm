@@ -66,6 +66,21 @@ export class LocalServiceDouble {
       case 'get_execution':
         result = this.#getExecution(payload.execution_id ?? envelope.execution_id);
         break;
+      case 'list_tasks':
+        result = [...this.tasks.values()]
+          .filter((task) => (payload.root_id ? task.root_id === payload.root_id : true))
+          .filter((task) => (payload.task_type ? task.task_type === payload.task_type : true))
+          .filter((task) => (payload.states ?? ['OPEN']).includes(task.state))
+          .sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0) || String(left.task_id).localeCompare(String(right.task_id)))
+          .slice(0, payload.limit ?? 10)
+          .map(clone);
+        break;
+      case 'list_executions':
+        result = [...this.executions.values()]
+          .filter((execution) => execution.task_id === (payload.task_id ?? envelope.task_id))
+          .filter((execution) => payload.include_terminal !== false || ['CREATED', 'RUNNING', 'WAITING'].includes(execution.state))
+          .map(clone);
+        break;
       case 'read_materials':
         result = this.#readMaterials(payload);
         break;

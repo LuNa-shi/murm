@@ -28,12 +28,28 @@ export class ServicesSDK {
     return this.#read('get_execution', { execution_id: executionId });
   }
 
-  readMaterials(filters = {}) {
-    return this.#read('read_materials', filters);
+  listTasks(filters = {}) {
+    return this.#read('list_tasks', filters);
   }
 
-  freezeInitialContext(payload, options = {}) {
-    return this.#write('freeze_initial_context', payload, options);
+  listExecutions(taskId = this.context.taskId, { includeTerminal = true } = {}) {
+    return this.#read('list_executions', { task_id: taskId, include_terminal: includeTerminal });
+  }
+
+  listServices() {
+    return this.#read('list_services', {});
+  }
+
+  getServiceMetadata(service) {
+    return this.#read('get_service_metadata', { service });
+  }
+
+  listTools(service = null) {
+    return this.#read('list_tools', service === null ? {} : { service });
+  }
+
+  readMaterials(filters = {}) {
+    return this.#read('read_materials', filters);
   }
 
   proposeTask(task, options = {}) {
@@ -41,7 +57,10 @@ export class ServicesSDK {
   }
 
   createChildTask(task, options = {}) {
-    return this.#write('create_child_task', task, options);
+    return this.#write('create_child_task', task, {
+      ...options,
+      stateVersion: options.stateVersion ?? this.context.taskStateVersion,
+    });
   }
 
   claim(payload = {}, options = {}) {
@@ -65,11 +84,17 @@ export class ServicesSDK {
   }
 
   acceptTask(payload = {}, options = {}) {
-    return this.#write('accept_task', payload, options);
+    return this.#write('accept_task', payload, {
+      ...options,
+      stateVersion: options.stateVersion ?? this.context.taskStateVersion,
+    });
   }
 
   requestRework(payload, options = {}) {
-    return this.#write('request_rework', payload, options);
+    return this.#write('request_rework', payload, {
+      ...options,
+      stateVersion: options.stateVersion ?? this.context.taskStateVersion,
+    });
   }
 
   applyCheckResult(payload, options = {}) {

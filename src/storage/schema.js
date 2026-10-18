@@ -12,14 +12,15 @@ CREATE TABLE IF NOT EXISTS tasks (
   task_type_version TEXT NOT NULL,
   goal TEXT NOT NULL,
   expected_output TEXT NOT NULL,
-  initial_prompt TEXT NOT NULL DEFAULT '',
+  priority INTEGER NOT NULL DEFAULT 0 CHECK (priority >= 0),
+  task_instructions TEXT NOT NULL DEFAULT '',
   workspace_json TEXT NOT NULL DEFAULT '{}',
   acceptance_conditions_json TEXT NOT NULL,
   input_material_refs_json TEXT NOT NULL,
   spec_version INTEGER NOT NULL,
   spec_hash TEXT NOT NULL,
   completion_contract_json TEXT NOT NULL,
-  parallel_quota INTEGER NOT NULL DEFAULT 1 CHECK (parallel_quota = 1),
+  parallel_quota INTEGER NOT NULL DEFAULT 1 CHECK (parallel_quota >= 1),
   state_version INTEGER NOT NULL DEFAULT 0,
   state TEXT NOT NULL CHECK (state IN ('OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED')),
   block_reason TEXT,
@@ -49,10 +50,11 @@ CREATE TABLE IF NOT EXISTS executions (
   launch_token TEXT NOT NULL UNIQUE,
   spec_version INTEGER NOT NULL,
   spec_hash TEXT NOT NULL,
-  initial_prompt TEXT NOT NULL,
-  initial_context_ref TEXT NOT NULL,
+  agent_prompt TEXT NOT NULL DEFAULT '',
+  workspace_manifest_ref TEXT NOT NULL,
   input_material_refs_json TEXT NOT NULL,
   input_snapshot_hash TEXT NOT NULL,
+  workspace_selection_json TEXT NOT NULL DEFAULT '{}',
   candidate_material_id TEXT,
   workspace_ref TEXT,
   workspace_revision INTEGER,
@@ -67,9 +69,6 @@ CREATE TABLE IF NOT EXISTS executions (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS executions_one_active_per_task
-  ON executions(task_id) WHERE state IN ('CREATED', 'RUNNING', 'WAITING');
 
 CREATE TABLE IF NOT EXISTS operations (
   operation_id TEXT PRIMARY KEY,

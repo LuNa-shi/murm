@@ -51,8 +51,61 @@ class FakeSession extends EventEmitter {
       this.rpcRecords.push({ type: 'tool_result', tool_name: 'swarmenv_call' });
       return body.result;
     };
+    await call('list_services', {});
+    await call('list_tools', {});
+    let tasks = await call('list_tasks', { limit: 10 });
+    if (tasks.length === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      tasks = await call('list_tasks', { limit: 10 });
+    }
+    if (tasks.length === 0) return { data: { disposition: 'handled' } };
+    let claim;
+    try {
+      claim = await call('claim', {
+        task_id: tasks[0].task_id,
+        claim_key: `fake-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
+        workspace_mode: 'clean',
+      });
+    } catch {
+      tasks = await call('list_tasks', { limit: 10 });
+      if (tasks.length === 0) return { data: { disposition: 'handled' } };
+      claim = await call('claim', {
+        task_id: tasks[0].task_id,
+        claim_key: `fake-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
+        workspace_mode: 'clean',
+      });
+    }
     await call('get_task', {});
     await call('get_execution', {});
+    if (claim.task.parent_id === null) {
+      await call('create_child_task', {
+        child_creation_key: `fake-child-${this.env.SWARMENV_BRIDGE_TOKEN}`,
+        task_type: 'proof',
+        goal: 'Produce a real Lean proof candidate for the current problem',
+        expected_output: 'A compiled Lean source with no placeholders',
+        acceptance_conditions: { source_hash: 'a'.repeat(64) },
+        priority: 100,
+        completion_contract: {
+          required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
+          required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: 'putnambench-lean4@test' },
+        },
+      });
+      await call('create_child_task', {
+        child_creation_key: `fake-research-${this.env.SWARMENV_BRIDGE_TOKEN}`,
+        task_type: 'research',
+        goal: 'Research a reusable lemma or proof route for the current problem',
+        expected_output: 'A shared research Material',
+        acceptance_conditions: { source_hash: 'a'.repeat(64) },
+        priority: 90,
+      });
+      const material = await call('publish_material', {
+        kind: 'artifact',
+        scope: 'proof_relevant',
+        content: this.cheat ? 'by sorry' : 'def benchmarkRootArtifact : Nat := 0',
+      });
+      await call('submit_candidate', { candidate_material_id: material.material.material_id });
+      return { data: { disposition: 'handled' } };
+    }
     await call('read_materials', {});
     const material = await call('publish_material', {
       kind: 'artifact',
@@ -64,7 +117,9 @@ class FakeSession extends EventEmitter {
   }
 
   stop() {
+    if (this.closed) return;
     this.closed = true;
+    queueMicrotask(() => this.emit('close', { code: 0, signal: 'SIGTERM' }));
   }
 }
 
@@ -106,6 +161,9 @@ test('benchmark project starts four isolated cores and redacts candidate content
   try {
     const report = await runFixture({ reportDir, experimentDir });
     assert.equal(report.protocol.core_count, 4);
+    assert.ok(report.project.task_tree.length >= 2);
+    assert.ok(report.project.task_tree.some((task) => task.task_type === 'proof' && task.parent_id === null));
+    assert.ok(report.project.task_tree.some((task) => task.task_type === 'research'));
     assert.equal(report.run.solved, true);
     assert.equal(report.audit.invalid, false);
     assert.equal(report.cores.length, 4);

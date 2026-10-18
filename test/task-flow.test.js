@@ -49,18 +49,13 @@ function researchInput(overrides = {}) {
   };
 }
 
-function freezeAndClaim(env, task, { executionId, actorRef, ownerRef = actorRef, prompt = 'work on the task' }) {
+function claimTask(env, task, { executionId, actorRef, ownerRef = actorRef, prompt = 'work on the task' }) {
   const actor = env.sdk.withContext({ actorRef });
-  const frozen = actor.freezeInitialContext({
-    freeze_key: `freeze:${executionId}`, task_id: task.task_id, execution_id: executionId, spec_version: task.spec_version,
-    spec_hash: task.spec_hash, task_spec: { task_id: task.task_id, task_type: task.task_type, completion_contract: task.completion_contract },
-    initial_prompt: prompt, material_refs: [], service_environment: { runtime: 'test', fixture: fixtureManifest.environment_ref },
-  }, { operationId: `freeze-op:${executionId}`, taskId: task.task_id, executionId, specVersion: task.spec_version, fencingVersion: 1 });
   const claim = actor.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
-    execution_id: executionId, claim_key: `claim:${executionId}`, owner_ref: ownerRef, initial_prompt: prompt,
-    initial_context_ref: frozen.initial_context_ref, input_snapshot_hash: frozen.input_snapshot_hash, input_material_refs: [],
+    execution_id: executionId, claim_key: `claim:${executionId}`, owner_ref: ownerRef, agent_prompt: prompt, input_material_refs: [],
   }, { operationId: `claim-op:${executionId}` });
-  return { frozen, claim, sdk: env.sdk.withContext({ actorRef, taskId: task.task_id, executionId, specVersion: task.spec_version, stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version }) };
+  const workspace = { task_id: task.task_id, execution_id: executionId, input_snapshot_hash: claim.execution.input_snapshot_hash };
+  return { workspace, claim, sdk: env.sdk.withContext({ actorRef, taskId: task.task_id, executionId, specVersion: task.spec_version, stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version }) };
 }
 
 function saveCheckpoint(env, execution, checkpointRef = `checkpoint:${execution.execution_id}`) {
@@ -95,11 +90,11 @@ test('research child review accepts delivered Material and never invokes Judge',
   let checks = 0;
   const env = environment({ checker: { check: async () => { checks += 1; return { verdict: 'PASS', evidence: {} }; } } });
   const parent = env.sdk.proposeTask({ task_type: 'default', goal: 'coordinate research', expected_output: 'child result', acceptance_conditions: {}, owner_ref: 'owner:root' }, { operationId: 'parent-propose' }).task;
-  const parentRun = freezeAndClaim(env, parent, { executionId: 'parent-execution', actorRef: 'owner:root' });
+  const parentRun = claimTask(env, parent, { executionId: 'parent-execution', actorRef: 'owner:root' });
   const child = parentRun.sdk.withContext({ taskId: parent.task_id, executionId: null, stateVersion: parentRun.claim.task.state_version }).createChildTask({
     child_creation_key: 'research-child', ...researchInput(), owner_ref: 'researcher:one',
   }, { operationId: 'child-create' }).task;
-  const childRun = freezeAndClaim(env, child, { executionId: 'child-execution', actorRef: 'researcher:one' });
+  const childRun = claimTask(env, child, { executionId: 'child-execution', actorRef: 'researcher:one' });
   const material = childRun.sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { lemma: 'useful' } }, { operationId: 'research-material' }).material;
   assert.equal(material.source_task, child.task_id);
   const checkpointed = saveCheckpoint(env, childRun.claim.execution, 'research-checkpoint');
@@ -120,7 +115,7 @@ test('research child review accepts delivered Material and never invokes Judge',
 test('root owner acceptance completes an unchecked research Task', () => {
   const env = environment();
   const task = env.sdk.proposeTask({ ...researchInput(), owner_ref: 'owner:root', goal: 'root research' }, { operationId: 'root-research-propose' }).task;
-  const run = freezeAndClaim(env, task, { executionId: 'root-research-execution', actorRef: 'owner:root' });
+  const run = claimTask(env, task, { executionId: 'root-research-execution', actorRef: 'owner:root' });
   run.sdk.publishMaterial({ kind: 'fact', scope: 'operational', content: { source: 'primary source' } }, { operationId: 'root-research-material' });
   assert.throws(() => env.sdk.withContext({ actorRef: 'agent:other', taskId: task.task_id }).acceptTask({ target_task_id: task.task_id }, { operationId: 'root-research-bad-owner' }), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED);
   const accepted = run.sdk.acceptTask({ target_task_id: task.task_id, target_state_version: run.claim.task.state_version }, { operationId: 'root-research-accept' });
@@ -133,11 +128,11 @@ test('root owner acceptance completes an unchecked research Task', () => {
 test('parent request_rework appends steer and preserves child workspace, context, and checkpoint lineage', () => {
   const env = environment();
   const parent = env.sdk.proposeTask({ task_type: 'default', goal: 'coordinate rework', expected_output: 'child result', acceptance_conditions: {}, owner_ref: 'owner:root' }, { operationId: 'rework-parent' }).task;
-  const parentRun = freezeAndClaim(env, parent, { executionId: 'rework-parent-execution', actorRef: 'owner:root' });
+  const parentRun = claimTask(env, parent, { executionId: 'rework-parent-execution', actorRef: 'owner:root' });
   const child = parentRun.sdk.withContext({ taskId: parent.task_id, executionId: null, stateVersion: parentRun.claim.task.state_version }).createChildTask({
     child_creation_key: 'rework-child', ...researchInput(), owner_ref: 'researcher:one',
   }, { operationId: 'rework-child-create' }).task;
-  const childRun = freezeAndClaim(env, child, { executionId: 'rework-child-execution', actorRef: 'researcher:one' });
+  const childRun = claimTask(env, child, { executionId: 'rework-child-execution', actorRef: 'researcher:one' });
   childRun.sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { lemma: 'needs revision' } }, { operationId: 'rework-material' });
   const checkpointed = saveCheckpoint(env, childRun.claim.execution, 'rework-checkpoint');
   const waited = childRun.sdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
@@ -148,7 +143,7 @@ test('parent request_rework appends steer and preserves child workspace, context
   assert.equal(result.task.state, 'RUNNING');
   assert.equal(result.execution.execution_id, childRun.claim.execution.execution_id);
   assert.equal(result.execution.state, 'CREATED');
-  assert.equal(result.execution.initial_context_ref, waited.execution.initial_context_ref);
+  assert.equal(result.execution.workspace_manifest_ref, waited.execution.workspace_manifest_ref);
   assert.equal(result.execution.workspace_ref, waited.execution.workspace_ref);
   assert.equal(result.execution.checkpoint_ref, waited.execution.checkpoint_ref);
   assert.equal(result.execution.instruction_version, 2);
@@ -160,11 +155,11 @@ test('parent request_rework appends steer and preserves child workspace, context
 test('parent request_rework creates a new Execution after the child is fenced', () => {
   const env = environment();
   const parent = env.sdk.proposeTask({ task_type: 'default', goal: 'coordinate fenced rework', expected_output: 'child result', acceptance_conditions: {}, owner_ref: 'owner:root' }, { operationId: 'fenced-parent' }).task;
-  const parentRun = freezeAndClaim(env, parent, { executionId: 'fenced-parent-execution', actorRef: 'owner:root' });
+  const parentRun = claimTask(env, parent, { executionId: 'fenced-parent-execution', actorRef: 'owner:root' });
   const child = parentRun.sdk.withContext({ taskId: parent.task_id, executionId: null, stateVersion: parentRun.claim.task.state_version }).createChildTask({
     child_creation_key: 'fenced-child', ...researchInput(), owner_ref: 'researcher:one',
   }, { operationId: 'fenced-child-create' }).task;
-  const childRun = freezeAndClaim(env, child, { executionId: 'fenced-child-execution', actorRef: 'researcher:one' });
+  const childRun = claimTask(env, child, { executionId: 'fenced-child-execution', actorRef: 'researcher:one' });
   const checkpointed = saveCheckpoint(env, childRun.claim.execution, 'fenced-checkpoint');
   const waited = childRun.sdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
     wait_key: 'fenced-review', checkpoint_ref: checkpointed.checkpoint_ref, checkpoint_hash: checkpointed.checkpoint_hash,
@@ -175,7 +170,7 @@ test('parent request_rework creates a new Execution after the child is fenced', 
   assert.equal(fenced.execution.state, 'FENCED');
   assert.notEqual(result.execution.execution_id, fenced.execution.execution_id);
   assert.equal(result.execution.attempt_no, 2);
-  assert.equal(result.execution.initial_context_ref, fenced.execution.initial_context_ref);
+  assert.equal(result.execution.workspace_manifest_ref, fenced.execution.workspace_manifest_ref);
   assert.equal(result.execution.workspace_ref, fenced.execution.workspace_ref);
   assert.equal(result.execution.checkpoint_ref, fenced.execution.checkpoint_ref);
   close(env);
@@ -185,8 +180,8 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
   let verdict = 'FAIL';
   const env = environment({ checker: { check: async () => ({ verdict, evidence: { diagnostic: verdict === 'FAIL' ? 'type mismatch' : 'compiled' } }) } });
   const task = env.sdk.proposeTask(proofInput(), { operationId: 'proof-propose' }).task;
-  const run = freezeAndClaim(env, task, { executionId: 'proof-execution', actorRef: 'owner:root' });
-  const initialContext = env.contextService.getInitialContext(run.claim.execution.execution_id);
+  const run = claimTask(env, task, { executionId: 'proof-execution', actorRef: 'owner:root' });
+  const workspace = ({ task_id: task.task_id, execution_id: run.claim.execution.execution_id, input_snapshot_hash: run.claim.execution.input_snapshot_hash });
   const firstCandidate = run.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'bad proof' } }, { operationId: 'proof-candidate-1' }).material;
   let current = run.sdk.submitCandidate({ candidate_material_id: firstCandidate.material_id }, { operationId: 'submit-candidate-1' });
   let checkpointed = saveCheckpoint(env, current.execution, 'proof-checkpoint-1');
@@ -197,9 +192,9 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
   }, { operationId: 'proof-wait-1' });
   const firstResult = await env.judgeService.judgeCandidate({
     request_key: 'proof-request-1', candidate_material_id: firstCandidate.material_id, target_task_id: task.task_id, target_spec_version: task.spec_version,
-    input_snapshot_hash: initialContext.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    input_snapshot_hash: workspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
     environment_ref: fixtureManifest.environment_ref, execution_id: waited.execution.execution_id, state_version: waited.execution.state_version,
-    candidate: { material_id: firstCandidate.material_id, content: 'bad proof' }, target_task: env.taskService.getTask(task.task_id), initial_context: initialContext,
+    candidate: { material_id: firstCandidate.material_id, content: 'bad proof' }, target_task: env.taskService.getTask(task.task_id), workspace: workspace,
     fixture_manifest: fixtureManifest,
   });
   current = waited.execution;
@@ -225,9 +220,9 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
   }, { operationId: 'proof-wait-2' });
   const secondResult = await env.judgeService.judgeCandidate({
     request_key: 'proof-request-2', candidate_material_id: secondMaterial.material_id, target_task_id: task.task_id, target_spec_version: 1,
-    input_snapshot_hash: initialContext.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    input_snapshot_hash: workspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
     environment_ref: fixtureManifest.environment_ref, execution_id: waited.execution.execution_id, state_version: waited.execution.state_version,
-    candidate: { material_id: secondMaterial.material_id, content: 'fixed proof' }, target_task: env.taskService.getTask(task.task_id), initial_context: initialContext,
+    candidate: { material_id: secondMaterial.material_id, content: 'fixed proof' }, target_task: env.taskService.getTask(task.task_id), workspace: workspace,
     fixture_manifest: fixtureManifest,
   });
   const completed = env.sdk.withContext({ taskId: task.task_id, executionId: waited.execution.execution_id, specVersion: 1, stateVersion: waited.execution.state_version, fencingVersion: 1 })
@@ -241,7 +236,7 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
 test('wait requires a saved checkpoint and wake is idempotent by wake_key', () => {
   const env = environment();
   const task = env.sdk.proposeTask(proofInput(), { operationId: 'wake-propose' }).task;
-  const run = freezeAndClaim(env, task, { executionId: 'wake-execution', actorRef: 'owner:root' });
+  const run = claimTask(env, task, { executionId: 'wake-execution', actorRef: 'owner:root' });
   assert.throws(() => run.sdk.requestWait({ wait_key: 'missing-checkpoint', checkpoint_ref: 'missing', checkpoint_hash: 'missing', wait_condition: { type: 'timer', deadline: new Date(Date.now() + 1000).toISOString() } }, { operationId: 'missing-checkpoint-op' }), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
   const checkpointed = saveCheckpoint(env, run.claim.execution, 'wake-checkpoint');
   const waitingSdk = run.sdk.withContext({ stateVersion: checkpointed.state_version });
@@ -259,15 +254,15 @@ test('wait requires a saved checkpoint and wake is idempotent by wake_key', () =
 test('fenced and cancelled Executions cannot be revived by late CheckResults', async () => {
   const env = environment({ checker: { check: async () => ({ verdict: 'PASS', evidence: { exit_code: 0 } }) } });
   const task = env.sdk.proposeTask(proofInput(), { operationId: 'late-propose' }).task;
-  const run = freezeAndClaim(env, task, { executionId: 'late-execution', actorRef: 'owner:root' });
+  const run = claimTask(env, task, { executionId: 'late-execution', actorRef: 'owner:root' });
   const material = run.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'late candidate' } }, { operationId: 'late-candidate' }).material;
   const submitted = run.sdk.submitCandidate({ candidate_material_id: material.material_id }, { operationId: 'late-submit' });
-  const initialContext = env.contextService.getInitialContext(run.claim.execution.execution_id);
+  const workspace = ({ task_id: task.task_id, execution_id: run.claim.execution.execution_id, input_snapshot_hash: run.claim.execution.input_snapshot_hash });
   const result = await env.judgeService.judgeCandidate({
     request_key: 'late-request', candidate_material_id: material.material_id, target_task_id: task.task_id, target_spec_version: 1,
-    input_snapshot_hash: initialContext.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    input_snapshot_hash: workspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
     environment_ref: fixtureManifest.environment_ref, execution_id: submitted.execution.execution_id, state_version: submitted.execution.state_version,
-    candidate: { material_id: material.material_id, content: 'late candidate' }, target_task: env.taskService.getTask(task.task_id), initial_context: initialContext,
+    candidate: { material_id: material.material_id, content: 'late candidate' }, target_task: env.taskService.getTask(task.task_id), workspace: workspace,
     fixture_manifest: fixtureManifest,
   });
   const oldSdk = env.sdk.withContext({ taskId: task.task_id, executionId: submitted.execution.execution_id, specVersion: 1, stateVersion: submitted.execution.state_version, fencingVersion: 1 });
@@ -276,15 +271,15 @@ test('fenced and cancelled Executions cannot be revived by late CheckResults', a
   assert.equal(fenced.task.state, 'OPEN');
 
   const cancelledTask = env.sdk.proposeTask(proofInput({ goal: 'cancelled late result' }), { operationId: 'cancelled-propose' }).task;
-  const cancelledRun = freezeAndClaim(env, cancelledTask, { executionId: 'cancelled-execution', actorRef: 'owner:root' });
+  const cancelledRun = claimTask(env, cancelledTask, { executionId: 'cancelled-execution', actorRef: 'owner:root' });
   const cancelledMaterial = cancelledRun.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'cancelled candidate' } }, { operationId: 'cancelled-candidate' }).material;
   const cancelledSubmitted = cancelledRun.sdk.submitCandidate({ candidate_material_id: cancelledMaterial.material_id }, { operationId: 'cancelled-submit' });
-  const cancelledContext = env.contextService.getInitialContext(cancelledRun.claim.execution.execution_id);
+  const cancelledWorkspace = ({ task_id: cancelledTask.task_id, execution_id: cancelledRun.claim.execution.execution_id, input_snapshot_hash: cancelledRun.claim.execution.input_snapshot_hash });
   const cancelledResult = await env.judgeService.judgeCandidate({
     request_key: 'cancelled-request', candidate_material_id: cancelledMaterial.material_id, target_task_id: cancelledTask.task_id, target_spec_version: 1,
-    input_snapshot_hash: cancelledContext.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    input_snapshot_hash: cancelledWorkspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
     environment_ref: fixtureManifest.environment_ref, execution_id: cancelledSubmitted.execution.execution_id, state_version: cancelledSubmitted.execution.state_version,
-    candidate: { material_id: cancelledMaterial.material_id, content: 'cancelled candidate' }, target_task: env.taskService.getTask(cancelledTask.task_id), initial_context: cancelledContext,
+    candidate: { material_id: cancelledMaterial.material_id, content: 'cancelled candidate' }, target_task: env.taskService.getTask(cancelledTask.task_id), workspace: cancelledWorkspace,
     fixture_manifest: fixtureManifest,
   });
   const cancelledSdk = env.sdk.withContext({ taskId: cancelledTask.task_id, executionId: cancelledSubmitted.execution.execution_id, specVersion: 1, stateVersion: cancelledSubmitted.execution.state_version, fencingVersion: 1 });

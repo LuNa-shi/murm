@@ -26,22 +26,4 @@ CREATE TABLE IF NOT EXISTS materials (
 CREATE INDEX IF NOT EXISTS materials_kind_scope ON materials(kind, scope);
 CREATE INDEX IF NOT EXISTS materials_source ON materials(source_task, source_execution);
 
-CREATE TABLE IF NOT EXISTS initial_contexts (
-  execution_id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL,
-  spec_version INTEGER NOT NULL,
-  spec_hash TEXT NOT NULL,
-  input_snapshot_hash TEXT NOT NULL,
-  manifest_hash TEXT NOT NULL,
-  manifest_json TEXT NOT NULL,
-  freeze_key TEXT NOT NULL UNIQUE,
-  created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS initial_context_keys (
-  request_key TEXT PRIMARY KEY,
-  fingerprint TEXT NOT NULL,
-  execution_id TEXT NOT NULL REFERENCES initial_contexts(execution_id),
-  created_at TEXT NOT NULL
-);
 `;

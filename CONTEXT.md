@@ -1,87 +1,61 @@
 # SwarmEnv Context
 
-SwarmEnv coordinates long lived tasks whose work can be divided, paused, resumed, replaced, and independently checked. This context defines the task language used by the design and its MVP.
+SwarmEnv is a local first runtime for durable, checkable Agent work. The
+system has one Task model, one Workspace model, shared Materials, and named
+Services. This file is the domain vocabulary for the MVP.
 
-## Language
+**Task** is a durable responsibility with a goal, expected output, acceptance
+conditions, a completion contract, a priority, and a Workspace description.
 
-**Task**:
-A durable goal with a registered task type, its own completion contract, and a responsibility lifecycle.
+**Root Task** is the single Task created for one problem. For a PutnamBench
+project its goal is to prove that problem. The root does not describe the
+number of workers or preassign proof routes.
 
-**Task type**:
-A versioned rule set that specifies an allowed task shape, required outputs, and completion policy. The MVP registers `default`, `research`, `proof`, and `implementation`; any registered type may be used as a root or direct child; an Agent cannot create an unregistered type or omit its required acceptance fields.
+**Child Task** is a direct responsibility created by an active Agent when work
+needs a separate research, proof, or implementation path. Child Tasks enter
+the same root Task queue and inherit the parent Workspace description unless
+they provide a more specific one.
 
-**Completion contract**:
-A structured set of required child results, Material outputs, optional candidate checks, and review rules that determines when a Task may become satisfied.
+**Task list** is the query of claimable Tasks, normally ordered by priority,
+creation time, and ID. Agents browse the list and explicitly claim the Task
+they choose. `claim_next` remains only as a compatibility operation and is not
+the normal Agent workflow.
 
-**Acceptance authority**:
-The actor allowed to accept or request rework for a Task. A child Task is reviewed by its Parent Task's active execution; a root Task is reviewed by its owner.
+**Execution** is one leased attempt to carry out a Task. Claiming a Task
+creates an Execution, and a Task may have multiple active Executions up to its
+`parallel_quota`. Later attempts may continue a prior Workspace revision or
+materialize a clean Workspace. Execution owns the lease, fencing version,
+checkpoint, candidate binding, and revision reference.
 
-**Parent Task**:
-A Task that creates and owns the local responsibility for one or more child Tasks.
+**Workspace** is the single versioned working surface for a Task and its
+Executions. The initial codebase contains the problem formalization and task
+requirements. Later revisions contain Agent edits, generated artifacts, and
+checkpointed files. A Workspace lineage can be selected by revision and is
+represented by metadata and revision records in the same way a Git history
+records versions. Shared Materials remain the collaboration channel; they do
+not silently modify Workspace files.
 
-**Direct child Task**:
-A Task whose `parent_id` points to the current Parent Task. A Parent Task may wait for the terminal state of a direct child Task; nested task trees are handled one parent-child edge at a time.
-_Avoid_: dependency node, arbitrary prerequisite
+**Agent prompt** is the reusable prompt passed to Pi when a Core slot starts.
+It describes the worker protocol and Service discovery. Task-specific goals,
+proof requirements, constraints, and completion rules are read from the
+claimed Task.
 
-**Cross-tree relation**:
-A support, dependency, or weaving relationship between Tasks that is not a direct parent-child edge. In the MVP, it is descriptive context or a material reference and does not itself create a scheduling, blocking, wake-up, or claim condition.
-_Avoid_: schedulable dependency
+**Core slot** is reusable worker capacity. A slot can browse the root Task
+list, claim one Task, work on its Execution, wait or finish, and then be used
+again.
 
-**Execution**:
-One replaceable period of responsibility for carrying out a Task.
+**Material** is immutable shared work, evidence, feedback, or an artifact
+published through Context Service. Materials carry source Task and Execution
+provenance and can be read by other Agents.
 
-**Core slot**:
-Reusable worker capacity that claims one queued Task at a time. A slot is not
-a Task and is not permanently assigned to one child.
+**CheckResult** is the Judge's structured result for a candidate Material under
+the Task's Workspace snapshot and locked checker environment.
 
-**Task queue**:
-Claimable `OPEN` Tasks in a root Task tree. A queue claim atomically creates an
-Execution for the selected Task.
+**Service** is a named collection of related Agent tools. The catalog exposes
+all Services, each Service's metadata, and its named tools. Task, Execution,
+Workspace, Context, and Judge are separate public capability groups. Runtime
+keeps process capacity, fencing, and filesystem enforcement behind the bridge.
 
-**Agent Core**:
-The active model and tool loop that carries out an Execution. In the MVP, a local NuRouter/Pi Agent Core Adapter starts Pi for the Execution; the adapter is an execution mechanism, not a fifth core domain object.
-
-**Pi session**:
-A resumable Agent Core session artifact associated with an Execution. It can help restore the loop, but Task, Execution, Material, and CheckResult remain the authoritative records.
-
-**Execution state**:
-The single lifecycle status of one Execution, including whether it is running, waiting, finished, or invalidated.
-_Avoid_: protocol phase
-
-**Parent review**:
-A wait condition used when a child has delivered material but its Parent Task must decide whether the delivery is sufficient. The parent may accept it or request rework.
-
-**Steer**:
-An immutable instruction delta appended by an authorized Parent Task during rework. It preserves the original Task specification, workspace, context snapshot, and checkpoint lineage.
-
-**Resumable Execution**:
-Every non-terminal Execution has durable workspace, context, and checkpoint references. A new Execution may take over after expiry or fencing while preserving that lineage.
-
-**Task state**:
-The single lifecycle state of a Task, including whether it is open, running, waiting, blocked, complete, or ended.
-_Avoid_: parallel Task status truth
-
-**Blocking reason**:
-An explicit reason why no Execution may currently claim a Task, such as capacity or an unmet admission condition. It does not describe an Execution that has deliberately entered a wait.
-_Avoid_: wait condition
-
-**Material**:
-A versioned piece of shared work, evidence, input, observation, or artifact that can be referenced across Tasks and Executions.
-
-**CheckResult**:
-An independent, structured judgment about a candidate Material under a specified Task, input, checker, and environment.
-
-**Context Service**:
-The shared service that stores, versions, reads, and publishes immutable Material for Agents. It does not own a problem's initial Workspace, claim Tasks, schedule Executions, or manage private Workspaces.
-
-**Workspace**:
-The Task-owned initial input bundle, including the initial prompt and problem input, plus the private files materialized for one Execution. Runtime owns the private materialization and its lifecycle. Later shared Material does not silently change the Task Workspace; parent rework appends steer instructions.
-
-**Initial Context**:
-A compatibility snapshot for an Execution's frozen Task specification and selected Material references. It is derived from the Task Workspace when an integration needs a snapshot; it is not the owner of the problem input.
-
-**Workspace Manager**:
-The Runtime-owned component that materializes, saves, restores, releases, and fences an Execution's private Workspace and checkpoint files. It is not exposed through the Agent-facing Services SDK and does not own the Task's initial input.
-
-**Services SDK**:
-The Agent-facing client boundary for Task/Execution operations and Context Service Material operations. It carries operation, version, and fencing metadata and does not expose Workspace Manager operations.
+**Waiting** means an active Execution has saved its checkpoint and released
+physical process capacity. **Blocked** means the Task cannot currently be
+claimed. These states are distinct projections of the same lifecycle.

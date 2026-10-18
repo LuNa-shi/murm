@@ -12,7 +12,7 @@ cores are reusable worker slots. A slot claims an available Task from the
 root's queue; the successful claim atomically creates one Execution and binds
 the slot to that leased responsibility.
 
-The root Task owns the problem's initial prompt and Workspace input. The
+The root Task owns the problem Workspace and its requirements. The
 problem formalization is written into that Workspace during Task creation. It
 is not published as a Context Service Material. Context Service remains the
 shared channel for later observations, proposals, artifacts, and judge
@@ -42,7 +42,7 @@ never include candidate source, proof text, raw transcript, stdout, or stderr.
   preassigning four permanent proof Tasks.
 - The Task Service must expose a queue claim operation that can select a Task
   without a caller already knowing its Task ID.
-- Runtime must materialize the Task Workspace for the newly created Execution
+- Runtime must materialize the Task's Workspace for the newly created Execution
   and must release capacity on wait and expiry.
 - Reports must audit the root tree and Execution leases rather than assuming
   four fixed Task IDs.

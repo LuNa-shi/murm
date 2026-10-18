@@ -1,75 +1,7 @@
-# PutnamBench 4-core benchmark
+# PutnamBench benchmark
 
-The benchmark protocol is defined in [ADR 0008](adr/0008-putnambench-four-core-project-benchmark.md). This document covers
-operational setup and report handling. Each formalized problem is an isolated project. A project
-owns one SQLite database, one root Task, four child proof Tasks, four private
-Runtime Workspaces, four Pi session directories, and one redacted report.
-Agents share the problem statement and later feedback through Context Service
-Materials. They do not share private Workspace files or session state.
+一个问题对应一个隔离项目目录、一个 SQLite 数据库、一个 Root Task 和最多四个可复用 Agent Core slot。项目开始时不创建固定 proof child。Agent 通过 Task list 发现工作并主动创建所需的子 Task。
 
-For a detailed end-to-end walkthrough of root Task creation, child Execution
-allocation, Agent Core service calls, Judge feedback, and success/failure
-cleanup, see [PutnamBench Four-Core System Walkthrough](putnambench-four-core-system-walkthrough.md).
+题目文件来自锁定的 PutnamBench checkout。题目和 Lean/Mathlib/checker 元数据写入 Root Workspace；答案和 solution-derived input 不进入初始化 Workspace。Context Service 只保存运行中产生的 Material。
 
-The locked configuration in
-[`config/putnambench-12.json`](../config/putnambench-12.json) contains twelve
-recent B-part formalizations from PutnamBench commit
-`a635813f5edf297d928f9bd5ef8324a26bdde09c`. The runner reads only the pinned
-formalization source. It rejects a source path that looks like a solution or
-candidate file and requires the formalization to retain its `sorry` theorem
-placeholder. No known candidate is part of the benchmark input.
-
-Build the pinned Lean project before launching real agents:
-
-```sh
-cd /path/to/PutnamBench/lean4
-lake build
-```
-
-Run one four-core pilot with a private report directory:
-
-```sh
-node scripts/run-putnambench-benchmark.mjs \\
-  --problems config/putnambench-12.json \\
-  --putnambench-root /path/to/PutnamBench \\
-  --problem putnam_2025_b1 \\
-  --cores 4 \\
-  --timebox-ms 3600000 \\
-  --project-parallelism 1 \\
-  --experiment-dir experiments/putnambench-4core-YYYY-MM-DD-pilot \\
-  --report-dir reports/putnambench-4core-YYYY-MM-DD-pilot
-```
-
-Run the full selection in bounded project groups:
-
-```sh
-node scripts/run-putnambench-benchmark.mjs \\
-  --problems config/putnambench-12.json \\
-  --putnambench-root /path/to/PutnamBench \\
-  --cores 4 \\
-  --timebox-ms 3600000 \\
-  --project-parallelism 3 \\
-  --experiment-dir experiments/putnambench-4core-YYYY-MM-DD-rerun \\
-  --report-dir reports/putnambench-4core-YYYY-MM-DD-rerun
-```
-
-Before a real Agent Core run, load the route from [the benchmark environment
-guide](benchmark-environment.md). `--putnambench-root` is the checkout root containing `lean4/`. The runner
-requires a NuRouter/Pi model through `--model` or `NUROUTER_PI_MODEL`, and a
-provider through `--provider` or `NUROUTER_PI_PROVIDER`. Each project runs to
-its timebox unless the library caller explicitly enables early stop after a
-verified solution. Each project has an independent deadline and cleanup path.
-A failed project is recorded and does not cancel its siblings.
-
-Benchmark Agent Cores run with only the `swarmenv_call` extension. Pi built-in
-tools, skills, prompt templates, and context files are disabled. The report
-records tool event names and hashes, but never writes raw Pi transcripts,
-candidate contents, or proof text to the repository. A candidate containing
-`sorry`, `admit`, or `axiom`, or any non-SwarmEnv tool event, invalidates the
-project and cannot count as a solution.
-
-Reports contain source and input hashes, Task/Execution IDs and states,
-Material and candidate counts, Judge verdict classes, turn/error counts,
-version information, isolation facts, and audit flags. The report directory
-should remain private because project SQLite databases and Pi sessions are
-retained for post-run audit.
+实验报告保存项目 hash、Task/Execution/Workspace lineage、Judge verdict、版本、计时和审计分类。原始 evidence 留在实验目录，报告不输出 candidate source、proof text、raw transcript、stdout 或 stderr。
