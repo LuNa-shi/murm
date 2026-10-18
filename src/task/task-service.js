@@ -482,7 +482,7 @@ export class TaskService {
     if (workspaceMode === 'resume' && payload.workspace_revision !== undefined && !sourceWorkspaceRef) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'resume Workspace selection with a revision requires a source Workspace');
     }
-    const waitingExecution = this.db.prepare("SELECT * FROM executions WHERE task_id = ? AND state = 'WAITING' ORDER BY updated_at DESC, execution_id DESC LIMIT 1").get(task.task_id);
+    let waitingExecution = this.db.prepare("SELECT * FROM executions WHERE task_id = ? AND state = 'WAITING' ORDER BY updated_at DESC, execution_id DESC LIMIT 1").get(task.task_id);
     const waitingCondition = waitingExecution ? parse(waitingExecution.wait_condition_json) : null;
     const inputSnapshotHash = payload.input_snapshot_hash ?? hash({
       task_id: task.task_id,
@@ -494,9 +494,16 @@ export class TaskService {
     const resumableWaiting = waitingExecution && waitingCondition?.type !== 'parent_review' &&
       (waitingCondition?.type !== 'timer' || !waitingExecution.wait_deadline || Date.parse(waitingExecution.wait_deadline) <= Date.now());
     if (waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting) {
-      if (workspaceMode === 'clean' || sourceExecutionId || sourceWorkspaceRef || payload.workspace_revision !== undefined) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'a waiting Execution must be resumed with its existing Workspace');
-      }
+      const continueExisting = workspaceMode === 'resume' && !sourceExecutionId && !sourceWorkspaceRef && payload.workspace_revision === undefined;
+      if (!continueExisting) {
+        // A worker may explicitly choose a clean start or a Workspace fork.
+        // Retire the released responsibility first, then create the selected
+        // new Execution below without violating the single active quota.
+        const supersededAt = now();
+        this.db.prepare("UPDATE executions SET state = 'SUPERSEDED', fencing_version = fencing_version + 1, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
+          .run(supersededAt, waitingExecution.execution_id);
+        waitingExecution = null;
+      } else {
       const updatedAt = now();
       const nextLease = payload.lease_expires_at ?? new Date(Date.now() + 30_000).toISOString();
       this.db.prepare(`UPDATE executions SET owner_ref = ?, state = 'CREATED', attempt_no = attempt_no + 1,
@@ -508,6 +515,7 @@ export class TaskService {
       this.db.prepare('INSERT INTO claim_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
         .run(claimKey, task.task_id, keyFingerprint, waitingExecution.execution_id, updatedAt);
       return { task: this.getTask(task.task_id), execution: this.getExecution(waitingExecution.execution_id) };
+      }
     }
     if (activeCount + (waitingExecution ? 1 : 0) >= task.parallel_quota) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Task has reached its active Execution quota', { parallel_quota: task.parallel_quota });
