@@ -4,7 +4,9 @@
 
 四个 Core 是可复用的 worker slot。Runner 启动四个 unbound Agent，向每个 Pi 传入同一份通用 Agent prompt。Agent 先查询 Service catalog 和 root Task 的高优先级 Task list，再用明确的 Task ID 调用 `task_claim`。
 
-Claim 会在 Task Service 事务中创建一个 Execution。Runtime 根据 Execution 的 Workspace selection 准备统一 Workspace：`clean` 从 Root/Task 初始代码库开始，`resume` 从指定的历史 revision 复制到新的可写目录并保存 lineage。Pi 的 prompt 由 adapter 传入，Workspace 只保存 `workspace-manifest.json`、题目代码和 revision/checkpoint metadata。
+Claim 会在 Task Service 事务中创建一个 Execution。Runtime 根据 Execution 的 Workspace selection 准备统一 Workspace：`clean` 从 Root/Task 初始代码库开始，`resume` 从指定的历史 revision 复制到新的可写目录并保存 lineage。Pi 的 prompt 由 adapter 传入，初始 Workspace 包含 `workspace-manifest.json`、题目代码和 revision/checkpoint metadata。
+
+Workspace 也是 Agent 的真实项目工作目录。Agent 可以通过 Workspace Service 列出和读取项目文件、创建或修改文件、查看 diff；每次写入都会生成新的 revision 和文件 hash。`.swarm` 下的 Runtime metadata、父目录和其他 Execution Workspace 不属于 Agent 的可访问范围。
 
 Agent 读取所 claim 的 Task、Execution 和 Workspace。Task 描述自身的 goal、expected output、completion contract 和约束。Agent 需要并行研究时主动调用 `task_create_child`；子 Task 进入同一个 root tree，其他 worker 可以从 Task list 选择它。Agent 通过 Context Service 发布和读取 shared Materials，通过 Judge Service 提交候选。
 

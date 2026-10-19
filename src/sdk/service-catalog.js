@@ -48,6 +48,18 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', required: ['child_creation_key', 'task_type', 'goal', 'expected_output', 'acceptance_conditions'], properties: { child_creation_key: { type: 'string' }, task_type: { type: 'string' }, goal: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { type: 'object' }, priority: { type: 'integer', minimum: 0 } }, additionalProperties: true },
   },
   {
+    name: 'task_accept', service: 'task', operation: 'accept_task', version: '1.0',
+    description: 'Accept a child Task after reviewing its delivered Material or checked candidate.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['target_task_id'], properties: { target_task_id: { type: 'string' }, target_state_version: { type: 'integer', minimum: 0 } }, additionalProperties: false },
+  },
+  {
+    name: 'task_request_rework', service: 'task', operation: 'request_rework', version: '1.0',
+    description: 'Send a child Task back for focused rework with a durable steer Material.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['target_task_id', 'instruction'], properties: { target_task_id: { type: 'string' }, instruction: { type: 'string' }, scope: { type: 'string' } }, additionalProperties: false },
+  },
+  {
     name: 'execution_get', service: 'execution', operation: 'get_execution', version: '1.0',
     description: 'Read the current Execution lease, Workspace revision and checkpoint.',
     scope: 'execution-read', side_effect: false,
@@ -78,6 +90,30 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', additionalProperties: false },
   },
   {
+    name: 'workspace_list_files', service: 'workspace', operation: 'list_workspace_files', version: '1.0',
+    description: 'List project files in the current Workspace. Runtime metadata is excluded.',
+    scope: 'execution-read', side_effect: false,
+    parameters: { type: 'object', properties: { path: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_read_file', service: 'workspace', operation: 'read_workspace_file', version: '1.0',
+    description: 'Read a text file from the current Workspace.',
+    scope: 'execution-read', side_effect: false,
+    parameters: { type: 'object', required: ['path'], properties: { path: { type: 'string' }, max_bytes: { type: 'integer', minimum: 1, maximum: 10000000 } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_write_file', service: 'workspace', operation: 'write_workspace_file', version: '1.0',
+    description: 'Create or replace one project file in the current Workspace and save an auditable revision.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['path', 'content'], properties: { path: { type: 'string' }, content: { type: 'string' }, expected_revision: { type: 'integer', minimum: 1 } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_diff', service: 'workspace', operation: 'workspace_diff', version: '1.0',
+    description: 'Show file hash changes between two Workspace revisions.',
+    scope: 'execution-read', side_effect: false,
+    parameters: { type: 'object', properties: { from_revision: { type: 'integer', minimum: 1 }, to_revision: { type: 'integer', minimum: 1 } }, additionalProperties: false },
+  },
+  {
     name: 'context_read', service: 'context', operation: 'read_materials', version: '1.0',
     description: 'Read immutable shared Materials published by other Executions.',
     scope: 'public-read', side_effect: false,
@@ -94,6 +130,12 @@ const TOOL_DEFINITIONS = Object.freeze([
     description: 'Submit a candidate Material for the Task completion checker.',
     scope: 'execution-write', side_effect: true,
     parameters: { type: 'object', required: ['candidate_material_id'], properties: { candidate_material_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'judge_get_check_result', service: 'judge', operation: 'get_check_result', version: '1.0',
+    description: 'Read a Judge CheckResult and its diagnostic feedback.',
+    scope: 'execution-read', side_effect: false,
+    parameters: { type: 'object', required: ['check_result_id'], properties: { check_result_id: { type: 'string' } }, additionalProperties: false },
   },
 ]);
 

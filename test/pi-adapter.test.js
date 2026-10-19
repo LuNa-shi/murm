@@ -38,6 +38,7 @@ test('adapter launches the required NuRouter Pi RPC shape and binds the session 
   assert.deepEqual(args, [
     'pi', '--account', 'local-account',
     '--', '--mode', 'rpc', '--session-dir', '/tmp/swarmenv-test-sessions', '--session-id', 'execution-42',
+    '--no-builtin-tools', '--no-skills', '--no-prompt-templates', '--no-context-files',
     '--provider', 'openai', '--model', 'gpt-test',
   ]);
   assert.equal(session.manifest.pi_version, '1.3.0');
@@ -66,6 +67,7 @@ test('adapter keeps managed Kimi routing in the NuRouter argument segment', asyn
   assert.deepEqual(args, [
     'pi', '--provider', 'kimi', '--model', 'k3', '--account', 'local-account', '--group', 'research',
     '--', '--mode', 'rpc', '--session-dir', '/tmp/swarmenv-kimi-session', '--session-id', 'execution-kimi',
+    '--no-builtin-tools', '--no-skills', '--no-prompt-templates', '--no-context-files',
   ]);
   session.stop();
   await session.wait();
@@ -87,7 +89,7 @@ test('adapter allows route defaults when account and group are omitted', async (
   const session = await adapter.start({ executionId: 'execution-default-route' });
   assert.deepEqual(args, [
     'pi', '--', '--mode', 'rpc', '--session-dir', '/tmp/swarmenv-default-route-session',
-    '--session-id', 'execution-default-route', '--provider', 'openai', '--model', 'gpt-6.1-sol',
+    '--session-id', 'execution-default-route', '--no-builtin-tools', '--no-skills', '--no-prompt-templates', '--no-context-files', '--provider', 'openai', '--model', 'gpt-6.1-sol',
   ]);
   session.stop();
   await session.wait();

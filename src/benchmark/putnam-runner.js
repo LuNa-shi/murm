@@ -108,10 +108,6 @@ function validateProblemInput(problem, source) {
 function restrictedArgs(args) {
   return [
     ...args,
-    '--no-builtin-tools',
-    '--no-skills',
-    '--no-prompt-templates',
-    '--no-context-files',
     '--thinking',
     'high',
   ];
@@ -368,8 +364,8 @@ async function publishFeedback(state, core, material, result, { taskId = core.ta
   }, makeEnvelope({
     operationId: `benchmark:feedback:${state.runId}:${core.index}:${result.check_result_id}`,
     actorRef: 'judge:lean',
-    taskId: core.taskId,
-    executionId: core.executionId,
+    taskId,
+    executionId,
     specVersion: execution.spec_version,
     stateVersion: execution.state_version,
     fencingVersion: execution.fencing_version,
@@ -434,7 +430,7 @@ async function judgeCandidate(state, core) {
   });
   core.checks.push({ ...sanitizedCheck(result, material), check_elapsed_ms: Date.now() - checkStartedAt });
   await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
-  if (result.verdict === 'PASS' && applied.task.state === 'SATISFIED') {
+  if (result.verdict === 'PASS' && applied.task.state === 'SATISFIED' && pending.taskId === state.rootTaskId) {
     state.solvedAt = Date.now();
     state.solvedBy = core.index;
   }
@@ -497,20 +493,28 @@ function projectReport(state, startedAt, deadline) {
       execution.input_snapshot_hash !== inputSnapshotHash(task, execution.input_material_refs);
   });
   const cores = state.cores.map((core) => {
-    const task = state.taskService.getTask(core.taskId);
-    const execution = state.taskService.getExecution(core.executionId);
+    const lastClaim = core.claimHistory.at(-1);
+    const taskId = core.taskId ?? lastClaim?.task_id ?? null;
+    const executionId = core.executionId ?? lastClaim?.execution_id ?? null;
+    const task = taskId ? state.taskService.getTask(taskId) : null;
+    const execution = executionId ? state.taskService.getExecution(executionId) : null;
     return {
       core: core.index,
-      task_id: core.taskId,
-      execution_id: core.executionId,
+      task_id: taskId,
+      execution_id: executionId,
       turns: core.turns,
       turn_durations_ms: core.turnDurationsMs,
       turn_timeout_count: core.turnTimeoutCount,
       checks: core.checks,
       errors: core.errors,
       cheating_flags: core.cheatingFlags,
-      claims: core.claimHistory,
+      claims: core.claimHistory.map((claim) => ({
+        ...claim,
+        workspace_revision_end: state.taskService.getExecution(claim.execution_id)?.workspace_revision ?? null,
+      })),
       tool_events: [...new Set(core.toolEvents)],
+      workspace_writes: core.workspaceWrites,
+      tool_errors: core.toolErrors,
       task_state: task?.state ?? null,
       execution_state: execution?.state ?? null,
       input_snapshot_hash: execution?.input_snapshot_hash ?? null,
@@ -518,7 +522,12 @@ function projectReport(state, startedAt, deadline) {
       versions: sanitizedVersionManifest(core.versionManifest),
     };
   });
-  const toolViolation = cores.some((core) => core.tool_events.some((tool) => tool !== 'swarmenv_call' && !String(tool).startsWith('swarmenv_')));
+  const toolViolation = cores.some((core) => core.tool_events.some((tool) => {
+    const name = String(tool);
+    return name !== 'swarmenv_call' && !name.startsWith('swarmenv_');
+  }));
+  const toolErrorCount = cores.reduce((count, core) => count + core.tool_errors.length, 0);
+  const toolProtocolErrorCount = cores.reduce((count, core) => count + core.tool_errors.filter((error) => !error.recoverable).length, 0);
   const claimedExecutionIds = [...new Set(claimHistory.map((claim) => claim.execution_id))];
   const workspaceRefs = claimedExecutionIds.map((executionId) => state.taskService.getExecution(executionId)?.workspace_ref).filter(Boolean);
   const workspaceBoundaryViolation = workspaceRefs.length !== claimedExecutionIds.length || new Set(workspaceRefs).size !== workspaceRefs.length;
@@ -528,15 +537,20 @@ function projectReport(state, startedAt, deadline) {
     const material = state.contextService.getMaterial(execution.candidate_material_id);
     return !material || material.source_task !== claim.task_id || material.source_execution !== claim.execution_id;
   });
-  const invalid = toolViolation || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
+  const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     candidateBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
+  const childTaskCount = taskTree.filter((task) => task.parent_id !== null).length;
+  const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
+  const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
+  const candidateCount = cores.reduce((count, core) => count + core.checks.length, 0);
+  const madeProgress = childTaskCount > 0 || workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || candidateCount > 0;
   const report = {
     schema_version: 1,
     protocol: {
       project_isolation: true,
       core_count: 4,
       input_policy: 'pinned formalization only; no candidate or solution input',
-      tool_policy: 'registered swarmenv_* Service tools; swarmenv_call is compatibility-only',
+      tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
       cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
     },
     project: {
@@ -565,8 +579,16 @@ function projectReport(state, startedAt, deadline) {
       ended_at: new Date().toISOString(),
       elapsed_ms: Date.now() - startedAt,
       deadline_ms: deadline - startedAt,
-      solved: state.solvedAt !== null && !invalid,
-      solved_by_core: invalid ? null : state.solvedBy,
+      protocol_valid: !invalid,
+      made_progress: madeProgress,
+      progress_evidence: {
+        child_task_count: childTaskCount,
+        workspace_write_count: workspaceWriteCount,
+        meaningful_material_count: meaningfulMaterialCount,
+        candidate_check_count: candidateCount,
+      },
+      solved: state.solvedAt !== null && !invalid && madeProgress,
+      solved_by_core: invalid || !madeProgress ? null : state.solvedBy,
       solved_at_ms: state.solvedAt === null ? null : state.solvedAt - startedAt,
       material_count: materials.length,
       project_material_count: materials.filter((material) => material.source_task === state.rootTaskId).length,
@@ -579,8 +601,16 @@ function projectReport(state, startedAt, deadline) {
       heartbeat_count: state.heartbeatCount,
       heartbeat_error_count: state.heartbeatErrorCount,
       candidate_check_count: cores.reduce((count, core) => count + core.checks.length, 0),
+      tool_error_count: toolErrorCount,
+      tool_protocol_error_count: toolProtocolErrorCount,
+      tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
       claimed_core_count: new Set(state.cores.filter((core) => core.claimHistory.length > 0).map((core) => core.index)).size,
       claim_count: claimHistory.length,
+      wait_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_wait'").get().count,
+      wake_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'wake_execution'").get().count,
+      accept_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'accept_task'").get().count,
+      rework_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_rework'").get().count,
+      resume_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'resume_execution'").get().count,
     },
     cores,
     audit: {
@@ -590,6 +620,7 @@ function projectReport(state, startedAt, deadline) {
       invalid,
       invalid_reasons: [
         ...(toolViolation ? ['non_swarmenv_tool_event'] : []),
+        ...(toolProtocolErrorCount > 0 ? ['agent_tool_error'] : []),
         ...(materialBoundaryViolation ? ['material_boundary_violation'] : []),
         ...(inputMaterialViolation ? ['input_material_violation'] : []),
       ...(workspaceViolation ? ['workspace_violation'] : []),
@@ -631,8 +662,6 @@ async function createProjectState(problem, config, options) {
   const contextService = new ContextService(database, { logger: contextLogger });
   const taskService = new TaskService(database, { contextService, logger: taskLogger });
   contextService.taskService = taskService;
-  const router = new ServicesRouter({ taskService, contextService, logger: routerLogger });
-  const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
   const inputMetadata = {
     putnambench_commit: fixture.putnambench_commit,
@@ -651,6 +680,8 @@ async function createProjectState(problem, config, options) {
       timeoutMs: options.checkerTimeoutMs ?? 120_000,
     }),
   });
+  const router = new ServicesRouter({ taskService, contextService, judgeService, logger: routerLogger });
+  const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const root = owner.proposeTask({
     task_type: 'proof',
     goal: `Prove ${problem.id}`,
@@ -734,6 +765,8 @@ async function createProjectState(problem, config, options) {
       turnIntervalMs: options.turnIntervalMs ?? 10 * 60_000,
       turns: 0,
       toolEvents: [],
+      workspaceWrites: [],
+      toolErrors: [],
       errors: [],
       checks: [],
       checked: new Set(),
@@ -755,7 +788,7 @@ async function createProjectState(problem, config, options) {
         core.claim = claim;
         const workerSession = core.session;
         if (!workerSession) throw new Error('Agent claimed a Task before its session was registered');
-        await runtime.bindAgentExecution(claim.execution.execution_id, null, {
+        const bound = await runtime.bindAgentExecution(claim.execution.execution_id, null, {
           workspaceRef: join(workspaceRoot, claim.execution.execution_id),
           startSession: async ({ execution, workspace }) => {
             const session = await core.adapter.start({
@@ -790,10 +823,14 @@ async function createProjectState(problem, config, options) {
             }
           })();
         }
-        core.claimHistory.push({ task_id: claim.task.task_id, execution_id: claim.execution.execution_id });
-        // The worker session is only the claim transport. Its handoff is
-        // completed after its current prompt settles; the bound session is
-        // already running in the selected Workspace.
+        core.claimHistory.push({
+          task_id: claim.task.task_id,
+          execution_id: claim.execution.execution_id,
+          workspace_revision_start: bound.workspace.workspace_revision,
+        });
+        // The worker session is only the claim transport. The handoff result
+        // tells the current turn to stop; once that turn settles, the
+        // existing cleanup path stops this transport session.
         if (core.session === workerSession) core.session = null;
       },
       onRelease: async ({ taskId, executionId }) => {
@@ -805,6 +842,25 @@ async function createProjectState(problem, config, options) {
           core.session = null;
           core.turnInFlight = false;
         }
+      },
+      onWorkspaceWrite: async ({ taskId, executionId, result }) => {
+        core.workspaceWrites.push({
+          task_id: taskId,
+          execution_id: executionId,
+          path: result.file?.path ?? null,
+          file_content_hash: result.file?.content_hash ?? null,
+          workspace_revision: result.workspace?.workspace_revision ?? null,
+          workspace_content_hash: result.workspace?.content_hash ?? null,
+          changed_files: result.diff?.changed_files?.map((file) => ({ path: file.path, status: file.status })) ?? [],
+        });
+      },
+      onError: async ({ operation, error }) => {
+        core.toolErrors.push({
+          operation,
+          code: error.code ?? error.name,
+          message_class: safeDiagnostic(error.message) ?? error.code ?? 'tool_error',
+          recoverable: error.code === 'CONFLICT' && /active Execution quota|no available Task/i.test(error.message ?? ''),
+        });
       },
       logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),
     });
@@ -932,11 +988,20 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
             project_isolation: true,
             core_count: 4,
             input_policy: 'pinned formalization only; no candidate or solution input',
-            tool_policy: 'registered swarmenv_* Service tools; swarmenv_call is compatibility-only',
+            tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
             cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
           },
           project: { problem_id: problems[index].id, source_hash: problems[index].source_hash ?? null },
-          run: { solved: false, elapsed_ms: null, deadline_reached: false, cleanup_elapsed_ms: null },
+          run: {
+            protocol_valid: false,
+            made_progress: false,
+            progress_evidence: { child_task_count: 0, workspace_write_count: 0, meaningful_material_count: 0, candidate_check_count: 0 },
+            solved: false,
+            ended_early: false,
+            elapsed_ms: null,
+            deadline_reached: false,
+            cleanup_elapsed_ms: null,
+          },
           audit: { invalid: true, invalid_reasons: ['project_runner_error'], raw_transcript_exported: false, proof_contents_exported: false },
           error: { code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'project_runner_error' },
         };

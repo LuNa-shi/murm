@@ -212,7 +212,7 @@ test('execution heartbeat and lifecycle writes enforce state and fencing version
   service.close();
 });
 
-test('a resumable waiting Execution is visible and explicit claim hands it to the next Agent', () => {
+test('an expired waiting Execution is visible and explicit claim hands it to the next Agent', () => {
   const { service, sdk } = rootService();
   const task = sdk.proposeTask(proofInput(), { operationId: 'propose-wait-takeover' }).task;
   const claimed = sdk.withContext({ taskId: task.task_id, specVersion: 1, stateVersion: 0 }).claim({
@@ -230,7 +230,7 @@ test('a resumable waiting Execution is visible and explicit claim hands it to th
   }));
   const waited = service.dispatch('request_wait', {
     checkpoint_ref: checkpointed.execution.checkpoint_ref, checkpoint_hash: checkpointed.execution.checkpoint_hash,
-    wait_condition: { type: 'check_result_arrived', check_request_key: 'check:wait-takeover' },
+    wait_condition: { type: 'timer', deadline: new Date(Date.now() - 1000).toISOString() },
   }, makeEnvelope({
     operationId: 'wait-takeover-wait', actorRef: 'agent:first', taskId: task.task_id, executionId: claimed.execution.execution_id,
     specVersion: 1, stateVersion: checkpointed.execution.state_version, fencingVersion: 1,
@@ -245,6 +245,43 @@ test('a resumable waiting Execution is visible and explicit claim hands it to th
   assert.equal(resumed.execution.owner_ref, 'agent:second');
   assert.equal(resumed.execution.state, 'CREATED');
   assert.equal(resumed.execution.attempt_no, 2);
+  service.close();
+});
+
+test('a checker waiting Execution stays unavailable until its CheckResult arrives', () => {
+  const { service, sdk } = rootService();
+  const task = sdk.proposeTask(proofInput(), { operationId: 'propose-check-wait' }).task;
+  const claimed = sdk.withContext({ taskId: task.task_id, specVersion: 1, stateVersion: 0 }).claim({
+    claim_key: 'check-wait-claim', owner_ref: 'agent:checker', workspace_mode: 'clean',
+  }, { operationId: 'check-wait-claim' });
+  const started = service.dispatch('start_execution', {}, makeEnvelope({
+    operationId: 'check-wait-start', actorRef: 'agent:checker', taskId: task.task_id, executionId: claimed.execution.execution_id,
+    specVersion: 1, stateVersion: claimed.execution.state_version, fencingVersion: 1,
+  }));
+  const checkpointed = service.dispatch('save_checkpoint', {
+    checkpoint_ref: 'checkpoint:check-wait', checkpoint_hash: 'hash:check-wait', workspace_revision: null,
+  }, makeEnvelope({
+    operationId: 'check-wait-checkpoint', actorRef: 'agent:checker', taskId: task.task_id, executionId: claimed.execution.execution_id,
+    specVersion: 1, stateVersion: started.execution.state_version, fencingVersion: 1,
+  }));
+  service.dispatch('request_wait', {
+    checkpoint_ref: checkpointed.execution.checkpoint_ref, checkpoint_hash: checkpointed.execution.checkpoint_hash,
+    wait_condition: { type: 'check_result_arrived', check_request_key: 'check:arrives-later' },
+  }, makeEnvelope({
+    operationId: 'check-wait-request', actorRef: 'agent:checker', taskId: task.task_id, executionId: claimed.execution.execution_id,
+    specVersion: 1, stateVersion: checkpointed.execution.state_version, fencingVersion: 1,
+  }));
+  assert.equal(sdk.withContext({ actorRef: 'agent:next' }).listTasks({ limit: 10 }).length, 0);
+  const timestamp = new Date().toISOString();
+  service.db.prepare(`INSERT INTO check_results (
+    check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
+    execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict, evidence_json,
+    applied_task_state_version, applied_at, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RECEIVED', 'FAIL', ?, NULL, NULL, ?, ?)`).run(
+    'check-result-later', 'check:arrives-later', 'request-hash', 'candidate-material', task.task_id, task.spec_version,
+    claimed.execution.execution_id, claimed.execution.input_snapshot_hash, 'lean', 'mvp-1', 'putnambench-test', '{}', timestamp, timestamp,
+  );
+  assert.equal(sdk.withContext({ actorRef: 'agent:next' }).listTasks({ limit: 10 })[0].task_id, task.task_id);
   service.close();
 });
 

@@ -215,10 +215,7 @@ export class TaskService {
       if (active.length >= task.parallel_quota) return false;
       const waiting = executions.filter((execution) => execution.state === 'WAITING');
       if (waiting.length === 0) return true;
-      const resumableWaiting = waiting.some((execution) => {
-        const type = execution.wait_condition?.type;
-        return type !== 'parent_review' && (type !== 'timer' || !execution.wait_deadline || Date.parse(execution.wait_deadline) <= nowMs);
-      });
+      const resumableWaiting = waiting.some((execution) => this.#isWaitingResumable(execution, nowMs));
       return resumableWaiting || active.length + waiting.length < task.parallel_quota;
     }).slice(0, limit);
   }
@@ -483,7 +480,6 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'resume Workspace selection with a revision requires a source Workspace');
     }
     let waitingExecution = this.db.prepare("SELECT * FROM executions WHERE task_id = ? AND state = 'WAITING' ORDER BY updated_at DESC, execution_id DESC LIMIT 1").get(task.task_id);
-    const waitingCondition = waitingExecution ? parse(waitingExecution.wait_condition_json) : null;
     const inputSnapshotHash = payload.input_snapshot_hash ?? hash({
       task_id: task.task_id,
       spec_hash: task.spec_hash,
@@ -491,8 +487,7 @@ export class TaskService {
       input_material_refs: inputMaterialRefs,
     });
     const activeCount = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')").get(task.task_id).count;
-    const resumableWaiting = waitingExecution && waitingCondition?.type !== 'parent_review' &&
-      (waitingCondition?.type !== 'timer' || !waitingExecution.wait_deadline || Date.parse(waitingExecution.wait_deadline) <= Date.now());
+    const resumableWaiting = waitingExecution && this.#isWaitingResumable(rowToExecution(waitingExecution));
     if (waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting) {
       const continueExisting = workspaceMode === 'resume' && !sourceExecutionId && !sourceWorkspaceRef && payload.workspace_revision === undefined;
       if (!continueExisting) {
@@ -947,6 +942,24 @@ export class TaskService {
   #latestExecution(taskId, activeOnly = false) {
     const activeClause = activeOnly ? "AND state IN ('CREATED', 'RUNNING', 'WAITING')" : '';
     return rowToExecution(this.db.prepare(`SELECT * FROM executions WHERE task_id = ? ${activeClause} ORDER BY attempt_no DESC, created_at DESC LIMIT 1`).get(taskId));
+  }
+
+  #isWaitingResumable(execution, nowMs = Date.now()) {
+    const condition = execution.wait_condition;
+    if (!condition || condition.type === 'parent_review') return false;
+    if (condition.type === 'timer') return !execution.wait_deadline || Date.parse(execution.wait_deadline) <= nowMs;
+    if (condition.type === 'child_task_terminal') {
+      const childTaskId = condition.child_task_id ?? condition.task_id;
+      const child = childTaskId ? this.getTask(childTaskId) : null;
+      return Boolean(child && TERMINAL_TASK_STATES.includes(child.state));
+    }
+    if (condition.type === 'check_result_arrived') {
+      const requestKey = condition.check_request_key ?? condition.request_key;
+      if (!requestKey) return false;
+      const result = this.db.prepare('SELECT status FROM check_results WHERE request_key = ?').get(requestKey);
+      return Boolean(result && ['RECEIVED', 'APPLIED', 'IGNORED'].includes(result.status));
+    }
+    return false;
   }
 
   #createRecoveryExecution(task, previous, steerRefs, createdAt) {

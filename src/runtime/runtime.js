@@ -46,6 +46,75 @@ export class Runtime {
     return { workspace, revisions };
   }
 
+  async listWorkspaceFiles(executionId, { path = '' } = {}) {
+    const execution = this.#getExecution(executionId);
+    if (!execution.workspace_ref) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution has no materialized Workspace');
+    return this.workspaceManager.listFiles({
+      workspaceRef: execution.workspace_ref,
+      executionId,
+      fencingVersion: execution.fencing_version,
+      path,
+    });
+  }
+
+  async readWorkspaceFile(executionId, { path, maxBytes = 1_000_000 } = {}) {
+    const execution = this.#getExecution(executionId);
+    if (!execution.workspace_ref) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution has no materialized Workspace');
+    return this.workspaceManager.readWorkspaceFile({
+      workspaceRef: execution.workspace_ref,
+      executionId,
+      fencingVersion: execution.fencing_version,
+      path,
+      maxBytes,
+    });
+  }
+
+  async writeWorkspaceFile(executionId, { path, content, expectedRevision = undefined, saveOperationId = null } = {}) {
+    const execution = this.#getExecution(executionId);
+    requireString(path, 'workspace file path');
+    if (typeof content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace file content must be a string');
+    if (!['CREATED', 'RUNNING'].includes(execution.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Workspace is not writable while Execution is ${execution.state}`);
+    }
+    if (!this.activeProcesses.has(executionId)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace writes require an active Runtime Execution');
+    }
+    if (!execution.workspace_ref) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution has no materialized Workspace');
+    const revision = expectedRevision ?? execution.workspace_revision;
+    if (!Number.isInteger(revision) || revision < 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'expected_revision is required after Workspace materialization');
+    const workspace = await this.workspaceManager.saveWorkspaceRevision({
+      workspaceRef: execution.workspace_ref,
+      executionId,
+      fencingVersion: execution.fencing_version,
+      expectedRevision: revision,
+      files: { [path]: content },
+    });
+    const current = this.#saveWorkspaceReference(execution, workspace, saveOperationId ?? operationId('workspace-write'));
+    const active = this.activeProcesses.get(executionId);
+    if (active) {
+      active.execution = current;
+      active.workspace = workspace;
+    }
+    return {
+      workspace,
+      file: await this.readWorkspaceFile(executionId, { path }),
+      diff: await this.workspaceDiff(executionId, { fromRevision: revision, toRevision: workspace.workspace_revision }),
+      execution: current,
+    };
+  }
+
+  async workspaceDiff(executionId, { fromRevision = null, toRevision = null } = {}) {
+    const execution = this.#getExecution(executionId);
+    if (!execution.workspace_ref) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution has no materialized Workspace');
+    return this.workspaceManager.diff({
+      workspaceRef: execution.workspace_ref,
+      executionId,
+      fencingVersion: execution.fencing_version,
+      fromRevision,
+      toRevision,
+    });
+  }
+
   async startExecution(executionId) {
     this.logger?.append({ event: 'runtime.start_execution', execution_id: executionId });
     const execution = this.#getExecution(executionId);
@@ -268,12 +337,12 @@ export class Runtime {
     });
   }
 
-  #saveWorkspaceReference(execution, workspace) {
+  #saveWorkspaceReference(execution, workspace, saveOperationId = operationId('workspace')) {
     return this.taskService.dispatch('save_workspace_revision', {
       workspace_ref: workspace.workspace_ref,
       workspace_revision: workspace.workspace_revision,
       workspace_content_hash: workspace.content_hash,
-    }, this.#executionEnvelope(execution, operationId('workspace'))).execution;
+    }, this.#executionEnvelope(execution, saveOperationId)).execution;
   }
 
   async #launch(execution, workspace) {
