@@ -68,7 +68,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onRelease = null, onWorkspaceWrite = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -78,8 +78,10 @@ export class ServicesBridge {
     this.taskId = taskId;
     this.executionId = executionId;
     this.onClaim = onClaim;
+    this.onClaimAccepted = onClaimAccepted;
     this.onRelease = onRelease;
     this.onWorkspaceWrite = onWorkspaceWrite;
+    this.onWorkUnit = onWorkUnit;
     this.onError = onError;
     this.agentPrompt = agentPrompt;
     this.host = host;
@@ -187,6 +189,7 @@ export class ServicesBridge {
         this.executionId = result.execution.execution_id;
         let handoffRequired = false;
         try {
+          await this.onClaimAccepted?.(result);
           if (this.onClaim) {
             await this.onClaim(result);
             handoffRequired = true;
@@ -244,6 +247,7 @@ export class ServicesBridge {
         this.taskId = null;
         this.executionId = null;
         if (this.onRelease) await this.onRelease(released);
+        await this.onWorkUnit?.({ operation, taskId: released.taskId, executionId: released.executionId, payload, result });
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
@@ -287,6 +291,9 @@ export class ServicesBridge {
       }
       if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {
         await this.onWorkspaceWrite({ taskId: this.taskId, executionId: this.executionId, result });
+      }
+      if (this.onWorkUnit && ['publish_material', 'create_child_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+        await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
       return result;

@@ -24,6 +24,22 @@ export const GENERIC_AGENT_PROMPT = [
 ].join('\n');
 
 /**
+ * Prompt used after a Core has released a waiting or terminal Execution.
+ * The scheduler already checked that work may be available, so the slot only
+ * needs to inspect the Task queue and claim one responsibility. Repeating the
+ * full Service Catalog discovery here creates scheduler traffic without
+ * adding work.
+ */
+export const IDLE_AGENT_PROMPT = [
+  'You are an unbound reusable SwarmEnv Agent Core slot.',
+  'Call task_list with available_only=true and claim exactly one returned Task when work is available.',
+  'If the list is empty, end this turn immediately without calling claim or any claimed-only tool.',
+  'A claim CONFLICT means another Core won the work; end this turn and let Runtime retry when the queue changes.',
+  'If the claim result says handoff_required, stop this turn immediately and continue in the bound Workspace session.',
+  'Use only registered SwarmEnv Service tools.',
+].join('\n');
+
+/**
  * Prompt sent to the second Pi session that Runtime starts after an unbound
  * worker has successfully claimed a Task. It deliberately omits browsing and
  * claiming instructions because this session already owns the Execution.

@@ -19,3 +19,4 @@ export * from './judge/judge-service.js';
 export * from './e2e/script-executor.js';
 export * from './e2e/real-agent-path.js';
 export * from './benchmark/putnam-runner.js';
+export * from './benchmark/parallelism.js';

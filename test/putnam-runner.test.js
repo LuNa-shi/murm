@@ -402,6 +402,10 @@ test('benchmark project starts four isolated cores and redacts candidate content
     const adapters = [];
     const report = await runFixture({ reportDir, experimentDir, onAdapter: (adapter) => adapters.push(adapter) });
     assert.equal(report.protocol.core_count, 4);
+    assert.equal(report.parallelism.core_count, 4);
+    assert.equal(report.parallelism.total_core_capacity_ms, report.parallelism.core_count * report.parallelism.elapsed_ms);
+    assert.ok(Array.isArray(report.parallelism.core_state_intervals));
+    assert.ok(report.parallelism.work_units.every((unit) => Object.hasOwn(unit, 'duplicate_of')));
     assert.ok(report.project.task_tree.length >= 2);
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'proof' && task.parent_id === null));
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'research'));
@@ -534,6 +538,10 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.equal(report.run.protocol_valid, true);
     assert.equal(report.run.made_progress, true);
     assert.equal(report.run.solved, true);
+    assert.equal(report.parallelism.claim_conflict_count, 0);
+    assert.ok(report.parallelism.max_active_core_count >= 3);
+    assert.ok(report.parallelism.work_units.some((unit) => unit.progress_kind === 'child_task'));
+    assert.ok(report.parallelism.work_units.some((unit) => unit.progress_kind === 'parent_review'));
     assert.equal(report.project.task_tree.filter((task) => task.parent_id !== null).length, 3);
     assert.ok(report.run.claim_count >= 4, `expected root and three child claims, got ${report.run.claim_count}`);
     assert.ok(report.run.child_claim_count >= 3, `expected every child to be claimed, got ${report.run.child_claim_count}`);

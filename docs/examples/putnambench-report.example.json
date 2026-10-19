@@ -15,6 +15,44 @@
     "run_id": "example-run",
     "database_path": "/private/report-dir/putnam_2025_b1/project.sqlite"
   },
+  "parallelism": {
+    "core_count": 4,
+    "elapsed_ms": 3600000,
+    "total_core_capacity_ms": 14400000,
+    "agent_time_ms": 8640000,
+    "agent_time_utilization_v0": 0.6,
+    "mean_active_core_count": 2.4,
+    "max_active_core_count": 4,
+    "concurrency_histogram_ms": { "0": 900000, "2": 1800000, "3": 900000 },
+    "ready_work_ms": 3000000,
+    "ready_unassigned_ms": 60000,
+    "waiting_ms_by_core": { "1": 1200000, "2": 600000, "3": 600000, "4": 600000 },
+    "idle_ms_by_core": { "1": 0, "2": 0, "3": 0, "4": 0 },
+    "scheduler_poll_ms": 1200,
+    "claim_conflict_count": 0,
+    "judge_time_ms": 180000,
+    "turn_occupancy_ms": 9360000,
+    "turn_occupancy_ratio_v0": 0.65,
+    "core_state_intervals": [
+      { "core": 1, "state": "RUNNING", "task_id": "task-id", "execution_id": "execution-id", "start_ms": 0, "end_ms": 1200000, "reason": "execution_started" },
+      { "core": 1, "state": "WAITING", "task_id": "task-id", "execution_id": "execution-id", "start_ms": 1200000, "end_ms": 1800000, "reason": "check_result_arrived" }
+    ],
+    "work_units": [
+      {
+        "work_unit_id": "work-unit-1",
+        "task_id": "task-id",
+        "execution_id": "execution-id",
+        "core": 1,
+        "progress_kind": "workspace_revision",
+        "started_at": "2026-10-19T00:00:00.000Z",
+        "ended_at": "2026-10-19T00:00:00.001Z",
+        "input_snapshot_hash": "sha256-of-frozen-input",
+        "goal_fingerprint": "sha256-of-goal",
+        "output_fingerprint": "sha256-of-workspace",
+        "duplicate_of": null
+      }
+    ]
+  },
   "run": {
     "solved": false,
     "protocol_valid": true,
