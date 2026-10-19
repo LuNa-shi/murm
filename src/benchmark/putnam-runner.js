@@ -485,7 +485,10 @@ async function stopCore(state, core) {
     }).catch(() => undefined);
   }
   const current = core.executionId ? state.taskService.getExecution(core.executionId) : null;
-  if (current && ['CREATED', 'RUNNING', 'WAITING'].includes(current.state)) {
+  // WAITING has already released its process and Workspace lease. Preserve
+  // that durable state for the report and a later explicit claim; only an
+  // unfinished live/created Execution needs a terminal cleanup state.
+  if (current && ['CREATED', 'RUNNING'].includes(current.state)) {
     await core.runtime.stopExecution(core.executionId, 'FAILED').catch(() => undefined);
   }
   await core.bridge.stop().catch(() => undefined);
