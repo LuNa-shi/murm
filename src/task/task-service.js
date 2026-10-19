@@ -951,7 +951,15 @@ export class TaskService {
     if (condition.type === 'child_task_terminal') {
       const childTaskId = condition.child_task_id ?? condition.task_id;
       const child = childTaskId ? this.getTask(childTaskId) : null;
-      return Boolean(child && TERMINAL_TASK_STATES.includes(child.state));
+      if (!child) return false;
+      if (TERMINAL_TASK_STATES.includes(child.state)) return true;
+      // A child research/implementation Task delivers its result by entering
+      // parent_review after publishing its required Materials. That is a
+      // completion event for the parent scheduler even though the parent
+      // still has to accept or rework the child before it becomes terminal.
+      if (child.state !== 'WAITING' || !child.parent_id) return false;
+      const childExecution = this.#latestExecution(child.task_id, true);
+      return Boolean(childExecution?.wait_condition?.type === 'parent_review' && this.#completion(child, childExecution).satisfied);
     }
     if (condition.type === 'check_result_arrived') {
       const requestKey = condition.check_request_key ?? condition.request_key;

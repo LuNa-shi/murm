@@ -25,11 +25,12 @@ function problem(id) {
 }
 
 class FakeSession extends EventEmitter {
-  constructor(env, cheat = false, noWork = false) {
+  constructor(env, cheat = false, noWork = false, fileCandidate = false) {
     super();
     this.env = env;
     this.cheat = cheat;
     this.noWork = noWork;
+    this.fileCandidate = fileCandidate;
     this.rpcRecords = [];
     this.closed = false;
   }
@@ -89,6 +90,21 @@ class FakeSession extends EventEmitter {
       expected_revision: baselineRevision,
     });
     await call('workspace_diff', { from_revision: baselineRevision, to_revision: baselineRevision + 1 });
+    let candidateContent = this.cheat ? 'by sorry' : 'def benchmarkRootArtifact : Nat := 0';
+    if (this.fileCandidate) {
+      const candidatePath = 'candidate.lean';
+      const candidateWrite = await call('write_workspace_file', {
+        path: candidatePath,
+        content: 'import Mathlib\ntheorem workspace_candidate : True := by trivial\n',
+        expected_revision: baselineRevision + 1,
+      });
+      candidateContent = {
+        path: candidatePath,
+        workspace_revision: candidateWrite.workspace.workspace_revision,
+        content_hash: candidateWrite.file.content_hash,
+        description: 'candidate metadata mentions sorry but the Workspace source is clean',
+      };
+    }
     if (claim.task.parent_id === null) {
       await call('create_child_task', {
         child_creation_key: `fake-child-${this.env.SWARMENV_BRIDGE_TOKEN}`,
@@ -113,7 +129,7 @@ class FakeSession extends EventEmitter {
       const material = await call('publish_material', {
         kind: 'artifact',
         scope: 'proof_relevant',
-        content: this.cheat ? 'by sorry' : 'def benchmarkRootArtifact : Nat := 0',
+        content: candidateContent,
       });
       await call('submit_candidate', { candidate_material_id: material.material.material_id });
       return { data: { disposition: 'handled' } };
@@ -122,7 +138,11 @@ class FakeSession extends EventEmitter {
     const material = await call('publish_material', {
       kind: 'artifact',
       scope: 'proof_relevant',
-      content: this.cheat ? 'by sorry' : 'def benchmarkArtifact : Nat := 0',
+      content: this.fileCandidate ? {
+        path: 'candidate.lean',
+        workspace_revision: baselineRevision + 1,
+        description: 'candidate metadata mentions sorry but the Workspace source is clean',
+      } : (this.cheat ? 'by sorry' : 'def benchmarkArtifact : Nat := 0'),
     });
     await call('submit_candidate', { candidate_material_id: material.material.material_id });
     return { data: { disposition: 'handled' } };
@@ -136,10 +156,11 @@ class FakeSession extends EventEmitter {
 }
 
 class FakeAdapter {
-  constructor({ env, cheat = false, noWork = false }) {
+  constructor({ env, cheat = false, noWork = false, fileCandidate = false }) {
     this.env = env;
     this.cheat = cheat;
     this.noWork = noWork;
+    this.fileCandidate = fileCandidate;
     this.starts = [];
   }
 
@@ -147,7 +168,7 @@ class FakeAdapter {
     this.starts.push(options);
     const { logger } = options;
     logger?.append({ type: 'fake-agent-start' });
-    const session = new FakeSession(this.env, this.cheat, this.noWork);
+    const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate);
     session.manifest = { fake: true, pi_version: 'fake' };
     return session;
   }
@@ -329,7 +350,7 @@ class CollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, onAdapter = null }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, onAdapter = null, checker = null }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -339,11 +360,11 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     turnIntervalMs: 10_000,
     stopOnSolved: true,
     agentAdapterFactory: ({ env }) => {
-      const adapter = new FakeAdapter({ env, cheat, noWork });
+      const adapter = new FakeAdapter({ env, cheat, noWork, fileCandidate });
       onAdapter?.(adapter);
       return adapter;
     },
-    checker: {
+    checker: checker ?? {
       async check() {
         return { verdict: 'PASS', evidence: { exit_code: 0 } };
       },
@@ -417,6 +438,34 @@ test('placeholder candidates are invalid even when the checker reports PASS', as
     assert.equal(report.audit.invalid, true);
     assert.deepEqual(report.audit.invalid_reasons, ['forbidden_placeholder']);
   } finally {
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('Workspace-referenced candidates are checked from the Workspace source file', async () => {
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-workspace-candidate-report-');
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-workspace-candidate-');
+  let checkedContent = '';
+  try {
+    const report = await runFixture({
+      reportDir,
+      experimentDir,
+      id: 'putnam_workspace_candidate_test',
+      fileCandidate: true,
+      checker: {
+        async check({ candidate }) {
+          checkedContent = candidate.content;
+          return { verdict: 'PASS', evidence: { exit_code: 0 } };
+        },
+      },
+    });
+    assert.match(checkedContent, /theorem workspace_candidate/);
+    assert.doesNotMatch(checkedContent, /candidate metadata mentions sorry/);
+    assert.equal(report.run.solved, true);
+    assert.equal(report.run.protocol_valid, true);
+    assert.equal(report.audit.invalid, false);
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
   }
 });

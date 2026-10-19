@@ -49,13 +49,13 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'task_accept', service: 'task', operation: 'accept_task', version: '1.0',
-    description: 'Accept a child Task after reviewing its delivered Material or checked candidate.',
+    description: 'Accept a child Task after reviewing its delivered Material or checked candidate. First read the child Task and latest Execution; the child must be WAITING for parent_review and its completion contract must be satisfied.',
     scope: 'execution-write', side_effect: true,
     parameters: { type: 'object', required: ['target_task_id'], properties: { target_task_id: { type: 'string' }, target_state_version: { type: 'integer', minimum: 0 } }, additionalProperties: false },
   },
   {
     name: 'task_request_rework', service: 'task', operation: 'request_rework', version: '1.0',
-    description: 'Send a child Task back for focused rework with a durable steer Material.',
+    description: 'Send a child Task back for focused rework with a durable steer Material. The child must be WAITING for parent_review; leave OPEN or RUNNING children with their worker.',
     scope: 'execution-write', side_effect: true,
     parameters: { type: 'object', required: ['target_task_id', 'instruction'], properties: { target_task_id: { type: 'string' }, instruction: { type: 'string' }, scope: { type: 'string' } }, additionalProperties: false },
   },
@@ -73,9 +73,9 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'execution_wait', service: 'execution', operation: 'request_wait', version: '1.0',
-    description: 'Save a checkpoint and release the active Execution for a durable wait. Use wait_condition type timer or check_result_arrived; time and judge_result kind aliases are accepted.',
+    description: 'Save a checkpoint and release the active Execution for a durable wait. Use child_task_terminal with a direct child_task_id for parent coordination, check_result_arrived with check_request_key after a candidate, or timer with a deadline. The time and judge_result kind aliases are accepted.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['wait_condition'], properties: { wait_condition: { type: 'object' }, checkpoint: { type: 'object' }, files: { type: 'object' }, wait_deadline: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['wait_condition'], properties: { wait_condition: { type: 'object' }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } }, wait_deadline: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'workspace_get', service: 'workspace', operation: 'get_workspace', version: '1.0',
@@ -123,7 +123,7 @@ const TOOL_DEFINITIONS = Object.freeze([
     name: 'context_publish', service: 'context', operation: 'publish_material', version: '1.0',
     description: 'Publish a versioned shared Material for other Executions.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['kind', 'scope', 'content'], properties: { kind: { type: 'string' }, scope: { type: 'string' }, content: {}, evidence_state: { type: 'string' } }, additionalProperties: true },
+    parameters: { type: 'object', required: ['kind', 'scope', 'content'], properties: { kind: { type: 'string', enum: ['assumption', 'fact', 'conjecture', 'experience', 'failure', 'artifact', 'steer', 'check_result'] }, scope: { type: 'string' }, content: {}, evidence_state: { type: 'string', enum: ['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale'] } }, additionalProperties: true },
   },
   {
     name: 'judge_submit_candidate', service: 'judge', operation: 'submit_candidate', version: '1.0',

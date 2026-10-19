@@ -112,6 +112,33 @@ test('research child review accepts delivered Material and never invokes Judge',
   close(env);
 });
 
+test('parent child-task wait becomes claimable when a child delivers a result for review', () => {
+  const env = environment();
+  const parent = env.sdk.proposeTask({ task_type: 'default', goal: 'coordinate child delivery', expected_output: 'reviewed child result', acceptance_conditions: {}, owner_ref: 'owner:root' }, { operationId: 'wake-parent-propose' }).task;
+  const parentRun = claimTask(env, parent, { executionId: 'wake-parent-execution', actorRef: 'owner:root' });
+  const child = parentRun.sdk.withContext({ taskId: parent.task_id, executionId: null, stateVersion: parentRun.claim.task.state_version }).createChildTask({
+    child_creation_key: 'wake-parent-child', ...researchInput(), owner_ref: 'researcher:one',
+  }, { operationId: 'wake-parent-child-create' }).task;
+  const parentCheckpoint = saveCheckpoint(env, parentRun.claim.execution, 'wake-parent-checkpoint');
+  const parentWait = parentRun.sdk.withContext({ stateVersion: parentCheckpoint.state_version }).requestWait({
+    wait_key: 'wake-parent-wait', checkpoint_ref: parentCheckpoint.checkpoint_ref, checkpoint_hash: parentCheckpoint.checkpoint_hash,
+    wait_condition: { type: 'child_task_terminal', child_task_id: child.task_id },
+  }, { operationId: 'wake-parent-wait-op' });
+  const childRun = claimTask(env, child, { executionId: 'wake-child-execution', actorRef: 'researcher:one' });
+  childRun.sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { result: 'delivered' } }, { operationId: 'wake-child-material' });
+  const childCheckpoint = saveCheckpoint(env, childRun.claim.execution, 'wake-child-checkpoint');
+  const childWait = childRun.sdk.withContext({ stateVersion: childCheckpoint.state_version }).requestWait({
+    wait_key: 'wake-child-review', checkpoint_ref: childCheckpoint.checkpoint_ref, checkpoint_hash: childCheckpoint.checkpoint_hash,
+    wait_condition: { type: 'parent_review' },
+  }, { operationId: 'wake-child-review-op' });
+  assert.equal(parentWait.execution.state, 'WAITING');
+  assert.equal(childWait.execution.state, 'WAITING');
+  const available = env.sdk.withContext({ actorRef: 'agent:reviewer' }).listTasks({ limit: 10 });
+  assert.equal(available[0].task_id, parent.task_id);
+  assert.equal(available[0].latest_execution.state, 'WAITING');
+  close(env);
+});
+
 test('root owner acceptance completes an unchecked research Task', () => {
   const env = environment();
   const task = env.sdk.proposeTask({ ...researchInput(), owner_ref: 'owner:root', goal: 'root research' }, { operationId: 'root-research-propose' }).task;

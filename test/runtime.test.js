@@ -137,13 +137,14 @@ test('Runtime creates an isolated workspace before Pi, saves checkpoint before w
   const waited = await runtime.requestWait(claimed.execution.execution_id, {
     waitCondition: { type: 'timer', deadline: new Date(Date.now() + 60_000).toISOString() },
     checkpoint: { step: 'before-judge' },
-    files: { 'progress.txt': 'checkpointed' },
+    files: { 'progress.txt': 'checkpointed', 'checkpoint.json': { step: 'before-judge', source: 'Agent checkpoint' } },
   });
   assert.equal(waited.execution.state, 'WAITING');
   assert.equal(waited.task.state, 'WAITING');
   assert.equal(runtime.getActiveProcessCount(), 0);
   assert.ok(waited.execution.checkpoint_ref);
   assert.ok(waited.execution.workspace_content_hash);
+  assert.deepEqual(JSON.parse(await readFile(join(started.workspace.workspace_ref, 'checkpoint.json'), 'utf8')), { step: 'before-judge', source: 'Agent checkpoint' });
   assert.equal(taskService.listActiveExecutions().length, 1);
 
   assert.throws(
@@ -266,6 +267,14 @@ test('Workspace resume copies a selected revision into a new lineage', async () 
   assert.equal(resumed.execution_id, 'execution-two');
   assert.equal(resumed.workspace_revision, second.workspace_revision);
   assert.equal(await readFile(join(resumed.workspace_ref, 'progress.txt'), 'utf8'), 'revision two');
+  const resumedDiff = await manager.diff({
+    workspaceRef: resumed.workspace_ref,
+    executionId: resumed.execution_id,
+    fencingVersion: resumed.fencing_version,
+    fromRevision: 1,
+    toRevision: resumed.workspace_revision,
+  });
+  assert.ok(resumedDiff.changed_files.some((file) => file.path === 'progress.txt' && file.status === 'added'));
   const resumedMetadata = JSON.parse(await readFile(join(resumed.workspace_ref, '.swarm', 'workspace.json'), 'utf8'));
   assert.equal(resumedMetadata.parent_workspace_ref, first.workspace_ref);
   assert.equal(resumed.parent_workspace_ref, first.workspace_ref);

@@ -17,7 +17,7 @@ import { ServicesSDK } from '../sdk/services-sdk.js';
 import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
-import { GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
+import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
 
 const execFileAsync = (command, args) => new Promise((resolvePromise, reject) => {
   execFile(command, args, { encoding: 'utf8' }, (error, stdout) => {
@@ -49,6 +49,27 @@ function safeDiagnostic(value) {
   if (/timed out|timeout/i.test(text)) return 'checker_timeout';
   if (/unknown identifier|type mismatch|unsolved goals|application type mismatch/i.test(text)) return 'lean_proof_error';
   return 'lean_checker_error';
+}
+
+async function resolveCandidateSource(runtime, material, execution) {
+  if (typeof material.content === 'string') {
+    return { content: material.content, contentHash: null };
+  }
+  const reference = material.content;
+  if (!reference || typeof reference !== 'object' || Array.isArray(reference) || typeof reference.path !== 'string') {
+    throw new TypeError('candidate artifact must contain a Workspace file path or direct source text');
+  }
+  if (reference.workspace_revision !== undefined && reference.workspace_revision !== execution.workspace_revision) {
+    throw new TypeError(`candidate Workspace revision ${reference.workspace_revision} does not match Execution revision ${execution.workspace_revision}`);
+  }
+  const file = await runtime.readWorkspaceFile(execution.execution_id, { path: reference.path });
+  if (reference.workspace_revision !== undefined && reference.workspace_revision !== file.workspace_revision) {
+    throw new TypeError(`candidate Workspace revision ${reference.workspace_revision} does not match readable revision ${file.workspace_revision}`);
+  }
+  if (reference.content_hash !== undefined && reference.content_hash !== file.content_hash) {
+    throw new TypeError(`candidate Workspace file hash does not match ${reference.path}`);
+  }
+  return { content: file.content, contentHash: file.content_hash };
 }
 
 function required(value, name) {
@@ -386,7 +407,7 @@ async function judgeCandidate(state, core) {
   const material = state.contextService.getMaterial(candidateId);
   if (!material) return;
   core.checked.add(candidateId);
-  const content = typeof material.content === 'string' ? material.content : JSON.stringify(material.content);
+  const { content, contentHash } = await resolveCandidateSource(core.runtime, material, execution);
   if (FORBIDDEN_PLACEHOLDER.test(content)) {
     core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: material.content_hash });
   }
@@ -414,7 +435,7 @@ async function judgeCandidate(state, core) {
     environment_ref: state.fixtureManifest.environment_ref,
     execution_id: pending.executionId,
     state_version: execution.state_version,
-    candidate: { material_id: candidateId, content },
+    candidate: { material_id: candidateId, content, content_hash: contentHash ?? undefined },
     target_task: task,
     workspace,
     fixture_manifest: state.fixtureManifest,
@@ -686,7 +707,7 @@ async function createProjectState(problem, config, options) {
     task_type: 'proof',
     goal: `Prove ${problem.id}`,
     expected_output: 'A verified Lean proof for the locked PutnamBench problem',
-    task_instructions: 'Attempt the proof in the Workspace and submit only a real Lean proof artifact. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. If the route is incomplete, publish the blocker and either create a focused child Task or wait according to the Task contract.',
+    task_instructions: 'The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. If the route is genuinely separable or needs parallel research, create bounded direct child Tasks with precise goals, expected outputs, acceptance conditions, and task-specific instructions; otherwise continue the proof in the root Workspace. Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge. Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency; later reclaim the root to read child Workspace changes, Materials, and Judge feedback, then accept completed work or request focused rework before integrating it into the proof.',
     completion_contract: {
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
       required_check: {
@@ -762,7 +783,7 @@ async function createProjectState(problem, config, options) {
       initialTurnPromise: null,
       turnStartedAt: 0,
       nextTurnAt: 0,
-      turnIntervalMs: options.turnIntervalMs ?? 10 * 60_000,
+      turnIntervalMs: options.turnIntervalMs ?? 15_000,
       turns: 0,
       toolEvents: [],
       workspaceWrites: [],
@@ -802,7 +823,7 @@ async function createProjectState(problem, config, options) {
             core.versionManifest = session.manifest ?? null;
             return session;
           },
-          agentPrompt: GENERIC_AGENT_PROMPT,
+          agentPrompt: BOUND_AGENT_PROMPT,
         });
         const boundSession = core.session;
         if (boundSession && core.runtime.activeProcesses.has(claim.execution.execution_id)) {
@@ -831,7 +852,11 @@ async function createProjectState(problem, config, options) {
         // The worker session is only the claim transport. The handoff result
         // tells the current turn to stop; once that turn settles, the
         // existing cleanup path stops this transport session.
-        if (core.session === workerSession) core.session = null;
+        // Runtime replaces core.session with the newly started bound session,
+        // so checking core.session for equality here is too late. The claim
+        // transport must always stop after a successful handoff before the
+        // model can issue another claim or a claimed-only call.
+        if (workerSession !== core.session) workerSession.stop?.();
       },
       onRelease: async ({ taskId, executionId }) => {
         if (core.taskId === taskId && core.executionId === executionId) {
@@ -859,7 +884,10 @@ async function createProjectState(problem, config, options) {
           operation,
           code: error.code ?? error.name,
           message_class: safeDiagnostic(error.message) ?? error.code ?? 'tool_error',
-          recoverable: error.code === 'CONFLICT' && /active Execution quota|no available Task/i.test(error.message ?? ''),
+          // Multiple unbound slots may observe the same OPEN Task before one
+          // claim commits. That is normal scheduling contention, not a
+          // protocol violation; the losing slot retries on its next turn.
+          recoverable: error.code === 'CONFLICT' && operation === 'claim',
         });
       },
       logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),
@@ -916,9 +944,9 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   const durationMs = options.timeboxMs ?? 60 * 60_000;
   const deadline = startedAt + durationMs;
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
-  const basePrompt = (core) => core.taskId
-    ? 'This is a follow-up turn for your current claimed Execution. Read all new Materials, especially judge_feedback, inspect the current Workspace and Execution state, and refine or submit your route.'
-    : core.prompt;
+    const basePrompt = (core) => core.taskId
+      ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or waiting.`
+      : core.prompt;
   try {
     await Promise.all(state.cores.map(async (core) => {
       core.nextTurnAt = Date.now();

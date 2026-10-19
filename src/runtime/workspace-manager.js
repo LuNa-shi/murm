@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, lstat, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, lstat, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative as pathRelative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
@@ -165,6 +165,22 @@ export class WorkspaceManager {
     }
     await mkdir(join(target, META_DIR, 'revisions'), { recursive: true });
     await mkdir(join(target, META_DIR, 'checkpoints'), { recursive: true });
+    // A fork keeps the selected revision as its current tip, but its local
+    // revision history must still be usable for diffs and later forks. The
+    // source Workspace is already Runtime-owned and path-checked, so copy the
+    // inherited metadata and snapshots before materializing the new tip.
+    for (let inheritedRevision = 1; inheritedRevision < selectedRevision; inheritedRevision += 1) {
+      const inheritedMetadataPath = join(source.workspace_ref, META_DIR, 'revisions', `${inheritedRevision}.json`);
+      const inheritedSnapshotRoot = join(source.workspace_ref, META_DIR, 'revisions', String(inheritedRevision), 'files');
+      const inheritedMetadata = JSON.parse(await readFile(inheritedMetadataPath, 'utf8'));
+      await writeFile(join(target, META_DIR, 'revisions', `${inheritedRevision}.json`), JSON.stringify({
+        ...inheritedMetadata,
+        execution_id: executionId,
+        workspace_ref: target,
+        fencing_version: fencingVersion,
+      }, null, 2), 'utf8');
+      await cp(inheritedSnapshotRoot, join(target, META_DIR, 'revisions', String(inheritedRevision), 'files'), { recursive: true });
+    }
     const files = {};
     for (const [relativePath, file] of Object.entries(selected.files ?? {})) {
       let content;

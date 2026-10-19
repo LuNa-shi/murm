@@ -12,6 +12,18 @@ function operationId(prefix) {
   return `runtime:${prefix}:${randomUUID()}`;
 }
 
+function normalizeWaitFiles(files) {
+  if (files === undefined || files === null) return {};
+  if (!files || typeof files !== 'object' || Array.isArray(files)) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait files must be a path-to-content object');
+  }
+  return Object.fromEntries(Object.entries(files).map(([path, content]) => {
+    if (typeof content === 'string') return [path, content];
+    if (content === undefined) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `wait file content must be text: ${path}`);
+    return [path, JSON.stringify(content, null, 2)];
+  }));
+}
+
 export class Runtime {
   constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null }) {
     this.taskService = taskService;
@@ -190,7 +202,7 @@ export class Runtime {
     const execution = this.#getExecution(executionId);
     if (!active || execution.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime process can request wait');
     const workspace = await this.workspaceManager.saveWorkspaceRevision({
-      workspaceRef: requireString(execution.workspace_ref, 'workspace_ref'), executionId, fencingVersion: execution.fencing_version, files,
+      workspaceRef: requireString(execution.workspace_ref, 'workspace_ref'), executionId, fencingVersion: execution.fencing_version, files: normalizeWaitFiles(files),
     });
     let current = this.#saveWorkspaceReference(execution, workspace);
     const savedCheckpoint = await this.workspaceManager.saveCheckpoint({
