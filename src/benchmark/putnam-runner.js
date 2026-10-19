@@ -908,10 +908,11 @@ async function createProjectState(problem, config, options) {
           operation,
           code: error.code ?? error.name,
           message_class: safeDiagnostic(error.message) ?? error.code ?? 'tool_error',
-          // Multiple unbound slots may observe the same OPEN Task before one
-          // claim commits. That is normal scheduling contention, not a
-          // protocol violation; the losing slot retries on its next turn.
-          recoverable: error.code === 'CONFLICT' && operation === 'claim',
+          // A Service contract error is feedback for the Agent to correct and
+          // retry. It is not a protocol violation by itself. Multiple
+          // unbound slots may also observe the same OPEN Task before one
+          // claim commits; that scheduling contention is recoverable too.
+          recoverable: error.code === 'INVALID_CONTRACT' || (error.code === 'CONFLICT' && operation === 'claim'),
         });
       },
       logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),

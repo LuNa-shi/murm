@@ -25,12 +25,14 @@ function problem(id) {
 }
 
 class FakeSession extends EventEmitter {
-  constructor(env, cheat = false, noWork = false, fileCandidate = false) {
+  constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false) {
     super();
     this.env = env;
     this.cheat = cheat;
     this.noWork = noWork;
     this.fileCandidate = fileCandidate;
+    this.invalidClaim = invalidClaim;
+    this.invalidClaimUsed = false;
     this.rpcRecords = [];
     this.closed = false;
   }
@@ -50,7 +52,11 @@ class FakeSession extends EventEmitter {
         body: JSON.stringify({ operation, payload }),
       });
       const body = await response.json();
-      if (!body.ok) throw new Error(body.error?.message ?? 'fake bridge call failed');
+      if (!body.ok) {
+        const error = new Error(body.error?.message ?? 'fake bridge call failed');
+        error.code = body.error?.code;
+        throw error;
+      }
       this.rpcRecords.push({ type: 'tool_result', tool_name: 'swarmenv_call' });
       return body.result;
     };
@@ -62,6 +68,20 @@ class FakeSession extends EventEmitter {
       tasks = await call('list_tasks', { limit: 10 });
     }
     if (tasks.length === 0) return { data: { disposition: 'handled' } };
+    if (this.invalidClaim && !this.invalidClaimUsed) {
+      this.invalidClaimUsed = true;
+      try {
+        await call('claim', {
+          task_id: tasks[0].task_id,
+          claim_key: `fake-invalid-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
+          workspace_mode: 'clean',
+          workspace_revision: 1,
+        });
+      } catch (error) {
+        assert.equal(error.code, 'INVALID_CONTRACT');
+        return { data: { disposition: 'handled' } };
+      }
+    }
     let claim;
     try {
       claim = await call('claim', {
@@ -70,6 +90,7 @@ class FakeSession extends EventEmitter {
         workspace_mode: 'clean',
       });
     } catch {
+      this.invalidClaimUsed = true;
       tasks = await call('list_tasks', { limit: 10 });
       if (tasks.length === 0) return { data: { disposition: 'handled' } };
       claim = await call('claim', {
@@ -156,11 +177,12 @@ class FakeSession extends EventEmitter {
 }
 
 class FakeAdapter {
-  constructor({ env, cheat = false, noWork = false, fileCandidate = false }) {
+  constructor({ env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false }) {
     this.env = env;
     this.cheat = cheat;
     this.noWork = noWork;
     this.fileCandidate = fileCandidate;
+    this.invalidClaim = invalidClaim;
     this.starts = [];
   }
 
@@ -168,7 +190,8 @@ class FakeAdapter {
     this.starts.push(options);
     const { logger } = options;
     logger?.append({ type: 'fake-agent-start' });
-    const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate);
+    const isWorkerSession = String(options.executionId ?? '').startsWith('worker-');
+    const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate, this.invalidClaim && isWorkerSession);
     session.manifest = { fake: true, pi_version: 'fake' };
     return session;
   }
@@ -350,7 +373,7 @@ class CollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, onAdapter = null, checker = null }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, onAdapter = null, checker = null }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -359,8 +382,8 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     turnTimeoutMs: 100,
     turnIntervalMs: 10_000,
     stopOnSolved: true,
-    agentAdapterFactory: ({ env }) => {
-      const adapter = new FakeAdapter({ env, cheat, noWork, fileCandidate });
+    agentAdapterFactory: ({ env, index }) => {
+      const adapter = new FakeAdapter({ env, cheat, noWork: noWork || (invalidClaim && index !== 1), fileCandidate, invalidClaim: invalidClaim && index === 1 });
       onAdapter?.(adapter);
       return adapter;
     },
@@ -424,6 +447,22 @@ test('a clean Agent exit without Task or Workspace contribution is not reported 
     assert.equal(report.run.progress_evidence.child_task_count, 0);
     assert.equal(report.run.progress_evidence.workspace_write_count, 0);
     assert.equal(report.run.progress_evidence.candidate_check_count, 0);
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('INVALID_CONTRACT is returned as recoverable Agent feedback and does not invalidate the run', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-recoverable-error-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-recoverable-error-report-');
+  try {
+    const report = await runFixture({ reportDir, experimentDir, id: 'putnam_recoverable_error_test', invalidClaim: true });
+    assert.equal(report.run.protocol_valid, true);
+    assert.equal(report.run.tool_protocol_error_count, 0);
+    assert.ok(report.run.tool_error_count >= 1);
+    assert.equal(report.audit.invalid, false);
+    assert.ok(report.cores.some((core) => core.tool_errors.some((error) => error.code === 'INVALID_CONTRACT' && error.recoverable === true)));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });

@@ -327,6 +327,30 @@ test('candidate Material ID wakes a waiting proof Execution when Judge uses an i
   close(env);
 });
 
+test('resuming a waiting Execution accepts its current Workspace revision without an internal source reference', () => {
+  const env = environment();
+  const task = env.sdk.proposeTask(proofInput(), { operationId: 'revision-resume-propose' }).task;
+  const run = claimTask(env, task, { executionId: 'revision-resume-execution', actorRef: 'owner:root' });
+  const checkpointed = saveCheckpoint(env, run.claim.execution, 'revision-resume-checkpoint');
+  const waited = run.sdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
+    wait_key: 'revision-resume-wait',
+    checkpoint_ref: checkpointed.checkpoint_ref,
+    checkpoint_hash: checkpointed.checkpoint_hash,
+    wait_condition: { type: 'timer', deadline: new Date(Date.now() - 1_000).toISOString() },
+  }, { operationId: 'revision-resume-wait-op' });
+  const resumed = env.sdk.withContext({
+    actorRef: 'agent:next', taskId: task.task_id, specVersion: task.spec_version, stateVersion: env.taskService.getTask(task.task_id).state_version,
+  }).claim({
+    claim_key: 'revision-resume-claim',
+    workspace_mode: 'resume',
+    workspace_revision: waited.execution.workspace_revision,
+  }, { operationId: 'revision-resume-claim-op' });
+  assert.equal(resumed.execution.execution_id, waited.execution.execution_id);
+  assert.equal(resumed.execution.workspace_revision, waited.execution.workspace_revision);
+  assert.equal(resumed.execution.attempt_no, 2);
+  close(env);
+});
+
 test('wait requires a saved checkpoint and wake is idempotent by wake_key', () => {
   const env = environment();
   const task = env.sdk.proposeTask(proofInput(), { operationId: 'wake-propose' }).task;

@@ -476,9 +476,6 @@ export class TaskService {
     if (workspaceMode === 'clean' && (sourceExecutionId || sourceWorkspaceRef || payload.workspace_revision !== undefined)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'clean Workspace selection cannot include a source or revision');
     }
-    if (workspaceMode === 'resume' && payload.workspace_revision !== undefined && !sourceWorkspaceRef) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'resume Workspace selection with a revision requires a source Workspace');
-    }
     let waitingExecution = this.db.prepare("SELECT * FROM executions WHERE task_id = ? AND state = 'WAITING' ORDER BY updated_at DESC, execution_id DESC LIMIT 1").get(task.task_id);
     const inputSnapshotHash = payload.input_snapshot_hash ?? hash({
       task_id: task.task_id,
@@ -489,7 +486,8 @@ export class TaskService {
     const activeCount = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')").get(task.task_id).count;
     const resumableWaiting = waitingExecution && this.#isWaitingResumable(rowToExecution(waitingExecution));
     if (waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting) {
-      const continueExisting = workspaceMode === 'resume' && !sourceExecutionId && !sourceWorkspaceRef && payload.workspace_revision === undefined;
+      const continuesSelectedRevision = payload.workspace_revision === undefined || payload.workspace_revision === waitingExecution.workspace_revision;
+      const continueExisting = workspaceMode === 'resume' && !sourceExecutionId && !sourceWorkspaceRef && continuesSelectedRevision;
       if (!continueExisting) {
         // A worker may explicitly choose a clean start or a Workspace fork.
         // Retire the released responsibility first, then create the selected
@@ -511,6 +509,9 @@ export class TaskService {
         .run(claimKey, task.task_id, keyFingerprint, waitingExecution.execution_id, updatedAt);
       return { task: this.getTask(task.task_id), execution: this.getExecution(waitingExecution.execution_id) };
       }
+    }
+    if (workspaceMode === 'resume' && payload.workspace_revision !== undefined && !sourceWorkspaceRef) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'resume Workspace selection with a revision requires a source Workspace or the current waiting Workspace revision');
     }
     if (activeCount + (waitingExecution ? 1 : 0) >= task.parallel_quota) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Task has reached its active Execution quota', { parallel_quota: task.parallel_quota });
