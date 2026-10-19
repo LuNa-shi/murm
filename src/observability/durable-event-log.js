@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 
-const SENSITIVE_KEY = /^(?:content|formal_source|initial_prompt|candidate|proof|stdout|stderr|raw_transcript|authorization|token|secret|password|api[_-]?key|credential|private[_-]?key)$/i;
+const SENSITIVE_KEY = /^(?:content|formal_source|task_instructions|agent_prompt|candidate|proof|stdout|stderr|raw_transcript|authorization|token|secret|password|api[_-]?key|credential|private[_-]?key)$/i;
 
 function digest(value) {
   return createHash('sha256').update(String(value)).digest('hex');

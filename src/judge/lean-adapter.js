@@ -55,13 +55,13 @@ export class LeanChecker {
     this.logger = logger;
   }
 
-  async check({ candidate, targetTask, initialContext, fixtureManifest }) {
+  async check({ candidate, targetTask, workspace, fixtureManifest }) {
     validateFixtureManifest(fixtureManifest);
     if (!candidate || typeof candidate.content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate content is required');
     const candidateHash = sha256(candidate.content);
     if (candidate.content_hash && candidate.content_hash !== candidateHash) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate content_hash does not match content');
-    const inputSnapshotHash = initialContext?.input_snapshot_hash ?? initialContext?.manifest?.input_snapshot_hash;
-    if (!inputSnapshotHash) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Initial Context input_snapshot_hash is required');
+    const inputSnapshotHash = workspace?.input_snapshot_hash ?? workspace?.manifest?.input_snapshot_hash;
+    if (!inputSnapshotHash) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace input_snapshot_hash is required');
     await mkdir(this.workRoot, { recursive: true });
     const directory = this.logger
       ? join(this.workRoot, `candidate-${candidateHash}-${randomUUID()}`)

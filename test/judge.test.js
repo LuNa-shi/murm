@@ -24,7 +24,7 @@ const fixtureManifest = {
 };
 
 const targetTask = { task_id: 'task-proof', spec_version: 1, spec_hash: 'spec-hash' };
-const initialContext = { input_snapshot_hash: 'input-snapshot' };
+const workspace = { input_snapshot_hash: 'input-snapshot' };
 
 function candidate(content, materialId = 'material-1') {
   return { material_id: materialId, content };
@@ -48,22 +48,22 @@ test('Lean checker returns PASS only for a clean zero exit and preserves failure
         : { exit_code: 1, signal: null, stdout: '', stderr: 'type mismatch' };
     },
   });
-  const pass = await checker.check({ candidate: candidate('import Mathlib\ntheorem ok : True := by trivial'), targetTask, initialContext, fixtureManifest });
+  const pass = await checker.check({ candidate: candidate('import Mathlib\ntheorem ok : True := by trivial'), targetTask, workspace, fixtureManifest });
   assert.equal(pass.verdict, 'PASS');
   assert.match(pass.evidence.candidate_hash, /^[0-9a-f]{64}$/);
-  const fail = await checker.check({ candidate: candidate('import Mathlib\ntheorem bad : True := by exact nope', 'material-2'), targetTask, initialContext, fixtureManifest });
+  const fail = await checker.check({ candidate: candidate('import Mathlib\ntheorem bad : True := by exact nope', 'material-2'), targetTask, workspace, fixtureManifest });
   assert.equal(fail.verdict, 'FAIL');
   assert.match(fail.evidence.diagnostic, /type mismatch/);
   assert.equal(calls[0].args[0], 'env');
   assert.equal(calls[0].args[1], 'lean');
 
   const timedOut = new LeanChecker({ runner: async () => ({ exit_code: null, signal: 'SIGKILL', stdout: '', stderr: '', timed_out: true }) });
-  const timeoutResult = await timedOut.check({ candidate: candidate('theorem timed : True := by trivial'), targetTask, initialContext, fixtureManifest });
+  const timeoutResult = await timedOut.check({ candidate: candidate('theorem timed : True := by trivial'), targetTask, workspace, fixtureManifest });
   assert.equal(timeoutResult.verdict, 'ERROR');
   assert.match(timeoutResult.evidence.diagnostic, /timed out/);
 
   const unavailable = new LeanChecker({ runner: async () => ({ exit_code: null, signal: null, stdout: '', stderr: '', error: 'lake: command not found' }) });
-  const errorResult = await unavailable.check({ candidate: candidate('theorem unavailable : True := by trivial'), targetTask, initialContext, fixtureManifest });
+  const errorResult = await unavailable.check({ candidate: candidate('theorem unavailable : True := by trivial'), targetTask, workspace, fixtureManifest });
   assert.equal(errorResult.verdict, 'ERROR');
   assert.match(errorResult.evidence.diagnostic, /command not found/);
 });
@@ -75,9 +75,9 @@ test('JudgeService stores CheckResult truth, keeps Task untouched, and deduplica
   });
   const input = {
     request_key: 'check-request-1', candidate_material_id: 'material-1', target_task_id: targetTask.task_id, target_spec_version: 1,
-    input_snapshot_hash: initialContext.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    input_snapshot_hash: workspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
     environment_ref: fixtureManifest.environment_ref, candidate: candidate('import Mathlib\ntheorem ok : True := by trivial'), target_task: targetTask,
-    initial_context: initialContext, fixture_manifest: fixtureManifest,
+    workspace: workspace, fixture_manifest: fixtureManifest,
   };
   const first = await judge.judgeCandidate(input, { operationId: 'judge-op-1' });
   assert.equal(first.status, 'RECEIVED');
@@ -103,9 +103,9 @@ test('concurrent checks for one request_key elect one checker invocation', async
   });
   const input = {
     request_key: 'concurrent-check', candidate_material_id: 'material-1', target_task_id: targetTask.task_id, target_spec_version: 1,
-    input_snapshot_hash: initialContext.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    input_snapshot_hash: workspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
     environment_ref: fixtureManifest.environment_ref, candidate: candidate('theorem concurrent : True := by trivial'), target_task: targetTask,
-    initial_context: initialContext, fixture_manifest: fixtureManifest,
+    workspace: workspace, fixture_manifest: fixtureManifest,
   };
   const firstPromise = judge.judgeCandidate(input, { operationId: 'concurrent-1' });
   await new Promise((resolve) => setImmediate(resolve));
@@ -119,22 +119,22 @@ test('concurrent checks for one request_key elect one checker invocation', async
   judge.close();
 });
 
-test('Judge rejects results whose frozen Task or Initial Context binding has drifted', async () => {
+test('Judge rejects results whose Task or Workspace binding has drifted', async () => {
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
     checker: { check: async () => ({ verdict: 'PASS', evidence: {} }) },
   });
   const input = {
     request_key: 'binding-check', candidate_material_id: 'material-1', target_task_id: targetTask.task_id, target_spec_version: 1,
-    input_snapshot_hash: initialContext.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    input_snapshot_hash: workspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
     environment_ref: fixtureManifest.environment_ref, candidate: candidate('theorem ok : True := by trivial'), target_task: targetTask,
-    initial_context: initialContext, fixture_manifest: fixtureManifest,
+    workspace: workspace, fixture_manifest: fixtureManifest,
   };
   await assert.rejects(
     () => judge.judgeCandidate({ ...input, target_task: { ...targetTask, spec_version: 2 } }, { operationId: 'drifted-task' }),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   await assert.rejects(
-    () => judge.judgeCandidate({ ...input, initial_context: { input_snapshot_hash: 'different-input' } }, { operationId: 'drifted-input' }),
+    () => judge.judgeCandidate({ ...input, workspace: { input_snapshot_hash: 'different-input' } }, { operationId: 'drifted-input' }),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   judge.close();
@@ -145,7 +145,7 @@ test('Judge operation replay and mismatched fixture bindings are explicit', asyn
   const payload = {
     request_key: 'submitted-1', candidate_material_id: 'material-1', target_task_id: 'task-proof', target_spec_version: 1,
     input_snapshot_hash: 'input-snapshot', checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixtureManifest.environment_ref,
-    candidate: candidate('x'), target_task: targetTask, initial_context: initialContext, fixture_manifest: fixtureManifest,
+    candidate: candidate('x'), target_task: targetTask, workspace: workspace, fixture_manifest: fixtureManifest,
     status: 'RECEIVED', verdict: 'FAIL', evidence: { exit_code: 1, diagnostic: 'bad proof' },
   };
   const envelope = makeEnvelope({ operationId: 'submit-1', actorRef: 'judge:lean', taskId: 'task-proof', specVersion: 1 });

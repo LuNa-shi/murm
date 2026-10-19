@@ -1,15 +1,13 @@
 # Judge Service
 
-The Judge Service is the verification boundary for proof candidates. It accepts a candidate Material reference together with the target Task, the frozen Initial Context snapshot, and a locked PutnamBench fixture manifest. It records a `CheckResult` and never changes Task or Execution state itself; a later lifecycle operation applies an accepted result.
+Judge Service is the verification boundary for candidate Materials. It checks
+the candidate against the claimed Task, its Workspace snapshot hash, and a
+locked checker and environment manifest. It records a CheckResult and leaves
+Task and Execution state changes to the Task Service lifecycle operation that
+applies the result.
 
-Each fixture manifest pins the full PutnamBench commit, problem file hash, Lean toolchain, Mathlib revision, checker reference and checker version, and environment reference. A request must repeat the checker and environment bindings from that manifest. The Lean adapter creates a temporary candidate workspace, rejects `sorry` placeholders, invokes the pinned checker command, and records bounded stdout, stderr, exit status, timeout state, candidate hash, and input snapshot hash as evidence. The runtime does not download a toolchain implicitly.
-
-The request lifecycle is `REQUESTED` → `RUNNING` → `RECEIVED`. `PASS`, `FAIL`, `INCONCLUSIVE`, and `ERROR` are verdicts carried by a received result. `request_key` makes repeated checks idempotent: the same key and request hash return the original result, while a different request is rejected with `CONFLICT`. Operation envelopes provide a second idempotency boundary for `submit_check_result`.
-
-For a durable benchmark experiment, candidate checker workspaces and checker
-stdout/stderr are retained under that experiment's ignored `state/` and
-`logs/` directories for audit and recovery. The shareable report contains
-hashes, verdicts, and diagnostic classes only. The generic fixture adapter may
-still use a temporary directory when no experiment logger is supplied.
-
-The current repository fixture is `fixtures/putnam-1966-a1/fixture-manifest.json`. Its source and manifest are reviewable inputs; running the real checker requires the manifest's Lean environment to be installed and available through the configured checker command.
+Agents submit a candidate through the named `judge_submit_candidate` tool.
+The runner or Judge controller submits the candidate to the checker and makes
+the result available as shared feedback. Candidate source and checker output
+remain in the private experiment evidence; sanitized benchmark reports retain
+IDs, hashes, verdicts, and diagnostic classes.

@@ -1,9 +1,11 @@
+import { getServiceMetadata, listServices, listTools } from './service-catalog.js';
+
 const TASK_OPERATIONS = new Set([
-  'abort', 'claim', 'create_child_task', 'fence_execution', 'get_execution', 'get_task', 'heartbeat', 'list_children',
+  'abort', 'claim', 'create_child_task', 'fence_execution', 'get_execution', 'get_task', 'heartbeat', 'list_children', 'list_tasks', 'list_executions',
   'propose_task', 'claim_next', 'request_wait', 'resume_execution', 'start_execution', 'stop_execution', 'submit_candidate',
   'accept_task', 'request_rework', 'apply_check_result', 'wake_execution',
 ]);
-const CONTEXT_OPERATIONS = new Set(['freeze_initial_context', 'publish_material', 'read_materials']);
+const CONTEXT_OPERATIONS = new Set(['publish_material', 'read_materials']);
 
 export class ServicesRouter {
   constructor({ taskService, contextService, logger = null }) {
@@ -21,11 +23,17 @@ export class ServicesRouter {
       execution_id: envelope?.execution_id ?? null,
     });
     try {
-      const result = TASK_OPERATIONS.has(operation)
+      const result = operation === 'list_services'
+        ? { services: listServices() }
+        : operation === 'get_service_metadata'
+          ? getServiceMetadata(payload?.service ?? null)
+          : operation === 'list_tools'
+            ? { tools: listTools(payload?.service ?? null) }
+            : TASK_OPERATIONS.has(operation)
         ? this.taskService.dispatch(operation, payload, envelope)
         : CONTEXT_OPERATIONS.has(operation)
           ? this.contextService.dispatch(operation, payload, envelope)
-          : (() => { throw new Error(`no service route for operation: ${operation}`); })();
+            : (() => { throw new Error(`no service route for operation: ${operation}`); })();
       this.logger?.append({ event: 'route.complete', operation, ok: true });
       return result;
     } catch (error) {

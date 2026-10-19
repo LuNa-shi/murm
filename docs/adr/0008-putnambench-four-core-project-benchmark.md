@@ -1,32 +1,24 @@
-# Four-core PutnamBench benchmark uses isolated projects
+# ADR 0008: PutnamBench uses one root Task and reusable workers
 
-Status: accepted. The PutnamBench experiment treats one formalized problem as
-one SwarmEnv project. A project owns its SQLite database, root Task, four
-direct-child proof Tasks, four private Runtime Workspaces, four Pi session
-directories, and one redacted report. Projects may run in bounded parallel
-groups, while each project always starts exactly four Agent Core processes.
+Status: accepted. Each PutnamBench problem is one isolated SwarmEnv project
+with one root Task and up to four reusable Agent Core slots.
 
 ## Decision
 
-The benchmark input is the formalization source at a pinned PutnamBench commit
-plus the locked Lean, Mathlib, checker, and environment metadata. The source
-is published as shared Context Service Material with a `sorry` placeholder so
-Agents receive the theorem statement without a known candidate or solution.
-Each child Execution freezes that Material reference and metadata in its
-Initial Context. Private Workspace files and Pi session state stay inside the
-project and are never used as cross-project communication.
+The root Task goal is exactly to prove the selected problem. The runner does
+not create four proof children and does not claim work on behalf of Agents.
+Each worker starts with the reusable Agent prompt, lists the highest-priority
+Tasks, explicitly claims one Task, and may create bounded child Tasks when its
+route needs decomposition.
 
-Benchmark Agent Cores receive only the `swarmenv_call` extension. Built-in
-filesystem, shell, web, skill, prompt-template, and context-file tools are
-disabled. A final audit checks input and prompt hashes, Material provenance,
-candidate source Execution, project boundaries, observed tool events,
-forbidden placeholders, and report redaction before a result can count.
+The root Workspace contains the pinned formalization and environment metadata.
+Materials carry later observations, artifacts, and Judge feedback. A claimed
+Execution chooses a clean Workspace or a selected prior revision. Reports
+audit the actual Task tree, claims, Workspace lineage, tool calls, candidate
+provenance, and report redaction.
 
 ## Consequences
 
-The runner can compare four concurrent Cores on one problem and can schedule
-several independent projects without sharing mutable service state. Reports
-contain IDs, hashes, classifications, timings, versions, resource snapshots,
-and audit flags, while candidate text, proof text, and raw Pi transcripts stay
-out of committed artifacts. A project timeout or setup failure is recorded in
-that project's report and does not cancel sibling projects.
+Parallelism comes from reusable slots and explicit Task claims. A project can
+begin with only the root Task and grow its queue during the run. Unclaimed
+worker slots are valid when the current Task list has no available work.

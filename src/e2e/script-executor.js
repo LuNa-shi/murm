@@ -7,6 +7,7 @@ import { ServicesSDK } from '../sdk/services-sdk.js';
 import { TaskService } from '../task/task-service.js';
 import { Runtime } from '../runtime/runtime.js';
 import { WorkspaceManager } from '../runtime/workspace-manager.js';
+import { GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
 
 class ScriptSession extends EventEmitter {
   constructor(executionId) {
@@ -87,24 +88,11 @@ export class ScriptExecutor {
         },
       },
     }, { operationId: 'script:propose' }).task;
-    const frozen = sdk.freezeInitialContext({
-      freeze_key: `script:freeze:${this.executionId}`,
-      task_id: task.task_id,
-      execution_id: this.executionId,
-      spec_version: task.spec_version,
-      spec_hash: task.spec_hash,
-      task_spec: { ...task, fixture_manifest: this.fixtureManifest },
-      initial_prompt: 'Use the frozen PutnamBench fixture and submit a proof Artifact.',
-      material_refs: [],
-      service_environment: { fixture_manifest: this.fixtureManifest, checker: this.fixtureManifest.checker_ref },
-    }, { operationId: 'script:freeze', taskId: task.task_id, executionId: this.executionId, specVersion: task.spec_version, fencingVersion: 1 });
     const claimed = sdk.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
       execution_id: this.executionId,
       claim_key: `script:claim:${this.executionId}`,
       owner_ref: 'agent:script',
-      initial_prompt: 'Use the frozen PutnamBench fixture and submit a proof Artifact.',
-      initial_context_ref: frozen.initial_context_ref,
-      input_snapshot_hash: frozen.input_snapshot_hash,
+      agent_prompt: GENERIC_AGENT_PROMPT,
       input_material_refs: [],
     }, { operationId: 'script:claim' });
     const agent = sdk.withContext({
@@ -122,16 +110,22 @@ export class ScriptExecutor {
       checkpoint: { phase: 'before-first-check', candidate_material_id: firstMaterial.material_id },
       files: { 'candidate.lean': this.firstCandidate },
     });
-    const initialContext = contextService.getInitialContext(this.executionId);
+    const workspace = {
+      task_id: task.task_id,
+      execution_id: this.executionId,
+      input_snapshot_hash: firstWait.execution.input_snapshot_hash,
+      workspace_ref: firstWait.execution.workspace_ref,
+      workspace_revision: firstWait.execution.workspace_revision,
+    };
     const firstResult = await judgeService.judgeCandidate(this.#checkRequest({
-      task: taskService.getTask(task.task_id), execution: firstWait.execution, initialContext, material: firstMaterial,
+      task: taskService.getTask(task.task_id), execution: firstWait.execution, workspace, material: firstMaterial,
       content: this.firstCandidate, requestKey: 'script:check:fail',
     }));
     const failed = sdk.withContext({
       taskId: task.task_id, executionId: this.executionId, specVersion: current.spec_version,
       stateVersion: firstWait.execution.state_version, fencingVersion: firstWait.execution.fencing_version,
     }).applyCheckResult({ check_result_id: firstResult.check_result_id }, { operationId: 'script:apply:fail' });
-    const restored = await runtime.startExecution(this.executionId);
+    const restored = await runtime.wakeExecution(this.executionId);
     current = restored.execution;
     const secondMaterial = agent.withContext({ stateVersion: current.state_version }).publishMaterial({
       kind: 'artifact', scope: 'proof_relevant', content: this.fixedCandidate, supersedes: firstMaterial.material_id,
@@ -143,7 +137,7 @@ export class ScriptExecutor {
       files: { 'candidate.lean': this.fixedCandidate },
     });
     const secondResult = await judgeService.judgeCandidate(this.#checkRequest({
-      task: taskService.getTask(task.task_id), execution: secondWait.execution, initialContext, material: secondMaterial,
+      task: taskService.getTask(task.task_id), execution: secondWait.execution, workspace, material: secondMaterial,
       content: this.fixedCandidate, requestKey: 'script:check:pass',
     }));
     const completed = sdk.withContext({
@@ -169,10 +163,11 @@ export class ScriptExecutor {
         lean_toolchain: this.fixtureManifest.lean_toolchain,
         mathlib: this.fixtureManifest.mathlib_version,
       },
-      initial_context: initialContext,
+      workspace,
       materials: [firstMaterial, secondMaterial],
       check_results: [taskService.getCheckResult(firstResult.check_result_id), taskService.getCheckResult(secondResult.check_result_id)],
       workspace: {
+        input_snapshot_hash: workspace.input_snapshot_hash,
         first: firstRun.workspace,
         first_wait: firstWait.execution.workspace_ref,
         restored: restored.workspace,
@@ -188,13 +183,13 @@ export class ScriptExecutor {
     };
   }
 
-  #checkRequest({ task, execution, initialContext, material, content, requestKey }) {
+  #checkRequest({ task, execution, workspace, material, content, requestKey }) {
     return {
       request_key: requestKey,
       candidate_material_id: material.material_id,
       target_task_id: task.task_id,
       target_spec_version: task.spec_version,
-      input_snapshot_hash: initialContext.input_snapshot_hash,
+      input_snapshot_hash: workspace.input_snapshot_hash,
       checker_ref: this.fixtureManifest.checker_ref,
       checker_version: this.fixtureManifest.checker_version,
       environment_ref: this.fixtureManifest.environment_ref,
@@ -202,7 +197,7 @@ export class ScriptExecutor {
       state_version: execution.state_version,
       candidate: { material_id: material.material_id, content },
       target_task: task,
-      initial_context: initialContext,
+      workspace,
       fixture_manifest: this.fixtureManifest,
     };
   }

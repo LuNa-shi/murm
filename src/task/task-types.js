@@ -151,21 +151,25 @@ export function validateTaskProposal(input, { parentId = null } = {}) {
     parentId,
     requiredCheck: input.required_check,
   });
-  if (input.parallel_quota !== undefined && input.parallel_quota !== 1) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'MVP parallel_quota is fixed at 1');
+  if (input.parallel_quota !== undefined && (!Number.isInteger(input.parallel_quota) || input.parallel_quota < 1 || input.parallel_quota > 64)) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parallel_quota must be an integer between 1 and 64');
+  }
+  if (input.priority !== undefined && (!Number.isInteger(input.priority) || input.priority < 0)) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'priority must be a non-negative integer');
   }
   return {
     task_type: taskType,
     task_type_version: taskTypeVersion,
     goal: input.goal,
     expected_output: input.expected_output,
-    initial_prompt: input.initial_prompt ?? input.goal,
+    task_instructions: input.task_instructions ?? input.task_description ?? input.initial_prompt ?? '',
     workspace: input.workspace ?? {},
     acceptance_conditions: input.acceptance_conditions,
     owner_ref: input.owner_ref,
     input_material_refs: input.input_material_refs ?? [],
     completion_contract: completionContract,
-    parallel_quota: 1,
+    parallel_quota: input.parallel_quota ?? 1,
+    priority: input.priority ?? 0,
     max_depth: input.max_depth ?? 8,
     max_children: input.max_children ?? 32,
     max_attempts: input.max_attempts ?? 8,

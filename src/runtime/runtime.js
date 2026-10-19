@@ -30,6 +30,22 @@ export class Runtime {
     return this.activeProcesses.size;
   }
 
+  async getWorkspace(executionId) {
+    const execution = this.#getExecution(executionId);
+    if (!execution.workspace_ref) return { workspace: null, revisions: [] };
+    const workspace = await this.workspaceManager.restoreWorkspace({
+      workspaceRef: execution.workspace_ref,
+      executionId,
+      fencingVersion: execution.fencing_version,
+    });
+    const revisions = await this.workspaceManager.listRevisions({
+      workspaceRef: execution.workspace_ref,
+      executionId,
+      fencingVersion: execution.fencing_version,
+    });
+    return { workspace, revisions };
+  }
+
   async startExecution(executionId) {
     this.logger?.append({ event: 'runtime.start_execution', execution_id: executionId });
     const execution = this.#getExecution(executionId);
@@ -44,9 +60,41 @@ export class Runtime {
     try {
       return await this.#launch(current, workspace);
     } catch (error) {
+      const active = this.activeProcesses.get(executionId);
+      active?.session.stop?.();
+      this.activeProcesses.delete(executionId);
       const failed = this.#getExecution(executionId);
       if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('start-failed')));
+      }
+      throw error;
+    }
+  }
+
+  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null } = {}) {
+    this.logger?.append({ event: 'runtime.bind_execution', execution_id: executionId });
+    if ((!session || typeof session.stop !== 'function') && typeof startSession !== 'function') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Agent session or startSession is required');
+    }
+    const execution = this.#getExecution(executionId);
+    if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only bind CREATED executions, got ${execution.state}`);
+    if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
+    const workspace = await this.#prepareWorkspace(execution, workspaceRef);
+    let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
+    current = this.taskService.dispatch('start_execution', {}, this.#executionEnvelope(current, operationId('bind'))).execution;
+    let boundSession = session;
+    try {
+      if (!boundSession) boundSession = await startSession({ execution: current, workspace });
+      if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
+      this.#registerActiveProcess(current, workspace, boundSession);
+      await this.#sendInitialPrompt(boundSession, agentPrompt);
+      return { execution: current, workspace, session: boundSession };
+    } catch (error) {
+      boundSession?.stop?.();
+      this.activeProcesses.delete(executionId);
+      const failed = this.#getExecution(executionId);
+      if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
+        this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('bind-failed')));
       }
       throw error;
     }
@@ -173,12 +221,8 @@ export class Runtime {
     return execution;
   }
 
-  async #prepareWorkspace(execution) {
+  async #prepareWorkspace(execution, workspaceRef = null) {
     const task = this.taskService.getTask(execution.task_id);
-    const context = this.contextService.getInitialContext(execution.execution_id);
-    if (!context && execution.initial_context_ref !== `task://workspace/${execution.task_id}`) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Execution Initial Context is missing or does not match its reference');
-    }
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Task is missing for execution: ${execution.execution_id}`);
     if (execution.workspace_ref) {
       return this.workspaceManager.restoreWorkspace({
@@ -187,20 +231,39 @@ export class Runtime {
         fencingVersion: execution.fencing_version,
       });
     }
+    const workspaceManifest = {
+      task_id: task.task_id,
+      spec_version: execution.spec_version,
+      spec_hash: execution.spec_hash,
+      workspace_snapshot_hash: execution.input_snapshot_hash,
+      material_refs: execution.input_material_refs,
+      selection: execution.workspace_selection ?? { mode: 'clean', revision: null },
+    };
+    const inputSnapshotManifest = {
+      workspace_snapshot_hash: execution.input_snapshot_hash,
+      material_refs: execution.input_material_refs,
+    };
+    const selection = execution.workspace_selection ?? {};
+    if (selection.mode === 'resume' && selection.source_workspace_ref) {
+      return this.workspaceManager.cloneWorkspace({
+        sourceWorkspaceRef: selection.source_workspace_ref,
+        targetWorkspaceRef: workspaceRef ?? this.workspaceManager.workspacePath(execution.execution_id),
+        executionId: execution.execution_id,
+        fencingVersion: execution.fencing_version,
+        revision: selection.revision,
+        task,
+        workspaceManifest,
+        inputSnapshotManifest,
+        runtimeManifest: { runtime_generation: this.runtimeGeneration, actor_ref: this.actorRef },
+      });
+    }
     return this.workspaceManager.createWorkspace({
       executionId: execution.execution_id,
       fencingVersion: execution.fencing_version,
-      initialContext: context?.manifest ?? {
-        task_id: task.task_id,
-        task_spec: task,
-        workspace: task.workspace,
-        input_snapshot_hash: execution.input_snapshot_hash,
-      },
-      initialPrompt: execution.initial_prompt,
-      inputSnapshotManifest: {
-        input_snapshot_hash: execution.input_snapshot_hash,
-        material_refs: execution.input_material_refs,
-      },
+      task,
+      ...(workspaceRef ? { workspaceRef } : {}),
+      workspaceManifest,
+      inputSnapshotManifest,
       runtimeManifest: { runtime_generation: this.runtimeGeneration, actor_ref: this.actorRef },
     });
   }
@@ -228,12 +291,24 @@ export class Runtime {
       files: { 'runtime-manifest.json': manifestContent },
     });
     const current = this.#saveWorkspaceReference(execution, nextWorkspace);
-    const active = { session, execution: current, workspace: nextWorkspace };
+    this.#registerActiveProcess(current, nextWorkspace, session);
+    await this.#sendInitialPrompt(session, execution.agent_prompt);
+    const active = this.activeProcesses.get(execution.execution_id);
+    return { execution: current, workspace: nextWorkspace, session };
+  }
+
+  async #sendInitialPrompt(session, prompt) {
+    if (!prompt || typeof session.prompt !== 'function') return;
+    await session.waitForReady?.({ timeoutMs: 30_000 });
+    await session.prompt(prompt, { timeoutMs: 30_000 });
+  }
+
+  #registerActiveProcess(execution, workspace, session) {
+    const active = { session, execution, workspace };
     this.activeProcesses.set(execution.execution_id, active);
     session.on('close', () => {
       void this.#processExit(execution.execution_id);
     });
-    return { execution: current, workspace: nextWorkspace, session };
   }
 
   async #processExit(executionId) {

@@ -40,8 +40,8 @@ test('ScriptExecutor runs the locked root proof golden path through FAIL, recove
     assert.equal(report.workspace.first_wait, report.workspace.second_wait);
     assert.equal(report.checkpoints.length, 2);
     assert.equal(report.process_sessions, 2);
-    assert.equal(report.initial_context.input_snapshot_hash, report.check_results[0].input_snapshot_hash);
-    assert.equal(report.initial_context.input_snapshot_hash, report.check_results[1].input_snapshot_hash);
+  assert.equal(report.workspace.input_snapshot_hash, report.check_results[0].input_snapshot_hash);
+  assert.equal(report.workspace.input_snapshot_hash, report.check_results[1].input_snapshot_hash);
     assert.equal(environment.taskService.listActiveExecutions().length, 0);
     assert.equal(environment.taskService.db.prepare('SELECT COUNT(*) AS count FROM executions WHERE task_id = ?').get(report.task_id).count, 1);
   } finally {

@@ -1,26 +1,7 @@
-# Task Flow
+# Task flow
 
-Task Service owns the completion decision. Agents can publish an Artifact, register it as the current Execution candidate, request a wait, and ask for acceptance; they cannot write `SATISFIED` directly.
+Task Service 负责 Task list、显式 claim、Execution 状态、lease、checkpoint 引用、wait/wake、fencing 和 parent review。Agent 从 Task list 选择目标并 claim；Task Service 不为 runner 预创建固定 child，也不把 core slot 绑定到永久 Task。
 
-The supported completion paths are:
+当前 Execution 需要等待时，Runtime 保存 Workspace revision 和 checkpoint，再调用 `request_wait`。WAITING 保留 Task 的逻辑责任但释放物理进程容量。唤醒会恢复同一 Workspace lineage；过期或 fence 后的新 Execution 可以选择 clean 或已有 revision。
 
-```text
-research/default child
-  -> Material delivery
-  -> WAITING(parent_review)
-  -> Parent accept -> Execution SUCCEEDED + Task SATISFIED
-                    or Parent rework -> steer Material + same lineage resumed
-
-proof or checked implementation
-  -> candidate Material
-  -> CheckResult
-  -> Task Service binding/CAS check
-  -> PASS: SATISFIED
-     FAIL/ERROR: evidence retained, Execution becomes recoverable
-```
-
-`required_materials`, `required_candidate`, `required_children`, and `required_check` are evaluated from the registered completion contract. A child becoming `SATISFIED` only changes that child; the Parent Task remains open for its own contract. Research Tasks without `required_check` never enter the Judge path.
-
-`request_wait` requires the checkpoint to already be recorded for the current Execution. The wait and wake keys are persisted so repeated notifications cannot create another wait or resume the Agent twice. A rework request appends an immutable `steer` Material. While the prior Execution is still valid, its workspace, Initial Context, checkpoint, and Execution identity are retained; after fencing or expiry, a new Execution inherits the same lineage and increments the attempt number.
-
-CheckResult application verifies the target Task and spec version, input snapshot, candidate Material, checker, checker version, environment, and current Execution fence. A result arriving after cancellation is archived as `IGNORED`; a result from an old fence is rejected. Only a matching PASS can close a proof Task.
+父 Execution 需要单独研究、lemma 分解或实现路径时调用 `create_child_task`。child 的 completion contract 决定它是发布 Material、提交 candidate、等待父审查还是接受 Judge CheckResult。所有写操作都带 operation ID、版本和 fencing 信息。

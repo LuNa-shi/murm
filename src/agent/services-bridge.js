@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { ServicesSDK } from '../sdk/services-sdk.js';
 import { makeEnvelope } from '../protocol/envelope.js';
+import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const AGENT_OPERATIONS = new Set([
   'get_task', 'get_execution', 'read_materials', 'publish_material', 'submit_candidate',
-  'heartbeat', 'create_child_task', 'request_wait', 'claim_next',
+  'heartbeat', 'create_child_task', 'request_wait', 'claim', 'claim_next', 'list_tasks', 'list_executions',
+  'list_services', 'get_service_metadata', 'list_tools', 'get_workspace', 'list_workspace_revisions',
 ]);
 
 function json(value) {
@@ -29,6 +31,27 @@ function send(response, status, body) {
   response.end(content);
 }
 
+function normalizeWaitCondition(condition, checkpoint = {}) {
+  if (!condition || typeof condition !== 'object' || Array.isArray(condition)) return condition;
+  if (condition.type) {
+    if (condition.type === 'check_result_arrived' && !condition.check_request_key) {
+      const checkRequestKey = condition.request_key ?? condition.candidate_material_id ?? checkpoint.candidate_material_id;
+      return checkRequestKey ? { ...condition, check_request_key: checkRequestKey } : condition;
+    }
+    return condition;
+  }
+  if (condition.kind === 'time') {
+    return { type: 'timer', deadline: condition.until ?? condition.deadline };
+  }
+  if (condition.kind === 'judge_result') {
+    return {
+      type: 'check_result_arrived',
+      check_request_key: condition.check_request_key ?? condition.request_key ?? condition.candidate_material_id ?? checkpoint.candidate_material_id,
+    };
+  }
+  return condition;
+}
+
 async function readBody(request) {
   let size = 0;
   const chunks = [];
@@ -42,7 +65,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId, executionId, host = '127.0.0.1', logger = null } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onRelease = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -51,6 +74,9 @@ export class ServicesBridge {
     this.actorRef = actorRef;
     this.taskId = taskId;
     this.executionId = executionId;
+    this.onClaim = onClaim;
+    this.onRelease = onRelease;
+    this.agentPrompt = agentPrompt;
     this.host = host;
     this.logger = logger;
     this.token = randomUUID();
@@ -77,6 +103,13 @@ export class ServicesBridge {
       SWARMENV_BRIDGE_URL: `http://${this.host}:${this.address.port}`,
       SWARMENV_BRIDGE_TOKEN: this.token,
     };
+  }
+
+  async releaseClaim({ result = null } = {}) {
+    const released = { taskId: this.taskId, executionId: this.executionId, result };
+    this.taskId = null;
+    this.executionId = null;
+    if (this.onRelease) await this.onRelease(released);
   }
 
   async stop() {
@@ -115,6 +148,67 @@ export class ServicesBridge {
     try {
       if (!AGENT_OPERATIONS.has(operation)) throw new Error(`Agent operation is not allowed: ${operation}`);
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('bridge payload must be an object');
+      const service = this.router ?? { dispatch: (name, body, envelope) => {
+        if (['get_task', 'get_execution', 'list_tasks', 'list_executions'].includes(name)) return this.taskService.dispatch(name, body, envelope);
+        return this.contextService.dispatch(name, body, envelope);
+      } };
+      const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
+      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_executions'].includes(operation)) {
+        const result = service.dispatch(operation, payload, makeEnvelope({
+          operationId: bridgeOperationId,
+          actorRef: this.actorRef,
+        }));
+        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+        return result;
+      }
+      if (operation === 'claim') {
+        if (this.taskId || this.executionId) throw new Error('claim is only available to an unbound worker bridge');
+        const taskId = payload.task_id;
+        if (typeof taskId !== 'string' || taskId.length === 0) throw new Error('claim requires payload.task_id');
+        const task = this.taskService.getTask(taskId);
+        if (!task) throw new Error(`unknown task: ${taskId}`);
+        // The bridge is the Agent identity boundary. A model may choose the
+        // Task and Workspace lineage, but it cannot claim on behalf of a
+        // different owner or replace the reusable startup prompt with
+        // task-specific transport data.
+        const result = service.dispatch('claim', { ...payload, owner_ref: this.actorRef, agent_prompt: this.agentPrompt }, makeEnvelope({
+          operationId: bridgeOperationId,
+          actorRef: this.actorRef,
+          taskId: task.task_id,
+          specVersion: task.spec_version,
+          stateVersion: task.state_version,
+        }));
+        this.taskId = result.task.task_id;
+        this.executionId = result.execution.execution_id;
+        try {
+          if (this.onClaim) await this.onClaim(result);
+        } catch (error) {
+          const claimedExecution = this.taskService.getExecution(result.execution.execution_id);
+          if (claimedExecution && ['CREATED', 'RUNNING', 'WAITING'].includes(claimedExecution.state)) {
+            try {
+              service.dispatch('stop_execution', { terminal_state: 'FAILED' }, makeEnvelope({
+                operationId: `bridge:claim-rollback:${claimedExecution.execution_id}`,
+                actorRef: this.actorRef,
+                taskId: claimedExecution.task_id,
+                executionId: claimedExecution.execution_id,
+                specVersion: claimedExecution.spec_version,
+                stateVersion: claimedExecution.state_version,
+                fencingVersion: claimedExecution.fencing_version,
+              }));
+            } catch {
+              // Preserve the binding failure as the Agent-visible error. The
+              // Runtime startup path already fences or stops its own process
+              // when it owns the failed handoff.
+            }
+          }
+          this.taskId = null;
+          this.executionId = null;
+          await this.onRelease?.({ taskId: result.task.task_id, executionId: result.execution.execution_id, result: null });
+          throw error;
+        }
+        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+        return result;
+      }
       if (operation === 'claim_next') {
         if (this.taskId || this.executionId) throw new Error('claim_next is only available to an unbound worker bridge');
         const result = this.taskService.dispatch('claim_next', payload, makeEnvelope({
@@ -124,27 +218,33 @@ export class ServicesBridge {
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
+      if (!this.taskId || !this.executionId) throw new Error(`${operation} requires a claimed Task and Execution`);
       const execution = this.taskService.getExecution(this.executionId);
       if (!execution) throw new Error(`unknown execution: ${this.executionId}`);
       if (execution.task_id !== this.taskId) throw new Error('bridge execution does not match task');
       if (operation === 'request_wait') {
-        const result = await this.runtime.requestWait(this.executionId, payload);
+        const result = await this.runtime.requestWait(this.executionId, {
+          ...payload,
+          waitCondition: normalizeWaitCondition(payload.waitCondition ?? payload.wait_condition, payload.checkpoint),
+          deadline: payload.deadline ?? payload.wait_deadline,
+        });
+        const released = { taskId: this.taskId, executionId: this.executionId, result };
+        this.taskId = null;
+        this.executionId = null;
+        if (this.onRelease) await this.onRelease(released);
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
-      const service = this.router ?? { dispatch: (name, body, envelope) => {
-        if (['get_task', 'get_execution', 'submit_candidate', 'heartbeat', 'create_child_task'].includes(name)) return this.taskService.dispatch(name, body, envelope);
-        return this.contextService.dispatch(name, body, envelope);
-      } };
       const sdk = new ServicesSDK(service, {
         actorRef: this.actorRef,
         taskId: this.taskId,
         executionId: this.executionId,
         specVersion: execution.spec_version,
         stateVersion: execution.state_version,
+        taskStateVersion: this.taskService.getTask(this.taskId)?.state_version ?? execution.state_version,
         fencingVersion: execution.fencing_version,
       });
-      const options = { operationId: operationId ?? `bridge:${operation}:${randomUUID()}` };
+      const options = { operationId: bridgeOperationId };
       let result;
       switch (operation) {
         case 'get_task': result = sdk.getTask(payload.task_id ?? this.taskId); break;
@@ -154,6 +254,8 @@ export class ServicesBridge {
         case 'submit_candidate': result = sdk.submitCandidate(payload, options); break;
         case 'heartbeat': result = sdk.heartbeat(payload, options); break;
         case 'create_child_task': result = sdk.createChildTask(payload, options); break;
+        case 'get_workspace': result = await this.runtime.getWorkspace(this.executionId); break;
+        case 'list_workspace_revisions': result = (await this.runtime.getWorkspace(this.executionId)).revisions; break;
         default: throw new Error(`unsupported Agent operation: ${operation}`);
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });

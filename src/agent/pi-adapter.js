@@ -114,15 +114,23 @@ export class AgentCoreSession extends EventEmitter {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.off('rpc', onRecord);
+        this.off('close', onClose);
         reject(new SwarmEnvError(ERROR_CODES.RPC_ERROR, 'timed out waiting for Pi agent_settled event'));
       }, timeoutMs);
-      const onRecord = (record) => {
-        if (record.type !== 'agent_settled') return;
+      const finish = (error = null, value = null) => {
         clearTimeout(timer);
         this.off('rpc', onRecord);
-        resolve(record);
+        this.off('close', onClose);
+        if (error) reject(error);
+        else resolve(value);
       };
+      const onRecord = (record) => {
+        if (record.type !== 'agent_settled') return;
+        finish(null, record);
+      };
+      const onClose = () => finish(new SwarmEnvError(ERROR_CODES.PROCESS_EXITED, 'Pi RPC session closed before agent_settled event'));
       this.on('rpc', onRecord);
+      this.once('close', onClose);
     });
   }
 
@@ -245,7 +253,7 @@ export class AgentCoreAdapter {
     return args;
   }
 
-  async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd, logger = null } = {}) {
+  async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd, agentPrompt = null, logger = null } = {}) {
     const launchArgs = this.buildLaunchArgs({ executionId, sessionDir });
     await mkdir(sessionDir, { recursive: true });
     const manifest = await createVersionManifest({ ...this.manifestVersions, launchArgs });
@@ -271,6 +279,11 @@ export class AgentCoreAdapter {
       child.once('spawn', onSpawn);
       child.once('error', onError);
     });
-    return new AgentCoreSession(child, { executionId, launchArgs, manifest, logger });
+    const session = new AgentCoreSession(child, { executionId, launchArgs, manifest, logger });
+    if (agentPrompt) {
+      await session.waitForReady({ timeoutMs: 30_000 });
+      await session.prompt(agentPrompt, { timeoutMs: 30_000 });
+    }
+    return session;
   }
 }

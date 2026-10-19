@@ -13,6 +13,7 @@ import { JudgeService } from '../judge/judge-service.js';
 import { LeanChecker } from '../judge/lean-adapter.js';
 import { validateFixtureManifest } from '../judge/fixture.js';
 import { DatabaseSync } from 'node:sqlite';
+import { GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
 
 const execFile = promisify(defaultExecFile);
 const extensionPath = fileURLToPath(new URL('../agent/swarmenv-extension.mjs', import.meta.url));
@@ -79,7 +80,7 @@ function promptForCandidate({ phase, candidate, previousMaterialId = null }) {
   const supersedes = previousMaterialId ? ` Set supersedes to ${previousMaterialId}.` : '';
   return [
     `You are running phase ${phase} of the current SwarmEnv proof Execution.`,
-    'Use the public swarmenv_call tool for every Task, Execution, Material, and candidate operation.',
+    'Use the named SwarmEnv Service tools for every Task, Execution, Material, Workspace, and candidate operation.',
     'First call get_task and get_execution so you work against the current versions.',
     `Publish the following exact Lean source as one artifact Material with kind=artifact and scope=proof_relevant.${supersedes}`,
     'Then call submit_candidate with the returned material_id. Do not call request_wait; the Runtime controller will save the checkpoint after your turn.',
@@ -106,13 +107,13 @@ function latestArtifact(contextService, executionId, previousId = null) {
     .at(-1) ?? null;
 }
 
-function checkRequest({ task, execution, initialContext, fixtureManifest, material, requestKey }) {
+function checkRequest({ task, execution, workspace, fixtureManifest, material, requestKey }) {
   return {
     request_key: requestKey,
     candidate_material_id: material.material_id,
     target_task_id: task.task_id,
     target_spec_version: task.spec_version,
-    input_snapshot_hash: initialContext.input_snapshot_hash,
+    input_snapshot_hash: workspace.input_snapshot_hash,
     checker_ref: fixtureManifest.checker_ref,
     checker_version: fixtureManifest.checker_version,
     environment_ref: fixtureManifest.environment_ref,
@@ -120,7 +121,7 @@ function checkRequest({ task, execution, initialContext, fixtureManifest, materi
     state_version: execution.state_version,
     candidate: { material_id: material.material_id, content: material.content },
     target_task: task,
-    initial_context: initialContext,
+    workspace,
     fixture_manifest: fixtureManifest,
   };
 }
@@ -182,25 +183,12 @@ export async function runRealAgentPath({
     },
   }, { operationId: 'real:propose' }).task;
   const executionId = 'real-agent-execution';
-  const frozen = ownerSdk.freezeInitialContext({
-    freeze_key: `real:freeze:${executionId}`, task_id: task.task_id, execution_id: executionId,
-    spec_version: task.spec_version, spec_hash: task.spec_hash, task_spec: { ...task, fixture_manifest: lockedFixture },
-    initial_prompt: 'Use the locked fixture and the public SwarmEnv Services SDK bridge to submit a proof candidate.',
-    material_refs: [], service_environment: { fixture_manifest: lockedFixture, checker: lockedFixture.checker_ref },
-  }, { operationId: 'real:freeze', taskId: task.task_id, executionId, specVersion: task.spec_version, fencingVersion: 1 });
   const claimed = ownerSdk.withContext({ actorRef: 'agent:real', taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
     execution_id: executionId, claim_key: `real:claim:${executionId}`, owner_ref: 'agent:real',
-    initial_prompt: 'Use the locked fixture and the public SwarmEnv Services SDK bridge to submit a proof candidate.',
-    initial_context_ref: frozen.initial_context_ref, input_snapshot_hash: frozen.input_snapshot_hash, input_material_refs: [],
+    agent_prompt: GENERIC_AGENT_PROMPT, input_material_refs: [],
   }, { operationId: 'real:claim' });
   report.task_id = task.task_id;
   report.execution_id = executionId;
-  report.initial_context = {
-    initial_context_ref: frozen.initial_context_ref,
-    input_snapshot_hash: frozen.input_snapshot_hash,
-    spec_version: frozen.initial_context.spec_version,
-    spec_hash: frozen.initial_context.spec_hash,
-  };
   report.claim = {
     execution_id: claimed.execution.execution_id,
     state_version: claimed.execution.state_version,
@@ -238,8 +226,8 @@ export async function runRealAgentPath({
       checkpoint: { phase: 'before-first-check', candidate_material_id: firstMaterial.material_id },
       files: { 'candidate.lean': firstMaterial.content },
     });
-    const initialContext = contextService.getInitialContext(executionId);
-    firstResult = await judgeService.judgeCandidate(checkRequest({ task: taskService.getTask(task.task_id), execution: firstWait.execution, initialContext, fixtureManifest: lockedFixture, material: firstMaterial, requestKey: 'real:check:fail' }));
+    const workspace = { task_id: task.task_id, execution_id: executionId, input_snapshot_hash: firstWait.execution.input_snapshot_hash, workspace_ref: firstWait.execution.workspace_ref, workspace_revision: firstWait.execution.workspace_revision };
+    firstResult = await judgeService.judgeCandidate(checkRequest({ task: taskService.getTask(task.task_id), execution: firstWait.execution, workspace, fixtureManifest: lockedFixture, material: firstMaterial, requestKey: 'real:check:fail' }));
     const failed = ownerSdk.withContext({ actorRef: 'owner:root', taskId: task.task_id, executionId, specVersion: firstWait.execution.spec_version, stateVersion: firstWait.execution.state_version, fencingVersion: firstWait.execution.fencing_version }).applyCheckResult({ check_result_id: firstResult.check_result_id }, { operationId: 'real:apply:fail' });
     report.check_result_ids.push(firstResult.check_result_id);
     report.failure_evidence = failed.check_result.evidence;
@@ -256,13 +244,13 @@ export async function runRealAgentPath({
       checkpoint: { phase: 'before-second-check', candidate_material_id: secondMaterial.material_id },
       files: { 'candidate.lean': secondMaterial.content },
     });
-    const secondContext = contextService.getInitialContext(executionId);
-    secondResult = await judgeService.judgeCandidate(checkRequest({ task: taskService.getTask(task.task_id), execution: secondWait.execution, initialContext: secondContext, fixtureManifest: lockedFixture, material: secondMaterial, requestKey: 'real:check:pass' }));
+    const secondWorkspace = { ...workspace, workspace_ref: secondWait.execution.workspace_ref, workspace_revision: secondWait.execution.workspace_revision };
+    secondResult = await judgeService.judgeCandidate(checkRequest({ task: taskService.getTask(task.task_id), execution: secondWait.execution, workspace: secondWorkspace, fixtureManifest: lockedFixture, material: secondMaterial, requestKey: 'real:check:pass' }));
     const completed = ownerSdk.withContext({ actorRef: 'owner:root', taskId: task.task_id, executionId, specVersion: secondWait.execution.spec_version, stateVersion: secondWait.execution.state_version, fencingVersion: secondWait.execution.fencing_version }).applyCheckResult({ check_result_id: secondResult.check_result_id }, { operationId: 'real:apply:pass' });
     report.check_result_ids.push(secondResult.check_result_id);
     report.fixture = lockedFixture;
     report.versions = { node: process.version, pi: secondRun.session.manifest.pi_version ?? null, nurouter: secondRun.session.manifest.nurouter_version ?? null, lean_toolchain: lockedFixture.lean_toolchain, mathlib: lockedFixture.mathlib_version, checker: lockedFixture.checker_version };
-    report.workspace = { first: firstRun.workspace, first_wait: firstWait.execution.workspace_ref, restored: secondRun.workspace, second_wait: secondWait.execution.workspace_ref, same_lineage: firstWait.execution.workspace_ref === secondWait.execution.workspace_ref, checkpoints: [firstWait.execution.checkpoint_ref, secondWait.execution.checkpoint_ref] };
+    report.workspace = { input_snapshot_hash: workspace.input_snapshot_hash, first: firstRun.workspace, first_wait: firstWait.execution.workspace_ref, restored: secondRun.workspace, second_wait: secondWait.execution.workspace_ref, same_lineage: firstWait.execution.workspace_ref === secondWait.execution.workspace_ref, checkpoints: [firstWait.execution.checkpoint_ref, secondWait.execution.checkpoint_ref] };
     report.check_results = [taskService.getCheckResult(firstResult.check_result_id), taskService.getCheckResult(secondResult.check_result_id)];
     report.materials = [contextService.getMaterial(report.material_ids[0]), contextService.getMaterial(report.material_ids[1])];
     report.task = completed.task;

@@ -22,6 +22,14 @@ class FakeSession extends EventEmitter {
     this.executionId = executionId;
     this.manifest = { pi_package: '@earendil-works/pi-coding-agent', pi_version: '1.3.0', nurouter_version: '0.2.12', node_version: process.versions.node, launch_args: ['fake'] };
     this.closed = false;
+    this.prompts = [];
+  }
+
+  async waitForReady() {}
+
+  async prompt(message) {
+    this.prompts.push(message);
+    return { data: { disposition: 'handled' } };
   }
 
   stop() {
@@ -54,14 +62,8 @@ async function fixture() {
   const router = new ServicesRouter({ taskService, contextService });
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const task = sdk.proposeTask({ task_type: 'proof', goal: 'runtime fixture', expected_output: 'proof', acceptance_conditions: { fixture: true }, owner_ref: 'owner:root' }, { operationId: 'runtime-proposal' }).task;
-  const frozen = sdk.freezeInitialContext({
-    freeze_key: 'runtime-freeze', task_id: task.task_id, execution_id: 'execution-runtime', spec_version: 1, spec_hash: task.spec_hash,
-    task_spec: { task_id: task.task_id, goal: task.goal, task_type: task.task_type, completion_contract: task.completion_contract },
-    initial_prompt: 'run the fixture', material_refs: [], service_environment: { runtime: 'test' },
-  }, { operationId: 'runtime-freeze-op', taskId: task.task_id, executionId: 'execution-runtime', specVersion: 1, fencingVersion: 1 });
   const claimed = sdk.withContext({ taskId: task.task_id, specVersion: 1, stateVersion: 0 }).claim({
-    execution_id: 'execution-runtime', claim_key: 'runtime-claim', owner_ref: 'runtime:local', initial_prompt: 'run the fixture',
-    initial_context_ref: frozen.initial_context_ref, input_snapshot_hash: frozen.input_snapshot_hash, input_material_refs: [],
+    execution_id: 'execution-runtime', claim_key: 'runtime-claim', owner_ref: 'runtime:local', agent_prompt: 'run the fixture', input_material_refs: [],
   }, { operationId: 'runtime-claim-op' });
   const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-workspace-'));
   const adapter = new FakeAgentAdapter();
@@ -77,9 +79,13 @@ test('Runtime creates an isolated workspace before Pi, saves checkpoint before w
   assert.equal(runtime.getActiveProcessCount(), 1);
   assert.equal(fixtureData.adapter.starts[0].cwd, started.workspace.workspace_ref);
   assert.equal(fixtureData.adapter.starts[0].sessionDir, join(started.workspace.workspace_ref, '.swarm', 'pi-session'));
-  assert.equal(JSON.parse(await readFile(join(started.workspace.workspace_ref, 'initial-context.json'), 'utf8')).execution_id, claimed.execution.execution_id);
-  assert.equal(await readFile(join(started.workspace.workspace_ref, 'initial-prompt.txt'), 'utf8'), 'run the fixture');
-  assert.equal(await readFile(join(started.workspace.workspace_ref, 'input-snapshot.json'), 'utf8').then(JSON.parse).then((value) => value.input_snapshot_hash), claimed.execution.input_snapshot_hash);
+  assert.equal(fixtureData.adapter.sessions[0].prompts[0], 'run the fixture');
+  const workspaceManifest = JSON.parse(await readFile(join(started.workspace.workspace_ref, 'workspace-manifest.json'), 'utf8'));
+  assert.equal(workspaceManifest.task_id, claimed.execution.task_id);
+  assert.match(await readFile(join(started.workspace.workspace_ref, 'README.md'), 'utf8'), /Task instructions:/);
+  await assert.rejects(() => readFile(join(started.workspace.workspace_ref, 'initial-context.json'), 'utf8'), { code: 'ENOENT' });
+  await assert.rejects(() => readFile(join(started.workspace.workspace_ref, 'initial-prompt.txt'), 'utf8'), { code: 'ENOENT' });
+  assert.equal(workspaceManifest.input_snapshot.workspace_snapshot_hash, claimed.execution.input_snapshot_hash);
 
   const waited = await runtime.requestWait(claimed.execution.execution_id, {
     waitCondition: { type: 'timer', deadline: new Date(Date.now() + 60_000).toISOString() },
@@ -95,7 +101,7 @@ test('Runtime creates an isolated workspace before Pi, saves checkpoint before w
 
   assert.throws(
     () => fixtureData.sdk.withContext({ taskId: fixtureData.task.task_id, specVersion: 1, stateVersion: waited.task.state_version }).claim({
-      claim_key: 'second-runtime-claim', owner_ref: 'runtime:two', initial_prompt: 'duplicate', initial_context_ref: 'context://other', input_snapshot_hash: 'other', input_material_refs: [],
+    claim_key: 'second-runtime-claim', owner_ref: 'runtime:two', agent_prompt: 'duplicate', workspace_manifest_ref: 'workspace://other', input_snapshot_hash: 'other', input_material_refs: [],
     }, { operationId: 'second-runtime-op' }),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.CONFLICT,
   );
@@ -166,6 +172,64 @@ test('Workspace Manager rejects execution and file paths that escape its root', 
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   await rm(rootDir, { recursive: true, force: true });
+});
+
+test('Workspace resume copies a selected revision into a new lineage', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-workspace-lineage-'));
+  const manager = new WorkspaceManager({ rootDir });
+  const task = {
+    task_id: 'task-lineage', root_id: 'task-lineage', task_type: 'proof',
+    goal: 'preserve workspace lineage', expected_output: 'artifact',
+    acceptance_conditions: {}, workspace: { problem_file: 'problem.lean', formal_source: 'theorem t : True := by trivial' },
+  };
+  const first = await manager.createWorkspace({ executionId: 'execution-one', fencingVersion: 1, task, workspaceManifest: {}, inputSnapshotManifest: {} });
+  const second = await manager.saveWorkspaceRevision({
+    workspaceRef: first.workspace_ref, executionId: 'execution-one', fencingVersion: 1,
+    files: { 'progress.txt': 'revision two' },
+  });
+  const resumed = await manager.cloneWorkspace({
+    sourceWorkspaceRef: first.workspace_ref,
+    targetWorkspaceRef: join(rootDir, 'execution-two'),
+    executionId: 'execution-two', fencingVersion: 1, revision: second.workspace_revision,
+    task, workspaceManifest: { selection: { mode: 'resume', revision: second.workspace_revision } }, inputSnapshotManifest: {}, runtimeManifest: {},
+  });
+  assert.equal(resumed.execution_id, 'execution-two');
+  assert.equal(resumed.workspace_revision, second.workspace_revision);
+  assert.equal(await readFile(join(resumed.workspace_ref, 'progress.txt'), 'utf8'), 'revision two');
+  const resumedMetadata = JSON.parse(await readFile(join(resumed.workspace_ref, '.swarm', 'workspace.json'), 'utf8'));
+  assert.equal(resumedMetadata.parent_workspace_ref, first.workspace_ref);
+  assert.equal(resumed.parent_workspace_ref, first.workspace_ref);
+  assert.equal(resumed.parent_workspace_revision, second.workspace_revision);
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('Runtime binds a selected Workspace revision when a new Execution forks a prior one', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, sdk } = fixtureData;
+  const started = await runtime.startExecution(claimed.execution.execution_id);
+  const waited = await runtime.requestWait(claimed.execution.execution_id, {
+    waitCondition: { type: 'timer', deadline: new Date(Date.now() + 60_000).toISOString() },
+    checkpoint: { phase: 'fork-source' },
+    files: { 'progress.txt': 'source revision' },
+  });
+  const fenced = await runtime.fenceExecution(claimed.execution.execution_id);
+  const source = taskService.getExecution(claimed.execution.execution_id);
+  const task = taskService.getTask(fixtureData.task.task_id);
+  const forkClaim = sdk.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
+    claim_key: 'runtime-fork-claim', owner_ref: 'runtime:fork', workspace_mode: 'resume',
+    workspace_source_execution_id: source.execution_id, workspace_revision: source.workspace_revision,
+  }, { operationId: 'runtime-fork-claim' });
+  const forked = await runtime.startExecution(forkClaim.execution.execution_id);
+  assert.equal(forked.execution.workspace_revision, source.workspace_revision + 1);
+  assert.equal(forked.workspace.parent_workspace_ref, source.workspace_ref);
+  assert.equal(forked.workspace.parent_workspace_revision, source.workspace_revision);
+  assert.equal(await readFile(join(forked.workspace.workspace_ref, 'progress.txt'), 'utf8'), 'source revision');
+  assert.equal(fenced.execution.state, 'FENCED');
+  await runtime.stopExecution(forked.execution.execution_id);
+  await rm(rootDir, { recursive: true, force: true });
+  fixtureData.taskService.close();
+  assert.ok(waited.execution.workspace_ref);
+  assert.ok(started.workspace.workspace_ref);
 });
 
 test('lease sweep fences an expired running Execution and releases its process slot', async () => {
