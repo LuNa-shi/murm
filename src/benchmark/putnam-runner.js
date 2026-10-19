@@ -406,7 +406,6 @@ async function judgeCandidate(state, core) {
   const candidateId = execution.candidate_material_id;
   const material = state.contextService.getMaterial(candidateId);
   if (!material) return;
-  core.checked.add(candidateId);
   const { content, contentHash } = await resolveCandidateSource(core.runtime, material, execution);
   if (FORBIDDEN_PLACEHOLDER.test(content)) {
     core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: material.content_hash });
@@ -449,6 +448,9 @@ async function judgeCandidate(state, core) {
   }, {
     operationId: `benchmark:apply:${state.runId}:${core.index}:${candidateId}`,
   });
+  // A transient Workspace or Judge failure must leave the candidate eligible
+  // for a later retry. Mark it only after the CheckResult is applied.
+  core.checked.add(candidateId);
   core.checks.push({ ...sanitizedCheck(result, material), check_elapsed_ms: Date.now() - checkStartedAt });
   await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
   if (result.verdict === 'PASS' && applied.task.state === 'SATISFIED' && pending.taskId === state.rootTaskId) {
@@ -561,6 +563,12 @@ function projectReport(state, startedAt, deadline) {
   const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     candidateBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
   const childTaskCount = taskTree.filter((task) => task.parent_id !== null).length;
+  const taskById = new Map(taskTree.map((task) => [task.task_id, task]));
+  const childClaimCount = claimHistory.filter((claim) => taskById.get(claim.task_id)?.parent_id !== null).length;
+  const rootClaimCount = claimHistory.filter((claim) => claim.task_id === state.rootTaskId).length;
+  const executionClaimCounts = new Map();
+  for (const claim of claimHistory) executionClaimCounts.set(claim.execution_id, (executionClaimCounts.get(claim.execution_id) ?? 0) + 1);
+  const resumedExecutionCount = [...executionClaimCounts.values()].filter((count) => count > 1).length;
   const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
   const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
   const candidateCount = cores.reduce((count, core) => count + core.checks.length, 0);
@@ -594,6 +602,16 @@ function projectReport(state, startedAt, deadline) {
         priority: task.priority,
         state: task.state,
       })),
+      execution_history: taskTree.flatMap((task) => state.taskService.listExecutions(task.task_id).map((execution) => ({
+        execution_id: execution.execution_id,
+        task_id: execution.task_id,
+        state: execution.state,
+        attempt_no: execution.attempt_no,
+        owner_ref: execution.owner_ref,
+        workspace_revision: execution.workspace_revision,
+        candidate_material_id: execution.candidate_material_id,
+        wait_condition_type: execution.wait_condition?.type ?? null,
+      }))),
     },
     run: {
       started_at: new Date(startedAt).toISOString(),
@@ -627,6 +645,9 @@ function projectReport(state, startedAt, deadline) {
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
       claimed_core_count: new Set(state.cores.filter((core) => core.claimHistory.length > 0).map((core) => core.index)).size,
       claim_count: claimHistory.length,
+      child_claim_count: childClaimCount,
+      root_claim_count: rootClaimCount,
+      resumed_execution_count: resumedExecutionCount,
       wait_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_wait'").get().count,
       wake_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'wake_execution'").get().count,
       accept_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'accept_task'").get().count,

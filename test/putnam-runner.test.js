@@ -217,7 +217,7 @@ class CollaborationSession extends EventEmitter {
     return this.call('claim', {
       task_id: task.task_id,
       claim_key: `collaboration-claim-${this.adapter.role}-${this.adapter.claimSequence}`,
-      workspace_mode: 'clean',
+      workspace_mode: 'resume',
     });
   }
 
@@ -497,6 +497,9 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.equal(report.run.solved, true);
     assert.equal(report.project.task_tree.filter((task) => task.parent_id !== null).length, 3);
     assert.ok(report.run.claim_count >= 4, `expected root and three child claims, got ${report.run.claim_count}`);
+    assert.ok(report.run.child_claim_count >= 3, `expected every child to be claimed, got ${report.run.child_claim_count}`);
+    assert.ok(report.run.root_claim_count >= 2, `expected root to be reclaimed after waiting, got ${report.run.root_claim_count}`);
+    assert.ok(report.run.resumed_execution_count >= 1, `expected at least one Execution to be resumed; root=${report.run.root_claim_count}, claims=${report.run.claim_count}, details=${JSON.stringify(report.project.execution_history)}`);
     assert.ok(report.run.progress_evidence.workspace_write_count >= 4);
     assert.ok(report.cores.filter((core) => core.workspace_writes.length > 0).length >= 4);
     assert.ok(report.cores.some((core) => core.claims.length >= 2), 'root core should reclaim after waiting');

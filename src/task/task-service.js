@@ -639,28 +639,38 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'request_wait requires a checkpoint already saved for this Execution');
     }
     if (!payload.wait_condition || typeof payload.wait_condition !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
+    const waitCondition = { ...payload.wait_condition };
+    if (waitCondition.type === 'check_result_arrived' && waitCondition.candidate_material_id !== undefined) {
+      requireString(waitCondition.candidate_material_id, 'wait_condition.candidate_material_id');
+      if (waitCondition.candidate_material_id !== execution.candidate_material_id) {
+        throw new SwarmEnvError(ERROR_CODES.FENCED, 'wait_condition candidate does not match the current Execution candidate');
+      }
+      if (!waitCondition.check_request_key && !waitCondition.request_key) {
+        waitCondition.check_request_key = waitCondition.candidate_material_id;
+      }
+    }
     const allowed = new Set(['child_task_terminal', 'parent_review', 'check_result_arrived', 'timer']);
-    if (!allowed.has(payload.wait_condition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
+    if (!allowed.has(waitCondition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
     const task = this.getTask(execution.task_id);
-    if (payload.wait_condition.type === 'parent_review' && !task.parent_id) {
+    if (waitCondition.type === 'parent_review' && !task.parent_id) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent_review requires a child Task');
     }
-    if (payload.wait_condition.type === 'child_task_terminal') {
-      const childTaskId = requireString(payload.wait_condition.child_task_id ?? payload.wait_condition.task_id, 'wait_condition.child_task_id');
+    if (waitCondition.type === 'child_task_terminal') {
+      const childTaskId = requireString(waitCondition.child_task_id ?? waitCondition.task_id, 'wait_condition.child_task_id');
       const child = this.getTask(childTaskId);
       if (!child || child.parent_id !== task.task_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'child_task_terminal must reference a direct child Task');
     }
-    if (payload.wait_condition.type === 'check_result_arrived') {
-      requireString(payload.wait_condition.check_request_key ?? payload.wait_condition.request_key, 'wait_condition.check_request_key');
+    if (waitCondition.type === 'check_result_arrived') {
+      requireString(waitCondition.check_request_key ?? waitCondition.request_key, 'wait_condition.check_request_key');
     }
-    const waitDeadline = payload.wait_deadline ?? payload.wait_condition.deadline ?? null;
-    if (payload.wait_condition.type === 'timer' && !waitDeadline) {
+    const waitDeadline = payload.wait_deadline ?? waitCondition.deadline ?? null;
+    if (waitCondition.type === 'timer' && !waitDeadline) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timer wait requires a deadline');
     }
     const updatedAt = now();
     this.db.prepare(`UPDATE executions SET state = 'WAITING', checkpoint_ref = ?, checkpoint_hash = ?, workspace_ref = COALESCE(?, workspace_ref), workspace_revision = COALESCE(?, workspace_revision), workspace_content_hash = COALESCE(?, workspace_content_hash), wait_condition_json = ?, wait_deadline = ?, resume_token = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
       .run(payload.checkpoint_ref, payload.checkpoint_hash, payload.workspace_ref ?? null, payload.workspace_revision ?? null, payload.workspace_content_hash ?? null,
-        json(payload.wait_condition), waitDeadline, payload.resume_token ?? randomUUID(), updatedAt, execution.execution_id);
+      json(waitCondition), waitDeadline, payload.resume_token ?? randomUUID(), updatedAt, execution.execution_id);
     this.#refreshTaskState(execution.task_id, { updatedAt });
     this.db.prepare('INSERT INTO wait_keys (request_key, execution_id, fingerprint, created_at) VALUES (?, ?, ?, ?)')
       .run(waitKey, execution.execution_id, waitFingerprint, updatedAt);
@@ -964,7 +974,23 @@ export class TaskService {
     if (condition.type === 'check_result_arrived') {
       const requestKey = condition.check_request_key ?? condition.request_key;
       if (!requestKey) return false;
-      const result = this.db.prepare('SELECT status FROM check_results WHERE request_key = ?').get(requestKey);
+      // Agent-facing candidate submission does not know the runner's internal
+      // Judge request key. In that path the agent uses its candidate Material
+      // ID as the wait key, while the Judge stores the generated request key
+      // and the same candidate ID separately. Bind the fallback to this
+      // Execution so an unrelated CheckResult cannot wake the Task.
+      const candidateMaterialId = condition.candidate_material_id ??
+        (requestKey === execution.candidate_material_id ? requestKey : null);
+      const result = this.db.prepare(`SELECT status FROM check_results
+        WHERE execution_id = ? AND target_task_id = ?
+          AND (request_key = ? OR (? IS NOT NULL AND candidate_material_id = ?))
+        ORDER BY created_at DESC LIMIT 1`).get(
+        execution.execution_id,
+        execution.task_id,
+        requestKey,
+        candidateMaterialId,
+        candidateMaterialId,
+      );
       return Boolean(result && ['RECEIVED', 'APPLIED', 'IGNORED'].includes(result.status));
     }
     return false;

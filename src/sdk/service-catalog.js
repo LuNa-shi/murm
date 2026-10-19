@@ -75,7 +75,7 @@ const TOOL_DEFINITIONS = Object.freeze([
     name: 'execution_wait', service: 'execution', operation: 'request_wait', version: '1.0',
     description: 'Save a checkpoint and release the active Execution for a durable wait. Use child_task_terminal with a direct child_task_id for parent coordination, check_result_arrived with check_request_key after a candidate, or timer with a deadline. The time and judge_result kind aliases are accepted.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['wait_condition'], properties: { wait_condition: { type: 'object' }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } }, wait_deadline: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['wait_condition'], properties: { wait_condition: { type: 'object', properties: { type: { type: 'string' }, child_task_id: { type: 'string' }, check_request_key: { type: 'string' }, candidate_material_id: { type: 'string' }, deadline: { type: 'string' } }, additionalProperties: true }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } }, wait_deadline: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'workspace_get', service: 'workspace', operation: 'get_workspace', version: '1.0',

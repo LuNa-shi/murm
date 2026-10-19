@@ -139,6 +139,36 @@ test('parent child-task wait becomes claimable when a child delivers a result fo
   close(env);
 });
 
+test('claiming a root after a terminal child resumes its waiting Execution lineage', () => {
+  const env = environment();
+  const parent = env.sdk.proposeTask({ ...proofInput(), goal: 'coordinate proof research' }, { operationId: 'lineage-parent-propose' }).task;
+  const parentRun = claimTask(env, parent, { executionId: 'lineage-parent-execution', actorRef: 'owner:root' });
+  const child = parentRun.sdk.withContext({ taskId: parent.task_id, executionId: null, stateVersion: parentRun.claim.task.state_version }).createChildTask({
+    child_creation_key: 'lineage-child', ...researchInput(), owner_ref: 'researcher:one',
+  }, { operationId: 'lineage-child-create' }).task;
+  const parentCheckpoint = saveCheckpoint(env, parentRun.claim.execution, 'lineage-parent-checkpoint');
+  const parentWait = parentRun.sdk.withContext({ stateVersion: parentCheckpoint.state_version }).requestWait({
+    wait_key: 'lineage-parent-wait', checkpoint_ref: parentCheckpoint.checkpoint_ref, checkpoint_hash: parentCheckpoint.checkpoint_hash,
+    wait_condition: { type: 'child_task_terminal', child_task_id: child.task_id },
+  }, { operationId: 'lineage-parent-wait-op' });
+  const childRun = claimTask(env, child, { executionId: 'lineage-child-execution', actorRef: 'researcher:one' });
+  childRun.sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { route: 'lineage' } }, { operationId: 'lineage-child-material' });
+  const childCheckpoint = saveCheckpoint(env, childRun.claim.execution, 'lineage-child-checkpoint');
+  childRun.sdk.withContext({ stateVersion: childCheckpoint.state_version }).requestWait({
+    wait_key: 'lineage-child-wait', checkpoint_ref: childCheckpoint.checkpoint_ref, checkpoint_hash: childCheckpoint.checkpoint_hash,
+    wait_condition: { type: 'parent_review' },
+  }, { operationId: 'lineage-child-wait-op' });
+  const available = env.sdk.withContext({ actorRef: 'agent:reviewer' }).listTasks({ limit: 10 });
+  assert.equal(available[0].task_id, parent.task_id);
+  const resumed = env.sdk.withContext({
+    actorRef: 'agent:reviewer', taskId: parent.task_id, specVersion: parent.spec_version, stateVersion: available[0].state_version,
+  }).claim({ claim_key: 'lineage-parent-resume', workspace_mode: 'resume' }, { operationId: 'lineage-parent-resume-op' });
+  assert.equal(resumed.execution.execution_id, parentWait.execution.execution_id);
+  assert.equal(resumed.execution.attempt_no, 2);
+  assert.equal(resumed.execution.workspace_selection.mode, 'resume');
+  close(env);
+});
+
 test('root owner acceptance completes an unchecked research Task', () => {
   const env = environment();
   const task = env.sdk.proposeTask({ ...researchInput(), owner_ref: 'owner:root', goal: 'root research' }, { operationId: 'root-research-propose' }).task;
@@ -257,6 +287,43 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
   assert.equal(completed.check_result.verdict, 'PASS');
   assert.equal(completed.task.state, 'SATISFIED');
   assert.equal(completed.execution.state, 'SUCCEEDED');
+  close(env);
+});
+
+test('candidate Material ID wakes a waiting proof Execution when Judge uses an internal request key', async () => {
+  const env = environment({ checker: { check: async () => ({ verdict: 'FAIL', evidence: { diagnostic: 'type mismatch' } }) } });
+  const task = env.sdk.proposeTask(proofInput(), { operationId: 'candidate-wait-propose' }).task;
+  const run = claimTask(env, task, { executionId: 'candidate-wait-execution', actorRef: 'owner:root' });
+  const candidate = run.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'candidate' } }, { operationId: 'candidate-wait-material' }).material;
+  const submitted = run.sdk.submitCandidate({ candidate_material_id: candidate.material_id }, { operationId: 'candidate-wait-submit' });
+  const checkpointed = saveCheckpoint(env, submitted.execution, 'candidate-wait-checkpoint');
+  const waited = run.sdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
+    wait_key: 'candidate-wait-request',
+    checkpoint_ref: checkpointed.checkpoint_ref,
+    checkpoint_hash: checkpointed.checkpoint_hash,
+    wait_condition: { type: 'check_result_arrived', candidate_material_id: candidate.material_id },
+  }, { operationId: 'candidate-wait-op' });
+  assert.equal(env.sdk.withContext({ actorRef: 'agent:next' }).listTasks({ limit: 10 }).length, 0);
+
+  const timestamp = new Date().toISOString();
+  env.taskService.db.prepare(`INSERT INTO check_results (
+    check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
+    execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict, evidence_json,
+    applied_task_state_version, applied_at, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RECEIVED', 'FAIL', ?, NULL, NULL, ?, ?)`).run(
+    'candidate-wait-result', 'judge:internal-request-key', 'request-hash', candidate.material_id, task.task_id, task.spec_version,
+    waited.execution.execution_id, waited.execution.input_snapshot_hash, 'lean', 'mvp-1', 'putnambench-test', '{}', timestamp, timestamp,
+  );
+
+  const available = env.sdk.withContext({ actorRef: 'agent:next' }).listTasks({ limit: 10 });
+  assert.equal(available[0].task_id, task.task_id);
+  const resumed = env.sdk.withContext({
+    actorRef: 'agent:next', taskId: task.task_id, specVersion: task.spec_version, stateVersion: available[0].state_version,
+  }).claim({ claim_key: 'candidate-wait-resume', workspace_mode: 'resume' }, { operationId: 'candidate-wait-resume-op' });
+  assert.equal(resumed.execution.execution_id, waited.execution.execution_id);
+  assert.equal(resumed.execution.owner_ref, 'agent:next');
+  assert.equal(resumed.execution.attempt_no, 2);
+  assert.equal(resumed.execution.state, 'CREATED');
   close(env);
 });
 
