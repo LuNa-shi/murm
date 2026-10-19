@@ -248,6 +248,10 @@ export class AgentCoreAdapter {
       '--session-dir', sessionDir,
       '--session-id', executionId,
       ...(this.config.extensionPath ? ['--extension', this.config.extensionPath] : []),
+      '--no-builtin-tools',
+      '--no-skills',
+      '--no-prompt-templates',
+      '--no-context-files',
       ...piModelArgs,
     );
     return args;

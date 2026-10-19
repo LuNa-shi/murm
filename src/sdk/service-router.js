@@ -6,11 +6,13 @@ const TASK_OPERATIONS = new Set([
   'accept_task', 'request_rework', 'apply_check_result', 'wake_execution',
 ]);
 const CONTEXT_OPERATIONS = new Set(['publish_material', 'read_materials']);
+const JUDGE_OPERATIONS = new Set(['get_check_result']);
 
 export class ServicesRouter {
-  constructor({ taskService, contextService, logger = null }) {
+  constructor({ taskService, contextService, judgeService = null, logger = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
+    this.judgeService = judgeService;
     this.logger = logger;
   }
 
@@ -33,6 +35,8 @@ export class ServicesRouter {
         ? this.taskService.dispatch(operation, payload, envelope)
         : CONTEXT_OPERATIONS.has(operation)
           ? this.contextService.dispatch(operation, payload, envelope)
+          : JUDGE_OPERATIONS.has(operation) && this.judgeService
+            ? this.judgeService.dispatch(operation, payload, envelope)
             : (() => { throw new Error(`no service route for operation: ${operation}`); })();
       this.logger?.append({ event: 'route.complete', operation, ok: true });
       return result;

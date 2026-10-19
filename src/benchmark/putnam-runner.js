@@ -17,7 +17,7 @@ import { ServicesSDK } from '../sdk/services-sdk.js';
 import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
-import { GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
+import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
 
 const execFileAsync = (command, args) => new Promise((resolvePromise, reject) => {
   execFile(command, args, { encoding: 'utf8' }, (error, stdout) => {
@@ -49,6 +49,27 @@ function safeDiagnostic(value) {
   if (/timed out|timeout/i.test(text)) return 'checker_timeout';
   if (/unknown identifier|type mismatch|unsolved goals|application type mismatch/i.test(text)) return 'lean_proof_error';
   return 'lean_checker_error';
+}
+
+async function resolveCandidateSource(runtime, material, execution) {
+  if (typeof material.content === 'string') {
+    return { content: material.content, contentHash: null };
+  }
+  const reference = material.content;
+  if (!reference || typeof reference !== 'object' || Array.isArray(reference) || typeof reference.path !== 'string') {
+    throw new TypeError('candidate artifact must contain a Workspace file path or direct source text');
+  }
+  if (reference.workspace_revision !== undefined && reference.workspace_revision !== execution.workspace_revision) {
+    throw new TypeError(`candidate Workspace revision ${reference.workspace_revision} does not match Execution revision ${execution.workspace_revision}`);
+  }
+  const file = await runtime.readWorkspaceFile(execution.execution_id, { path: reference.path });
+  if (reference.workspace_revision !== undefined && reference.workspace_revision !== file.workspace_revision) {
+    throw new TypeError(`candidate Workspace revision ${reference.workspace_revision} does not match readable revision ${file.workspace_revision}`);
+  }
+  if (reference.content_hash !== undefined && reference.content_hash !== file.content_hash) {
+    throw new TypeError(`candidate Workspace file hash does not match ${reference.path}`);
+  }
+  return { content: file.content, contentHash: file.content_hash };
 }
 
 function required(value, name) {
@@ -108,10 +129,6 @@ function validateProblemInput(problem, source) {
 function restrictedArgs(args) {
   return [
     ...args,
-    '--no-builtin-tools',
-    '--no-skills',
-    '--no-prompt-templates',
-    '--no-context-files',
     '--thinking',
     'high',
   ];
@@ -368,8 +385,8 @@ async function publishFeedback(state, core, material, result, { taskId = core.ta
   }, makeEnvelope({
     operationId: `benchmark:feedback:${state.runId}:${core.index}:${result.check_result_id}`,
     actorRef: 'judge:lean',
-    taskId: core.taskId,
-    executionId: core.executionId,
+    taskId,
+    executionId,
     specVersion: execution.spec_version,
     stateVersion: execution.state_version,
     fencingVersion: execution.fencing_version,
@@ -389,8 +406,7 @@ async function judgeCandidate(state, core) {
   const candidateId = execution.candidate_material_id;
   const material = state.contextService.getMaterial(candidateId);
   if (!material) return;
-  core.checked.add(candidateId);
-  const content = typeof material.content === 'string' ? material.content : JSON.stringify(material.content);
+  const { content, contentHash } = await resolveCandidateSource(core.runtime, material, execution);
   if (FORBIDDEN_PLACEHOLDER.test(content)) {
     core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: material.content_hash });
   }
@@ -418,7 +434,7 @@ async function judgeCandidate(state, core) {
     environment_ref: state.fixtureManifest.environment_ref,
     execution_id: pending.executionId,
     state_version: execution.state_version,
-    candidate: { material_id: candidateId, content },
+    candidate: { material_id: candidateId, content, content_hash: contentHash ?? undefined },
     target_task: task,
     workspace,
     fixture_manifest: state.fixtureManifest,
@@ -432,9 +448,12 @@ async function judgeCandidate(state, core) {
   }, {
     operationId: `benchmark:apply:${state.runId}:${core.index}:${candidateId}`,
   });
+  // A transient Workspace or Judge failure must leave the candidate eligible
+  // for a later retry. Mark it only after the CheckResult is applied.
+  core.checked.add(candidateId);
   core.checks.push({ ...sanitizedCheck(result, material), check_elapsed_ms: Date.now() - checkStartedAt });
   await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
-  if (result.verdict === 'PASS' && applied.task.state === 'SATISFIED') {
+  if (result.verdict === 'PASS' && applied.task.state === 'SATISFIED' && pending.taskId === state.rootTaskId) {
     state.solvedAt = Date.now();
     state.solvedBy = core.index;
   }
@@ -466,7 +485,10 @@ async function stopCore(state, core) {
     }).catch(() => undefined);
   }
   const current = core.executionId ? state.taskService.getExecution(core.executionId) : null;
-  if (current && ['CREATED', 'RUNNING', 'WAITING'].includes(current.state)) {
+  // WAITING has already released its process and Workspace lease. Preserve
+  // that durable state for the report and a later explicit claim; only an
+  // unfinished live/created Execution needs a terminal cleanup state.
+  if (current && ['CREATED', 'RUNNING'].includes(current.state)) {
     await core.runtime.stopExecution(core.executionId, 'FAILED').catch(() => undefined);
   }
   await core.bridge.stop().catch(() => undefined);
@@ -497,20 +519,28 @@ function projectReport(state, startedAt, deadline) {
       execution.input_snapshot_hash !== inputSnapshotHash(task, execution.input_material_refs);
   });
   const cores = state.cores.map((core) => {
-    const task = state.taskService.getTask(core.taskId);
-    const execution = state.taskService.getExecution(core.executionId);
+    const lastClaim = core.claimHistory.at(-1);
+    const taskId = core.taskId ?? lastClaim?.task_id ?? null;
+    const executionId = core.executionId ?? lastClaim?.execution_id ?? null;
+    const task = taskId ? state.taskService.getTask(taskId) : null;
+    const execution = executionId ? state.taskService.getExecution(executionId) : null;
     return {
       core: core.index,
-      task_id: core.taskId,
-      execution_id: core.executionId,
+      task_id: taskId,
+      execution_id: executionId,
       turns: core.turns,
       turn_durations_ms: core.turnDurationsMs,
       turn_timeout_count: core.turnTimeoutCount,
       checks: core.checks,
       errors: core.errors,
       cheating_flags: core.cheatingFlags,
-      claims: core.claimHistory,
+      claims: core.claimHistory.map((claim) => ({
+        ...claim,
+        workspace_revision_end: state.taskService.getExecution(claim.execution_id)?.workspace_revision ?? null,
+      })),
       tool_events: [...new Set(core.toolEvents)],
+      workspace_writes: core.workspaceWrites,
+      tool_errors: core.toolErrors,
       task_state: task?.state ?? null,
       execution_state: execution?.state ?? null,
       input_snapshot_hash: execution?.input_snapshot_hash ?? null,
@@ -518,7 +548,12 @@ function projectReport(state, startedAt, deadline) {
       versions: sanitizedVersionManifest(core.versionManifest),
     };
   });
-  const toolViolation = cores.some((core) => core.tool_events.some((tool) => tool !== 'swarmenv_call' && !String(tool).startsWith('swarmenv_')));
+  const toolViolation = cores.some((core) => core.tool_events.some((tool) => {
+    const name = String(tool);
+    return name !== 'swarmenv_call' && !name.startsWith('swarmenv_');
+  }));
+  const toolErrorCount = cores.reduce((count, core) => count + core.tool_errors.length, 0);
+  const toolProtocolErrorCount = cores.reduce((count, core) => count + core.tool_errors.filter((error) => !error.recoverable).length, 0);
   const claimedExecutionIds = [...new Set(claimHistory.map((claim) => claim.execution_id))];
   const workspaceRefs = claimedExecutionIds.map((executionId) => state.taskService.getExecution(executionId)?.workspace_ref).filter(Boolean);
   const workspaceBoundaryViolation = workspaceRefs.length !== claimedExecutionIds.length || new Set(workspaceRefs).size !== workspaceRefs.length;
@@ -528,15 +563,26 @@ function projectReport(state, startedAt, deadline) {
     const material = state.contextService.getMaterial(execution.candidate_material_id);
     return !material || material.source_task !== claim.task_id || material.source_execution !== claim.execution_id;
   });
-  const invalid = toolViolation || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
+  const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     candidateBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
+  const childTaskCount = taskTree.filter((task) => task.parent_id !== null).length;
+  const taskById = new Map(taskTree.map((task) => [task.task_id, task]));
+  const childClaimCount = claimHistory.filter((claim) => taskById.get(claim.task_id)?.parent_id !== null).length;
+  const rootClaimCount = claimHistory.filter((claim) => claim.task_id === state.rootTaskId).length;
+  const executionClaimCounts = new Map();
+  for (const claim of claimHistory) executionClaimCounts.set(claim.execution_id, (executionClaimCounts.get(claim.execution_id) ?? 0) + 1);
+  const resumedExecutionCount = [...executionClaimCounts.values()].filter((count) => count > 1).length;
+  const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
+  const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
+  const candidateCount = cores.reduce((count, core) => count + core.checks.length, 0);
+  const madeProgress = childTaskCount > 0 || workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || candidateCount > 0;
   const report = {
     schema_version: 1,
     protocol: {
       project_isolation: true,
       core_count: 4,
       input_policy: 'pinned formalization only; no candidate or solution input',
-      tool_policy: 'registered swarmenv_* Service tools; swarmenv_call is compatibility-only',
+      tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
       cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
     },
     project: {
@@ -559,14 +605,32 @@ function projectReport(state, startedAt, deadline) {
         priority: task.priority,
         state: task.state,
       })),
+      execution_history: taskTree.flatMap((task) => state.taskService.listExecutions(task.task_id).map((execution) => ({
+        execution_id: execution.execution_id,
+        task_id: execution.task_id,
+        state: execution.state,
+        attempt_no: execution.attempt_no,
+        owner_ref: execution.owner_ref,
+        workspace_revision: execution.workspace_revision,
+        candidate_material_id: execution.candidate_material_id,
+        wait_condition_type: execution.wait_condition?.type ?? null,
+      }))),
     },
     run: {
       started_at: new Date(startedAt).toISOString(),
       ended_at: new Date().toISOString(),
       elapsed_ms: Date.now() - startedAt,
       deadline_ms: deadline - startedAt,
-      solved: state.solvedAt !== null && !invalid,
-      solved_by_core: invalid ? null : state.solvedBy,
+      protocol_valid: !invalid,
+      made_progress: madeProgress,
+      progress_evidence: {
+        child_task_count: childTaskCount,
+        workspace_write_count: workspaceWriteCount,
+        meaningful_material_count: meaningfulMaterialCount,
+        candidate_check_count: candidateCount,
+      },
+      solved: state.solvedAt !== null && !invalid && madeProgress,
+      solved_by_core: invalid || !madeProgress ? null : state.solvedBy,
       solved_at_ms: state.solvedAt === null ? null : state.solvedAt - startedAt,
       material_count: materials.length,
       project_material_count: materials.filter((material) => material.source_task === state.rootTaskId).length,
@@ -579,8 +643,19 @@ function projectReport(state, startedAt, deadline) {
       heartbeat_count: state.heartbeatCount,
       heartbeat_error_count: state.heartbeatErrorCount,
       candidate_check_count: cores.reduce((count, core) => count + core.checks.length, 0),
+      tool_error_count: toolErrorCount,
+      tool_protocol_error_count: toolProtocolErrorCount,
+      tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
       claimed_core_count: new Set(state.cores.filter((core) => core.claimHistory.length > 0).map((core) => core.index)).size,
       claim_count: claimHistory.length,
+      child_claim_count: childClaimCount,
+      root_claim_count: rootClaimCount,
+      resumed_execution_count: resumedExecutionCount,
+      wait_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_wait'").get().count,
+      wake_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'wake_execution'").get().count,
+      accept_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'accept_task'").get().count,
+      rework_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_rework'").get().count,
+      resume_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'resume_execution'").get().count,
     },
     cores,
     audit: {
@@ -590,6 +665,7 @@ function projectReport(state, startedAt, deadline) {
       invalid,
       invalid_reasons: [
         ...(toolViolation ? ['non_swarmenv_tool_event'] : []),
+        ...(toolProtocolErrorCount > 0 ? ['agent_tool_error'] : []),
         ...(materialBoundaryViolation ? ['material_boundary_violation'] : []),
         ...(inputMaterialViolation ? ['input_material_violation'] : []),
       ...(workspaceViolation ? ['workspace_violation'] : []),
@@ -631,8 +707,6 @@ async function createProjectState(problem, config, options) {
   const contextService = new ContextService(database, { logger: contextLogger });
   const taskService = new TaskService(database, { contextService, logger: taskLogger });
   contextService.taskService = taskService;
-  const router = new ServicesRouter({ taskService, contextService, logger: routerLogger });
-  const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
   const inputMetadata = {
     putnambench_commit: fixture.putnambench_commit,
@@ -651,11 +725,13 @@ async function createProjectState(problem, config, options) {
       timeoutMs: options.checkerTimeoutMs ?? 120_000,
     }),
   });
+  const router = new ServicesRouter({ taskService, contextService, judgeService, logger: routerLogger });
+  const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const root = owner.proposeTask({
     task_type: 'proof',
     goal: `Prove ${problem.id}`,
     expected_output: 'A verified Lean proof for the locked PutnamBench problem',
-    task_instructions: 'Attempt the proof in the Workspace and submit only a real Lean proof artifact. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. If the route is incomplete, publish the blocker and either create a focused child Task or wait according to the Task contract.',
+    task_instructions: 'The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. If the route is genuinely separable or needs parallel research, create bounded direct child Tasks with precise goals, expected outputs, acceptance conditions, and task-specific instructions; otherwise continue the proof in the root Workspace. Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge. Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency; later reclaim the root to read child Workspace changes, Materials, and Judge feedback, then accept completed work or request focused rework before integrating it into the proof.',
     completion_contract: {
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
       required_check: {
@@ -731,9 +807,11 @@ async function createProjectState(problem, config, options) {
       initialTurnPromise: null,
       turnStartedAt: 0,
       nextTurnAt: 0,
-      turnIntervalMs: options.turnIntervalMs ?? 10 * 60_000,
+      turnIntervalMs: options.turnIntervalMs ?? 15_000,
       turns: 0,
       toolEvents: [],
+      workspaceWrites: [],
+      toolErrors: [],
       errors: [],
       checks: [],
       checked: new Set(),
@@ -755,7 +833,7 @@ async function createProjectState(problem, config, options) {
         core.claim = claim;
         const workerSession = core.session;
         if (!workerSession) throw new Error('Agent claimed a Task before its session was registered');
-        await runtime.bindAgentExecution(claim.execution.execution_id, null, {
+        const bound = await runtime.bindAgentExecution(claim.execution.execution_id, null, {
           workspaceRef: join(workspaceRoot, claim.execution.execution_id),
           startSession: async ({ execution, workspace }) => {
             const session = await core.adapter.start({
@@ -769,7 +847,7 @@ async function createProjectState(problem, config, options) {
             core.versionManifest = session.manifest ?? null;
             return session;
           },
-          agentPrompt: GENERIC_AGENT_PROMPT,
+          agentPrompt: BOUND_AGENT_PROMPT,
         });
         const boundSession = core.session;
         if (boundSession && core.runtime.activeProcesses.has(claim.execution.execution_id)) {
@@ -790,11 +868,19 @@ async function createProjectState(problem, config, options) {
             }
           })();
         }
-        core.claimHistory.push({ task_id: claim.task.task_id, execution_id: claim.execution.execution_id });
-        // The worker session is only the claim transport. Its handoff is
-        // completed after its current prompt settles; the bound session is
-        // already running in the selected Workspace.
-        if (core.session === workerSession) core.session = null;
+        core.claimHistory.push({
+          task_id: claim.task.task_id,
+          execution_id: claim.execution.execution_id,
+          workspace_revision_start: bound.workspace.workspace_revision,
+        });
+        // The worker session is only the claim transport. The handoff result
+        // tells the current turn to stop; once that turn settles, the
+        // existing cleanup path stops this transport session.
+        // Runtime replaces core.session with the newly started bound session,
+        // so checking core.session for equality here is too late. The claim
+        // transport must always stop after a successful handoff before the
+        // model can issue another claim or a claimed-only call.
+        if (workerSession !== core.session) workerSession.stop?.();
       },
       onRelease: async ({ taskId, executionId }) => {
         if (core.taskId === taskId && core.executionId === executionId) {
@@ -805,6 +891,29 @@ async function createProjectState(problem, config, options) {
           core.session = null;
           core.turnInFlight = false;
         }
+      },
+      onWorkspaceWrite: async ({ taskId, executionId, result }) => {
+        core.workspaceWrites.push({
+          task_id: taskId,
+          execution_id: executionId,
+          path: result.file?.path ?? null,
+          file_content_hash: result.file?.content_hash ?? null,
+          workspace_revision: result.workspace?.workspace_revision ?? null,
+          workspace_content_hash: result.workspace?.content_hash ?? null,
+          changed_files: result.diff?.changed_files?.map((file) => ({ path: file.path, status: file.status })) ?? [],
+        });
+      },
+      onError: async ({ operation, error }) => {
+        core.toolErrors.push({
+          operation,
+          code: error.code ?? error.name,
+          message_class: safeDiagnostic(error.message) ?? error.code ?? 'tool_error',
+          // A Service contract error is feedback for the Agent to correct and
+          // retry. It is not a protocol violation by itself. Multiple
+          // unbound slots may also observe the same OPEN Task before one
+          // claim commits; that scheduling contention is recoverable too.
+          recoverable: error.code === 'INVALID_CONTRACT' || (error.code === 'CONFLICT' && operation === 'claim'),
+        });
       },
       logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),
     });
@@ -860,9 +969,9 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   const durationMs = options.timeboxMs ?? 60 * 60_000;
   const deadline = startedAt + durationMs;
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
-  const basePrompt = (core) => core.taskId
-    ? 'This is a follow-up turn for your current claimed Execution. Read all new Materials, especially judge_feedback, inspect the current Workspace and Execution state, and refine or submit your route.'
-    : core.prompt;
+    const basePrompt = (core) => core.taskId
+      ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or waiting.`
+      : core.prompt;
   try {
     await Promise.all(state.cores.map(async (core) => {
       core.nextTurnAt = Date.now();
@@ -932,11 +1041,20 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
             project_isolation: true,
             core_count: 4,
             input_policy: 'pinned formalization only; no candidate or solution input',
-            tool_policy: 'registered swarmenv_* Service tools; swarmenv_call is compatibility-only',
+            tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
             cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
           },
           project: { problem_id: problems[index].id, source_hash: problems[index].source_hash ?? null },
-          run: { solved: false, elapsed_ms: null, deadline_reached: false, cleanup_elapsed_ms: null },
+          run: {
+            protocol_valid: false,
+            made_progress: false,
+            progress_evidence: { child_task_count: 0, workspace_write_count: 0, meaningful_material_count: 0, candidate_check_count: 0 },
+            solved: false,
+            ended_early: false,
+            elapsed_ms: null,
+            deadline_reached: false,
+            cleanup_elapsed_ms: null,
+          },
           audit: { invalid: true, invalid_reasons: ['project_runner_error'], raw_transcript_exported: false, proof_contents_exported: false },
           error: { code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'project_runner_error' },
         };

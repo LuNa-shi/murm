@@ -4,18 +4,28 @@
     "project_isolation": true,
     "core_count": 4,
     "input_policy": "pinned formalization only; no candidate or solution input",
-    "tool_policy": "swarmenv_call only",
+    "tool_policy": "registered swarmenv_* Service tools; swarmenv_call is compatibility-only",
     "cheating_policy": "placeholder or non-SwarmEnv tool event invalidates the project"
   },
   "project": {
     "problem_id": "putnam_2025_b1",
     "source_hash": "sha256-of-the-pinned-formalization",
     "input_material_hash": "sha256-of-the-shared-material",
+    "task_count": 4,
     "run_id": "example-run",
     "database_path": "/private/report-dir/putnam_2025_b1/project.sqlite"
   },
   "run": {
     "solved": false,
+    "protocol_valid": true,
+    "made_progress": true,
+    "progress_evidence": {
+      "child_task_count": 3,
+      "workspace_write_count": 4,
+      "meaningful_material_count": 6,
+      "candidate_check_count": 6
+    },
+    "ended_early": false,
     "elapsed_ms": 3600000,
     "candidate_check_count": 6,
     "heartbeat_count": 360,
@@ -53,11 +63,11 @@
       ],
       "errors": [],
       "cheating_flags": [],
-      "tool_events": ["swarmenv_call"],
+      "tool_events": ["swarmenv_task_claim", "swarmenv_workspace_read_file", "swarmenv_workspace_write_file", "swarmenv_context_publish"],
       "task_state": "FAILED",
       "execution_state": "FAILED",
       "input_snapshot_hash": "sha256-of-frozen-input",
-      "workspace_ref": "/private/report-dir/putnam_2025_b1/core-1",
+      "workspace_ref": "/private/report-dir/putnam_2025_b1/workspaces/projects/putnam_2025_b1/execution-id",
       "versions": {
         "pi_package": "@earendil-works/pi-coding-agent",
         "pi_version": "1.3.0",
@@ -69,7 +79,7 @@
   "audit": {
     "input_source_hash": "sha256-of-the-pinned-formalization",
     "prompt_hashes": [{ "core": 1, "prompt_hash": "sha256-of-prompt" }],
-    "all_tool_events": ["swarmenv_call"],
+    "all_tool_events": ["swarmenv_task_claim", "swarmenv_workspace_read_file", "swarmenv_workspace_write_file", "swarmenv_context_publish"],
     "invalid": false,
     "invalid_reasons": [],
     "candidate_materials": [],

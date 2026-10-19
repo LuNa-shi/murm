@@ -52,6 +52,10 @@ export class ServicesSDK {
     return this.#read('read_materials', filters);
   }
 
+  getCheckResult(checkResultId) {
+    return this.#read('get_check_result', { check_result_id: checkResultId });
+  }
+
   proposeTask(task, options = {}) {
     return this.#write('propose_task', task, { ...options, taskId: null, executionId: null, fencingVersion: null });
   }
@@ -84,17 +88,11 @@ export class ServicesSDK {
   }
 
   acceptTask(payload = {}, options = {}) {
-    return this.#write('accept_task', payload, {
-      ...options,
-      stateVersion: options.stateVersion ?? this.context.taskStateVersion,
-    });
+    return this.#write('accept_task', payload, options);
   }
 
   requestRework(payload, options = {}) {
-    return this.#write('request_rework', payload, {
-      ...options,
-      stateVersion: options.stateVersion ?? this.context.taskStateVersion,
-    });
+    return this.#write('request_rework', payload, options);
   }
 
   applyCheckResult(payload, options = {}) {

@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
+import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { ServicesSDK } from '../sdk/services-sdk.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
@@ -9,7 +10,9 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const AGENT_OPERATIONS = new Set([
   'get_task', 'get_execution', 'read_materials', 'publish_material', 'submit_candidate',
   'heartbeat', 'create_child_task', 'request_wait', 'claim', 'claim_next', 'list_tasks', 'list_executions',
+  'accept_task', 'request_rework', 'get_check_result',
   'list_services', 'get_service_metadata', 'list_tools', 'get_workspace', 'list_workspace_revisions',
+  'list_workspace_files', 'read_workspace_file', 'write_workspace_file', 'workspace_diff',
 ]);
 
 function json(value) {
@@ -65,7 +68,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onRelease = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onRelease = null, onWorkspaceWrite = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -76,6 +79,8 @@ export class ServicesBridge {
     this.executionId = executionId;
     this.onClaim = onClaim;
     this.onRelease = onRelease;
+    this.onWorkspaceWrite = onWorkspaceWrite;
+    this.onError = onError;
     this.agentPrompt = agentPrompt;
     this.host = host;
     this.logger = logger;
@@ -146,8 +151,8 @@ export class ServicesBridge {
   async call({ operation, payload = {}, operation_id: operationId = null } = {}) {
     this.logger?.append({ event: 'bridge.start', operation, operation_id: operationId, task_id: this.taskId, execution_id: this.executionId, payload });
     try {
-      if (!AGENT_OPERATIONS.has(operation)) throw new Error(`Agent operation is not allowed: ${operation}`);
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('bridge payload must be an object');
+      if (!AGENT_OPERATIONS.has(operation)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Agent operation is not allowed: ${operation}`, { operation });
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bridge payload must be an object');
       const service = this.router ?? { dispatch: (name, body, envelope) => {
         if (['get_task', 'get_execution', 'list_tasks', 'list_executions'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
@@ -162,11 +167,11 @@ export class ServicesBridge {
         return result;
       }
       if (operation === 'claim') {
-        if (this.taskId || this.executionId) throw new Error('claim is only available to an unbound worker bridge');
+        if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claim is only available to an unbound worker bridge', { task_id: this.taskId, execution_id: this.executionId });
         const taskId = payload.task_id;
-        if (typeof taskId !== 'string' || taskId.length === 0) throw new Error('claim requires payload.task_id');
+        if (typeof taskId !== 'string' || taskId.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim requires payload.task_id');
         const task = this.taskService.getTask(taskId);
-        if (!task) throw new Error(`unknown task: ${taskId}`);
+        if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`, { task_id: taskId });
         // The bridge is the Agent identity boundary. A model may choose the
         // Task and Workspace lineage, but it cannot claim on behalf of a
         // different owner or replace the reusable startup prompt with
@@ -180,8 +185,12 @@ export class ServicesBridge {
         }));
         this.taskId = result.task.task_id;
         this.executionId = result.execution.execution_id;
+        let handoffRequired = false;
         try {
-          if (this.onClaim) await this.onClaim(result);
+          if (this.onClaim) {
+            await this.onClaim(result);
+            handoffRequired = true;
+          }
         } catch (error) {
           const claimedExecution = this.taskService.getExecution(result.execution.execution_id);
           if (claimedExecution && ['CREATED', 'RUNNING', 'WAITING'].includes(claimedExecution.state)) {
@@ -206,11 +215,14 @@ export class ServicesBridge {
           await this.onRelease?.({ taskId: result.task.task_id, executionId: result.execution.execution_id, result: null });
           throw error;
         }
-        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
-        return result;
+        const response = handoffRequired
+          ? { ...result, handoff_required: true, handoff_instruction: 'Runtime has started the bound Workspace session. Stop this turn and continue work there.' }
+          : result;
+        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result: response });
+        return response;
       }
       if (operation === 'claim_next') {
-        if (this.taskId || this.executionId) throw new Error('claim_next is only available to an unbound worker bridge');
+        if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claim_next is only available to an unbound worker bridge', { task_id: this.taskId, execution_id: this.executionId });
         const result = this.taskService.dispatch('claim_next', payload, makeEnvelope({
           operationId: operationId ?? `bridge:claim_next:${randomUUID()}`,
           actorRef: this.actorRef,
@@ -218,10 +230,10 @@ export class ServicesBridge {
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
-      if (!this.taskId || !this.executionId) throw new Error(`${operation} requires a claimed Task and Execution`);
+      if (!this.taskId || !this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
       const execution = this.taskService.getExecution(this.executionId);
-      if (!execution) throw new Error(`unknown execution: ${this.executionId}`);
-      if (execution.task_id !== this.taskId) throw new Error('bridge execution does not match task');
+      if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${this.executionId}`, { execution_id: this.executionId });
+      if (execution.task_id !== this.taskId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'bridge execution does not match task', { task_id: this.taskId, execution_id: this.executionId });
       if (operation === 'request_wait') {
         const result = await this.runtime.requestWait(this.executionId, {
           ...payload,
@@ -256,11 +268,35 @@ export class ServicesBridge {
         case 'create_child_task': result = sdk.createChildTask(payload, options); break;
         case 'get_workspace': result = await this.runtime.getWorkspace(this.executionId); break;
         case 'list_workspace_revisions': result = (await this.runtime.getWorkspace(this.executionId)).revisions; break;
-        default: throw new Error(`unsupported Agent operation: ${operation}`);
+        case 'list_workspace_files': result = await this.runtime.listWorkspaceFiles(this.executionId, { path: payload.path ?? '' }); break;
+        case 'read_workspace_file': result = await this.runtime.readWorkspaceFile(this.executionId, { path: payload.path, maxBytes: payload.max_bytes }); break;
+        case 'write_workspace_file': result = await this.runtime.writeWorkspaceFile(this.executionId, {
+          path: payload.path,
+          content: payload.content,
+          expectedRevision: payload.expected_revision,
+          saveOperationId: bridgeOperationId,
+        }); break;
+        case 'workspace_diff': result = await this.runtime.workspaceDiff(this.executionId, {
+          fromRevision: payload.from_revision,
+          toRevision: payload.to_revision,
+        }); break;
+        case 'accept_task': result = sdk.acceptTask(payload, options); break;
+        case 'request_rework': result = sdk.requestRework(payload, options); break;
+        case 'get_check_result': result = sdk.getCheckResult(payload.check_result_id); break;
+        default: throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `unsupported Agent operation: ${operation}`, { operation });
+      }
+      if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {
+        await this.onWorkspaceWrite({ taskId: this.taskId, executionId: this.executionId, result });
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
       return result;
     } catch (error) {
+      try {
+        await this.onError?.({ operation, operationId, error });
+      } catch {
+        // Preserve the original Agent-visible Service error if audit delivery
+        // itself fails.
+      }
       this.logger?.append({
         event: 'bridge.complete',
         operation,

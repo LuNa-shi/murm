@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -87,16 +87,64 @@ test('Runtime creates an isolated workspace before Pi, saves checkpoint before w
   await assert.rejects(() => readFile(join(started.workspace.workspace_ref, 'initial-prompt.txt'), 'utf8'), { code: 'ENOENT' });
   assert.equal(workspaceManifest.input_snapshot.workspace_snapshot_hash, claimed.execution.input_snapshot_hash);
 
+  const files = await runtime.listWorkspaceFiles(claimed.execution.execution_id);
+  assert.ok(files.files.some((file) => file.path === 'README.md'));
+  assert.equal(files.files.some((file) => file.path.startsWith('.swarm/')), false);
+  const readme = await runtime.readWorkspaceFile(claimed.execution.execution_id, { path: 'README.md' });
+  assert.match(readme.content, /Expected output: proof/);
+  const written = await runtime.writeWorkspaceFile(claimed.execution.execution_id, {
+    path: 'notes/progress.md',
+    content: '# Progress\n\nThe Agent inspected the fixture.\n',
+    expectedRevision: started.workspace.workspace_revision,
+    saveOperationId: 'runtime:workspace-write',
+  });
+  assert.equal(written.workspace.workspace_revision, started.workspace.workspace_revision + 1);
+  assert.match(written.file.content, /inspected the fixture/);
+  assert.ok(written.diff.changed_files.some((file) => file.path === 'notes/progress.md' && file.status === 'added'));
+  assert.equal(taskService.getExecution(claimed.execution.execution_id).workspace_revision, written.workspace.workspace_revision);
+  await assert.rejects(
+    () => runtime.writeWorkspaceFile(claimed.execution.execution_id, { path: 'stale.txt', content: 'stale', expectedRevision: started.workspace.workspace_revision }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.STALE_VERSION,
+  );
+  await assert.rejects(
+    () => runtime.readWorkspaceFile(claimed.execution.execution_id, { path: '../outside.txt' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED,
+  );
+  await assert.rejects(
+    () => runtime.readWorkspaceFile(claimed.execution.execution_id, { path: '.swarm/workspace.json' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED,
+  );
+  await assert.rejects(
+    () => runtime.writeWorkspaceFile(claimed.execution.execution_id, { path: '.swarm/escape.txt', content: 'escape' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED,
+  );
+  const outsideTarget = join(rootDir, 'outside-target.txt');
+  await writeFile(outsideTarget, 'outside');
+  await symlink(outsideTarget, join(started.workspace.workspace_ref, 'link.txt'));
+  await assert.rejects(
+    () => runtime.readWorkspaceFile(claimed.execution.execution_id, { path: 'link.txt' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED,
+  );
+  await assert.rejects(
+    () => runtime.writeWorkspaceFile(claimed.execution.execution_id, { path: 'link.txt', content: 'overwrite' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED,
+  );
+  await assert.rejects(
+    () => runtime.writeWorkspaceFile(claimed.execution.execution_id, { path: 'link.txt/child', content: 'escape' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED,
+  );
+
   const waited = await runtime.requestWait(claimed.execution.execution_id, {
     waitCondition: { type: 'timer', deadline: new Date(Date.now() + 60_000).toISOString() },
     checkpoint: { step: 'before-judge' },
-    files: { 'progress.txt': 'checkpointed' },
+    files: { 'progress.txt': 'checkpointed', 'checkpoint.json': { step: 'before-judge', source: 'Agent checkpoint' } },
   });
   assert.equal(waited.execution.state, 'WAITING');
   assert.equal(waited.task.state, 'WAITING');
   assert.equal(runtime.getActiveProcessCount(), 0);
   assert.ok(waited.execution.checkpoint_ref);
   assert.ok(waited.execution.workspace_content_hash);
+  assert.deepEqual(JSON.parse(await readFile(join(started.workspace.workspace_ref, 'checkpoint.json'), 'utf8')), { step: 'before-judge', source: 'Agent checkpoint' });
   assert.equal(taskService.listActiveExecutions().length, 1);
 
   assert.throws(
@@ -171,6 +219,25 @@ test('Workspace Manager rejects execution and file paths that escape its root', 
     () => manager.createWorkspace({ executionId: '../outside', fencingVersion: 1, initialContext: {}, initialPrompt: 'p', inputSnapshotManifest: {} }),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
+  const task = {
+    task_id: 'task-path', root_id: 'task-path', task_type: 'proof', goal: 'path safety', expected_output: 'artifact',
+    acceptance_conditions: {}, workspace: { problem_file: '../outside.lean', formal_source: 'blocked' },
+  };
+  await assert.rejects(
+    () => manager.createWorkspace({ executionId: 'execution-path', fencingVersion: 1, task, workspaceManifest: {}, inputSnapshotManifest: {} }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED,
+  );
+  const outsideDir = await mkdtemp(join(tmpdir(), 'swarmenv-outside-'));
+  const symlinkedWorkspace = join(rootDir, 'symlinked-workspace');
+  await symlink(outsideDir, symlinkedWorkspace);
+  await assert.rejects(
+    () => manager.createWorkspace({
+      executionId: 'execution-symlink', fencingVersion: 1, workspaceRef: symlinkedWorkspace,
+      task: { ...task, workspace: { problem_file: 'problem.lean', formal_source: 'blocked' } }, workspaceManifest: {}, inputSnapshotManifest: {},
+    }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED,
+  );
+  await rm(outsideDir, { recursive: true, force: true });
   await rm(rootDir, { recursive: true, force: true });
 });
 
@@ -187,6 +254,10 @@ test('Workspace resume copies a selected revision into a new lineage', async () 
     workspaceRef: first.workspace_ref, executionId: 'execution-one', fencingVersion: 1,
     files: { 'progress.txt': 'revision two' },
   });
+  await manager.saveWorkspaceRevision({
+    workspaceRef: first.workspace_ref, executionId: 'execution-one', fencingVersion: 1,
+    files: { 'progress.txt': 'revision three' },
+  });
   const resumed = await manager.cloneWorkspace({
     sourceWorkspaceRef: first.workspace_ref,
     targetWorkspaceRef: join(rootDir, 'execution-two'),
@@ -196,6 +267,14 @@ test('Workspace resume copies a selected revision into a new lineage', async () 
   assert.equal(resumed.execution_id, 'execution-two');
   assert.equal(resumed.workspace_revision, second.workspace_revision);
   assert.equal(await readFile(join(resumed.workspace_ref, 'progress.txt'), 'utf8'), 'revision two');
+  const resumedDiff = await manager.diff({
+    workspaceRef: resumed.workspace_ref,
+    executionId: resumed.execution_id,
+    fencingVersion: resumed.fencing_version,
+    fromRevision: 1,
+    toRevision: resumed.workspace_revision,
+  });
+  assert.ok(resumedDiff.changed_files.some((file) => file.path === 'progress.txt' && file.status === 'added'));
   const resumedMetadata = JSON.parse(await readFile(join(resumed.workspace_ref, '.swarm', 'workspace.json'), 'utf8'));
   assert.equal(resumedMetadata.parent_workspace_ref, first.workspace_ref);
   assert.equal(resumed.parent_workspace_ref, first.workspace_ref);

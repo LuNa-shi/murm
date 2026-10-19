@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import {
   ContextService,
+  JudgeService,
   ServicesBridge,
   ServicesRouter,
   ServicesSDK,
@@ -55,6 +56,123 @@ test('ServicesBridge exposes public SDK calls over a loopback token and keeps Ru
     assert.deepEqual(waitedBody.result.payload.checkpoint, { phase: 'bridge' });
     assert.equal(bridge.taskId, null);
     assert.equal(bridge.executionId, null);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
+test('ServicesBridge returns structured tool errors and exposes them to audit hooks', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const errors = [];
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router: new ServicesRouter({ taskService, contextService }),
+    onError: async (error) => errors.push(error),
+  });
+  try {
+    await assert.rejects(() => bridge.call({ operation: 'host_shell', payload: {} }), (error) => error.code === 'NOT_ALLOWED');
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0].operation, 'host_shell');
+    assert.equal(errors[0].error.code, 'NOT_ALLOWED');
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
+test('ServicesBridge exposes controlled Workspace file operations with snake_case payloads', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:root' });
+  const task = owner.proposeTask({
+    task_type: 'proof', goal: 'bridge workspace', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:root',
+  }, { operationId: 'bridge:workspace:propose' }).task;
+  owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
+    execution_id: 'bridge-workspace-execution', claim_key: 'bridge:workspace:claim', owner_ref: 'agent:workspace', agent_prompt: 'bridge', input_material_refs: [],
+  }, { operationId: 'bridge:workspace:claim' });
+  const calls = [];
+  const runtime = {
+    listWorkspaceFiles: async (executionId, payload) => { calls.push(['list', executionId, payload]); return { files: [{ path: 'README.md' }] }; },
+    readWorkspaceFile: async (executionId, payload) => { calls.push(['read', executionId, payload]); return { path: payload.path, content: 'read back' }; },
+    writeWorkspaceFile: async (executionId, payload) => { calls.push(['write', executionId, payload]); return { workspace: { workspace_revision: 3 }, file: { path: payload.path, content: payload.content } }; },
+    workspaceDiff: async (executionId, payload) => { calls.push(['diff', executionId, payload]); return { changed_files: [{ path: 'notes.md', status: 'added' }] }; },
+    requestWait: async () => ({}),
+  };
+  const bridge = new ServicesBridge({ taskService, contextService, runtime, router, taskId: task.task_id, executionId: 'bridge-workspace-execution' });
+  const environment = await bridge.start();
+  const call = async (operation, payload) => {
+    const response = await fetch(`${environment.SWARMENV_BRIDGE_URL}/call`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${environment.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ operation, payload }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    return body.result;
+  };
+  try {
+    await call('list_workspace_files', { path: 'notes' });
+    await call('read_workspace_file', { path: 'README.md', max_bytes: 200 });
+    await call('write_workspace_file', { path: 'notes.md', content: 'changed', expected_revision: 2 });
+    await call('workspace_diff', { from_revision: 2, to_revision: 3 });
+    assert.deepEqual(calls, [
+      ['list', 'bridge-workspace-execution', { path: 'notes' }],
+      ['read', 'bridge-workspace-execution', { path: 'README.md', maxBytes: 200 }],
+      ['write', 'bridge-workspace-execution', { path: 'notes.md', content: 'changed', expectedRevision: 2, saveOperationId: calls[2]?.[2]?.saveOperationId }],
+      ['diff', 'bridge-workspace-execution', { fromRevision: 2, toRevision: 3 }],
+    ]);
+    assert.match(calls[2][2].saveOperationId, /^bridge:write_workspace_file:/);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
+test('ServicesBridge routes Judge feedback through the named Judge Service tool', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  const judgeService = new JudgeService(database);
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService, judgeService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:judge-route' });
+  const task = owner.proposeTask({
+    task_type: 'proof', goal: 'judge route', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:judge-route',
+  }, { operationId: 'bridge:judge-route:propose' }).task;
+  owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
+    execution_id: 'bridge-judge-route-execution', claim_key: 'bridge:judge-route:claim', owner_ref: 'agent:judge-route', agent_prompt: 'bridge', input_material_refs: [],
+  }, { operationId: 'bridge:judge-route:claim' });
+  const timestamp = new Date().toISOString();
+  judgeService.db.prepare(`INSERT INTO check_results (
+    check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
+    execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict, evidence_json,
+    applied_task_state_version, applied_at, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RECEIVED', ?, ?, NULL, NULL, ?, ?)`).run(
+    'judge-route-result', 'judge-route-request', 'judge-route-hash', 'candidate-material', task.task_id, task.spec_version,
+    'bridge-judge-route-execution', 'input-hash', 'lean', 'mvp-1', 'test-env', 'FAIL', JSON.stringify({ diagnostic: 'controlled feedback' }), timestamp, timestamp,
+  );
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: { requestWait: async () => ({}) },
+    router,
+    taskId: task.task_id,
+    executionId: 'bridge-judge-route-execution',
+  });
+  try {
+    const result = await bridge.call({ operation: 'get_check_result', payload: { check_result_id: 'judge-route-result' } });
+    assert.equal(result.check_result_id, 'judge-route-result');
+    assert.equal(result.verdict, 'FAIL');
+    assert.equal(result.evidence.diagnostic, 'controlled feedback');
   } finally {
     await bridge.stop();
     taskService.close();
@@ -133,6 +251,7 @@ test('ServicesBridge binds an explicit claim to the bridge Agent and keeps the r
     } });
     assert.equal(result.execution.owner_ref, 'agent:bridge-identity');
     assert.equal(result.execution.agent_prompt, 'shared worker prompt');
+    assert.equal(result.handoff_required, true);
     assert.equal(claimed.execution.execution_id, result.execution.execution_id);
   } finally {
     await bridge.stop();
