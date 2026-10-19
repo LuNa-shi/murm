@@ -338,6 +338,14 @@ test('resuming a waiting Execution accepts its current Workspace revision withou
     checkpoint_hash: checkpointed.checkpoint_hash,
     wait_condition: { type: 'timer', deadline: new Date(Date.now() - 1_000).toISOString() },
   }, { operationId: 'revision-resume-wait-op' });
+  assert.throws(() => env.sdk.withContext({
+    actorRef: 'agent:next', taskId: task.task_id, specVersion: task.spec_version, stateVersion: env.taskService.getTask(task.task_id).state_version,
+  }).claim({
+    claim_key: 'revision-resume-invalid-claim',
+    workspace_mode: 'resume',
+    workspace_revision: waited.execution.workspace_revision + 1,
+  }, { operationId: 'revision-resume-invalid-claim-op' }), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
+  assert.equal(env.taskService.getExecution(waited.execution.execution_id).state, 'WAITING');
   const resumed = env.sdk.withContext({
     actorRef: 'agent:next', taskId: task.task_id, specVersion: task.spec_version, stateVersion: env.taskService.getTask(task.task_id).state_version,
   }).claim({
