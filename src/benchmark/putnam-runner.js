@@ -1322,6 +1322,21 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           readyCount: readyTasks.length,
           idleCoreCount: state.cores.filter((core) => !core.taskId && !core.turnInFlight && !core.dispatchReserved).length,
         });
+        // Allocate the currently ready work against physical Core ownership
+        // once per scheduler poll. WAITING roots have released their Core;
+        // they remain protected from duplicate claims but do not consume a
+        // ready slot. Computing this globally avoids an idle Core being
+        // skipped because another idle Core was examined earlier in the same
+        // poll and left a stale reservation behind.
+        const assignedCoreCount = state.cores.filter((core) => core.taskId).length;
+        let readyDispatchSlots = Math.max(0, readyTasks.length - assignedCoreCount);
+        const dispatchCandidates = state.cores.filter((core) =>
+          !core.taskId && !core.waitingExecutionId && !core.turnInFlight && !core.dispatchReserved);
+        for (const candidate of dispatchCandidates) {
+          if (readyDispatchSlots <= 0) break;
+          candidate.dispatchReserved = true;
+          readyDispatchSlots -= 1;
+        }
         for (const core of state.cores) {
           if (state.solvedAt !== null) break;
           const resumableWaiting = state.taskService.listResumableExecutions({ rootId: state.rootTaskId });
@@ -1333,21 +1348,12 @@ export async function runBenchmarkProject(problem, config, options = {}) {
               });
             }
           }
-          const assignedElsewhere = state.cores
-            .filter((candidate) => candidate !== core)
-            // A WAITING Execution has released its physical Core. It remains
-            // unavailable for a duplicate root claim, but it must not count
-            // as assigned capacity when deciding whether another idle Core
-            // can claim a ready child.
-            .filter((candidate) => candidate.taskId || candidate.dispatchReserved).length;
-          const mayDispatch = !core.taskId && !core.waitingExecutionId && !core.dispatchReserved && readyTasks.length > assignedElsewhere;
-          if (mayDispatch) core.dispatchReserved = true;
+          const mayDispatch = core.dispatchReserved;
           if (core.taskId || (!core.waitingExecutionId && (core.session || core.releasedSession || mayDispatch))) await ensureAgentSession(core);
           if (state.solvedAt === null) await releaseTerminalExecution(core);
           if (!core.turnInFlight && Date.now() < deadline && state.solvedAt === null) {
             const bound = Boolean(core.taskId);
-            if (bound || (!bound && readyTasks.length > assignedElsewhere)) {
-              if (!bound) core.dispatchReserved = true;
+            if (bound || mayDispatch) {
               const scheduled = scheduleTurn(core, basePrompt(core), turnTimeoutMs);
               if (!scheduled && !bound) core.dispatchReserved = false;
             }
