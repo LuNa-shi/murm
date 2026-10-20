@@ -315,6 +315,7 @@ async function startAgentSession(core) {
 }
 
 async function ensureAgentSession(core) {
+  if (core.waitingExecutionId) return;
   if (core.releasedSession) {
     if (!core.releasedSession.closed) return;
     core.releasedSession = null;
@@ -326,6 +327,57 @@ async function ensureAgentSession(core) {
   } catch (error) {
     if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_session_error' });
   }
+}
+
+async function wakeWaitingCore(state, core, waitingExecution) {
+  if (core.waitingExecutionId !== waitingExecution.execution_id || core.taskId || core.turnInFlight) return false;
+  core.releasedSession?.stop?.();
+  core.releasedSession = null;
+  const resumed = await core.runtime.wakeExecution(waitingExecution.execution_id, {
+    wakeKey: waitingExecution.resume_token,
+    beforePrompt: async ({ execution, session }) => {
+      core.waitingExecutionId = null;
+      core.taskId = execution.task_id;
+      core.executionId = execution.execution_id;
+      core.claim = { task: state.taskService.getTask(execution.task_id), execution };
+      core.bridge.taskId = core.taskId;
+      core.bridge.executionId = core.executionId;
+      core.session = session;
+      core.sessionHistory.push(session);
+      core.versionManifest = session.manifest ?? core.versionManifest;
+      core.turnInFlight = true;
+      core.turnStartedAt = Date.now();
+      core.parallelism.transition(core.index, 'RUNNING', {
+        task_id: core.taskId,
+        execution_id: core.executionId,
+        reason: 'execution_woken',
+      });
+    },
+  });
+  core.nextTurnAt = Date.now();
+  void (async () => {
+    try {
+      await resumed.session.waitForSettled({
+        timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000),
+      });
+    } catch (error) {
+      const expectedHandoff = resumed.session.expectedStop || core.session !== resumed.session || core.stopping;
+      if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
+    } finally {
+      collectToolEvents(core, resumed.session.rpcRecords ?? []);
+      if (core.session === resumed.session) {
+        core.turns += 1;
+        core.turnInFlight = false;
+        core.nextTurnAt = Date.now();
+      }
+    }
+  })();
+  core.claimHistory.push({
+    task_id: resumed.execution.task_id,
+    execution_id: resumed.execution.execution_id,
+    workspace_revision_start: resumed.workspace.workspace_revision,
+  });
+  return true;
 }
 
 async function releaseTerminalExecution(core) {
@@ -869,6 +921,7 @@ async function createProjectState(problem, config, options) {
       bridge: null,
       session: null,
       releasedSession: null,
+      waitingExecutionId: null,
       sessionHistory: [],
       sessionNumber: 0,
       startConfig: { problem, logRoot, options },
@@ -1008,6 +1061,7 @@ async function createProjectState(problem, config, options) {
         });
         if (core.taskId === taskId && core.executionId === executionId) {
           core.releasedSession = core.session;
+          core.waitingExecutionId = releasedExecution?.state === 'WAITING' ? executionId : null;
           core.taskId = null;
           core.executionId = null;
           core.claim = null;
@@ -1213,12 +1267,21 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         });
         for (const core of state.cores) {
           if (state.solvedAt !== null) break;
+          const resumableWaiting = state.taskService.listResumableExecutions({ rootId: state.rootTaskId });
+          for (const waitingExecution of resumableWaiting) {
+            const waitingCore = state.cores.find((candidate) => candidate.waitingExecutionId === waitingExecution.execution_id);
+            if (waitingCore && !waitingCore.taskId && !waitingCore.turnInFlight) {
+              await wakeWaitingCore(state, waitingCore, waitingExecution).catch((error) => {
+                waitingCore.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'wake_error' });
+              });
+            }
+          }
           const assignedElsewhere = state.cores
             .filter((candidate) => candidate !== core)
-            .filter((candidate) => candidate.taskId || candidate.dispatchReserved).length;
-          const mayDispatch = !core.taskId && !core.dispatchReserved && readyTasks.length > assignedElsewhere;
+            .filter((candidate) => candidate.taskId || candidate.dispatchReserved || candidate.waitingExecutionId).length;
+          const mayDispatch = !core.taskId && !core.waitingExecutionId && !core.dispatchReserved && readyTasks.length > assignedElsewhere;
           if (mayDispatch) core.dispatchReserved = true;
-          if (core.taskId || core.session || core.releasedSession || mayDispatch) await ensureAgentSession(core);
+          if (core.taskId || (!core.waitingExecutionId && (core.session || core.releasedSession || mayDispatch))) await ensureAgentSession(core);
           await judgeCandidate(state, core).catch((error) => {
             core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'judge_error' });
           });

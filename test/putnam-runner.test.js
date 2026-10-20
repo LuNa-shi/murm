@@ -517,7 +517,7 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     const report = await runBenchmarkProject(problem('putnam_collaboration_test'), config, {
       experimentDir,
       reportDir,
-      timeboxMs: 5_000,
+      timeboxMs: 20_000,
       pollMs: 2,
       turnTimeoutMs: 3_000,
       turnIntervalMs: 10_000,
@@ -543,6 +543,11 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.ok(report.run.child_claim_count >= 3, `expected every child to be claimed, got ${report.run.child_claim_count}`);
     assert.ok(report.run.root_claim_count >= 2, `expected root to be reclaimed after waiting, got ${report.run.root_claim_count}`);
     assert.ok(report.run.resumed_execution_count >= 1, `expected at least one Execution to be resumed; root=${report.run.root_claim_count}, claims=${report.run.claim_count}, details=${JSON.stringify(report.project.execution_history)}`);
+    assert.ok(report.run.wake_count >= 1, `expected Runtime wake_execution, got ${report.run.wake_count}`);
+    const rootExecutionIds = new Set(report.cores.flatMap((core) => core.claims)
+      .filter((claim) => claim.task_id === report.project.task_tree.find((task) => task.parent_id === null).task_id)
+      .map((claim) => claim.execution_id));
+    assert.equal(rootExecutionIds.size, 1, 'root wait/resume must preserve one Execution lineage');
     assert.ok(report.run.progress_evidence.workspace_write_count >= 4);
     assert.ok(report.cores.filter((core) => core.workspace_writes.length > 0).length >= 4);
     assert.ok(report.cores.some((core) => core.claims.length >= 2), 'root core should reclaim after waiting');

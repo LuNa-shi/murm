@@ -199,7 +199,7 @@ export class Runtime {
     }
   }
 
-  async wakeExecution(executionId, { wakeKey = null } = {}) {
+  async wakeExecution(executionId, { wakeKey = null, beforePrompt = null } = {}) {
     this.logger?.append({ event: 'runtime.wake_execution', execution_id: executionId, wake_key: wakeKey });
     const waiting = this.#getExecution(executionId);
     const key = wakeKey ?? waiting.resume_token ?? `wake:${executionId}`;
@@ -211,7 +211,7 @@ export class Runtime {
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
     const resumed = this.taskService.dispatch('wake_execution', { wake_key: key }, this.#executionEnvelope(waiting, operationId('wake'))).execution;
     const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'), executionId, fencingVersion: resumed.fencing_version });
-    return this.#launch(resumed, workspace);
+    return this.#launch(resumed, workspace, { beforePrompt });
   }
 
   async requestWait(executionId, { waitCondition, checkpoint = {}, files = {}, deadline = null }) {
@@ -375,7 +375,7 @@ export class Runtime {
     }, this.#executionEnvelope(execution, saveOperationId)).execution;
   }
 
-  async #launch(execution, workspace) {
+  async #launch(execution, workspace, { beforePrompt = null } = {}) {
     const session = await this.agentAdapter.start({
       executionId: execution.execution_id,
       sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
@@ -391,6 +391,7 @@ export class Runtime {
     });
     const current = this.#saveWorkspaceReference(execution, nextWorkspace);
     this.#registerActiveProcess(current, nextWorkspace, session);
+    await beforePrompt?.({ execution: current, workspace: nextWorkspace, session });
     await this.#sendInitialPrompt(session, execution.agent_prompt);
     const active = this.activeProcesses.get(execution.execution_id);
     return { execution: current, workspace: nextWorkspace, session };

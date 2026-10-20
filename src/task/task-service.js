@@ -231,6 +231,15 @@ export class TaskService {
     return this.db.prepare("SELECT * FROM executions WHERE state IN ('CREATED', 'RUNNING', 'WAITING') ORDER BY created_at, execution_id").all().map(rowToExecution);
   }
 
+  listResumableExecutions({ rootId = null } = {}) {
+    const executions = this.db.prepare("SELECT * FROM executions WHERE state = 'WAITING' ORDER BY updated_at, execution_id").all().map(rowToExecution);
+    const nowMs = Date.now();
+    return executions.filter((execution) => {
+      if (rootId !== null && this.getTask(execution.task_id)?.root_id !== rootId) return false;
+      return this.#isWaitingResumable(execution, nowMs);
+    });
+  }
+
   #read(operation, payload, envelope) {
     if (operation === 'get_task') {
       const taskId = payload.task_id ?? envelope.task_id;
