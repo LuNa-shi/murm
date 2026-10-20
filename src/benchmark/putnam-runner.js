@@ -1151,7 +1151,10 @@ async function createProjectState(problem, config, options) {
           core.executionId = null;
           core.claim = null;
           core.session = null;
-          core.turnInFlight = false;
+          // Keep the current turn marked in-flight until runTurn/wake's
+          // settlement finally block closes its Agent interval. Clearing this
+          // here lets the scheduler start a replacement session while the
+          // previous request_wait handoff is still unwinding.
         }
       },
       onWorkspaceWrite: async ({ taskId, executionId, result }) => {
