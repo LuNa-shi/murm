@@ -1282,9 +1282,6 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           const mayDispatch = !core.taskId && !core.waitingExecutionId && !core.dispatchReserved && readyTasks.length > assignedElsewhere;
           if (mayDispatch) core.dispatchReserved = true;
           if (core.taskId || (!core.waitingExecutionId && (core.session || core.releasedSession || mayDispatch))) await ensureAgentSession(core);
-          await judgeCandidate(state, core).catch((error) => {
-            core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'judge_error' });
-          });
           if (state.solvedAt === null) await releaseTerminalExecution(core);
           if (!core.turnInFlight && Date.now() < deadline && state.solvedAt === null) {
             const bound = Boolean(core.taskId);
@@ -1298,11 +1295,6 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       }
     } finally {
       clearInterval(heartbeat);
-    }
-    for (const core of state.cores) {
-      await judgeCandidate(state, core).catch((error) => {
-        core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'final_judge_error' });
-      });
     }
   } finally {
     const cleanupStartedAt = Date.now();
