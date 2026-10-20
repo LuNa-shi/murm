@@ -14,6 +14,7 @@ import { WorkspaceManager } from '../runtime/workspace-manager.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
 import { ServicesRouter } from '../sdk/service-router.js';
 import { ServicesSDK } from '../sdk/services-sdk.js';
+import { listTools } from '../sdk/service-catalog.js';
 import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
@@ -182,7 +183,12 @@ function collectToolEvents(core, records) {
 
 export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
   buildLaunchArgs(options) {
-    return restrictedArgs(super.buildLaunchArgs(options));
+    const args = restrictedArgs(super.buildLaunchArgs(options));
+    // NuRouter/Pi versions have differed in how --no-builtin-tools is
+    // forwarded. An explicit allowlist makes the benchmark boundary
+    // deterministic: only named SwarmEnv extension tools are enabled.
+    args.push('--tools', listTools().map((tool) => `swarmenv_${tool.name}`).join(','));
+    return args;
   }
 }
 
