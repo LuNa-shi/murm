@@ -401,6 +401,9 @@ test('benchmark project starts four isolated cores and redacts candidate content
     assert.equal(report.parallelism.core_count, 4);
     assert.equal(report.parallelism.total_core_capacity_ms, report.parallelism.core_count * report.parallelism.elapsed_ms);
     assert.ok(Array.isArray(report.parallelism.core_state_intervals));
+    assert.equal(typeof report.parallelism.decomposition_available, 'boolean');
+    assert.ok(report.parallelism.decomposition_evidence.scheduler_status_count >= 0);
+    assert.ok(Array.isArray(report.run.lifecycle_events));
     assert.ok(report.parallelism.work_units.every((unit) => Object.hasOwn(unit, 'duplicate_of')));
     assert.ok(report.project.task_tree.length >= 2);
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'proof' && task.parent_id === null));
@@ -538,6 +541,9 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.ok(report.parallelism.max_active_core_count >= 3);
     assert.ok(report.parallelism.work_units.some((unit) => unit.progress_kind === 'child_task'));
     assert.ok(report.parallelism.work_units.some((unit) => unit.progress_kind === 'parent_review'));
+    assert.equal(report.parallelism.decomposition_available, true);
+    assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'request_wait' && event.dependency_ids.length > 0));
+    assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'wake_execution'));
     assert.equal(report.project.task_tree.filter((task) => task.parent_id !== null).length, 3);
     assert.ok(report.run.claim_count >= 4, `expected root and three child claims, got ${report.run.claim_count}`);
     assert.ok(report.run.child_claim_count >= 3, `expected every child to be claimed, got ${report.run.child_claim_count}`);

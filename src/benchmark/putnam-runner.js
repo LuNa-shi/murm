@@ -33,6 +33,42 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function waitDependencyIds(condition) {
+  if (!condition || typeof condition !== 'object') return [];
+  if (condition.type === 'child_task_terminal') {
+    return [condition.child_task_id ?? condition.task_id].filter(Boolean);
+  }
+  if (condition.type === 'children_all_terminal') {
+    return Array.isArray(condition.child_task_ids) ? [...condition.child_task_ids] : [];
+  }
+  if (condition.type === 'parent_review') {
+    return condition.parent_task_id ? [condition.parent_task_id] : [];
+  }
+  if (condition.type === 'check_result_arrived') {
+    return [condition.check_request_key ?? condition.request_key ?? condition.candidate_material_id].filter(Boolean);
+  }
+  return [];
+}
+
+function lifecycleEvents(taskService) {
+  const rows = taskService.db.prepare("SELECT operation_id, operation, result_json, created_at FROM operations WHERE operation IN ('request_wait', 'wake_execution', 'resume_execution') ORDER BY created_at, operation_id").all();
+  return rows.map((row) => {
+    let result = null;
+    try { result = JSON.parse(row.result_json); } catch { /* sanitized event remains available without result details */ }
+    const execution = result?.execution ?? null;
+    const condition = execution?.wait_condition ?? null;
+    return {
+      operation_id: row.operation_id,
+      operation: row.operation,
+      created_at: row.created_at,
+      task_id: execution?.task_id ?? null,
+      execution_id: execution?.execution_id ?? null,
+      wait_condition_type: condition?.type ?? null,
+      dependency_ids: waitDependencyIds(condition),
+    };
+  });
+}
+
 function inputSnapshotHash(task, inputMaterialRefs) {
   return sha256(stableStringify({
     task_id: task.task_id,
@@ -683,6 +719,10 @@ function projectReport(state, startedAt, deadline) {
   const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     candidateBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
   const childTaskCount = taskTree.filter((task) => task.parent_id !== null).length;
+  const decompositionAvailable = childTaskCount > 0;
+  const lifecycle = lifecycleEvents(state.taskService);
+  const invalidWaitAttemptCount = cores.reduce((count, core) => count + (core.toolErrors ?? []).filter((error) =>
+    error.operation === 'request_wait' && ['INVALID_CONTRACT', 'NOT_ALLOWED', 'FENCED'].includes(error.code)).length, 0);
   const taskById = new Map(taskTree.map((task) => [task.task_id, task]));
   const childClaimCount = claimHistory.filter((claim) => taskById.get(claim.task_id)?.parent_id !== null).length;
   const rootClaimCount = claimHistory.filter((claim) => claim.task_id === state.rootTaskId).length;
@@ -732,9 +772,20 @@ function projectReport(state, startedAt, deadline) {
         workspace_revision: execution.workspace_revision,
         candidate_material_id: execution.candidate_material_id,
         wait_condition_type: execution.wait_condition?.type ?? null,
+        wait_dependency_ids: waitDependencyIds(execution.wait_condition),
       }))),
     },
-    parallelism,
+    parallelism: {
+      ...parallelism,
+      decomposition_available: decompositionAvailable,
+      decomposition_evidence: {
+        definition: 'true only when an independent child Task was actually created and recorded; false means no independent child work was observed in this run',
+        observed_child_task_count: childTaskCount,
+        scheduler_status_count: state.schedulerStatusCount,
+        ready_work_ms: parallelism.ready_work_ms,
+        ready_unassigned_ms: parallelism.ready_unassigned_ms,
+      },
+    },
     run: {
       started_at: new Date(startedAt).toISOString(),
       ended_at: new Date(endedAt).toISOString(),
@@ -764,6 +815,10 @@ function projectReport(state, startedAt, deadline) {
       candidate_check_count: cores.reduce((count, core) => count + core.checks.length, 0),
       tool_error_count: toolErrorCount,
       tool_protocol_error_count: toolProtocolErrorCount,
+      invalid_wait_attempt_count: invalidWaitAttemptCount,
+      scheduler_status_count: state.schedulerStatusCount,
+      decomposition_available: decompositionAvailable,
+      lifecycle_events: lifecycle,
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
       claimed_core_count: new Set(state.cores.filter((core) => core.claimHistory.length > 0).map((core) => core.index)).size,
       claim_count: claimHistory.length,
@@ -1032,6 +1087,7 @@ async function createProjectState(problem, config, options) {
         return (await judgeCandidate(core.stateRef, core, payload.candidate_material_id)) ?? {};
       },
       onSchedulerStatus: async (payload) => {
+        if (core.stateRef) core.stateRef.schedulerStatusCount += 1;
         const cores = core.stateRef?.cores ?? [core];
         const readyTasks = taskService.listTasks({ rootId: payload.root_id ?? core.stateRef?.rootTaskId ?? null, limit: payload.limit ?? 100, availableOnly: true });
         const activeCoreCount = cores.filter((candidate) => candidate.taskId || candidate.dispatchReserved || candidate.turnInFlight).length;
@@ -1209,6 +1265,7 @@ async function createProjectState(problem, config, options) {
     cleanupElapsedMs: null,
     heartbeatCount: 0,
     heartbeatErrorCount: 0,
+    schedulerStatusCount: 0,
     resourcesAtStart: resourceSnapshot(),
     parallelism,
   };
