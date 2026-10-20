@@ -275,8 +275,14 @@ async function runTurn(core, prompt, timeoutMs) {
   } finally {
     collectToolEvents(core, session.rpcRecords.slice(sequence));
     if (countsAsAgentTurn) core.parallelism.endAgentTurn(core.index, Date.now());
-    core.turnInFlight = false;
-    core.nextTurnAt = Date.now() + core.turnIntervalMs;
+    // A discovery turn can synchronously claim a Task and hand off to a new
+    // bound session. Do not let the discovery transport's finally block clear
+    // the bound session's in-flight flag or start an overlapping follow-up.
+    const handedOff = core.session !== session && Boolean(core.taskId && core.executionId);
+    if (!handedOff) {
+      core.turnInFlight = false;
+      core.nextTurnAt = Date.now() + core.turnIntervalMs;
+    }
     if (!core.taskId) core.dispatchReserved = false;
   }
 }
