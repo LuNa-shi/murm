@@ -651,7 +651,7 @@ export class TaskService {
         waitCondition.check_request_key = waitCondition.candidate_material_id;
       }
     }
-    const allowed = new Set(['child_task_terminal', 'parent_review', 'check_result_arrived', 'timer']);
+    const allowed = new Set(['child_task_terminal', 'children_all_terminal', 'parent_review', 'check_result_arrived', 'timer']);
     if (!allowed.has(waitCondition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
     const task = this.getTask(execution.task_id);
     if (waitCondition.type === 'parent_review' && !task.parent_id) {
@@ -661,6 +661,21 @@ export class TaskService {
       const childTaskId = requireString(waitCondition.child_task_id ?? waitCondition.task_id, 'wait_condition.child_task_id');
       const child = this.getTask(childTaskId);
       if (!child || child.parent_id !== task.task_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'child_task_terminal must reference a direct child Task');
+      if (TERMINAL_TASK_STATES.includes(child.state)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'child_task_terminal condition is already satisfied');
+    }
+    if (waitCondition.type === 'children_all_terminal') {
+      if (!Array.isArray(waitCondition.child_task_ids) || waitCondition.child_task_ids.length === 0) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal requires at least one child_task_id');
+      }
+      const childIds = [...new Set(waitCondition.child_task_ids.map((childTaskId) => requireString(childTaskId, 'wait_condition.child_task_ids')))];
+      const children = childIds.map((childTaskId) => this.getTask(childTaskId));
+      if (children.some((child) => !child || child.parent_id !== task.task_id)) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal must reference direct child Tasks');
+      }
+      if (children.every((child) => TERMINAL_TASK_STATES.includes(child.state))) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal condition is already satisfied');
+      }
+      waitCondition.child_task_ids = childIds;
     }
     if (waitCondition.type === 'check_result_arrived') {
       requireString(waitCondition.check_request_key ?? waitCondition.request_key, 'wait_condition.check_request_key');
@@ -972,6 +987,17 @@ export class TaskService {
       if (child.state !== 'WAITING' || !child.parent_id) return false;
       const childExecution = this.#latestExecution(child.task_id, true);
       return Boolean(childExecution?.wait_condition?.type === 'parent_review' && this.#completion(child, childExecution).satisfied);
+    }
+    if (condition.type === 'children_all_terminal') {
+      const childIds = Array.isArray(condition.child_task_ids) ? condition.child_task_ids : [];
+      return childIds.length > 0 && childIds.every((childTaskId) => {
+        const child = this.getTask(childTaskId);
+        if (!child) return false;
+        if (TERMINAL_TASK_STATES.includes(child.state)) return true;
+        if (child.state !== 'WAITING' || !child.parent_id) return false;
+        const childExecution = this.#latestExecution(child.task_id, true);
+        return Boolean(childExecution?.wait_condition?.type === 'parent_review' && this.#completion(child, childExecution).satisfied);
+      });
     }
     if (condition.type === 'check_result_arrived') {
       const requestKey = condition.check_request_key ?? condition.request_key;

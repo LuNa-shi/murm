@@ -139,6 +139,45 @@ test('parent child-task wait becomes claimable when a child delivers a result fo
   close(env);
 });
 
+test('a waiting root cannot be claimed while its child condition is unsatisfied', () => {
+  const env = environment();
+  const parent = env.sdk.proposeTask({ task_type: 'default', goal: 'wait for child work', expected_output: 'reviewed result', acceptance_conditions: {}, owner_ref: 'owner:root' }, { operationId: 'ownership-parent' }).task;
+  const parentRun = claimTask(env, parent, { executionId: 'ownership-parent-execution', actorRef: 'owner:root' });
+  const child = parentRun.sdk.withContext({ taskId: parent.task_id, executionId: null, stateVersion: parentRun.claim.task.state_version }).createChildTask({
+    child_creation_key: 'ownership-child', ...researchInput(), owner_ref: 'researcher:one',
+  }, { operationId: 'ownership-child-create' }).task;
+  const checkpointed = saveCheckpoint(env, parentRun.claim.execution, 'ownership-parent-checkpoint');
+  const waited = parentRun.sdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
+    wait_key: 'ownership-parent-wait', checkpoint_ref: checkpointed.checkpoint_ref, checkpoint_hash: checkpointed.checkpoint_hash,
+    wait_condition: { type: 'child_task_terminal', child_task_id: child.task_id },
+  }, { operationId: 'ownership-parent-wait-op' });
+  assert.equal(waited.execution.state, 'WAITING');
+  assert.throws(() => env.sdk.withContext({ actorRef: 'agent:other', taskId: parent.task_id, specVersion: parent.spec_version, stateVersion: waited.task.state_version }).claim({
+    claim_key: 'ownership-illegal-claim', owner_ref: 'agent:other', workspace_mode: 'resume',
+  }, { operationId: 'ownership-illegal-claim-op' }), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.CONFLICT);
+  assert.equal(env.sdk.withContext({ actorRef: 'agent:child' }).listTasks({ root_id: parent.task_id, limit: 10 })[0].task_id, child.task_id);
+  close(env);
+});
+
+test('a root can wait for a non-empty set of direct children and cannot wait after the condition is already satisfied', () => {
+  const env = environment();
+  const parent = env.sdk.proposeTask({ task_type: 'default', goal: 'wait for several children', expected_output: 'reviewed results', acceptance_conditions: {}, owner_ref: 'owner:root', max_children: 3 }, { operationId: 'many-parent' }).task;
+  const parentRun = claimTask(env, parent, { executionId: 'many-parent-execution', actorRef: 'owner:root' });
+  const childOne = parentRun.sdk.withContext({ taskId: parent.task_id, executionId: null, stateVersion: parentRun.claim.task.state_version }).createChildTask({ child_creation_key: 'many-child-one', ...researchInput() }, { operationId: 'many-child-one-create' }).task;
+  const childTwo = parentRun.sdk.withContext({ taskId: parent.task_id, executionId: null, stateVersion: env.taskService.getTask(parent.task_id).state_version }).createChildTask({ child_creation_key: 'many-child-two', ...researchInput() }, { operationId: 'many-child-two-create' }).task;
+  const checkpointed = saveCheckpoint(env, parentRun.claim.execution, 'many-parent-checkpoint');
+  const waited = parentRun.sdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
+    wait_key: 'many-parent-wait', checkpoint_ref: checkpointed.checkpoint_ref, checkpoint_hash: checkpointed.checkpoint_hash,
+    wait_condition: { type: 'children_all_terminal', child_task_ids: [childOne.task_id, childTwo.task_id] },
+  }, { operationId: 'many-parent-wait-op' });
+  assert.deepEqual(waited.execution.wait_condition.child_task_ids, [childOne.task_id, childTwo.task_id]);
+  assert.throws(() => parentRun.sdk.withContext({ stateVersion: waited.execution.state_version }).requestWait({
+    wait_key: 'many-parent-wait-again', checkpoint_ref: checkpointed.checkpoint_ref, checkpoint_hash: checkpointed.checkpoint_hash,
+    wait_condition: { type: 'children_all_terminal', child_task_ids: [] },
+  }, { operationId: 'many-parent-wait-again-op' }), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
+  close(env);
+});
+
 test('claiming a root after a terminal child resumes its waiting Execution lineage', () => {
   const env = environment();
   const parent = env.sdk.proposeTask({ ...proofInput(), goal: 'coordinate proof research' }, { operationId: 'lineage-parent-propose' }).task;

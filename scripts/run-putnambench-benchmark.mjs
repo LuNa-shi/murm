@@ -1,9 +1,28 @@
 #!/usr/bin/env node
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { loadBenchmarkConfig, runBenchmarkBatch, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
+
+async function loadDotEnv(path = '.env') {
+  try {
+    const content = await readFile(path, 'utf8');
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const separator = trimmed.indexOf('=');
+      if (separator < 1) continue;
+      const key = trimmed.slice(0, separator).trim();
+      const value = trimmed.slice(separator + 1).trim().replace(/^['"]|['"]$/g, '');
+      if (process.env[key] === undefined) process.env[key] = value;
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
+
+await loadDotEnv();
 
 function optionsFromArgs(argv) {
   const runId = Date.now();
@@ -75,8 +94,8 @@ if (!options.configPath || !options.putnamBenchRoot) throw new Error(usage() + '
 if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark protocol');
 if (!Number.isInteger(options.projectParallelism) || options.projectParallelism < 1) throw new Error('--project-parallelism must be a positive integer');
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
-if (!options.provider) throw new Error('NUROUTER_PI_PROVIDER is required; copy .env.example to .env and load it');
-if (!options.model) throw new Error('NUROUTER_PI_MODEL is required; copy .env.example to .env and load it');
+if (!options.provider) throw new Error('NUROUTER_PI_PROVIDER is required; set it in .env or the environment');
+if (!options.model) throw new Error('NUROUTER_PI_MODEL is required; set it in .env or the environment');
 
 await mkdir(resolve(options.experimentDir), { recursive: true });
 await mkdir(resolve(options.reportDir), { recursive: true });
