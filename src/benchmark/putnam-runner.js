@@ -849,7 +849,7 @@ async function createProjectState(problem, config, options) {
       contextService,
       workspaceManager,
       agentAdapter: adapter,
-      maxWorkers: 4,
+      maxWorkers: 1,
       actorRef: `runtime:core-${index}`,
       logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
@@ -976,11 +976,28 @@ async function createProjectState(problem, config, options) {
         // Candidate checking is synchronous tool work. The current Execution
         // remains RUNNING while Judge and apply_check_result complete; only a
         // later explicit Task dependency can release this Core.
-        try {
-          return (await judgeCandidate(core.stateRef, core, payload.candidate_material_id)) ?? {};
-        } catch (error) {
-          throw error;
-        }
+        return (await judgeCandidate(core.stateRef, core, payload.candidate_material_id)) ?? {};
+      },
+      onSchedulerStatus: async (payload) => {
+        const cores = core.stateRef?.cores ?? [core];
+        const readyTasks = taskService.listTasks({ rootId: payload.root_id ?? core.stateRef?.rootTaskId ?? null, limit: payload.limit ?? 100, availableOnly: true });
+        const activeCoreCount = cores.filter((candidate) => candidate.taskId || candidate.dispatchReserved || candidate.turnInFlight).length;
+        const waitingOwners = new Set(taskService.listActiveExecutions()
+          .filter((execution) => execution.state === 'WAITING')
+          .map((execution) => execution.owner_ref));
+        return {
+          core_count: cores.length,
+          active_core_count: activeCoreCount,
+          idle_core_count: Math.max(0, cores.length - activeCoreCount),
+          waiting_core_count: waitingOwners.size,
+          waiting_execution_count: taskService.listActiveExecutions().filter((execution) => execution.state === 'WAITING').length,
+          ready_task_count: readyTasks.length,
+          ready_task_ids: readyTasks.map((task) => task.task_id),
+          ready_tasks: readyTasks,
+          current_task_id: payload.task_id ?? core.taskId,
+          current_execution_id: payload.execution_id ?? core.executionId,
+          current_root_id: payload.root_id ?? core.stateRef?.rootTaskId ?? null,
+        };
       },
       onRelease: async ({ taskId, executionId }) => {
         const releasedExecution = executionId ? taskService.getExecution(executionId) : null;

@@ -68,7 +68,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onSubmitCandidate = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -83,6 +83,7 @@ export class ServicesBridge {
     this.onWorkspaceWrite = onWorkspaceWrite;
     this.onWorkUnit = onWorkUnit;
     this.onSubmitCandidate = onSubmitCandidate;
+    this.onSchedulerStatus = onSchedulerStatus;
     this.onError = onError;
     this.agentPrompt = agentPrompt;
     this.host = host;
@@ -163,7 +164,9 @@ export class ServicesBridge {
       const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
       if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_executions', 'scheduler_status'].includes(operation)) {
         if (operation === 'scheduler_status') {
-          const result = await this.runtime.getSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId });
+          const result = await (this.onSchedulerStatus
+            ? this.onSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId })
+            : this.runtime.getSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId }));
           this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
