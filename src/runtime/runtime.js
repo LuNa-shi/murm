@@ -42,6 +42,24 @@ export class Runtime {
     return this.activeProcesses.size;
   }
 
+  getSchedulerStatus({ rootId = null, taskId = null, executionId = null, limit = 100 } = {}) {
+    const readyTasks = this.taskService.listTasks({ rootId, limit, availableOnly: true });
+    const executions = this.taskService.listActiveExecutions();
+    const waitingExecutions = executions.filter((execution) => execution.state === 'WAITING');
+    return {
+      core_count: this.maxWorkers,
+      active_core_count: this.activeProcesses.size,
+      idle_core_count: Math.max(0, this.maxWorkers - this.activeProcesses.size),
+      waiting_execution_count: waitingExecutions.length,
+      ready_task_count: readyTasks.length,
+      ready_task_ids: readyTasks.map((task) => task.task_id),
+      ready_tasks: readyTasks,
+      current_task_id: taskId,
+      current_execution_id: executionId,
+      current_root_id: rootId ?? (taskId ? this.taskService.getTask(taskId)?.root_id ?? null : null),
+    };
+  }
+
   async getWorkspace(executionId) {
     const execution = this.#getExecution(executionId);
     if (!execution.workspace_ref) return { workspace: null, revisions: [] };

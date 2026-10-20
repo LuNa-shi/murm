@@ -434,12 +434,12 @@ async function publishFeedback(state, core, material, result, { taskId = core.ta
   }));
 }
 
-async function judgeCandidate(state, core) {
+async function judgeCandidate(state, core, candidateMaterialId = null) {
   const pending = [...core.claimHistory].reverse().map((claim) => ({
     taskId: claim.task_id,
     executionId: claim.execution_id,
     execution: state.taskService.getExecution(claim.execution_id),
-  })).find(({ execution }) => execution && ['CREATED', 'RUNNING', 'WAITING'].includes(execution.state) && execution.candidate_material_id && !core.checked.has(execution.candidate_material_id));
+  })).find(({ execution }) => execution && ['CREATED', 'RUNNING', 'WAITING'].includes(execution.state) && execution.candidate_material_id && (!candidateMaterialId || execution.candidate_material_id === candidateMaterialId) && !core.checked.has(execution.candidate_material_id));
   if (!pending) return;
   const task = state.taskService.getTask(pending.taskId);
   const execution = pending.execution;
@@ -508,6 +508,7 @@ async function judgeCandidate(state, core) {
     state.solvedAt = Date.now();
     state.solvedBy = core.index;
   }
+  return { check_result: sanitizedCheck(result, material), applied };
 }
 
 async function stopCore(state, core) {
@@ -848,7 +849,7 @@ async function createProjectState(problem, config, options) {
       contextService,
       workspaceManager,
       agentAdapter: adapter,
-      maxWorkers: 1,
+      maxWorkers: 4,
       actorRef: `runtime:core-${index}`,
       logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
@@ -970,6 +971,16 @@ async function createProjectState(problem, config, options) {
       onClaimAccepted: async () => {
         core.discoveryRelease?.();
         core.discoveryRelease = null;
+      },
+      onSubmitCandidate: async ({ payload }) => {
+        // Candidate checking is synchronous tool work. The current Execution
+        // remains RUNNING while Judge and apply_check_result complete; only a
+        // later explicit Task dependency can release this Core.
+        try {
+          return (await judgeCandidate(core.stateRef, core, payload.candidate_material_id)) ?? {};
+        } catch (error) {
+          throw error;
+        }
       },
       onRelease: async ({ taskId, executionId }) => {
         const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
@@ -1134,6 +1145,7 @@ async function createProjectState(problem, config, options) {
 
 export async function runBenchmarkProject(problem, config, options = {}) {
   const state = await createProjectState(problem, config, options);
+  for (const core of state.cores) core.stateRef = state;
   const startedAt = Date.now();
   state.parallelism.start(startedAt);
   const durationMs = options.timeboxMs ?? 60 * 60_000;

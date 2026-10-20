@@ -337,10 +337,6 @@ class CollaborationSession extends EventEmitter {
     } else {
       const material = await this.call('publish_material', { kind: 'artifact', scope: 'proof_relevant', content: `def ${this.adapter.role.replaceAll('-', '_')} : Nat := 0` });
       await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
-      await this.call('request_wait', {
-        wait_condition: { type: 'check_result_arrived', check_request_key: `unused-check-key-${this.adapter.role}` },
-        checkpoint: { phase: 'candidate-submitted' },
-      });
     }
     this.adapter.finished = true;
     return { data: { disposition: 'handled' } };

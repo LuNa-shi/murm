@@ -11,7 +11,7 @@ const AGENT_OPERATIONS = new Set([
   'get_task', 'get_execution', 'read_materials', 'publish_material', 'submit_candidate',
   'heartbeat', 'create_child_task', 'request_wait', 'claim', 'claim_next', 'list_tasks', 'list_executions',
   'accept_task', 'request_rework', 'get_check_result',
-  'list_services', 'get_service_metadata', 'list_tools', 'get_workspace', 'list_workspace_revisions',
+  'list_services', 'get_service_metadata', 'list_tools', 'scheduler_status', 'get_workspace', 'list_workspace_revisions',
   'list_workspace_files', 'read_workspace_file', 'write_workspace_file', 'workspace_diff',
 ]);
 
@@ -68,7 +68,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onSubmitCandidate = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -82,6 +82,7 @@ export class ServicesBridge {
     this.onRelease = onRelease;
     this.onWorkspaceWrite = onWorkspaceWrite;
     this.onWorkUnit = onWorkUnit;
+    this.onSubmitCandidate = onSubmitCandidate;
     this.onError = onError;
     this.agentPrompt = agentPrompt;
     this.host = host;
@@ -160,7 +161,12 @@ export class ServicesBridge {
         return this.contextService.dispatch(name, body, envelope);
       } };
       const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
-      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_executions'].includes(operation)) {
+      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_executions', 'scheduler_status'].includes(operation)) {
+        if (operation === 'scheduler_status') {
+          const result = await this.runtime.getSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId });
+          this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+          return result;
+        }
         const result = service.dispatch(operation, payload, makeEnvelope({
           operationId: bridgeOperationId,
           actorRef: this.actorRef,
@@ -238,9 +244,13 @@ export class ServicesBridge {
       if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${this.executionId}`, { execution_id: this.executionId });
       if (execution.task_id !== this.taskId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'bridge execution does not match task', { task_id: this.taskId, execution_id: this.executionId });
       if (operation === 'request_wait') {
+        const waitCondition = normalizeWaitCondition(payload.waitCondition ?? payload.wait_condition, payload.checkpoint);
+        if (waitCondition?.type === 'check_result_arrived') {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'candidate checks are synchronous submit_candidate tool work; request_wait only accepts Task dependencies');
+        }
         const result = await this.runtime.requestWait(this.executionId, {
           ...payload,
-          waitCondition: normalizeWaitCondition(payload.waitCondition ?? payload.wait_condition, payload.checkpoint),
+          waitCondition,
           deadline: payload.deadline ?? payload.wait_deadline,
         });
         const released = { taskId: this.taskId, executionId: this.executionId, result };
@@ -267,7 +277,10 @@ export class ServicesBridge {
         case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
         case 'read_materials': result = sdk.readMaterials(payload); break;
         case 'publish_material': result = sdk.publishMaterial(payload, options); break;
-        case 'submit_candidate': result = sdk.submitCandidate(payload, options); break;
+        case 'submit_candidate':
+          result = sdk.submitCandidate(payload, options);
+          if (this.onSubmitCandidate) result = { ...result, ...(await this.onSubmitCandidate({ taskId: this.taskId, executionId: this.executionId, payload, result })) };
+          break;
         case 'heartbeat': result = sdk.heartbeat(payload, options); break;
         case 'create_child_task': result = sdk.createChildTask(payload, options); break;
         case 'get_workspace': result = await this.runtime.getWorkspace(this.executionId); break;
