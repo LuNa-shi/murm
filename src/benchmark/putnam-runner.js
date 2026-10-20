@@ -236,9 +236,13 @@ async function runTurn(core, prompt, timeoutMs) {
       execution_id: core.executionId,
       reason: 'follow_up_turn',
     }, core.turnStartedAt || Date.now());
+    core.agentTurnSession = session;
   }
   if (!session) {
-    if (countsAsAgentTurn) core.parallelism.endAgentTurn(core.index, Date.now(), 'missing_session');
+    if (countsAsAgentTurn && core.agentTurnSession === session) {
+      core.parallelism.endAgentTurn(core.index, Date.now(), 'missing_session');
+      core.agentTurnSession = null;
+    }
     core.turnInFlight = false;
     return;
   }
@@ -274,7 +278,10 @@ async function runTurn(core, prompt, timeoutMs) {
     core.parallelism.recordTurnTime(core.turnDurationsMs.at(-1));
   } finally {
     collectToolEvents(core, session.rpcRecords.slice(sequence));
-    if (countsAsAgentTurn) core.parallelism.endAgentTurn(core.index, Date.now());
+    if (countsAsAgentTurn && core.agentTurnSession === session) {
+      core.parallelism.endAgentTurn(core.index, Date.now());
+      core.agentTurnSession = null;
+    }
     // A discovery turn can synchronously claim a Task and hand off to a new
     // bound session. Do not let the discovery transport's finally block clear
     // the bound session's in-flight flag or start an overlapping follow-up.
@@ -382,7 +389,18 @@ async function ensureAgentSession(core) {
 }
 
 async function wakeWaitingCore(state, core, waitingExecution) {
-  if (core.waitingExecutionId !== waitingExecution.execution_id || core.taskId || core.turnInFlight) return false;
+  if (core.waitingExecutionId && core.waitingExecutionId !== waitingExecution.execution_id) return false;
+  if (core.taskId) return false;
+  // request_wait stops Runtime's active process before the Agent transport
+  // necessarily settles its outer prompt. If no process remains, the waiting
+  // slot is physically free and must not be stranded behind a stale
+  // turnInFlight flag.
+  if (core.turnInFlight && core.runtime.activeProcesses.has(waitingExecution.execution_id)) return false;
+  if (core.turnInFlight) {
+    core.parallelism.endAgentTurn(core.index, Date.now(), 'wait_handoff_complete');
+    core.agentTurnSession = null;
+    core.turnInFlight = false;
+  }
   core.releasedSession?.stop?.();
   core.releasedSession = null;
   const resumed = await core.runtime.wakeExecution(waitingExecution.execution_id, {
@@ -409,6 +427,7 @@ async function wakeWaitingCore(state, core, waitingExecution) {
         execution_id: core.executionId,
         reason: 'resumed_turn',
       });
+      core.agentTurnSession = session;
     },
   });
   core.nextTurnAt = Date.now();
@@ -422,7 +441,10 @@ async function wakeWaitingCore(state, core, waitingExecution) {
       if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
     } finally {
       collectToolEvents(core, resumed.session.rpcRecords ?? []);
-      core.parallelism.endAgentTurn(core.index, Date.now());
+      if (core.agentTurnSession === resumed.session) {
+        core.parallelism.endAgentTurn(core.index, Date.now());
+        core.agentTurnSession = null;
+      }
       if (core.session === resumed.session) {
         core.turns += 1;
         core.turnInFlight = false;
@@ -1005,6 +1027,7 @@ async function createProjectState(problem, config, options) {
       sessionNumber: 0,
       startConfig: { problem, logRoot, options },
       turnInFlight: false,
+      agentTurnSession: null,
       turnPromise: null,
       initialTurnPromise: null,
       turnStartedAt: 0,
@@ -1068,6 +1091,7 @@ async function createProjectState(problem, config, options) {
               execution_id: execution.execution_id,
               reason: 'initial_bound_turn',
             });
+            core.agentTurnSession = session;
             return session;
           },
           agentPrompt: BOUND_AGENT_PROMPT,
@@ -1083,7 +1107,10 @@ async function createProjectState(problem, config, options) {
               if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
             } finally {
               collectToolEvents(core, boundSession.rpcRecords ?? []);
-              core.parallelism.endAgentTurn(core.index, Date.now());
+              if (core.agentTurnSession === boundSession) {
+                core.parallelism.endAgentTurn(core.index, Date.now());
+                core.agentTurnSession = null;
+              }
               if (core.session === boundSession) {
                 core.turns += 1;
                 core.turnInFlight = false;
@@ -1384,8 +1411,10 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           if (state.solvedAt !== null) break;
           const resumableWaiting = state.taskService.listResumableExecutions({ rootId: state.rootTaskId });
           for (const waitingExecution of resumableWaiting) {
-            const waitingCore = state.cores.find((candidate) => candidate.waitingExecutionId === waitingExecution.execution_id);
-            if (waitingCore && !waitingCore.taskId && !waitingCore.turnInFlight) {
+            const waitingCore = state.cores.find((candidate) => candidate.waitingExecutionId === waitingExecution.execution_id) ??
+              state.cores.find((candidate) => !candidate.taskId && !candidate.waitingExecutionId && !candidate.turnInFlight);
+            if (waitingCore && !waitingCore.taskId &&
+              (!waitingCore.turnInFlight || !waitingCore.runtime.activeProcesses.has(waitingExecution.execution_id))) {
               await wakeWaitingCore(state, waitingCore, waitingExecution).catch((error) => {
                 waitingCore.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'wake_error' });
               });
