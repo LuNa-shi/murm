@@ -1335,7 +1335,11 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           }
           const assignedElsewhere = state.cores
             .filter((candidate) => candidate !== core)
-            .filter((candidate) => candidate.taskId || candidate.dispatchReserved || candidate.waitingExecutionId).length;
+            // A WAITING Execution has released its physical Core. It remains
+            // unavailable for a duplicate root claim, but it must not count
+            // as assigned capacity when deciding whether another idle Core
+            // can claim a ready child.
+            .filter((candidate) => candidate.taskId || candidate.dispatchReserved).length;
           const mayDispatch = !core.taskId && !core.waitingExecutionId && !core.dispatchReserved && readyTasks.length > assignedElsewhere;
           if (mayDispatch) core.dispatchReserved = true;
           if (core.taskId || (!core.waitingExecutionId && (core.session || core.releasedSession || mayDispatch))) await ensureAgentSession(core);
