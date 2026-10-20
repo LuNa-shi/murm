@@ -229,7 +229,16 @@ async function runTurn(core, prompt, timeoutMs) {
   if (core.turnInFlight) return;
   core.turnInFlight = true;
   const session = core.session;
+  const countsAsAgentTurn = Boolean(core.taskId && core.executionId);
+  if (countsAsAgentTurn) {
+    core.parallelism.beginAgentTurn(core.index, {
+      task_id: core.taskId,
+      execution_id: core.executionId,
+      reason: 'follow_up_turn',
+    }, core.turnStartedAt || Date.now());
+  }
   if (!session) {
+    if (countsAsAgentTurn) core.parallelism.endAgentTurn(core.index, Date.now(), 'missing_session');
     core.turnInFlight = false;
     return;
   }
@@ -265,6 +274,7 @@ async function runTurn(core, prompt, timeoutMs) {
     core.parallelism.recordTurnTime(core.turnDurationsMs.at(-1));
   } finally {
     collectToolEvents(core, session.rpcRecords.slice(sequence));
+    if (countsAsAgentTurn) core.parallelism.endAgentTurn(core.index, Date.now());
     core.turnInFlight = false;
     core.nextTurnAt = Date.now() + core.turnIntervalMs;
     if (!core.taskId) core.dispatchReserved = false;
@@ -388,6 +398,11 @@ async function wakeWaitingCore(state, core, waitingExecution) {
         execution_id: core.executionId,
         reason: 'execution_woken',
       });
+      core.parallelism.beginAgentTurn(core.index, {
+        task_id: core.taskId,
+        execution_id: core.executionId,
+        reason: 'resumed_turn',
+      });
     },
   });
   core.nextTurnAt = Date.now();
@@ -401,6 +416,7 @@ async function wakeWaitingCore(state, core, waitingExecution) {
       if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
     } finally {
       collectToolEvents(core, resumed.session.rpcRecords ?? []);
+      core.parallelism.endAgentTurn(core.index, Date.now());
       if (core.session === resumed.session) {
         core.turns += 1;
         core.turnInFlight = false;
@@ -739,6 +755,8 @@ function projectReport(state, startedAt, deadline) {
     protocol: {
       project_isolation: true,
       core_count: 4,
+      repository_commit: state.repositoryCommit,
+      repository_worktree_dirty: state.repositoryWorktreeDirty,
       input_policy: 'pinned formalization only; no candidate or solution input',
       tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
       cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
@@ -985,7 +1003,7 @@ async function createProjectState(problem, config, options) {
       initialTurnPromise: null,
       turnStartedAt: 0,
       nextTurnAt: 0,
-      turnIntervalMs: options.turnIntervalMs ?? 15_000,
+      turnIntervalMs: options.turnIntervalMs ?? 1_000,
       turns: 0,
       toolEvents: [],
       workspaceWrites: [],
@@ -1039,6 +1057,11 @@ async function createProjectState(problem, config, options) {
               execution_id: execution.execution_id,
               reason: 'execution_started',
             });
+            core.parallelism.beginAgentTurn(core.index, {
+              task_id: execution.task_id,
+              execution_id: execution.execution_id,
+              reason: 'initial_bound_turn',
+            });
             return session;
           },
           agentPrompt: BOUND_AGENT_PROMPT,
@@ -1054,6 +1077,7 @@ async function createProjectState(problem, config, options) {
               if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
             } finally {
               collectToolEvents(core, boundSession.rpcRecords ?? []);
+              core.parallelism.endAgentTurn(core.index, Date.now());
               if (core.session === boundSession) {
                 core.turns += 1;
                 core.turnInFlight = false;
@@ -1089,7 +1113,12 @@ async function createProjectState(problem, config, options) {
       onSchedulerStatus: async (payload) => {
         if (core.stateRef) core.stateRef.schedulerStatusCount += 1;
         const cores = core.stateRef?.cores ?? [core];
-        const readyTasks = taskService.listTasks({ rootId: payload.root_id ?? core.stateRef?.rootTaskId ?? null, limit: payload.limit ?? 100, availableOnly: true });
+        const readyTasks = taskService.listTasks({
+          rootId: payload.root_id ?? core.stateRef?.rootTaskId ?? null,
+          states: ['OPEN', 'RUNNING'],
+          limit: payload.limit ?? 100,
+          availableOnly: true,
+        });
         const activeCoreCount = cores.filter((candidate) => candidate.taskId || candidate.dispatchReserved || candidate.turnInFlight).length;
         const waitingOwners = new Set(taskService.listActiveExecutions()
           .filter((execution) => execution.state === 'WAITING')
@@ -1267,6 +1296,8 @@ async function createProjectState(problem, config, options) {
     heartbeatErrorCount: 0,
     schedulerStatusCount: 0,
     resourcesAtStart: resourceSnapshot(),
+    repositoryCommit: options.repositoryCommit ?? null,
+    repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
     parallelism,
   };
 }
@@ -1313,7 +1344,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         const readyStartedAt = Date.now();
         const readyTasks = state.taskService.listTasks({
           rootId: state.rootTaskId,
-          states: ['OPEN', 'RUNNING', 'WAITING'],
+          states: ['OPEN', 'RUNNING'],
           limit: 100,
           availableOnly: true,
         });
@@ -1328,8 +1359,11 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         // ready slot. Computing this globally avoids an idle Core being
         // skipped because another idle Core was examined earlier in the same
         // poll and left a stale reservation behind.
-        const assignedCoreCount = state.cores.filter((core) => core.taskId).length;
-        let readyDispatchSlots = Math.max(0, readyTasks.length - assignedCoreCount);
+        // `readyTasks` already excludes Tasks whose active quota is full.
+        // Subtracting bound Core count here starved idle slots whenever a
+        // running parent created a new child. Ready work is queue supply, not
+        // the number of currently bound responsibilities.
+        let readyDispatchSlots = readyTasks.length;
         const dispatchCandidates = state.cores.filter((core) =>
           !core.taskId && !core.waitingExecutionId && !core.turnInFlight && !core.dispatchReserved);
         for (const candidate of dispatchCandidates) {

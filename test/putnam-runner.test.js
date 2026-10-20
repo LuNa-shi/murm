@@ -378,6 +378,8 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     turnTimeoutMs: 100,
     turnIntervalMs: 10_000,
     stopOnSolved: true,
+    repositoryCommit: 'test-repository-commit',
+    repositoryWorktreeDirty: false,
     agentAdapterFactory: ({ env, index }) => {
       const adapter = new FakeAdapter({ env, cheat, noWork: noWork || (invalidClaim && index !== 1), fileCandidate, invalidClaim: invalidClaim && index === 1 });
       onAdapter?.(adapter);
@@ -398,7 +400,10 @@ test('benchmark project starts four isolated cores and redacts candidate content
     const adapters = [];
     const report = await runFixture({ reportDir, experimentDir, onAdapter: (adapter) => adapters.push(adapter) });
     assert.equal(report.protocol.core_count, 4);
+    assert.equal(report.protocol.repository_commit, 'test-repository-commit');
+    assert.equal(report.protocol.repository_worktree_dirty, false);
     assert.equal(report.parallelism.core_count, 4);
+    assert.ok(Array.isArray(report.parallelism.agent_turn_intervals));
     assert.equal(report.parallelism.total_core_capacity_ms, report.parallelism.core_count * report.parallelism.elapsed_ms);
     assert.ok(Array.isArray(report.parallelism.core_state_intervals));
     assert.equal(typeof report.parallelism.decomposition_available, 'boolean');

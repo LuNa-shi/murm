@@ -118,8 +118,9 @@ executing a Task turn. The following are excluded:
 - Judge/checker time, which is reported separately;
 - cleanup after the experiment deadline.
 
-The numerator must come from non-overlapping, per-Core audited intervals. The
-metric must satisfy these deterministic cases:
+The numerator must come from non-overlapping, per-Core audited
+`agent_turn_intervals`; the broader `core_state_intervals` remain the slot
+lifecycle evidence. The metric must satisfy these deterministic cases:
 
 - four Cores active for the complete window: `1.0`;
 - two Cores active for the complete window: `0.5`;
@@ -137,7 +138,9 @@ These are diagnostic evidence, not additional success metrics:
 - `ready_unassigned_ms`: time for which ready work existed without enough Core
   assignment;
 - `core_state_intervals`: per-Core `IDLE`, `ASSIGNED`, `RUNNING`, `WAITING`,
-  and `STOPPING` intervals;
+  and `STOPPING` slot intervals;
+- `agent_turn_intervals`: non-overlapping intervals for effective bound Agent
+  turns, which are the source for `agent_time_ms`;
 - `concurrency_histogram_ms` and active-Core counts;
 - scheduler polling, claim conflicts, Judge time, and turn occupancy;
 - wait/wake/resume and parent-review lifecycle events;
@@ -180,8 +183,8 @@ and a report can be traced to one clean commit.
 - Add deterministic tests for `1.0`, `0.5`, and `0.25` utilization and for
   excluded time categories.
 
-Exit condition: utilization can be recomputed from the report intervals within
-the documented timestamp precision.
+Exit condition: utilization can be recomputed from `agent_turn_intervals`
+and the slot intervals within the documented timestamp precision.
 
 ### Gate 3: Queue and Core scheduling
 

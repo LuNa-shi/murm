@@ -111,6 +111,8 @@ if (problems.length === 0) throw new Error(`problem is not in the locked configu
 const execFileAsync = promisify(execFile);
 const repositoryCommit = (await execFileAsync('git', ['-C', process.cwd(), 'rev-parse', 'HEAD'], { encoding: 'utf8' })).stdout.trim();
 const repositoryStatus = (await execFileAsync('git', ['-C', process.cwd(), 'status', '--porcelain'], { encoding: 'utf8' })).stdout.trim();
+options.repositoryCommit = repositoryCommit;
+options.repositoryWorktreeDirty = repositoryStatus.length > 0;
 const metadataPath = resolve(options.experimentDir, 'metadata', 'experiment.json');
 const metadata = {
   schema_version: 1,
@@ -156,6 +158,8 @@ const aggregate = {
     timebox_ms: options.timeboxMs,
     experiment_dir: resolve(options.experimentDir),
     report_dir: resolve(options.reportDir),
+    repository_commit: repositoryCommit,
+    repository_worktree_dirty: repositoryStatus.length > 0,
     raw_transcript_exported: false,
     proof_contents_exported: false,
   },
@@ -166,6 +170,13 @@ const aggregate = {
     candidate_count: report.run?.candidate_count ?? null,
     invalid: report.audit?.invalid ?? true,
     invalid_reasons: report.audit?.invalid_reasons ?? [],
+    repository_commit: report.protocol?.repository_commit ?? null,
+    repository_worktree_dirty: report.protocol?.repository_worktree_dirty ?? null,
+    agent_time_utilization_v0: report.parallelism?.agent_time_utilization_v0 ?? null,
+    ready_work_ms: report.parallelism?.ready_work_ms ?? null,
+    ready_unassigned_ms: report.parallelism?.ready_unassigned_ms ?? null,
+    child_task_count: report.run?.progress_evidence?.child_task_count ?? null,
+    child_claim_count: report.run?.child_claim_count ?? null,
   })),
 };
 const aggregatePath = resolve(options.reportDir, 'aggregate-report.json');

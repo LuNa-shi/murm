@@ -93,6 +93,8 @@ export class CoreParallelismTracker {
     this.startedAt = timestamp(startedAt);
     this.closedIntervals = [];
     this.openIntervals = new Map();
+    this.agentTurnIntervals = [];
+    this.openAgentTurns = new Map();
     this.readySamples = [];
     this.schedulerPollMs = 0;
     this.claimConflictCount = 0;
@@ -129,6 +131,34 @@ export class CoreParallelismTracker {
     this.openIntervals.set(core, { core, state, ...next, start_ms: eventAt });
   }
 
+  beginAgentTurn(core, details = {}, at = Date.now()) {
+    assertCore(core, this.coreCount);
+    const eventAt = timestamp(at);
+    if (eventAt < this.startedAt) throw new RangeError('Agent turn cannot start before tracker creation');
+    if (this.openAgentTurns.has(core)) throw new Error(`Core ${core} already has an active Agent turn`);
+    this.openAgentTurns.set(core, {
+      core,
+      state: 'RUNNING',
+      task_id: details.task_id ?? null,
+      execution_id: details.execution_id ?? null,
+      reason: details.reason ?? 'agent_turn_started',
+      start_ms: eventAt,
+    });
+  }
+
+  endAgentTurn(core, at = Date.now(), reason = 'agent_turn_completed') {
+    assertCore(core, this.coreCount);
+    const eventAt = timestamp(at);
+    const current = this.openAgentTurns.get(core);
+    if (!current) return false;
+    if (eventAt < current.start_ms) throw new RangeError('Agent turn end moves backwards in time');
+    if (eventAt > current.start_ms) {
+      this.agentTurnIntervals.push({ ...current, end_ms: eventAt, reason_end: reason });
+    }
+    this.openAgentTurns.delete(core);
+    return true;
+  }
+
   recordReadyWork({ readyCount, idleCoreCount, at = Date.now() } = {}) {
     if (!Number.isInteger(readyCount) || readyCount < 0) throw new TypeError('readyCount must be a non-negative integer');
     if (!Number.isInteger(idleCoreCount) || idleCoreCount < 0) throw new TypeError('idleCoreCount must be a non-negative integer');
@@ -161,6 +191,12 @@ export class CoreParallelismTracker {
       .filter((interval) => interval.end_ms > startAt)
       .map((interval) => ({ ...interval, start_ms: Math.max(interval.start_ms, startAt) }));
     this.readySamples = this.readySamples.filter((sample) => sample.at_ms >= startAt);
+    this.agentTurnIntervals = this.agentTurnIntervals
+      .filter((interval) => interval.end_ms > startAt)
+      .map((interval) => ({ ...interval, start_ms: Math.max(interval.start_ms, startAt) }));
+    for (const [core, interval] of this.openAgentTurns.entries()) {
+      this.openAgentTurns.set(core, { ...interval, start_ms: Math.max(interval.start_ms, startAt) });
+    }
     for (const [core, interval] of this.openIntervals.entries()) {
       this.openIntervals.set(core, { ...interval, start_ms: Math.max(interval.start_ms, startAt) });
     }
@@ -221,15 +257,25 @@ export class CoreParallelismTracker {
       waitingMsByCore[core] = 0;
       idleMsByCore[core] = 0;
     }
-    let agentTimeMs = 0;
     for (const interval of intervals) {
       const duration = interval.end_ms - interval.start_ms;
       addDuration(byState, interval.state, duration);
-      if (interval.state === 'RUNNING') agentTimeMs += duration;
       if (interval.state === 'WAITING') addDuration(waitingMsByCore, interval.core, duration);
       if (interval.state === 'IDLE') addDuration(idleMsByCore, interval.core, duration);
     }
-    const histogram = histogramWithRunningIntervals(intervals, this.startedAt, end);
+    const hasAgentTurnEvidence = this.agentTurnIntervals.length > 0 || this.openAgentTurns.size > 0;
+    const agentIntervals = normalizeIntervals([
+      ...this.agentTurnIntervals,
+      ...[...this.openAgentTurns.values()].map((interval) => ({ ...interval, end_ms: end })),
+    ], this.startedAt, end);
+    // Keep the transition-derived fallback for direct users of the tracker and
+    // older reports. The benchmark runner records explicit Agent turn evidence,
+    // which excludes discovery, polling, WAITING, and Judge-only time.
+    const effectiveAgentIntervals = hasAgentTurnEvidence
+      ? agentIntervals
+      : intervals.filter((interval) => interval.state === 'RUNNING');
+    const agentTimeMs = effectiveAgentIntervals.reduce((total, interval) => total + interval.end_ms - interval.start_ms, 0);
+    const histogram = histogramWithRunningIntervals(effectiveAgentIntervals, this.startedAt, end);
     const activeCounts = Object.entries(histogram).filter(([, duration]) => duration > 0).map(([count]) => Number(count));
     const samples = sampleDurations(this.readySamples, this.startedAt, end);
     const workUnits = this.workUnits.map(({ dedupe_key: _dedupeKey, started_at_ms: _startedAtMs, ended_at_ms: _endedAtMs, ...unit }) => unit);
@@ -253,6 +299,7 @@ export class CoreParallelismTracker {
       turn_occupancy_ratio_v0: this.coreCount * elapsedMs === 0 ? 0 : this.turnOccupancyMs / (this.coreCount * elapsedMs),
       state_time_ms: byState,
       core_state_intervals: intervals,
+      agent_turn_intervals: effectiveAgentIntervals,
       work_units: workUnits,
     };
   }

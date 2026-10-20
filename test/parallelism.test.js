@@ -72,6 +72,22 @@ test('WAITING and idle intervals are excluded and state intervals do not overlap
   }
 });
 
+test('explicit Agent turn intervals exclude idle gaps from Agent Time', () => {
+  const tracker = new CoreParallelismTracker({ coreCount: 4, startedAt: 0 });
+  tracker.transition(1, 'RUNNING', { task_id: 'task-1', execution_id: 'execution-1' }, 0);
+  tracker.beginAgentTurn(1, { task_id: 'task-1', execution_id: 'execution-1' }, 1_000);
+  tracker.endAgentTurn(1, 2_000);
+  tracker.beginAgentTurn(1, { task_id: 'task-1', execution_id: 'execution-1' }, 5_000);
+  tracker.endAgentTurn(1, 6_000);
+
+  const summary = tracker.snapshot({ endedAt: 10_000 });
+
+  assert.equal(summary.agent_time_ms, 2_000);
+  assert.equal(summary.agent_time_utilization_v0, 2_000 / 40_000);
+  assert.deepEqual(summary.concurrency_histogram_ms, { 0: 8_000, 1: 2_000 });
+  assert.equal(summary.agent_turn_intervals.length, 2);
+});
+
 test('turn occupancy is reported separately from RUNNING Agent Time', () => {
   const tracker = new CoreParallelismTracker({ coreCount: 4, startedAt: 0 });
   tracker.transition(1, 'RUNNING', { task_id: 'task-1', execution_id: 'execution-1' }, 0);

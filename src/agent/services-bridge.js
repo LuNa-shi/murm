@@ -170,7 +170,10 @@ export class ServicesBridge {
           this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
-        const result = service.dispatch(operation, payload, makeEnvelope({
+        const discoveryPayload = operation === 'list_tasks' && this.taskId === null && payload.available_only !== false
+          ? { ...payload, states: ['OPEN', 'RUNNING'] }
+          : payload;
+        const result = service.dispatch(operation, discoveryPayload, makeEnvelope({
           operationId: bridgeOperationId,
           actorRef: this.actorRef,
         }));
