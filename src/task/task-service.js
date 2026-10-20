@@ -989,13 +989,14 @@ export class TaskService {
       const child = childTaskId ? this.getTask(childTaskId) : null;
       if (!child) return false;
       if (TERMINAL_TASK_STATES.includes(child.state)) return true;
-      // A child research/implementation Task delivers its result by entering
-      // parent_review after publishing its required Materials. That is a
-      // completion event for the parent scheduler even though the parent
-      // still has to accept or rework the child before it becomes terminal.
+      // A child delivers a parent-review event by entering parent_review.
+      // The parent must wake for both successful and failed child results:
+      // it may accept a satisfied contract or request focused rework. Waiting
+      // for a terminal child alone would deadlock the parent on a failed
+      // candidate that still requires review.
       if (child.state !== 'WAITING' || !child.parent_id) return false;
       const childExecution = this.#latestExecution(child.task_id, true);
-      return Boolean(childExecution?.wait_condition?.type === 'parent_review' && this.#completion(child, childExecution).satisfied);
+      return Boolean(childExecution?.wait_condition?.type === 'parent_review');
     }
     if (condition.type === 'children_all_terminal') {
       const childIds = Array.isArray(condition.child_task_ids) ? condition.child_task_ids : [];
@@ -1005,7 +1006,7 @@ export class TaskService {
         if (TERMINAL_TASK_STATES.includes(child.state)) return true;
         if (child.state !== 'WAITING' || !child.parent_id) return false;
         const childExecution = this.#latestExecution(child.task_id, true);
-        return Boolean(childExecution?.wait_condition?.type === 'parent_review' && this.#completion(child, childExecution).satisfied);
+        return Boolean(childExecution?.wait_condition?.type === 'parent_review');
       });
     }
     if (condition.type === 'check_result_arrived') {

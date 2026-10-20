@@ -178,6 +178,36 @@ test('a root can wait for a non-empty set of direct children and cannot wait aft
   close(env);
 });
 
+test('children_all_terminal wakes a root when every child is waiting for parent review', () => {
+  const env = environment();
+  const parent = env.sdk.proposeTask({ task_type: 'default', goal: 'review several child results', expected_output: 'reviewed results', acceptance_conditions: {}, owner_ref: 'owner:root', max_children: 3 }, { operationId: 'review-many-parent' }).task;
+  const parentRun = claimTask(env, parent, { executionId: 'review-many-parent-execution', actorRef: 'owner:root' });
+  const childOne = parentRun.sdk.withContext({ taskId: parent.task_id, stateVersion: parentRun.claim.task.state_version }).createChildTask({
+    child_creation_key: 'review-many-child-one', ...researchInput(),
+  }, { operationId: 'review-many-child-one-create' }).task;
+  const childTwo = parentRun.sdk.withContext({ taskId: parent.task_id, stateVersion: env.taskService.getTask(parent.task_id).state_version }).createChildTask({
+    child_creation_key: 'review-many-child-two', ...researchInput(),
+  }, { operationId: 'review-many-child-two-create' }).task;
+  const parentCheckpoint = saveCheckpoint(env, parentRun.claim.execution, 'review-many-parent-checkpoint');
+  parentRun.sdk.withContext({ stateVersion: parentCheckpoint.state_version }).requestWait({
+    wait_key: 'review-many-parent-wait', checkpoint_ref: parentCheckpoint.checkpoint_ref, checkpoint_hash: parentCheckpoint.checkpoint_hash,
+    wait_condition: { type: 'children_all_terminal', child_task_ids: [childOne.task_id, childTwo.task_id] },
+  }, { operationId: 'review-many-parent-wait-op' });
+  for (const [child, suffix] of [[childOne, 'one'], [childTwo, 'two']]) {
+    const childRun = claimTask(env, child, { executionId: `review-many-child-${suffix}-execution`, actorRef: 'researcher:one' });
+    childRun.sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { route: suffix } }, { operationId: `review-many-child-${suffix}-material` });
+    const checkpoint = saveCheckpoint(env, childRun.claim.execution, `review-many-child-${suffix}-checkpoint`);
+    childRun.sdk.withContext({ stateVersion: checkpoint.state_version }).requestWait({
+      wait_key: `review-many-child-${suffix}-wait`, checkpoint_ref: checkpoint.checkpoint_ref, checkpoint_hash: checkpoint.checkpoint_hash,
+      wait_condition: { type: 'parent_review' },
+    }, { operationId: `review-many-child-${suffix}-wait-op` });
+  }
+  const available = env.sdk.withContext({ actorRef: 'agent:reviewer' }).listTasks({ limit: 10 });
+  assert.equal(available[0].task_id, parent.task_id);
+  assert.equal(available[0].latest_execution.wait_condition.type, 'children_all_terminal');
+  close(env);
+});
+
 test('claiming a root after a terminal child resumes its waiting Execution lineage', () => {
   const env = environment();
   const parent = env.sdk.proposeTask({ ...proofInput(), goal: 'coordinate proof research' }, { operationId: 'lineage-parent-propose' }).task;
