@@ -8,8 +8,8 @@ test('agent prompts make decomposition a queue and capacity decision without a c
   assert.match(prompt, /scheduler_status/);
   assert.match(prompt, /task_list with available_only=true/);
   assert.match(prompt, /genuinely independent/);
-  assert.match(prompt, /multiple bounded direct child/);
+  assert.match(prompt, /(?:one or more|multiple) bounded direct child/);
   assert.match(prompt, /Do not create children.*quota|without filling a quota/);
-  assert.match(prompt, /If the list is empty, this Core is IDLE/);
+  assert.match(prompt, /(?:If the list contains only waiting responsibilities or is empty, this Core is IDLE|If no Task is claimable, this is IDLE)/);
   assert.doesNotMatch(prompt, /always create (?:two|three|four|N) children/i);
 });
