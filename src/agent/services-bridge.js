@@ -311,7 +311,7 @@ export class ServicesBridge {
       if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {
         await this.onWorkspaceWrite({ taskId: this.taskId, executionId: this.executionId, result });
       }
-      if (this.onWorkUnit && ['publish_material', 'create_child_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+      if (this.onWorkUnit && ['read_materials', 'publish_material', 'create_child_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
         await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });

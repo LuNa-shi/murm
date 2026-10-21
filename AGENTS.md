@@ -32,6 +32,7 @@ Use `CONTEXT.md` and the relevant ADR before changing Task, Execution, Workspace
 - `WAITING` requires a persisted checkpoint and a concrete typed condition. An empty queue is `IDLE` or bounded backoff, never semantic waiting.
 - A root Agent should create bounded direct child Tasks for genuinely separable work before waiting. Each child needs a goal, expected output, acceptance condition, and result delivery path.
 - Effective Agent Time counts only auditable Runtime `RUNNING` intervals. Keep `IDLE`, semantic `WAITING`, scheduler polling, Judge time, and turn occupancy separate.
+- Work unit evidence records Task, Execution, Core, and progress kind. Task and Execution identity, Workspace lineage, leases, fencing, and quota remain the ownership evidence; do not add semantic fingerprint or deduplication policy to benchmark progress.
 - Prefer integration tests for lifecycle and Agent behavior. Run `npm test` and `git diff --check` before opening a PR.
 
 ## Documentation ownership

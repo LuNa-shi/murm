@@ -212,7 +212,12 @@ export class TaskService {
     return tasks.filter((task) => {
       const executions = this.listExecutions(task.task_id, { includeTerminal: false });
       const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
-      if (active.length >= task.parallel_quota) return false;
+      if (active.length >= task.parallel_quota) {
+        const reworkExecution = active.length === 1 && task.parallel_quota === 1 && active[0].state === 'CREATED'
+          ? this.#latestExecution(task.task_id, true)
+          : null;
+        if (!reworkExecution || reworkExecution.state !== 'CREATED' || reworkExecution.instruction_version <= 1) return false;
+      }
       const waiting = executions.filter((execution) => execution.state === 'WAITING');
       if (waiting.length === 0) return true;
       const resumableWaiting = waiting.some((execution) => this.#isWaitingResumable(execution, nowMs));
@@ -431,8 +436,10 @@ export class TaskService {
       WHERE t.state IN ('OPEN', 'RUNNING')
         AND (? IS NULL OR t.root_id = ?)
         AND (? = 1 OR ? IS NULL OR t.task_id <> t.root_id)
-        AND (SELECT COUNT(*) FROM executions e
+        AND ((SELECT COUNT(*) FROM executions e
           WHERE e.task_id = t.task_id AND e.state IN ('CREATED', 'RUNNING', 'WAITING')) < t.parallel_quota
+          OR (t.parallel_quota = 1 AND EXISTS (SELECT 1 FROM executions e
+            WHERE e.task_id = t.task_id AND e.state = 'CREATED' AND e.instruction_version > 1)))
       ORDER BY t.created_at, t.task_id LIMIT 1`).get(rootId, rootId, includeRoot ? 1 : 0, rootId);
     if (!row) return { task: null, execution: null };
     const task = rowToTask(row);
@@ -493,6 +500,25 @@ export class TaskService {
       input_material_refs: inputMaterialRefs,
     });
     const activeCount = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')").get(task.task_id).count;
+    // request_rework leaves the same Execution in CREATED so a later Worker
+    // can resume its Workspace. Its incremented instruction version marks it
+    // as queueable; an ordinary claim-created Execution remains protected by
+    // the active quota until Runtime binds it.
+    const createdRow = this.db.prepare("SELECT * FROM executions WHERE task_id = ? AND state = 'CREATED' ORDER BY updated_at DESC, execution_id DESC LIMIT 1").get(task.task_id);
+    const reworkExecution = createdRow ? rowToExecution(createdRow) : null;
+    if (reworkExecution && reworkExecution.instruction_version > 1 && !waitingExecution && activeCount === 1 && task.parallel_quota === 1 &&
+      workspaceMode === 'resume' && !sourceExecutionId && !sourceWorkspaceRef &&
+      (payload.workspace_revision === undefined || payload.workspace_revision === reworkExecution.workspace_revision)) {
+      const updatedAt = now();
+      const nextLease = payload.lease_expires_at ?? new Date(Date.now() + 30_000).toISOString();
+      this.db.prepare(`UPDATE executions SET owner_ref = ?, lease_expires_at = ?, heartbeat_at = ?, agent_prompt = ?, state_version = state_version + 1, updated_at = ?
+        WHERE execution_id = ?`).run(ownerRef, nextLease, updatedAt, agentPrompt, updatedAt, reworkExecution.execution_id);
+      this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
+        .run('RUNNING', updatedAt, task.task_id);
+      this.db.prepare('INSERT INTO claim_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(claimKey, task.task_id, keyFingerprint, reworkExecution.execution_id, updatedAt);
+      return { task: this.getTask(task.task_id), execution: this.getExecution(reworkExecution.execution_id) };
+    }
     const resumableWaiting = waitingExecution && this.#isWaitingResumable(rowToExecution(waitingExecution));
     const canContinueCurrentWaiting = Boolean(waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting &&
       (payload.workspace_revision === undefined || payload.workspace_revision === waitingExecution.workspace_revision));

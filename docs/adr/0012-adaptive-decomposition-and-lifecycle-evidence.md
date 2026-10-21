@@ -21,9 +21,9 @@ The sanitized report records Task lifecycle facts from Task Service operations:
 - `run.invalid_wait_attempt_count` counts rejected Task wait requests,
   including attempts to wait for a synchronous candidate check.
 
-These fields are derived from Runtime, Task Service, and deterministic work
-fingerprints. No LLM progress summary contributes to the hard utilization
-metric.
+These fields are derived from Runtime and Task Service lifecycle events plus
+Task, Execution, and Core provenance. No LLM progress summary or semantic
+duplicate detector contributes to the hard utilization metric.
 
 ## Consequences
 

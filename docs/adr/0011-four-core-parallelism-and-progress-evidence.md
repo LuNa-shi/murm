@@ -18,9 +18,10 @@ releases the gate as soon as Task Service ownership is durable, allowing the
 bound Agent sessions to run concurrently. Empty slots remain available for a
 later ready-work dispatch.
 
-The sanitized report records work units with input, goal, and output
-fingerprints. Identical fingerprints are linked with `duplicate_of` for human
-review; this relationship does not change the hard utilization metric.
+The sanitized report records work units with Task, Execution, Core, and
+progress-kind provenance. Existing input snapshot hashes remain part of the
+Execution and CheckResult consistency contract; the report does not infer
+semantic duplicates or link work units through `duplicate_of`.
 
 ## Consequences
 

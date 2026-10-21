@@ -144,7 +144,7 @@ These are diagnostic evidence, not additional success metrics:
 - `concurrency_histogram_ms` and active-Core counts;
 - scheduler polling, claim conflicts, Judge time, and turn occupancy;
 - wait/wake/resume and parent-review lifecycle events;
-- deterministic work-unit and output fingerprints, including `duplicate_of`.
+- deterministic work-unit provenance tied to Task, Execution, and Core IDs.
 
 The two ready-work fields must distinguish a supply problem from a scheduler
 problem. They must not be used to claim successful parallelism on their own.

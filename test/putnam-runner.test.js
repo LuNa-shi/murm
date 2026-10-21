@@ -370,6 +370,189 @@ class CollaborationAdapter {
   }
 }
 
+class DynamicCollaborationSession extends EventEmitter {
+  constructor(adapter, options) {
+    super();
+    this.adapter = adapter;
+    this.options = options;
+    this.rpcRecords = [];
+    this.closed = false;
+    this.bound = !String(options.executionId ?? '').startsWith('worker-');
+  }
+
+  async waitForReady() {}
+
+  async waitForSettled() {}
+
+  async call(operation, payload = {}) {
+    this.rpcRecords.push({ type: 'tool_call', tool_name: 'swarmenv_call' });
+    const response = await fetch(`${this.adapter.env.SWARMENV_BRIDGE_URL}/call`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${this.adapter.env.SWARMENV_BRIDGE_TOKEN}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ operation, payload }),
+    });
+    const body = await response.json();
+    this.rpcRecords.push({ type: 'tool_result', tool_name: 'swarmenv_call' });
+    if (!body.ok) {
+      const error = new Error(body.error?.message ?? `${operation} failed`);
+      error.code = body.error?.code;
+      throw error;
+    }
+    return body.result;
+  }
+
+  async claimAvailableTask() {
+    const tasks = await this.call('list_tasks', { limit: 100 });
+    const task = tasks.find((candidate) => candidate.parent_id !== null) ?? tasks.find((candidate) => candidate.parent_id === null);
+    if (!task) return false;
+    try {
+      await this.call('claim', {
+        task_id: task.task_id,
+        claim_key: `dynamic-claim-${this.options.executionId}-${this.adapter.claimSequence++}`,
+        workspace_mode: 'resume',
+      });
+      return true;
+    } catch (error) {
+      if (error.code === 'CONFLICT' || error.code === 'STALE_VERSION') return false;
+      throw error;
+    }
+  }
+
+  async workClaimedTask(task) {
+    const workspace = await this.call('get_workspace', {});
+    let revision = workspace.workspace.workspace_revision;
+    await this.call('read_workspace_file', { path: 'README.md' });
+    const first = await this.call('write_workspace_file', {
+      path: `notes/${task.task_id}.md`,
+      content: `The worker inspected the locked input and recorded the route for ${task.task_id}.\n`,
+      expected_revision: revision,
+    });
+    revision = first.workspace.workspace_revision;
+    await this.call('write_workspace_file', {
+      path: `analysis/${task.task_id}.md`,
+      content: `The worker compared intermediate cases and documented follow-up context for ${task.task_id}.\n`,
+      expected_revision: revision,
+    });
+    const material = await this.call('publish_material', {
+      kind: task.task_type === 'research' ? 'fact' : 'artifact',
+      scope: 'proof_relevant',
+      content: task.task_type === 'research'
+        ? { task_id: task.task_id, result: 'multi-step route and intermediate context' }
+        : `def ${task.task_id.replaceAll('-', '_')} : Nat := 0`,
+    });
+    if (task.task_type === 'research') {
+      await this.call('request_wait', {
+        wait_condition: { type: 'parent_review' },
+        checkpoint: { phase: 'research-delivered', task_id: task.task_id },
+      });
+    } else {
+      await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
+    }
+  }
+
+  async prompt() {
+    if (this.adapter.state.rootFinished) return { data: { disposition: 'handled' } };
+    if (!this.bound) {
+      await this.call('list_services', {});
+      await this.call('list_tools', {});
+      await this.claimAvailableTask();
+      return { data: { disposition: 'handled' } };
+    }
+
+    const task = await this.call('get_task', {});
+    if (task.parent_id !== null) {
+      await this.workClaimedTask(task);
+      return { data: { disposition: 'handled' } };
+    }
+
+    await this.call('read_workspace_file', { path: 'README.md' });
+    if (!this.adapter.state.rootCreated) {
+      this.adapter.state.rootCreated = true;
+      for (let index = 0; index < 8; index += 1) {
+        const taskType = index < 4 ? 'research' : 'proof';
+        const childTaskId = `dynamic-child-${index}`;
+        this.adapter.state.childTaskIds.push(childTaskId);
+        await this.call('create_child_task', {
+          task_id: childTaskId,
+          child_creation_key: childTaskId,
+          task_type: taskType,
+          goal: `Perform the multi-step ${taskType} route for ${childTaskId}`,
+          expected_output: taskType === 'research' ? 'A research result with intermediate context' : 'A checked proof artifact',
+          acceptance_conditions: { scenario_task: childTaskId },
+          task_instructions: 'Inspect the locked Workspace, compare intermediate cases, record the route, and publish the result for parent review.',
+          completion_contract: taskType === 'proof' ? {
+            required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
+            required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: config.environment_ref },
+          } : undefined,
+        });
+      }
+      await this.call('request_wait', {
+        wait_condition: { type: 'children_all_terminal', child_task_ids: this.adapter.state.childTaskIds },
+        checkpoint: { phase: 'awaiting-all-dynamic-children' },
+      });
+      return { data: { disposition: 'handled' } };
+    }
+
+    await this.call('read_materials', {});
+    const tasks = await this.call('list_tasks', {
+      available_only: false,
+      states: ['OPEN', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
+      limit: 100,
+    });
+    if (!this.adapter.state.reworkRequested) {
+      const research = tasks.find((candidate) => candidate.task_type === 'research' && candidate.state === 'WAITING');
+      if (research) {
+        await this.call('request_rework', {
+          target_task_id: research.task_id,
+          instruction: 'Compare the intermediate cases again and publish the missing context.',
+        });
+        this.adapter.state.reworkRequested = true;
+        await this.call('request_wait', {
+          wait_condition: { type: 'children_all_terminal', child_task_ids: this.adapter.state.childTaskIds },
+          checkpoint: { phase: 'awaiting-reworked-child' },
+        });
+        return { data: { disposition: 'handled' } };
+      }
+    }
+    for (const research of tasks.filter((candidate) => candidate.task_type === 'research' && candidate.state === 'WAITING')) {
+      await this.call('accept_task', { target_task_id: research.task_id, target_state_version: research.state_version });
+    }
+    const material = await this.call('publish_material', {
+      kind: 'artifact',
+      scope: 'proof_relevant',
+      content: 'def dynamicRootArtifact : Nat := 0',
+    });
+    await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
+    this.adapter.state.rootFinished = true;
+    return { data: { disposition: 'handled' } };
+  }
+
+  stop() {
+    if (this.closed) return;
+    this.closed = true;
+    queueMicrotask(() => this.emit('close', { code: 0, signal: 'SIGTERM' }));
+  }
+}
+
+class DynamicCollaborationAdapter {
+  constructor({ env, state }) {
+    this.env = env;
+    this.starts = [];
+    this.claimSequence = 0;
+    this.state = state;
+  }
+
+  async start(options = {}) {
+    this.starts.push(options);
+    const session = new DynamicCollaborationSession(this, options);
+    session.manifest = { fake: true, pi_version: 'dynamic-collaboration' };
+    return session;
+  }
+}
+
 async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, onAdapter = null, checker = null, observationStore = null }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
@@ -432,7 +615,11 @@ test('benchmark project starts four isolated cores and redacts candidate content
     assert.equal(typeof report.parallelism.decomposition_available, 'boolean');
     assert.ok(report.parallelism.decomposition_evidence.scheduler_status_count >= 0);
     assert.ok(Array.isArray(report.run.lifecycle_events));
-    assert.ok(report.parallelism.work_units.every((unit) => Object.hasOwn(unit, 'duplicate_of')));
+    assert.ok(report.parallelism.work_units.every((unit) => !Object.hasOwn(unit, 'duplicate_of')));
+    assert.ok(report.parallelism.work_units.every((unit) => !Object.hasOwn(unit, 'goal_fingerprint')));
+    assert.ok(report.parallelism.work_units.every((unit) => !Object.hasOwn(unit, 'output_fingerprint')));
+    assert.equal(typeof report.parallelism.eligible_window_ms, 'number');
+    assert.ok(Object.hasOwn(report.parallelism, 'eligible_mean_active_core_count'));
     assert.ok(report.project.task_tree.length >= 2);
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'proof' && task.parent_id === null));
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'research'));
@@ -568,10 +755,11 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.equal(report.parallelism.claim_conflict_count, 0);
     assert.ok(report.parallelism.max_active_core_count >= 3);
     assert.ok(report.parallelism.work_units.some((unit) => unit.progress_kind === 'child_task'));
-    assert.ok(report.parallelism.work_units.some((unit) => unit.progress_kind === 'parent_review'));
+    assert.ok(report.run.accept_count + report.run.rework_count > 0);
     assert.equal(report.parallelism.decomposition_available, true);
     assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'request_wait' && event.dependency_ids.length > 0));
     assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'wake_execution'));
+    assert.ok(report.cores.some((core) => core.material_reads.some((read) => read.source_task_ids.includes('collab-research'))));
     assert.equal(report.project.task_tree.filter((task) => task.parent_id !== null).length, 3);
     assert.ok(report.run.claim_count >= 4, `expected root and three child claims, got ${report.run.claim_count}`);
     assert.ok(report.run.child_claim_count >= 3, `expected every child to be claimed, got ${report.run.child_claim_count}`);
@@ -588,6 +776,49 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.ok(report.project.task_tree.some((task) => task.task_id === 'collab-research' && task.state === 'SATISFIED'));
     assert.ok(report.run.candidate_check_count >= 3, 'two child candidates and one root candidate should be checked');
     assert.equal(report.audit.invalid, false);
+    assert.ok(adapters.every((adapter) => adapter.starts.length >= 2));
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('production queue dynamically reuses Cores across two waves and releases parent waits', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-dynamic-collaboration-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-dynamic-collaboration-report-');
+  try {
+    const adapters = [];
+    const state = { rootCreated: false, rootFinished: false, reworkRequested: false, childTaskIds: [] };
+    const report = await runBenchmarkProject(problem('putnam_dynamic_collaboration_test'), config, {
+      experimentDir,
+      reportDir,
+      timeboxMs: 15_000,
+      pollMs: 5_000,
+      turnTimeoutMs: 1_000,
+      turnIntervalMs: 10_000,
+      stopOnSolved: true,
+      agentAdapterFactory: ({ env }) => {
+        const adapter = new DynamicCollaborationAdapter({ env, state });
+        adapters.push(adapter);
+        return adapter;
+      },
+      checker: { async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+    });
+    const childTasks = report.project.task_tree.filter((task) => task.parent_id !== null);
+    const childTaskIds = new Set(childTasks.map((task) => task.task_id));
+    const childClaims = report.cores.flatMap((core) => core.claims.filter((claim) => childTaskIds.has(claim.task_id)));
+    const coreTaskSets = report.cores.map((core) => new Set(core.claims.filter((claim) => childTaskIds.has(claim.task_id)).map((claim) => claim.task_id)));
+    assert.equal(report.run.protocol_valid, true);
+    assert.equal(report.run.solved, true);
+    assert.equal(childTasks.length, 8);
+    assert.ok(childClaims.length >= 8, `expected all children to be claimed, got ${childClaims.length}`);
+    assert.ok(coreTaskSets.some((tasks) => tasks.size >= 2), 'a Core must claim different Tasks across waves');
+    assert.ok(report.run.rework_count >= 1);
+    assert.ok(report.run.accept_count >= 4);
+    assert.ok(report.run.wake_count >= 2);
+    assert.ok(report.parallelism.eligible_window_ms > 0);
+    assert.ok(report.cores.some((core) => core.material_reads.some((read) =>
+      childTaskIds.size === new Set([...childTaskIds].filter((taskId) => read.source_task_ids.includes(taskId))).size)));
     assert.ok(adapters.every((adapter) => adapter.starts.length >= 2));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
