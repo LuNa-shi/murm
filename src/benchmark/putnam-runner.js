@@ -1048,6 +1048,10 @@ async function createProjectState(problem, config, options) {
     taskId: root.task_id,
     payload: { problem_id: problem.id, core_count: 4, timebox_ms: options.timeboxMs ?? 60 * 60_000 },
   });
+  // Deterministic queue scenarios may seed durable Tasks before reusable Core
+  // sessions start. The hook uses the same Task Service boundary as Agent
+  // operations; it does not replace queue claim, Runtime, or dispatch logic.
+  await options.prepareProject?.({ owner, root, taskService, contextService, router, fixture, problem });
   const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt });
   const discoveryGate = serialGate();
   const cores = [];

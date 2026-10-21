@@ -455,6 +455,17 @@ class DynamicCollaborationSession extends EventEmitter {
 
   async prompt() {
     if (this.adapter.state.rootFinished) return { data: { disposition: 'handled' } };
+    if (this.adapter.state.queueOnly) {
+      if (!this.bound) {
+        await this.call('list_services', {});
+        await this.call('list_tools', {});
+        await this.claimAvailableTask();
+        return { data: { disposition: 'handled' } };
+      }
+      const task = await this.call('get_task', {});
+      await this.workClaimedTask(task);
+      return { data: { disposition: 'handled' } };
+    }
     if (!this.bound) {
       await this.call('list_services', {});
       await this.call('list_tools', {});
@@ -470,6 +481,8 @@ class DynamicCollaborationSession extends EventEmitter {
 
     await this.call('read_workspace_file', { path: 'README.md' });
     if (!this.adapter.state.rootCreated) {
+      const initialTasks = await this.call('list_tasks', { available_only: false, limit: 100 });
+      this.adapter.state.initialTaskCount = initialTasks.length;
       this.adapter.state.rootCreated = true;
       for (let index = 0; index < 8; index += 1) {
         const taskType = index < 4 ? 'research' : 'proof';
@@ -788,7 +801,7 @@ test('production queue dynamically reuses Cores across two waves and releases pa
   const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-dynamic-collaboration-report-');
   try {
     const adapters = [];
-    const state = { rootCreated: false, rootFinished: false, reworkRequested: false, childTaskIds: [] };
+    const state = { rootCreated: false, rootFinished: false, reworkRequested: false, childTaskIds: [], initialTaskCount: null };
     const report = await runBenchmarkProject(problem('putnam_dynamic_collaboration_test'), config, {
       experimentDir,
       reportDir,
@@ -810,6 +823,7 @@ test('production queue dynamically reuses Cores across two waves and releases pa
     const coreTaskSets = report.cores.map((core) => new Set(core.claims.filter((claim) => childTaskIds.has(claim.task_id)).map((claim) => claim.task_id)));
     assert.equal(report.run.protocol_valid, true);
     assert.equal(report.run.solved, true);
+    assert.equal(state.initialTaskCount, 1, 'Gate A must start with only the Root Task');
     assert.equal(childTasks.length, 8);
     assert.ok(childClaims.length >= 8, `expected all children to be claimed, got ${childClaims.length}`);
     assert.ok(coreTaskSets.some((tasks) => tasks.size >= 2), 'a Core must claim different Tasks across waves');
@@ -819,6 +833,85 @@ test('production queue dynamically reuses Cores across two waves and releases pa
     assert.ok(report.parallelism.eligible_window_ms > 0);
     assert.ok(report.cores.some((core) => core.material_reads.some((read) =>
       childTaskIds.size === new Set([...childTaskIds].filter((taskId) => read.source_task_ids.includes(taskId))).size)));
+    assert.ok(adapters.every((adapter) => adapter.starts.length >= 2));
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('production queue consumes pre-existing independent Tasks without Root synthesis', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-queue-consumption-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-queue-consumption-report-');
+  const state = { queueOnly: true, rootCreated: false, rootFinished: false, reworkRequested: false, childTaskIds: [] };
+  try {
+    const adapters = [];
+    const report = await runBenchmarkProject(problem('putnam_queue_consumption_test'), config, {
+      experimentDir,
+      reportDir,
+      timeboxMs: 2_000,
+      pollMs: 5_000,
+      turnTimeoutMs: 1_000,
+      turnIntervalMs: 10_000,
+      stopOnSolved: true,
+      prepareProject: ({ owner, root, taskService }) => {
+        const rootClaim = owner.claim({ claim_key: 'gate-b-root-setup-claim', workspace_mode: 'clean' }, {
+          operationId: 'gate-b-root-setup-claim',
+          taskId: root.task_id,
+          specVersion: root.spec_version,
+          stateVersion: root.state_version,
+        });
+        const parent = owner.withContext({
+          taskId: root.task_id,
+          executionId: rootClaim.execution.execution_id,
+          specVersion: rootClaim.execution.spec_version,
+          fencingVersion: rootClaim.execution.fencing_version,
+        });
+        const checks = { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: config.environment_ref };
+        for (let index = 0; index < 8; index += 1) {
+          const currentRoot = taskService.getTask(root.task_id);
+          parent.createChildTask({
+            task_id: `queue-child-${index}`,
+            child_creation_key: `queue-child-${index}`,
+            task_type: 'proof',
+            goal: `Complete the independent queue route ${index}`,
+            expected_output: 'A checked proof artifact from a multi-step Workspace route',
+            acceptance_conditions: { queue_route: index },
+            task_instructions: 'Inspect the Workspace, compare intermediate cases, record the route in two files, publish the artifact, and submit it for checking.',
+            completion_contract: {
+              required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
+              required_check: checks,
+            },
+          }, {
+            operationId: `gate-b-create-${index}`,
+            stateVersion: currentRoot.state_version,
+          });
+          state.childTaskIds.push(`queue-child-${index}`);
+        }
+      },
+      agentAdapterFactory: ({ env }) => {
+        const adapter = new DynamicCollaborationAdapter({ env, state });
+        adapters.push(adapter);
+        return adapter;
+      },
+      checker: { async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+    });
+    const rootTask = report.project.task_tree.find((task) => task.parent_id === null);
+    const childTasks = report.project.task_tree.filter((task) => task.parent_id !== null);
+    const childTaskIds = new Set(childTasks.map((task) => task.task_id));
+    const childClaims = report.cores.flatMap((core) => core.claims.filter((claim) => childTaskIds.has(claim.task_id)));
+    const coreTaskSets = report.cores.map((core) => new Set(core.claims.filter((claim) => childTaskIds.has(claim.task_id)).map((claim) => claim.task_id)));
+    assert.equal(report.run.protocol_valid, true);
+    assert.equal(report.run.solved, false);
+    assert.equal(report.run.root_claim_count, 0);
+    assert.equal(state.rootCreated, false, 'Gate B must not enter the Root synthesis path');
+    assert.equal(rootTask.state, 'RUNNING');
+    assert.equal(childTasks.length, 8);
+    assert.ok(childTasks.every((task) => task.state === 'SATISFIED'));
+    assert.equal(childClaims.length, 8);
+    assert.ok(coreTaskSets.some((tasks) => tasks.size >= 2), 'a Core must claim different pre-existing Tasks across waves');
+    assert.ok(report.run.candidate_check_count >= 8);
+    assert.ok(report.parallelism.eligible_window_ms > 0);
     assert.ok(adapters.every((adapter) => adapter.starts.length >= 2));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
