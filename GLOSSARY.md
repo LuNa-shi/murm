@@ -31,3 +31,31 @@ choosing work.
 
 **Lease** is the time-bounded ownership period of an Execution. Heartbeats
 extend it; expiry fences the old owner and makes the Task claimable again.
+
+**Experiment** is one complete observed run of one Root Task, identified by a
+run ID. It includes the Core slots, Agent Sessions, Executions, Tasks,
+Materials, Workspace revisions, and Service activity observed during that run.
+
+**Core lane** is the time-ordered view of one reusable Core slot. A Core slot
+can own several Agent Sessions and Executions over the life of an Experiment.
+
+**Agent Session** is one Pi process session started on a Core slot. A session
+may be an unbound worker that browses and claims a Task, or a session bound to
+one Execution after a claim succeeds.
+
+**Execution segment** is one continuous interval in which an Execution is
+assigned to a Core lane. The same Execution can have multiple segments when it
+waits, resumes, or moves to another Core slot.
+
+**Interaction** is one ordered exchange in an Agent Session, such as an Agent
+message, a Service tool call, a tool result, a lifecycle notification, or a
+process diagnostic.
+
+**Observation Event** is an immutable record of a fact emitted by a Runtime,
+Agent Session, Service, Judge, or Workspace operation. Observation Events
+support monitoring and diagnosis; they do not replace Task, Execution,
+Material, or Workspace truth.
+
+**Diagnostic Finding** is a typed conclusion about an Experiment or one of its
+parts, with a severity, evidence references, and a current status. Findings
+may be produced by a human or an Agent analysis pass.

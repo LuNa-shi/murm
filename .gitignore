@@ -5,3 +5,5 @@
 experiments/**/state/
 experiments/**/logs/
 experiments/**/workspaces/
+experiments/.observability/
+experiments/**/observability.sqlite

@@ -57,6 +57,13 @@ node scripts/run-putnambench-benchmark.mjs \
   --report-dir reports/putnambench-4core-YYYY-MM-DD-run
 ```
 
+Every `--experiment-dir` must be below `experiments/`. The runner starts or
+reuses the persistent observation server backed by
+`experiments/.observability/observability.sqlite`; it does not stop that
+server when the benchmark ends. To expose the UI to a workstation in the same
+Tailscale network, use `--observability-host 0.0.0.0` and advertise the server
+Tailscale address with `--observability-advertise-host`.
+
 Every experiment directory should contain, at minimum:
 
 - the repository commit used by the runner;
@@ -77,18 +84,7 @@ surface and never export those fields.
 
 The completed 12-problem baseline is recorded in
 [`experiments/putnambench-4core-2026-10-18-rerun`](../experiments/putnambench-4core-2026-10-18-rerun/).
-The historical final-code four-core acceptance run is recorded in
+The final-code four-core acceptance run is recorded in
 [`experiments/putnambench-4core-2026-10-18-pilot-real-v5`](../experiments/putnambench-4core-2026-10-18-pilot-real-v5/),
 with its sanitized report in
 [`reports/putnambench-4core-2026-10-18-pilot-real-v5`](../reports/putnambench-4core-2026-10-18-pilot-real-v5/).
-
-The latest Issue 28 controlled one-hour run is
-[`reports/issue-28-real-gpt-6.1-sol-v10-20261020`](../reports/issue-28-real-gpt-6.1-sol-v10-20261020/).
-It ran from clean SwarmEnv commit `85b928d5511fbd2c2376751a2a8580c54964d13a`
-with four Cores and timebox `3600000 ms`. The sanitized report is valid
-(`invalid=false`), records three Agent-created child Tasks, three child claims,
-four Runtime wake events, two accepted child reviews, and nine candidate
-checks. `agent_time_utilization_v0` was `0.1153`; this is diagnostic only for
-this run because the selected Agent route supplied limited simultaneous work.
-The report independently recomputes `agent_time_ms` from
-`agent_turn_intervals` and records the repository commit and clean state.

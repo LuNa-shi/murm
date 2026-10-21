@@ -3,6 +3,7 @@ import { access, mkdtemp, rm } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import { runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport } from '../src/benchmark/putnam-runner.js';
+import { ObservationStore } from '../src/observability/observation-store.js';
 
 const source = 'import Mathlib\ntheorem benchmark : True := by\n  sorry\n';
 const config = {
@@ -369,7 +370,7 @@ class CollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, onAdapter = null, checker = null }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, onAdapter = null, checker = null, observationStore = null }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -380,6 +381,7 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
+    observationStore,
     agentAdapterFactory: ({ env, index }) => {
       const adapter = new FakeAdapter({ env, cheat, noWork: noWork || (invalidClaim && index !== 1), fileCandidate, invalidClaim: invalidClaim && index === 1 });
       onAdapter?.(adapter);
@@ -392,6 +394,27 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     },
   });
 }
+
+test('benchmark runtime publishes live core, execution, service, and completion observations', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-observed-benchmark-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-observed-benchmark-report-');
+  const observationStore = new ObservationStore(':memory:');
+  try {
+    const report = await runFixture({ reportDir, experimentDir, observationStore });
+    const experiment = observationStore.getExperiment(report.project.run_id);
+    const events = observationStore.listEvents({ experimentId: report.project.run_id, limit: 1_000 }).events;
+    assert.equal(experiment.status, 'SUCCEEDED');
+    assert.ok(events.some((event) => event.kind === 'experiment_started'));
+    assert.ok(events.some((event) => event.kind === 'execution_assigned' && event.execution_id));
+    assert.ok(events.some((event) => event.kind === 'workspace_revision_saved'));
+    assert.ok(events.some((event) => event.source === 'task-service' && event.kind === 'dispatch.start'));
+    assert.ok(events.some((event) => event.kind === 'experiment_finished'));
+  } finally {
+    observationStore.close();
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
 
 test('benchmark project starts four isolated cores and redacts candidate content', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-experiment-');
