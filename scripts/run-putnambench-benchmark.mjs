@@ -1,9 +1,28 @@
 #!/usr/bin/env node
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { loadBenchmarkConfig, runBenchmarkBatch, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
+
+async function loadDotEnv(path = '.env') {
+  try {
+    const content = await readFile(path, 'utf8');
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const separator = trimmed.indexOf('=');
+      if (separator < 1) continue;
+      const key = trimmed.slice(0, separator).trim();
+      const value = trimmed.slice(separator + 1).trim().replace(/^['"]|['"]$/g, '');
+      if (process.env[key] === undefined) process.env[key] = value;
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
+
+await loadDotEnv();
 
 function optionsFromArgs(argv) {
   const runId = Date.now();
@@ -75,8 +94,8 @@ if (!options.configPath || !options.putnamBenchRoot) throw new Error(usage() + '
 if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark protocol');
 if (!Number.isInteger(options.projectParallelism) || options.projectParallelism < 1) throw new Error('--project-parallelism must be a positive integer');
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
-if (!options.provider) throw new Error('NUROUTER_PI_PROVIDER is required; copy .env.example to .env and load it');
-if (!options.model) throw new Error('NUROUTER_PI_MODEL is required; copy .env.example to .env and load it');
+if (!options.provider) throw new Error('NUROUTER_PI_PROVIDER is required; set it in .env or the environment');
+if (!options.model) throw new Error('NUROUTER_PI_MODEL is required; set it in .env or the environment');
 
 await mkdir(resolve(options.experimentDir), { recursive: true });
 await mkdir(resolve(options.reportDir), { recursive: true });
@@ -92,6 +111,8 @@ if (problems.length === 0) throw new Error(`problem is not in the locked configu
 const execFileAsync = promisify(execFile);
 const repositoryCommit = (await execFileAsync('git', ['-C', process.cwd(), 'rev-parse', 'HEAD'], { encoding: 'utf8' })).stdout.trim();
 const repositoryStatus = (await execFileAsync('git', ['-C', process.cwd(), 'status', '--porcelain'], { encoding: 'utf8' })).stdout.trim();
+options.repositoryCommit = repositoryCommit;
+options.repositoryWorktreeDirty = repositoryStatus.length > 0;
 const metadataPath = resolve(options.experimentDir, 'metadata', 'experiment.json');
 const metadata = {
   schema_version: 1,
@@ -137,6 +158,8 @@ const aggregate = {
     timebox_ms: options.timeboxMs,
     experiment_dir: resolve(options.experimentDir),
     report_dir: resolve(options.reportDir),
+    repository_commit: repositoryCommit,
+    repository_worktree_dirty: repositoryStatus.length > 0,
     raw_transcript_exported: false,
     proof_contents_exported: false,
   },
@@ -147,6 +170,13 @@ const aggregate = {
     candidate_count: report.run?.candidate_count ?? null,
     invalid: report.audit?.invalid ?? true,
     invalid_reasons: report.audit?.invalid_reasons ?? [],
+    repository_commit: report.protocol?.repository_commit ?? null,
+    repository_worktree_dirty: report.protocol?.repository_worktree_dirty ?? null,
+    agent_time_utilization_v0: report.parallelism?.agent_time_utilization_v0 ?? null,
+    ready_work_ms: report.parallelism?.ready_work_ms ?? null,
+    ready_unassigned_ms: report.parallelism?.ready_unassigned_ms ?? null,
+    child_task_count: report.run?.progress_evidence?.child_task_count ?? null,
+    child_claim_count: report.run?.child_claim_count ?? null,
   })),
 };
 const aggregatePath = resolve(options.reportDir, 'aggregate-report.json');

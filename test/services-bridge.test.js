@@ -179,7 +179,7 @@ test('ServicesBridge routes Judge feedback through the named Judge Service tool'
   }
 });
 
-test('ServicesBridge accepts the named execution_wait snake_case payload and releases the binding', async () => {
+test('ServicesBridge rejects candidate-result waits because candidate checking is synchronous', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);
   const taskService = new TaskService(database, { contextService });
@@ -207,12 +207,11 @@ test('ServicesBridge accepts the named execution_wait snake_case payload and rel
       } }),
     });
     const body = await response.json();
-    assert.equal(response.status, 200);
-    assert.equal(body.result.executionId, 'bridge-execution-snake');
-    assert.equal(body.result.payload.waitCondition.type, 'check_result_arrived');
-    assert.equal(body.result.payload.waitCondition.check_request_key, 'candidate-for-judge-wait');
-    assert.equal(bridge.taskId, null);
-    assert.equal(bridge.executionId, null);
+    assert.equal(response.status, 400);
+    assert.equal(body.error.code, 'NOT_ALLOWED');
+    assert.match(body.error.message, /synchronous submit_candidate/);
+    assert.equal(bridge.taskId, task.task_id);
+    assert.equal(bridge.executionId, 'bridge-execution-snake');
   } finally {
     await bridge.stop();
     taskService.close();

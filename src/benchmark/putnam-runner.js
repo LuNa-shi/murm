@@ -14,10 +14,12 @@ import { WorkspaceManager } from '../runtime/workspace-manager.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
 import { ServicesRouter } from '../sdk/service-router.js';
 import { ServicesSDK } from '../sdk/services-sdk.js';
+import { listTools } from '../sdk/service-catalog.js';
 import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
-import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
+import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT } from '../agent/agent-prompt.js';
+import { CoreParallelismTracker } from './parallelism.js';
 
 const execFileAsync = (command, args) => new Promise((resolvePromise, reject) => {
   execFile(command, args, { encoding: 'utf8' }, (error, stdout) => {
@@ -30,6 +32,42 @@ const FORBIDDEN_PLACEHOLDER = /\b(?:sorry|admit|axiom)\b/i;
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function waitDependencyIds(condition) {
+  if (!condition || typeof condition !== 'object') return [];
+  if (condition.type === 'child_task_terminal') {
+    return [condition.child_task_id ?? condition.task_id].filter(Boolean);
+  }
+  if (condition.type === 'children_all_terminal') {
+    return Array.isArray(condition.child_task_ids) ? [...condition.child_task_ids] : [];
+  }
+  if (condition.type === 'parent_review') {
+    return condition.parent_task_id ? [condition.parent_task_id] : [];
+  }
+  if (condition.type === 'check_result_arrived') {
+    return [condition.check_request_key ?? condition.request_key ?? condition.candidate_material_id].filter(Boolean);
+  }
+  return [];
+}
+
+function lifecycleEvents(taskService) {
+  const rows = taskService.db.prepare("SELECT operation_id, operation, result_json, created_at FROM operations WHERE operation IN ('request_wait', 'wake_execution', 'resume_execution') ORDER BY created_at, operation_id").all();
+  return rows.map((row) => {
+    let result = null;
+    try { result = JSON.parse(row.result_json); } catch { /* sanitized event remains available without result details */ }
+    const execution = result?.execution ?? null;
+    const condition = execution?.wait_condition ?? null;
+    return {
+      operation_id: row.operation_id,
+      operation: row.operation,
+      created_at: row.created_at,
+      task_id: execution?.task_id ?? null,
+      execution_id: execution?.execution_id ?? null,
+      wait_condition_type: condition?.type ?? null,
+      dependency_ids: waitDependencyIds(condition),
+    };
+  });
 }
 
 function inputSnapshotHash(task, inputMaterialRefs) {
@@ -145,7 +183,12 @@ function collectToolEvents(core, records) {
 
 export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
   buildLaunchArgs(options) {
-    return restrictedArgs(super.buildLaunchArgs(options));
+    const args = restrictedArgs(super.buildLaunchArgs(options));
+    // NuRouter/Pi versions have differed in how --no-builtin-tools is
+    // forwarded. An explicit allowlist makes the benchmark boundary
+    // deterministic: only named SwarmEnv extension tools are enabled.
+    args.push('--tools', listTools().map((tool) => `swarmenv_${tool.name}`).join(','));
+    return args;
   }
 }
 
@@ -192,7 +235,20 @@ async function runTurn(core, prompt, timeoutMs) {
   if (core.turnInFlight) return;
   core.turnInFlight = true;
   const session = core.session;
+  const countsAsAgentTurn = Boolean(core.taskId && core.executionId);
+  if (countsAsAgentTurn) {
+    core.parallelism.beginAgentTurn(core.index, {
+      task_id: core.taskId,
+      execution_id: core.executionId,
+      reason: 'follow_up_turn',
+    }, core.turnStartedAt || Date.now());
+    core.agentTurnSession = session;
+  }
   if (!session) {
+    if (countsAsAgentTurn && core.agentTurnSession === session) {
+      core.parallelism.endAgentTurn(core.index, Date.now(), 'missing_session');
+      core.agentTurnSession = null;
+    }
     core.turnInFlight = false;
     return;
   }
@@ -206,6 +262,7 @@ async function runTurn(core, prompt, timeoutMs) {
     core.turns += 1;
     core.lastTurn = { status: 'settled', elapsed_ms: Date.now() - core.turnStartedAt };
     core.turnDurationsMs.push(core.lastTurn.elapsed_ms);
+    core.parallelism.recordTurnTime(core.lastTurn.elapsed_ms);
   } catch (error) {
     core.turns += 1;
     if (!core.stopping) {
@@ -224,17 +281,48 @@ async function runTurn(core, prompt, timeoutMs) {
       class: safeDiagnostic(error.message) ?? 'agent_turn_error',
     };
     core.turnDurationsMs.push(Date.now() - core.turnStartedAt);
+    core.parallelism.recordTurnTime(core.turnDurationsMs.at(-1));
   } finally {
     collectToolEvents(core, session.rpcRecords.slice(sequence));
-    core.turnInFlight = false;
-    core.nextTurnAt = Date.now() + core.turnIntervalMs;
+    if (countsAsAgentTurn && core.agentTurnSession === session) {
+      core.parallelism.endAgentTurn(core.index, Date.now());
+      core.agentTurnSession = null;
+    }
+    // A discovery turn can synchronously claim a Task and hand off to a new
+    // bound session. Do not let the discovery transport's finally block clear
+    // the bound session's in-flight flag or start an overlapping follow-up.
+    const handedOff = core.session !== session && Boolean(core.taskId && core.executionId);
+    if (!handedOff) {
+      core.turnInFlight = false;
+      core.nextTurnAt = Date.now() + core.turnIntervalMs;
+    }
+    if (!core.taskId) core.dispatchReserved = false;
   }
 }
 
 function scheduleTurn(core, prompt, timeoutMs) {
-  if (core.turnInFlight || Date.now() < core.nextTurnAt) return;
+  if (core.turnInFlight || Date.now() < core.nextTurnAt) return false;
   core.turnStartedAt = Date.now();
   core.turnPromise = runTurn(core, prompt, timeoutMs);
+  return true;
+}
+
+function serialGate() {
+  let tail = Promise.resolve();
+  return {
+    async acquire() {
+      const previous = tail;
+      let release;
+      tail = new Promise((resolve) => { release = resolve; });
+      await previous;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        release();
+      };
+    },
+  };
 }
 
 async function startAgentSession(core) {
@@ -253,7 +341,17 @@ async function startAgentSession(core) {
   const initialSequence = session.rpcRecords.length;
   core.turnInFlight = true;
   core.turnStartedAt = Date.now();
-  const initialResponse = await session.prompt(GENERIC_AGENT_PROMPT, { timeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000 });
+  const initialPrompt = core.unboundSessionCount === 0 ? GENERIC_AGENT_PROMPT : IDLE_AGENT_PROMPT;
+  core.unboundSessionCount += 1;
+  const releaseDiscovery = await core.discoveryGate.acquire();
+  core.discoveryRelease = releaseDiscovery;
+  let initialResponse;
+  try {
+    initialResponse = await session.prompt(initialPrompt, { timeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000 });
+  } finally {
+    core.discoveryRelease?.();
+    core.discoveryRelease = null;
+  }
   core.initialTurnPromise = (async () => {
     try {
       if (initialResponse?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
@@ -268,7 +366,10 @@ async function startAgentSession(core) {
     } finally {
       collectToolEvents(core, session.rpcRecords.slice(initialSequence));
       core.turns += 1;
-      core.turnDurationsMs.push(core.lastTurn.elapsed_ms ?? Date.now() - core.turnStartedAt);
+      const turnDuration = core.lastTurn.elapsed_ms ?? Date.now() - core.turnStartedAt;
+      core.turnDurationsMs.push(turnDuration);
+      core.parallelism.recordTurnTime(turnDuration);
+      if (!core.taskId) core.dispatchReserved = false;
       if (core.session === session) {
         core.turnInFlight = false;
         core.nextTurnAt = Date.now();
@@ -279,6 +380,7 @@ async function startAgentSession(core) {
 }
 
 async function ensureAgentSession(core) {
+  if (core.waitingExecutionId) return;
   if (core.releasedSession) {
     if (!core.releasedSession.closed) return;
     core.releasedSession = null;
@@ -292,10 +394,87 @@ async function ensureAgentSession(core) {
   }
 }
 
+async function wakeWaitingCore(state, core, waitingExecution) {
+  if (core.waitingExecutionId && core.waitingExecutionId !== waitingExecution.execution_id) return false;
+  if (core.taskId) return false;
+  // request_wait stops Runtime's active process before the Agent transport
+  // necessarily settles its outer prompt. If no process remains, the waiting
+  // slot is physically free and must not be stranded behind a stale
+  // turnInFlight flag.
+  if (core.turnInFlight && core.runtime.activeProcesses.has(waitingExecution.execution_id)) return false;
+  if (core.turnInFlight) {
+    core.parallelism.endAgentTurn(core.index, Date.now(), 'wait_handoff_complete');
+    core.agentTurnSession = null;
+    core.turnInFlight = false;
+  }
+  core.releasedSession?.stop?.();
+  core.releasedSession = null;
+  const resumed = await core.runtime.wakeExecution(waitingExecution.execution_id, {
+    wakeKey: waitingExecution.resume_token,
+    beforePrompt: async ({ execution, session }) => {
+      core.waitingExecutionId = null;
+      core.taskId = execution.task_id;
+      core.executionId = execution.execution_id;
+      core.claim = { task: state.taskService.getTask(execution.task_id), execution };
+      core.bridge.taskId = core.taskId;
+      core.bridge.executionId = core.executionId;
+      core.session = session;
+      core.sessionHistory.push(session);
+      core.versionManifest = session.manifest ?? core.versionManifest;
+      core.turnInFlight = true;
+      core.turnStartedAt = Date.now();
+      core.parallelism.transition(core.index, 'RUNNING', {
+        task_id: core.taskId,
+        execution_id: core.executionId,
+        reason: 'execution_woken',
+      });
+      core.parallelism.beginAgentTurn(core.index, {
+        task_id: core.taskId,
+        execution_id: core.executionId,
+        reason: 'resumed_turn',
+      });
+      core.agentTurnSession = session;
+    },
+  });
+  core.nextTurnAt = Date.now();
+  void (async () => {
+    try {
+      await resumed.session.waitForSettled({
+        timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000),
+      });
+    } catch (error) {
+      const expectedHandoff = resumed.session.expectedStop || core.session !== resumed.session || core.stopping;
+      if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
+    } finally {
+      collectToolEvents(core, resumed.session.rpcRecords ?? []);
+      if (core.agentTurnSession === resumed.session) {
+        core.parallelism.endAgentTurn(core.index, Date.now());
+        core.agentTurnSession = null;
+      }
+      if (core.session === resumed.session) {
+        core.turns += 1;
+        core.turnInFlight = false;
+        core.nextTurnAt = Date.now();
+      }
+    }
+  })();
+  core.claimHistory.push({
+    task_id: resumed.execution.task_id,
+    execution_id: resumed.execution.execution_id,
+    workspace_revision_start: resumed.workspace.workspace_revision,
+  });
+  return true;
+}
+
 async function releaseTerminalExecution(core) {
   if (!core.executionId) return;
   const execution = core.runtime.taskService.getExecution(core.executionId);
   if (!execution || !['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(execution.state)) return;
+  core.parallelism.transition(core.index, 'IDLE', {
+    task_id: execution.task_id,
+    execution_id: execution.execution_id,
+    reason: `terminal:${execution.state.toLowerCase()}`,
+  });
   const active = core.runtime.activeProcesses.get(core.executionId);
   if (active) {
     active.session.stop();
@@ -393,12 +572,12 @@ async function publishFeedback(state, core, material, result, { taskId = core.ta
   }));
 }
 
-async function judgeCandidate(state, core) {
+async function judgeCandidate(state, core, candidateMaterialId = null) {
   const pending = [...core.claimHistory].reverse().map((claim) => ({
     taskId: claim.task_id,
     executionId: claim.execution_id,
     execution: state.taskService.getExecution(claim.execution_id),
-  })).find(({ execution }) => execution && ['CREATED', 'RUNNING', 'WAITING'].includes(execution.state) && execution.candidate_material_id && !core.checked.has(execution.candidate_material_id));
+  })).find(({ execution }) => execution && ['CREATED', 'RUNNING', 'WAITING'].includes(execution.state) && execution.candidate_material_id && (!candidateMaterialId || execution.candidate_material_id === candidateMaterialId) && !core.checked.has(execution.candidate_material_id));
   if (!pending) return;
   const task = state.taskService.getTask(pending.taskId);
   const execution = pending.execution;
@@ -442,6 +621,7 @@ async function judgeCandidate(state, core) {
     operationId: `benchmark:judge:${state.runId}:${core.index}:${candidateId}`,
     actorRef: 'judge:lean',
   });
+  state.cores[core.index - 1].parallelism.recordJudgeTime(Date.now() - checkStartedAt);
   const fresh = state.taskService.getExecution(pending.executionId);
   const applied = executionContext(state.router, fresh, 'judge:controller').applyCheckResult({
     check_result_id: result.check_result_id,
@@ -452,15 +632,32 @@ async function judgeCandidate(state, core) {
   // for a later retry. Mark it only after the CheckResult is applied.
   core.checked.add(candidateId);
   core.checks.push({ ...sanitizedCheck(result, material), check_elapsed_ms: Date.now() - checkStartedAt });
+  core.parallelism.recordWorkUnit({
+    task_id: pending.taskId,
+    execution_id: pending.executionId,
+    core: core.index,
+    progress_kind: 'candidate_check',
+    input_snapshot_hash: execution.input_snapshot_hash,
+    goal_fingerprint: sha256(stableStringify({ goal: task.goal, expected_output: task.expected_output })),
+    output_fingerprint: material.content_hash,
+  });
   await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
   if (result.verdict === 'PASS' && applied.task.state === 'SATISFIED' && pending.taskId === state.rootTaskId) {
     state.solvedAt = Date.now();
     state.solvedBy = core.index;
   }
+  return { check_result: sanitizedCheck(result, material), applied };
 }
 
 async function stopCore(state, core) {
   core.stopping = true;
+  if (core.taskId && core.executionId) {
+    core.parallelism.transition(core.index, 'STOPPING', {
+      task_id: core.taskId,
+      execution_id: core.executionId,
+      reason: 'benchmark_cleanup',
+    });
+  }
   const execution = core.executionId ? state.taskService.getExecution(core.executionId) : null;
   const active = core.executionId ? core.runtime.activeProcesses.get(core.executionId) : null;
   if (active) {
@@ -491,10 +688,16 @@ async function stopCore(state, core) {
   if (current && ['CREATED', 'RUNNING'].includes(current.state)) {
     await core.runtime.stopExecution(core.executionId, 'FAILED').catch(() => undefined);
   }
+  if (core.parallelism) core.parallelism.transition(core.index, 'IDLE', {
+    task_id: current?.task_id ?? null,
+    execution_id: current?.execution_id ?? null,
+    reason: 'benchmark_cleanup_complete',
+  });
   await core.bridge.stop().catch(() => undefined);
 }
 
 function projectReport(state, startedAt, deadline) {
+  const endedAt = Date.now();
   for (const core of state.cores) {
     for (const session of core.sessionHistory) collectToolEvents(core, session.rpcRecords);
   }
@@ -566,6 +769,10 @@ function projectReport(state, startedAt, deadline) {
   const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     candidateBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
   const childTaskCount = taskTree.filter((task) => task.parent_id !== null).length;
+  const decompositionAvailable = childTaskCount > 0;
+  const lifecycle = lifecycleEvents(state.taskService);
+  const invalidWaitAttemptCount = cores.reduce((count, core) => count + (core.toolErrors ?? []).filter((error) =>
+    error.operation === 'request_wait' && ['INVALID_CONTRACT', 'NOT_ALLOWED', 'FENCED'].includes(error.code)).length, 0);
   const taskById = new Map(taskTree.map((task) => [task.task_id, task]));
   const childClaimCount = claimHistory.filter((claim) => taskById.get(claim.task_id)?.parent_id !== null).length;
   const rootClaimCount = claimHistory.filter((claim) => claim.task_id === state.rootTaskId).length;
@@ -576,11 +783,14 @@ function projectReport(state, startedAt, deadline) {
   const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
   const candidateCount = cores.reduce((count, core) => count + core.checks.length, 0);
   const madeProgress = childTaskCount > 0 || workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || candidateCount > 0;
+  const parallelism = state.parallelism.snapshot({ endedAt });
   const report = {
     schema_version: 1,
     protocol: {
       project_isolation: true,
       core_count: 4,
+      repository_commit: state.repositoryCommit,
+      repository_worktree_dirty: state.repositoryWorktreeDirty,
       input_policy: 'pinned formalization only; no candidate or solution input',
       tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
       cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
@@ -614,12 +824,24 @@ function projectReport(state, startedAt, deadline) {
         workspace_revision: execution.workspace_revision,
         candidate_material_id: execution.candidate_material_id,
         wait_condition_type: execution.wait_condition?.type ?? null,
+        wait_dependency_ids: waitDependencyIds(execution.wait_condition),
       }))),
+    },
+    parallelism: {
+      ...parallelism,
+      decomposition_available: decompositionAvailable,
+      decomposition_evidence: {
+        definition: 'true only when an independent child Task was actually created and recorded; false means no independent child work was observed in this run',
+        observed_child_task_count: childTaskCount,
+        scheduler_status_count: state.schedulerStatusCount,
+        ready_work_ms: parallelism.ready_work_ms,
+        ready_unassigned_ms: parallelism.ready_unassigned_ms,
+      },
     },
     run: {
       started_at: new Date(startedAt).toISOString(),
-      ended_at: new Date().toISOString(),
-      elapsed_ms: Date.now() - startedAt,
+      ended_at: new Date(endedAt).toISOString(),
+      elapsed_ms: endedAt - startedAt,
       deadline_ms: deadline - startedAt,
       protocol_valid: !invalid,
       made_progress: madeProgress,
@@ -645,6 +867,10 @@ function projectReport(state, startedAt, deadline) {
       candidate_check_count: cores.reduce((count, core) => count + core.checks.length, 0),
       tool_error_count: toolErrorCount,
       tool_protocol_error_count: toolProtocolErrorCount,
+      invalid_wait_attempt_count: invalidWaitAttemptCount,
+      scheduler_status_count: state.schedulerStatusCount,
+      decomposition_available: decompositionAvailable,
+      lifecycle_events: lifecycle,
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
       claimed_core_count: new Set(state.cores.filter((core) => core.claimHistory.length > 0).map((core) => core.index)).size,
       claim_count: claimHistory.length,
@@ -684,6 +910,7 @@ function projectReport(state, startedAt, deadline) {
 
 async function createProjectState(problem, config, options) {
   const runId = options.runId ?? randomUUID();
+  const startedAt = options.startedAt ?? Date.now();
   const experimentRoot = resolve(options.experimentDir ?? options.reportDir);
   const reportRoot = resolve(options.reportDir ?? join(experimentRoot, 'reports'));
   const projectDir = join(experimentRoot, 'state', 'projects', problem.id);
@@ -752,6 +979,8 @@ async function createProjectState(problem, config, options) {
     max_children: 32,
     max_depth: 3,
   }, { operationId: `benchmark:root:propose:${runId}` }).task;
+  const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt });
+  const discoveryGate = serialGate();
   const cores = [];
   try {
     for (let index = 1; index <= 4; index += 1) {
@@ -799,15 +1028,17 @@ async function createProjectState(problem, config, options) {
       bridge: null,
       session: null,
       releasedSession: null,
+      waitingExecutionId: null,
       sessionHistory: [],
       sessionNumber: 0,
       startConfig: { problem, logRoot, options },
       turnInFlight: false,
+      agentTurnSession: null,
       turnPromise: null,
       initialTurnPromise: null,
       turnStartedAt: 0,
       nextTurnAt: 0,
-      turnIntervalMs: options.turnIntervalMs ?? 15_000,
+      turnIntervalMs: options.turnIntervalMs ?? 1_000,
       turns: 0,
       toolEvents: [],
       workspaceWrites: [],
@@ -819,6 +1050,11 @@ async function createProjectState(problem, config, options) {
       stopping: false,
       turnDurationsMs: [],
       turnTimeoutCount: 0,
+      dispatchReserved: false,
+      unboundSessionCount: 0,
+      discoveryGate,
+      discoveryRelease: null,
+      parallelism,
       versionManifest: null,
     };
     const bridge = new ServicesBridge({
@@ -828,6 +1064,12 @@ async function createProjectState(problem, config, options) {
       router,
       actorRef: `agent:core-${index}`,
       onClaim: async (claim) => {
+        core.dispatchReserved = false;
+        core.parallelism.transition(core.index, 'ASSIGNED', {
+          task_id: claim.task.task_id,
+          execution_id: claim.execution.execution_id,
+          reason: 'claim_succeeded',
+        });
         core.taskId = claim.task.task_id;
         core.executionId = claim.execution.execution_id;
         core.claim = claim;
@@ -845,6 +1087,17 @@ async function createProjectState(problem, config, options) {
             core.session = session;
             core.sessionHistory.push(session);
             core.versionManifest = session.manifest ?? null;
+            core.parallelism.transition(core.index, 'RUNNING', {
+              task_id: execution.task_id,
+              execution_id: execution.execution_id,
+              reason: 'execution_started',
+            });
+            core.parallelism.beginAgentTurn(core.index, {
+              task_id: execution.task_id,
+              execution_id: execution.execution_id,
+              reason: 'initial_bound_turn',
+            });
+            core.agentTurnSession = session;
             return session;
           },
           agentPrompt: BOUND_AGENT_PROMPT,
@@ -860,6 +1113,10 @@ async function createProjectState(problem, config, options) {
               if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
             } finally {
               collectToolEvents(core, boundSession.rpcRecords ?? []);
+              if (core.agentTurnSession === boundSession) {
+                core.parallelism.endAgentTurn(core.index, Date.now());
+                core.agentTurnSession = null;
+              }
               if (core.session === boundSession) {
                 core.turns += 1;
                 core.turnInFlight = false;
@@ -882,14 +1139,61 @@ async function createProjectState(problem, config, options) {
         // model can issue another claim or a claimed-only call.
         if (workerSession !== core.session) workerSession.stop?.();
       },
+      onClaimAccepted: async () => {
+        core.discoveryRelease?.();
+        core.discoveryRelease = null;
+      },
+      onSubmitCandidate: async ({ payload }) => {
+        // Candidate checking is synchronous tool work. The current Execution
+        // remains RUNNING while Judge and apply_check_result complete; only a
+        // later explicit Task dependency can release this Core.
+        return (await judgeCandidate(core.stateRef, core, payload.candidate_material_id)) ?? {};
+      },
+      onSchedulerStatus: async (payload) => {
+        if (core.stateRef) core.stateRef.schedulerStatusCount += 1;
+        const cores = core.stateRef?.cores ?? [core];
+        const readyTasks = taskService.listTasks({
+          rootId: payload.root_id ?? core.stateRef?.rootTaskId ?? null,
+          states: ['OPEN', 'RUNNING'],
+          limit: payload.limit ?? 100,
+          availableOnly: true,
+        });
+        const activeCoreCount = cores.filter((candidate) => candidate.taskId || candidate.dispatchReserved || candidate.turnInFlight).length;
+        const waitingOwners = new Set(taskService.listActiveExecutions()
+          .filter((execution) => execution.state === 'WAITING')
+          .map((execution) => execution.owner_ref));
+        return {
+          core_count: cores.length,
+          active_core_count: activeCoreCount,
+          idle_core_count: Math.max(0, cores.length - activeCoreCount),
+          waiting_core_count: waitingOwners.size,
+          waiting_execution_count: taskService.listActiveExecutions().filter((execution) => execution.state === 'WAITING').length,
+          ready_task_count: readyTasks.length,
+          ready_task_ids: readyTasks.map((task) => task.task_id),
+          ready_tasks: readyTasks,
+          current_task_id: payload.task_id ?? core.taskId,
+          current_execution_id: payload.execution_id ?? core.executionId,
+          current_root_id: payload.root_id ?? core.stateRef?.rootTaskId ?? null,
+        };
+      },
       onRelease: async ({ taskId, executionId }) => {
+        const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
+        core.parallelism.transition(core.index, releasedExecution?.state === 'WAITING' ? 'WAITING' : 'IDLE', {
+          task_id: taskId,
+          execution_id: executionId,
+          reason: releasedExecution?.state === 'WAITING' ? releasedExecution.wait_condition?.type ?? 'request_wait' : releasedExecution?.state?.toLowerCase() ?? 'claim_released',
+        });
         if (core.taskId === taskId && core.executionId === executionId) {
           core.releasedSession = core.session;
+          core.waitingExecutionId = releasedExecution?.state === 'WAITING' ? executionId : null;
           core.taskId = null;
           core.executionId = null;
           core.claim = null;
           core.session = null;
-          core.turnInFlight = false;
+          // Keep the current turn marked in-flight until runTurn/wake's
+          // settlement finally block closes its Agent interval. Clearing this
+          // here lets the scheduler start a replacement session while the
+          // previous request_wait handoff is still unwinding.
         }
       },
       onWorkspaceWrite: async ({ taskId, executionId, result }) => {
@@ -902,6 +1206,79 @@ async function createProjectState(problem, config, options) {
           workspace_content_hash: result.workspace?.content_hash ?? null,
           changed_files: result.diff?.changed_files?.map((file) => ({ path: file.path, status: file.status })) ?? [],
         });
+        const execution = taskService.getExecution(executionId);
+        const task = taskService.getTask(taskId);
+        core.parallelism.recordWorkUnit({
+          task_id: taskId,
+          execution_id: executionId,
+          core: core.index,
+          progress_kind: 'workspace_revision',
+          input_snapshot_hash: execution?.input_snapshot_hash ?? null,
+          goal_fingerprint: task ? sha256(stableStringify({ goal: task.goal, expected_output: task.expected_output })) : null,
+          output_fingerprint: result.workspace?.content_hash ?? result.file?.content_hash ?? null,
+        });
+      },
+      onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
+        const execution = taskService.getExecution(executionId);
+        const task = taskService.getTask(taskId);
+        const inputSnapshotHash = execution?.input_snapshot_hash ?? null;
+        const goalFingerprint = task
+          ? sha256(stableStringify({ goal: task.goal, expected_output: task.expected_output }))
+          : null;
+        if (operation === 'create_child_task') {
+          const child = result?.task ?? result;
+          core.parallelism.recordWorkUnit({
+            task_id: child?.task_id ?? taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'child_task',
+            input_snapshot_hash: inputSnapshotHash,
+            goal_fingerprint: child ? sha256(stableStringify({ goal: child.goal, expected_output: child.expected_output })) : goalFingerprint,
+            output_fingerprint: child?.task_id ? sha256(stableStringify({ task_id: child.task_id, goal: child.goal, expected_output: child.expected_output })) : null,
+          });
+        } else if (operation === 'publish_material') {
+          const material = result?.material ?? result;
+          core.parallelism.recordWorkUnit({
+            task_id: taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'material',
+            input_snapshot_hash: inputSnapshotHash,
+            goal_fingerprint: goalFingerprint,
+            output_fingerprint: material?.content_hash ?? null,
+          });
+        } else if (operation === 'accept_task' || operation === 'request_rework') {
+          core.parallelism.recordWorkUnit({
+            task_id: payload?.target_task_id ?? taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'parent_review',
+            input_snapshot_hash: inputSnapshotHash,
+            goal_fingerprint: goalFingerprint,
+            output_fingerprint: sha256(stableStringify({ operation, target_task_id: payload?.target_task_id ?? null, task_state_version: result?.task?.state_version ?? result?.state_version ?? null })),
+          });
+        } else if (operation === 'submit_candidate') {
+          const material = contextService.getMaterial(payload?.candidate_material_id);
+          core.parallelism.recordWorkUnit({
+            task_id: taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'candidate_submission',
+            input_snapshot_hash: inputSnapshotHash,
+            goal_fingerprint: goalFingerprint,
+            output_fingerprint: material?.content_hash ?? null,
+          });
+        } else if (operation === 'request_wait') {
+          core.parallelism.recordWorkUnit({
+            task_id: taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'coordination',
+            input_snapshot_hash: inputSnapshotHash,
+            goal_fingerprint: goalFingerprint,
+            output_fingerprint: sha256(stableStringify({ wait_condition: payload?.wait_condition ?? payload?.waitCondition ?? null, checkpoint: payload?.checkpoint ?? null })),
+          });
+        }
       },
       onError: async ({ operation, error }) => {
         core.toolErrors.push({
@@ -914,6 +1291,7 @@ async function createProjectState(problem, config, options) {
           // claim commits; that scheduling contention is recoverable too.
           recoverable: error.code === 'INVALID_CONTRACT' || (error.code === 'CONFLICT' && operation === 'claim'),
         });
+        if (error.code === 'CONFLICT' && operation === 'claim') core.parallelism.recordClaimConflict();
       },
       logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),
     });
@@ -922,7 +1300,6 @@ async function createProjectState(problem, config, options) {
     }
     await Promise.all(cores.map(async (core) => {
       Object.assign(core.childEnv, await core.bridge.start());
-      await startAgentSession(core);
     }));
   } catch (error) {
     for (const core of cores.reverse()) {
@@ -959,20 +1336,33 @@ async function createProjectState(problem, config, options) {
     cleanupElapsedMs: null,
     heartbeatCount: 0,
     heartbeatErrorCount: 0,
+    schedulerStatusCount: 0,
     resourcesAtStart: resourceSnapshot(),
+    repositoryCommit: options.repositoryCommit ?? null,
+    repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
+    parallelism,
   };
 }
 
 export async function runBenchmarkProject(problem, config, options = {}) {
   const state = await createProjectState(problem, config, options);
+  for (const core of state.cores) core.stateRef = state;
   const startedAt = Date.now();
+  state.parallelism.start(startedAt);
   const durationMs = options.timeboxMs ?? 60 * 60_000;
   const deadline = startedAt + durationMs;
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
-    const basePrompt = (core) => core.taskId
+  const basePrompt = (core) => core.taskId
       ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or waiting.`
-      : core.prompt;
+      : IDLE_AGENT_PROMPT;
   try {
+    // Warm all reusable slots concurrently. The discovery gate serializes only
+    // the unbound list/claim turn, and onClaimAccepted releases it as soon as
+    // Task Service ownership is durable. Bound Agent turns can then overlap.
+    await Promise.all(state.cores.map(async (core) => {
+      core.dispatchReserved = true;
+      await ensureAgentSession(core);
+    }));
     await Promise.all(state.cores.map(async (core) => {
       core.nextTurnAt = Date.now();
     }));
@@ -993,24 +1383,63 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     try {
       while (Date.now() < deadline && (!state.stopOnSolved || state.solvedAt === null)) {
         await sleep(options.pollMs ?? 5_000);
+        const readyStartedAt = Date.now();
+        const readyTasks = state.taskService.listTasks({
+          rootId: state.rootTaskId,
+          states: ['OPEN', 'RUNNING'],
+          limit: 100,
+          availableOnly: true,
+        });
+        state.parallelism.recordSchedulerPoll(Date.now() - readyStartedAt);
+        state.parallelism.recordReadyWork({
+          readyCount: readyTasks.length,
+          idleCoreCount: state.cores.filter((core) => !core.taskId && !core.turnInFlight && !core.dispatchReserved).length,
+        });
+        // Allocate the currently ready work against physical Core ownership
+        // once per scheduler poll. WAITING roots have released their Core;
+        // they remain protected from duplicate claims but do not consume a
+        // ready slot. Computing this globally avoids an idle Core being
+        // skipped because another idle Core was examined earlier in the same
+        // poll and left a stale reservation behind.
+        // `readyTasks` already excludes Tasks whose active quota is full.
+        // Subtracting bound Core count here starved idle slots whenever a
+        // running parent created a new child. Ready work is queue supply, not
+        // the number of currently bound responsibilities.
+        let readyDispatchSlots = readyTasks.length;
+        const dispatchCandidates = state.cores.filter((core) =>
+          !core.taskId && !core.waitingExecutionId && !core.turnInFlight && !core.dispatchReserved);
+        for (const candidate of dispatchCandidates) {
+          if (readyDispatchSlots <= 0) break;
+          candidate.dispatchReserved = true;
+          readyDispatchSlots -= 1;
+        }
         for (const core of state.cores) {
-          await ensureAgentSession(core);
-          await judgeCandidate(state, core).catch((error) => {
-            core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'judge_error' });
-          });
+          if (state.solvedAt !== null) break;
+          const resumableWaiting = state.taskService.listResumableExecutions({ rootId: state.rootTaskId });
+          for (const waitingExecution of resumableWaiting) {
+            const waitingCore = state.cores.find((candidate) => candidate.waitingExecutionId === waitingExecution.execution_id) ??
+              state.cores.find((candidate) => !candidate.taskId && !candidate.waitingExecutionId && !candidate.turnInFlight);
+            if (waitingCore && !waitingCore.taskId &&
+              (!waitingCore.turnInFlight || !waitingCore.runtime.activeProcesses.has(waitingExecution.execution_id))) {
+              await wakeWaitingCore(state, waitingCore, waitingExecution).catch((error) => {
+                waitingCore.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'wake_error' });
+              });
+            }
+          }
+          const mayDispatch = core.dispatchReserved;
+          if (core.taskId || (!core.waitingExecutionId && (core.session || core.releasedSession || mayDispatch))) await ensureAgentSession(core);
           if (state.solvedAt === null) await releaseTerminalExecution(core);
           if (!core.turnInFlight && Date.now() < deadline && state.solvedAt === null) {
-            scheduleTurn(core, basePrompt(core), turnTimeoutMs);
+            const bound = Boolean(core.taskId);
+            if (bound || mayDispatch) {
+              const scheduled = scheduleTurn(core, basePrompt(core), turnTimeoutMs);
+              if (!scheduled && !bound) core.dispatchReserved = false;
+            }
           }
         }
       }
     } finally {
       clearInterval(heartbeat);
-    }
-    for (const core of state.cores) {
-      await judgeCandidate(state, core).catch((error) => {
-        core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'final_judge_error' });
-      });
     }
   } finally {
     const cleanupStartedAt = Date.now();
@@ -1035,6 +1464,7 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
       try {
         reports[index] = await runBenchmarkProject(problems[index], config, options);
       } catch (error) {
+        const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt: 0 }).snapshot({ endedAt: 0 });
         const report = {
           schema_version: 1,
           protocol: {
@@ -1044,6 +1474,7 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
             tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
             cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
           },
+          parallelism,
           project: { problem_id: problems[index].id, source_hash: problems[index].source_hash ?? null },
           run: {
             protocol_valid: false,

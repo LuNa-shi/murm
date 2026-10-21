@@ -30,6 +30,12 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', properties: { task_id: { type: 'string' } }, additionalProperties: false },
   },
   {
+    name: 'task_scheduler_status', service: 'task', operation: 'scheduler_status', version: '1.0',
+    description: 'Read current core capacity, active and waiting executions, and claimable Tasks for adaptive decomposition.',
+    scope: 'public-read', side_effect: false,
+    parameters: { type: 'object', properties: { root_id: { type: 'string' }, task_id: { type: 'string' }, execution_id: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, additionalProperties: false },
+  },
+  {
     name: 'task_list_executions', service: 'task', operation: 'list_executions', version: '1.0',
     description: 'List prior and active Executions for a Task so a worker can choose a Workspace lineage.',
     scope: 'task-read', side_effect: false,
@@ -73,7 +79,7 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'execution_wait', service: 'execution', operation: 'request_wait', version: '1.0',
-    description: 'Save a checkpoint and release the active Execution for a durable wait. Use child_task_terminal with a direct child_task_id for parent coordination, check_result_arrived with check_request_key after a candidate, or timer with a deadline. The time and judge_result kind aliases are accepted.',
+    description: 'Save a checkpoint and release the active Execution for a durable Task dependency wait. Use child_task_terminal, a non-empty children_all_terminal set, parent_review, or timer. Candidate submission is synchronous and returns its CheckResult; do not wait for a candidate.',
     scope: 'execution-write', side_effect: true,
     parameters: { type: 'object', required: ['wait_condition'], properties: { wait_condition: { type: 'object', properties: { type: { type: 'string' }, child_task_id: { type: 'string' }, check_request_key: { type: 'string' }, candidate_material_id: { type: 'string' }, deadline: { type: 'string' } }, additionalProperties: true }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } }, wait_deadline: { type: 'string' } }, additionalProperties: false },
   },

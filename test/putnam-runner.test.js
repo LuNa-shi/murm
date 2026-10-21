@@ -337,10 +337,6 @@ class CollaborationSession extends EventEmitter {
     } else {
       const material = await this.call('publish_material', { kind: 'artifact', scope: 'proof_relevant', content: `def ${this.adapter.role.replaceAll('-', '_')} : Nat := 0` });
       await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
-      await this.call('request_wait', {
-        wait_condition: { type: 'check_result_arrived', check_request_key: `unused-check-key-${this.adapter.role}` },
-        checkpoint: { phase: 'candidate-submitted' },
-      });
     }
     this.adapter.finished = true;
     return { data: { disposition: 'handled' } };
@@ -382,6 +378,8 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     turnTimeoutMs: 100,
     turnIntervalMs: 10_000,
     stopOnSolved: true,
+    repositoryCommit: 'test-repository-commit',
+    repositoryWorktreeDirty: false,
     agentAdapterFactory: ({ env, index }) => {
       const adapter = new FakeAdapter({ env, cheat, noWork: noWork || (invalidClaim && index !== 1), fileCandidate, invalidClaim: invalidClaim && index === 1 });
       onAdapter?.(adapter);
@@ -402,6 +400,16 @@ test('benchmark project starts four isolated cores and redacts candidate content
     const adapters = [];
     const report = await runFixture({ reportDir, experimentDir, onAdapter: (adapter) => adapters.push(adapter) });
     assert.equal(report.protocol.core_count, 4);
+    assert.equal(report.protocol.repository_commit, 'test-repository-commit');
+    assert.equal(report.protocol.repository_worktree_dirty, false);
+    assert.equal(report.parallelism.core_count, 4);
+    assert.ok(Array.isArray(report.parallelism.agent_turn_intervals));
+    assert.equal(report.parallelism.total_core_capacity_ms, report.parallelism.core_count * report.parallelism.elapsed_ms);
+    assert.ok(Array.isArray(report.parallelism.core_state_intervals));
+    assert.equal(typeof report.parallelism.decomposition_available, 'boolean');
+    assert.ok(report.parallelism.decomposition_evidence.scheduler_status_count >= 0);
+    assert.ok(Array.isArray(report.run.lifecycle_events));
+    assert.ok(report.parallelism.work_units.every((unit) => Object.hasOwn(unit, 'duplicate_of')));
     assert.ok(report.project.task_tree.length >= 2);
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'proof' && task.parent_id === null));
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'research'));
@@ -517,7 +525,7 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     const report = await runBenchmarkProject(problem('putnam_collaboration_test'), config, {
       experimentDir,
       reportDir,
-      timeboxMs: 5_000,
+      timeboxMs: 20_000,
       pollMs: 2,
       turnTimeoutMs: 3_000,
       turnIntervalMs: 10_000,
@@ -534,11 +542,23 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.equal(report.run.protocol_valid, true);
     assert.equal(report.run.made_progress, true);
     assert.equal(report.run.solved, true);
+    assert.equal(report.parallelism.claim_conflict_count, 0);
+    assert.ok(report.parallelism.max_active_core_count >= 3);
+    assert.ok(report.parallelism.work_units.some((unit) => unit.progress_kind === 'child_task'));
+    assert.ok(report.parallelism.work_units.some((unit) => unit.progress_kind === 'parent_review'));
+    assert.equal(report.parallelism.decomposition_available, true);
+    assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'request_wait' && event.dependency_ids.length > 0));
+    assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'wake_execution'));
     assert.equal(report.project.task_tree.filter((task) => task.parent_id !== null).length, 3);
     assert.ok(report.run.claim_count >= 4, `expected root and three child claims, got ${report.run.claim_count}`);
     assert.ok(report.run.child_claim_count >= 3, `expected every child to be claimed, got ${report.run.child_claim_count}`);
     assert.ok(report.run.root_claim_count >= 2, `expected root to be reclaimed after waiting, got ${report.run.root_claim_count}`);
     assert.ok(report.run.resumed_execution_count >= 1, `expected at least one Execution to be resumed; root=${report.run.root_claim_count}, claims=${report.run.claim_count}, details=${JSON.stringify(report.project.execution_history)}`);
+    assert.ok(report.run.wake_count >= 1, `expected Runtime wake_execution, got ${report.run.wake_count}`);
+    const rootExecutionIds = new Set(report.cores.flatMap((core) => core.claims)
+      .filter((claim) => claim.task_id === report.project.task_tree.find((task) => task.parent_id === null).task_id)
+      .map((claim) => claim.execution_id));
+    assert.equal(rootExecutionIds.size, 1, 'root wait/resume must preserve one Execution lineage');
     assert.ok(report.run.progress_evidence.workspace_write_count >= 4);
     assert.ok(report.cores.filter((core) => core.workspace_writes.length > 0).length >= 4);
     assert.ok(report.cores.some((core) => core.claims.length >= 2), 'root core should reclaim after waiting');
