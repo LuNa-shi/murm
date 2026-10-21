@@ -26,13 +26,17 @@ export function resolveAgentCoreRoute({ provider, account, group } = {}) {
 }
 
 export class AgentCoreSession extends EventEmitter {
-  constructor(child, { executionId, launchArgs, manifest, logger = null }) {
+  constructor(child, { executionId, sessionId = randomUUID(), launchArgs, manifest, logger = null, observation = null, coreId = null, taskId = null }) {
     super();
     this.child = child;
     this.executionId = executionId;
+    this.sessionId = sessionId;
     this.launchArgs = launchArgs;
     this.manifest = manifest;
     this.logger = logger;
+    this.observation = observation;
+    this.coreId = coreId;
+    this.taskId = taskId;
     this.stdout = '';
     this.stderr = '';
     this.closed = false;
@@ -46,6 +50,7 @@ export class AgentCoreSession extends EventEmitter {
       const text = chunk.toString();
       this.stdout += text;
       this.logger?.append({ type: 'stdout', text });
+      this.#observe('process_stdout', { text }, 'private');
       this.emit('stdout', text);
       this.#consumeRpc(text);
     });
@@ -53,6 +58,7 @@ export class AgentCoreSession extends EventEmitter {
       const text = chunk.toString();
       this.stderr += text;
       this.logger?.append({ type: 'stderr', text });
+      this.#observe('process_stderr', { text }, 'private');
       this.emit('stderr', text);
     });
     child.on('error', (error) => {
@@ -62,6 +68,7 @@ export class AgentCoreSession extends EventEmitter {
     child.on('close', (code, signal) => {
       this.closed = true;
       this.exitResult = { code, signal, stdout: this.stdout, stderr: this.stderr };
+      this.#observe('session_closed', { code, signal, expected_stop: this.expectedStop }, 'operator');
       for (const pending of this.pendingRpc.values()) {
         clearTimeout(pending.timer);
         pending.reject(new SwarmEnvError(ERROR_CODES.PROCESS_EXITED, 'Pi RPC session closed before responding'));
@@ -77,6 +84,7 @@ export class AgentCoreSession extends EventEmitter {
     }
     try {
       this.logger?.append({ type: 'rpc_request', message });
+      this.#observe('rpc_request', { message }, 'private', message.id ?? null);
       this.child.stdin.write(`${JSON.stringify(message)}\n`);
     } catch (error) {
       throw new SwarmEnvError(ERROR_CODES.RPC_ERROR, `could not write Pi RPC request: ${error.message}`, undefined, { cause: error });
@@ -193,6 +201,10 @@ export class AgentCoreSession extends EventEmitter {
       }
       this.rpcRecords.push(record);
       this.logger?.append({ type: 'rpc_record', record });
+      this.#observe('rpc_record', { record }, 'private', record.id ?? null);
+      if (record.type === 'tool_call') this.#observe('tool_call_started', { record }, 'private', record.id ?? null);
+      if (record.type === 'tool_result') this.#observe('tool_call_finished', { record }, 'private', record.id ?? null);
+      if (record.type === 'agent_settled') this.#observe('agent_settled', { record }, 'operator', record.id ?? null);
       if (record.type === 'response' && record.id && this.pendingRpc.has(record.id)) {
         const pending = this.pendingRpc.get(record.id);
         this.pendingRpc.delete(record.id);
@@ -204,6 +216,18 @@ export class AgentCoreSession extends EventEmitter {
         }
       }
       this.emit('rpc', record);
+    }
+  }
+
+  #observe(kind, payload, visibility = 'operator', correlationId = null) {
+    if (typeof this.observation !== 'function') return;
+    try {
+      this.observation({
+        source: 'agent', kind, visibility, payload, correlationId,
+        sessionId: this.sessionId, executionId: this.executionId, taskId: this.taskId, coreId: this.coreId,
+      });
+    } catch {
+      // Monitoring failures must not take down an Agent process.
     }
   }
 }
@@ -257,7 +281,7 @@ export class AgentCoreAdapter {
     return args;
   }
 
-  async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd, agentPrompt = null, logger = null } = {}) {
+  async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = randomUUID() } = {}) {
     const launchArgs = this.buildLaunchArgs({ executionId, sessionDir });
     await mkdir(sessionDir, { recursive: true });
     const manifest = await createVersionManifest({ ...this.manifestVersions, launchArgs });
@@ -283,7 +307,28 @@ export class AgentCoreAdapter {
       child.once('spawn', onSpawn);
       child.once('error', onError);
     });
-    const session = new AgentCoreSession(child, { executionId, launchArgs, manifest, logger });
+    const session = new AgentCoreSession(child, {
+      executionId: observationContext.executionId ?? executionId,
+      sessionId,
+      launchArgs,
+      manifest,
+      logger,
+      observation,
+      coreId: observationContext.coreId ?? null,
+      taskId: observationContext.taskId ?? null,
+    });
+    if (typeof observation === 'function') {
+      try {
+        observation({
+          source: 'agent', kind: 'session_started', visibility: 'operator',
+          payload: { launch_args: launchArgs, manifest }, sessionId,
+          executionId: observationContext.executionId ?? executionId,
+          taskId: observationContext.taskId ?? null, coreId: observationContext.coreId ?? null,
+        });
+      } catch {
+        // Monitoring failures must not take down an Agent process.
+      }
+    }
     if (agentPrompt) {
       await session.waitForReady({ timeoutMs: 30_000 });
       await session.prompt(agentPrompt, { timeoutMs: 30_000 });

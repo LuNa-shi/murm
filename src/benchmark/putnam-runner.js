@@ -18,6 +18,7 @@ import { listTools } from '../sdk/service-catalog.js';
 import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
+import { ObservationStore } from '../observability/observation-store.js';
 import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT } from '../agent/agent-prompt.js';
 import { CoreParallelismTracker } from './parallelism.js';
 
@@ -181,6 +182,32 @@ function collectToolEvents(core, records) {
   }
 }
 
+function fanoutLogger(...loggers) {
+  return {
+    append(event) {
+      for (const logger of loggers) logger?.append(event);
+    },
+  };
+}
+
+function observationLogger(observationStore, experimentId, source) {
+  return {
+    append(event = {}) {
+      const envelope = event.envelope ?? {};
+      observationStore.append({
+        experimentId,
+        source,
+        kind: event.event ?? `${source}_event`,
+        taskId: event.task_id ?? envelope.task_id ?? null,
+        executionId: event.execution_id ?? envelope.execution_id ?? null,
+        correlationId: event.operation_id ?? envelope.operation_id ?? null,
+        visibility: 'private',
+        payload: event,
+      });
+    },
+  };
+}
+
 export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
   buildLaunchArgs(options) {
     const args = restrictedArgs(super.buildLaunchArgs(options));
@@ -333,6 +360,8 @@ async function startAgentSession(core) {
     sessionDir: join(core.coreDir, '.swarm', suffix),
     cwd: core.coreDir,
     logger: new DurableEventLog(join(core.startConfig.logRoot, 'agents', `core-${core.index}.ndjson`), { raw: true, scope: `agent:core-${core.index}` }),
+    observation: core.observe,
+    observationContext: { coreId: `core-${core.index}`, taskId: null, executionId: null },
   });
   core.session = session;
   core.sessionHistory.push(session);
@@ -924,13 +953,20 @@ async function createProjectState(problem, config, options) {
     mkdir(logRoot, { recursive: true }),
   ]);
   const databasePath = join(projectDir, 'project.sqlite');
-  const serviceLogger = (name) => new DurableEventLog(join(logRoot, 'services', `${name}.ndjson`), { scope: name });
+  const database = new DatabaseSync(databasePath);
+  const observationStore = options.observationStore ?? new ObservationStore(database);
+  const serviceLogger = (name) => fanoutLogger(
+    new DurableEventLog(join(logRoot, 'services', `${name}.ndjson`), { scope: name }),
+    observationLogger(observationStore, runId, name),
+  );
   const taskLogger = serviceLogger('task-service');
   const contextLogger = serviceLogger('context-service');
   const routerLogger = serviceLogger('service-router');
   const judgeLogger = serviceLogger('judge-service');
-  const checkerLogger = new DurableEventLog(join(logRoot, 'judge', 'lean-checker.ndjson'), { raw: true, scope: 'judge:lean-checker' });
-  const database = new DatabaseSync(databasePath);
+  const checkerLogger = fanoutLogger(
+    new DurableEventLog(join(logRoot, 'judge', 'lean-checker.ndjson'), { raw: true, scope: 'judge:lean-checker' }),
+    observationLogger(observationStore, runId, 'judge'),
+  );
   const contextService = new ContextService(database, { logger: contextLogger });
   const taskService = new TaskService(database, { contextService, logger: taskLogger });
   contextService.taskService = taskService;
@@ -954,6 +990,7 @@ async function createProjectState(problem, config, options) {
   });
   const router = new ServicesRouter({ taskService, contextService, judgeService, logger: routerLogger });
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
+  observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const root = owner.proposeTask({
     task_type: 'proof',
     goal: `Prove ${problem.id}`,
@@ -979,6 +1016,14 @@ async function createProjectState(problem, config, options) {
     max_children: 32,
     max_depth: 3,
   }, { operationId: `benchmark:root:propose:${runId}` }).task;
+  observationStore.registerExperiment({ experimentId: runId, rootTaskId: root.task_id, status: 'RUNNING', metadata: { problem_id: problem.id } });
+  observationStore.append({
+    experimentId: runId,
+    source: 'runtime',
+    kind: 'experiment_started',
+    taskId: root.task_id,
+    payload: { problem_id: problem.id, core_count: 4, timebox_ms: options.timeboxMs ?? 60 * 60_000 },
+  });
   const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt });
   const discoveryGate = serialGate();
   const cores = [];
@@ -1056,7 +1101,15 @@ async function createProjectState(problem, config, options) {
       discoveryRelease: null,
       parallelism,
       versionManifest: null,
+      observe(event) {
+        observationStore.append({ experimentId: runId, ...event });
+      },
     };
+    core.observe({
+      source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
+      coreId: `core-${core.index}`,
+      payload: { state: 'IDLE', reason: 'core_ready' },
+    });
     const bridge = new ServicesBridge({
       taskService,
       contextService,
@@ -1083,6 +1136,8 @@ async function createProjectState(problem, config, options) {
               sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
               cwd: workspace.workspace_ref,
               logger: new DurableEventLog(join(logRoot, 'agents', `core-${core.index}.ndjson`), { raw: true, scope: `agent:core-${core.index}` }),
+              observation: core.observe,
+              observationContext: { coreId: `core-${core.index}`, taskId: execution.task_id, executionId: execution.execution_id },
             });
             core.session = session;
             core.sessionHistory.push(session);
@@ -1129,6 +1184,23 @@ async function createProjectState(problem, config, options) {
           task_id: claim.task.task_id,
           execution_id: claim.execution.execution_id,
           workspace_revision_start: bound.workspace.workspace_revision,
+        });
+        core.observe({
+          source: 'runtime', kind: 'execution_assigned', visibility: 'operator',
+          taskId: claim.task.task_id, executionId: claim.execution.execution_id,
+          sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+          payload: {
+            workspace_ref: bound.workspace.workspace_ref,
+            workspace_revision: bound.workspace.workspace_revision,
+            workspace_content_hash: bound.workspace.content_hash,
+            state: claim.execution.state,
+          },
+        });
+        core.observe({
+          source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
+          taskId: claim.task.task_id, executionId: claim.execution.execution_id,
+          sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+          payload: { state: 'RUNNING', reason: 'execution_bound' },
         });
         // The worker session is only the claim transport. The handoff result
         // tells the current turn to stop; once that turn settles, the
@@ -1178,6 +1250,20 @@ async function createProjectState(problem, config, options) {
       },
       onRelease: async ({ taskId, executionId }) => {
         const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
+        const releasedState = releasedExecution?.state ?? 'RELEASED';
+        core.observe({
+          source: 'runtime', kind: 'execution_released', visibility: 'operator',
+          taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+          payload: { state: releasedState },
+        });
+        core.observe({
+          source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
+          taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+          payload: {
+            state: releasedState === 'WAITING' ? 'WAITING' : 'IDLE',
+            reason: releasedState === 'WAITING' ? 'execution_waiting' : 'execution_released',
+          },
+        });
         core.parallelism.transition(core.index, releasedExecution?.state === 'WAITING' ? 'WAITING' : 'IDLE', {
           task_id: taskId,
           execution_id: executionId,
@@ -1197,6 +1283,18 @@ async function createProjectState(problem, config, options) {
         }
       },
       onWorkspaceWrite: async ({ taskId, executionId, result }) => {
+        core.observe({
+          source: 'workspace', kind: 'workspace_revision_saved', visibility: 'operator',
+          taskId, executionId, coreId: `core-${core.index}`,
+          payload: {
+            workspace_ref: result.workspace?.workspace_ref ?? taskService.getExecution(executionId)?.workspace_ref ?? null,
+            workspace_revision: result.workspace?.workspace_revision ?? null,
+            workspace_content_hash: result.workspace?.content_hash ?? null,
+            path: result.file?.path ?? null,
+            file_content_hash: result.file?.content_hash ?? null,
+            changed_files: result.diff?.changed_files?.map((file) => ({ path: file.path, status: file.status })) ?? [],
+          },
+        });
         core.workspaceWrites.push({
           task_id: taskId,
           execution_id: executionId,
@@ -1325,6 +1423,7 @@ async function createProjectState(problem, config, options) {
     logRoot,
     inputMaterialId: null,
     inputMaterialHash: problem.source_hash,
+    observationStore,
     taskService,
     contextService,
     router,
@@ -1447,6 +1546,14 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     state.cleanupElapsedMs = Date.now() - cleanupStartedAt;
   }
   const report = projectReport(state, startedAt, deadline);
+  state.observationStore.append({
+    experimentId: state.runId,
+    source: 'runtime',
+    kind: 'experiment_finished',
+    taskId: state.rootTaskId,
+    payload: { solved: report.run.solved, protocol_valid: report.run.protocol_valid, made_progress: report.run.made_progress },
+  });
+  state.observationStore.finishExperiment(state.runId, { status: report.run.solved ? 'SUCCEEDED' : 'FINISHED' });
   await writeFile(join(state.reportProjectDir, 'report.json'), JSON.stringify(report, null, 2));
   state.taskService.close();
   return report;

@@ -60,3 +60,39 @@ behind the bridge.
 **Waiting** means an active Execution has saved its checkpoint and released
 physical process capacity. **Blocked** means the Task cannot currently be
 claimed. These states are distinct projections of the same lifecycle.
+
+## Observability and diagnosis
+
+**Experiment** is one complete observed run of one Root Task. A benchmark
+runner may start several Experiments over time, but the Core count and Core
+assignments belong to the Experiment's Runtime configuration rather than to
+the Root Task goal.
+
+**Core lane** is the display and query identity of one reusable Core slot over
+an Experiment. A lane can host an unbound worker Agent Session, a bound
+Execution, a waiting interval, and later another Execution.
+
+**Agent Session** is one Pi process session. It is distinct from an Execution:
+the worker session can claim an Execution and hand off to a new bound session,
+and a later Core can resume the same Execution after a durable wait.
+
+**Execution segment** is the continuous assignment of an Execution to one Core
+lane. A timeline segment refers to the same durable Execution ID and also
+records the Agent Session that carried it during that interval.
+
+**Interaction** is the ordered Agent-facing conversation and runtime exchange
+within an Agent Session, including assistant messages, Service tool calls,
+tool results, lifecycle notifications, and process diagnostics.
+
+**Observation Event** is append-only evidence for monitoring and diagnosis. It
+is correlated with Experiment, Core, Agent Session, Task, and Execution IDs
+when those identities are known. Domain Services remain authoritative for
+Task, Execution, Material, Judge, and Workspace state.
+
+The observation layer has two projections. The local operator projection may
+read the complete private transcript for an Experiment. The Agent analysis
+projection is structured, bounded, and redacted; the first implementation
+exposes it through the `view=agent` query surface, leaving a stable seam for
+named read-only Observability tools. An Agent can use those findings to create
+a normal diagnostic Task and publish a conclusion as a Material through the
+existing Task and Context Services.
