@@ -101,4 +101,15 @@ Service tool 返回 `NOT_ALLOWED`、`STALE_VERSION`、`CONFLICT` 或其他边界
 
 下一步选择 2024 B4 和 2025 B4 做短时 targeted pilot。选择它们是因为前者暴露 ready/handoff 停滞和状态不一致，后者有 child review/rework 但未形成 PASS；它们可以分别验证生命周期修复和 Tool Error/Agent feedback 修复是否带来可观察进展。pilot 的目标是比较协作轨迹和阻塞类型，不把一次短时运行宣称为 Benchmark 提升。
 
+## 修复后的 targeted pilot
+
+两个 pilot 都在干净 commit `27116559ac258c91e6f8d15baff5b9fa2d84aacc` 上运行，使用相同的 4 Core、单项目并行、`openai/gpt-6-luna`，每题 10 分钟；没有重跑 12 题 Benchmark。
+
+| Pilot | 可观察进展 | Tool/调度事实 | 结论 |
+| --- | --- | --- | --- |
+| 2024 B4 | `protocol_valid=true`、`made_progress=true`；1 child、1 Workspace write、1 meaningful Material；0 candidate | 1 次普通 `CONFLICT`，protocol error 为 0；ready-unassigned 约 69.7s；cleanup 159ms | 生命周期和普通错误审计修复生效，child 产生了研究 context，但没有进入 proof/check |
+| 2025 B4 | `protocol_valid=true`、`made_progress=true`；1 Workspace write；0 child、0 Material、0 candidate | 3 次普通 `CONFLICT`，protocol error 为 0；ready-unassigned 约 118.6s；cleanup 120ms | 错误没有阻断项目，但没有形成 decomposition 或 dispatch；下一步应优化 work discovery/停滞恢复 |
+
+两个 pilot 都在报告写出后正常退出，没有残留 benchmark runner 或 Agent/NuRouter 子进程。8790/8791 上留下的是每个 pilot 独立的 Observability daemon，它是报告查询服务，不是实验 Agent 残留。pilot 没有证明题目更接近 PASS，但 2024 B4 的 Material 交付和两题的 `made_progress` 证明修复后的审计能够把“运行过”和“产生了什么”区分开。
+
 本次的标准分析方法已单独整理在 [`benchmark-analysis-sop.md`](benchmark-analysis-sop.md)。
