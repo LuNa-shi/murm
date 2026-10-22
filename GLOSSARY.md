@@ -60,6 +60,29 @@ Material, or Workspace truth.
 parts, with a severity, evidence references, and a current status. Findings
 may be produced by a human or an Agent analysis pass.
 
+**Global Progress** is a durable change that improves the Root Task's verified
+path toward its completion contract. A child Task, Workspace revision, or
+candidate is not Global Progress merely because it was created or executed.
+
+**Handoff** is a child-produced Material, Workspace revision, or Judge result
+that is made available to a parent Execution with source and Execution
+provenance. A Handoff is consumed only when the parent reads or otherwise uses
+that specific result through the Service boundary.
+
+**Handoff Conversion** is the observable transition from a consumed Handoff to
+a subsequent parent action that changes the Root Task's evidence, Workspace,
+Task state, or Judge outcome.
+
+**Coordination Tax** is resource spent on discovering, claiming, waiting,
+waking, reviewing, and transferring work that does not itself produce a
+verified artifact or advance a completion contract. Necessary coordination is
+reported separately from harmful delay.
+
+**Collaboration Quality** is the amount and reliability of Global Progress a
+swarm produces under a fixed task, model, toolchain, and resource budget,
+relative to a paired baseline. Core activity and child count are diagnostic
+signals, not measures of Collaboration Quality by themselves.
+
 **Eligible window** is a set of intervals in an Experiment during which the
 configured scenario has enough independent, unfinished work that the
 available Core slots could execute it concurrently. It is a reporting aid for
