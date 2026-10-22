@@ -18,8 +18,7 @@ they provide a more specific one.
 
 **Task list** is the query of claimable Tasks, normally ordered by priority,
 creation time, and ID. Agents browse the list and explicitly claim the Task
-they choose. `claim_next` remains only as a compatibility operation and is not
-the normal Agent workflow.
+they choose. The Task Service never chooses a Task on an Agent's behalf.
 
 **Execution** is one leased attempt to carry out a Task. Claiming a Task
 creates an Execution, and a Task may have multiple active Executions up to its

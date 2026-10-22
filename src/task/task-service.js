@@ -12,7 +12,6 @@ import {
 
 const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'expire_execution', 'fence_execution', 'heartbeat', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
 const CLAIM_OPERATION = 'claim';
-const CLAIM_NEXT_OPERATION = 'claim_next';
 const TASK_MUTATING_OPERATIONS = new Set(['accept_task', 'apply_check_result', 'create_child_task', 'propose_task', 'request_rework', 'submit_candidate']);
 
 function json(value) {
@@ -133,7 +132,7 @@ export class TaskService {
       if (['get_task', 'get_execution', 'list_children', 'list_tasks', 'list_executions'].includes(operation)) {
         result = this.#read(operation, payload, envelope);
       } else {
-        if (!TASK_MUTATING_OPERATIONS.has(operation) && !EXECUTION_WRITE_OPERATIONS.has(operation) && ![CLAIM_OPERATION, CLAIM_NEXT_OPERATION].includes(operation)) {
+        if (!TASK_MUTATING_OPERATIONS.has(operation) && !EXECUTION_WRITE_OPERATIONS.has(operation) && operation !== CLAIM_OPERATION) {
           throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service operation: ${operation}`);
         }
         result = this.#transaction(() => {
@@ -216,7 +215,8 @@ export class TaskService {
         const reworkExecution = active.length === 1 && task.parallel_quota === 1 && active[0].state === 'CREATED'
           ? this.#latestExecution(task.task_id, true)
           : null;
-        if (!reworkExecution || reworkExecution.state !== 'CREATED' || reworkExecution.instruction_version <= 1) return false;
+        const reworkLeaseExpired = reworkExecution && (!reworkExecution.lease_expires_at || Date.parse(reworkExecution.lease_expires_at) <= nowMs);
+        if (!reworkExecution || reworkExecution.state !== 'CREATED' || reworkExecution.instruction_version <= 1 || !reworkLeaseExpired) return false;
       }
       const waiting = executions.filter((execution) => execution.state === 'WAITING');
       if (waiting.length === 0) return true;
@@ -275,7 +275,6 @@ export class TaskService {
       case 'propose_task': return this.#proposeTask(payload, envelope);
       case 'create_child_task': return this.#createChildTask(payload, envelope);
       case 'claim': return this.#claim(payload, envelope);
-      case 'claim_next': return this.#claimNext(payload, envelope);
       case 'heartbeat': return this.#heartbeat(payload, envelope);
       case 'start_execution': return this.#startExecution(payload, envelope);
       case 'resume_execution': return this.#resumeExecution(payload, envelope);
@@ -425,32 +424,6 @@ export class TaskService {
     return this.#claimTask(task, payload, envelope);
   }
 
-  #claimNext(payload, envelope) {
-    if (envelope.task_id !== null || envelope.execution_id !== null) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim_next cannot target a task or execution');
-    }
-    const ownerRef = requireString(payload.owner_ref ?? envelope.actor_ref, 'owner_ref');
-    const rootId = payload.root_id ?? null;
-    const includeRoot = payload.include_root === true;
-    const row = this.db.prepare(`SELECT t.* FROM tasks t
-      WHERE t.state IN ('OPEN', 'RUNNING')
-        AND (? IS NULL OR t.root_id = ?)
-        AND (? = 1 OR ? IS NULL OR t.task_id <> t.root_id)
-        AND ((SELECT COUNT(*) FROM executions e
-          WHERE e.task_id = t.task_id AND e.state IN ('CREATED', 'RUNNING', 'WAITING')) < t.parallel_quota
-          OR (t.parallel_quota = 1 AND EXISTS (SELECT 1 FROM executions e
-            WHERE e.task_id = t.task_id AND e.state = 'CREATED' AND e.instruction_version > 1)))
-      ORDER BY t.created_at, t.task_id LIMIT 1`).get(rootId, rootId, includeRoot ? 1 : 0, rootId);
-    if (!row) return { task: null, execution: null };
-    const task = rowToTask(row);
-    return this.#claimTask(task, { ...payload, owner_ref: ownerRef }, {
-      ...envelope,
-      task_id: task.task_id,
-      spec_version: task.spec_version,
-      state_version: task.state_version,
-    });
-  }
-
   #claimTask(task, payload, envelope) {
     if (TERMINAL_TASK_STATES.includes(task.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be claimed');
     const claimKey = requireString(payload.claim_key ?? payload.request_key, 'claim_key');
@@ -506,8 +479,11 @@ export class TaskService {
     // the active quota until Runtime binds it.
     const createdRow = this.db.prepare("SELECT * FROM executions WHERE task_id = ? AND state = 'CREATED' ORDER BY updated_at DESC, execution_id DESC LIMIT 1").get(task.task_id);
     const reworkExecution = createdRow ? rowToExecution(createdRow) : null;
-    if (reworkExecution && reworkExecution.instruction_version > 1 && !waitingExecution && activeCount === 1 && task.parallel_quota === 1 &&
-      workspaceMode === 'resume' && !sourceExecutionId && !sourceWorkspaceRef &&
+    const reworkLeaseExpired = reworkExecution && (!reworkExecution.lease_expires_at || Date.parse(reworkExecution.lease_expires_at) <= Date.now());
+    const sameReworkWorkspace = reworkExecution && sourceExecutionId === reworkExecution.execution_id &&
+      (payload.workspace_revision === undefined || payload.workspace_revision === reworkExecution.workspace_revision);
+    if (reworkExecution && reworkExecution.instruction_version > 1 && reworkLeaseExpired && !waitingExecution && activeCount === 1 && task.parallel_quota === 1 &&
+      workspaceMode === 'resume' && ((!sourceExecutionId && !sourceWorkspaceRef) || sameReworkWorkspace) &&
       (payload.workspace_revision === undefined || payload.workspace_revision === reworkExecution.workspace_revision)) {
       const updatedAt = now();
       const nextLease = payload.lease_expires_at ?? new Date(Date.now() + 30_000).toISOString();
@@ -878,8 +854,8 @@ export class TaskService {
     if (['CREATED', 'RUNNING', 'WAITING'].includes(current.state)) {
       this.db.prepare(`UPDATE executions SET state = 'CREATED', candidate_material_id = NULL, instruction_version = instruction_version + 1,
         steer_material_refs_json = ?, wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL,
-        state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
-        .run(json(steerRefs), updatedAt, current.execution_id);
+        lease_expires_at = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
+        .run(json(steerRefs), updatedAt, updatedAt, current.execution_id);
       execution = this.getExecution(current.execution_id);
     } else if (['EXPIRED', 'FENCED'].includes(current.state)) {
       execution = this.#createRecoveryExecution(target, current, steerRefs, updatedAt);

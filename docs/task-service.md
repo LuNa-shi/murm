@@ -25,10 +25,9 @@ An active Execution can call `create_child_task` when it discovers a separate
 responsibility. The child receives a normal priority and enters the same root
 Task list. The parent does not preallocate a fixed number of proof children.
 
-`claim_next` is retained for old clients but is not used by the PutnamBench
-runner or the generic Agent prompt. Version checks, idempotency keys, leases,
-and fencing still protect every write. A waiting Execution whose wait condition
-is ready for work appears in the available Task list. An explicit claim can
+Version checks, idempotency keys, leases, and fencing protect every write. A
+waiting Execution whose wait condition is ready for work appears in the
+available Task list. An explicit claim can
 hand that same Execution and Workspace to the next Agent, incrementing its
 attempt and changing it back to `CREATED`; timer waits and parent-review waits
 remain unavailable until their controlling condition is satisfied. A failed

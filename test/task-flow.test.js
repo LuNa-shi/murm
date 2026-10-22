@@ -278,6 +278,39 @@ test('parent request_rework appends steer and preserves child workspace, context
   close(env);
 });
 
+test('a reworked child is listed until claimed, then its active lease hides it from other workers', () => {
+  const env = environment();
+  const parent = env.sdk.proposeTask({ task_type: 'default', goal: 'coordinate queued rework', expected_output: 'child result', acceptance_conditions: {}, owner_ref: 'owner:root' }, { operationId: 'queued-rework-parent' }).task;
+  const parentRun = claimTask(env, parent, { executionId: 'queued-rework-parent-execution', actorRef: 'owner:root' });
+  const child = parentRun.sdk.withContext({ taskId: parent.task_id, executionId: null, stateVersion: parentRun.claim.task.state_version }).createChildTask({
+    child_creation_key: 'queued-rework-child', ...researchInput(), owner_ref: 'researcher:one',
+  }, { operationId: 'queued-rework-child-create' }).task;
+  const childRun = claimTask(env, child, { executionId: 'queued-rework-child-execution', actorRef: 'researcher:one' });
+  const checkpointed = saveCheckpoint(env, childRun.claim.execution, 'queued-rework-checkpoint');
+  const waited = childRun.sdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
+    wait_key: 'queued-rework-review', checkpoint_ref: checkpointed.checkpoint_ref, checkpoint_hash: checkpointed.checkpoint_hash,
+    wait_condition: { type: 'parent_review' },
+  }, { operationId: 'queued-rework-wait' });
+  const reworked = parentRun.sdk.requestRework({ target_task_id: child.task_id, instruction: 'Resume the child from its saved Workspace.' }, { operationId: 'queued-rework-request' });
+
+  assert.equal(env.sdk.withContext({ actorRef: 'agent:next' }).listTasks({ limit: 10 })[0].task_id, child.task_id);
+  const resumed = env.sdk.withContext({
+    actorRef: 'agent:next', taskId: child.task_id, specVersion: child.spec_version, stateVersion: reworked.task.state_version,
+  }).claim({
+    claim_key: 'queued-rework-claim', workspace_mode: 'resume', workspace_revision: reworked.execution.workspace_revision,
+    workspace_source_execution_id: reworked.execution.execution_id,
+  }, { operationId: 'queued-rework-claim-op' });
+  assert.equal(resumed.execution.execution_id, waited.execution.execution_id);
+  assert.equal(env.sdk.withContext({ actorRef: 'agent:other' }).listTasks({ limit: 10 }).length, 0);
+  assert.throws(() => env.sdk.withContext({
+    actorRef: 'agent:other', taskId: child.task_id, specVersion: child.spec_version, stateVersion: resumed.task.state_version,
+  }).claim({
+    claim_key: 'queued-rework-second-claim', workspace_mode: 'resume', workspace_revision: resumed.execution.workspace_revision,
+    workspace_source_execution_id: resumed.execution.execution_id,
+  }, { operationId: 'queued-rework-second-claim-op' }), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.CONFLICT);
+  close(env);
+});
+
 test('parent request_rework creates a new Execution after the child is fenced', () => {
   const env = environment();
   const parent = env.sdk.proposeTask({ task_type: 'default', goal: 'coordinate fenced rework', expected_output: 'child result', acceptance_conditions: {}, owner_ref: 'owner:root' }, { operationId: 'fenced-parent' }).task;
