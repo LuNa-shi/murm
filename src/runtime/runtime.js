@@ -160,8 +160,8 @@ export class Runtime {
       return await this.#launch(current, workspace);
     } catch (error) {
       const active = this.activeProcesses.get(executionId);
-      active?.session.stop?.();
       this.activeProcesses.delete(executionId);
+      await Promise.resolve(active?.session.stop?.()).catch(() => undefined);
       const failed = this.#getExecution(executionId);
       if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('start-failed')));
@@ -189,8 +189,8 @@ export class Runtime {
       await this.#sendInitialPrompt(boundSession, agentPrompt);
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
-      boundSession?.stop?.();
       this.activeProcesses.delete(executionId);
+      await Promise.resolve(boundSession?.stop?.()).catch(() => undefined);
       const failed = this.#getExecution(executionId);
       if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('bind-failed')));
@@ -237,8 +237,8 @@ export class Runtime {
       wait_condition: waitCondition,
       wait_deadline: deadline ?? waitCondition?.deadline ?? null,
     }, this.#executionEnvelope(current, operationId('wait')));
-    active.session.stop();
     this.activeProcesses.delete(executionId);
+    await Promise.resolve(active.session.stop()).catch(() => undefined);
     await this.workspaceManager.releaseWorkspace({ workspaceRef: workspace.workspace_ref, executionId, fencingVersion: execution.fencing_version });
     return waited;
   }
@@ -257,8 +257,8 @@ export class Runtime {
     const execution = this.#getExecution(executionId);
     const active = this.activeProcesses.get(executionId);
     if (active) {
-      active.session.stop();
       this.activeProcesses.delete(executionId);
+      await Promise.resolve(active.session.stop()).catch(() => undefined);
     }
     const result = this.taskService.dispatch('stop_execution', { terminal_state: terminalState }, this.#executionEnvelope(execution, operationId('stop')));
     if (execution.workspace_ref) {
@@ -277,8 +277,8 @@ export class Runtime {
     const result = this.taskService.dispatch('fence_execution', { runtime_generation: this.runtimeGeneration }, this.#executionEnvelope(execution, operationId('fence')));
     const active = this.activeProcesses.get(executionId);
     if (active) {
-      active.session.stop();
       this.activeProcesses.delete(executionId);
+      await Promise.resolve(active.session.stop()).catch(() => undefined);
     }
     return result;
   }
@@ -294,8 +294,8 @@ export class Runtime {
       const result = this.taskService.dispatch('expire_execution', { runtime_generation: this.runtimeGeneration }, this.#executionEnvelope(execution, operationId('expire')));
       const active = this.activeProcesses.get(execution.execution_id);
       if (active) {
-        active.session.stop();
         this.activeProcesses.delete(execution.execution_id);
+        await Promise.resolve(active.session.stop()).catch(() => undefined);
       }
       expired.push(result);
     }
@@ -309,7 +309,7 @@ export class Runtime {
         await this.fenceExecution(execution.execution_id);
       }
     }
-    for (const active of this.activeProcesses.values()) active.session.stop();
+    await Promise.all([...this.activeProcesses.values()].map((active) => Promise.resolve(active.session.stop()).catch(() => undefined)));
     this.activeProcesses.clear();
     return { runtime_generation: this.runtimeGeneration, active_executions: this.taskService.listActiveExecutions() };
   }

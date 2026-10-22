@@ -422,7 +422,7 @@ async function startAgentSession(core) {
         core.nextTurnAt = Date.now();
       }
       core.stateRef?.requestSchedulerWake?.();
-      if (core.session !== session && !session.closed) session.stop();
+      if (core.session !== session && !session.closed) await Promise.resolve(session.stop()).catch(() => undefined);
     }
   })();
 }
@@ -430,7 +430,7 @@ async function startAgentSession(core) {
 async function ensureAgentSession(core) {
   if (core.waitingExecutionId) return;
   if (core.releasedSession) {
-    if (!core.releasedSession.closed) core.releasedSession.stop?.();
+    if (!core.releasedSession.closed) await Promise.resolve(core.releasedSession.stop?.()).catch(() => undefined);
     core.releasedSession = null;
   }
   if (core.session?.closed) core.session = null;
@@ -455,7 +455,7 @@ async function wakeWaitingCore(state, core, waitingExecution) {
     core.agentTurnSession = null;
     core.turnInFlight = false;
   }
-  core.releasedSession?.stop?.();
+  await Promise.resolve(core.releasedSession?.stop?.()).catch(() => undefined);
   core.releasedSession = null;
   const claimRecord = {
     task_id: waitingExecution.task_id,
@@ -532,10 +532,10 @@ async function releaseTerminalExecution(core) {
   });
   const active = core.runtime.activeProcesses.get(core.executionId);
   if (active) {
-    active.session.stop();
     core.runtime.activeProcesses.delete(core.executionId);
+    await Promise.resolve(active.session.stop()).catch(() => undefined);
   } else {
-    core.session?.stop();
+    await Promise.resolve(core.session?.stop?.()).catch(() => undefined);
   }
   if (execution.workspace_ref) {
     await core.workspaceManager.releaseWorkspace({
@@ -1258,7 +1258,7 @@ async function createProjectState(problem, config, options) {
         // so checking core.session for equality here is too late. The claim
         // transport must always stop after a successful handoff before the
         // model can issue another claim or a claimed-only call.
-        if (workerSession !== core.session) workerSession.stop?.();
+        if (workerSession !== core.session) await Promise.resolve(workerSession.stop?.()).catch(() => undefined);
       },
       onClaimAccepted: async () => {
         core.discoveryRelease?.();
@@ -1436,7 +1436,7 @@ async function createProjectState(problem, config, options) {
     }));
   } catch (error) {
     for (const core of cores.reverse()) {
-      core.session?.stop();
+      await Promise.resolve(core.session?.stop?.()).catch(() => undefined);
       if (core.executionId && core.runtime.activeProcesses.has(core.executionId)) {
         await core.runtime.stopExecution(core.executionId, 'FAILED').catch(() => undefined);
       }
