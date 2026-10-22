@@ -26,7 +26,7 @@ function problem(id) {
 }
 
 class FakeSession extends EventEmitter {
-  constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false) {
+  constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false) {
     super();
     this.env = env;
     this.cheat = cheat;
@@ -34,6 +34,8 @@ class FakeSession extends EventEmitter {
     this.fileCandidate = fileCandidate;
     this.invalidClaim = invalidClaim;
     this.invalidClaimUsed = false;
+    this.hardToolError = hardToolError;
+    this.hardToolErrorUsed = false;
     this.rpcRecords = [];
     this.closed = false;
   }
@@ -99,6 +101,17 @@ class FakeSession extends EventEmitter {
         claim_key: `fake-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
         workspace_mode: 'clean',
       });
+    }
+    if (this.hardToolError && !this.hardToolErrorUsed) {
+      this.hardToolErrorUsed = true;
+      try {
+        await call('request_rework', {
+          target_task_id: claim.task.task_id,
+          instruction: 'This root is not waiting for parent review.',
+        });
+      } catch (error) {
+        assert.equal(error.code, 'NOT_ALLOWED');
+      }
     }
     await call('get_task', {});
     await call('get_execution', {});
@@ -178,12 +191,13 @@ class FakeSession extends EventEmitter {
 }
 
 class FakeAdapter {
-  constructor({ env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false }) {
+  constructor({ env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false }) {
     this.env = env;
     this.cheat = cheat;
     this.noWork = noWork;
     this.fileCandidate = fileCandidate;
     this.invalidClaim = invalidClaim;
+    this.hardToolError = hardToolError;
     this.starts = [];
   }
 
@@ -192,7 +206,7 @@ class FakeAdapter {
     const { logger } = options;
     logger?.append({ type: 'fake-agent-start' });
     const isWorkerSession = String(options.executionId ?? '').startsWith('worker-');
-    const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate, this.invalidClaim && isWorkerSession);
+    const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate, this.invalidClaim && isWorkerSession, this.hardToolError && isWorkerSession);
     session.manifest = { fake: true, pi_version: 'fake' };
     return session;
   }
@@ -566,7 +580,7 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, onAdapter = null, checker = null, observationStore = null }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, onAdapter = null, checker = null, observationStore = null }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -579,7 +593,7 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     repositoryWorktreeDirty: false,
     observationStore,
     agentAdapterFactory: ({ env, index }) => {
-      const adapter = new FakeAdapter({ env, cheat, noWork: noWork || (invalidClaim && index !== 1), fileCandidate, invalidClaim: invalidClaim && index === 1 });
+      const adapter = new FakeAdapter({ env, cheat, noWork: noWork || (invalidClaim && index !== 1), fileCandidate, invalidClaim: invalidClaim && index === 1, hardToolError: hardToolError && index === 1 });
       onAdapter?.(adapter);
       return adapter;
     },
@@ -693,7 +707,25 @@ test('INVALID_CONTRACT is returned as recoverable Agent feedback and does not in
     assert.equal(report.run.tool_protocol_error_count, 0);
     assert.ok(report.run.tool_error_count >= 1);
     assert.equal(report.audit.invalid, false);
-    assert.ok(report.cores.some((core) => core.tool_errors.some((error) => error.code === 'INVALID_CONTRACT' && error.recoverable === true)));
+    assert.ok(report.cores.some((core) => core.tool_errors.some((error) =>
+      error.code === 'INVALID_CONTRACT' && error.recoverable === true && error.protocol === false)));
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('non-retryable Service errors are Agent feedback and do not invalidate the run', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-hard-tool-error-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-hard-tool-error-report-');
+  try {
+    const report = await runFixture({ reportDir, experimentDir, id: 'putnam_hard_tool_error_test', hardToolError: true });
+    assert.equal(report.run.protocol_valid, true);
+    assert.equal(report.run.tool_protocol_error_count, 0);
+    assert.ok(report.run.tool_error_count >= 1);
+    assert.equal(report.audit.invalid, false);
+    assert.ok(report.cores.some((core) => core.tool_errors.some((error) =>
+      error.code === 'NOT_ALLOWED' && error.recoverable === false && error.protocol === false)));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });

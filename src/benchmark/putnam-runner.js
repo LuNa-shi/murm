@@ -712,14 +712,21 @@ async function stopCore(state, core) {
   }
   const execution = core.executionId ? state.taskService.getExecution(core.executionId) : null;
   const active = core.executionId ? core.runtime.activeProcesses.get(core.executionId) : null;
-  if (active) {
-    active.session.stop();
-    core.runtime.activeProcesses.delete(core.executionId);
-  } else if (core.session) {
-    core.session.stop();
-  } else if (core.releasedSession) {
-    core.releasedSession.stop?.();
-  }
+  const sessions = new Set([
+    ...core.sessionHistory,
+    core.session,
+    core.releasedSession,
+    active?.session,
+  ].filter(Boolean));
+  core.runtime.activeProcesses.delete(core.executionId);
+  await Promise.all([...sessions].map(async (session) => {
+    try {
+      await session.stop?.();
+    } catch {
+      // Cleanup must continue so the remaining Core sessions and Services are
+      // released even when one Agent process exits with an error.
+    }
+  }));
   if (core.turnPromise) {
     await Promise.race([
       core.turnPromise.catch(() => undefined),
@@ -809,7 +816,11 @@ function projectReport(state, startedAt, deadline) {
     return name !== 'swarmenv_call' && !name.startsWith('swarmenv_');
   }));
   const toolErrorCount = cores.reduce((count, core) => count + core.tool_errors.length, 0);
-  const toolProtocolErrorCount = cores.reduce((count, core) => count + core.tool_errors.filter((error) => !error.recoverable).length, 0);
+  // A Service tool can reject an Agent request because the model supplied a
+  // stale version, an invalid state transition, or a boundary-incompatible
+  // payload. The bridge returns that error to the Agent as tool feedback. It
+  // is not a protocol violation and must not invalidate the whole project.
+  const toolProtocolErrorCount = cores.reduce((count, core) => count + core.tool_errors.filter((error) => error.protocol === true).length, 0);
   const claimedExecutionIds = [...new Set(claimHistory.map((claim) => claim.execution_id))];
   const workspaceRefs = claimedExecutionIds.map((executionId) => state.taskService.getExecution(executionId)?.workspace_ref).filter(Boolean);
   const workspaceBoundaryViolation = workspaceRefs.length !== claimedExecutionIds.length || new Set(workspaceRefs).size !== workspaceRefs.length;
@@ -944,7 +955,7 @@ function projectReport(state, startedAt, deadline) {
       invalid,
       invalid_reasons: [
         ...(toolViolation ? ['non_swarmenv_tool_event'] : []),
-        ...(toolProtocolErrorCount > 0 ? ['agent_tool_error'] : []),
+        ...(toolProtocolErrorCount > 0 ? ['agent_tool_protocol_error'] : []),
         ...(materialBoundaryViolation ? ['material_boundary_violation'] : []),
         ...(inputMaterialViolation ? ['input_material_violation'] : []),
       ...(workspaceViolation ? ['workspace_violation'] : []),
@@ -1411,6 +1422,7 @@ async function createProjectState(problem, config, options) {
           // unbound slots may also observe the same OPEN Task before one
           // claim commits; that scheduling contention is recoverable too.
           recoverable: error.code === 'INVALID_CONTRACT' || (error.code === 'CONFLICT' && operation === 'claim'),
+          protocol: false,
         });
         if (error.code === 'CONFLICT' && operation === 'claim') core.parallelism.recordClaimConflict();
       },

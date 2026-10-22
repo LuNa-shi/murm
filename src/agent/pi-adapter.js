@@ -178,11 +178,30 @@ export class AgentCoreSession extends EventEmitter {
     });
   }
 
-  stop(signal = 'SIGTERM') {
+  waitForExit({ timeoutMs = null } = {}) {
+    if (this.closed) return Promise.resolve(this.exitResult);
+    return new Promise((resolve) => {
+      let timer = null;
+      const finish = (result) => {
+        if (timer !== null) clearTimeout(timer);
+        this.off('close', onClose);
+        resolve(result);
+      };
+      const onClose = (result) => finish(result);
+      this.once('close', onClose);
+      if (Number.isFinite(timeoutMs)) timer = setTimeout(() => finish(null), timeoutMs);
+    });
+  }
+
+  async stop(signal = 'SIGTERM', { timeoutMs = 5_000 } = {}) {
     if (!this.closed) {
       this.expectedStop = true;
       this.child.kill(signal);
     }
+    const result = await this.waitForExit({ timeoutMs });
+    if (result || this.closed) return result ?? this.exitResult;
+    if (!this.closed) this.child.kill('SIGKILL');
+    return this.waitForExit({ timeoutMs: Math.min(timeoutMs, 1_000) });
   }
 
   #consumeRpc(text) {
