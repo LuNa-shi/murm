@@ -101,30 +101,56 @@ test('turn occupancy is reported separately from RUNNING Agent Time', () => {
   assert.equal(summary.turn_occupancy_ratio_v0, 7_000 / 16_000);
 });
 
-test('work units link identical outputs to their first occurrence', () => {
+test('work units retain Task provenance without semantic deduplication fields', () => {
   const tracker = new CoreParallelismTracker({ coreCount: 1, startedAt: 0 });
   const first = tracker.recordWorkUnit({
     task_id: 'task-1',
     execution_id: 'execution-1',
     core: 1,
     progress_kind: 'candidate_check',
-    input_snapshot_hash: 'input-a',
-    goal_fingerprint: 'goal-a',
-    output_fingerprint: 'output-a',
     at: 1_000,
   });
-  const second = tracker.recordWorkUnit({
-    task_id: 'task-2',
-    execution_id: 'execution-2',
-    core: 1,
-    progress_kind: 'candidate_check',
-    input_snapshot_hash: 'input-a',
-    goal_fingerprint: 'goal-a',
-    output_fingerprint: 'output-a',
-    at: 2_000,
-  });
 
-  assert.equal(first.duplicate_of, null);
-  assert.equal(second.duplicate_of, first.work_unit_id);
-  assert.equal(tracker.snapshot({ endedAt: 3_000 }).work_units.length, 2);
+  assert.equal(first.task_id, 'task-1');
+  assert.equal(first.execution_id, 'execution-1');
+  assert.equal(Object.hasOwn(first, 'input_snapshot_hash'), false);
+  assert.equal(Object.hasOwn(first, 'goal_fingerprint'), false);
+  assert.equal(Object.hasOwn(first, 'output_fingerprint'), false);
+  assert.equal(Object.hasOwn(first, 'duplicate_of'), false);
+  assert.equal(tracker.snapshot({ endedAt: 3_000 }).work_units.length, 1);
+});
+
+test('eligible windows report overlapping Agent turns only while enough work is supplied', () => {
+  const tracker = new CoreParallelismTracker({ coreCount: 4, startedAt: 0 });
+  tracker.recordReadyWork({ readyCount: 4, idleCoreCount: 4, eligibleWorkCount: 4, at: 0 });
+  for (let core = 1; core <= 4; core += 1) {
+    tracker.beginAgentTurn(core, { task_id: `task-${core}`, execution_id: `execution-${core}` }, 0);
+    tracker.endAgentTurn(core, 1_000);
+  }
+  tracker.recordReadyWork({ readyCount: 1, idleCoreCount: 1, eligibleWorkCount: 1, at: 1_000 });
+
+  const summary = tracker.snapshot({ endedAt: 2_000 });
+
+  assert.equal(summary.eligible_window_ms, 1_000);
+  assert.equal(summary.eligible_agent_time_ms, 4_000);
+  assert.equal(summary.eligible_mean_active_core_count, 4);
+  assert.deepEqual(summary.eligible_intervals, [{
+    start_ms: 0,
+    end_ms: 1_000,
+    eligible_work_count: 4,
+  }]);
+  assert.deepEqual(summary.eligible_concurrency_histogram_ms, { 4: 1_000 });
+});
+
+test('insufficient work produces no eligible window and does not invent a utilization failure', () => {
+  const tracker = new CoreParallelismTracker({ coreCount: 4, startedAt: 0 });
+  tracker.recordReadyWork({ readyCount: 2, idleCoreCount: 2, eligibleWorkCount: 2, at: 0 });
+  tracker.recordReadyWork({ readyCount: 0, idleCoreCount: 4, eligibleWorkCount: 0, at: 1_000 });
+
+  const summary = tracker.snapshot({ endedAt: 2_000 });
+
+  assert.equal(summary.eligible_window_ms, 0);
+  assert.equal(summary.eligible_agent_time_ms, 0);
+  assert.equal(summary.eligible_mean_active_core_count, null);
+  assert.deepEqual(summary.eligible_intervals, []);
 });

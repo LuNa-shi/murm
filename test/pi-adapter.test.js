@@ -195,6 +195,29 @@ test('adapter smoke test starts and releases a real child process', async () => 
   assert.equal(result.signal, null);
 });
 
+test('session stop waits for exit and escalates when SIGTERM is ignored', async () => {
+  let child;
+  const signals = [];
+  const adapter = new AgentCoreAdapter({
+    provider: 'openai', model: 'gpt-test', sessionDir: '/tmp/swarmenv-stubborn-session',
+    spawnProcess: () => {
+      child = fakeChild();
+      child.kill = (signal) => {
+        signals.push(signal);
+        if (signal === 'SIGKILL') queueMicrotask(() => child.emit('close', 137, 'SIGKILL'));
+      };
+      return child;
+    },
+  });
+
+  const session = await adapter.start({ executionId: 'execution-stubborn' });
+  const result = await session.stop('SIGTERM', { timeoutMs: 10 });
+
+  assert.deepEqual(signals, ['SIGTERM', 'SIGKILL']);
+  assert.equal(result.signal, 'SIGKILL');
+  assert.equal(session.closed, true);
+});
+
 test('unexpected non-zero process exit is mapped to PROCESS_EXITED', async () => {
   let child;
   const adapter = new AgentCoreAdapter({

@@ -19,4 +19,4 @@ The worktree must be clean before the acceptance run. Record the exact commit, r
 
 ## Progress evidence
 
-Hard utilization metrics come from Runtime state intervals and Service events. They do not call an LLM to summarize work. Each work unit records task and Execution provenance, input and goal fingerprints, output fingerprint, and a progress kind. Duplicate fingerprints are a review signal; they are not silently counted as independent progress.
+Hard utilization metrics come from Runtime state intervals and Service events. They do not call an LLM to summarize work. Each work unit records Task, Execution, Core, and progress-kind provenance. Task and Execution identity, Workspace lineage, leases, fencing, and quota remain the ownership evidence; the benchmark does not apply a semantic duplicate detector to work units.

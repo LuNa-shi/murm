@@ -24,6 +24,13 @@
     "mean_active_core_count": 2.4,
     "max_active_core_count": 4,
     "concurrency_histogram_ms": { "0": 900000, "2": 1800000, "3": 900000 },
+    "eligible_intervals": [
+      { "start_ms": 600000, "end_ms": 2400000, "eligible_work_count": 4 }
+    ],
+    "eligible_window_ms": 1800000,
+    "eligible_agent_time_ms": 5040000,
+    "eligible_mean_active_core_count": 2.8,
+    "eligible_concurrency_histogram_ms": { "0": 180000, "2": 360000, "3": 720000, "4": 540000 },
     "ready_work_ms": 3000000,
     "ready_unassigned_ms": 60000,
     "waiting_ms_by_core": { "1": 1200000, "2": 600000, "3": 600000, "4": 600000 },
@@ -45,11 +52,7 @@
         "core": 1,
         "progress_kind": "workspace_revision",
         "started_at": "2026-10-19T00:00:00.000Z",
-        "ended_at": "2026-10-19T00:00:00.001Z",
-        "input_snapshot_hash": "sha256-of-frozen-input",
-        "goal_fingerprint": "sha256-of-goal",
-        "output_fingerprint": "sha256-of-workspace",
-        "duplicate_of": null
+        "ended_at": "2026-10-19T00:00:00.001Z"
       }
     ]
   },

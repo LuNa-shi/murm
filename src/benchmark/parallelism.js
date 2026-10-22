@@ -1,6 +1,3 @@
-import { createHash } from 'node:crypto';
-import { stableStringify } from '../protocol/envelope.js';
-
 export const CORE_SLOT_STATES = Object.freeze(['IDLE', 'ASSIGNED', 'RUNNING', 'WAITING', 'STOPPING']);
 
 function assertCore(core, coreCount) {
@@ -21,10 +18,6 @@ function timestamp(value) {
 
 function clamp(value, lower, upper) {
   return Math.max(lower, Math.min(value, upper));
-}
-
-function hash(value) {
-  return createHash('sha256').update(stableStringify(value)).digest('hex');
 }
 
 function toIso(ms) {
@@ -73,6 +66,54 @@ function sampleDurations(samples, startedAt, endedAt) {
     if (current.ready_count > current.idle_core_count) result.readyUnassignedMs += duration;
   }
   return result;
+}
+
+function eligibleIntervalsFromSamples(samples, coreCount, startedAt, endedAt) {
+  const ordered = samples
+    .map((sample) => ({ ...sample, at_ms: clamp(sample.at_ms, startedAt, endedAt) }))
+    .filter((sample) => sample.at_ms <= endedAt)
+    .sort((left, right) => left.at_ms - right.at_ms);
+  const intervals = [];
+  for (let index = 0; index < ordered.length; index += 1) {
+    const current = ordered[index];
+    const nextAt = ordered[index + 1]?.at_ms ?? endedAt;
+    if (nextAt <= current.at_ms || current.eligible_work_count < coreCount) continue;
+    const previous = intervals.at(-1);
+    if (previous && previous.end_ms === current.at_ms && previous.eligible_work_count === current.eligible_work_count) {
+      previous.end_ms = nextAt;
+    } else {
+      intervals.push({
+        start_ms: current.at_ms,
+        end_ms: nextAt,
+        eligible_work_count: current.eligible_work_count,
+      });
+    }
+  }
+  return intervals;
+}
+
+function histogramWithinWindows(intervals, windows) {
+  const histogram = {};
+  for (const window of windows) {
+    const events = new Map();
+    for (const interval of intervals) {
+      const start = Math.max(interval.start_ms, window.start_ms);
+      const end = Math.min(interval.end_ms, window.end_ms);
+      if (end <= start) continue;
+      events.set(start, (events.get(start) ?? 0) + 1);
+      events.set(end, (events.get(end) ?? 0) - 1);
+    }
+    const ordered = [...events.entries()].sort(([left], [right]) => left - right);
+    let active = 0;
+    let previous = window.start_ms;
+    for (const [at, delta] of ordered) {
+      if (at > previous) addDuration(histogram, active, at - previous);
+      active += delta;
+      previous = at;
+    }
+    if (previous < window.end_ms) addDuration(histogram, active, window.end_ms - previous);
+  }
+  return histogram;
 }
 
 function normalizeIntervals(intervals, startedAt, endedAt) {
@@ -159,10 +200,11 @@ export class CoreParallelismTracker {
     return true;
   }
 
-  recordReadyWork({ readyCount, idleCoreCount, at = Date.now() } = {}) {
+  recordReadyWork({ readyCount, idleCoreCount, eligibleWorkCount = 0, at = Date.now() } = {}) {
     if (!Number.isInteger(readyCount) || readyCount < 0) throw new TypeError('readyCount must be a non-negative integer');
     if (!Number.isInteger(idleCoreCount) || idleCoreCount < 0) throw new TypeError('idleCoreCount must be a non-negative integer');
-    this.readySamples.push({ at_ms: timestamp(at), ready_count: readyCount, idle_core_count: idleCoreCount });
+    if (!Number.isInteger(eligibleWorkCount) || eligibleWorkCount < 0) throw new TypeError('eligibleWorkCount must be a non-negative integer');
+    this.readySamples.push({ at_ms: timestamp(at), ready_count: readyCount, idle_core_count: idleCoreCount, eligible_work_count: eligibleWorkCount });
   }
 
   recordSchedulerPoll(durationMs) {
@@ -209,30 +251,17 @@ export class CoreParallelismTracker {
     execution_id: executionId = null,
     core = null,
     progress_kind: progressKind,
-    input_snapshot_hash: inputSnapshotHash = null,
-    goal_fingerprint: goalFingerprint = null,
-    output_fingerprint: outputFingerprint = null,
-    duplicate_key: duplicateKey = null,
     at = Date.now(),
   } = {}) {
     if (typeof progressKind !== 'string' || progressKind.length === 0) throw new TypeError('progress_kind is required');
     if (core !== null) assertCore(core, this.coreCount);
     const atMs = timestamp(at);
-    const dedupeKey = duplicateKey ?? (outputFingerprint
-      ? hash({ progressKind, outputFingerprint })
-      : hash({ taskId, inputSnapshotHash, goalFingerprint, progressKind }));
-    const duplicate = this.workUnits.find((unit) => unit.dedupe_key === dedupeKey) ?? null;
     const unit = {
       work_unit_id: workUnitId ?? `work-unit-${++this.workUnitCounter}`,
       task_id: taskId,
       execution_id: executionId,
       core,
       progress_kind: progressKind,
-      input_snapshot_hash: inputSnapshotHash,
-      goal_fingerprint: goalFingerprint,
-      output_fingerprint: outputFingerprint,
-      duplicate_of: duplicate?.work_unit_id ?? null,
-      dedupe_key: dedupeKey,
       started_at: toIso(atMs),
       ended_at: toIso(atMs),
       started_at_ms: atMs,
@@ -278,7 +307,12 @@ export class CoreParallelismTracker {
     const histogram = histogramWithRunningIntervals(effectiveAgentIntervals, this.startedAt, end);
     const activeCounts = Object.entries(histogram).filter(([, duration]) => duration > 0).map(([count]) => Number(count));
     const samples = sampleDurations(this.readySamples, this.startedAt, end);
-    const workUnits = this.workUnits.map(({ dedupe_key: _dedupeKey, started_at_ms: _startedAtMs, ended_at_ms: _endedAtMs, ...unit }) => unit);
+    const eligibleIntervals = eligibleIntervalsFromSamples(this.readySamples, this.coreCount, this.startedAt, end);
+    const eligibleWindowMs = eligibleIntervals.reduce((total, interval) => total + interval.end_ms - interval.start_ms, 0);
+    const eligibleConcurrencyHistogram = histogramWithinWindows(effectiveAgentIntervals, eligibleIntervals);
+    const eligibleAgentTimeMs = Object.entries(eligibleConcurrencyHistogram)
+      .reduce((total, [activeCoreCount, duration]) => total + Number(activeCoreCount) * duration, 0);
+    const workUnits = this.workUnits.map(({ started_at_ms: _startedAtMs, ended_at_ms: _endedAtMs, ...unit }) => unit);
     return {
       core_count: this.coreCount,
       elapsed_ms: elapsedMs,
@@ -288,6 +322,11 @@ export class CoreParallelismTracker {
       mean_active_core_count: elapsedMs === 0 ? 0 : agentTimeMs / elapsedMs,
       max_active_core_count: activeCounts.length === 0 ? 0 : Math.max(...activeCounts),
       concurrency_histogram_ms: histogram,
+      eligible_intervals: eligibleIntervals,
+      eligible_window_ms: eligibleWindowMs,
+      eligible_agent_time_ms: eligibleAgentTimeMs,
+      eligible_mean_active_core_count: eligibleWindowMs === 0 ? null : eligibleAgentTimeMs / eligibleWindowMs,
+      eligible_concurrency_histogram_ms: eligibleConcurrencyHistogram,
       ready_work_ms: samples.readyWorkMs,
       ready_unassigned_ms: samples.readyUnassignedMs,
       waiting_ms_by_core: waitingMsByCore,

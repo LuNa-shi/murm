@@ -17,11 +17,12 @@ import {
 } from '../src/index.js';
 
 class FakeSession extends EventEmitter {
-  constructor(executionId) {
+  constructor(executionId, { stopDelayMs = 0 } = {}) {
     super();
     this.executionId = executionId;
     this.manifest = { pi_package: '@earendil-works/pi-coding-agent', pi_version: '1.3.0', nurouter_version: '0.2.12', node_version: process.versions.node, launch_args: ['fake'] };
     this.closed = false;
+    this.stopDelayMs = stopDelayMs;
     this.prompts = [];
   }
 
@@ -33,29 +34,32 @@ class FakeSession extends EventEmitter {
   }
 
   stop() {
-    if (!this.closed) {
+    if (this.closed) return Promise.resolve();
+    return new Promise((resolve) => setTimeout(() => {
       this.closed = true;
-      queueMicrotask(() => this.emit('close', { code: 0, signal: 'SIGTERM' }));
-    }
+      this.emit('close', { code: 0, signal: 'SIGTERM' });
+      resolve();
+    }, this.stopDelayMs));
   }
 }
 
 class FakeAgentAdapter {
-  constructor() {
+  constructor({ stopDelayMs = 0 } = {}) {
     this.sessions = [];
     this.starts = [];
+    this.stopDelayMs = stopDelayMs;
   }
 
   async start(options) {
     this.starts.push(options);
     const { executionId } = options;
-    const session = new FakeSession(executionId);
+    const session = new FakeSession(executionId, { stopDelayMs: this.stopDelayMs });
     this.sessions.push(session);
     return session;
   }
 }
 
-async function fixture() {
+async function fixture({ stopDelayMs = 0 } = {}) {
   const database = new DatabaseSync(':memory:');
   const taskService = new TaskService(database);
   const contextService = new ContextService(database, { taskService });
@@ -66,10 +70,30 @@ async function fixture() {
     execution_id: 'execution-runtime', claim_key: 'runtime-claim', owner_ref: 'runtime:local', agent_prompt: 'run the fixture', input_material_refs: [],
   }, { operationId: 'runtime-claim-op' });
   const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-workspace-'));
-  const adapter = new FakeAgentAdapter();
+  const adapter = new FakeAgentAdapter({ stopDelayMs });
   const runtime = new Runtime({ taskService, contextService, workspaceManager: new WorkspaceManager({ rootDir }), agentAdapter: adapter, actorRef: 'runtime:local' });
   return { taskService, contextService, sdk, task, claimed, rootDir, adapter, runtime };
 }
+
+test('Runtime waits for Agent exit before releasing a waiting Core', async () => {
+  const fixtureData = await fixture({ stopDelayMs: 40 });
+  const { runtime, taskService, claimed, rootDir, adapter } = fixtureData;
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const stopStartedAt = Date.now();
+    const waited = await runtime.requestWait(claimed.execution.execution_id, {
+      waitCondition: { type: 'timer', deadline: new Date(Date.now() + 60_000).toISOString() },
+      checkpoint: { step: 'before-wait' },
+    });
+    assert.ok(Date.now() - stopStartedAt >= 35);
+    assert.equal(adapter.sessions[0].closed, true);
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(waited.execution.workspace_ref, started.execution.workspace_ref);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
 
 test('Runtime creates an isolated workspace before Pi, saves checkpoint before wait, and restores the same lineage', async () => {
   const fixtureData = await fixture();

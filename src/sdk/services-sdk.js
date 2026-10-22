@@ -71,10 +71,6 @@ export class ServicesSDK {
     return this.#write('claim', payload, options);
   }
 
-  claimNext(payload = {}, options = {}) {
-    return this.#write('claim_next', payload, { ...options, taskId: null, executionId: null, specVersion: null, stateVersion: null, fencingVersion: null });
-  }
-
   heartbeat(payload = {}, options = {}) {
     return this.#write('heartbeat', payload, options);
   }

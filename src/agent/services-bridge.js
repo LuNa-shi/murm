@@ -9,7 +9,7 @@ import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const AGENT_OPERATIONS = new Set([
   'get_task', 'get_execution', 'read_materials', 'publish_material', 'submit_candidate',
-  'heartbeat', 'create_child_task', 'request_wait', 'claim', 'claim_next', 'list_tasks', 'list_executions',
+  'heartbeat', 'create_child_task', 'request_wait', 'claim', 'list_tasks', 'list_executions',
   'accept_task', 'request_rework', 'get_check_result',
   'list_services', 'get_service_metadata', 'list_tools', 'scheduler_status', 'get_workspace', 'list_workspace_revisions',
   'list_workspace_files', 'read_workspace_file', 'write_workspace_file', 'workspace_diff',
@@ -236,15 +236,6 @@ export class ServicesBridge {
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result: response });
         return response;
       }
-      if (operation === 'claim_next') {
-        if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claim_next is only available to an unbound worker bridge', { task_id: this.taskId, execution_id: this.executionId });
-        const result = this.taskService.dispatch('claim_next', payload, makeEnvelope({
-          operationId: operationId ?? `bridge:claim_next:${randomUUID()}`,
-          actorRef: this.actorRef,
-        }));
-        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
-        return result;
-      }
       if (!this.taskId || !this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
       const execution = this.taskService.getExecution(this.executionId);
       if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${this.executionId}`, { execution_id: this.executionId });
@@ -311,7 +302,7 @@ export class ServicesBridge {
       if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {
         await this.onWorkspaceWrite({ taskId: this.taskId, executionId: this.executionId, result });
       }
-      if (this.onWorkUnit && ['publish_material', 'create_child_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+      if (this.onWorkUnit && ['read_materials', 'publish_material', 'create_child_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
         await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });

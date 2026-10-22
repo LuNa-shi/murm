@@ -59,3 +59,14 @@ Material, or Workspace truth.
 **Diagnostic Finding** is a typed conclusion about an Experiment or one of its
 parts, with a severity, evidence references, and a current status. Findings
 may be produced by a human or an Agent analysis pass.
+
+**Eligible window** is a set of intervals in an Experiment during which the
+configured scenario has enough independent, unfinished work that the
+available Core slots could execute it concurrently. It is a reporting aid for
+interpreting parallelism; it is not a claim that every problem should provide
+that amount of work or a standalone success criterion.
+
+**Deterministic test scenario** is a bounded Experiment setup whose Tasks,
+expected Agent interactions, and completion conditions are known in advance.
+It supplies controlled work to exercise the production Runtime and Services;
+it does not decide whether a research result is semantically useful.

@@ -80,6 +80,23 @@ function inputSnapshotHash(task, inputMaterialRefs) {
   }));
 }
 
+function observedEligibleWorkCount(state, readyTasks) {
+  const tasks = state.taskService.listTasks({
+    rootId: state.rootTaskId,
+    states: ['OPEN', 'RUNNING'],
+    limit: 100,
+    availableOnly: false,
+  });
+  const readyIds = new Set(readyTasks.map((task) => task.task_id));
+  return tasks.filter((task) => {
+    if (task.parent_id === null) return false;
+    if (readyIds.has(task.task_id)) return true;
+    if (task.state !== 'RUNNING') return false;
+    const execution = task.latest_execution ?? state.taskService.listExecutions(task.task_id, { includeTerminal: false })[0];
+    return execution && ['CREATED', 'RUNNING'].includes(execution.state);
+  }).length;
+}
+
 function safeDiagnostic(value) {
   const text = String(value ?? '');
   if (!text) return null;
@@ -321,7 +338,7 @@ async function runTurn(core, prompt, timeoutMs) {
     const handedOff = core.session !== session && Boolean(core.taskId && core.executionId);
     if (!handedOff) {
       core.turnInFlight = false;
-      core.nextTurnAt = Date.now() + core.turnIntervalMs;
+      core.nextTurnAt = core.taskId ? Date.now() + core.turnIntervalMs : Date.now();
     }
     if (!core.taskId) core.dispatchReserved = false;
   }
@@ -353,6 +370,7 @@ function serialGate() {
 }
 
 async function startAgentSession(core) {
+  core.bridge.actorRef = core.actorRef;
   core.sessionNumber += 1;
   const suffix = core.sessionNumber === 1 ? 'worker-session' : `worker-session-${core.sessionNumber}`;
   const session = await core.adapter.start({
@@ -403,7 +421,8 @@ async function startAgentSession(core) {
         core.turnInFlight = false;
         core.nextTurnAt = Date.now();
       }
-      if (core.session !== session && !session.closed) session.stop();
+      core.stateRef?.requestSchedulerWake?.();
+      if (core.session !== session && !session.closed) await Promise.resolve(session.stop()).catch(() => undefined);
     }
   })();
 }
@@ -411,7 +430,7 @@ async function startAgentSession(core) {
 async function ensureAgentSession(core) {
   if (core.waitingExecutionId) return;
   if (core.releasedSession) {
-    if (!core.releasedSession.closed) return;
+    if (!core.releasedSession.closed) await Promise.resolve(core.releasedSession.stop?.()).catch(() => undefined);
     core.releasedSession = null;
   }
   if (core.session?.closed) core.session = null;
@@ -436,8 +455,14 @@ async function wakeWaitingCore(state, core, waitingExecution) {
     core.agentTurnSession = null;
     core.turnInFlight = false;
   }
-  core.releasedSession?.stop?.();
+  await Promise.resolve(core.releasedSession?.stop?.()).catch(() => undefined);
   core.releasedSession = null;
+  const claimRecord = {
+    task_id: waitingExecution.task_id,
+    execution_id: waitingExecution.execution_id,
+    workspace_revision_start: waitingExecution.workspace_revision,
+  };
+  core.claimHistory.push(claimRecord);
   const resumed = await core.runtime.wakeExecution(waitingExecution.execution_id, {
     wakeKey: waitingExecution.resume_token,
     beforePrompt: async ({ execution, session }) => {
@@ -447,9 +472,14 @@ async function wakeWaitingCore(state, core, waitingExecution) {
       core.claim = { task: state.taskService.getTask(execution.task_id), execution };
       core.bridge.taskId = core.taskId;
       core.bridge.executionId = core.executionId;
+      core.bridge.actorRef = waitingExecution.owner_ref;
       core.session = session;
       core.sessionHistory.push(session);
       core.versionManifest = session.manifest ?? core.versionManifest;
+      if (core.agentTurnSession && core.runtime.activeProcesses.size === 0) {
+        core.parallelism.endAgentTurn(core.index, Date.now(), 'stale_wait_handoff');
+        core.agentTurnSession = null;
+      }
       core.turnInFlight = true;
       core.turnStartedAt = Date.now();
       core.parallelism.transition(core.index, 'RUNNING', {
@@ -480,18 +510,14 @@ async function wakeWaitingCore(state, core, waitingExecution) {
         core.parallelism.endAgentTurn(core.index, Date.now());
         core.agentTurnSession = null;
       }
-      if (core.session === resumed.session) {
+      if (core.session === resumed.session || (!core.executionId && !core.runtime.activeProcesses.has(resumed.execution.execution_id))) {
         core.turns += 1;
         core.turnInFlight = false;
         core.nextTurnAt = Date.now();
       }
     }
   })();
-  core.claimHistory.push({
-    task_id: resumed.execution.task_id,
-    execution_id: resumed.execution.execution_id,
-    workspace_revision_start: resumed.workspace.workspace_revision,
-  });
+  claimRecord.workspace_revision_start = resumed.workspace.workspace_revision;
   return true;
 }
 
@@ -506,10 +532,10 @@ async function releaseTerminalExecution(core) {
   });
   const active = core.runtime.activeProcesses.get(core.executionId);
   if (active) {
-    active.session.stop();
     core.runtime.activeProcesses.delete(core.executionId);
+    await Promise.resolve(active.session.stop()).catch(() => undefined);
   } else {
-    core.session?.stop();
+    await Promise.resolve(core.session?.stop?.()).catch(() => undefined);
   }
   if (execution.workspace_ref) {
     await core.workspaceManager.releaseWorkspace({
@@ -666,9 +692,6 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
     execution_id: pending.executionId,
     core: core.index,
     progress_kind: 'candidate_check',
-    input_snapshot_hash: execution.input_snapshot_hash,
-    goal_fingerprint: sha256(stableStringify({ goal: task.goal, expected_output: task.expected_output })),
-    output_fingerprint: material.content_hash,
   });
   await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
   if (result.verdict === 'PASS' && applied.task.state === 'SATISFIED' && pending.taskId === state.rootTaskId) {
@@ -689,14 +712,21 @@ async function stopCore(state, core) {
   }
   const execution = core.executionId ? state.taskService.getExecution(core.executionId) : null;
   const active = core.executionId ? core.runtime.activeProcesses.get(core.executionId) : null;
-  if (active) {
-    active.session.stop();
-    core.runtime.activeProcesses.delete(core.executionId);
-  } else if (core.session) {
-    core.session.stop();
-  } else if (core.releasedSession) {
-    core.releasedSession.stop?.();
-  }
+  const sessions = new Set([
+    ...core.sessionHistory,
+    core.session,
+    core.releasedSession,
+    active?.session,
+  ].filter(Boolean));
+  core.runtime.activeProcesses.delete(core.executionId);
+  await Promise.all([...sessions].map(async (session) => {
+    try {
+      await session.stop?.();
+    } catch {
+      // Cleanup must continue so the remaining Core sessions and Services are
+      // released even when one Agent process exits with an error.
+    }
+  }));
   if (core.turnPromise) {
     await Promise.race([
       core.turnPromise.catch(() => undefined),
@@ -773,6 +803,7 @@ function projectReport(state, startedAt, deadline) {
       tool_events: [...new Set(core.toolEvents)],
       workspace_writes: core.workspaceWrites,
       tool_errors: core.toolErrors,
+      material_reads: core.materialReads,
       task_state: task?.state ?? null,
       execution_state: execution?.state ?? null,
       input_snapshot_hash: execution?.input_snapshot_hash ?? null,
@@ -785,7 +816,11 @@ function projectReport(state, startedAt, deadline) {
     return name !== 'swarmenv_call' && !name.startsWith('swarmenv_');
   }));
   const toolErrorCount = cores.reduce((count, core) => count + core.tool_errors.length, 0);
-  const toolProtocolErrorCount = cores.reduce((count, core) => count + core.tool_errors.filter((error) => !error.recoverable).length, 0);
+  // A Service tool can reject an Agent request because the model supplied a
+  // stale version, an invalid state transition, or a boundary-incompatible
+  // payload. The bridge returns that error to the Agent as tool feedback. It
+  // is not a protocol violation and must not invalidate the whole project.
+  const toolProtocolErrorCount = cores.reduce((count, core) => count + core.tool_errors.filter((error) => error.protocol === true).length, 0);
   const claimedExecutionIds = [...new Set(claimHistory.map((claim) => claim.execution_id))];
   const workspaceRefs = claimedExecutionIds.map((executionId) => state.taskService.getExecution(executionId)?.workspace_ref).filter(Boolean);
   const workspaceBoundaryViolation = workspaceRefs.length !== claimedExecutionIds.length || new Set(workspaceRefs).size !== workspaceRefs.length;
@@ -920,7 +955,7 @@ function projectReport(state, startedAt, deadline) {
       invalid,
       invalid_reasons: [
         ...(toolViolation ? ['non_swarmenv_tool_event'] : []),
-        ...(toolProtocolErrorCount > 0 ? ['agent_tool_error'] : []),
+        ...(toolProtocolErrorCount > 0 ? ['agent_tool_protocol_error'] : []),
         ...(materialBoundaryViolation ? ['material_boundary_violation'] : []),
         ...(inputMaterialViolation ? ['input_material_violation'] : []),
       ...(workspaceViolation ? ['workspace_violation'] : []),
@@ -1024,6 +1059,10 @@ async function createProjectState(problem, config, options) {
     taskId: root.task_id,
     payload: { problem_id: problem.id, core_count: 4, timebox_ms: options.timeboxMs ?? 60 * 60_000 },
   });
+  // Deterministic queue scenarios may seed durable Tasks before reusable Core
+  // sessions start. The hook uses the same Task Service boundary as Agent
+  // operations; it does not replace queue claim, Runtime, or dispatch logic.
+  await options.prepareProject?.({ owner, root, taskService, contextService, router, fixture, problem });
   const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt });
   const discoveryGate = serialGate();
   const cores = [];
@@ -1060,6 +1099,7 @@ async function createProjectState(problem, config, options) {
     });
     const core = {
       index,
+      actorRef: `agent:core-${index}`,
       coreDir,
       adapter,
       childEnv,
@@ -1089,6 +1129,7 @@ async function createProjectState(problem, config, options) {
       workspaceWrites: [],
       toolErrors: [],
       errors: [],
+      materialReads: [],
       checks: [],
       checked: new Set(),
       cheatingFlags: [],
@@ -1128,6 +1169,12 @@ async function createProjectState(problem, config, options) {
         core.claim = claim;
         const workerSession = core.session;
         if (!workerSession) throw new Error('Agent claimed a Task before its session was registered');
+        const claimRecord = {
+          task_id: claim.task.task_id,
+          execution_id: claim.execution.execution_id,
+          workspace_revision_start: null,
+        };
+        core.claimHistory.push(claimRecord);
         const bound = await runtime.bindAgentExecution(claim.execution.execution_id, null, {
           workspaceRef: join(workspaceRoot, claim.execution.execution_id),
           startSession: async ({ execution, workspace }) => {
@@ -1142,6 +1189,10 @@ async function createProjectState(problem, config, options) {
             core.session = session;
             core.sessionHistory.push(session);
             core.versionManifest = session.manifest ?? null;
+            if (core.agentTurnSession && core.runtime.activeProcesses.size === 0) {
+              core.parallelism.endAgentTurn(core.index, Date.now(), 'stale_claim_handoff');
+              core.agentTurnSession = null;
+            }
             core.parallelism.transition(core.index, 'RUNNING', {
               task_id: execution.task_id,
               execution_id: execution.execution_id,
@@ -1158,6 +1209,7 @@ async function createProjectState(problem, config, options) {
           agentPrompt: BOUND_AGENT_PROMPT,
         });
         const boundSession = core.session;
+        const boundExecutionId = claim.execution.execution_id;
         if (boundSession && core.runtime.activeProcesses.has(claim.execution.execution_id)) {
           core.turnInFlight = true;
           void (async () => {
@@ -1172,19 +1224,16 @@ async function createProjectState(problem, config, options) {
                 core.parallelism.endAgentTurn(core.index, Date.now());
                 core.agentTurnSession = null;
               }
-              if (core.session === boundSession) {
+              if (core.session === boundSession || (!core.executionId && !core.runtime.activeProcesses.has(boundExecutionId))) {
                 core.turns += 1;
                 core.turnInFlight = false;
                 core.nextTurnAt = Date.now();
               }
+              core.stateRef?.requestSchedulerWake?.();
             }
           })();
         }
-        core.claimHistory.push({
-          task_id: claim.task.task_id,
-          execution_id: claim.execution.execution_id,
-          workspace_revision_start: bound.workspace.workspace_revision,
-        });
+        claimRecord.workspace_revision_start = bound.workspace.workspace_revision;
         core.observe({
           source: 'runtime', kind: 'execution_assigned', visibility: 'operator',
           taskId: claim.task.task_id, executionId: claim.execution.execution_id,
@@ -1209,7 +1258,7 @@ async function createProjectState(problem, config, options) {
         // so checking core.session for equality here is too late. The claim
         // transport must always stop after a successful handoff before the
         // model can issue another claim or a claimed-only call.
-        if (workerSession !== core.session) workerSession.stop?.();
+        if (workerSession !== core.session) await Promise.resolve(workerSession.stop?.()).catch(() => undefined);
       },
       onClaimAccepted: async () => {
         core.discoveryRelease?.();
@@ -1281,6 +1330,7 @@ async function createProjectState(problem, config, options) {
           // here lets the scheduler start a replacement session while the
           // previous request_wait handoff is still unwinding.
         }
+        core.stateRef?.requestSchedulerWake?.();
       },
       onWorkspaceWrite: async ({ taskId, executionId, result }) => {
         core.observe({
@@ -1304,46 +1354,40 @@ async function createProjectState(problem, config, options) {
           workspace_content_hash: result.workspace?.content_hash ?? null,
           changed_files: result.diff?.changed_files?.map((file) => ({ path: file.path, status: file.status })) ?? [],
         });
-        const execution = taskService.getExecution(executionId);
-        const task = taskService.getTask(taskId);
         core.parallelism.recordWorkUnit({
           task_id: taskId,
           execution_id: executionId,
           core: core.index,
           progress_kind: 'workspace_revision',
-          input_snapshot_hash: execution?.input_snapshot_hash ?? null,
-          goal_fingerprint: task ? sha256(stableStringify({ goal: task.goal, expected_output: task.expected_output })) : null,
-          output_fingerprint: result.workspace?.content_hash ?? result.file?.content_hash ?? null,
         });
       },
       onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
-        const execution = taskService.getExecution(executionId);
-        const task = taskService.getTask(taskId);
-        const inputSnapshotHash = execution?.input_snapshot_hash ?? null;
-        const goalFingerprint = task
-          ? sha256(stableStringify({ goal: task.goal, expected_output: task.expected_output }))
-          : null;
-        if (operation === 'create_child_task') {
+        if (['publish_material', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+          core.stateRef?.requestSchedulerWake?.();
+        }
+        if (operation === 'read_materials') {
+          const materialsRead = Array.isArray(result) ? result : [];
+          core.materialReads.push({
+            reader_task_id: taskId,
+            reader_execution_id: executionId,
+            material_ids: materialsRead.map((material) => material.material_id).filter(Boolean),
+            source_task_ids: [...new Set(materialsRead.map((material) => material.source_task).filter(Boolean))],
+          });
+        } else if (operation === 'create_child_task') {
           const child = result?.task ?? result;
           core.parallelism.recordWorkUnit({
             task_id: child?.task_id ?? taskId,
             execution_id: executionId,
             core: core.index,
             progress_kind: 'child_task',
-            input_snapshot_hash: inputSnapshotHash,
-            goal_fingerprint: child ? sha256(stableStringify({ goal: child.goal, expected_output: child.expected_output })) : goalFingerprint,
-            output_fingerprint: child?.task_id ? sha256(stableStringify({ task_id: child.task_id, goal: child.goal, expected_output: child.expected_output })) : null,
           });
+          core.stateRef?.requestSchedulerWake?.();
         } else if (operation === 'publish_material') {
-          const material = result?.material ?? result;
           core.parallelism.recordWorkUnit({
             task_id: taskId,
             execution_id: executionId,
             core: core.index,
             progress_kind: 'material',
-            input_snapshot_hash: inputSnapshotHash,
-            goal_fingerprint: goalFingerprint,
-            output_fingerprint: material?.content_hash ?? null,
           });
         } else if (operation === 'accept_task' || operation === 'request_rework') {
           core.parallelism.recordWorkUnit({
@@ -1351,20 +1395,13 @@ async function createProjectState(problem, config, options) {
             execution_id: executionId,
             core: core.index,
             progress_kind: 'parent_review',
-            input_snapshot_hash: inputSnapshotHash,
-            goal_fingerprint: goalFingerprint,
-            output_fingerprint: sha256(stableStringify({ operation, target_task_id: payload?.target_task_id ?? null, task_state_version: result?.task?.state_version ?? result?.state_version ?? null })),
           });
         } else if (operation === 'submit_candidate') {
-          const material = contextService.getMaterial(payload?.candidate_material_id);
           core.parallelism.recordWorkUnit({
             task_id: taskId,
             execution_id: executionId,
             core: core.index,
             progress_kind: 'candidate_submission',
-            input_snapshot_hash: inputSnapshotHash,
-            goal_fingerprint: goalFingerprint,
-            output_fingerprint: material?.content_hash ?? null,
           });
         } else if (operation === 'request_wait') {
           core.parallelism.recordWorkUnit({
@@ -1372,9 +1409,6 @@ async function createProjectState(problem, config, options) {
             execution_id: executionId,
             core: core.index,
             progress_kind: 'coordination',
-            input_snapshot_hash: inputSnapshotHash,
-            goal_fingerprint: goalFingerprint,
-            output_fingerprint: sha256(stableStringify({ wait_condition: payload?.wait_condition ?? payload?.waitCondition ?? null, checkpoint: payload?.checkpoint ?? null })),
           });
         }
       },
@@ -1388,6 +1422,7 @@ async function createProjectState(problem, config, options) {
           // unbound slots may also observe the same OPEN Task before one
           // claim commits; that scheduling contention is recoverable too.
           recoverable: error.code === 'INVALID_CONTRACT' || (error.code === 'CONFLICT' && operation === 'claim'),
+          protocol: false,
         });
         if (error.code === 'CONFLICT' && operation === 'claim') core.parallelism.recordClaimConflict();
       },
@@ -1401,7 +1436,7 @@ async function createProjectState(problem, config, options) {
     }));
   } catch (error) {
     for (const core of cores.reverse()) {
-      core.session?.stop();
+      await Promise.resolve(core.session?.stop?.()).catch(() => undefined);
       if (core.executionId && core.runtime.activeProcesses.has(core.executionId)) {
         await core.runtime.stopExecution(core.executionId, 'FAILED').catch(() => undefined);
       }
@@ -1446,6 +1481,13 @@ async function createProjectState(problem, config, options) {
 export async function runBenchmarkProject(problem, config, options = {}) {
   const state = await createProjectState(problem, config, options);
   for (const core of state.cores) core.stateRef = state;
+  let resolveSchedulerWake;
+  let schedulerWake = new Promise((resolve) => { resolveSchedulerWake = resolve; });
+  state.schedulerWakeRequested = false;
+  state.requestSchedulerWake = () => {
+    state.schedulerWakeRequested = true;
+    resolveSchedulerWake();
+  };
   const startedAt = Date.now();
   state.parallelism.start(startedAt);
   const durationMs = options.timeboxMs ?? 60 * 60_000;
@@ -1481,7 +1523,11 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     }, options.heartbeatMs ?? 10_000);
     try {
       while (Date.now() < deadline && (!state.stopOnSolved || state.solvedAt === null)) {
-        await sleep(options.pollMs ?? 5_000);
+        if (!state.schedulerWakeRequested) {
+          await Promise.race([sleep(options.pollMs ?? 5_000), schedulerWake]);
+        }
+        state.schedulerWakeRequested = false;
+        schedulerWake = new Promise((resolve) => { resolveSchedulerWake = resolve; });
         const readyStartedAt = Date.now();
         const readyTasks = state.taskService.listTasks({
           rootId: state.rootTaskId,
@@ -1493,17 +1539,35 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         state.parallelism.recordReadyWork({
           readyCount: readyTasks.length,
           idleCoreCount: state.cores.filter((core) => !core.taskId && !core.turnInFlight && !core.dispatchReserved).length,
+          eligibleWorkCount: observedEligibleWorkCount(state, readyTasks),
         });
+        // A waiting Execution keeps its responsibility, but its physical Core
+        // is reusable. If the wait condition is not yet satisfied, release the
+        // old Core's local association; a later wake can resume the Execution
+        // on any available Core. A resumable wait is woken before new work is
+        // reserved so the waiting responsibility gets first access to idle
+        // capacity.
+        const resumableWaiting = state.taskService.listResumableExecutions({ rootId: state.rootTaskId });
+        const resumableWaitingIds = new Set(resumableWaiting.map((execution) => execution.execution_id));
+        for (const candidate of state.cores) {
+          if (candidate.waitingExecutionId && !resumableWaitingIds.has(candidate.waitingExecutionId)) {
+            candidate.waitingExecutionId = null;
+          }
+        }
+        for (const waitingExecution of resumableWaiting) {
+          const waitingCore = state.cores.find((candidate) => candidate.waitingExecutionId === waitingExecution.execution_id) ??
+            state.cores.find((candidate) => !candidate.taskId && !candidate.waitingExecutionId && !candidate.turnInFlight);
+          if (waitingCore && !waitingCore.taskId &&
+            (!waitingCore.turnInFlight || !waitingCore.runtime.activeProcesses.has(waitingExecution.execution_id))) {
+            await wakeWaitingCore(state, waitingCore, waitingExecution).catch((error) => {
+              waitingCore.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'wake_error' });
+            });
+          }
+        }
         // Allocate the currently ready work against physical Core ownership
-        // once per scheduler poll. WAITING roots have released their Core;
-        // they remain protected from duplicate claims but do not consume a
-        // ready slot. Computing this globally avoids an idle Core being
-        // skipped because another idle Core was examined earlier in the same
-        // poll and left a stale reservation behind.
-        // `readyTasks` already excludes Tasks whose active quota is full.
-        // Subtracting bound Core count here starved idle slots whenever a
-        // running parent created a new child. Ready work is queue supply, not
-        // the number of currently bound responsibilities.
+        // once per scheduler tick. `readyTasks` already excludes Tasks whose
+        // active quota is full. Ready work is queue supply, not the number of
+        // currently bound responsibilities.
         let readyDispatchSlots = readyTasks.length;
         const dispatchCandidates = state.cores.filter((core) =>
           !core.taskId && !core.waitingExecutionId && !core.turnInFlight && !core.dispatchReserved);
@@ -1514,17 +1578,6 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         }
         for (const core of state.cores) {
           if (state.solvedAt !== null) break;
-          const resumableWaiting = state.taskService.listResumableExecutions({ rootId: state.rootTaskId });
-          for (const waitingExecution of resumableWaiting) {
-            const waitingCore = state.cores.find((candidate) => candidate.waitingExecutionId === waitingExecution.execution_id) ??
-              state.cores.find((candidate) => !candidate.taskId && !candidate.waitingExecutionId && !candidate.turnInFlight);
-            if (waitingCore && !waitingCore.taskId &&
-              (!waitingCore.turnInFlight || !waitingCore.runtime.activeProcesses.has(waitingExecution.execution_id))) {
-              await wakeWaitingCore(state, waitingCore, waitingExecution).catch((error) => {
-                waitingCore.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'wake_error' });
-              });
-            }
-          }
           const mayDispatch = core.dispatchReserved;
           if (core.taskId || (!core.waitingExecutionId && (core.session || core.releasedSession || mayDispatch))) await ensureAgentSession(core);
           if (state.solvedAt === null) await releaseTerminalExecution(core);
