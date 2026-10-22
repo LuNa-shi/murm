@@ -85,6 +85,8 @@
 
 修复内容：停止 Core 时收集 session history、current、released 和 active session，逐一等待退出；SIGTERM 超时后升级为 SIGKILL，并继续清理剩余 session。新增测试覆盖忽略 SIGTERM、等待 close 和升级 SIGKILL 的路径。Observability daemon 本身是独立的长期服务，不把它误判为本次实验残留。
 
+代码 review 又发现同一生命周期边界：Runtime 的 wait、terminal stop、fence、expire 和 restart 路径曾经在发送 stop 后立即释放 active ownership。现在这些路径先从 active map 摘除，再等待 Agent 退出，避免 close 回调与 Task terminal transition 竞争造成 stale version；新增 Runtime 测试验证 wait 会在释放容量前等待 Agent close。
+
 ### 2. 普通 Agent Tool Error 会把实验标成 invalid
 
 Service tool 返回 `NOT_ALLOWED`、`STALE_VERSION`、`CONFLICT` 或其他边界反馈时，Bridge 已经把错误返回给 Agent；这类错误可能只是 Agent 参数过期或调用顺序不对。旧 runner 用 `!recoverable` 推导 protocol error，导致普通 Service error 被升级为 `agent_tool_error`，从而把项目 invalid，阻断了正确的实验分析。
