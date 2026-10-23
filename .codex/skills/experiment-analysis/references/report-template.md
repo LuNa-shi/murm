@@ -94,10 +94,28 @@ Use separate labels:
 
 Separate Core assignment/release, Runtime RUNNING/WAITING/IDLE, Agent turn, process/session health, Service activity, Judge time, scheduler polling, and heartbeat lease activity. State ready-work evidence when available. Do not merge them into a single productivity score or infer a scheduler fault from an unexplained gap.
 
-## 7. Candidate/Judge review
+## 7. Error analysis
+
+Group Agent-visible errors with their underlying Service/Runtime/Checker records. Report independent occurrences separately from supporting duplicate records. For each category include:
+
+| Severity | Category | Unique occurrences | Supporting records | Operation | Evidence-backed interpretation | Evidence |
+|---|---|---:|---:|---|---|---|
+| … | … | … | … | … | … | … |
+
+Do not label a repeated `CONFLICT` or `NOT_ALLOWED` response a Runtime bug without checking the Task contract, active quota, later recovery, and state ownership. Distinguish transport echoes from independent failures.
+
+## 8. Optimization recommendations
+
+Every recommendation must state the evidence-backed reason and a validation condition. Separate likely Agent/tool-contract improvements, scheduler/Runtime improvements, timebox/cleanup improvements, and analysis/instrumentation improvements. Recommendations are proposed next actions, not proof that the current trace contains a code defect.
+
+| Priority | Category | Proposed optimization | Why this run supports it | How to validate | Evidence |
+|---|---|---|---|---|---|
+| … | … | … | … | … | … |
+
+## 9. Candidate/Judge review
 
 For each Candidate, show ordered submission, Workspace revision, CheckResult ID, verdict, bounded diagnostic class, feedback read, and subsequent observable action. A FAIL is feedback; a PASS is a verified checker result. Neither proves that the Agent used feedback or that a route was mathematically useful.
 
-## 8. Conclusions and follow-up
+## 10. Conclusions and follow-up
 
 Separate observed facts, deterministic derivations, interpretations, and unknowns. Give concrete operator actions, such as repairing a missing log, opening a cited source record, or rerunning the analyzer after collection is fixed.
