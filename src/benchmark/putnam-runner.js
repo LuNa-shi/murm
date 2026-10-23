@@ -427,6 +427,50 @@ async function startAgentSession(core) {
   })();
 }
 
+function attachRecoveredSession(core, { execution, session }) {
+  if (!session || core.session === session) return;
+  const turnStartedAt = Date.now();
+  if (core.agentTurnSession && core.agentTurnSession !== session) {
+    core.parallelism.endAgentTurn(core.index, turnStartedAt, 'session_recovery');
+  }
+  core.session = session;
+  core.sessionHistory.push(session);
+  core.sessionRecoveryCount = (core.sessionRecoveryCount ?? 0) + 1;
+  core.versionManifest = session.manifest ?? core.versionManifest;
+  core.turnInFlight = true;
+  core.turnStartedAt = turnStartedAt;
+  core.parallelism.beginAgentTurn(core.index, {
+    task_id: execution.task_id,
+    execution_id: execution.execution_id,
+    reason: 'session_recovery',
+  }, turnStartedAt);
+  core.agentTurnSession = session;
+  const afterSequence = session.rpcRecords?.length ?? 0;
+  void (async () => {
+    try {
+      await session.waitForSettled?.({
+        timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000),
+        afterSequence,
+      });
+    } catch (error) {
+      const expectedHandoff = session.expectedStop || core.session !== session || core.stopping;
+      if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'recovery_turn_error' });
+    } finally {
+      collectToolEvents(core, session.rpcRecords ?? []);
+      if (core.agentTurnSession === session) {
+        core.parallelism.endAgentTurn(core.index, Date.now(), 'session_recovery_settled');
+        core.agentTurnSession = null;
+      }
+      if (core.session === session && core.runtime.activeProcesses.has(execution.execution_id)) {
+        core.turns += 1;
+        core.turnInFlight = false;
+        core.nextTurnAt = Date.now();
+      }
+      core.stateRef?.requestSchedulerWake?.();
+    }
+  })();
+}
+
 async function ensureAgentSession(core) {
   if (core.waitingExecutionId) return;
   if (core.releasedSession) {
@@ -793,6 +837,8 @@ function projectReport(state, startedAt, deadline) {
       turns: core.turns,
       turn_durations_ms: core.turnDurationsMs,
       turn_timeout_count: core.turnTimeoutCount,
+      session_count: core.sessionHistory.length,
+      session_recovery_count: core.sessionRecoveryCount,
       checks: core.checks,
       errors: core.errors,
       cheating_flags: core.cheatingFlags,
@@ -928,6 +974,9 @@ function projectReport(state, startedAt, deadline) {
       resources_at_end: resourceSnapshot(),
       heartbeat_count: state.heartbeatCount,
       heartbeat_error_count: state.heartbeatErrorCount,
+      watchdog_sweep_count: state.watchdogSweepCount,
+      watchdog_recovery_count: state.watchdogRecoveryCount,
+      watchdog_error_count: state.watchdogErrorCount,
       candidate_check_count: cores.reduce((count, core) => count + core.checks.length, 0),
       tool_error_count: toolErrorCount,
       tool_protocol_error_count: toolProtocolErrorCount,
@@ -1094,8 +1143,12 @@ async function createProjectState(problem, config, options) {
       agentAdapter: adapter,
       maxWorkers: 1,
       actorRef: `runtime:core-${index}`,
+      watchdogTimeoutMs: options.watchdogTimeoutMs,
       logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
+      onSessionStarted: ({ execution, session, recovery }) => {
+        if (recovery) attachRecoveredSession(core, { execution, session });
+      },
     });
     const core = {
       index,
@@ -1116,6 +1169,7 @@ async function createProjectState(problem, config, options) {
       waitingExecutionId: null,
       sessionHistory: [],
       sessionNumber: 0,
+      sessionRecoveryCount: 0,
       startConfig: { problem, logRoot, options },
       turnInFlight: false,
       agentTurnSession: null,
@@ -1136,6 +1190,7 @@ async function createProjectState(problem, config, options) {
       stopping: false,
       turnDurationsMs: [],
       turnTimeoutCount: 0,
+      watchdogPromise: null,
       dispatchReserved: false,
       unboundSessionCount: 0,
       discoveryGate,
@@ -1470,6 +1525,9 @@ async function createProjectState(problem, config, options) {
     cleanupElapsedMs: null,
     heartbeatCount: 0,
     heartbeatErrorCount: 0,
+    watchdogSweepCount: 0,
+    watchdogRecoveryCount: 0,
+    watchdogErrorCount: 0,
     schedulerStatusCount: 0,
     resourcesAtStart: resourceSnapshot(),
     repositoryCommit: options.repositoryCommit ?? null,
@@ -1521,6 +1579,25 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         }
       }
     }, options.heartbeatMs ?? 10_000);
+    const watchdog = setInterval(() => {
+      for (const core of state.cores) {
+        if (core.watchdogPromise) continue;
+        state.watchdogSweepCount += 1;
+        const sweep = core.runtime.sweepWatchdog()
+          .then((recovered) => {
+            state.watchdogRecoveryCount += recovered.length;
+            if (recovered.length > 0) state.requestSchedulerWake?.();
+          })
+          .catch((error) => {
+            state.watchdogErrorCount += 1;
+            core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'watchdog_error' });
+          })
+          .finally(() => {
+            core.watchdogPromise = null;
+          });
+        core.watchdogPromise = sweep;
+      }
+    }, options.watchdogIntervalMs ?? 10_000);
     try {
       while (Date.now() < deadline && (!state.stopOnSolved || state.solvedAt === null)) {
         if (!state.schedulerWakeRequested) {
@@ -1592,6 +1669,8 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       }
     } finally {
       clearInterval(heartbeat);
+      clearInterval(watchdog);
+      await Promise.all(state.cores.map((core) => core.watchdogPromise ?? Promise.resolve()));
     }
   } finally {
     const cleanupStartedAt = Date.now();
