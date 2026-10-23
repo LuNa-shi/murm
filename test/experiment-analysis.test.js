@@ -24,7 +24,7 @@ async function writeNdjson(path, records) {
   await writeFile(path, records.map((record) => typeof record === 'string' ? `${record}\n` : line(record)).join(''));
 }
 
-async function createProjectDatabase(path, { unknownExecution = false } = {}) {
+async function createProjectDatabase(path) {
   await mkdir(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec(`
@@ -82,11 +82,11 @@ async function createFixture({ agent = true, service = true, workspace = true, m
   }));
   await mkdir(join(root, 'logs', 'projects', project), { recursive: true });
   await mkdir(join(root, 'state', 'projects', project), { recursive: true });
-  await createProjectDatabase(join(root, 'state', 'projects', project, 'project.sqlite'), { unknownExecution: unknown });
+  await createProjectDatabase(join(root, 'state', 'projects', project, 'project.sqlite'));
 
   if (agent) await writeNdjson(join(root, 'logs', 'projects', project, 'agents', 'core-1.ndjson'), [
-    { timestamp: T1, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_execution_start', toolName: 'swarmenv_task_claim', args: { task_id: TASK } } },
-    { timestamp: T2, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_execution_end', toolName: 'swarmenv_task_claim', result: { secret: 'must-not-be-copied' }, isError: false } },
+    { timestamp: T1, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_call', toolName: 'swarmenv_task_claim', args: { task_id: TASK } } },
+    { timestamp: T2, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_result', toolName: 'swarmenv_task_claim', result: { secret: 'must-not-be-copied' }, isError: false } },
   ]);
   await writeNdjson(join(root, 'logs', 'projects', project, 'runtime', 'core-1.ndjson'), [
     { timestamp: T1, scope: 'runtime:core-1', event: 'runtime.bind_execution', execution_id: EXECUTION },
@@ -199,15 +199,17 @@ test('records malformed NDJSON and unknown Execution references as explicit limi
     assert.ok(analysis.inventory.errors.some((error) => error.line));
     assert.ok(analysis.warnings.some((warning) => warning.type === 'unknown_execution' && warning.execution_id === 'unknown-execution'));
     assert.match(analysis.report, /unknown-execution/);
+    assert.match(analysis.report, /### Execution `unknown-execution`/);
   } finally { await cleanup(root); }
 });
 
 test('sanitized mode keeps structural evidence but does not parse raw Agent operations', async () => {
-  const root = await createFixture();
+  const root = await createFixture({ malformed: true });
   try {
     const analysis = await analyzeExperiment(root, { mode: 'sanitized' });
     assert.equal(analysis.inventory.evidenceMode, 'sanitized export mode');
     assert.equal(analysis.facts.some((fact) => fact.kind === 'tool_call'), false);
+    assert.equal(analysis.inventory.evidence.find((entry) => entry.class === 'service').status, 'present');
     assert.match(analysis.report, /sanitized/);
   } finally { await cleanup(root); }
 });
@@ -216,6 +218,8 @@ test('resolves an experiment ID under an explicit experiments root', async () =>
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-experiment-root-'));
   const experiment = join(root, 'by-id');
   await mkdir(experiment, { recursive: true });
-  try { assert.equal(await resolveExperiment('by-id', { experimentsRoot: root }), experiment); }
-  finally { await cleanup(root); }
+  try {
+    assert.equal(await resolveExperiment('by-id', { experimentsRoot: root }), experiment);
+    await assert.rejects(() => resolveExperiment('..', { experimentsRoot: root }), /experiment not found|escapes/);
+  } finally { await cleanup(root); }
 });
