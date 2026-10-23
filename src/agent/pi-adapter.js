@@ -297,13 +297,14 @@ export class AgentCoreAdapter {
     })) required(value, name);
     const placement = resolveAgentCoreRoute(this.config);
     const modelArgs = ['--provider', this.config.provider, '--model', this.config.model];
+    const directPi = this.command === 'pi' || this.command.endsWith('/pi');
     const nuRouterModelArgs = placement === 'nurouter' ? modelArgs : [];
     const piModelArgs = placement === 'pi' ? modelArgs : [];
-    const args = ['pi', ...nuRouterModelArgs];
-    if (this.config.account) args.push('--account', this.config.account);
-    if (this.config.group) args.push('--group', this.config.group);
+    const args = directPi ? [] : ['pi', ...nuRouterModelArgs];
+    if (!directPi && this.config.account) args.push('--account', this.config.account);
+    if (!directPi && this.config.group) args.push('--group', this.config.group);
+    if (!directPi) args.push('--');
     args.push(
-      '--',
       '--mode', 'rpc',
       '--session-dir', sessionDir,
       '--session-id', sessionId,

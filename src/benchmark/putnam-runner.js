@@ -1073,7 +1073,7 @@ async function createProjectState(problem, config, options) {
     const adapter = options.agentAdapterFactory
       ? options.agentAdapterFactory({ index, problem, executionId: null, coreDir, env: childEnv })
       : new BenchmarkAgentCoreAdapter({
-        command: options.command ?? 'nurouter',
+        command: options.command ?? (options.provider === 'openai-codex' ? 'pi' : 'nurouter'),
         provider: options.provider ?? process.env.NUROUTER_PI_PROVIDER,
         model: options.model ?? process.env.NUROUTER_PI_MODEL,
         account: options.account ?? process.env.NUROUTER_PI_ACCOUNT,
