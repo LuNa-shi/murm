@@ -430,13 +430,16 @@ async function startAgentSession(core) {
 function attachRecoveredSession(core, { execution, session }) {
   if (!session || core.session === session) return;
   const turnStartedAt = Date.now();
-  if (core.agentTurnSession && core.agentTurnSession !== session) {
-    core.parallelism.endAgentTurn(core.index, turnStartedAt, 'session_recovery');
-  }
+  // A Runtime recovery can race with the old runTurn finally block or with a
+  // scheduler tick that observed the old Session as idle. Close whichever
+  // Agent-time interval is currently open before assigning the replacement.
+  // endAgentTurn is idempotent when no interval is open.
+  core.parallelism.endAgentTurn(core.index, turnStartedAt, 'session_recovery');
   core.session = session;
   core.sessionHistory.push(session);
   core.sessionRecoveryCount = (core.sessionRecoveryCount ?? 0) + 1;
   core.versionManifest = session.manifest ?? core.versionManifest;
+  core.recoveryInFlight = true;
   core.turnInFlight = true;
   core.turnStartedAt = turnStartedAt;
   core.parallelism.beginAgentTurn(core.index, {
@@ -456,15 +459,21 @@ function attachRecoveredSession(core, { execution, session }) {
       const expectedHandoff = session.expectedStop || core.session !== session || core.stopping;
       if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'recovery_turn_error' });
     } finally {
+      const now = Date.now();
       collectToolEvents(core, session.rpcRecords ?? []);
       if (core.agentTurnSession === session) {
-        core.parallelism.endAgentTurn(core.index, Date.now(), 'session_recovery_settled');
+        core.parallelism.endAgentTurn(core.index, now, 'session_recovery_settled');
         core.agentTurnSession = null;
       }
-      if (core.session === session && core.runtime.activeProcesses.has(execution.execution_id)) {
-        core.turns += 1;
-        core.turnInFlight = false;
-        core.nextTurnAt = Date.now();
+      if (core.session === session) {
+        core.recoveryInFlight = false;
+        if (core.runtime.activeProcesses.has(execution.execution_id)) {
+          core.turns += 1;
+          core.turnInFlight = false;
+          core.nextTurnAt = now;
+        } else {
+          core.turnInFlight = false;
+        }
       }
       core.stateRef?.requestSchedulerWake?.();
     }
@@ -1172,6 +1181,7 @@ async function createProjectState(problem, config, options) {
       sessionRecoveryCount: 0,
       startConfig: { problem, logRoot, options },
       turnInFlight: false,
+      recoveryInFlight: false,
       agentTurnSession: null,
       turnPromise: null,
       initialTurnPromise: null,
@@ -1658,7 +1668,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           const mayDispatch = core.dispatchReserved;
           if (core.taskId || (!core.waitingExecutionId && (core.session || core.releasedSession || mayDispatch))) await ensureAgentSession(core);
           if (state.solvedAt === null) await releaseTerminalExecution(core);
-          if (!core.turnInFlight && Date.now() < deadline && state.solvedAt === null) {
+          if (!core.turnInFlight && !core.recoveryInFlight && Date.now() < deadline && state.solvedAt === null) {
             const bound = Boolean(core.taskId);
             if (bound || mayDispatch) {
               const scheduled = scheduleTurn(core, basePrompt(core), turnTimeoutMs);
