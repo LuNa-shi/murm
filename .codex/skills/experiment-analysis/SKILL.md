@@ -30,7 +30,8 @@ Create the `analysis/` directory if needed. Keep raw traces, credentials, candid
 3. Read [references/report-template.md](references/report-template.md) before changing the report structure.
 4. Review every Execution section and every time-window table. Open only the cited local records needed to support a high-impact conclusion; do not dump full transcripts into the report.
 5. Add semantic conclusions only with explicit labels: `Fact`, `Derived metric`, `Interpretation`, or `Unknown`. Keep the extractor's source references beside the claim.
-6. If the report is incomplete, keep the report and state exactly what is missing. Do not silently rerun with a different evidence boundary or turn a missing log into zero operations.
+6. Read the **Error analysis** and **Optimization recommendations** sections. Check that each error category separates independent occurrences from supporting duplicate records, states a causal interpretation with confidence, and proposes a validation step.
+7. If the report is incomplete, keep the report and state exactly what is missing. Do not silently rerun with a different evidence boundary or turn a missing log into zero operations.
 
 The CLI performs deterministic correlation by stable IDs first and timestamp fallback second. Its windows split at lifecycle, Workspace, Material, Candidate, Judge, wait/wake/review, and terminal changes, and at a 15-minute maximum. Long silent gaps are explicit `no observed event` windows. A window's observed intent must come from an explicit tool/service objective or be `unknown`; never use hidden chain-of-thought.
 
@@ -112,8 +113,10 @@ Use the template in [references/report-template.md](references/report-template.m
 5. **Per-Execution analysis**: metadata, time-window summaries, artifacts, Service interactions, errors, waits, handoffs, and unresolved questions.
 6. **Collaboration review**: only explicit delivery, read/consumption, downstream action, Candidate/Workspace effect, and Judge effect. Separate accepted-but-unused from consumed-without-recorded-effect.
 7. **Scheduling/health review**: Core/session/runtime facts, idle/wait/turn/Judge intervals, ready-work evidence, and any unexplained gaps. Do not call an unexplained gap a scheduler bug.
-8. **Candidate/Judge review**: ordered candidate/check sequence, diagnostics, Workspace lineage, feedback reads, and whether later behavior changed.
-9. **Conclusions and follow-up**: observed facts, deterministic derivations, interpretations, unknowns, and concrete next investigations.
+8. **Error analysis**: deduplicated Service/Agent failures, causal interpretation, impact, confidence, and source references.
+9. **Optimization recommendations**: prioritized next actions with explicit validation conditions.
+10. **Candidate/Judge review**: ordered candidate/check sequence, diagnostics, Workspace lineage, feedback reads, and whether later behavior changed.
+11. **Conclusions and follow-up**: observed facts, deterministic derivations, interpretations, unknowns, and concrete next investigations.
 
 Use tables for inventories and windows; use prose only for conclusions that cite the tables. Every conclusion that matters must have one or more evidence references.
 

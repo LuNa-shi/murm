@@ -71,7 +71,7 @@ async function createProjectDatabase(path, { unknownExecution = false } = {}) {
   db.close();
 }
 
-async function createFixture({ agent = true, service = true, workspace = true, malformed = false, unknown = false } = {}) {
+async function createFixture({ agent = true, service = true, workspace = true, malformed = false, unknown = false, errors = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-analysis-fixture-'));
   const project = 'demo';
   await mkdir(join(root, 'metadata'), { recursive: true });
@@ -97,6 +97,7 @@ async function createFixture({ agent = true, service = true, workspace = true, m
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'task-service.ndjson'), [
       { timestamp: T1, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'claim', envelope: { operation_id: 'op-claim', task_id: TASK, execution_id: EXECUTION } },
       { timestamp: T1, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'claim', ok: true, result: { task: { task_id: TASK, state: 'RUNNING' }, execution: { execution_id: EXECUTION, task_id: TASK, state: 'RUNNING' } } },
+      ...(errors ? [{ timestamp: T2, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'claim', ok: false, error: { code: 'CONFLICT', message: 'Task has reached its active Execution quota' } }] : []),
       ...(malformed ? ['{"broken":'] : []),
       { timestamp: T3, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'submit_candidate', envelope: { operation_id: 'op-submit', task_id: TASK, execution_id: EXECUTION } },
       { timestamp: T3, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'submit_candidate', ok: true, result: { execution: { execution_id: EXECUTION, task_id: TASK, state: 'WAITING', candidate_material_id: MATERIAL } } },
@@ -107,6 +108,12 @@ async function createFixture({ agent = true, service = true, workspace = true, m
       { timestamp: T3, scope: 'context-service', event: 'dispatch.start', service: 'context', operation: 'read_materials', envelope: { operation_id: 'op-read', task_id: TASK, execution_id: EXECUTION } },
       { timestamp: T3, scope: 'context-service', event: 'dispatch.complete', service: 'context', operation: 'read_materials', ok: true, result: [{ material_id: MATERIAL }] },
     ]);
+    if (errors) {
+      await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'service-router.ndjson'), [
+        { timestamp: T2, scope: 'service-router', event: 'dispatch.start', service: 'task', operation: 'claim', envelope: { operation_id: 'op-conflict', task_id: TASK, execution_id: EXECUTION } },
+        { timestamp: T2, scope: 'service-router', event: 'dispatch.complete', service: 'task', operation: 'claim', ok: false, error: { code: 'CONFLICT', message: 'Task has reached its active Execution quota' } },
+      ]);
+    }
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'judge-service.ndjson'), [
       { timestamp: T3, scope: 'judge-service', event: 'judge.start', service: 'judge', operation_id: 'op-judge', target_task_id: TASK, candidate_material_id: MATERIAL },
       { timestamp: T4, scope: 'judge-service', event: 'judge.complete', service: 'judge', operation_id: 'op-judge', ok: true, verdict: 'FAIL', check_result_id: CHECK, candidate_material_id: MATERIAL },
@@ -147,11 +154,28 @@ test('analyzes a complete fixture into stable per-Execution windows without copy
     assert.ok(first.executions[0].windows.some((window) => window.observed_intent === 'claim a Task'));
     assert.ok(first.report.includes('### Execution `execution-1`'));
     assert.ok(first.report.includes('Judge FAIL'));
+    assert.ok(first.report.includes('## Error analysis'));
+    assert.ok(first.report.includes('## Optimization recommendations'));
+    assert.ok(first.report.includes('## Candidate/Judge review'));
+    assert.ok(first.report.includes('tactic_no_progress') || first.report.includes('No diagnostic class repeated'));
     assert.ok(first.report.includes('Material'));
     assert.ok(!first.report.includes('must-not-be-copied'));
     assert.equal(first.facts.map((fact) => fact.id).join(','), second.facts.map((fact) => fact.id).join(','));
     assert.equal(first.report, await readFile(firstPath, 'utf8'));
     assert.equal(first.report, second.report);
+  } finally { await cleanup(root); }
+});
+
+test('deduplicates cross-service error echoes and preserves supporting evidence count', async () => {
+  const root = await createFixture({ errors: true });
+  try {
+    const analysis = await analyzeExperiment(root);
+    const conflict = analysis.errors.find((error) => error.category === 'claim_active_execution_quota');
+    assert.ok(conflict);
+    assert.equal(conflict.occurrence_count, 1);
+    assert.ok(conflict.supporting_record_count >= 2);
+    assert.match(analysis.report, /claim_active_execution_quota/);
+    assert.match(analysis.report, /Supporting records/);
   } finally { await cleanup(root); }
 });
 

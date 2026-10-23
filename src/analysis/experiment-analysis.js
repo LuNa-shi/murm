@@ -28,7 +28,7 @@ const SAFE_RESULT_KEYS = new Set([
   'tool', 'operation', 'outcome', 'phase', 'service', 'error', 'stream', 'type',
   'event', 'decision', 'diagnostic', 'session_transport_id', 'file_count',
   'content_hash', 'result', 'task', 'execution', 'material', 'check_result',
-  'material_ids', 'count', 'candidate_material_id',
+  'material_ids', 'count', 'candidate_material_id', 'diagnostic_class',
 ]);
 
 const INTENT_BY_OPERATION = new Map([
@@ -192,7 +192,7 @@ function safeEntity(value, type) {
       : type === 'material'
         ? ['material_id', 'kind', 'scope', 'evidence_state', 'source_task', 'source_execution', 'version', 'created_at']
         : type === 'check_result'
-          ? ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'execution_id', 'status', 'verdict', 'checker_ref', 'checker_version', 'created_at', 'updated_at']
+          ? ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'execution_id', 'status', 'verdict', 'checker_ref', 'checker_version', 'diagnostic_class', 'created_at', 'updated_at']
           : [...SAFE_RESULT_KEYS];
   for (const key of keys) {
     if (!(key in value) || SENSITIVE_KEYS.test(key)) continue;
@@ -207,6 +207,33 @@ function safeEntity(value, type) {
     } else result[key] = safeResult(value[key]);
   }
   return result;
+}
+
+function diagnosticClass(value) {
+  const message = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!message) return 'unknown';
+  if (/unsolved goals|failed to prove the goal/i.test(message)) return 'unsolved_goals';
+  if (/(?:aesop|simp).*no progress|made no progress/i.test(message)) return 'tactic_no_progress';
+  if (/rcases failed|not an inductive datatype/i.test(message)) return 'tactic_shape_error';
+  if (/type mismatch|unknown identifier|application type mismatch/i.test(message)) return 'lean_type_error';
+  if (/sorry|admit|axiom/i.test(message)) return 'forbidden_placeholder';
+  if (/timed out|timeout/i.test(message)) return 'checker_timeout';
+  return 'lean_checker_error';
+}
+
+function errorInfo(fact) {
+  const error = fact.summary?.error;
+  if (isObject(error)) return { code: text(error.code, 80) ?? 'UNKNOWN', message: text(error.message, 180) ?? '' };
+  if (error) return { code: 'TOOL_ERROR', message: text(error, 180) ?? '' };
+  return null;
+}
+
+function errorCategory(info, fact) {
+  const message = info?.message ?? '';
+  if (info?.code === 'CONFLICT' && /active Execution quota/i.test(message)) return 'claim_active_execution_quota';
+  if (info?.code === 'NOT_ALLOWED' && /does not require a CheckResult/i.test(message)) return 'check_result_contract_mismatch';
+  if (fact.kind === 'tool_call' && info?.code === 'TOOL_ERROR') return 'agent_tool_error';
+  return `${String(info?.code ?? 'UNKNOWN').toLowerCase()}_${fact.operation ?? fact.kind}`;
 }
 
 function entityFromResult(result, key) {
@@ -718,8 +745,11 @@ async function readDomainDatabases(root, dbPaths, errors) {
         }
       }
       if (tables.has('check_results')) {
-        for (const row of selectRows(db, 'check_results', ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'target_spec_version', 'execution_id', 'status', 'verdict', 'checker_ref', 'checker_version', 'environment_ref', 'created_at', 'updated_at'])) {
-          model.checks.push({ ...row, project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'check_results', `check_result_id=${row.check_result_id}`) });
+        for (const row of selectRows(db, 'check_results', ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'target_spec_version', 'execution_id', 'status', 'verdict', 'checker_ref', 'checker_version', 'environment_ref', 'evidence_json', 'created_at', 'updated_at'])) {
+          const evidence = jsonParse(row.evidence_json);
+          const diagnostic = isObject(evidence) ? (evidence.diagnostic ?? evidence.stderr ?? evidence.stdout) : null;
+          const { evidence_json: _evidenceJson, ...safeRow } = row;
+          model.checks.push({ ...safeRow, diagnostic_class: diagnosticClass(diagnostic), project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'check_results', `check_result_id=${row.check_result_id}`) });
         }
       }
       if (tables.has('operations')) {
@@ -1304,6 +1334,163 @@ function aggregateSummary(summaries, model, facts, inventory) {
   };
 }
 
+function buildErrorAnalysis(facts) {
+  const groups = new Map();
+  const baseKeyFor = (fact) => `${fact.operation ?? fact.kind}|${fact.at ? fact.at.slice(0, 19) : 'untimed'}`;
+  for (const fact of facts) {
+    const info = errorInfo(fact);
+    if (!info) continue;
+    const category = errorCategory(info, fact);
+    const baseKey = baseKeyFor(fact);
+    let key = `${category}|${baseKey}`;
+    // Agent-visible "tool error" records are the transport echo of the
+    // Service failure at the same operation/time. Count them as evidence for
+    // the same occurrence instead of inflating the failure total.
+    if (category === 'agent_tool_error') {
+      const related = [...groups.values()].find((group) => group.base_key === baseKey && group.category !== 'agent_tool_error');
+      if (related) key = related.key;
+    }
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, base_key: baseKey, category, code: info.code, operation: fact.operation ?? fact.kind, occurrences: new Set(), supporting_records: 0, tasks: new Set(), executions: new Set(), sources: new Set(), first_at: fact.at, last_at: fact.at };
+      groups.set(key, group);
+    }
+    group.occurrences.add(fact.at ? fact.at.slice(0, 19) : 'untimed');
+    group.supporting_records += Math.max(1, fact.sources.length);
+    if (fact.taskId) group.tasks.add(fact.taskId);
+    if (fact.executionId) group.executions.add(fact.executionId);
+    for (const source of fact.sources) if (group.sources.size < 16) group.sources.add(source);
+    if (fact.at && (!group.first_at || fact.at < group.first_at)) group.first_at = fact.at;
+    if (fact.at && (!group.last_at || fact.at > group.last_at)) group.last_at = fact.at;
+  }
+  return [...groups.values()].map((group) => {
+    const common = {
+      category: group.category,
+      code: group.code,
+      operation: group.operation,
+      occurrence_count: group.occurrences.size,
+      supporting_record_count: group.supporting_records,
+      affected_tasks: [...group.tasks].sort(),
+      affected_executions: [...group.executions].sort(),
+      first_at: group.first_at,
+      last_at: group.last_at,
+      evidence: [...group.sources],
+      confidence: 'high',
+    };
+    if (group.category === 'claim_active_execution_quota') return {
+      ...common,
+      severity: 'medium',
+      interpretation: 'Several Agents attempted to claim a Task while its active Execution quota was full. This is contention and retry waste, not evidence of state corruption by itself.',
+      next_optimization: 'Make claimability quota-aware before dispatch, and add bounded per-Core backoff after this conflict.',
+    };
+    if (group.category === 'check_result_contract_mismatch') return {
+      ...common,
+      severity: 'medium',
+      interpretation: 'An Agent applied Judge feedback to a Task whose completion contract did not require a CheckResult. The Service correctly rejected the operation, but the turn was spent on an invalid route.',
+      next_optimization: 'Expose completion-contract capabilities in the task prompt/tool boundary and gate apply_check_result to proof Tasks that require checks.',
+    };
+    if (group.category === 'agent_tool_error') return {
+      ...common,
+      severity: 'low',
+      interpretation: 'The Agent received a tool error without a matched structured Service error in the available evidence.',
+      next_optimization: 'Preserve the operation/correlation ID through the Agent tool result so the next analysis can classify the underlying Service cause.',
+    };
+    return {
+      ...common,
+      severity: 'medium',
+      interpretation: 'A structured Service or checker error was recorded. The available evidence does not justify a stronger causal claim.',
+      next_optimization: 'Inspect the cited operation and add a targeted recovery or contract test before changing Runtime behavior.',
+    };
+  }).sort((a, b) => b.occurrence_count - a.occurrence_count || a.category.localeCompare(b.category));
+}
+
+function buildCandidateAnalysis(model, facts) {
+  const submissions = new Map();
+  for (const fact of facts.filter((candidate) => candidate.kind === 'candidate_submitted')) {
+    const candidateId = fact.summary?.candidate_material_id;
+    if (!candidateId || !fact.executionId) continue;
+    const existing = submissions.get(candidateId);
+    if (!existing || (fact.at && (!existing.at || fact.at < existing.at))) submissions.set(candidateId, fact);
+  }
+  const rows = [...model.checks].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).map((check) => {
+    const submission = submissions.get(check.candidate_material_id);
+    const start = timeMs(parseTime(check.created_at));
+    const end = timeMs(parseTime(check.updated_at));
+    return {
+      candidate_material_id: check.candidate_material_id,
+      check_result_id: check.check_result_id,
+      task_id: check.target_task_id,
+      execution_id: check.execution_id,
+      verdict: check.verdict ?? 'unknown',
+      status: check.status,
+      diagnostic_class: check.diagnostic_class ?? 'unknown',
+      submitted_at: submission?.at ?? check.created_at,
+      checked_at: check.updated_at,
+      check_elapsed_ms: start !== null && end !== null ? Math.max(0, end - start) : null,
+      workspace_revision: submission?.summary?.workspace_revision ?? null,
+      evidence: [...new Set([check.source.ref, ...(submission?.sources ?? [])])],
+    };
+  });
+  const diagnosticCounts = {};
+  for (const row of rows) {
+    const key = `${row.task_id}|${row.diagnostic_class}`;
+    diagnosticCounts[key] = (diagnosticCounts[key] ?? 0) + 1;
+  }
+  const repeated = Object.entries(diagnosticCounts).filter(([, count]) => count >= 2).map(([key, count]) => {
+    const [task_id, diagnostic_class] = key.split('|');
+    return { task_id, diagnostic_class, count, evidence: rows.filter((row) => row.task_id === task_id && row.diagnostic_class === diagnostic_class).flatMap((row) => row.evidence).slice(0, 12) };
+  });
+  return {
+    rows,
+    pass_count: rows.filter((row) => row.verdict === 'PASS').length,
+    fail_count: rows.filter((row) => row.verdict === 'FAIL').length,
+    repeated_diagnostics: repeated,
+    all_failed: rows.length > 0 && rows.every((row) => row.verdict === 'FAIL'),
+  };
+}
+
+function buildTerminalAnalysis(analysis) {
+  const end = timeMs(analysis.aggregate.ended_at);
+  const finalFailed = analysis.model.executions.filter((execution) => execution.state === 'FAILED' && end !== null && timeMs(parseTime(execution.updated_at)) !== null && end - timeMs(parseTime(execution.updated_at)) <= 5_000);
+  const unfinishedTasks = analysis.model.tasks.filter((task) => ['OPEN', 'RUNNING', 'WAITING', 'BLOCKED'].includes(task.state));
+  if (!analysis.aggregate.solved && finalFailed.length && unfinishedTasks.length) {
+    return {
+      category: 'timebox_or_incomplete_cleanup',
+      confidence: 'medium',
+      interpretation: 'The experiment ended with a recently failed Execution while Tasks remained OPEN or WAITING. The trace supports timebox/cleanup truncation as a likely explanation; it does not prove a scheduler failure.',
+      affected_executions: finalFailed.map((execution) => execution.execution_id),
+      unfinished_tasks: unfinishedTasks.map((task) => ({ task_id: task.task_id, state: task.state })),
+      evidence: [...finalFailed.map((execution) => execution.source.ref), ...unfinishedTasks.map((task) => task.source.ref), 'metadata/experiment.json'],
+      next_optimization: 'Persist an explicit experiment-timebox terminal reason, wake/cancel dependent waits during cleanup, and report unfinished Task contracts separately from Agent/Service errors.',
+    };
+  }
+  return null;
+}
+
+function buildOptimizationRecommendations(analysis) {
+  const recommendations = [];
+  const add = (priority, category, action, rationale, validation, evidence) => recommendations.push({ priority, category, action, rationale, validation, evidence: [...new Set(evidence)].slice(0, 12) });
+  const categories = new Set(analysis.errors.map((error) => error.category));
+  if (categories.has('claim_active_execution_quota')) {
+    add('P1', 'claim contention', 'Do not dispatch a Task to a Core when its active Execution quota is full; after a conflict, back off and refresh the queue.', 'This run produced repeated quota conflicts while active Executions already owned the work.', 'Count unique quota conflicts per run and require the next retry to occur only after claimability changes.', analysis.errors.filter((error) => error.category === 'claim_active_execution_quota').flatMap((error) => error.evidence));
+  }
+  if (categories.has('check_result_contract_mismatch')) {
+    add('P1', 'task-contract/tool mismatch', 'Expose completion-contract capabilities to the Agent and prevent apply_check_result on research Tasks that do not require a CheckResult.', 'Five unique invalid operations consumed turns and returned the same NOT_ALLOWED contract error.', 'Run a research Task fixture and assert zero apply_check_result calls, while proof Tasks still apply matching results.', analysis.errors.filter((error) => error.category === 'check_result_contract_mismatch').flatMap((error) => error.evidence));
+  }
+  if (analysis.candidates.all_failed || analysis.candidates.repeated_diagnostics.length) {
+    add('P1', 'candidate route control', 'After two consecutive FAILs in the same diagnostic class, require a documented route change, parent review, or a bounded research Task before another submission.', 'Nine checks all failed and repeated no-progress/tactic diagnostics did not produce a PASS.', 'Report diagnostic-class transitions and compare the next Candidate against the previous feedback before allowing another attempt.', analysis.candidates.repeated_diagnostics.flatMap((row) => row.evidence));
+  }
+  if (analysis.terminal) {
+    add('P1', 'timebox cleanup', analysis.terminal.next_optimization, analysis.terminal.interpretation, 'Run a short timebox fixture with a waiting Root and open Child; assert explicit terminal reason and no orphaned wait.', analysis.terminal.evidence);
+  }
+  const unconsumed = analysis.collaboration.filter((row) => row.assessment === 'no recorded consumer');
+  if (unconsumed.length) {
+    add('P2', 'handoff visibility', 'Make parent review/Material consumption explicit before treating a child result as delivered.', `${unconsumed.length} Material(s) had no recorded consumer in this run; this is an evidence result, not a claim that they were useless.`, 'Add a report assertion for each published Material: consumer, downstream operation, or explicit no-consumer state.', unconsumed.map((row) => row.published_evidence));
+  }
+  add('P0', 'analysis quality', 'Keep the cross-source operation-chain deduplication and add regression fixtures for Service/Observation/Agent echoes.', 'The same failure appears in multiple layers; the report must preserve supporting evidence without counting it as independent failures.', 'A fixture should produce one unique occurrence with multiple supporting source references.', analysis.errors.flatMap((error) => error.evidence));
+  return recommendations;
+}
+
 function deriveConclusions(analysis) {
   const conclusions = [];
   const statuses = Object.fromEntries(analysis.inventory.evidence.map((entry) => [entry.class, entry.status]));
@@ -1313,6 +1500,9 @@ function deriveConclusions(analysis) {
   else conclusions.push({ type: 'fact', text: 'The expected local evidence classes were found; source-level gaps and integrity warnings are still reported below.', evidence: analysis.inventory.evidence.map((entry) => `evidence:${entry.class}`) });
   if (analysis.collaboration.some((row) => row.assessment === 'accepted-but-unused')) conclusions.push({ type: 'interpretation', text: 'At least one Material is marked accepted but has no recorded consumer. This is an evidence-backed handoff result, not a claim that the Material was mathematically useless.', evidence: analysis.collaboration.filter((row) => row.assessment === 'accepted-but-unused').map((row) => row.published_evidence) });
   if (analysis.warnings.length) conclusions.push({ type: 'limitation', text: `${analysis.warnings.length} event reference(s) point to an unknown Task or Execution in the authoritative model. Those events are retained as unmatched facts.`, evidence: analysis.warnings.slice(0, 8).flatMap((warning) => warning.sources ?? []) });
+  for (const error of analysis.errors.slice(0, 8)) conclusions.push({ type: 'error-analysis', text: `${error.occurrence_count} unique ${error.category} occurrence(s) were found for ${error.operation}: ${error.interpretation}`, evidence: error.evidence.slice(0, 8) });
+  if (analysis.candidates.all_failed) conclusions.push({ type: 'error-analysis', text: `All ${analysis.candidates.rows.length} recorded Candidate check(s) returned FAIL. Repeated diagnostic classes are reported as route non-convergence, not as proof of a mathematical impossibility.`, evidence: analysis.candidates.rows.flatMap((row) => row.evidence).slice(0, 12) });
+  if (analysis.terminal) conclusions.push({ type: 'interpretation', text: analysis.terminal.interpretation, evidence: analysis.terminal.evidence.slice(0, 8) });
   conclusions.push({ type: 'policy', text: 'The report treats heartbeat, turn count, Material count, Task acceptance, and report.json made_progress as activity or supporting metrics. None is labeled productive Goal progress by itself.', evidence: ['docs/benchmark-analysis-sop.md'] });
   return conclusions;
 }
@@ -1387,8 +1577,16 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
     collaboration,
     warnings,
     aggregate: null,
+    errors: [],
+    candidates: null,
+    terminal: null,
+    optimizations: [],
   };
   analysis.aggregate = aggregateSummary(summaries, model, allFacts, { ...inventory, executions_count: executions.length });
+  analysis.errors = buildErrorAnalysis(allFacts);
+  analysis.candidates = buildCandidateAnalysis(model, allFacts);
+  analysis.terminal = buildTerminalAnalysis(analysis);
+  analysis.optimizations = buildOptimizationRecommendations(analysis);
   analysis.conclusions = deriveConclusions(analysis);
   const report = renderMarkdown(analysis);
   const reportPath = resolve(outputPath ?? join(root, 'analysis', 'experiment-analysis.md'));
@@ -1438,8 +1636,10 @@ function renderMarkdown(analysis) {
     return `### Execution \`${md(item.execution.execution_id)}\`\n\n- Task: \`${md(item.execution.task_id)}\`\n- Owner: ${md(item.execution.owner_ref)}\n- Current/terminal state: **${md(item.execution.state)}**\n- Attempt: ${md(item.execution.attempt_no ?? 'unknown')}\n- Normalized fact counts: ${counts}\n- Evidence mode: ${analysis.inventory.evidenceMode}\n\n#### Time-window summaries\n\n${windowTable(item)}\n\n#### Artifacts, Service effects, and errors\n\n${artifacts}\n`;
   }).join('\n');
   const collaborationRows = analysis.collaboration.map((row) => `| ${md(row.material_id)} | ${md(row.kind)} / ${md(row.evidence_state)} | ${md(row.publisher.execution_id ?? 'unknown')} | ${row.consumers.map((consumer) => `${consumer.execution_id ?? 'unknown'} (${consumer.evidence})`).join('<br>') || 'none recorded'} | ${row.downstream_effects.map((effect) => `${effect.kind} (${effect.evidence})`).join('<br>') || 'none recorded'} | ${md(row.assessment)} |`).join('\n');
-  const candidateFacts = analysis.facts.filter((fact) => ['candidate_submitted', 'judge_result', 'judge_check', 'judge_check_record'].includes(fact.kind));
-  const candidateRows = candidateFacts.map((fact) => `| ${md(fact.summary?.candidate_material_id ?? fact.summary?.check_result?.candidate_material_id ?? 'unknown')} | ${md(fact.kind)} | ${md(fact.summary?.verdict ?? fact.summary?.check_result?.verdict ?? 'unknown')} | ${md(fact.executionId)} | ${fact.sources.join('<br>')} |`).join('\n');
+  const errorRows = analysis.errors.map((error) => `| ${md(error.severity)} | ${md(error.category)} | ${error.occurrence_count} | ${error.supporting_record_count} | ${md(error.operation)} | ${md(error.interpretation)} | ${error.evidence.slice(0, 6).join('<br>')} |`).join('\n');
+  const optimizationRows = analysis.optimizations.map((item) => `| ${md(item.priority)} | ${md(item.category)} | ${md(item.action)} | ${md(item.rationale)} | ${md(item.validation)} | ${item.evidence.slice(0, 6).join('<br>')} |`).join('\n');
+  const candidateRows = analysis.candidates.rows.map((row) => `| ${md(row.candidate_material_id)} | ${md(row.task_id)} | ${md(row.execution_id)} | ${md(row.verdict)} | ${md(row.diagnostic_class)} | ${md(row.check_elapsed_ms)} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
+  const repeatedDiagnosticRows = analysis.candidates.repeated_diagnostics.map((row) => `| ${md(row.task_id)} | ${md(row.diagnostic_class)} | ${row.count} | ${row.evidence.slice(0, 6).join('<br>')} |`).join('\n');
   const healthByCore = {};
   for (const fact of analysis.facts.filter((candidate) => ['heartbeat', 'execution_assigned', 'wait_requested', 'execution_terminal', 'session_started', 'session_closed'].includes(candidate.kind))) {
     const key = fact.coreId ?? 'unknown';
@@ -1522,11 +1722,40 @@ ${healthRows || '| unknown | No Core/session facts available |'}
 
 Heartbeats are lease activity only. Agent turns, process health, Judge time, IDLE, WAITING, scheduler polling, and effective Agent work are not collapsed into one metric. An unexplained interval is reported as an evidence gap, not a scheduler defect.
 
+## Error analysis
+
+The analyzer groups raw Agent, Bridge, Service, and Observation echoes into unique operation-time occurrences. 'occurrence_count' is the estimated number of independent failures; source references show supporting records and are not additional failures.
+
+| Severity | Category | Unique occurrences | Supporting records | Operation | Evidence-backed interpretation | Evidence |
+|---|---|---:|---:|---|---|---|
+${errorRows || '| — | none recorded | 0 | 0 | — | No structured error was normalized. | — |'}
+
+${analysis.terminal ? `### Terminal/timebox finding
+
+- **${md(analysis.terminal.category)} (${md(analysis.terminal.confidence)} confidence):** ${md(analysis.terminal.interpretation)}
+- Affected Executions: ${analysis.terminal.affected_executions.map(md).join(', ') || 'none'}
+- Unfinished Tasks: ${analysis.terminal.unfinished_tasks.map((task) => `${md(task.task_id)}=${md(task.state)}`).join(', ') || 'none'}
+- Evidence: ${analysis.terminal.evidence.join(', ')}` : 'No separate terminal/timebox finding was derived.'}
+
+## Optimization recommendations
+
+These are proposed next actions, not claims that the current trace proves a code defect. Each recommendation includes a validation condition.
+
+| Priority | Category | Proposed optimization | Why this run supports it | How to validate | Evidence |
+|---|---|---|---|---|---|
+${optimizationRows || '| — | none | No additional optimization was derived | — | — | — |'}
+
 ## Candidate/Judge review
 
-| Candidate/material | Fact | Verdict | Execution | Evidence |
-|---|---|---|---|---|
-${candidateRows || '| _none_ | No candidate/Judge fact was normalized | — | — | — |'}
+| Candidate/material | Task | Execution | Verdict | Diagnostic class | Check elapsed (ms) | Evidence |
+|---|---|---|---|---|---:|---|
+${candidateRows || '| _none_ | — | — | — | — | — | — |'}
+
+${repeatedDiagnosticRows ? `### Repeated diagnostic classes
+
+| Task | Diagnostic class | Count | Evidence |
+|---|---|---:|---|
+${repeatedDiagnosticRows}` : 'No diagnostic class repeated at least twice.'}
 
 ## Conclusions and follow-up
 
