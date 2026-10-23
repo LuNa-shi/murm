@@ -12,14 +12,14 @@ function required(value, name) {
   return value;
 }
 
-const PROVIDER_ARG_PLACEMENT = Object.freeze({ openai: 'pi', kimi: 'nurouter' });
+const PROVIDER_ARG_PLACEMENT = Object.freeze({ openai: 'pi', 'openai-codex': 'pi', kimi: 'nurouter' });
 
 export function resolveAgentCoreRoute({ provider, account, group } = {}) {
   if (!Object.hasOwn(PROVIDER_ARG_PLACEMENT, provider)) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported NuRouter/Pi provider: ${provider}`);
   }
   const placement = PROVIDER_ARG_PLACEMENT[provider];
-  if (provider === 'openai' && account && group) {
+  if ((provider === 'openai' || provider === 'openai-codex') && account && group) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'OpenAI NuRouter routing cannot set both account and group');
   }
   return placement;
@@ -46,6 +46,8 @@ export class AgentCoreSession extends EventEmitter {
     this.rpcBuffer = '';
     this.rpcRecords = [];
     this.pendingRpc = new Map();
+    this.state = null;
+    this.contextWindow = null;
     child.stdout?.on('data', (chunk) => {
       const text = chunk.toString();
       this.stdout += text;
@@ -107,6 +109,14 @@ export class AgentCoreSession extends EventEmitter {
         reject(error);
       }
     });
+  }
+
+  setAutoCompaction(enabled = true) {
+    return this.sendCommand({ type: 'set_auto_compaction', enabled });
+  }
+
+  setAutoRetry(enabled = true) {
+    return this.sendCommand({ type: 'set_auto_retry', enabled });
   }
 
   prompt(message, { timeoutMs = 30_000, images, streamingBehavior } = {}) {
@@ -171,7 +181,13 @@ export class AgentCoreSession extends EventEmitter {
         else resolve();
       };
       const onRecord = (record) => {
-        if (record.type === 'ready' || (record.type === 'response' && record.id === id)) finish();
+        if (record.type === 'response' && record.id === id) {
+          this.state = record.data ?? null;
+          this.contextWindow = record.data?.model?.contextWindow ?? record.data?.model?.context_window ?? null;
+          finish();
+        } else if (record.type === 'ready') {
+          finish();
+        }
       };
       this.on('rpc', onRecord);
       this.sendCommand({ id, type: 'get_state' }, { timeoutMs }).catch((error) => finish(error));
@@ -271,8 +287,9 @@ export class AgentCoreAdapter {
     this.manifestVersions = manifestVersions;
   }
 
-  buildLaunchArgs({ executionId, sessionDir = this.config.sessionDir } = {}) {
+  buildLaunchArgs({ executionId, sessionId = executionId, sessionDir = this.config.sessionDir } = {}) {
     required(executionId, 'execution_id');
+    required(sessionId, 'session_id');
     for (const [name, value] of Object.entries({
       provider: this.config.provider,
       model: this.config.model,
@@ -289,7 +306,7 @@ export class AgentCoreAdapter {
       '--',
       '--mode', 'rpc',
       '--session-dir', sessionDir,
-      '--session-id', executionId,
+      '--session-id', sessionId,
       ...(this.config.extensionPath ? ['--extension', this.config.extensionPath] : []),
       '--no-builtin-tools',
       '--no-skills',
@@ -300,8 +317,8 @@ export class AgentCoreAdapter {
     return args;
   }
 
-  async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = randomUUID() } = {}) {
-    const launchArgs = this.buildLaunchArgs({ executionId, sessionDir });
+  async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = executionId } = {}) {
+    const launchArgs = this.buildLaunchArgs({ executionId, sessionId, sessionDir });
     await mkdir(sessionDir, { recursive: true });
     const manifest = await createVersionManifest({ ...this.manifestVersions, launchArgs });
     let child;
@@ -350,6 +367,8 @@ export class AgentCoreAdapter {
     }
     if (agentPrompt) {
       await session.waitForReady({ timeoutMs: 30_000 });
+      await session.setAutoCompaction(true);
+      await session.setAutoRetry(true);
       await session.prompt(agentPrompt, { timeoutMs: 30_000 });
     }
     return session;
