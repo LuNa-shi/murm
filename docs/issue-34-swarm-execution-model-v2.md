@@ -134,6 +134,39 @@ FIX-01 through FIX-05 are P0/P1 runtime reliability work and must gate long
 experiments. FIX-06 through FIX-08 are evidence and control-flow correctness
 work and must gate claims about collaboration quality.
 
+### Published issue decomposition after audit
+
+The original design review identified eight FIX points and eight FEAT points.
+That is too fine-grained for implementation tracking, so Issue #34 is split
+into four execution issues in each category. The merge keeps boundaries where
+the implementation and acceptance evidence form one coherent control or data
+flow; it does not merge work merely because the symptoms appeared in the same
+run.
+
+#### FIX issues
+
+| Issue | Consolidated scope | Original points | Why this boundary is coherent |
+| --- | --- | --- | --- |
+| [#36](https://github.com/LuNa-shi/SwarmEnv/issues/36) | Runtime Session health, checkpoint recovery, watchdog, and Core release | FIX-01, FIX-02, FIX-04 | Session failure detection, fresh-session recovery, watchdog action, fencing, and capacity release must agree on one Execution lifecycle. Splitting them would allow a stale RUNNING or occupied Core between independently delivered pieces. |
+| [#37](https://github.com/LuNa-shi/SwarmEnv/issues/37) | Stagnation and repeated research-route control | FIX-05, FIX-06 | Both defects concern an otherwise valid run spending budget without a new auditable route or Goal-relevant progress. They share progress windows, route fingerprints, bounded actions, and rework evidence. |
+| [#38](https://github.com/LuNa-shi/SwarmEnv/issues/38) | Productive health telemetry and scheduler accounting | FIX-03, FIX-07 | Productive Agent health and ready-unassigned accounting use the same append-only runtime facts, interval ownership, and report schema. Together they explain whether capacity was alive, useful, available, or waiting for work. |
+| [#39](https://github.com/LuNa-shi/SwarmEnv/issues/39) | Delivery-to-Goal progress evidence | FIX-08 | Delivery acceptance, Material use, downstream action, Judge effect, and Goal progress are one traceability chain. It remains separate because this is the correctness boundary between local completion and global progress. |
+
+#### FEAT issues
+
+| Issue | Consolidated scope | Original points | Why this boundary is coherent |
+| --- | --- | --- | --- |
+| [#40](https://github.com/LuNa-shi/SwarmEnv/issues/40) | Global Goal and shared Dynamic Task Flow | FEAT-01, FEAT-02 | Goal-scoped initialization and shared claiming define one scheduling model. Four Explorations are useful only if their Tasks enter a common queue and no longer retain permanent Core or Parent ownership. |
+| [#41](https://github.com/LuNa-shi/SwarmEnv/issues/41) | Task relations and structured Material contracts | FEAT-03, FEAT-04 | Collaboration edges and reusable Material metadata are the two sides of the durable task/context data model. Both must preserve provenance, evidence state, and explicit dependencies before notification can be reliable. |
+| [#42](https://github.com/LuNa-shi/SwarmEnv/issues/42) | Material consumption, notification, and Task wake | FEAT-05, FEAT-06 | A published result becomes collaborative only when an Agent can explicitly consume it and an explicit dependent Task can receive an idempotent update or wake. These form one context-to-control-flow loop. |
+| [#43](https://github.com/LuNa-shi/SwarmEnv/issues/43) | Bounded Swarm reorganization and comparison evidence | FEAT-07, FEAT-08 | Reorganization needs auditable task/route mutations, and Swarm claims need the same event-derived evidence. The issue limits mutation power while making cross-task reuse, wake, Goal progress, utilization, and cost measurable. |
+
+Each published issue is a native sub-issue of [#34](https://github.com/LuNa-shi/SwarmEnv/issues/34)
+and repeats the mandatory real-Agent acceptance gate for all three locked
+problems. The original FIX/FEAT rows below remain as the normative behavior
+catalog; the published issues are the units that can be analyzed and executed
+independently.
+
 ### Features: new Swarm execution behavior
 
 | ID | Feature | New behavior | Required acceptance evidence |
