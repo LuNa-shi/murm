@@ -12,6 +12,26 @@ function operationId(prefix) {
   return `runtime:${prefix}:${randomUUID()}`;
 }
 
+const DEFAULT_WATCHDOG_TIMEOUT_MS = 120_000;
+const PI_PROJECT_SETTINGS = Object.freeze({
+  compaction: { enabled: true },
+  retry: { enabled: true, maxRetries: 15, baseDelayMs: 2_000, maxAgentDelayMs: 60_000 },
+});
+const ACTIVE_SESSION_PHASES = new Set(['turn', 'provider_retry', 'compaction']);
+
+function classifySessionFailure(record) {
+  if (record?.type === 'auto_retry_end' && record.success === false) {
+    return /context|token|length/i.test(String(record.finalError ?? record.errorMessage ?? '')) ? 'context_overflow' : 'provider_failure';
+  }
+  if (record?.type === 'compaction_end' && !record.result && !record.aborted) return 'compaction_failure';
+  if (record?.type === 'message_end') {
+    const message = record.message ?? {};
+    const error = String(message.errorMessage ?? message.error ?? '');
+    if (/context|token|length/i.test(error)) return 'context_overflow';
+  }
+  return null;
+}
+
 function normalizeWaitFiles(files) {
   if (files === undefined || files === null) return {};
   if (!files || typeof files !== 'object' || Array.isArray(files)) {
@@ -25,7 +45,7 @@ function normalizeWaitFiles(files) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null }) {
+  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, clock = () => Date.now() }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -35,7 +55,11 @@ export class Runtime {
     this.actorRef = actorRef;
     this.logger = logger;
     this.agentLogger = agentLogger;
+    this.maxRecoveryAttempts = maxRecoveryAttempts;
+    this.watchdogTimeoutMs = watchdogTimeoutMs;
+    this.clock = clock;
     this.activeProcesses = new Map();
+    this.recoveryAttempts = new Map();
   }
 
   getActiveProcessCount() {
@@ -243,12 +267,43 @@ export class Runtime {
     return waited;
   }
 
+  getSessionHealth(executionId) {
+    const active = this.activeProcesses.get(executionId);
+    if (!active) return null;
+    return {
+      execution_id: executionId,
+      session_id: active.session.sessionId ?? null,
+      phase: active.phase,
+      last_event_at: new Date(active.lastEventAt).toISOString(),
+      last_heartbeat_at: active.lastHeartbeatAt ? new Date(active.lastHeartbeatAt).toISOString() : null,
+      last_completed_turn_at: active.lastCompletedTurnAt ? new Date(active.lastCompletedTurnAt).toISOString() : null,
+      last_successful_service_call_at: active.lastSuccessfulServiceCallAt ? new Date(active.lastSuccessfulServiceCallAt).toISOString() : null,
+      last_productive_at: new Date(active.lastProductiveAt).toISOString(),
+      last_failure_class: active.lastFailureClass,
+      recovery_attempt: this.recoveryAttempts.get(active.execution.task_id) ?? 0,
+    };
+  }
+
+  async sweepWatchdog(at = new Date(this.clock())) {
+    const recovered = [];
+    for (const [executionId, active] of [...this.activeProcesses.entries()]) {
+      const execution = this.taskService.getExecution(executionId);
+      if (!execution || execution.state !== 'RUNNING' || ACTIVE_SESSION_PHASES.has(active.phase)) continue;
+      if (at.getTime() - active.lastProductiveAt < this.watchdogTimeoutMs) continue;
+      recovered.push(await this.#handleSessionFailure(executionId, 'watchdog_stall'));
+    }
+    return recovered.filter(Boolean);
+  }
+
   heartbeat(executionId, payload = {}) {
     this.logger?.append({ event: 'runtime.heartbeat', execution_id: executionId });
     const execution = this.#getExecution(executionId);
     const result = this.taskService.dispatch('heartbeat', payload, this.#executionEnvelope(execution, operationId('heartbeat')));
     const active = this.activeProcesses.get(executionId);
-    if (active) active.execution = result.execution;
+    if (active) {
+      active.execution = result.execution;
+      active.lastHeartbeatAt = this.clock();
+    }
     return result;
   }
 
@@ -324,11 +379,12 @@ export class Runtime {
     const task = this.taskService.getTask(execution.task_id);
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Task is missing for execution: ${execution.execution_id}`);
     if (execution.workspace_ref) {
-      return this.workspaceManager.restoreWorkspace({
+      const workspace = await this.workspaceManager.restoreWorkspace({
         workspaceRef: execution.workspace_ref,
         executionId: execution.execution_id,
         fencingVersion: execution.fencing_version,
       });
+      return this.#ensurePiSettings(execution, workspace);
     }
     const workspaceManifest = {
       task_id: task.task_id,
@@ -356,7 +412,7 @@ export class Runtime {
         runtimeManifest: { runtime_generation: this.runtimeGeneration, actor_ref: this.actorRef },
       });
     }
-    return this.workspaceManager.createWorkspace({
+    const workspace = await this.workspaceManager.createWorkspace({
       executionId: execution.execution_id,
       fencingVersion: execution.fencing_version,
       task,
@@ -364,6 +420,23 @@ export class Runtime {
       workspaceManifest,
       inputSnapshotManifest,
       runtimeManifest: { runtime_generation: this.runtimeGeneration, actor_ref: this.actorRef },
+    });
+    return this.#ensurePiSettings(execution, workspace);
+  }
+
+  async #ensurePiSettings(execution, workspace) {
+    const files = await this.workspaceManager.listFiles({
+      workspaceRef: workspace.workspace_ref,
+      executionId: execution.execution_id,
+      fencingVersion: execution.fencing_version,
+      path: '',
+    });
+    if (files.files.some((file) => file.path === '.pi/settings.json')) return workspace;
+    return this.workspaceManager.saveWorkspaceRevision({
+      workspaceRef: workspace.workspace_ref,
+      executionId: execution.execution_id,
+      fencingVersion: execution.fencing_version,
+      files: { '.pi/settings.json': JSON.stringify(PI_PROJECT_SETTINGS, null, 2) },
     });
   }
 
@@ -378,6 +451,7 @@ export class Runtime {
   async #launch(execution, workspace, { beforePrompt = null } = {}) {
     const session = await this.agentAdapter.start({
       executionId: execution.execution_id,
+      sessionId: randomUUID(),
       sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
       cwd: workspace.workspace_ref,
       logger: this.agentLogger,
@@ -400,25 +474,136 @@ export class Runtime {
   async #sendInitialPrompt(session, prompt) {
     if (!prompt || typeof session.prompt !== 'function') return;
     await session.waitForReady?.({ timeoutMs: 30_000 });
+    await session.setAutoCompaction?.(true);
+    await session.setAutoRetry?.(true);
+    this.logger?.append({
+      event: 'runtime.session_configured',
+      session_id: session.sessionId ?? null,
+      context_window: session.contextWindow ?? null,
+      auto_compaction: true,
+      auto_retry: true,
+      retry_max: PI_PROJECT_SETTINGS.retry.maxRetries,
+      retry_base_delay_ms: PI_PROJECT_SETTINGS.retry.baseDelayMs,
+      retry_max_delay_ms: PI_PROJECT_SETTINGS.retry.maxAgentDelayMs,
+    });
     await session.prompt(prompt, { timeoutMs: 30_000 });
   }
 
   #registerActiveProcess(execution, workspace, session) {
-    const active = { session, execution, workspace };
+    const nowMs = this.clock();
+    const active = {
+      session,
+      execution,
+      workspace,
+      phase: 'idle',
+      lastEventAt: nowMs,
+      lastHeartbeatAt: null,
+      lastCompletedTurnAt: null,
+      lastSuccessfulServiceCallAt: null,
+      lastProductiveAt: nowMs,
+      lastFailureClass: null,
+      failurePromise: null,
+    };
     this.activeProcesses.set(execution.execution_id, active);
+    session.on('rpc', (record) => {
+      void this.#handleSessionEvent(execution.execution_id, record);
+    });
+    session.on('processError', () => {
+      void this.#handleSessionFailure(execution.execution_id, 'process_error');
+    });
     session.on('close', () => {
       void this.#processExit(execution.execution_id);
     });
   }
 
+  async #handleSessionEvent(executionId, record) {
+    const active = this.activeProcesses.get(executionId);
+    if (!active) return;
+    active.lastEventAt = this.clock();
+    this.logger?.append({ event: 'runtime.agent_event', execution_id: executionId, record_type: record.type, phase: active.phase });
+    if (record.type === 'turn_start' || record.type === 'auto_retry_start' || record.type === 'compaction_start') {
+      active.phase = record.type === 'turn_start' ? 'turn' : record.type === 'auto_retry_start' ? 'provider_retry' : 'compaction';
+    }
+    if (record.type === 'turn_end') active.lastCompletedTurnAt = this.clock();
+    if (record.type === 'tool_execution_end' && record.isError !== true && String(record.toolName ?? '').startsWith('swarmenv_')) {
+      active.lastSuccessfulServiceCallAt = this.clock();
+    }
+    const completedProductiveEvent = record.type === 'turn_end' ||
+      (record.type === 'tool_execution_end' && record.isError !== true) ||
+      (record.type === 'compaction_end' && Boolean(record.result)) ||
+      (record.type === 'auto_retry_end' && record.success === true);
+    if (completedProductiveEvent) {
+      active.lastProductiveAt = this.clock();
+      active.phase = 'idle';
+    }
+    const failureClass = classifySessionFailure(record);
+    if (failureClass) {
+      active.lastFailureClass = failureClass;
+      await this.#handleSessionFailure(executionId, failureClass);
+    }
+  }
+
   async #processExit(executionId) {
     const active = this.activeProcesses.get(executionId);
     if (!active) return;
-    this.activeProcesses.delete(executionId);
     const execution = this.#getExecution(executionId);
-    if (execution.state === 'RUNNING') {
-      this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(execution, operationId('process-exit')));
+    if (execution.state === 'RUNNING') await this.#handleSessionFailure(executionId, 'process_exit');
+    else this.activeProcesses.delete(executionId);
+  }
+
+  async #handleSessionFailure(executionId, failureClass) {
+    const active = this.activeProcesses.get(executionId);
+    if (!active) return null;
+    if (active.failurePromise) return active.failurePromise;
+    active.lastFailureClass = failureClass;
+    active.failurePromise = (async () => {
+      this.activeProcesses.delete(executionId);
+      const execution = this.#getExecution(executionId);
+      if (execution.state !== 'RUNNING') return { execution };
+      await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+      const recoveryAttempt = (this.recoveryAttempts.get(execution.task_id) ?? 0) + 1;
+      this.recoveryAttempts.set(execution.task_id, recoveryAttempt);
+      this.logger?.append({ event: 'runtime.session_failure', execution_id: executionId, failure_class: failureClass, recovery_attempt: recoveryAttempt });
+      if (recoveryAttempt > this.maxRecoveryAttempts) {
+        const fenced = await this.fenceExecution(executionId);
+        this.logger?.append({ event: 'runtime.recovery_exhausted', execution_id: executionId, failure_class: failureClass, recovery_attempt: recoveryAttempt });
+        return { execution: fenced.execution, recovery: null, disposition: 'exhausted' };
+      }
+      const task = this.taskService.getTask(execution.task_id);
+      const recoveryPrompt = this.#recoveryPrompt(task, execution, failureClass, recoveryAttempt);
+      const nextFencingVersion = execution.fencing_version + 1;
+      if (execution.workspace_ref) {
+        await this.workspaceManager.fenceWorkspace({
+          workspaceRef: execution.workspace_ref,
+          executionId: execution.execution_id,
+          fencingVersion: execution.fencing_version,
+          newFencingVersion: nextFencingVersion,
+        });
+      }
+      const recovered = this.taskService.dispatch('recover_execution', {
+        runtime_generation: this.runtimeGeneration,
+        agent_prompt: recoveryPrompt,
+      }, this.#executionEnvelope(execution, operationId('recover')));
+      const replacement = await this.startExecution(recovered.execution.execution_id);
+      return { execution: execution, recovery: replacement.execution, disposition: 'recovered' };
+    })();
+    try {
+      return await active.failurePromise;
+    } finally {
+      active.failurePromise = null;
     }
+  }
+
+  #recoveryPrompt(task, execution, failureClass, attempt) {
+    return [
+      'Resume the claimed Task from its durable Workspace and checkpoint.',
+      `Failure class: ${failureClass}. Recovery attempt: ${attempt}.`,
+      `Task goal: ${task.goal}`,
+      `Expected output: ${task.expected_output}`,
+      `Workspace revision: ${execution.workspace_revision ?? 'none'}.`,
+      `Checkpoint: ${execution.checkpoint_ref ?? 'none'}.`,
+      'Do not assume the interrupted turn completed. Inspect the current Task, Execution, Workspace, and Materials before continuing.',
+    ].join('\n');
   }
 
   #executionEnvelope(execution, id) {

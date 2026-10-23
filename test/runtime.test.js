@@ -59,7 +59,7 @@ class FakeAgentAdapter {
   }
 }
 
-async function fixture({ stopDelayMs = 0 } = {}) {
+async function fixture({ stopDelayMs = 0, runtimeOptions = {} } = {}) {
   const database = new DatabaseSync(':memory:');
   const taskService = new TaskService(database);
   const contextService = new ContextService(database, { taskService });
@@ -71,7 +71,7 @@ async function fixture({ stopDelayMs = 0 } = {}) {
   }, { operationId: 'runtime-claim-op' });
   const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-workspace-'));
   const adapter = new FakeAgentAdapter({ stopDelayMs });
-  const runtime = new Runtime({ taskService, contextService, workspaceManager: new WorkspaceManager({ rootDir }), agentAdapter: adapter, actorRef: 'runtime:local' });
+  const runtime = new Runtime({ taskService, contextService, workspaceManager: new WorkspaceManager({ rootDir }), agentAdapter: adapter, actorRef: 'runtime:local', ...runtimeOptions });
   return { taskService, contextService, sdk, task, claimed, rootDir, adapter, runtime };
 }
 
@@ -103,6 +103,11 @@ test('Runtime creates an isolated workspace before Pi, saves checkpoint before w
   assert.equal(runtime.getActiveProcessCount(), 1);
   assert.equal(fixtureData.adapter.starts[0].cwd, started.workspace.workspace_ref);
   assert.equal(fixtureData.adapter.starts[0].sessionDir, join(started.workspace.workspace_ref, '.swarm', 'pi-session'));
+  const piSettings = JSON.parse((await runtime.readWorkspaceFile(claimed.execution.execution_id, { path: '.pi/settings.json' })).content);
+  assert.deepEqual(piSettings, {
+    compaction: { enabled: true },
+    retry: { enabled: true, maxRetries: 15, baseDelayMs: 2_000, maxAgentDelayMs: 60_000 },
+  });
   assert.equal(fixtureData.adapter.sessions[0].prompts[0], 'run the fixture');
   const workspaceManifest = JSON.parse(await readFile(join(started.workspace.workspace_ref, 'workspace-manifest.json'), 'utf8'));
   assert.equal(workspaceManifest.task_id, claimed.execution.task_id);
@@ -219,6 +224,97 @@ test('Runtime restart fences CREATED/RUNNING owners but preserves WAITING respon
   assert.equal(runtime.getActiveProcessCount(), 0);
   await rm(rootDir, { recursive: true, force: true });
   fixtureData.taskService.close();
+});
+
+test('final provider retry failure starts a fresh Session from the durable Workspace lineage', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, adapter } = fixtureData;
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const oldSession = adapter.sessions[0];
+    const oldAgent = fixtureData.sdk.withContext({ actorRef: 'agent:old', taskId: fixtureData.task.task_id, executionId: claimed.execution.execution_id, specVersion: 1, stateVersion: started.execution.state_version, fencingVersion: started.execution.fencing_version });
+    oldSession.emit('rpc', { type: 'auto_retry_end', success: false, attempt: 15, finalError: 'provider unavailable' });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(oldSession.closed, true);
+    assert.equal(runtime.getActiveProcessCount(), 1);
+    assert.equal(adapter.sessions.length, 2);
+    const executions = taskService.listExecutions(fixtureData.task.task_id);
+    assert.equal(executions.length, 1);
+    const replacement = executions[0];
+    assert.equal(replacement.state, 'RUNNING');
+    assert.equal(replacement.execution_id, started.execution.execution_id);
+    assert.equal(replacement.attempt_no, started.execution.attempt_no + 1);
+    assert.equal(replacement.fencing_version, started.execution.fencing_version + 1);
+    assert.equal(adapter.starts[1].sessionDir, adapter.starts[0].sessionDir);
+    assert.notEqual(adapter.starts[1].sessionId, adapter.starts[0].sessionId);
+    assert.equal(adapter.sessions[1].prompts[0].includes('provider_failure'), true);
+    assert.throws(
+      () => oldAgent.publishMaterial({ kind: 'failure', scope: 'operational', content: { message: 'late' } }, { operationId: 'late-recovery-material' }),
+      (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.FENCED,
+    );
+    await runtime.stopExecution(replacement.execution_id);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('watchdog recovers a heartbeat-only stalled Session but not an active turn', async () => {
+  const fixtureData = await fixture({ runtimeOptions: { watchdogTimeoutMs: 1_000 } });
+  const { runtime, adapter, claimed, rootDir, taskService } = fixtureData;
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    const session = adapter.sessions[0];
+    session.emit('rpc', { type: 'turn_start' });
+    const activeTurn = await runtime.sweepWatchdog(new Date(Date.now() + 2_000));
+    assert.equal(activeTurn.length, 0);
+    session.emit('rpc', { type: 'turn_end' });
+    runtime.heartbeat(claimed.execution.execution_id);
+    const stalled = await runtime.sweepWatchdog(new Date(Date.now() + 4_000));
+    assert.equal(stalled.length, 1);
+    assert.equal(adapter.sessions.length, 2);
+    const recovered = taskService.listExecutions(fixtureData.task.task_id)[0];
+    assert.equal(recovered.state, 'RUNNING');
+    assert.equal(recovered.fencing_version, claimed.execution.fencing_version + 1);
+    await runtime.stopExecution(taskService.listActiveExecutions()[0].execution_id);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('compaction failure is classified and recovered with a fresh Session', async () => {
+  const fixtureData = await fixture();
+  const { runtime, adapter, claimed, rootDir, taskService } = fixtureData;
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    adapter.sessions[0].emit('rpc', { type: 'compaction_end', reason: 'overflow', aborted: false, errorMessage: 'summary provider failed' });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(adapter.sessions.length, 2);
+    assert.equal(adapter.sessions[1].prompts[0].includes('compaction_failure'), true);
+    assert.equal(taskService.listExecutions(fixtureData.task.task_id).filter((execution) => execution.state === 'RUNNING').length, 1);
+    await runtime.stopExecution(taskService.listActiveExecutions()[0].execution_id);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('fresh-session recovery is bounded and fences the Execution after exhaustion', async () => {
+  const fixtureData = await fixture();
+  const { runtime, adapter, claimed, rootDir, taskService } = fixtureData;
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    adapter.sessions[0].emit('rpc', { type: 'auto_retry_end', success: false, attempt: 15, finalError: 'provider unavailable' });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    adapter.sessions[1].emit('rpc', { type: 'auto_retry_end', success: false, attempt: 15, finalError: 'provider unavailable' });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'FENCED');
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
 });
 
 test('startup failure preserves the prepared workspace and ends the Execution without leaking capacity', async () => {

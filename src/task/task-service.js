@@ -10,7 +10,7 @@ import {
   validateTaskProposal,
 } from './task-types.js';
 
-const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'expire_execution', 'fence_execution', 'heartbeat', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
+const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'expire_execution', 'fence_execution', 'heartbeat', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
 const CLAIM_OPERATION = 'claim';
 const TASK_MUTATING_OPERATIONS = new Set(['accept_task', 'apply_check_result', 'create_child_task', 'propose_task', 'request_rework', 'submit_candidate']);
 
@@ -284,6 +284,7 @@ export class TaskService {
       case 'stop_execution': return this.#stopExecution(payload, envelope);
       case 'expire_execution': return this.#expireExecution(payload, envelope);
       case 'fence_execution': return this.#fenceExecution(payload, envelope);
+      case 'recover_execution': return this.#recoverExecution(payload, envelope);
       case 'abort': return this.#stopExecution({ ...payload, terminal_state: 'CANCELLED' }, envelope);
       case 'accept_task': return this.#acceptTask(payload, envelope);
       case 'apply_check_result': return this.#applyCheckResult(payload, envelope);
@@ -770,6 +771,21 @@ export class TaskService {
       .run('FENCED', payload.runtime_generation ?? null, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt });
+    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
+  }
+
+  #recoverExecution(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    if (execution.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot recover Execution in ${execution.state}`);
+    const updatedAt = now();
+    const nextLease = payload.lease_expires_at ?? new Date(Date.now() + 30_000).toISOString();
+    this.db.prepare(`UPDATE executions SET state = 'CREATED', fencing_version = fencing_version + 1,
+      runtime_generation = COALESCE(?, runtime_generation), attempt_no = attempt_no + 1,
+      lease_expires_at = ?, heartbeat_at = ?, agent_prompt = ?, state_version = state_version + 1, updated_at = ?
+      WHERE execution_id = ?`)
+      .run(payload.runtime_generation ?? null, nextLease, updatedAt, payload.agent_prompt ?? execution.agent_prompt, updatedAt, execution.execution_id);
+    this.db.prepare("UPDATE tasks SET state = 'RUNNING', block_reason = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+      .run(updatedAt, execution.task_id);
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
   }
 

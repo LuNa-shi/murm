@@ -123,6 +123,42 @@ test('adapter rejects unsupported providers and conflicting OpenAI selectors bef
   });
 });
 
+test('session exposes compaction and retry events and configures automatic recovery', async () => {
+  let child;
+  const commands = [];
+  const spawnProcess = () => {
+    child = fakeChild();
+    child.stdin.on('data', (chunk) => {
+      const command = JSON.parse(chunk.toString());
+      commands.push(command);
+      if (['get_state', 'set_auto_compaction', 'set_auto_retry'].includes(command.type)) {
+        child.stdout.write(JSON.stringify({ type: 'response', id: command.id, success: true, data: { mode: 'rpc', model: { contextWindow: 500_000 } } }) + '\n');
+      } else if (command.type === 'prompt') {
+        child.stdout.write(JSON.stringify({ type: 'response', id: command.id, success: true, data: { disposition: 'started' } }) + '\n');
+      }
+    });
+    return child;
+  };
+  const adapter = new AgentCoreAdapter({
+    provider: 'openai-codex', model: 'gpt-6.1-sol', sessionDir: '/tmp/swarmenv-rpc-recovery-session', spawnProcess,
+    manifestVersions: { piVersion: '1.3.0', nurouterVersion: '0.2.12' },
+  });
+  const session = await adapter.start({ executionId: 'execution-recovery', agentPrompt: 'continue' });
+  const events = [];
+  session.on('rpc', (record) => events.push(record));
+  child.stdout.write(JSON.stringify({ type: 'compaction_start', reason: 'threshold' }) + '\n');
+  child.stdout.write(JSON.stringify({ type: 'compaction_end', reason: 'threshold', result: { tokensBefore: 100, estimatedTokensAfter: 20 }, willRetry: false }) + '\n');
+  child.stdout.write(JSON.stringify({ type: 'auto_retry_end', success: false, attempt: 15, finalError: 'provider unavailable' }) + '\n');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(commands.filter((command) => ['set_auto_compaction', 'set_auto_retry'].includes(command.type)).map((command) => command.type), ['set_auto_compaction', 'set_auto_retry']);
+  assert.equal(commands.find((command) => command.type === 'set_auto_compaction').enabled, true);
+  assert.equal(commands.find((command) => command.type === 'set_auto_retry').enabled, true);
+  assert.equal(session.contextWindow, 500_000);
+  assert.deepEqual(events.map((event) => event.type), ['compaction_start', 'compaction_end', 'auto_retry_end']);
+  session.stop();
+  await session.wait();
+});
+
 test('session translates prompt and readiness into Pi RPC commands and observes settlement', async () => {
   let child;
   const adapter = new AgentCoreAdapter({
