@@ -154,3 +154,23 @@ test('insufficient work produces no eligible window and does not invent a utiliz
   assert.equal(summary.eligible_mean_active_core_count, null);
   assert.deepEqual(summary.eligible_intervals, []);
 });
+
+test('ready work retains a recomputable unassigned reason timeline', () => {
+  const tracker = new CoreParallelismTracker({ coreCount: 2, startedAt: 0 });
+  tracker.recordReadyWork({ readyCount: 2, idleCoreCount: 0, eligibleWorkCount: 2, unassignedReason: 'long_agent_turn', at: 0 });
+  tracker.recordReadyWork({ readyCount: 2, idleCoreCount: 1, eligibleWorkCount: 2, unassignedReason: 'available_core_dispatch', at: 1_000 });
+  tracker.recordReadyWork({ readyCount: 0, idleCoreCount: 2, eligibleWorkCount: 0, at: 2_000 });
+
+  const summary = tracker.snapshot({ endedAt: 3_000 });
+
+  assert.deepEqual(summary.ready_unassigned_reason_ms, {
+    long_agent_turn: 1_000,
+    available_core_dispatch: 1_000,
+  });
+  assert.deepEqual(summary.ready_unassigned_intervals, [
+    { start_ms: 0, end_ms: 1_000, reason: 'long_agent_turn', ready_count: 2, idle_core_count: 0, eligible_work_count: 2 },
+    { start_ms: 1_000, end_ms: 2_000, reason: 'available_core_dispatch', ready_count: 2, idle_core_count: 1, eligible_work_count: 2 },
+  ]);
+  assert.equal(summary.ready_samples.length, 3);
+  assert.equal(summary.ready_unassigned_ms, 2_000);
+});

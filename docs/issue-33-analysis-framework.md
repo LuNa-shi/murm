@@ -115,6 +115,15 @@ Existing metrics remain useful as diagnostics with precise interpretation:
 - `judge_time_ms`, `scheduler_poll_ms`, and explicit Service call counts:
   component costs that explain wall-clock behavior.
 
+The runner persists each ready queue sample with `ready_count`,
+`idle_core_count`, `eligible_work_count`, and a reason for any unassigned
+interval. The current reason vocabulary is `discovery_latency`,
+`long_agent_turn`, `available_core_dispatch`, `missing_wake_resume`,
+`stale_list_or_claim_conflict`, `insufficient_decomposition`, and
+`unclassified`. These are runtime classifications backed by state at the
+sample time; they are diagnostic evidence and do not claim that a mathematical
+route was useful.
+
 Raw utilization is never called useful utilization unless it is paired with
 verified progress or a valid baseline comparison. Overlapping duplicate work
 is retained as occupancy but cannot be counted twice as progress.
@@ -199,3 +208,11 @@ same model, formalization, checker, timebox, and resource budget. The baseline
 is compared on root pass, time-to-first-check, new Judge evidence, root-path
 revisions, and total Agent/Judge/coordination cost. The full 12-problem swarm
 run alone can characterize behavior, but it cannot establish a swarm advantage.
+
+The benchmark CLI exposes this control as `--collaboration-mode root-only`.
+It keeps the four-Core resource boundary and the same registered Service
+surface, while removing `task_create_child` from the Agent tool allowlist and
+rejecting direct child creation at the bridge. The default `swarm` mode keeps
+the normal bounded decomposition path. The offline analyzer is
+`scripts/analyze-putnambench-run.mjs`; it writes a sanitized JSON and Markdown
+vector from reports, project SQLite facts, and local service logs.

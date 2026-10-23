@@ -68,6 +68,49 @@ function sampleDurations(samples, startedAt, endedAt) {
   return result;
 }
 
+function readyUnassignedReasonDurations(samples, startedAt, endedAt) {
+  const result = {};
+  for (let index = 0; index < samples.length; index += 1) {
+    const current = samples[index];
+    const nextAt = samples[index + 1]?.at_ms ?? endedAt;
+    const start = clamp(current.at_ms, startedAt, endedAt);
+    const end = clamp(nextAt, startedAt, endedAt);
+    if (end <= start || current.ready_count <= current.idle_core_count) continue;
+    const reason = current.unassigned_reason ?? 'unclassified';
+    addDuration(result, reason, end - start);
+  }
+  return result;
+}
+
+function readyUnassignedIntervals(samples, startedAt, endedAt) {
+  const intervals = [];
+  for (let index = 0; index < samples.length; index += 1) {
+    const current = samples[index];
+    const nextAt = samples[index + 1]?.at_ms ?? endedAt;
+    const start = clamp(current.at_ms, startedAt, endedAt);
+    const end = clamp(nextAt, startedAt, endedAt);
+    if (end <= start || current.ready_count <= current.idle_core_count) continue;
+    const reason = current.unassigned_reason ?? 'unclassified';
+    const previous = intervals.at(-1);
+    if (previous && previous.end_ms === start && previous.reason === reason) {
+      previous.end_ms = end;
+      previous.ready_count = Math.max(previous.ready_count, current.ready_count);
+      previous.idle_core_count = Math.min(previous.idle_core_count, current.idle_core_count);
+      previous.eligible_work_count = Math.max(previous.eligible_work_count, current.eligible_work_count);
+    } else {
+      intervals.push({
+        start_ms: start,
+        end_ms: end,
+        reason,
+        ready_count: current.ready_count,
+        idle_core_count: current.idle_core_count,
+        eligible_work_count: current.eligible_work_count,
+      });
+    }
+  }
+  return intervals;
+}
+
 function eligibleIntervalsFromSamples(samples, coreCount, startedAt, endedAt) {
   const ordered = samples
     .map((sample) => ({ ...sample, at_ms: clamp(sample.at_ms, startedAt, endedAt) }))
@@ -200,11 +243,20 @@ export class CoreParallelismTracker {
     return true;
   }
 
-  recordReadyWork({ readyCount, idleCoreCount, eligibleWorkCount = 0, at = Date.now() } = {}) {
+  recordReadyWork({ readyCount, idleCoreCount, eligibleWorkCount = 0, unassignedReason = null, at = Date.now() } = {}) {
     if (!Number.isInteger(readyCount) || readyCount < 0) throw new TypeError('readyCount must be a non-negative integer');
     if (!Number.isInteger(idleCoreCount) || idleCoreCount < 0) throw new TypeError('idleCoreCount must be a non-negative integer');
     if (!Number.isInteger(eligibleWorkCount) || eligibleWorkCount < 0) throw new TypeError('eligibleWorkCount must be a non-negative integer');
-    this.readySamples.push({ at_ms: timestamp(at), ready_count: readyCount, idle_core_count: idleCoreCount, eligible_work_count: eligibleWorkCount });
+    if (unassignedReason !== null && (typeof unassignedReason !== 'string' || unassignedReason.length === 0)) {
+      throw new TypeError('unassigned_reason must be a non-empty string or null');
+    }
+    this.readySamples.push({
+      at_ms: timestamp(at),
+      ready_count: readyCount,
+      idle_core_count: idleCoreCount,
+      eligible_work_count: eligibleWorkCount,
+      unassigned_reason: readyCount > idleCoreCount ? unassignedReason ?? 'unclassified' : null,
+    });
   }
 
   recordSchedulerPoll(durationMs) {
@@ -307,6 +359,7 @@ export class CoreParallelismTracker {
     const histogram = histogramWithRunningIntervals(effectiveAgentIntervals, this.startedAt, end);
     const activeCounts = Object.entries(histogram).filter(([, duration]) => duration > 0).map(([count]) => Number(count));
     const samples = sampleDurations(this.readySamples, this.startedAt, end);
+    const readyUnassignedReasons = readyUnassignedReasonDurations(this.readySamples, this.startedAt, end);
     const eligibleIntervals = eligibleIntervalsFromSamples(this.readySamples, this.coreCount, this.startedAt, end);
     const eligibleWindowMs = eligibleIntervals.reduce((total, interval) => total + interval.end_ms - interval.start_ms, 0);
     const eligibleConcurrencyHistogram = histogramWithinWindows(effectiveAgentIntervals, eligibleIntervals);
@@ -329,6 +382,11 @@ export class CoreParallelismTracker {
       eligible_concurrency_histogram_ms: eligibleConcurrencyHistogram,
       ready_work_ms: samples.readyWorkMs,
       ready_unassigned_ms: samples.readyUnassignedMs,
+      ready_unassigned_reason_ms: readyUnassignedReasons,
+      ready_unassigned_intervals: readyUnassignedIntervals(this.readySamples, this.startedAt, end),
+      ready_samples: this.readySamples
+        .map((sample) => ({ ...sample, at_ms: clamp(sample.at_ms, this.startedAt, end) }))
+        .filter((sample) => sample.at_ms <= end),
       waiting_ms_by_core: waitingMsByCore,
       idle_ms_by_core: idleMsByCore,
       scheduler_poll_ms: this.schedulerPollMs,

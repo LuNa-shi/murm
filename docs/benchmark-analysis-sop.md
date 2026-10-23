@@ -71,7 +71,10 @@ agent_time_utilization_v0 的定义是显式 Agent turn 时间除以 Core 数 ×
 
 一次真实运行只能证明能力是否存在，不能单独证明相对优势。优势必须在同一题目、同一输入、同一模型和同一 timebox 下做配对比较：
 
-1. 单 Agent/root-only baseline：一个 Core，不创建或消费 child。
+1. 单 Agent/root-only baseline：不创建或消费 child。若要严格保持与
+   Swarm 相同的资源边界，使用 runner 的 `--collaboration-mode root-only`
+   保留四个可复用 Core，但只有 Root Task 可被 claim；“一个 Core”的
+   serial baseline 另行标注，不能与四 Core Swarm 直接混合比较。
 2. Swarm：当前四个可复用 Core、共享 Task queue、Material handoff、parent review 和 rework。
 3. 必要时增加调度对照：四个 Core 但关闭跨 Agent handoff，用来区分“更多并行尝试”和“真正协作”。
 

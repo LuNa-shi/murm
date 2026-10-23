@@ -31,6 +31,19 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
 
 const FORBIDDEN_PLACEHOLDER = /\b(?:sorry|admit|axiom)\b/i;
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const COLLABORATION_MODES = new Set(['swarm', 'root-only']);
+
+function collaborationPrompts(mode) {
+  if (mode === 'root-only') {
+    const rule = 'This is the paired root-only baseline. Work only on the root Task and never create or request child Tasks; continue the proof directly in the root Workspace and use the Judge for honest feedback.';
+    return {
+      unbound: `${GENERIC_AGENT_PROMPT}\n${rule}`,
+      idle: `${IDLE_AGENT_PROMPT}\n${rule}`,
+      bound: `${BOUND_AGENT_PROMPT}\n${rule}`,
+    };
+  }
+  return { unbound: GENERIC_AGENT_PROMPT, idle: IDLE_AGENT_PROMPT, bound: BOUND_AGENT_PROMPT };
+}
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -95,6 +108,26 @@ function observedEligibleWorkCount(state, readyTasks) {
     const execution = task.latest_execution ?? state.taskService.listExecutions(task.task_id, { includeTerminal: false })[0];
     return execution && ['CREATED', 'RUNNING'].includes(execution.state);
   }).length;
+}
+
+function readyUnassignedReason(state, readyTasks, idleCoreCount, eligibleWorkCount, resumableWaiting) {
+  if (readyTasks.length <= idleCoreCount) return null;
+  const now = Date.now();
+  if (resumableWaiting.length > 0 && !state.cores.some((core) =>
+    !core.taskId && !core.waitingExecutionId && !core.turnInFlight && !core.dispatchReserved)) {
+    return 'missing_wake_resume';
+  }
+  if (state.lastClaimConflictAt !== null && now - state.lastClaimConflictAt <= 15_000) {
+    return 'stale_list_or_claim_conflict';
+  }
+  if (state.cores.some((core) => !core.taskId && core.turnInFlight)) {
+    return 'discovery_latency';
+  }
+  if (eligibleWorkCount < state.cores.length) {
+    return 'insufficient_decomposition';
+  }
+  if (idleCoreCount === 0) return 'long_agent_turn';
+  return 'available_core_dispatch';
 }
 
 function safeDiagnostic(value) {
@@ -226,12 +259,18 @@ function observationLogger(observationStore, experimentId, source) {
 }
 
 export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
+  constructor(options = {}) {
+    super(options);
+    this.allowChildTasks = options.allowChildTasks !== false;
+  }
+
   buildLaunchArgs(options) {
     const args = restrictedArgs(super.buildLaunchArgs(options));
     // NuRouter/Pi versions have differed in how --no-builtin-tools is
     // forwarded. An explicit allowlist makes the benchmark boundary
     // deterministic: only named SwarmEnv extension tools are enabled.
-    args.push('--tools', listTools().map((tool) => `swarmenv_${tool.name}`).join(','));
+    const tools = listTools().filter((tool) => this.allowChildTasks || tool.name !== 'task_create_child');
+    args.push('--tools', tools.map((tool) => `swarmenv_${tool.name}`).join(','));
     return args;
   }
 }
@@ -287,6 +326,11 @@ async function runTurn(core, prompt, timeoutMs) {
       reason: 'follow_up_turn',
     }, core.turnStartedAt || Date.now());
     core.agentTurnSession = session;
+    core.observe({
+      source: 'runtime', kind: 'agent_turn_started', visibility: 'operator',
+      coreId: `core-${core.index}`, taskId: core.taskId, executionId: core.executionId,
+      payload: { reason: 'follow_up_turn', started_at_ms: core.turnStartedAt || Date.now() },
+    });
   }
   if (!session) {
     if (countsAsAgentTurn && core.agentTurnSession === session) {
@@ -329,7 +373,13 @@ async function runTurn(core, prompt, timeoutMs) {
   } finally {
     collectToolEvents(core, session.rpcRecords.slice(sequence));
     if (countsAsAgentTurn && core.agentTurnSession === session) {
-      core.parallelism.endAgentTurn(core.index, Date.now());
+      const endedAt = Date.now();
+      core.parallelism.endAgentTurn(core.index, endedAt);
+      core.observe({
+        source: 'runtime', kind: 'agent_turn_finished', visibility: 'operator',
+        coreId: `core-${core.index}`, taskId: core.taskId, executionId: core.executionId,
+        payload: { reason: 'turn_settled', ended_at_ms: endedAt },
+      });
       core.agentTurnSession = null;
     }
     // A discovery turn can synchronously claim a Task and hand off to a new
@@ -388,7 +438,7 @@ async function startAgentSession(core) {
   const initialSequence = session.rpcRecords.length;
   core.turnInFlight = true;
   core.turnStartedAt = Date.now();
-  const initialPrompt = core.unboundSessionCount === 0 ? GENERIC_AGENT_PROMPT : IDLE_AGENT_PROMPT;
+  const initialPrompt = core.unboundSessionCount === 0 ? core.unboundPrompt : core.idlePrompt;
   core.unboundSessionCount += 1;
   const releaseDiscovery = await core.discoveryGate.acquire();
   core.discoveryRelease = releaseDiscovery;
@@ -492,6 +542,11 @@ async function wakeWaitingCore(state, core, waitingExecution) {
         execution_id: core.executionId,
         reason: 'resumed_turn',
       });
+      core.observe({
+        source: 'runtime', kind: 'agent_turn_started', visibility: 'operator',
+        coreId: `core-${core.index}`, taskId: core.taskId, executionId: core.executionId,
+        payload: { reason: 'resumed_turn', started_at_ms: core.turnStartedAt },
+      });
       core.agentTurnSession = session;
     },
   });
@@ -507,7 +562,13 @@ async function wakeWaitingCore(state, core, waitingExecution) {
     } finally {
       collectToolEvents(core, resumed.session.rpcRecords ?? []);
       if (core.agentTurnSession === resumed.session) {
-        core.parallelism.endAgentTurn(core.index, Date.now());
+        const endedAt = Date.now();
+        core.parallelism.endAgentTurn(core.index, endedAt);
+        core.observe({
+          source: 'runtime', kind: 'agent_turn_finished', visibility: 'operator',
+          coreId: `core-${core.index}`, taskId: core.taskId, executionId: resumed.execution.execution_id,
+          payload: { reason: 'turn_settled', ended_at_ms: endedAt },
+        });
         core.agentTurnSession = null;
       }
       if (core.session === resumed.session || (!core.executionId && !core.runtime.activeProcesses.has(resumed.execution.execution_id))) {
@@ -853,6 +914,7 @@ function projectReport(state, startedAt, deadline) {
     protocol: {
       project_isolation: true,
       core_count: 4,
+      collaboration_mode: state.collaborationMode,
       repository_commit: state.repositoryCommit,
       repository_worktree_dirty: state.repositoryWorktreeDirty,
       input_policy: 'pinned formalization only; no candidate or solution input',
@@ -973,6 +1035,9 @@ function projectReport(state, startedAt, deadline) {
 }
 
 async function createProjectState(problem, config, options) {
+  const collaborationMode = options.collaborationMode ?? 'swarm';
+  if (!COLLABORATION_MODES.has(collaborationMode)) throw new TypeError(`unsupported collaboration mode: ${collaborationMode}`);
+  const prompts = collaborationPrompts(collaborationMode);
   const runId = options.runId ?? randomUUID();
   const startedAt = options.startedAt ?? Date.now();
   const experimentRoot = resolve(options.experimentDir ?? options.reportDir);
@@ -1030,7 +1095,9 @@ async function createProjectState(problem, config, options) {
     task_type: 'proof',
     goal: `Prove ${problem.id}`,
     expected_output: 'A verified Lean proof for the locked PutnamBench problem',
-    task_instructions: 'The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. If the route is genuinely separable or needs parallel research, create bounded direct child Tasks with precise goals, expected outputs, acceptance conditions, and task-specific instructions; otherwise continue the proof in the root Workspace. Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge. Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency; later reclaim the root to read child Workspace changes, Materials, and Judge feedback, then accept completed work or request focused rework before integrating it into the proof.',
+    task_instructions: collaborationMode === 'root-only'
+      ? 'The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. This is a root-only baseline: do not create child Tasks or use child Task results. Continue the proof in the root Workspace and use the configured Lean Judge for honest feedback.'
+      : 'The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. If the route is genuinely separable or needs parallel research, create bounded direct child Tasks with precise goals, expected outputs, acceptance conditions, and task-specific instructions; otherwise continue the proof in the root Workspace. Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge. Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency; later reclaim the root to read child Workspace changes, Materials, and Judge feedback, then accept completed work or request focused rework before integrating it into the proof.',
     completion_contract: {
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
       required_check: {
@@ -1057,7 +1124,12 @@ async function createProjectState(problem, config, options) {
     source: 'runtime',
     kind: 'experiment_started',
     taskId: root.task_id,
-    payload: { problem_id: problem.id, core_count: 4, timebox_ms: options.timeboxMs ?? 60 * 60_000 },
+    payload: {
+      problem_id: problem.id,
+      core_count: 4,
+      collaboration_mode: options.collaborationMode ?? 'swarm',
+      timebox_ms: options.timeboxMs ?? 60 * 60_000,
+    },
   });
   // Deterministic queue scenarios may seed durable Tasks before reusable Core
   // sessions start. The hook uses the same Task Service boundary as Agent
@@ -1082,6 +1154,7 @@ async function createProjectState(problem, config, options) {
         cwd: coreDir,
         sessionDir: join(coreDir, '.swarm', 'pi-session'),
         env: childEnv,
+        allowChildTasks: collaborationMode !== 'root-only',
       });
     // All reusable slots must be able to resume an Execution created by any
     // other slot. The physical Workspace is execution-owned and unique, but
@@ -1105,7 +1178,7 @@ async function createProjectState(problem, config, options) {
       childEnv,
       taskId: null,
       executionId: null,
-      prompt: GENERIC_AGENT_PROMPT,
+      prompt: options.agentPrompt ?? prompts.unbound,
       claim: null,
       claimHistory: [],
       runtime,
@@ -1140,8 +1213,12 @@ async function createProjectState(problem, config, options) {
       unboundSessionCount: 0,
       discoveryGate,
       discoveryRelease: null,
+      unboundPrompt: options.unboundAgentPrompt ?? prompts.unbound,
+      idlePrompt: options.idleAgentPrompt ?? prompts.idle,
+      boundPrompt: options.boundAgentPrompt ?? prompts.bound,
       parallelism,
       versionManifest: null,
+      collaborationMode,
       observe(event) {
         observationStore.append({ experimentId: runId, ...event });
       },
@@ -1157,6 +1234,7 @@ async function createProjectState(problem, config, options) {
       runtime,
       router,
       actorRef: `agent:core-${index}`,
+      allowChildTasks: collaborationMode !== 'root-only',
       onClaim: async (claim) => {
         core.dispatchReserved = false;
         core.parallelism.transition(core.index, 'ASSIGNED', {
@@ -1203,10 +1281,15 @@ async function createProjectState(problem, config, options) {
               execution_id: execution.execution_id,
               reason: 'initial_bound_turn',
             });
+            core.observe({
+              source: 'runtime', kind: 'agent_turn_started', visibility: 'operator',
+              coreId: `core-${core.index}`, taskId: execution.task_id, executionId: execution.execution_id,
+              payload: { reason: 'initial_bound_turn', started_at_ms: core.turnStartedAt },
+            });
             core.agentTurnSession = session;
             return session;
           },
-          agentPrompt: BOUND_AGENT_PROMPT,
+          agentPrompt: core.boundPrompt,
         });
         const boundSession = core.session;
         const boundExecutionId = claim.execution.execution_id;
@@ -1221,7 +1304,13 @@ async function createProjectState(problem, config, options) {
             } finally {
               collectToolEvents(core, boundSession.rpcRecords ?? []);
               if (core.agentTurnSession === boundSession) {
-                core.parallelism.endAgentTurn(core.index, Date.now());
+                const endedAt = Date.now();
+                core.parallelism.endAgentTurn(core.index, endedAt);
+                core.observe({
+                  source: 'runtime', kind: 'agent_turn_finished', visibility: 'operator',
+                  coreId: `core-${core.index}`, taskId: core.taskId, executionId: boundExecutionId,
+                  payload: { reason: 'turn_settled', ended_at_ms: endedAt },
+                });
                 core.agentTurnSession = null;
               }
               if (core.session === boundSession || (!core.executionId && !core.runtime.activeProcesses.has(boundExecutionId))) {
@@ -1424,6 +1513,7 @@ async function createProjectState(problem, config, options) {
           recoverable: error.code === 'INVALID_CONTRACT' || (error.code === 'CONFLICT' && operation === 'claim'),
           protocol: false,
         });
+        if (error.code === 'CONFLICT' && operation === 'claim') core.stateRef.lastClaimConflictAt = Date.now();
         if (error.code === 'CONFLICT' && operation === 'claim') core.parallelism.recordClaimConflict();
       },
       logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),
@@ -1474,6 +1564,8 @@ async function createProjectState(problem, config, options) {
     resourcesAtStart: resourceSnapshot(),
     repositoryCommit: options.repositoryCommit ?? null,
     repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
+    collaborationMode: options.collaborationMode ?? 'swarm',
+    lastClaimConflictAt: null,
     parallelism,
   };
 }
@@ -1494,8 +1586,8 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   const deadline = startedAt + durationMs;
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
   const basePrompt = (core) => core.taskId
-      ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or waiting.`
-      : IDLE_AGENT_PROMPT;
+      ? `${core.boundPrompt}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or waiting.`
+      : core.idlePrompt;
   try {
     // Warm all reusable slots concurrently. The discovery gate serializes only
     // the unbound list/claim turn, and onClaimAccepted releases it as soon as
@@ -1536,11 +1628,6 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           availableOnly: true,
         });
         state.parallelism.recordSchedulerPoll(Date.now() - readyStartedAt);
-        state.parallelism.recordReadyWork({
-          readyCount: readyTasks.length,
-          idleCoreCount: state.cores.filter((core) => !core.taskId && !core.turnInFlight && !core.dispatchReserved).length,
-          eligibleWorkCount: observedEligibleWorkCount(state, readyTasks),
-        });
         // A waiting Execution keeps its responsibility, but its physical Core
         // is reusable. If the wait condition is not yet satisfied, release the
         // old Core's local association; a later wake can resume the Execution
@@ -1548,6 +1635,14 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         // reserved so the waiting responsibility gets first access to idle
         // capacity.
         const resumableWaiting = state.taskService.listResumableExecutions({ rootId: state.rootTaskId });
+        const idleCoreCount = state.cores.filter((core) => !core.taskId && !core.turnInFlight && !core.dispatchReserved).length;
+        const eligibleWorkCount = observedEligibleWorkCount(state, readyTasks);
+        state.parallelism.recordReadyWork({
+          readyCount: readyTasks.length,
+          idleCoreCount,
+          eligibleWorkCount,
+          unassignedReason: readyUnassignedReason(state, readyTasks, idleCoreCount, eligibleWorkCount, resumableWaiting),
+        });
         const resumableWaitingIds = new Set(resumableWaiting.map((execution) => execution.execution_id));
         for (const candidate of state.cores) {
           if (candidate.waitingExecutionId && !resumableWaitingIds.has(candidate.waitingExecutionId)) {
@@ -1630,6 +1725,7 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
           protocol: {
             project_isolation: true,
             core_count: 4,
+            collaboration_mode: options.collaborationMode ?? 'swarm',
             input_policy: 'pinned formalization only; no candidate or solution input',
             tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
             cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',

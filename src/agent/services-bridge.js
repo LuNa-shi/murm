@@ -68,7 +68,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT, allowChildTasks = true } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -86,6 +86,7 @@ export class ServicesBridge {
     this.onSchedulerStatus = onSchedulerStatus;
     this.onError = onError;
     this.agentPrompt = agentPrompt;
+    this.allowChildTasks = allowChildTasks;
     this.host = host;
     this.logger = logger;
     this.token = randomUUID();
@@ -279,7 +280,10 @@ export class ServicesBridge {
           if (this.onSubmitCandidate) result = { ...result, ...(await this.onSubmitCandidate({ taskId: this.taskId, executionId: this.executionId, payload, result })) };
           break;
         case 'heartbeat': result = sdk.heartbeat(payload, options); break;
-        case 'create_child_task': result = sdk.createChildTask(payload, options); break;
+        case 'create_child_task':
+          if (!this.allowChildTasks) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'root-only baseline does not allow child Tasks');
+          result = sdk.createChildTask(payload, options);
+          break;
         case 'get_workspace': result = await this.runtime.getWorkspace(this.executionId); break;
         case 'list_workspace_revisions': result = (await this.runtime.getWorkspace(this.executionId)).revisions; break;
         case 'list_workspace_files': result = await this.runtime.listWorkspaceFiles(this.executionId, { path: payload.path ?? '' }); break;

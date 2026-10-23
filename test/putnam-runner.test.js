@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport } from '../src/benchmark/putnam-runner.js';
+import { BenchmarkAgentCoreAdapter, runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport } from '../src/benchmark/putnam-runner.js';
 import { ObservationStore } from '../src/observability/observation-store.js';
 
 const source = 'import Mathlib\ntheorem benchmark : True := by\n  sorry\n';
@@ -679,6 +679,20 @@ test('benchmark project starts four isolated cores and redacts candidate content
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
   }
+});
+
+test('root-only adapter removes child creation from the Agent tool boundary', () => {
+  const adapter = new BenchmarkAgentCoreAdapter({
+    provider: 'openai',
+    model: 'openai/test-model',
+    sessionDir: '/tmp/swarmenv-root-only-session',
+    allowChildTasks: false,
+  });
+  const args = adapter.buildLaunchArgs({ executionId: 'root-only-test' });
+  const toolsIndex = args.indexOf('--tools');
+  assert.ok(toolsIndex >= 0);
+  assert.doesNotMatch(args[toolsIndex + 1], /swarmenv_task_create_child/);
+  assert.match(args[toolsIndex + 1], /swarmenv_task_list/);
 });
 
 test('a clean Agent exit without Task or Workspace contribution is not reported as solved', async () => {

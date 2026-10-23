@@ -86,6 +86,45 @@ test('ServicesBridge returns structured tool errors and exposes them to audit ho
   }
 });
 
+test('root-only ServicesBridge rejects child creation even if the model calls the hidden operation', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:root' });
+  const task = owner.proposeTask({
+    task_type: 'proof', goal: 'root-only bridge test', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:root',
+  }, { operationId: 'root-only:propose' }).task;
+  owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
+    execution_id: 'root-only-execution', claim_key: 'root-only:claim', owner_ref: 'agent:root-only', agent_prompt: 'root-only', input_material_refs: [],
+  }, { operationId: 'root-only:claim' });
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router,
+    taskId: task.task_id,
+    executionId: 'root-only-execution',
+    allowChildTasks: false,
+  });
+  try {
+    await assert.rejects(() => bridge.call({
+      operation: 'create_child_task',
+      payload: {
+        child_creation_key: 'forbidden-child',
+        task_type: 'research',
+        goal: 'forbidden',
+        expected_output: 'none',
+        acceptance_conditions: {},
+      },
+    }), (error) => error.code === 'NOT_ALLOWED');
+    assert.equal(taskService.listTasks({ rootId: task.task_id, availableOnly: false, limit: 20 }).length, 1);
+  } finally {
+    taskService.close();
+  }
+});
+
 test('ServicesBridge exposes controlled Workspace file operations with snake_case payloads', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);

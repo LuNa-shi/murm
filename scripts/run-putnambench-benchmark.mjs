@@ -107,6 +107,7 @@ function optionsFromArgs(argv) {
     projectParallelism: 1,
     timeboxMs: 60 * 60_000,
     turnTimeoutMs: 9 * 60_000,
+    collaborationMode: 'swarm',
     observabilityPort: 8787,
     observabilityHost: '0.0.0.0',
     observabilityAdvertiseHost: null,
@@ -132,6 +133,7 @@ function optionsFromArgs(argv) {
       '--project-parallelism': 'projectParallelism',
       '--timebox-ms': 'timeboxMs',
       '--turn-timeout-ms': 'turnTimeoutMs',
+      '--collaboration-mode': 'collaborationMode',
       '--observability-port': 'observabilityPort',
       '--observability-host': 'observabilityHost',
       '--observability-advertise-host': 'observabilityAdvertiseHost',
@@ -155,6 +157,7 @@ function usage() {
     '    --cores 4',
     '    --project-parallelism 3',
     '    --timebox-ms 3600000',
+    '    --collaboration-mode swarm|root-only',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
     '    --report-dir reports/putnambench-runs/run-<id>',
@@ -173,6 +176,7 @@ if (options.help) {
 }
 if (!options.configPath || !options.putnamBenchRoot) throw new Error(usage() + '--problems and --putnambench-root are required');
 if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark protocol');
+if (!['swarm', 'root-only'].includes(options.collaborationMode)) throw new Error('--collaboration-mode must be swarm or root-only');
 if (!Number.isInteger(options.projectParallelism) || options.projectParallelism < 1) throw new Error('--project-parallelism must be a positive integer');
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
 if (!options.provider) throw new Error('NUROUTER_PI_PROVIDER is required; set it in .env or the environment');
@@ -222,6 +226,7 @@ const metadata = {
     project_parallelism: options.projectParallelism,
     timebox_ms: options.timeboxMs,
     turn_timeout_ms: options.turnTimeoutMs,
+    collaboration_mode: options.collaborationMode,
     provider: options.provider,
     model: options.model,
     input_policy: 'pinned formalization in Task-owned Workspace; no candidate or solution input',
