@@ -31,7 +31,7 @@ These are two different classes of work:
 - **Features** change the collaboration model from a Root-centered parent-child
   workflow into a shared Dynamic Task Flow around one Global Goal. They must be
   introduced behind an explicit Swarm mode and evaluated with a short canary
-  before any 1-hour or 8-hour run.
+  before the required 2-hour acceptance runs.
 
 The target outcome is a system in which a physical Core is reusable capacity,
 an Agent Session is replaceable, an Execution is a durable attempt, a Task is a
@@ -125,7 +125,7 @@ Existing vocabulary remains valid with two clarifications:
 | FIX-02 | Durable fresh-session recovery | Retrying the same overflowed Session can repeat the same failure and lose the long-run budget. | The latest durable checkpoint, Workspace revision, input Material snapshot, route summary, and failure class are sufficient to start a new Session. Recovery is bounded by policy and uses a new session/runtime generation. | A fixture resumes from the checkpoint in a fresh Session, preserves Workspace and fencing lineage, and records the old Session as terminated. |
 | FIX-03 | Productive health telemetry | Heartbeat is currently easy to misread as Agent progress. | Record last heartbeat, last process signal, last completed turn, last successful Service call, last Workspace/Material/Judge/Task fact, last goal-progress fact, consecutive model failures, and last failure class. | A report shows healthy lease plus failed Session as a distinct condition, and each timestamp can be traced to an append-only event. |
 | FIX-04 | Runtime watchdog and Core release | A no-response Agent can hold a Core until the experiment deadline. | A watchdog uses configurable thresholds and only acts on an active RUNNING process with no qualifying turn or Service progress. It stops the process, records a typed diagnosis, releases capacity, and follows recovery or bounded-stop policy. | A no-response fixture releases capacity within the configured watchdog bound; a normal long turn and a concrete WAITING condition are not falsely stopped. |
-| FIX-05 | Stagnation and bounded tail | A run can remain valid but make no root-relevant progress for hours. | Record typed stagnation windows and the last Root/Goal progress time. After a configured window, emit a next action: route review, fresh exploration opportunity, recovery, or bounded stop. Do not turn an empty queue into WAITING. | The analysis report contains 15-minute, 1-hour, 4-hour, and 8-hour checkpoints and a recomputable no-progress tail duration. |
+| FIX-05 | Stagnation and bounded tail | A run can remain valid but make no root-relevant progress for hours. | Record typed stagnation windows and the last Root/Goal progress time. After a configured window, emit a next action: route review, fresh exploration opportunity, recovery, or bounded stop. Do not turn an empty queue into WAITING. | The 2-hour acceptance report contains 15-minute, 30-minute, 1-hour, and 2-hour checkpoints and a recomputable no-progress tail duration. Longer 4-hour and 8-hour checkpoints remain for a later long-run gate. |
 | FIX-06 | Repeated-failure diagnosis | Rework can repeat the same candidate snapshot and route after Judge FAIL. | Record candidate fingerprint, Workspace snapshot, route fingerprint, diagnostic class, and the intended route change for each attempt. A repeated fingerprint requires a route change or bounded stop; a similar error with a different route remains eligible. | The B4-shaped fixture cannot execute the same route indefinitely and reports why it changed route or stopped. |
 | FIX-07 | Ready-unassigned cause accounting | Existing ready-unassigned time cannot distinguish missing decomposition from scheduler delay. | Every interval with claimable work and no assignment has one mutually exclusive cause: discovery latency, Agent turn occupancy, dispatch capacity, wake delay, claim conflict, or insufficient decomposition. Coverage must be complete and recomputable. | Category durations sum to the measured ready-unassigned interval; coverage is 1 for deterministic fixtures. |
 | FIX-08 | Delivery-to-goal progress evidence | Child SATISFIED and parent ACCEPTED do not show whether the Global Goal improved. | Record delivery, Material publication, explicit consumption, downstream action, Judge effect, and Goal progress as separate facts. Do not count acceptance alone as goal progress. | A fixture can show accepted but unused work, consumed work that changes a candidate, and a Material that enters a verified dependency chain. |
@@ -145,7 +145,59 @@ work and must gate claims about collaboration quality.
 | FEAT-05 | Explicit Material consumption | An Agent records which Material it used and in which Task/Execution action. Candidate submission and route updates can reference consumed Materials. | Reports distinguish read, explicit consume, candidate use, and verified dependency-chain use. Cross-task reuse is counted only from durable records. |
 | FEAT-06 | Context-driven notification and wake | Material publication or supersession emits a durable update. Tasks with explicit matching dependencies receive an update and can re-enter the claimable projection or wake from a matching wait. Unrelated Tasks are not woken. | A waiting dependent Task receives one idempotent update and becomes claimable after the dependency event; the same event does not wake an unrelated Task. |
 | FEAT-07 | Limited reorganization controls | Agents can create bounded Tasks, retire an obsolete route, reprioritize an OPEN Task, and propose a replacement relation. Mutations are versioned, fenced, idempotent, and auditable. Arbitrary concurrent graph rewriting is out of scope. | Conflict and stale-version fixtures reject unsafe updates; a route retirement releases or cancels only the intended responsibility and preserves provenance. |
-| FEAT-08 | Swarm observability and comparison harness | Reports expose task supply, claims, cross-task reuse, route changes, wake causes, Goal progress, Core utilization, and total token/wall-clock cost. | A 20–30 minute canary produces a sanitized report for the Swarm variant and the same report shape for the three baselines. |
+| FEAT-08 | Swarm observability and comparison harness | Reports expose task supply, claims, cross-task reuse, route changes, wake causes, Goal progress, Core utilization, and total token/wall-clock cost. | The three 2-hour problem reports and aggregate report use one sanitized schema for the Swarm candidate and its baseline. The canary is only a preflight check. |
+
+### Mandatory real-experiment evidence for every item
+
+The deterministic fixtures listed in the tables are necessary for fast
+feedback, but they are never sufficient for Issue #34 acceptance. Every FIX
+and every FEAT must also be demonstrated by a real-Agent, 2-hour experiment
+covering all three locked problems:
+
+- putnam_2025_b1
+- putnam_2025_b4
+- putnam_2024_b4
+
+One acceptance batch therefore consists of three project runs, started as one
+parallel batch with project_parallelism=3; each project has a
+timebox_ms=7_200_000, four reusable Cores, the same Provider/Model route, the
+same pinned PutnamBench and Lean fixture, and a clean candidate commit. The
+batch must be compared with a baseline batch from the parent commit or
+current main using the same inputs and protocol. A 20–30 minute canary is
+allowed as a preflight check, but it cannot satisfy any item below.
+
+The acceptance report must include evidence for every item in all three
+problem reports. If a rare failure does not occur naturally, the real-Agent
+2-hour run must use a recorded Runtime fault-injection switch for that one
+failure mode; a fake Agent fixture alone is not valid evidence. Fault
+injection may terminate or impair the real Session, but it must not script the
+Agent's research result or bypass the real Judge.
+
+| Item | Required evidence in the real 2-hour tri-problem batch |
+| --- | --- |
+| FIX-01 | Every terminated, overflowed, repeatedly failed, or watchdog-stalled Session has a typed terminal/recovery disposition; no report has a stale RUNNING Execution after the watchdog decision; Core capacity is released. |
+| FIX-02 | At least one real-Agent recovery path per problem is exercised naturally or by recorded Runtime fault injection; the replacement Session starts from the durable checkpoint and old fencing writes are rejected. |
+| FIX-03 | Each report contains separate lease heartbeat, process/session, completed-turn, successful-Service-call, and Goal-progress evidence; heartbeat-only liveness cannot be counted as productive work. |
+| FIX-04 | Each report shows that the watchdog releases capacity within its configured bound for the induced or natural no-response case, while normal long turns and concrete WAITING conditions remain valid. |
+| FIX-05 | Each report contains the configured progress checkpoints, typed stagnation windows, last Goal-progress timestamp, and recomputable no-progress tail; the run does not remain unexplained until deadline. |
+| FIX-06 | Each report records candidate, Workspace, route, and diagnostic fingerprints for repeated FAIL paths; any repeated route produces a recorded route change or bounded stop. |
+| FIX-07 | Each report has complete ready-unassigned cause coverage, and the category durations recompute the measured interval without overlap or unexplained remainder. |
+| FIX-08 | Each report distinguishes delivery, publication, explicit consumption, downstream action, Judge effect, and Goal progress; accepted but unused work is visible. |
+| FEAT-01 | Each report shows one Global Goal and four initial Exploration Tasks with route hints, while the real Agent run records their claims and lifecycle without permanent Core ownership. |
+| FEAT-02 | Each report shows shared goal-scoped claiming, Core release and reuse, and at least one Task created by one Exploration and claimed by another Core. |
+| FEAT-03 | Each report shows parent provenance separate from at least one cross-route dependency or relation; the dependent work proceeds without the originating Session reviewing it. |
+| FEAT-04 | Each report contains a real-Agent structured Material with claim, assumptions, evidence state, and applicability; proposed evidence is not accepted as a checked fact. |
+| FEAT-05 | Each report contains at least one explicit cross-task Material consumption and identifies whether it informed a route, Task, candidate, or verified dependency chain. |
+| FEAT-06 | Each report contains a durable Material update delivered to a dependent Task, with an idempotent wake or claimable-state transition and no wake for an unrelated Task. |
+| FEAT-07 | Each report contains a real Agent route/task reorganization attempt or an explicit audited no-op decision; stale or conflicting mutations remain rejected. |
+| FEAT-08 | The three reports and aggregate report expose the same evidence schema for task supply, claims, reuse, route changes, wakes, Goal progress, utilization, wall-clock time, and total token/compute cost. |
+
+The real run is a hard acceptance gate, not a performance suggestion. An item
+with passing unit/integration tests but missing or incomplete evidence in the
+three 2-hour reports remains unaccepted. The report must record the exact
+repository commit, worktree cleanliness, Provider/Model, problem fixture,
+timebox, Core count, project parallelism, fault-injection setting if used,
+and sanitized report path.
 
 ## Implementation Plan
 
@@ -230,10 +282,23 @@ Exit gate: a two-route fixture publishes a proposed lemma, a second route
 consumes it, a dependent Task wakes, the resulting candidate records the
 dependency, and the report shows the chain from publication to Goal progress.
 
-### Phase 4: short controlled experiments
+### Phase 4: real 2-hour tri-problem acceptance experiments
 
-Run the same problem, model, provider, tool contract, total Agent token
-budget, and Judge configuration in four variants:
+Run the same model, provider, tool contract, total Agent token budget, and
+Judge configuration in the candidate and baseline batches. The three required
+problems run in parallel:
+
+| Problem | Timebox |
+| --- | ---: |
+| putnam_2025_b1 | 2 hours |
+| putnam_2025_b4 | 2 hours |
+| putnam_2024_b4 | 2 hours |
+
+The implementation acceptance run is the real-Agent Swarm candidate. A
+comparable baseline batch from the parent commit or main is required for
+before/after claims. The four experimental variants below are a later
+comparison study; they do not replace the per-item candidate-vs-baseline
+acceptance batch.
 
 | Variant | Description |
 | --- | --- |
@@ -242,10 +307,12 @@ budget, and Judge configuration in four variants:
 | C | Existing Root-child MVP, with its current shared Material behavior. |
 | D | Four-exploration Swarm MVP with shared Dynamic Task Flow and explicit Material consumption. |
 
-Start with a 20–30 minute canary. Run a 1-hour comparison only if every
-variant is protocol-valid and the Swarm canary demonstrates actual
-cross-task activity. Defer another 8-hour run until the canary and 1-hour
-reports show no stale RUNNING Execution and no unexplained long tail.
+Start with a 20–30 minute canary to catch configuration and protocol errors.
+Then run the required 2-hour candidate and baseline batches on all three
+problems. The later A–D comparison should also use three 2-hour batches when
+the goal is to compare research quality rather than only validate lifecycle
+behavior. Defer another 8-hour run until the 2-hour reports show no stale
+RUNNING tail, complete recovery evidence, and no unexplained long tail.
 
 ## User Stories
 
@@ -376,8 +443,8 @@ database query shape.
    interaction and should be preferred over duplicating lower-level tests.
 5. **Real-agent seam.** After deterministic tests pass, run a short real Agent
    canary with recorded provider/model route, commit, timebox, fixture, and
-   report path. Do not use an 8-hour run as the first validation of a new
-   lifecycle.
+   report path. The canary is only preflight; every FIX and FEAT also requires
+   the real 2-hour tri-problem acceptance batch described above.
 
 Required checks for each implementation PR are the focused lifecycle tests,
 the full npm test suite, and git diff --check. A benchmark PR also requires a
@@ -405,6 +472,10 @@ Issue #34 is ready for implementation only when the following are explicit:
 - Reports distinguish accepted delivery from explicit cross-task consumption
   and Goal progress.
 
+Every bullet above must be backed by the corresponding FIX-01 through FIX-08
+row in the real 2-hour tri-problem evidence matrix. Passing deterministic
+tests without those three real reports is insufficient.
+
 ### Feature acceptance
 
 - A Swarm experiment creates one Global Goal and four configurable
@@ -421,20 +492,23 @@ Issue #34 is ready for implementation only when the following are explicit:
 - Versioned route/task reorganization rejects stale concurrent writes and
   preserves all provenance.
 - A short Swarm canary demonstrates at least one cross-task Material
-  consumption and one non-parent-created claim before the 1-hour comparison is
-  allowed.
+  consumption and one non-parent-created claim before the required 2-hour
+  acceptance run is allowed. The 2-hour reports must then contain the
+  FEAT-01 through FEAT-08 evidence rows.
 
 ### Experiment acceptance
 
 - Variants A–D use the same problem, model/provider route, tool contract,
   Judge, total Agent token budget, and report schema.
-- The first run is a 20–30 minute canary. A 1-hour run requires all canaries
-  to be protocol-valid and the Swarm path to show actual cross-task activity.
+- The first run is a 20–30 minute canary. It is only a preflight check.
+- Every FIX and FEAT requires a candidate and baseline real-Agent batch over
+  putnam_2025_b1, putnam_2025_b4, and putnam_2024_b4, with a 2-hour timebox
+  per problem and the evidence matrix above.
 - Results report both wall-clock time and total compute/token cost, plus
   useful Core utilization, ready-unassigned causes, route changes, Material
   reuse, Goal progress, and valid-run rate.
-- A new 8-hour run is deferred unless the short runs show no stale RUNNING
-  tail and no unresolved recovery or accounting gaps.
+- A new 8-hour run is deferred unless all three 2-hour reports show no stale
+  RUNNING tail and no unresolved recovery or accounting gaps.
 
 ## Out of Scope
 
@@ -449,7 +523,8 @@ Issue #34 is ready for implementation only when the following are explicit:
   the lifecycle fixes.
 - Publishing raw transcripts, proof contents, candidate source, credentials,
   or unredacted experiment state.
-- Repeating another 8-hour experiment before the fix and canary gates pass.
+- Repeating another 8-hour experiment before the per-item 2-hour tri-problem
+  gates pass.
 
 ## Further Notes
 
