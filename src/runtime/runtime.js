@@ -45,7 +45,7 @@ function normalizeWaitFiles(files) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, clock = () => Date.now() }) {
+  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, clock = () => Date.now(), onSessionStarted = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -58,6 +58,7 @@ export class Runtime {
     this.maxRecoveryAttempts = maxRecoveryAttempts;
     this.watchdogTimeoutMs = watchdogTimeoutMs;
     this.clock = clock;
+    this.onSessionStarted = onSessionStarted;
     this.activeProcesses = new Map();
     this.recoveryAttempts = new Map();
   }
@@ -169,8 +170,8 @@ export class Runtime {
     });
   }
 
-  async startExecution(executionId) {
-    this.logger?.append({ event: 'runtime.start_execution', execution_id: executionId });
+  async startExecution(executionId, { sessionReason = 'start' } = {}) {
+    this.logger?.append({ event: 'runtime.start_execution', execution_id: executionId, session_reason: sessionReason });
     const execution = this.#getExecution(executionId);
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only start CREATED executions, got ${execution.state}`);
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
@@ -181,7 +182,7 @@ export class Runtime {
     const started = this.taskService.dispatch('start_execution', {}, this.#executionEnvelope(current, operationId('start')));
     current = started.execution;
     try {
-      return await this.#launch(current, workspace);
+      return await this.#launch(current, workspace, { sessionReason });
     } catch (error) {
       const active = this.activeProcesses.get(executionId);
       this.activeProcesses.delete(executionId);
@@ -209,7 +210,7 @@ export class Runtime {
     try {
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
       if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
-      this.#registerActiveProcess(current, workspace, boundSession);
+      this.#registerActiveProcess(current, workspace, boundSession, { sessionReason: 'bound' });
       await this.#sendInitialPrompt(boundSession, agentPrompt);
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
@@ -235,7 +236,7 @@ export class Runtime {
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
     const resumed = this.taskService.dispatch('wake_execution', { wake_key: key }, this.#executionEnvelope(waiting, operationId('wake'))).execution;
     const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'), executionId, fencingVersion: resumed.fencing_version });
-    return this.#launch(resumed, workspace, { beforePrompt });
+    return this.#launch(resumed, workspace, { beforePrompt, sessionReason: 'wake' });
   }
 
   async requestWait(executionId, { waitCondition, checkpoint = {}, files = {}, deadline = null }) {
@@ -448,7 +449,7 @@ export class Runtime {
     }, this.#executionEnvelope(execution, saveOperationId)).execution;
   }
 
-  async #launch(execution, workspace, { beforePrompt = null } = {}) {
+  async #launch(execution, workspace, { beforePrompt = null, sessionReason = 'start' } = {}) {
     const session = await this.agentAdapter.start({
       executionId: execution.execution_id,
       sessionId: randomUUID(),
@@ -464,7 +465,7 @@ export class Runtime {
       files: { 'runtime-manifest.json': manifestContent },
     });
     const current = this.#saveWorkspaceReference(execution, nextWorkspace);
-    this.#registerActiveProcess(current, nextWorkspace, session);
+    this.#registerActiveProcess(current, nextWorkspace, session, { sessionReason });
     await beforePrompt?.({ execution: current, workspace: nextWorkspace, session });
     await this.#sendInitialPrompt(session, execution.agent_prompt);
     const active = this.activeProcesses.get(execution.execution_id);
@@ -489,7 +490,7 @@ export class Runtime {
     await session.prompt(prompt, { timeoutMs: 30_000 });
   }
 
-  #registerActiveProcess(execution, workspace, session) {
+  #registerActiveProcess(execution, workspace, session, { sessionReason = 'start' } = {}) {
     const nowMs = this.clock();
     const active = {
       session,
@@ -514,6 +515,38 @@ export class Runtime {
     session.on('close', () => {
       void this.#processExit(execution.execution_id);
     });
+    this.#notifySessionStarted({ execution, workspace, session, sessionReason });
+  }
+
+  #notifySessionStarted({ execution, workspace, session, sessionReason }) {
+    if (typeof this.onSessionStarted !== 'function') return;
+    const notification = {
+      execution,
+      workspace,
+      session,
+      sessionReason,
+      recovery: sessionReason === 'recovery',
+    };
+    try {
+      const result = this.onSessionStarted(notification);
+      if (result && typeof result.catch === 'function') {
+        result.catch((error) => {
+          this.logger?.append({
+            event: 'runtime.session_observer_error',
+            execution_id: execution.execution_id,
+            session_id: session.sessionId ?? null,
+            error_class: error?.code ?? error?.name ?? 'session_observer_error',
+          });
+        });
+      }
+    } catch (error) {
+      this.logger?.append({
+        event: 'runtime.session_observer_error',
+        execution_id: execution.execution_id,
+        session_id: session.sessionId ?? null,
+        error_class: error?.code ?? error?.name ?? 'session_observer_error',
+      });
+    }
   }
 
   async #handleSessionEvent(executionId, record) {
@@ -584,7 +617,7 @@ export class Runtime {
         runtime_generation: this.runtimeGeneration,
         agent_prompt: recoveryPrompt,
       }, this.#executionEnvelope(execution, operationId('recover')));
-      const replacement = await this.startExecution(recovered.execution.execution_id);
+      const replacement = await this.startExecution(recovered.execution.execution_id, { sessionReason: 'recovery' });
       return { execution: execution, recovery: replacement.execution, disposition: 'recovered' };
     })();
     try {

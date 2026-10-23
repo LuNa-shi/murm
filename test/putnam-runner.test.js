@@ -580,7 +580,7 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, onAdapter = null, checker = null, observationStore = null }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -588,6 +588,8 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     pollMs: 1,
     turnTimeoutMs: 100,
     turnIntervalMs: 10_000,
+    watchdogTimeoutMs,
+    watchdogIntervalMs,
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
@@ -621,6 +623,26 @@ test('benchmark runtime publishes live core, execution, service, and completion 
     assert.ok(events.some((event) => event.kind === 'experiment_finished'));
   } finally {
     observationStore.close();
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('benchmark invokes the Runtime watchdog and reports its activity', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-watchdog-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-watchdog-report-');
+  try {
+    const report = await runFixture({
+      reportDir,
+      experimentDir,
+      id: 'putnam_watchdog_test',
+      noWork: true,
+      watchdogTimeoutMs: 1,
+      watchdogIntervalMs: 1,
+    });
+    assert.ok(report.run.watchdog_sweep_count > 0);
+    assert.equal(report.run.watchdog_error_count, 0);
+  } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
   }

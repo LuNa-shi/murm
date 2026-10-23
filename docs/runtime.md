@@ -45,9 +45,15 @@ identity. The Task, Workspace lineage, checkpoint reference, and persisted
 Materials remain unchanged. The fresh Session receives a bounded structured
 recovery prompt rather than the old transcript. Recovery is bounded; after
 its configured attempts are exhausted, Runtime fences the Execution and
-records an exhausted disposition.
+records an exhausted disposition. When a Runtime owner supplies a session-start
+observer, Runtime notifies it for every Session and marks recovery replacements
+explicitly. The benchmark uses this handoff to replace the Core's old Session
+reference, keep the recovered turn accounted for, and wait for the replacement
+to settle; it never sends follow-up work to the fenced Session.
 
 A watchdog only acts on a RUNNING Execution that is outside a normal turn,
 provider retry, or compaction phase and has exceeded the configured
-no-productive-progress window. Normal long turns, compaction, retry, and
-semantic WAITING are not watchdog failures.
+no-productive-progress window. The benchmark runner calls each Core Runtime's
+watchdog periodically while a run is active and records sweep, recovery, and
+watchdog-error counts. Normal long turns, compaction, retry, and semantic
+WAITING are not watchdog failures.

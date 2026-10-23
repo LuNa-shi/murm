@@ -259,6 +259,28 @@ test('final provider retry failure starts a fresh Session from the durable Works
   }
 });
 
+test('Runtime notifies the owner when recovery replaces a failed Session', async () => {
+  const sessionEvents = [];
+  const fixtureData = await fixture({ runtimeOptions: { onSessionStarted: (event) => sessionEvents.push(event) } });
+  const { runtime, adapter, claimed, rootDir, taskService } = fixtureData;
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const oldSession = adapter.sessions[0];
+    oldSession.emit('rpc', { type: 'auto_retry_end', success: false, attempt: 15, finalError: 'provider unavailable' });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const recovery = sessionEvents.find((event) => event.recovery);
+    assert.ok(recovery);
+    assert.equal(recovery.session, adapter.sessions[1]);
+    assert.equal(recovery.execution.execution_id, started.execution.execution_id);
+    assert.equal(recovery.execution.fencing_version, started.execution.fencing_version + 1);
+    assert.equal(runtime.getActiveProcessCount(), 1);
+    await runtime.stopExecution(started.execution.execution_id);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('watchdog recovers a heartbeat-only stalled Session but not an active turn', async () => {
   const fixtureData = await fixture({ runtimeOptions: { watchdogTimeoutMs: 1_000 } });
   const { runtime, adapter, claimed, rootDir, taskService } = fixtureData;
