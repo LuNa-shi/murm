@@ -140,7 +140,7 @@ test('session exposes compaction and retry events and configures automatic recov
     return child;
   };
   const adapter = new AgentCoreAdapter({
-    provider: 'openai-codex', model: 'gpt-6.1-sol', sessionDir: '/tmp/swarmenv-rpc-recovery-session', spawnProcess,
+    command: 'pi', provider: 'openai-codex', model: 'gpt-6.1-sol', sessionDir: '/tmp/swarmenv-rpc-recovery-session', spawnProcess,
     manifestVersions: { piVersion: '1.3.0', nurouterVersion: '0.2.12' },
   });
   const session = await adapter.start({ executionId: 'execution-recovery', agentPrompt: 'continue' });
