@@ -9,6 +9,7 @@ import { AgentCoreAdapter } from '../agent/pi-adapter.js';
 import { ContextService } from '../context/context-service.js';
 import { JudgeService } from '../judge/judge-service.js';
 import { LeanChecker } from '../judge/lean-adapter.js';
+import { agentCheckResult } from '../judge/check-result.js';
 import { Runtime } from '../runtime/runtime.js';
 import { WorkspaceManager } from '../runtime/workspace-manager.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
@@ -764,8 +765,10 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
     },
   };
   const checkStartedAt = Date.now();
+  const checkAttempt = (core.checkAttempts.get(candidateId) ?? 0) + 1;
+  core.checkAttempts.set(candidateId, checkAttempt);
   const result = await state.judgeService.judgeCandidate({
-    request_key: `benchmark:check:${state.runId}:${core.index}:${candidateId}`,
+    request_key: `benchmark:check:${state.runId}:${core.index}:${candidateId}:${checkAttempt}`,
     candidate_material_id: candidateId,
     target_task_id: task.task_id,
     target_spec_version: task.spec_version,
@@ -780,7 +783,7 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
     workspace,
     fixture_manifest: state.fixtureManifest,
   }, {
-    operationId: `benchmark:judge:${state.runId}:${core.index}:${candidateId}`,
+    operationId: `benchmark:judge:${state.runId}:${core.index}:${candidateId}:${checkAttempt}`,
     actorRef: 'judge:lean',
   });
   state.cores[core.index - 1].parallelism.recordJudgeTime(Date.now() - checkStartedAt);
@@ -788,14 +791,15 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
   let applied = executionContext(state.router, fresh, 'judge:controller').applyCheckResult({
     check_result_id: result.check_result_id,
   }, {
-    operationId: `benchmark:apply:${state.runId}:${core.index}:${candidateId}`,
+    operationId: `benchmark:apply:${state.runId}:${core.index}:${candidateId}:${checkAttempt}`,
   });
-  const retryableInfrastructure = result.result_class === 'infrastructure_failure' && result.retryable && !result.evidence?.retry_exhausted;
+  const persistedResult = state.taskService.getCheckResult(result.check_result_id);
+  const retryableInfrastructure = persistedResult.result_class === 'infrastructure_failure' && persistedResult.retryable && !persistedResult.evidence?.retry_exhausted;
   // A transient checker failure must leave the candidate eligible for a later
   // retry. Source-level results and exhausted infrastructure failures are
   // terminal for this candidate.
   if (!retryableInfrastructure) core.checked.add(candidateId);
-  core.checks.push({ ...sanitizedCheck(result, material), check_elapsed_ms: Date.now() - checkStartedAt });
+  core.checks.push({ ...sanitizedCheck(persistedResult, material), check_elapsed_ms: Date.now() - checkStartedAt });
   core.parallelism.recordWorkUnit({
     task_id: pending.taskId,
     execution_id: pending.executionId,
@@ -803,39 +807,48 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
     progress_kind: 'candidate_check',
   });
   await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
+  let deferredWait = null;
   if (retryableInfrastructure) {
     const preflightKey = result.evidence?.preflight_key;
     const preflight = preflightKey ? state.judgeService.getCheckerPreflight(preflightKey) : null;
     if (!preflight?.health_fingerprint) {
       throw new Error('retryable checker failure has no durable preflight health fingerprint');
     }
-    // The checker result is synchronous from the Agent's perspective, but a
-    // retryable infrastructure result still has to release the live Runtime
-    // process and physical Core.  Runtime saves a Workspace revision and
-    // checkpoint before persisting this typed checker-health wait.
-    const waited = await core.runtime.requestWait(pending.executionId, {
+    // The checker result is synchronous from the Agent's perspective. Stage
+    // the health wait for ServicesBridge to flush after its HTTP response has
+    // been written, so Runtime cannot stop the Session before the Agent sees
+    // the typed infrastructure result.
+    deferredWait = {
       waitCondition: {
         type: 'checker_health',
         preflight_key: preflightKey,
         health_fingerprint: preflight.health_fingerprint,
-        diagnostic_code: result.diagnostic_code,
+        diagnostic_code: persistedResult.diagnostic_code,
         candidate_material_id: candidateId,
       },
       checkpoint: {
         phase: 'checker_unavailable',
         candidate_material_id: candidateId,
-        check_result_id: result.check_result_id,
+        check_result_id: persistedResult.check_result_id,
         preflight_key: preflightKey,
-        diagnostic_code: result.diagnostic_code,
+        diagnostic_code: persistedResult.diagnostic_code,
       },
-    });
-    applied = { ...applied, execution: waited.execution, task: waited.task };
+    };
   }
   if (result.verdict === 'PASS' && applied.task.state === 'SATISFIED' && pending.taskId === state.rootTaskId) {
     state.solvedAt = Date.now();
     state.solvedBy = core.index;
   }
-  return { check_result: sanitizedCheck(result, material), applied };
+  // The report keeps its redacted operational projection above, while the
+  // synchronous Agent tool receives bounded diagnostic feedback that can guide
+  // the next candidate.
+  return {
+    // Apply the durable result before returning it so the synchronous Agent
+    // view agrees with a subsequent judge_get_check_result read.
+    check_result: agentCheckResult(persistedResult),
+    applied,
+    ...(deferredWait ? { deferred_wait: deferredWait } : {}),
+  };
 }
 
 async function stopCore(state, core) {
@@ -1307,6 +1320,7 @@ async function createProjectState(problem, config, options) {
       materialReads: [],
       checks: [],
       checked: new Set(),
+      checkAttempts: new Map(),
       cheatingFlags: [],
       stopping: false,
       turnDurationsMs: [],
@@ -1443,8 +1457,8 @@ async function createProjectState(problem, config, options) {
       onSubmitCandidate: async ({ payload }) => {
         // Candidate checking is synchronous tool work. Source-level results
         // stay in the current Execution; retryable checker health failures
-        // are checkpointed and released by judgeCandidate before the tool
-        // result is returned.
+        // are staged by judgeCandidate and checkpointed only after the bridge
+        // has flushed the tool result to the Agent.
         return (await judgeCandidate(core.stateRef, core, payload.candidate_material_id)) ?? {};
       },
       onSchedulerStatus: async (payload) => {
