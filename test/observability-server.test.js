@@ -169,3 +169,30 @@ test('ObservabilityServer marks oversized Execution detail projections as trunca
     store.close();
   }
 });
+
+test('ObservabilityServer caps oversized overview projections', async () => {
+  const store = new ObservationStore();
+  store.registerExperiment({ experimentId: 'run-large-overview' });
+  const args = { payload: 'x'.repeat(8_000) };
+  for (let sequence = 1; sequence <= 1_000; sequence += 1) {
+    store.append({
+      experimentId: 'run-large-overview',
+      sequence,
+      source: 'agent',
+      kind: 'rpc_record',
+      executionId: 'exec-large-overview',
+      payload: { record: { type: 'tool_execution_start', toolCallId: `call-${sequence}`, toolName: 'swarmenv_context_publish', args } },
+    });
+  }
+  const server = new ObservabilityServer({ observationStore: store });
+  const { url } = await server.start();
+  try {
+    const overview = await fetch(`${url}/api/experiments/run-large-overview/overview`).then((response) => response.json());
+    assert.equal(overview.overview_truncated, true);
+    assert.ok(overview.overview_bytes <= 4_000_000);
+    assert.ok(overview.events.length < 1_000);
+  } finally {
+    await server.stop();
+    store.close();
+  }
+});
