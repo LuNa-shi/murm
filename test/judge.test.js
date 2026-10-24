@@ -98,6 +98,22 @@ test('Agent CheckResult feedback is bounded, actionable, and excludes private ev
   assert.doesNotMatch(JSON.stringify(feedback), /private-candidate-hash|private stdout|private stderr/);
 });
 
+test('Agent CheckResult feedback redacts credentials from checker diagnostics', () => {
+  const feedback = agentCheckResult({
+    verdict: 'ERROR',
+    result_class: 'infrastructure_failure',
+    checker_process_status: 'crashed',
+    evidence: {
+      diagnostic: 'checker failed at Candidate.lean:12:7: type mismatch',
+      stderr: 'OPENAI_API_KEY=sk-test-secret-value-123456 Bearer eyJsecret-token-value https://user:password@example.test/x',
+      stdout: 'token=another-secret-value',
+    },
+  });
+  assert.match(feedback.diagnostic_excerpt, /type mismatch/);
+  assert.match(feedback.diagnostic_excerpt, /\[REDACTED\]/);
+  assert.doesNotMatch(feedback.diagnostic_excerpt, /sk-test-secret-value-123456|eyJsecret-token-value|another-secret-value|user:password/);
+});
+
 test('fixture manifest locks PutnamBench commit, problem hash, Lean, Mathlib, checker, and environment', async () => {
   validateFixtureManifest(fixtureManifest);
   const source = await readFile('fixtures/putnam-1966-a1/putnam_1966_a1.lean');

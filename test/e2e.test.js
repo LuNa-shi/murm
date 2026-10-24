@@ -78,7 +78,7 @@ test('real-agent probe rejects conflicting OpenAI route selectors before launch'
 test('real-agent feedback trace proves the revision submission follows the delivered source failure', () => {
   const trace = summarizeFeedbackTrace([
     { type: 'tool_execution_start', toolName: 'swarmenv_call', args: { operation: 'submit_candidate', payload: { candidate_material_id: 'candidate-1' } } },
-    { type: 'tool_execution_end', toolName: 'swarmenv_call', result: { check_result: { check_result_id: 'check-1', result_class: 'source_failure', checker_process_status: 'completed', diagnostic_code: 'lean_proof_error', diagnostic_excerpt: 'Candidate.lean:1:1: type mismatch' } } },
+    { type: 'tool_execution_end', toolName: 'swarmenv_call', result: { check_result: { check_result_id: 'check-1', result_class: 'source_failure', checker_process_status: 'completed', diagnostic_code: 'lean_proof_error', diagnostic_excerpt: 'Candidate.lean:1:1: type mismatch', diagnostic_location: { file: 'Candidate.lean', line: 1, column: 1 } } } },
     { type: 'tool_execution_start', toolName: 'swarmenv_publish_material', args: { scope: 'proof_relevant' } },
     { type: 'tool_execution_start', toolName: 'swarmenv_call', arguments: JSON.stringify({ operation: 'submit_candidate', payload: { candidate_material_id: 'candidate-2' } }) },
   ]);
@@ -88,6 +88,9 @@ test('real-agent feedback trace proves the revision submission follows the deliv
   assert.equal(trace.events[0].raw_type, 'tool_execution_start');
   assert.equal(trace.events[1].raw_type, 'tool_execution_end');
   assert.equal(trace.first_source_failure_diagnostic_delivered, true);
+  assert.equal(trace.first_failure_candidate_id, 'candidate-1');
+  assert.equal(trace.revision_candidate_id, 'candidate-2');
+  assert.deepEqual(trace.first_failure_diagnostic_location, { file: 'Candidate.lean', line: 1, column: 1 });
 });
 
 test('real-agent report validation rejects private candidate and diagnostic fields', () => {

@@ -302,6 +302,11 @@ function recordPayload(record) {
   return raw;
 }
 
+function lineAt(source, lineNumber) {
+  if (typeof source !== 'string' || !Number.isInteger(lineNumber) || lineNumber < 1) return null;
+  return source.split(/\r?\n/)[lineNumber - 1] ?? null;
+}
+
 function candidateIdFromRecord(record) {
   const raw = recordPayload(record);
   const payload = raw?.payload ?? raw;
@@ -365,6 +370,8 @@ export function summarizeFeedbackTrace(records, { sessionId = null } = {}) {
   const revisionIndex = firstFailureIndex < 0
     ? -1
     : events.findIndex((event, index) => index > firstFailureIndex && event.type === 'tool_call' && event.operation === 'submit_candidate');
+  const firstFailureEvent = firstFailureIndex >= 0 ? events[firstFailureIndex] : null;
+  const revisionEvent = revisionIndex >= 0 ? events[revisionIndex] : null;
   return {
     events,
     first_source_failure_result_delivered: firstFailureIndex >= 0,
@@ -372,6 +379,9 @@ export function summarizeFeedbackTrace(records, { sessionId = null } = {}) {
     revision_submission_after_feedback: revisionIndex > firstFailureIndex,
     first_failure_event_index: firstFailureIndex >= 0 ? firstFailureIndex : null,
     revision_submission_event_index: revisionIndex >= 0 ? revisionIndex : null,
+    first_failure_candidate_id: firstFailureEvent?.candidate_material_id ?? null,
+    revision_candidate_id: revisionEvent?.candidate_material_id ?? null,
+    first_failure_diagnostic_location: firstFailureEvent?.diagnostic_location ?? null,
   };
 }
 
@@ -669,6 +679,23 @@ export async function runRealAgentPath({
       || !report.agent_flow.feedback_trace.revision_submission_after_feedback) {
       throw new Error('real Agent repair did not follow delivery of the first source-level CheckResult');
     }
+    const feedbackTrace = report.agent_flow.feedback_trace;
+    const firstDiagnosticLocation = feedbackTrace.first_failure_diagnostic_location ?? reportCheckResult(firstResult)?.diagnostic_location;
+    const firstDiagnosticLine = lineAt(firstMaterial.content, firstDiagnosticLocation?.line);
+    const revisedDiagnosticLine = lineAt(secondMaterial.content, firstDiagnosticLocation?.line);
+    const revisionMaterialChangedDiagnosticLocation = firstDiagnosticLine !== null
+      && revisedDiagnosticLine !== null
+      && firstDiagnosticLine !== revisedDiagnosticLine;
+    const feedbackConsumptionEvidence = {
+      diagnostic_delivered: feedbackTrace.first_source_failure_diagnostic_delivered,
+      revision_after_delivery: feedbackTrace.revision_submission_after_feedback,
+      failed_candidate_correlated: feedbackTrace.first_failure_candidate_id === firstMaterial.material_id,
+      revision_candidate_correlated: feedbackTrace.revision_candidate_id === secondMaterial.material_id,
+      revision_material_supersedes_failed_candidate: secondMaterial.supersedes === firstMaterial.material_id,
+      revision_material_changed: firstMaterial.content_hash !== secondMaterial.content_hash,
+      diagnostic_location: firstDiagnosticLocation,
+      revision_changed_diagnostic_location: revisionMaterialChangedDiagnosticLocation,
+    };
     const lifecycleEvents = runtimeLifecycleEvents.map((event) => ({ ...event }));
     const lifecycleEventsBetweenCandidates = runtimeLifecycleEvents
       .slice(firstRecord.lifecycle_event_count_after, secondRecord.lifecycle_event_count_before)
@@ -689,6 +716,11 @@ export async function runRealAgentPath({
       second_check_result_id: secondResult.check_result_id,
       first_result_delivered_before_revision: report.agent_flow.feedback_trace.revision_submission_after_feedback,
       first_diagnostic_delivered: report.agent_flow.feedback_trace.first_source_failure_diagnostic_delivered,
+      first_failure_candidate_id: feedbackTrace.first_failure_candidate_id,
+      revision_candidate_id: feedbackTrace.revision_candidate_id,
+      revision_material_changed: firstMaterial.content_hash !== secondMaterial.content_hash,
+      revision_changed_diagnostic_location: revisionMaterialChangedDiagnosticLocation,
+      feedback_consumption_evidence: feedbackConsumptionEvidence,
     };
     if (!report.feedback_handoff.same_agent_session) throw new Error('real Agent repair did not use the same Agent session');
     if (!report.feedback_handoff.same_execution) throw new Error('real Agent repair changed Execution identity');

@@ -58,6 +58,29 @@ function boundedAgent(value) {
     : `${trimmed.slice(0, MAX_AGENT_DIAGNOSTIC_LENGTH - marker.length)}${marker}`;
 }
 
+// Checker output is untrusted process text.  Keep the Agent-facing excerpt
+// useful for repairing a proof, while preventing common credentials that may
+// accidentally appear in a tool error or environment dump from crossing the
+// Agent boundary.  The canonical evidence remains local and is never changed.
+const DIAGNOSTIC_SECRET_PATTERNS = Object.freeze([
+  [/(\bBearer\s+)[A-Za-z0-9._~+\/-]+/gi, '$1[REDACTED]'],
+  [/\b([A-Za-z0-9_-]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|password|passwd|secret|credential|private[_-]?key|token))(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, '$1$2[REDACTED]'],
+  [/([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|token|secret|password)=)[^&#\s]+/gi, '$1[REDACTED]'],
+  [/\b(?:sk|rk|ghp|github_pat|xox[abprs])-[A-Za-z0-9_-]{16,}\b/gi, '[REDACTED]'],
+  [/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED]'],
+  [/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/gi, '$1[REDACTED]@'],
+  [/(Authorization\s*:\s*Basic\s+)[^\s,;]+/gi, '$1[REDACTED]'],
+  [/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, '[REDACTED_PRIVATE_KEY]'],
+]);
+
+function redactDiagnostic(value) {
+  if (typeof value !== 'string') return value;
+  return DIAGNOSTIC_SECRET_PATTERNS.reduce(
+    (redacted, [pattern, replacement]) => redacted.replace(pattern, replacement),
+    value,
+  );
+}
+
 function boundedEvidence(value = {}) {
   const evidence = { ...value };
   for (const key of ['diagnostic', 'error', 'stdout', 'stderr']) evidence[key] = bounded(evidence[key]);
@@ -109,6 +132,7 @@ function diagnosticLocation(evidence = {}, diagnostic = '') {
 export function agentCheckResult(result) {
   if (!result) return null;
   const evidence = result.evidence ?? {};
+  const safeEvidence = boundedEvidence(evidence);
   const storedClass = result.result_class ?? evidence.result_class;
   const storedProcessStatus = result.checker_process_status ?? evidence.checker_process_status;
   const resultClass = storedResultClass({
@@ -124,7 +148,7 @@ export function agentCheckResult(result) {
   const mathematicalOutcome = result.mathematical_outcome
     ?? evidence.mathematical_outcome
     ?? (resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed');
-  const diagnosticExcerpt = boundedAgent(diagnosticText(evidence));
+  const diagnosticExcerpt = boundedAgent(redactDiagnostic(diagnosticText(safeEvidence)));
   return {
     check_result_id: result.check_result_id ?? null,
     request_key: result.request_key ?? null,
@@ -144,7 +168,7 @@ export function agentCheckResult(result) {
     retryable: result.retryable ?? Boolean(evidence.retryable),
     diagnostic_code: result.diagnostic_code ?? evidence.diagnostic_code ?? null,
     diagnostic_excerpt: diagnosticExcerpt,
-    diagnostic_location: diagnosticLocation(evidence, diagnosticExcerpt ?? ''),
+    diagnostic_location: diagnosticLocation(safeEvidence, diagnosticExcerpt ?? ''),
     process_evidence: {
       exit_code: evidence.exit_code ?? null,
       signal: evidence.signal ?? null,
