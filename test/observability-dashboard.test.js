@@ -83,6 +83,7 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
   append({ source: 'context-service', kind: 'dispatch.complete', taskId: 'task-root', executionId: 'exec-root', payload: {
     result: { material: { material_id: 'material-1', kind: 'proof', evidence_state: 'checked', source_task: 'task-root', source_execution: 'exec-root', content: { token: 'private-secret' } } },
   } });
+  append({ source: 'context-service', kind: 'dispatch.complete', taskId: 'task-wait', executionId: 'exec-wait', payload: { operation: 'read_materials', result: { materials: [{ material_id: 'material-1' }] } } });
   append({ source: 'task-service', kind: 'dispatch.complete', taskId: 'task-wait', executionId: 'exec-wait', payload: {
     result: { task: { task_id: 'task-wait', parent_id: 'task-root', goal: 'Wait for parent review', state: 'WAITING' }, execution: { execution_id: 'exec-wait', task_id: 'task-wait', state: 'WAITING', wait_condition: { type: 'parent_review' } } },
   } });
@@ -125,6 +126,7 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
     assert.match(await navigate('task/task-root'), /TASK FLOW/);
     assert.match(await navigate('task/task-wait'), /parent_review/);
     assert.match(await navigate('material/material-1'), /Redacted browser projection/);
+    assert.match(harness.elements.get('#main-view').innerHTML, /exec-wait/);
     assert.doesNotMatch(harness.elements.get('#main-view').innerHTML, /private-secret/);
     assert.match(await navigate('diagnostics'), /wait boundaries/);
     assert.match(harness.elements.get('#main-view').innerHTML, /error signals/);

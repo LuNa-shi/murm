@@ -131,7 +131,8 @@ function buildModel() {
       material.links.add(event.execution_id);
       const execution = ensureExecution(event.execution_id);
       if (!execution.material_ids.includes(id)) execution.material_ids.push(id);
-      if (/read|consume|use|action/i.test(event.kind)) material.consumers.add(event.execution_id);
+      const operation = event.payload && event.payload.operation || '';
+      if (/read|consume|use|action/i.test(event.kind + ' ' + operation)) material.consumers.add(event.execution_id);
     }
     if (event.task_id) {
       material.links.add(event.task_id);
