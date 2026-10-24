@@ -93,3 +93,65 @@ test('ObservabilityServer exposes a live SSE stream for a registered Experiment'
   readerStore.close();
   writer.close();
 });
+
+test('ObservabilityServer keeps imported lifecycle facts and root-array projections usable', async () => {
+  const store = new ObservationStore();
+  store.registerExperiment({ experimentId: 'run-imported', rootTaskId: 'task-root' });
+  const append = (event) => store.append({ experimentId: 'run-imported', ...event });
+  append({ source: 'runtime', kind: 'execution_assigned', taskId: 'task-root', executionId: 'exec-root', coreId: 'core-1', payload: { state: 'RUNNING' } });
+  append({ source: 'runtime', kind: 'execution_observed', taskId: 'task-root', executionId: 'exec-root', payload: { task_state: 'WAITING', execution_state: 'WAITING' } });
+  append({ source: 'agent', kind: 'agent_turn_started', taskId: 'task-root', executionId: 'exec-root', payload: { state: 'RUNNING' } });
+  append({ source: 'workspace', kind: 'workspace_revision_saved', taskId: 'task-root', executionId: 'exec-root', payload: { path: 'README.md', workspace_revision: 2 } });
+  append({ source: 'judge', kind: 'judge_check_finished', taskId: 'task-root', executionId: 'exec-root', payload: { candidate_material_id: 'material-1', verdict: 'FAIL' } });
+  append({ source: 'task-service', kind: 'dispatch.complete', taskId: 'task-root', executionId: 'exec-root', payload: { result: [{ task_id: 'task-root', goal: 'Imported task', state: 'WAITING' }, { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note' }] } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', args: { kind: 'artifact' } } } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', result: { details: { material: { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note', content: { summary: 'Readable material' }, source_task: 'task-root', source_execution: 'exec-root' } } } } } });
+  const server = new ObservabilityServer({ observationStore: store });
+  const { url } = await server.start();
+  try {
+    const overview = await fetch(`${url}/api/experiments/run-imported/overview`).then((response) => response.json());
+    assert.ok(overview.events.some((event) => event.kind === 'agent_turn_started'));
+    assert.ok(overview.events.some((event) => event.kind === 'workspace_revision_saved'));
+    const arrayResult = overview.events.find((event) => event.kind === 'dispatch.complete').payload.result;
+    assert.equal(arrayResult[0].task_id, 'task-root');
+    assert.equal(arrayResult[1].material_id, 'material-1');
+    assert.ok(overview.events.some((event) => event.payload.record?.toolName === 'swarmenv_context_publish'));
+    assert.equal(overview.tool_counts['exec-root'], 1);
+
+    const material = await fetch(`${url}/api/experiments/run-imported/materials/material-1`).then((response) => response.json());
+    assert.equal(material.available, true);
+    assert.equal(material.content_summary, 'Imported proof note');
+    const detail = await fetch(`${url}/api/experiments/run-imported/execution-detail?execution_id=exec-root`).then((response) => response.json());
+    assert.ok(detail.events.some((event) => event.payload.record?.toolName === 'swarmenv_context_publish'));
+    assert.equal(detail.truncated, false);
+  } finally {
+    await server.stop();
+    store.close();
+  }
+});
+
+test('ObservabilityServer marks oversized Execution detail projections as truncated', async () => {
+  const store = new ObservationStore();
+  store.registerExperiment({ experimentId: 'run-large-detail' });
+  for (let sequence = 1; sequence <= 10_001; sequence += 1) {
+    store.append({
+      experimentId: 'run-large-detail',
+      sequence,
+      source: 'runtime',
+      kind: 'execution_observed',
+      executionId: 'exec-large',
+      payload: { execution_state: sequence % 2 ? 'RUNNING' : 'WAITING' },
+    });
+  }
+  const server = new ObservabilityServer({ observationStore: store });
+  const { url } = await server.start();
+  try {
+    const detail = await fetch(`${url}/api/experiments/run-large-detail/execution-detail?execution_id=exec-large`).then((response) => response.json());
+    assert.ok(detail.returned_events > 0 && detail.returned_events <= 10_000);
+    assert.equal(detail.events.length, detail.returned_events);
+    assert.equal(detail.truncated, true);
+  } finally {
+    await server.stop();
+    store.close();
+  }
+});

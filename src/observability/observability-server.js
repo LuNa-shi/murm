@@ -62,29 +62,66 @@ const OVERVIEW_EVENT_KINDS = [
   'execution_assigned',
   'execution_started',
   'execution_waiting',
+  'execution_wait',
+  'execution_observed',
+  'execution_execution',
   'execution_released',
   'core_state_changed',
   'session_started',
   'session_closed',
+  'agent_turn_started',
+  'agent_turn_finished',
   'agent_settled',
+  'workspace_revision_saved',
   'task_state_changed',
   'task_child_created',
   'judge.start',
   'judge.complete',
+  'judge_check_finished',
   'checker.start',
   'checker.complete',
+  'checker.preflight.start',
+  'checker.preflight.complete',
+  'runtime.session_failure',
+  'runtime.recovery_exhausted',
+  'session_failure',
+  'recovery_exhausted',
+  'process_stderr',
+  'stderr',
   'experiment_started',
   'experiment_finished',
 ];
+const OVERVIEW_RPC_RECORD_TYPES = new Set(['tool_execution_start', 'tool_execution_end']);
+const OVERVIEW_TOOL_NAMES = new Set([
+  'swarmenv_task_get',
+  'swarmenv_task_list',
+  'swarmenv_task_list_executions',
+  'swarmenv_task_create_child',
+  'swarmenv_task_claim',
+  'swarmenv_task_accept',
+  'swarmenv_task_request_rework',
+  'swarmenv_execution_get',
+  'swarmenv_context_publish',
+  'swarmenv_context_read',
+  'swarmenv_judge_submit_candidate',
+  'swarmenv_judge_get_check_result',
+]);
 const EXECUTION_DETAIL_LIFECYCLE_KINDS = new Set([
   'session_started',
   'session_closed',
   'execution_assigned',
   'execution_started',
   'execution_waiting',
+  'execution_wait',
+  'execution_observed',
+  'execution_execution',
   'execution_released',
   'core_state_changed',
   'agent_settled',
+  'agent_turn_started',
+  'agent_turn_finished',
+  'workspace_revision_saved',
+  'judge_check_finished',
   'dispatch.start',
   'dispatch.complete',
   'route.start',
@@ -93,7 +130,15 @@ const EXECUTION_DETAIL_LIFECYCLE_KINDS = new Set([
   'judge.complete',
   'checker.start',
   'checker.complete',
+  'checker.preflight.start',
+  'checker.preflight.complete',
+  'runtime.session_failure',
+  'runtime.recovery_exhausted',
+  'session_failure',
+  'recovery_exhausted',
 ]);
+const DETAIL_MAX_EVENTS = 10_000;
+const DETAIL_MAX_BYTES = 4_000_000;
 
 function parseJson(value) {
   if (typeof value !== 'string' || value.length === 0) return value;
@@ -124,6 +169,10 @@ function nestedValue(value, keys, depth = 0) {
 }
 
 function materialFromPayload(value, materialId, depth = 0) {
+  if (typeof value === 'string') {
+    const parsed = parseJson(value);
+    return parsed === value ? null : materialFromPayload(parsed, materialId, depth + 1);
+  }
   if (!value || typeof value !== 'object' || depth > 7) return null;
   if (value.material_id === materialId) return value;
   if (Array.isArray(value)) {
@@ -204,6 +253,15 @@ function compactMaterial(value) {
 
 function compactOverviewResult(value) {
   if (!value || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.slice(0, DASHBOARD_MAX_ARRAY).map((item) => {
+      if (!item || typeof item !== 'object') return dashboardValue(item);
+      if (item.task_id) return compactTask(item);
+      if (item.execution_id) return compactExecution(item);
+      if (item.material_id) return compactMaterial(item);
+      return dashboardValue(item);
+    });
+  }
   const result = {};
   for (const key of ['state', 'status', 'operation', 'wait_condition', 'block_reason', 'candidate_material_id']) {
     if (value[key] !== undefined && value[key] !== null) result[key] = dashboardValue(value[key], key);
@@ -211,6 +269,9 @@ function compactOverviewResult(value) {
   if (value.task) result.task = compactTask(value.task);
   if (value.execution) result.execution = compactExecution(value.execution);
   if (value.material) result.material = compactMaterial(value.material);
+  if (!value.task && value.task_id) result.task = compactTask(value);
+  if (!value.execution && value.execution_id) result.execution = compactExecution(value);
+  if (!value.material && value.material_id) result.material = compactMaterial(value);
   if (Array.isArray(value.tasks)) result.tasks = value.tasks.slice(0, 100).map(compactTask);
   if (Array.isArray(value.executions)) result.executions = value.executions.slice(0, 100).map(compactExecution);
   if (Array.isArray(value.materials)) result.materials = value.materials.slice(0, 100).map(compactMaterial);
@@ -218,8 +279,35 @@ function compactOverviewResult(value) {
   return result;
 }
 
+function compactOverviewToolResult(value) {
+  if (!value || typeof value !== 'object') return dashboardValue(value);
+  const result = compactOverviewResult(value);
+  const details = value.details ?? value.result;
+  if (details !== undefined) result.details = compactOverviewResult(details);
+  if (Array.isArray(value.content)) {
+    result.content = value.content.slice(0, 8).map((item) => dashboardValue({
+      type: item?.type,
+      text: overviewText(item?.text),
+    }));
+  }
+  return result;
+}
+
+function compactOverviewRecord(record) {
+  if (!record || typeof record !== 'object' || !OVERVIEW_RPC_RECORD_TYPES.has(record.type)) return null;
+  return dashboardValue({
+    type: record.type,
+    toolCallId: record.toolCallId,
+    toolName: record.toolName,
+    args: record.type === 'tool_execution_start' ? record.args : undefined,
+    result: record.type === 'tool_execution_end' ? compactOverviewToolResult(record.result) : undefined,
+    isError: record.isError,
+  });
+}
+
 function compactOverviewEvent(event) {
   const payload = event.payload ?? {};
+  const record = compactOverviewRecord(payload.record);
   return {
     event_id: event.event_id,
     experiment_id: event.experiment_id,
@@ -245,6 +333,7 @@ function compactOverviewEvent(event) {
       block_reason: dashboardValue(payload.block_reason, 'block_reason'),
       error: dashboardValue(payload.error, 'error'),
       result: compactOverviewResult(payload.result),
+      record,
     },
   };
 }
@@ -556,7 +645,10 @@ export class ObservabilityServer {
       taskId: url.searchParams.get('task_id') ?? null,
       kinds: parseKinds(url.searchParams.get('kinds')),
       source: url.searchParams.get('source') ?? null,
-      view: url.searchParams.get('view') === 'agent' ? 'agent' : 'operator',
+      // The HTTP observer is also served through a public hostname. Keep the
+      // generic event surface on the bounded Agent projection even when a
+      // caller omits `view` (or tries to request the operator stream).
+      view: 'agent',
       limit: parseLimit(url.searchParams.get('limit')),
     };
   }
@@ -566,51 +658,69 @@ export class ObservabilityServer {
   }
 
   async #allEvents(options, maxPages = 20) {
+    return (await this.#allEventsWithMeta(options, maxPages)).events;
+  }
+
+  async #allEventsWithMeta(options, maxPages = 20, maxEvents = Number.MAX_SAFE_INTEGER) {
     const events = [];
     let afterSequence = 0;
+    let truncated = false;
     for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
       const page = this.observationStore.listEvents({ ...options, afterSequence, limit: 1_000 });
-      events.push(...page.events);
+      const remaining = Math.max(0, maxEvents - events.length);
+      events.push(...page.events.slice(0, remaining));
+      if (page.events.length > remaining) {
+        truncated = true;
+        break;
+      }
       if (!page.has_more || page.next_cursor === null) break;
       if (page.next_cursor <= afterSequence) break;
       afterSequence = page.next_cursor;
+      if (events.length >= maxEvents) {
+        truncated = true;
+        break;
+      }
+      if (pageNumber === maxPages - 1) truncated = true;
     }
-    return events;
+    return { events, truncated };
   }
 
   async #overview(experimentId, url) {
-    const [events, toolCounts] = await Promise.all([
+    const [events, toolProjection] = await Promise.all([
       this.#allEvents({
         experimentId,
         kinds: OVERVIEW_EVENT_KINDS,
         view: 'agent',
       }, 200),
-      this.#toolCounts(experimentId),
+      this.#toolProjection(experimentId),
     ]);
+    const overviewEvents = [...events, ...toolProjection.events].sort((left, right) => left.sequence - right.sequence);
     return {
       experiment_id: experimentId,
-      events: compactOverviewEvents(events),
+      events: compactOverviewEvents(overviewEvents),
       timeline: this.#timeline(experimentId, url),
-      tool_counts: toolCounts,
+      tool_counts: toolProjection.counts,
     };
   }
 
-  async #toolCounts(experimentId) {
+  async #toolProjection(experimentId) {
     const events = await this.#allEvents({ experimentId, kinds: ['rpc_record'], view: 'agent' }, 200);
     const calls = new Map();
+    const overviewEvents = [];
     for (const event of events) {
       const record = event.payload?.record;
       if (!event.execution_id || !record || !['tool_execution_start', 'tool_execution_end'].includes(record.type)) continue;
       const key = `${event.execution_id}:${record.toolCallId}`;
       calls.set(key, event.execution_id);
+      if (OVERVIEW_TOOL_NAMES.has(record.toolName)) overviewEvents.push(event);
     }
     const counts = {};
     for (const executionId of calls.values()) counts[executionId] = (counts[executionId] ?? 0) + 1;
-    return counts;
+    return { counts, events: overviewEvents };
   }
 
   async #executionInsight(experimentId, executionId) {
-    const events = await this.#allEvents({ experimentId, executionId, view: 'operator' });
+    const events = await this.#allEvents({ experimentId, executionId, view: 'agent' });
     const insight = {
       execution_id: executionId,
       initial_prompt: null,
@@ -689,7 +799,7 @@ export class ObservabilityServer {
       }
     }
     if (!insight.tool_surface.length) {
-      const catalogEvents = await this.#allEvents({ experimentId, kinds: ['rpc_record'], view: 'operator' }, 2);
+      const catalogEvents = await this.#allEvents({ experimentId, kinds: ['rpc_record'], view: 'agent' }, 2);
       for (const event of catalogEvents) {
         const record = event.payload?.record;
         if (record?.type === 'tool_execution_end' && record.toolName === 'swarmenv_catalog_list_tools') addCatalogTools(toolDetails(record));
@@ -703,18 +813,39 @@ export class ObservabilityServer {
   }
 
   async #executionDetail(experimentId, executionId) {
-    const allEvents = await this.#allEvents({ experimentId, executionId, view: 'agent' }, 200);
-    const events = allEvents.filter((event) => {
+    const observed = await this.#allEventsWithMeta({ experimentId, executionId, view: 'agent' }, 200, DETAIL_MAX_EVENTS);
+    const selected = observed.events.filter((event) => {
       if (event.kind === 'rpc_record') {
         return ['tool_execution_start', 'tool_execution_end'].includes(event.payload?.record?.type);
       }
       return EXECUTION_DETAIL_LIFECYCLE_KINDS.has(event.kind);
     });
-    return { experiment_id: experimentId, execution_id: executionId, events, observed_events: allEvents.length };
+    let bytes = 0;
+    const events = [];
+    let truncated = observed.truncated;
+    for (const event of selected) {
+      const compact = { ...event, payload: dashboardValue(event.payload) };
+      const size = Buffer.byteLength(JSON.stringify(compact));
+      if (events.length >= DETAIL_MAX_EVENTS || bytes + size > DETAIL_MAX_BYTES) {
+        truncated = true;
+        break;
+      }
+      events.push(compact);
+      bytes += size;
+    }
+    return {
+      experiment_id: experimentId,
+      execution_id: executionId,
+      events,
+      observed_events: observed.events.length,
+      returned_events: events.length,
+      truncated,
+    };
   }
 
   async #taskDetail(experimentId, taskId) {
-    const events = await this.#allEvents({ experimentId, taskId, view: 'agent' }, 200);
+    const observed = await this.#allEventsWithMeta({ experimentId, taskId, view: 'agent' }, 200, DETAIL_MAX_EVENTS);
+    const events = observed.events;
     if (!events.length) throw new Error(`unknown task: ${taskId}`);
     const fields = {};
     for (const event of events) {
@@ -740,16 +871,24 @@ export class ObservabilityServer {
       task: { ...safeFields, fields: safeFields },
       executions: executionIds.map((executionId) => this.#executionFromEvents(experimentId, executionId)),
       observed_events: events.length,
+      truncated: observed.truncated,
     };
   }
 
   async #materialDetail(experimentId, materialId) {
-    const events = await this.#allEvents({
-      experimentId,
-      source: 'context-service',
-      kinds: ['dispatch.complete'],
-      view: 'operator',
-    });
+    const [contextEvents, agentProjection] = await Promise.all([
+      this.#allEvents({
+        experimentId,
+        source: 'context-service',
+        kinds: ['dispatch.complete'],
+        view: 'operator',
+      }, 20),
+      // Imported experiments may not have Context Service envelopes. Their
+      // durable Material records are still present inside bounded historical
+      // context_publish tool results.
+      this.#allEventsWithMeta({ experimentId, kinds: ['rpc_record'], view: 'operator' }, 100, 50_000),
+    ]);
+    const events = [...contextEvents, ...agentProjection.events].sort((left, right) => left.sequence - right.sequence);
     let material = null;
     let observedAt = null;
     let sourceEventId = null;
@@ -948,7 +1087,7 @@ export class ObservabilityServer {
     response.flushHeaders?.();
     response.write(': connected\n\n');
     let cursor = parseCursor(url.searchParams.get('after_sequence'), 0);
-    const view = url.searchParams.get('view') === 'agent' ? 'agent' : 'operator';
+    const view = 'agent';
     const overview = url.searchParams.get('overview') === '1';
     const kinds = overview ? OVERVIEW_EVENT_KINDS : null;
     const emit = (event) => {
