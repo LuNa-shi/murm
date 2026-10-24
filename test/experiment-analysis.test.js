@@ -157,9 +157,13 @@ test('analyzes a complete fixture into stable per-Execution windows without copy
     assert.ok(first.report.includes('## Error analysis'));
     assert.ok(first.report.includes('## Optimization recommendations'));
     assert.ok(first.report.includes('## Candidate/Judge review'));
+    assert.ok(first.report.includes('## Coordination layer'));
+    assert.ok(first.report.includes('## Tool layer'));
+    assert.ok(first.report.includes('## System efficiency and health'));
     assert.ok(first.report.includes('tactic_no_progress') || first.report.includes('No diagnostic class repeated'));
     assert.ok(first.report.includes('Material'));
     assert.ok(!first.report.includes('must-not-be-copied'));
+    assert.ok(!first.report.includes(root));
     assert.equal(first.facts.map((fact) => fact.id).join(','), second.facts.map((fact) => fact.id).join(','));
     assert.equal(first.report, await readFile(firstPath, 'utf8'));
     assert.equal(first.report, second.report);
