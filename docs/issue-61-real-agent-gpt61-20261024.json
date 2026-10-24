@@ -1,10 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "mode": "real-agent",
   "status": "SUCCEEDED",
-  "implementation_commit": "e8cd7ad9fe0f6d42ab2938c07686c4d68a6c8f23",
-  "command": "NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 SWARMENV_IMPLEMENTATION_COMMIT=e8cd7ad9fe0f6d42ab2938c07686c4d68a6c8f23 SWARMENV_WORKTREE_DIRTY=false SWARMENV_WORKTREE_STATUS=clean SWARMENV_TIMEBOX_MS=360000 timeout 360s node scripts/run-mvp-fixture.mjs --real-agent",
-  "raw_report_path": "experiments/exp-20261024-issue61-a2-e8cd7ad/logs/real-agent.json",
+  "implementation_commit": "7584e5226561dcb9d0b4ffe9370cb090acaf4b5d",
+  "command": "NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 SWARMENV_IMPLEMENTATION_COMMIT=7584e5226561dcb9d0b4ffe9370cb090acaf4b5d SWARMENV_WORKTREE_DIRTY=false SWARMENV_WORKTREE_STATUS=clean SWARMENV_TIMEBOX_MS=360000 timeout 360s node scripts/run-mvp-fixture.mjs --real-agent",
+  "raw_report_path": "experiments/exp-20261024-issue61-a3-7584e52/logs/real-agent.json",
   "core_count": 1,
   "timebox_ms": 360000,
   "agent_turn_timeout_ms": 180000,
@@ -13,6 +13,34 @@
   "route": {
     "provider": "openai",
     "model": "gpt-6.1-sol"
+  },
+  "probe": {
+    "status": "READY_TO_LAUNCH",
+    "missing": [],
+    "blockers": [],
+    "versions": {
+      "node": {
+        "available": true,
+        "version": "v24.21.0"
+      },
+      "nurouter": {
+        "available": true,
+        "version": "nurouter 0.2.12"
+      },
+      "pi": {
+        "available": true,
+        "version": "1.0.1"
+      },
+      "lean": {
+        "available": true,
+        "version": "Lean (version 4.33.1, x86_64-unknown-linux-gnu, commit 819816b2e0a3bf405af45ae5c7af2491d8f5bee6, Release)"
+      },
+      "lake": {
+        "available": true,
+        "version": "Lake version 5.0.0-src+819816b (Lean version 4.33.1)"
+      }
+    },
+    "secret_values_recorded": false
   },
   "fixture": {
     "fixture_id": "putnam-1966-a1",
@@ -25,12 +53,12 @@
     "environment_ref": "putnambench-lean4@a635813f5edf297d928f9bd5ef8324a26bdde09c"
   },
   "runtime": {
-    "task_id": "1780b530-cf40-46d6-ac6f-3562f72b217e",
+    "task_id": "4c26d4f0-51f4-4dc9-89b2-7b851e6c1f99",
     "execution_id": "real-agent-execution",
     "task_state": "SATISFIED",
     "execution_state": "SUCCEEDED",
     "same_workspace_lineage": true,
-    "input_snapshot_hash": "19cc47a7068c09119253bc8372bcac699f91b2207033f7877380361d4820d7bb"
+    "input_snapshot_hash": "6f4b613977f9d7732fe893455263754b96d88d1523d68d3da770d0295e08732b"
   },
   "agent": {
     "pi_version": "1.4.0",
@@ -40,7 +68,7 @@
   },
   "check_results": [
     {
-      "check_result_id": "9fc7097d-dba9-4eaf-8265-4a7abddfd1a0",
+      "check_result_id": "48c2f3e9-2632-4446-b1d5-1c82763476cb",
       "status": "APPLIED",
       "verdict": "FAIL",
       "judge_operation_status": "persisted",
@@ -51,7 +79,7 @@
       "retryable": false,
       "diagnostic_code": "source_failure",
       "diagnostic_location": {
-        "file": "/tmp/swarmenv-mvp-EqrQO6/swarmenv-lean-GtCIZQ/Candidate.lean",
+        "file": "/tmp/swarmenv-mvp-BpwEpx/swarmenv-lean-hbQinv/Candidate.lean",
         "line": 42,
         "column": 4
       },
@@ -63,7 +91,7 @@
       }
     },
     {
-      "check_result_id": "d38b90c0-a034-48da-8e85-a66ed6b34df2",
+      "check_result_id": "3a21cea9-bd19-489e-89dd-df0e7508e70d",
       "status": "APPLIED",
       "verdict": "PASS",
       "judge_operation_status": "persisted",
@@ -88,17 +116,48 @@
     "source_failure_execution_state": "RUNNING",
     "wait_between_candidates": false,
     "lifecycle_events_between_candidates": [],
+    "first_check_result_id": "48c2f3e9-2632-4446-b1d5-1c82763476cb",
+    "second_check_result_id": "3a21cea9-bd19-489e-89dd-df0e7508e70d",
     "first_result_delivered_before_revision": true,
-    "first_diagnostic_delivered": true
+    "first_diagnostic_delivered": true,
+    "first_failure_candidate_id": "95cc39c0-b1ef-40ad-b033-ee4aa44fa453",
+    "revision_candidate_id": "ba30d770-c480-40e4-8c20-f672154e409d",
+    "revision_material_changed": true,
+    "revision_changed_diagnostic_location": true,
+    "feedback_consumption_evidence": {
+      "diagnostic_delivered": true,
+      "revision_after_delivery": true,
+      "failed_candidate_correlated": true,
+      "revision_candidate_correlated": true,
+      "revision_material_supersedes_failed_candidate": true,
+      "revision_material_changed": true,
+      "diagnostic_location": {
+        "file": "/tmp/swarmenv-mvp-BpwEpx/swarmenv-lean-hbQinv/Candidate.lean",
+        "line": 42,
+        "column": 4
+      },
+      "revision_changed_diagnostic_location": true
+    }
   },
   "feedback_trace": {
     "first_source_failure_result_delivered": true,
     "first_source_failure_diagnostic_delivered": true,
     "revision_submission_after_feedback": true,
+    "first_failure_event_index": 7,
+    "revision_submission_event_index": 12,
+    "first_failure_candidate_id": "95cc39c0-b1ef-40ad-b033-ee4aa44fa453",
+    "revision_candidate_id": "ba30d770-c480-40e4-8c20-f672154e409d",
+    "first_failure_diagnostic_location": {
+      "file": "/tmp/swarmenv-mvp-BpwEpx/swarmenv-lean-hbQinv/Candidate.lean",
+      "line": 42,
+      "column": 4
+    },
     "events": [
       {
         "type": "tool_call",
+        "raw_type": "tool_execution_start",
         "operation": "task_get",
+        "candidate_material_id": null,
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -109,7 +168,9 @@
       },
       {
         "type": "tool_result",
+        "raw_type": "tool_execution_end",
         "operation": "task_get",
+        "candidate_material_id": null,
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -120,7 +181,9 @@
       },
       {
         "type": "tool_call",
+        "raw_type": "tool_execution_start",
         "operation": "execution_get",
+        "candidate_material_id": null,
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -131,7 +194,9 @@
       },
       {
         "type": "tool_result",
+        "raw_type": "tool_execution_end",
         "operation": "execution_get",
+        "candidate_material_id": null,
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -142,7 +207,9 @@
       },
       {
         "type": "tool_call",
+        "raw_type": "tool_execution_start",
         "operation": "context_publish",
+        "candidate_material_id": null,
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -153,7 +220,9 @@
       },
       {
         "type": "tool_result",
+        "raw_type": "tool_execution_end",
         "operation": "context_publish",
+        "candidate_material_id": null,
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -164,7 +233,9 @@
       },
       {
         "type": "tool_call",
+        "raw_type": "tool_execution_start",
         "operation": "submit_candidate",
+        "candidate_material_id": "95cc39c0-b1ef-40ad-b033-ee4aa44fa453",
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -175,13 +246,15 @@
       },
       {
         "type": "tool_result",
+        "raw_type": "tool_execution_end",
         "operation": "submit_candidate",
+        "candidate_material_id": "95cc39c0-b1ef-40ad-b033-ee4aa44fa453",
         "result_class": "source_failure",
         "checker_process_status": "completed",
-        "check_result_id": "9fc7097d-dba9-4eaf-8265-4a7abddfd1a0",
+        "check_result_id": "48c2f3e9-2632-4446-b1d5-1c82763476cb",
         "diagnostic_code": "source_failure",
         "diagnostic_location": {
-          "file": "/tmp/swarmenv-mvp-EqrQO6/swarmenv-lean-GtCIZQ/Candidate.lean",
+          "file": "/tmp/swarmenv-mvp-BpwEpx/swarmenv-lean-hbQinv/Candidate.lean",
           "line": 42,
           "column": 4
         },
@@ -190,7 +263,9 @@
       },
       {
         "type": "tool_call",
-        "operation": "context_publish",
+        "raw_type": "tool_execution_start",
+        "operation": "get_check_result",
+        "candidate_material_id": null,
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -201,7 +276,9 @@
       },
       {
         "type": "tool_result",
-        "operation": "context_publish",
+        "raw_type": "tool_execution_end",
+        "operation": "get_check_result",
+        "candidate_material_id": null,
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -212,7 +289,9 @@
       },
       {
         "type": "tool_call",
-        "operation": "submit_candidate",
+        "raw_type": "tool_execution_start",
+        "operation": "context_publish",
+        "candidate_material_id": null,
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -223,16 +302,43 @@
       },
       {
         "type": "tool_result",
+        "raw_type": "tool_execution_end",
+        "operation": "context_publish",
+        "candidate_material_id": null,
+        "result_class": null,
+        "checker_process_status": null,
+        "check_result_id": null,
+        "diagnostic_code": null,
+        "diagnostic_location": null,
+        "diagnostic_excerpt_present": false,
+        "feedback_for_candidate": false
+      },
+      {
+        "type": "tool_call",
+        "raw_type": "tool_execution_start",
         "operation": "submit_candidate",
+        "candidate_material_id": "ba30d770-c480-40e4-8c20-f672154e409d",
+        "result_class": null,
+        "checker_process_status": null,
+        "check_result_id": null,
+        "diagnostic_code": null,
+        "diagnostic_location": null,
+        "diagnostic_excerpt_present": false,
+        "feedback_for_candidate": false
+      },
+      {
+        "type": "tool_result",
+        "raw_type": "tool_execution_end",
+        "operation": "submit_candidate",
+        "candidate_material_id": "ba30d770-c480-40e4-8c20-f672154e409d",
         "result_class": "PASS",
         "checker_process_status": "completed",
-        "check_result_id": "d38b90c0-a034-48da-8e85-a66ed6b34df2",
+        "check_result_id": "3a21cea9-bd19-489e-89dd-df0e7508e70d",
         "diagnostic_code": "checker_pass",
         "diagnostic_location": null,
         "diagnostic_excerpt_present": false,
         "feedback_for_candidate": true
       }
     ]
-  },
-  "secret_values_recorded": false
+  }
 }
