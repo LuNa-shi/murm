@@ -882,6 +882,7 @@ test('benchmark submit_candidate returns Agent feedback separately from the reda
     assert.ok(feedback.length > 0, 'at least one candidate must reach the Agent tool boundary');
     const check = feedback[0].check_result;
     assert.equal(check.result_class, 'source_failure');
+    assert.equal(check.status, 'APPLIED');
     assert.equal(check.mathematical_outcome, 'FAIL');
     assert.match(check.diagnostic_excerpt, /type mismatch/);
     assert.deepEqual(check.diagnostic_location, { file: 'Candidate.lean', line: 7, column: 4 });

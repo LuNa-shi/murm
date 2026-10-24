@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import { EventEmitter } from 'node:events';
 import {
   ContextService,
   JudgeService,
@@ -8,6 +9,7 @@ import {
   ServicesRouter,
   ServicesSDK,
   TaskService,
+  waitForResponseFlush,
 } from '../src/index.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
@@ -385,6 +387,14 @@ test('ServicesBridge writes the Agent response before flushing a deferred checke
     await bridge.stop();
     taskService.close();
   }
+});
+
+test('ServicesBridge does not treat a disconnected response as delivered feedback', async () => {
+  const response = new EventEmitter();
+  response.writableFinished = false;
+  const pending = waitForResponseFlush(response);
+  response.emit('close');
+  assert.equal(await pending, false);
 });
 
 test('ServicesBridge rejects candidate-result waits because candidate checking is synchronous', async () => {

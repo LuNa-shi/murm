@@ -34,7 +34,7 @@ function send(response, status, body) {
   response.end(content);
 }
 
-async function waitForResponseFlush(response) {
+export async function waitForResponseFlush(response) {
   if (response.writableFinished) return true;
   // A disconnected Agent may emit `close` without `finish`.  Treat either
   // terminal response event as observable completion, but only `finish` is a

@@ -26,6 +26,12 @@ function present(value) {
   return typeof value === 'string' && value.length > 0;
 }
 
+function positiveInteger(value) {
+  if (!present(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function safeVersion(value) {
   return typeof value === 'string' ? value.trim().split(/\r?\n/, 1)[0].slice(0, 200) : null;
 }
@@ -228,6 +234,7 @@ function reportFixture(fixture) {
     checker_ref: fixture.checker_ref ?? null,
     checker_version: fixture.checker_version ?? null,
     environment_ref: fixture.environment_ref ?? null,
+    project_root: fixture.project_root ?? null,
   };
 }
 
@@ -277,7 +284,14 @@ function toolOperation(record) {
     const payload = recordPayload(record);
     return typeof payload?.operation === 'string' ? payload.operation : name;
   }
-  return name.replace(/^swarmenv_/, '');
+  const operation = name.replace(/^swarmenv_/, '');
+  // Pi's named-tool events carry the service prefix (for example
+  // `judge_submit_candidate`), while the bridge RPC carries the registered
+  // operation (`submit_candidate`). Normalize both forms before correlating
+  // a tool result with its candidate submission.
+  if (operation.endsWith('_submit_candidate')) return 'submit_candidate';
+  if (operation.endsWith('_get_check_result')) return 'get_check_result';
+  return operation;
 }
 
 function recordPayload(record) {
@@ -424,6 +438,23 @@ export async function runRealAgentPath({
     mode: 'real-agent',
     status: probe.status === 'READY_TO_LAUNCH' ? 'RUNNING' : probe.status,
     probe,
+    experiment: {
+      implementation_commit: env.SWARMENV_IMPLEMENTATION_COMMIT ?? null,
+      worktree_dirty: env.SWARMENV_WORKTREE_DIRTY === 'true'
+        ? true
+        : env.SWARMENV_WORKTREE_DIRTY === 'false'
+          ? false
+          : null,
+      provider: env.NUROUTER_PI_PROVIDER ?? null,
+      model: env.NUROUTER_PI_MODEL ?? null,
+      core_count: 1,
+      timebox_ms: positiveInteger(env.SWARMENV_TIMEBOX_MS),
+      agent_turn_timeout_ms: timeoutMs,
+      worktree_status: env.SWARMENV_WORKTREE_STATUS ?? null,
+      putnambench_commit: fixtureManifest?.putnambench_commit ?? null,
+      fixture_id: fixtureManifest?.fixture_id ?? null,
+      lean_project_root: env.SWARMENV_PUTNAMBENCH_ROOT ?? fixtureManifest?.project_root ?? null,
+    },
     task_id: null,
     execution_id: null,
     material_ids: [],
@@ -515,6 +546,7 @@ export async function runRealAgentPath({
   });
   let bridge;
   const checkHistory = [];
+  const checkAttempts = new Map();
   let candidateSubmission = Promise.resolve();
   const submitCandidate = async ({ taskId, executionId: submittedExecutionId, payload }) => {
     const currentTask = taskService.getTask(taskId);
@@ -531,7 +563,9 @@ export async function runRealAgentPath({
       workspace_ref: workspaceMetadata.workspace?.workspace_ref ?? currentExecution.workspace_ref,
       workspace_revision: workspaceMetadata.workspace?.workspace_revision ?? currentExecution.workspace_revision,
     };
-    const requestKey = `real:check:${material.material_id}`;
+    const attempt = (checkAttempts.get(material.material_id) ?? 0) + 1;
+    checkAttempts.set(material.material_id, attempt);
+    const requestKey = `real:check:${material.material_id}:${attempt}`;
     const result = await judgeService.judgeCandidate(checkRequest({
       task: currentTask,
       execution: currentExecution,
@@ -547,7 +581,7 @@ export async function runRealAgentPath({
       specVersion: fresh.spec_version,
       stateVersion: fresh.state_version,
       fencingVersion: fresh.fencing_version,
-    }).applyCheckResult({ check_result_id: result.check_result_id }, { operationId: `real:apply:${material.material_id}` });
+    }).applyCheckResult({ check_result_id: result.check_result_id }, { operationId: `real:apply:${material.material_id}:${attempt}` });
     const retryableInfrastructure = result.result_class === 'infrastructure_failure' && result.retryable && !result.evidence?.retry_exhausted;
     let deferredWait = null;
     if (retryableInfrastructure) {
@@ -568,11 +602,17 @@ export async function runRealAgentPath({
         },
       };
     }
-    const record = { material_id: material.material_id, result, applied };
+    const record = { material_id: material.material_id, result: taskService.getCheckResult(result.check_result_id), applied };
     record.lifecycle_event_count_before = runtimeLifecycleEvents.length;
     checkHistory.push(record);
     record.lifecycle_event_count_after = runtimeLifecycleEvents.length;
-    return { check_result: agentCheckResult(result), applied, ...(deferredWait ? { deferred_wait: deferredWait } : {}) };
+    return {
+      // Keep the synchronous tool response consistent with the durable Judge
+      // read route after TaskService applies the result.
+      check_result: agentCheckResult(taskService.getCheckResult(result.check_result_id)),
+      applied,
+      ...(deferredWait ? { deferred_wait: deferredWait } : {}),
+    };
   };
   const onSubmitCandidate = (args) => {
     candidateSubmission = submitCandidate(args);
@@ -675,7 +715,7 @@ export async function runRealAgentPath({
   } catch (error) {
     report.status = 'FAILED';
     const failure = reportError(error);
-    report.reason = failure.message;
+    report.reason = failure.message_class;
     report.error = failure;
     report.task = reportTask(taskService.getTask(task.task_id));
     report.execution = reportExecution(taskService.getExecution(executionId));
