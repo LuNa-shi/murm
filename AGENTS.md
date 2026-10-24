@@ -11,6 +11,13 @@ changing the corresponding area.
 - Run relevant tests, commit the work, open a separate PR, and review the PR against `main` before merge.
 - Use the repository's Matt Pocock skills when applicable: `to-tickets`, `implement`, `pr`, and `code-review`.
 - Do not commit credentials, tokens, raw Agent transcripts, proof contents, or unredacted experiment state.
+- When creating a worktree for a real-Agent or benchmark run, check the local
+  `main` checkout for `.env`. If it exists and the target worktree does not
+  have its own environment file, copy it into the target worktree before
+  launching the run (for example, `cp /home/ubuntu/SwarmEnv/.env <worktree>/.env`).
+  Keep `.env` ignored, never print or commit its values, and verify only that
+  required route variables such as `NUROUTER_PI_PROVIDER` and
+  `NUROUTER_PI_MODEL` are present.
 
 See [docs/agents/workflow.md](docs/agents/workflow.md) and [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 
