@@ -1809,7 +1809,11 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     const heartbeat = setInterval(() => {
       for (const core of state.cores) {
         const execution = state.taskService.getExecution(core.executionId);
-        if (execution && ['CREATED', 'RUNNING'].includes(execution.state)) {
+        // Heartbeats belong to an active Runtime session. During the
+        // CREATED-to-RUNNING handoff, bindAgentExecution is still performing
+        // Workspace and Session startup; advancing state_version there can
+        // race the startup CAS and invalidate its envelope.
+        if (execution && execution.state === 'RUNNING' && core.runtime.activeProcesses.has(core.executionId)) {
           try {
             core.runtime.heartbeat(core.executionId);
             state.heartbeatCount += 1;
