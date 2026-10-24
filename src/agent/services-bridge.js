@@ -36,7 +36,13 @@ function send(response, status, body) {
 
 async function waitForResponseFlush(response) {
   if (response.writableFinished) return;
-  await once(response, 'finish').catch(() => undefined);
+  // A disconnected Agent may emit `close` without `finish`.  Treat either
+  // terminal response event as the handoff boundary so a deferred checker
+  // health wait cannot leave an HTTP request hanging forever.
+  await Promise.race([
+    once(response, 'finish'),
+    once(response, 'close'),
+  ]).catch(() => undefined);
 }
 
 function normalizeWaitCondition(condition, checkpoint = {}) {

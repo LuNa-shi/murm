@@ -91,35 +91,186 @@ function promptForCandidates({ firstCandidate }) {
   ].join('\n');
 }
 
+// A real-Agent report is an operator-facing acceptance artifact.  Keep its
+// identity, lifecycle, hashes, and bounded checker classification, but never
+// copy the private Task/Execution prompt, Material content, or canonical
+// CheckResult evidence into it.
+function reportCheckResult(result) {
+  const projected = agentCheckResult(result);
+  if (!projected) return null;
+  const { diagnostic_excerpt: _diagnosticExcerpt, ...operational } = projected;
+  return operational;
+}
+
+function reportMaterial(material) {
+  if (!material) return null;
+  return {
+    material_id: material.material_id ?? null,
+    kind: material.kind ?? null,
+    scope: material.scope ?? null,
+    evidence_state: material.evidence_state ?? null,
+    content_ref: material.content_ref ?? null,
+    content_hash: material.content_hash ?? null,
+    version: material.version ?? null,
+    source_task: material.source_task ?? null,
+    source_execution: material.source_execution ?? null,
+    supersedes: material.supersedes ?? null,
+    created_at: material.created_at ?? null,
+  };
+}
+
+function reportTask(task) {
+  if (!task) return null;
+  return {
+    task_id: task.task_id ?? null,
+    root_id: task.root_id ?? null,
+    parent_id: task.parent_id ?? null,
+    owner_ref: task.owner_ref ?? null,
+    task_type: task.task_type ?? null,
+    task_type_version: task.task_type_version ?? null,
+    state: task.state ?? null,
+    state_version: task.state_version ?? null,
+    spec_version: task.spec_version ?? null,
+    spec_hash: task.spec_hash ?? null,
+    goal: task.goal ?? null,
+    expected_output: task.expected_output ?? null,
+    acceptance_conditions: task.acceptance_conditions ?? null,
+    completion_contract: task.completion_contract ?? null,
+    input_material_refs: task.input_material_refs ?? [],
+    priority: task.priority ?? null,
+    parallel_quota: task.parallel_quota ?? null,
+    max_depth: task.max_depth ?? null,
+    max_children: task.max_children ?? null,
+    max_attempts: task.max_attempts ?? null,
+    block_reason: task.block_reason ?? null,
+    created_at: task.created_at ?? null,
+    updated_at: task.updated_at ?? null,
+  };
+}
+
+function reportExecution(execution) {
+  if (!execution) return null;
+  const selection = execution.workspace_selection ?? {};
+  return {
+    execution_id: execution.execution_id ?? null,
+    task_id: execution.task_id ?? null,
+    owner_ref: execution.owner_ref ?? null,
+    state: execution.state ?? null,
+    state_version: execution.state_version ?? null,
+    attempt_no: execution.attempt_no ?? null,
+    fencing_version: execution.fencing_version ?? null,
+    runtime_generation: execution.runtime_generation ?? null,
+    spec_version: execution.spec_version ?? null,
+    spec_hash: execution.spec_hash ?? null,
+    workspace_manifest_ref: execution.workspace_manifest_ref ?? null,
+    workspace_ref: execution.workspace_ref ?? null,
+    workspace_revision: execution.workspace_revision ?? null,
+    workspace_content_hash: execution.workspace_content_hash ?? null,
+    input_snapshot_hash: execution.input_snapshot_hash ?? null,
+    checkpoint_ref: execution.checkpoint_ref ?? null,
+    checkpoint_hash: execution.checkpoint_hash ?? null,
+    instruction_version: execution.instruction_version ?? null,
+    workspace_selection: {
+      mode: selection.mode ?? null,
+      revision: selection.revision ?? null,
+      source_execution_id: selection.source_execution_id ?? null,
+      source_workspace_ref: selection.source_workspace_ref ?? null,
+    },
+    wait_condition_type: execution.wait_condition?.type ?? null,
+    wait_deadline: execution.wait_deadline ?? null,
+    created_at: execution.created_at ?? null,
+    updated_at: execution.updated_at ?? null,
+  };
+}
+
+function reportWorkspace(workspace) {
+  if (!workspace) return null;
+  return {
+    workspace_ref: workspace.workspace_ref ?? null,
+    workspace_revision: workspace.workspace_revision ?? null,
+    content_hash: workspace.content_hash ?? null,
+    execution_id: workspace.execution_id ?? null,
+    fencing_version: workspace.fencing_version ?? null,
+    parent_workspace_ref: workspace.parent_workspace_ref ?? null,
+    parent_workspace_revision: workspace.parent_workspace_revision ?? null,
+    changed_files: Array.isArray(workspace.changed_files) ? [...workspace.changed_files] : [],
+    file_count: workspace.files && typeof workspace.files === 'object' ? Object.keys(workspace.files).length : null,
+  };
+}
+
+function reportManifest(manifest) {
+  if (!manifest) return null;
+  return {
+    pi_package: manifest.pi_package ?? null,
+    pi_version: manifest.pi_version ?? null,
+    nurouter_version: manifest.nurouter_version ?? null,
+    node_version: manifest.node_version ?? null,
+  };
+}
+
+function reportError(error) {
+  return {
+    code: error?.code ?? error?.name ?? 'Error',
+    message: String(error?.message ?? error).slice(0, 2_000),
+  };
+}
+
 function toolOperation(record) {
   const name = record?.toolName ?? record?.tool_name ?? record?.name ?? null;
   if (typeof name !== 'string') return null;
+  if (name === 'swarmenv_call') {
+    const payload = recordPayload(record);
+    return typeof payload?.operation === 'string' ? payload.operation : name;
+  }
   return name.replace(/^swarmenv_/, '');
 }
 
+function recordPayload(record) {
+  const raw = record?.arguments ?? record?.args ?? record?.params ?? record?.input ?? null;
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+  return raw;
+}
+
 function candidateIdFromRecord(record) {
-  const payload = record?.args?.payload ?? record?.args ?? record?.params ?? record?.input ?? null;
+  const raw = recordPayload(record);
+  const payload = raw?.payload ?? raw;
   return payload && typeof payload === 'object' ? payload.candidate_material_id ?? null : null;
 }
 
 function checkResultFromRecord(record) {
-  const values = [record?.result, record?.details, record?.data, record?.content];
-  for (const value of values) {
-    const result = value?.check_result ?? value?.result?.check_result ?? value?.details?.check_result ?? value?.details?.result?.check_result ?? null;
+  const pending = [record?.result, record?.details, record?.data, record?.content];
+  while (pending.length > 0) {
+    const value = pending.shift();
+    if (typeof value === 'string') {
+      try { pending.push(JSON.parse(value)); } catch { /* tool text may be non-JSON */ }
+      continue;
+    }
+    if (!value || typeof value !== 'object') continue;
+    const result = value.check_result;
     if (result && typeof result === 'object') return result;
+    if (Array.isArray(value)) {
+      pending.push(...value);
+    } else {
+      pending.push(value.result, value.details, value.data, value.content, value.text);
+    }
   }
   return null;
 }
 
-export function summarizeFeedbackTrace(records) {
+export function summarizeFeedbackTrace(records, { sessionId = null } = {}) {
   const events = records
-    .filter((record) => record?.type === 'tool_call' || record?.type === 'tool_result')
+    .filter((record) => ['tool_call', 'tool_result', 'tool_execution_start', 'tool_execution_end'].includes(record?.type))
     .map((record) => {
-      const checkResult = record.type === 'tool_result' ? checkResultFromRecord(record) : null;
+      const type = ['tool_call', 'tool_execution_start'].includes(record.type) ? 'tool_call' : 'tool_result';
+      const checkResult = type === 'tool_result' ? checkResultFromRecord(record) : null;
       return {
-        type: record.type,
+        type,
+        raw_type: record.type,
+        session_id: sessionId,
         operation: toolOperation(record),
-        candidate_material_id: record.type === 'tool_call' ? candidateIdFromRecord(record) : null,
+        candidate_material_id: type === 'tool_call' ? candidateIdFromRecord(record) : null,
         result_class: checkResult?.result_class ?? null,
         checker_process_status: checkResult?.checker_process_status ?? null,
         check_result_id: checkResult?.check_result_id ?? null,
@@ -159,11 +310,32 @@ async function runAgentTurn(session, prompt, { timeoutMs = 180_000 } = {}) {
   }
   const records = session.rpcRecords.slice(sequence);
   return {
-    response,
-    settled,
+    response_disposition: response?.data?.disposition ?? null,
+    settled: {
+      type: settled?.type ?? null,
+      expected_stop: Boolean(settled?.expected_stop),
+    },
     rpc_records: records.map((record) => record.type),
-    feedback_trace: summarizeFeedbackTrace(records),
+    feedback_trace: summarizeFeedbackTrace(records, { sessionId: session.sessionId ?? null }),
   };
+}
+
+function lifecycleHandoffEvents(taskService, executionId) {
+  const rows = taskService.db.prepare("SELECT operation_id, operation, result_json, created_at FROM operations WHERE operation IN ('request_wait', 'wake_execution', 'resume_execution') ORDER BY created_at, operation_id").all();
+  return rows.flatMap((row) => {
+    let result = null;
+    try { result = JSON.parse(row.result_json); } catch { /* retain a bounded event without private result data */ }
+    const execution = result?.execution ?? null;
+    if (execution?.execution_id !== executionId) return [];
+    return [{
+      operation_id: row.operation_id,
+      operation: row.operation,
+      created_at: row.created_at,
+      execution_id: execution.execution_id,
+      state: execution.state ?? null,
+      wait_condition_type: execution.wait_condition?.type ?? null,
+    }];
+  });
 }
 
 function latestArtifact(contextService, executionId, previousId = null) {
@@ -357,7 +529,7 @@ export async function runRealAgentPath({
   try {
     Object.assign(childEnv, await bridge.start());
     firstRun = await runtime.startExecution(executionId);
-    report.launch = { workspace_ref: firstRun.execution.workspace_ref, runtime_manifest: firstRun.session.manifest };
+    report.launch = { workspace_ref: firstRun.execution.workspace_ref, runtime_manifest: reportManifest(firstRun.session.manifest) };
     report.agent_flow = await runAgentTurn(firstRun.session, promptForCandidates({ firstCandidate }), { timeoutMs });
     report.first_agent = report.agent_flow;
     report.second_agent = null;
@@ -370,7 +542,7 @@ export async function runRealAgentPath({
     ({ result: firstResult, applied: firstApplied } = firstRecord ?? {});
     if (!firstResult || !firstApplied) throw new Error('real Agent candidate submission did not return a CheckResult');
     report.check_result_ids.push(firstResult.check_result_id);
-    report.failure_evidence = firstResult.evidence;
+    report.failure_evidence = reportCheckResult(firstResult);
     if (firstResult.result_class !== 'source_failure') throw new Error(`real Agent first candidate expected source-level FAIL, got ${firstResult.result_class}`);
     if (firstApplied.execution.state !== 'RUNNING') throw new Error(`real Agent source-level failure changed Execution state to ${firstApplied.execution.state}`);
     if (!secondRecord) throw new Error('real Agent did not submit a repair candidate after receiving the first CheckResult');
@@ -380,41 +552,57 @@ export async function runRealAgentPath({
     report.material_ids.push(secondMaterial.material_id);
     ({ result: secondResult, applied: secondApplied } = secondRecord);
     if (!secondResult || !secondApplied) throw new Error('real Agent fixed candidate did not return a CheckResult');
-    if (!['PASS', 'source_failure'].includes(secondResult.result_class)) throw new Error(`real Agent repair candidate returned ${secondResult.result_class}`);
+    if (secondResult.result_class !== 'PASS') throw new Error(`real Agent repair candidate returned ${secondResult.result_class}`);
     if (!report.agent_flow.feedback_trace.first_source_failure_result_delivered || !report.agent_flow.feedback_trace.revision_submission_after_feedback) {
       throw new Error('real Agent repair did not follow delivery of the first source-level CheckResult');
     }
+    const lifecycleEvents = lifecycleHandoffEvents(taskService, executionId);
+    const candidateSessionIds = new Set(report.agent_flow.feedback_trace.events
+      .filter((event) => event.operation === 'submit_candidate' && event.session_id)
+      .map((event) => event.session_id));
+    const sameAgentSession = candidateSessionIds.size === 1 && candidateSessionIds.has(firstRun.session.sessionId ?? null);
+    const waitBetweenCandidates = lifecycleEvents.length > 0;
     report.feedback_handoff = {
-      same_agent_session: true,
+      same_agent_session: sameAgentSession,
       same_execution: firstApplied.execution.execution_id === secondApplied.execution.execution_id,
       source_failure_execution_state: firstApplied.execution.state,
-      wait_between_candidates: false,
+      wait_between_candidates: waitBetweenCandidates,
+      lifecycle_events: lifecycleEvents,
+      session_id: firstRun.session.sessionId ?? null,
       first_check_result_id: firstResult.check_result_id,
       second_check_result_id: secondResult.check_result_id,
       first_result_delivered_before_revision: report.agent_flow.feedback_trace.revision_submission_after_feedback,
     };
+    if (!report.feedback_handoff.same_agent_session) throw new Error('real Agent repair did not use the same Agent session');
+    if (!report.feedback_handoff.same_execution) throw new Error('real Agent repair changed Execution identity');
+    if (report.feedback_handoff.wait_between_candidates) throw new Error('real Agent repair crossed a WAITING/wake lifecycle handoff');
+    if (secondApplied.task.state !== 'SATISFIED' || secondApplied.execution.state !== 'SUCCEEDED') {
+      throw new Error(`real Agent repair did not complete the Task: ${secondApplied.task.state}/${secondApplied.execution.state}`);
+    }
     report.check_result_ids.push(secondResult.check_result_id);
     report.fixture = lockedFixture;
     report.versions = { node: process.version, pi: firstRun.session.manifest.pi_version ?? null, nurouter: firstRun.session.manifest.nurouter_version ?? null, lean_toolchain: lockedFixture.lean_toolchain, mathlib: lockedFixture.mathlib_version, checker: lockedFixture.checker_version };
     report.workspace = {
       input_snapshot_hash: firstRun.execution.input_snapshot_hash,
-      first: firstRun.workspace,
+      first: reportWorkspace(firstRun.workspace),
       same_lineage: firstRun.execution.workspace_ref === secondApplied.execution.workspace_ref,
       checkpoints: [],
     };
-    report.check_results = [taskService.getCheckResult(firstResult.check_result_id), taskService.getCheckResult(secondResult.check_result_id)];
-    report.materials = [contextService.getMaterial(report.material_ids[0]), contextService.getMaterial(report.material_ids[1])];
-    report.task = secondApplied.task;
-    report.execution = secondApplied.execution;
+    report.check_results = [reportCheckResult(taskService.getCheckResult(firstResult.check_result_id)), reportCheckResult(taskService.getCheckResult(secondResult.check_result_id))];
+    report.materials = [reportMaterial(contextService.getMaterial(report.material_ids[0])), reportMaterial(contextService.getMaterial(report.material_ids[1]))];
+    report.task = reportTask(secondApplied.task);
+    report.execution = reportExecution(secondApplied.execution);
     report.status = secondApplied.task.state === 'SATISFIED' && secondApplied.execution.state === 'SUCCEEDED' ? 'SUCCEEDED' : 'FAILED';
     return report;
   } catch (error) {
     report.status = 'FAILED';
-    report.reason = error.message;
-    report.task = taskService.getTask(task.task_id);
-    report.execution = taskService.getExecution(executionId);
-    if (firstResult) report.check_results = [taskService.getCheckResult(firstResult.check_result_id)];
-    if (secondResult) report.check_results?.push(taskService.getCheckResult(secondResult.check_result_id));
+    const failure = reportError(error);
+    report.reason = failure.message;
+    report.error = failure;
+    report.task = reportTask(taskService.getTask(task.task_id));
+    report.execution = reportExecution(taskService.getExecution(executionId));
+    if (firstResult) report.check_results = [reportCheckResult(taskService.getCheckResult(firstResult.check_result_id))];
+    if (secondResult) report.check_results?.push(reportCheckResult(taskService.getCheckResult(secondResult.check_result_id)));
     return report;
   } finally {
     const execution = taskService.getExecution(executionId);

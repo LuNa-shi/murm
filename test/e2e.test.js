@@ -76,12 +76,14 @@ test('real-agent probe rejects conflicting OpenAI route selectors before launch'
 
 test('real-agent feedback trace proves the revision submission follows the delivered source failure', () => {
   const trace = summarizeFeedbackTrace([
-    { type: 'tool_call', toolName: 'swarmenv_submit_candidate', args: { candidate_material_id: 'candidate-1' } },
-    { type: 'tool_result', toolName: 'swarmenv_submit_candidate', result: { check_result: { check_result_id: 'check-1', result_class: 'source_failure', checker_process_status: 'completed' } } },
-    { type: 'tool_call', toolName: 'swarmenv_publish_material', args: { scope: 'proof_relevant' } },
-    { type: 'tool_call', toolName: 'swarmenv_submit_candidate', args: { candidate_material_id: 'candidate-2' } },
+    { type: 'tool_execution_start', toolName: 'swarmenv_call', args: { operation: 'submit_candidate', payload: { candidate_material_id: 'candidate-1' } } },
+    { type: 'tool_execution_end', toolName: 'swarmenv_call', result: { check_result: { check_result_id: 'check-1', result_class: 'source_failure', checker_process_status: 'completed' } } },
+    { type: 'tool_execution_start', toolName: 'swarmenv_publish_material', args: { scope: 'proof_relevant' } },
+    { type: 'tool_execution_start', toolName: 'swarmenv_call', arguments: JSON.stringify({ operation: 'submit_candidate', payload: { candidate_material_id: 'candidate-2' } }) },
   ]);
   assert.equal(trace.first_source_failure_result_delivered, true);
   assert.equal(trace.revision_submission_after_feedback, true);
   assert.ok(trace.revision_submission_event_index > trace.first_failure_event_index);
+  assert.equal(trace.events[0].raw_type, 'tool_execution_start');
+  assert.equal(trace.events[1].raw_type, 'tool_execution_end');
 });

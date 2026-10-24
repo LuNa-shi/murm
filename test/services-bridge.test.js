@@ -361,7 +361,10 @@ test('ServicesBridge writes the Agent response before flushing a deferred checke
       applied: { execution: { ...claim.execution, state: 'WAITING' }, task },
       deferred_wait: { waitCondition: { type: 'checker_health', preflight_key: 'preflight', health_fingerprint: 'health-1' }, checkpoint: { phase: 'checker_unavailable' } },
     }),
-    logger: { append: (event) => { if (event.event === 'bridge.response_sent') events.push('response_sent'); } },
+    logger: { append: (event) => {
+      if (event.event === 'bridge.response_sent') events.push('response_sent');
+      if (event.event === 'bridge.response_flushed') events.push('response_flushed');
+    } },
   });
   const environment = await bridge.start();
   try {
@@ -374,7 +377,8 @@ test('ServicesBridge writes the Agent response before flushing a deferred checke
     assert.equal(response.status, 200);
     assert.equal(body.result.check_result.result_class, 'infrastructure_failure');
     assert.ok(events.indexOf('response_sent') >= 0);
-    assert.ok(events.indexOf('request_wait') > events.indexOf('response_sent'));
+    assert.ok(events.indexOf('response_flushed') > events.indexOf('response_sent'));
+    assert.ok(events.indexOf('request_wait') > events.indexOf('response_flushed'));
     assert.equal(bridge.taskId, null);
     assert.equal(bridge.executionId, null);
   } finally {
