@@ -172,7 +172,10 @@ test('ServicesBridge routes Judge feedback through the named Judge Service tool'
     const result = await bridge.call({ operation: 'get_check_result', payload: { check_result_id: 'judge-route-result' } });
     assert.equal(result.check_result_id, 'judge-route-result');
     assert.equal(result.verdict, 'FAIL');
-    assert.equal(result.evidence.diagnostic, 'controlled feedback');
+    assert.equal(result.diagnostic_excerpt, 'controlled feedback');
+    assert.deepEqual(result.diagnostic_location, null);
+    assert.equal(result.evidence, undefined);
+    assert.equal(result.process_evidence.exit_code, null);
   } finally {
     await bridge.stop();
     taskService.close();

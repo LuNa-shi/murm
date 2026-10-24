@@ -9,6 +9,7 @@ import { AgentCoreAdapter } from '../agent/pi-adapter.js';
 import { ContextService } from '../context/context-service.js';
 import { JudgeService } from '../judge/judge-service.js';
 import { LeanChecker } from '../judge/lean-adapter.js';
+import { agentCheckResult } from '../judge/check-result.js';
 import { Runtime } from '../runtime/runtime.js';
 import { WorkspaceManager } from '../runtime/workspace-manager.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
@@ -835,7 +836,10 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
     state.solvedAt = Date.now();
     state.solvedBy = core.index;
   }
-  return { check_result: sanitizedCheck(result, material), applied };
+  // The report keeps its redacted operational projection above, while the
+  // synchronous Agent tool receives bounded diagnostic feedback that can guide
+  // the next candidate.
+  return { check_result: agentCheckResult(result), applied };
 }
 
 async function stopCore(state, core) {

@@ -178,7 +178,7 @@ export async function runRealAgentPath({
   contextService.taskService = taskService;
   const judgeService = new JudgeService(databaseConnection, { checker: new LeanChecker({ workRoot: rootDir }) });
   taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
-  const router = new ServicesRouter({ taskService, contextService });
+  const router = new ServicesRouter({ taskService, contextService, judgeService });
   const ownerSdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const task = ownerSdk.proposeTask({
     task_type: 'proof',

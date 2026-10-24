@@ -41,10 +41,21 @@ function text(value) {
 }
 
 const MAX_SAFE_TEXT_LENGTH = 16_000;
+const MAX_AGENT_DIAGNOSTIC_LENGTH = 4_096;
 
 function bounded(value) {
   if (typeof value !== 'string') return value;
   return value.length <= MAX_SAFE_TEXT_LENGTH ? value : `${value.slice(0, MAX_SAFE_TEXT_LENGTH)}…[truncated]`;
+}
+
+function boundedAgent(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const marker = '…[truncated]';
+  return trimmed.length <= MAX_AGENT_DIAGNOSTIC_LENGTH
+    ? trimmed
+    : `${trimmed.slice(0, MAX_AGENT_DIAGNOSTIC_LENGTH - marker.length)}${marker}`;
 }
 
 function boundedEvidence(value = {}) {
@@ -58,6 +69,100 @@ function diagnosticText(evidence) {
     .map(text)
     .filter(Boolean)
     .join('\n');
+}
+
+function numberValue(value) {
+  if (Number.isInteger(value) && value >= 0) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
+  return null;
+}
+
+function diagnosticLocation(evidence = {}, diagnostic = '') {
+  const explicit = evidence.diagnostic_location ?? evidence.location ?? {};
+  const explicitFile = text(explicit.file ?? explicit.path ?? explicit.file_path ?? evidence.file ?? evidence.file_path);
+  const explicitLine = numberValue(explicit.line ?? explicit.line_number ?? evidence.line ?? evidence.line_number);
+  const explicitColumn = numberValue(explicit.column ?? explicit.column_number ?? evidence.column ?? evidence.column_number);
+  let file = explicitFile || null;
+  let line = explicitLine;
+  let column = explicitColumn;
+  if (!file || line === null || column === null) {
+    const match = /(?:^|\n)\s*([^:\n]+):(\d+):(\d+)(?::|\s|$)/.exec(diagnostic);
+    if (match) {
+      file ??= match[1].trim();
+      line ??= Number(match[2]);
+      column ??= Number(match[3]);
+    }
+  }
+  if (!file && line === null && column === null) return null;
+  return { file, line, column };
+}
+
+/**
+ * Project the canonical persisted CheckResult onto the Agent tool boundary.
+ *
+ * The Judge keeps the full evidence object for local diagnosis and reports,
+ * but an Agent only needs bounded feedback that can guide the next candidate.
+ * In particular, candidate hashes, raw process streams, and arbitrary evidence
+ * keys must not cross this boundary. The diagnostic excerpt is deliberately
+ * bounded and is the only selected process text exposed to the Agent.
+ */
+export function agentCheckResult(result) {
+  if (!result) return null;
+  const evidence = result.evidence ?? {};
+  const storedClass = result.result_class ?? evidence.result_class;
+  const storedProcessStatus = result.checker_process_status ?? evidence.checker_process_status;
+  const resultClass = storedResultClass({
+    verdict: result.verdict,
+    resultClass: storedClass,
+    checkerProcessStatus: storedProcessStatus,
+  });
+  const checkerProcessStatus = storedCheckerProcessStatus({
+    verdict: result.verdict,
+    resultClass: storedClass,
+    checkerProcessStatus: storedProcessStatus,
+  });
+  const mathematicalOutcome = result.mathematical_outcome
+    ?? evidence.mathematical_outcome
+    ?? (resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed');
+  const diagnosticExcerpt = boundedAgent(diagnosticText(evidence));
+  return {
+    check_result_id: result.check_result_id ?? null,
+    request_key: result.request_key ?? null,
+    candidate_material_id: result.candidate_material_id ?? null,
+    target_task_id: result.target_task_id ?? null,
+    execution_id: result.execution_id ?? null,
+    status: result.status ?? null,
+    verdict: result.verdict ?? null,
+    judge_operation_status: result.judge_operation_status ?? 'persisted',
+    checker_ref: result.checker_ref ?? null,
+    checker_version: result.checker_version ?? null,
+    environment_ref: result.environment_ref ?? null,
+    checker_process_status: checkerProcessStatus,
+    checker_started: evidence.checker_started ?? ['started', 'completed', 'timeout', 'crashed'].includes(checkerProcessStatus),
+    result_class: resultClass,
+    mathematical_outcome: mathematicalOutcome,
+    retryable: result.retryable ?? Boolean(evidence.retryable),
+    diagnostic_code: result.diagnostic_code ?? evidence.diagnostic_code ?? null,
+    diagnostic_excerpt: diagnosticExcerpt,
+    diagnostic_location: diagnosticLocation(evidence, diagnosticExcerpt ?? ''),
+    process_evidence: {
+      exit_code: evidence.exit_code ?? null,
+      signal: evidence.signal ?? null,
+      timed_out: Boolean(evidence.timed_out),
+      error_code: evidence.error_code ?? null,
+    },
+    preflight_key: evidence.preflight_key ?? null,
+    preflight_status: evidence.preflight_status ?? null,
+    preflight_verified: evidence.preflight_verified ?? null,
+    input_binding_verified: evidence.input_binding_verified ?? null,
+    toolchain_version_verified: evidence.toolchain_version_verified ?? null,
+    checker_ref_verified: evidence.checker_ref_verified ?? null,
+    checker_version_verified: evidence.checker_version_verified ?? null,
+    checker_identity_verified: evidence.checker_identity_verified ?? null,
+    health_fingerprint: evidence.health_fingerprint ?? null,
+    infrastructure_attempt_count: evidence.infrastructure_attempt_count ?? null,
+    retry_exhausted: Boolean(evidence.retry_exhausted),
+  };
 }
 
 export function diagnosticCodeFor({ verdict, evidence = {}, checkerProcessStatus = null, resultClass = null } = {}) {
