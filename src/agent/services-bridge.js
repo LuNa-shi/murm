@@ -35,14 +35,25 @@ function send(response, status, body) {
 }
 
 async function waitForResponseFlush(response) {
-  if (response.writableFinished) return;
+  if (response.writableFinished) return true;
   // A disconnected Agent may emit `close` without `finish`.  Treat either
-  // terminal response event as the handoff boundary so a deferred checker
-  // health wait cannot leave an HTTP request hanging forever.
-  await Promise.race([
-    once(response, 'finish'),
-    once(response, 'close'),
-  ]).catch(() => undefined);
+  // terminal response event as observable completion, but only `finish` is a
+  // valid handoff boundary.  `close` can mean the Agent disconnected before
+  // receiving the body, so a deferred checker-health wait must remain staged.
+  return await new Promise((resolve) => {
+    let settled = false;
+    const finish = (flushed) => {
+      if (settled) return;
+      settled = true;
+      response.off('finish', onFinish);
+      response.off('close', onClose);
+      resolve(flushed);
+    };
+    const onFinish = () => finish(true);
+    const onClose = () => finish(false);
+    response.once('finish', onFinish);
+    response.once('close', onClose);
+  });
 }
 
 function normalizeWaitCondition(condition, checkpoint = {}) {
@@ -164,9 +175,9 @@ export class ServicesBridge {
       const result = await this.call(input);
       send(response, 200, { ok: true, result });
       this.logger?.append({ event: 'bridge.response_sent', operation: input.operation });
-      await waitForResponseFlush(response);
-      this.logger?.append({ event: 'bridge.response_flushed', operation: input.operation });
-      await this.flushDeferredLifecycle();
+      const flushed = await waitForResponseFlush(response);
+      this.logger?.append({ event: flushed ? 'bridge.response_flushed' : 'bridge.response_not_flushed', operation: input.operation });
+      if (flushed) await this.flushDeferredLifecycle();
     } catch (error) {
       if (!response.writableEnded) send(response, 400, { ok: false, error: errorBody(error) });
       else this.logger?.append({ event: 'bridge.lifecycle_error', operation: 'deferred_lifecycle', ok: false, error: { name: error.name, code: error.code, message: error.message } });

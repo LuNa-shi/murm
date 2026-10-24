@@ -14,7 +14,6 @@ import { LeanChecker } from '../judge/lean-adapter.js';
 import { agentCheckResult } from '../judge/check-result.js';
 import { validateFixtureManifest } from '../judge/fixture.js';
 import { DatabaseSync } from 'node:sqlite';
-import { GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
 
 const execFile = promisify(defaultExecFile);
 const extensionPath = fileURLToPath(new URL('../agent/swarmenv-extension.mjs', import.meta.url));
@@ -98,8 +97,17 @@ function promptForCandidates({ firstCandidate }) {
 function reportCheckResult(result) {
   const projected = agentCheckResult(result);
   if (!projected) return null;
-  const { diagnostic_excerpt: _diagnosticExcerpt, ...operational } = projected;
-  return operational;
+  const fields = [
+    'check_result_id', 'request_key', 'candidate_material_id', 'target_task_id',
+    'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_ref',
+    'checker_version', 'environment_ref', 'checker_process_status', 'checker_started',
+    'result_class', 'mathematical_outcome', 'retryable', 'diagnostic_code',
+    'diagnostic_location', 'process_evidence', 'preflight_key', 'preflight_status',
+    'preflight_verified', 'input_binding_verified', 'toolchain_version_verified',
+    'checker_ref_verified', 'checker_version_verified', 'checker_identity_verified',
+    'health_fingerprint', 'infrastructure_attempt_count', 'retry_exhausted',
+  ];
+  return Object.fromEntries(fields.map((field) => [field, projected[field] ?? null]));
 }
 
 function reportMaterial(material) {
@@ -208,11 +216,58 @@ function reportManifest(manifest) {
   };
 }
 
+function reportFixture(fixture) {
+  if (!fixture) return null;
+  return {
+    fixture_id: fixture.fixture_id ?? null,
+    putnambench_commit: fixture.putnambench_commit ?? null,
+    problem_file: fixture.problem_file ?? null,
+    problem_file_hash: fixture.problem_file_hash ?? null,
+    lean_toolchain: fixture.lean_toolchain ?? null,
+    mathlib_version: fixture.mathlib_version ?? null,
+    checker_ref: fixture.checker_ref ?? null,
+    checker_version: fixture.checker_version ?? null,
+    environment_ref: fixture.environment_ref ?? null,
+  };
+}
+
 function reportError(error) {
+  const message = String(error?.message ?? error);
+  const messageClass = /timed out|timeout/i.test(message)
+    ? 'timeout'
+    : /process|spawn|session/i.test(message)
+      ? 'agent_process_error'
+      : /source_failure|PASS|CheckResult|candidate/i.test(message)
+        ? 'candidate_flow_error'
+        : 'real_agent_path_error';
   return {
     code: error?.code ?? error?.name ?? 'Error',
-    message: String(error?.message ?? error).slice(0, 2_000),
+    message_class: messageClass,
   };
+}
+
+function realReportKeyViolations(value, path = 'report', violations = []) {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => realReportKeyViolations(item, `${path}[${index}]`, violations));
+    return violations;
+  }
+  if (!value || typeof value !== 'object') return violations;
+  const forbiddenKeys = new Set([
+    'formal_source', 'candidate_content', 'proof_text', 'raw_transcript',
+    'stdout', 'stderr', 'agent_prompt', 'task_instructions', 'content',
+    'diagnostic_excerpt',
+  ]);
+  for (const [key, child] of Object.entries(value)) {
+    if (forbiddenKeys.has(key)) violations.push(`${path}.${key}`);
+    realReportKeyViolations(child, `${path}.${key}`, violations);
+  }
+  return violations;
+}
+
+export function validateRealAgentReport(report) {
+  const violations = realReportKeyViolations(report);
+  if (violations.length > 0) throw new TypeError(`real-agent report contains private fields: ${violations.join(', ')}`);
+  return true;
 }
 
 function toolOperation(record) {
@@ -274,32 +329,48 @@ export function summarizeFeedbackTrace(records, { sessionId = null } = {}) {
         result_class: checkResult?.result_class ?? null,
         checker_process_status: checkResult?.checker_process_status ?? null,
         check_result_id: checkResult?.check_result_id ?? null,
+        diagnostic_code: checkResult?.diagnostic_code ?? null,
+        diagnostic_location: checkResult?.diagnostic_location ?? null,
+        diagnostic_excerpt_present: typeof checkResult?.diagnostic_excerpt === 'string' && checkResult.diagnostic_excerpt.length > 0,
       };
     });
-  const firstFailureIndex = events.findIndex((event) => event.type === 'tool_result' && event.result_class === 'source_failure');
+  let pendingCandidate = null;
+  for (const event of events) {
+    if (event.type === 'tool_call' && event.operation === 'submit_candidate') {
+      pendingCandidate = event;
+      continue;
+    }
+    if (event.type === 'tool_result' && pendingCandidate) {
+      event.operation = 'submit_candidate';
+      event.candidate_material_id ??= pendingCandidate.candidate_material_id;
+      event.feedback_for_candidate = true;
+      pendingCandidate = null;
+    }
+  }
+  const firstFailureIndex = events.findIndex((event) => event.type === 'tool_result' && event.feedback_for_candidate === true && event.operation === 'submit_candidate' && event.result_class === 'source_failure');
   const revisionIndex = firstFailureIndex < 0
     ? -1
     : events.findIndex((event, index) => index > firstFailureIndex && event.type === 'tool_call' && event.operation === 'submit_candidate');
   return {
     events,
     first_source_failure_result_delivered: firstFailureIndex >= 0,
+    first_source_failure_diagnostic_delivered: firstFailureIndex >= 0 && events[firstFailureIndex].diagnostic_excerpt_present === true,
     revision_submission_after_feedback: revisionIndex > firstFailureIndex,
     first_failure_event_index: firstFailureIndex >= 0 ? firstFailureIndex : null,
     revision_submission_event_index: revisionIndex >= 0 ? revisionIndex : null,
   };
 }
 
-async function runAgentTurn(session, prompt, { timeoutMs = 180_000 } = {}) {
+async function runAgentTurn(session, { timeoutMs = 180_000 } = {}) {
   await session.waitForReady({ timeoutMs: 15_000 });
-  const sequence = session.rpcRecords.length;
-  // Runtime sends the Execution's initial agent_prompt as part of start/wake.
-  // The real-path harness may then add a phase-specific candidate prompt while
-  // that turn is still running. Queue it explicitly instead of issuing a
-  // second concurrent prompt, and wait for the actual agent_settled record.
-  const response = await session.prompt(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' });
+  // Runtime sends the Execution's initial agent_prompt as part of
+  // startExecution. Wait for that one turn; do not inject a second prompt
+  // while the bound Session is working. The initial prompt itself contains
+  // the controlled first candidate and asks the Agent to revise from the
+  // synchronous CheckResult.
   let settled;
   try {
-    settled = await session.waitForSettled({ timeoutMs, afterSequence: sequence });
+    settled = await session.waitForSettled({ timeoutMs, afterSequence: 0 });
   } catch (error) {
     // A candidate result can synchronously move the Execution to WAITING or
     // a terminal state. Runtime then intentionally stops this Session before
@@ -308,9 +379,9 @@ async function runAgentTurn(session, prompt, { timeoutMs = 180_000 } = {}) {
     if (!session.expectedStop) throw error;
     settled = { type: 'agent_settled', expected_stop: true };
   }
-  const records = session.rpcRecords.slice(sequence);
+  const records = session.rpcRecords;
   return {
-    response_disposition: response?.data?.disposition ?? null,
+    response_disposition: null,
     settled: {
       type: settled?.type ?? null,
       expected_stop: Boolean(settled?.expected_stop),
@@ -318,31 +389,6 @@ async function runAgentTurn(session, prompt, { timeoutMs = 180_000 } = {}) {
     rpc_records: records.map((record) => record.type),
     feedback_trace: summarizeFeedbackTrace(records, { sessionId: session.sessionId ?? null }),
   };
-}
-
-function lifecycleHandoffEvents(taskService, executionId) {
-  const rows = taskService.db.prepare("SELECT operation_id, operation, result_json, created_at FROM operations WHERE operation IN ('request_wait', 'wake_execution', 'resume_execution') ORDER BY created_at, operation_id").all();
-  return rows.flatMap((row) => {
-    let result = null;
-    try { result = JSON.parse(row.result_json); } catch { /* retain a bounded event without private result data */ }
-    const execution = result?.execution ?? null;
-    if (execution?.execution_id !== executionId) return [];
-    return [{
-      operation_id: row.operation_id,
-      operation: row.operation,
-      created_at: row.created_at,
-      execution_id: execution.execution_id,
-      state: execution.state ?? null,
-      wait_condition_type: execution.wait_condition?.type ?? null,
-    }];
-  });
-}
-
-function latestArtifact(contextService, executionId, previousId = null) {
-  return contextService.readMaterials({ source_execution: executionId, kind: 'artifact' })
-    .filter((material) => material.material_id !== previousId)
-    .sort((left, right) => left.created_at.localeCompare(right.created_at) || left.material_id.localeCompare(right.material_id))
-    .at(-1) ?? null;
 }
 
 function checkRequest({ task, execution, workspace, fixtureManifest, material, requestKey }) {
@@ -386,11 +432,13 @@ export async function runRealAgentPath({
   };
   if (probe.status !== 'READY_TO_LAUNCH') {
     report.reason = 'Real Agent Core cannot run until the local Lean/Lake toolchain and NuRouter/Pi routing configuration are available.';
+    validateRealAgentReport(report);
     return report;
   }
   if (!rootDir || !firstCandidate) {
     report.status = 'FAILED_TO_LAUNCH';
     report.reason = 'real-agent path requires rootDir and firstCandidate';
+    validateRealAgentReport(report);
     return report;
   }
 
@@ -421,9 +469,10 @@ export async function runRealAgentPath({
     },
   }, { operationId: 'real:propose' }).task;
   const executionId = 'real-agent-execution';
+  const candidatePrompt = promptForCandidates({ firstCandidate });
   const claimed = ownerSdk.withContext({ actorRef: 'agent:real', taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
     execution_id: executionId, claim_key: `real:claim:${executionId}`, owner_ref: 'agent:real',
-    agent_prompt: GENERIC_AGENT_PROMPT, input_material_refs: [],
+    agent_prompt: candidatePrompt, input_material_refs: [],
   }, { operationId: 'real:claim' });
   report.task_id = task.task_id;
   report.execution_id = executionId;
@@ -443,7 +492,27 @@ export async function runRealAgentPath({
     extensionPath,
     env: childEnv,
   });
-  const runtime = new Runtime({ taskService, contextService, workspaceManager: new WorkspaceManager({ rootDir }), agentAdapter: adapter, actorRef: 'runtime:local' });
+  const runtimeLifecycleEvents = [];
+  const runtime = new Runtime({
+    taskService,
+    contextService,
+    workspaceManager: new WorkspaceManager({ rootDir }),
+    agentAdapter: adapter,
+    actorRef: 'runtime:local',
+    logger: {
+      append(event = {}) {
+        if (!['runtime.request_wait', 'runtime.wake_execution', 'runtime.resume_execution'].includes(event.event)) return;
+        if (event.execution_id !== executionId) return;
+        runtimeLifecycleEvents.push({
+          sequence: runtimeLifecycleEvents.length,
+          event: event.event,
+          execution_id: event.execution_id,
+          wait_condition_type: event.wait_condition?.type ?? null,
+          created_at: new Date().toISOString(),
+        });
+      },
+    },
+  });
   let bridge;
   const checkHistory = [];
   let candidateSubmission = Promise.resolve();
@@ -500,7 +569,9 @@ export async function runRealAgentPath({
       };
     }
     const record = { material_id: material.material_id, result, applied };
+    record.lifecycle_event_count_before = runtimeLifecycleEvents.length;
     checkHistory.push(record);
+    record.lifecycle_event_count_after = runtimeLifecycleEvents.length;
     return { check_result: agentCheckResult(result), applied, ...(deferredWait ? { deferred_wait: deferredWait } : {}) };
   };
   const onSubmitCandidate = (args) => {
@@ -530,7 +601,7 @@ export async function runRealAgentPath({
     Object.assign(childEnv, await bridge.start());
     firstRun = await runtime.startExecution(executionId);
     report.launch = { workspace_ref: firstRun.execution.workspace_ref, runtime_manifest: reportManifest(firstRun.session.manifest) };
-    report.agent_flow = await runAgentTurn(firstRun.session, promptForCandidates({ firstCandidate }), { timeoutMs });
+    report.agent_flow = await runAgentTurn(firstRun.session, { timeoutMs });
     report.first_agent = report.agent_flow;
     report.second_agent = null;
     await candidateSubmission;
@@ -553,25 +624,31 @@ export async function runRealAgentPath({
     ({ result: secondResult, applied: secondApplied } = secondRecord);
     if (!secondResult || !secondApplied) throw new Error('real Agent fixed candidate did not return a CheckResult');
     if (secondResult.result_class !== 'PASS') throw new Error(`real Agent repair candidate returned ${secondResult.result_class}`);
-    if (!report.agent_flow.feedback_trace.first_source_failure_result_delivered || !report.agent_flow.feedback_trace.revision_submission_after_feedback) {
+    if (!report.agent_flow.feedback_trace.first_source_failure_result_delivered
+      || !report.agent_flow.feedback_trace.first_source_failure_diagnostic_delivered
+      || !report.agent_flow.feedback_trace.revision_submission_after_feedback) {
       throw new Error('real Agent repair did not follow delivery of the first source-level CheckResult');
     }
-    const lifecycleEvents = lifecycleHandoffEvents(taskService, executionId);
+    const lifecycleEvents = runtimeLifecycleEvents.map((event) => ({ ...event }));
+    const lifecycleEventsBetweenCandidates = runtimeLifecycleEvents
+      .slice(firstRecord.lifecycle_event_count_after, secondRecord.lifecycle_event_count_before)
+      .map((event) => ({ ...event }));
     const candidateSessionIds = new Set(report.agent_flow.feedback_trace.events
       .filter((event) => event.operation === 'submit_candidate' && event.session_id)
       .map((event) => event.session_id));
     const sameAgentSession = candidateSessionIds.size === 1 && candidateSessionIds.has(firstRun.session.sessionId ?? null);
-    const waitBetweenCandidates = lifecycleEvents.length > 0;
     report.feedback_handoff = {
       same_agent_session: sameAgentSession,
       same_execution: firstApplied.execution.execution_id === secondApplied.execution.execution_id,
       source_failure_execution_state: firstApplied.execution.state,
-      wait_between_candidates: waitBetweenCandidates,
+      wait_between_candidates: lifecycleEventsBetweenCandidates.length > 0,
       lifecycle_events: lifecycleEvents,
+      lifecycle_events_between_candidates: lifecycleEventsBetweenCandidates,
       session_id: firstRun.session.sessionId ?? null,
       first_check_result_id: firstResult.check_result_id,
       second_check_result_id: secondResult.check_result_id,
       first_result_delivered_before_revision: report.agent_flow.feedback_trace.revision_submission_after_feedback,
+      first_diagnostic_delivered: report.agent_flow.feedback_trace.first_source_failure_diagnostic_delivered,
     };
     if (!report.feedback_handoff.same_agent_session) throw new Error('real Agent repair did not use the same Agent session');
     if (!report.feedback_handoff.same_execution) throw new Error('real Agent repair changed Execution identity');
@@ -580,7 +657,7 @@ export async function runRealAgentPath({
       throw new Error(`real Agent repair did not complete the Task: ${secondApplied.task.state}/${secondApplied.execution.state}`);
     }
     report.check_result_ids.push(secondResult.check_result_id);
-    report.fixture = lockedFixture;
+    report.fixture = reportFixture(lockedFixture);
     report.versions = { node: process.version, pi: firstRun.session.manifest.pi_version ?? null, nurouter: firstRun.session.manifest.nurouter_version ?? null, lean_toolchain: lockedFixture.lean_toolchain, mathlib: lockedFixture.mathlib_version, checker: lockedFixture.checker_version };
     report.workspace = {
       input_snapshot_hash: firstRun.execution.input_snapshot_hash,
@@ -593,6 +670,7 @@ export async function runRealAgentPath({
     report.task = reportTask(secondApplied.task);
     report.execution = reportExecution(secondApplied.execution);
     report.status = secondApplied.task.state === 'SATISFIED' && secondApplied.execution.state === 'SUCCEEDED' ? 'SUCCEEDED' : 'FAILED';
+    validateRealAgentReport(report);
     return report;
   } catch (error) {
     report.status = 'FAILED';
@@ -603,6 +681,7 @@ export async function runRealAgentPath({
     report.execution = reportExecution(taskService.getExecution(executionId));
     if (firstResult) report.check_results = [reportCheckResult(taskService.getCheckResult(firstResult.check_result_id))];
     if (secondResult) report.check_results?.push(reportCheckResult(taskService.getCheckResult(secondResult.check_result_id)));
+    validateRealAgentReport(report);
     return report;
   } finally {
     const execution = taskService.getExecution(executionId);

@@ -8,6 +8,7 @@ import {
   ScriptExecutor,
   probeRealAgentConfig,
   summarizeFeedbackTrace,
+  validateRealAgentReport,
 } from '../src/index.js';
 
 async function fixtureManifest() {
@@ -86,4 +87,16 @@ test('real-agent feedback trace proves the revision submission follows the deliv
   assert.ok(trace.revision_submission_event_index > trace.first_failure_event_index);
   assert.equal(trace.events[0].raw_type, 'tool_execution_start');
   assert.equal(trace.events[1].raw_type, 'tool_execution_end');
+});
+
+test('real-agent report validation rejects private candidate and diagnostic fields', () => {
+  assert.equal(validateRealAgentReport({ status: 'BLOCKED', probe: { secret_values_recorded: false } }), true);
+  assert.throws(
+    () => validateRealAgentReport({ status: 'FAILED', check_results: [{ diagnostic_excerpt: 'private Lean output' }] }),
+    /private fields/,
+  );
+  assert.throws(
+    () => validateRealAgentReport({ status: 'FAILED', materials: [{ content: 'proof source' }] }),
+    /private fields/,
+  );
 });
