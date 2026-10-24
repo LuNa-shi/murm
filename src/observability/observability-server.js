@@ -703,7 +703,7 @@ export class ObservabilityServer {
   }
 
   async #executionDetail(experimentId, executionId) {
-    const allEvents = await this.#allEvents({ experimentId, executionId, view: 'operator' }, 200);
+    const allEvents = await this.#allEvents({ experimentId, executionId, view: 'agent' }, 200);
     const events = allEvents.filter((event) => {
       if (event.kind === 'rpc_record') {
         return ['tool_execution_start', 'tool_execution_end'].includes(event.payload?.record?.type);
