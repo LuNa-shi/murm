@@ -1091,6 +1091,8 @@ function projectReport(state, startedAt, deadline) {
       watchdog_sweep_count: state.watchdogSweepCount,
       watchdog_recovery_count: state.watchdogRecoveryCount,
       watchdog_error_count: state.watchdogErrorCount,
+      execution_timeout_sweep_count: state.executionTimeoutSweepCount,
+      execution_timeout_error_count: state.executionTimeoutErrorCount,
       candidate_check_count: cores.reduce((count, core) => count + core.checks.length, 0),
       tool_error_count: toolErrorCount,
       tool_protocol_error_count: toolProtocolErrorCount,
@@ -1264,6 +1266,8 @@ async function createProjectState(problem, config, options) {
       maxWorkers: 1,
       actorRef: `runtime:core-${index}`,
       watchdogTimeoutMs: options.watchdogTimeoutMs,
+      executionTimeoutMs: options.executionTimeoutMs,
+      handoffReminderMs: options.handoffReminderMs,
       logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
       onSessionStarted: ({ execution, session, recovery }) => {
@@ -1650,6 +1654,8 @@ async function createProjectState(problem, config, options) {
     watchdogSweepCount: 0,
     watchdogRecoveryCount: 0,
     watchdogErrorCount: 0,
+    executionTimeoutSweepCount: 0,
+    executionTimeoutErrorCount: 0,
     schedulerStatusCount: 0,
     resourcesAtStart: resourceSnapshot(),
     repositoryCommit: options.repositoryCommit ?? null,
@@ -1720,6 +1726,27 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         core.watchdogPromise = sweep;
       }
     }, options.watchdogIntervalMs ?? 10_000);
+    let executionTimeoutSweepPromise = null;
+    const executionTimeoutSweep = setInterval(() => {
+      // One scheduler-owned reconciliation covers the durable Task Service.
+      // Runtime's handoff operation is idempotent and fences competing stale
+      // owners, so this remains safe across duplicate readiness/restart polls.
+      if (executionTimeoutSweepPromise) return;
+      const ownerRuntime = state.cores[0]?.runtime;
+      if (!ownerRuntime) return;
+      state.executionTimeoutSweepCount += 1;
+      executionTimeoutSweepPromise = ownerRuntime.sweepExecutionTimeouts()
+        .then((events) => {
+          if (events.length > 0) state.requestSchedulerWake?.();
+        })
+        .catch((error) => {
+          state.executionTimeoutErrorCount += 1;
+          state.cores[0]?.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'execution_timeout_error' });
+        })
+        .finally(() => {
+          executionTimeoutSweepPromise = null;
+        });
+    }, options.executionTimeoutSweepMs ?? 10_000);
     try {
       while (Date.now() < deadline && (!state.stopOnSolved || state.solvedAt === null)) {
         if (!state.schedulerWakeRequested) {
@@ -1792,6 +1819,8 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     } finally {
       clearInterval(heartbeat);
       clearInterval(watchdog);
+      clearInterval(executionTimeoutSweep);
+      await executionTimeoutSweepPromise;
       await Promise.all(state.cores.map((core) => core.watchdogPromise ?? Promise.resolve()));
     }
   } finally {

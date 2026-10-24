@@ -33,3 +33,14 @@ attempt and changing it back to `CREATED`; timer waits and parent-review waits
 remain unavailable until their controlling condition is satisfied. A failed
 Judge result preserves this resumable waiting lineage so the next slot can
 continue after reading the feedback.
+
+Execution rows persist lifecycle metadata for bounded Runtime ownership:
+`started_at`, `handoff_deadline`, `execution_deadline`, and the single-write
+`handoff_reminder_sent_at` marker. A handoff records `terminal_reason` and
+structured `handoff_metadata` alongside the checkpoint and Workspace lineage.
+The `handoff_execution` operation fences the old owner, transitions the
+unfinished Task back to `OPEN`, and rejects stale state or fencing versions.
+Runtime uses the read-only wait validation seam before writing a checkpoint;
+malformed waits therefore leave ownership unchanged. A result that arrives
+before wait registration is detected as already resumable, so no duplicate
+`WAITING` or wake event is created.

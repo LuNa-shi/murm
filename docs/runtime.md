@@ -23,6 +23,18 @@ revision.
 same Execution or fence it after lease expiry. The Task remains the scheduling
 responsibility until the Execution reaches a terminal state.
 
+Runtime bounds every started Execution with a configurable `executionTimeoutMs`
+(60 minutes by default) and sends one persisted handoff reminder at
+`handoffReminderMs` (55 minutes by default). The scheduler calls
+`sweepExecutionTimeouts()` regularly; the sweep records the reminder before
+queuing a Pi `followUp`, and fences an overdue Execution with terminal reason
+`timeout`. A voluntary `handoffExecution()` follows the same durable boundary
+with terminal reason `voluntary_handoff` (or the caller's stable reason), saves
+the checkpoint and Workspace revision, stops the Session, and returns the
+unfinished Task to the claimable `OPEN` projection. The operation is
+idempotent, and the fencing version prevents the old Session from writing
+after release.
+
 ## Session health and fresh-session recovery
 
 Pi owns automatic context compaction and transient provider retry. Runtime
