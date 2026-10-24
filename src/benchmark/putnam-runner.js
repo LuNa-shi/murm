@@ -808,7 +808,6 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
         type: 'checker_health',
         preflight_key: preflightKey,
         health_fingerprint: preflight.health_fingerprint,
-        retry_after: new Date().toISOString(),
         diagnostic_code: result.diagnostic_code,
         candidate_material_id: candidateId,
       },

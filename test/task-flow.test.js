@@ -427,6 +427,35 @@ test('exhausted checker infrastructure failures block the Task without claiming 
   close(env);
 });
 
+test('checker health waits require a changed health fingerprint before resuming', () => {
+  const env = environment();
+  const task = env.sdk.proposeTask(proofInput(), { operationId: 'checker-health-wait-propose' }).task;
+  const run = claimTask(env, task, { executionId: 'checker-health-wait-execution', actorRef: 'owner:root' });
+  const checkpointed = saveCheckpoint(env, run.claim.execution, 'checker-health-wait-checkpoint');
+  const timestamp = new Date().toISOString();
+  env.taskService.db.prepare(`INSERT INTO checker_preflights (
+    preflight_key, fixture_id, checker_ref, checker_version, environment_ref, project_root,
+    status, checker_process_status, diagnostic_code, retryable, attempt_count, health_fingerprint,
+    evidence_json, first_seen_at, last_seen_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    'checker-health-wait-key', fixtureManifest.fixture_id, fixtureManifest.checker_ref, fixtureManifest.checker_version,
+    fixtureManifest.environment_ref, null, 'unavailable', 'not_started', 'checker_unavailable', 1, 1, 'same-health', '{}', timestamp, timestamp,
+  );
+  const waited = run.sdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
+    wait_key: 'checker-health-wait',
+    checkpoint_ref: checkpointed.checkpoint_ref,
+    checkpoint_hash: checkpointed.checkpoint_hash,
+    wait_condition: { type: 'checker_health', preflight_key: 'checker-health-wait-key', health_fingerprint: 'same-health' },
+  }, { operationId: 'checker-health-wait' });
+  assert.equal(waited.execution.state, 'WAITING');
+  assert.equal(env.taskService.listResumableExecutions().length, 0);
+
+  env.taskService.db.prepare('UPDATE checker_preflights SET health_fingerprint = ?, last_seen_at = ? WHERE preflight_key = ?')
+    .run('changed-health', new Date().toISOString(), 'checker-health-wait-key');
+  assert.equal(env.taskService.listResumableExecutions().length, 1);
+  close(env);
+});
+
 test('candidate Material ID wakes a waiting proof Execution when Judge uses an internal request key', async () => {
   const env = environment({ checker: { check: async () => ({ verdict: 'FAIL', evidence: { diagnostic: 'type mismatch' } }) } });
   const task = env.sdk.proposeTask(proofInput(), { operationId: 'candidate-wait-propose' }).task;

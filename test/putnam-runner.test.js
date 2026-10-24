@@ -821,7 +821,7 @@ test('checker infrastructure errors returned by submit_candidate retain actionab
     assert.ok(report.run.checker_infrastructure_failure_count >= 1);
     assert.ok(report.run.checker_unassessed_count >= 1);
     assert.ok(report.run.lifecycle_events.some((event) => event.wait_condition_type === 'checker_health'));
-    assert.ok(report.cores.every((core) => core.execution_state === null || core.execution_state === 'FAILED'));
+    assert.ok(report.cores.every((core) => core.execution_state === null || ['FAILED', 'WAITING'].includes(core.execution_state)));
     assert.equal(report.audit.invalid, false);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });

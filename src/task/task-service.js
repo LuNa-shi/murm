@@ -958,7 +958,6 @@ export class TaskService {
             type: 'checker_health',
             preflight_key: preflightKey,
             health_fingerprint: healthFingerprint,
-            retry_after: updatedAt,
             diagnostic_code: result.diagnostic_code ?? null,
             candidate_material_id: result.candidate_material_id,
           }
@@ -1095,7 +1094,10 @@ export class TaskService {
     if (condition.type === 'checker_health') {
       const health = this.db.prepare('SELECT status, health_fingerprint FROM checker_preflights WHERE preflight_key = ?').get(condition.preflight_key);
       if (!health) return false;
-      if (condition.retry_after && Date.parse(condition.retry_after) <= nowMs) return true;
+      // A checker-health wait is a health gate, not a timer.  The same
+      // unavailable fingerprint must not wake the Execution and submit the
+      // same candidate again.  Only a newly observed health fingerprint may
+      // make this responsibility claimable again.
       return health.health_fingerprint !== condition.health_fingerprint;
     }
     return false;

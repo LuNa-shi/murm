@@ -90,40 +90,53 @@ export class LeanChecker {
   async preflight({ fixtureManifest }) {
     validateFixtureManifest(fixtureManifest);
     const identity = checkerIdentity(fixtureManifest);
-    const projectRoot = fixtureManifest.project_root ?? this.workRoot;
+    const projectRoot = fixtureManifest.project_root;
     this.logger?.append({ event: 'checker.preflight.start', checker_ref: identity.checker_ref, checker_version: identity.checker_version, environment_ref: identity.environment_ref });
     let inputEvidence = {};
     try {
-      // A locked fixture project root is an input binding.  Only the default
-      // scratch root may be created by the checker; a missing configured root
-      // must be reported as an unavailable environment.
-      if (!fixtureManifest.project_root) await mkdir(projectRoot, { recursive: true });
+      // A locked fixture project root is an input binding.  A scratch
+      // directory cannot prove that the checker is evaluating the locked
+      // problem, so a manifest without a project root is unavailable before
+      // the checker process is started.
+      if (!fixtureManifest.project_root) {
+        const result = normalizePreflight({
+          status: 'unavailable',
+          checker_process_status: 'not_started',
+          evidence: {
+            input_binding_verified: false,
+            preflight_verified: false,
+            diagnostic_code: 'checker_input_binding_unverified',
+            diagnostic: 'fixture manifest does not bind a project_root for the locked problem input',
+            checker_started: false,
+          },
+        }, identity);
+        this.logger?.append({ event: 'checker.preflight.complete', status: result.status, checker_process_status: result.checker_process_status, diagnostic_code: result.diagnostic_code });
+        return result;
+      }
       await access(projectRoot);
       if (!(await stat(projectRoot)).isDirectory()) throw new Error('checker project root is not a directory');
-      if (fixtureManifest.project_root) {
-        const inputPath = await lockedInputPath(projectRoot, fixtureManifest.problem_file);
-        const input = await readFile(inputPath);
-        const inputHash = sha256(input);
-        inputEvidence = {
-          input_path: inputPath,
-          input_hash: inputHash,
-          expected_input_hash: fixtureManifest.problem_file_hash,
-          input_binding_verified: inputHash === fixtureManifest.problem_file_hash,
-        };
-        if (inputHash !== fixtureManifest.problem_file_hash) {
-          const result = normalizePreflight({
-            status: 'unavailable',
-            checker_process_status: 'not_started',
-            evidence: {
-              ...inputEvidence,
-              diagnostic_code: 'checker_input_hash_mismatch',
-              diagnostic: 'locked problem input hash does not match the fixture manifest',
-              checker_started: false,
-            },
-          }, identity);
-          this.logger?.append({ event: 'checker.preflight.complete', status: result.status, checker_process_status: result.checker_process_status, diagnostic_code: result.diagnostic_code });
-          return result;
-        }
+      const inputPath = await lockedInputPath(projectRoot, fixtureManifest.problem_file);
+      const input = await readFile(inputPath);
+      const inputHash = sha256(input);
+      inputEvidence = {
+        input_path: inputPath,
+        input_hash: inputHash,
+        expected_input_hash: fixtureManifest.problem_file_hash,
+        input_binding_verified: inputHash === fixtureManifest.problem_file_hash,
+      };
+      if (inputHash !== fixtureManifest.problem_file_hash) {
+        const result = normalizePreflight({
+          status: 'unavailable',
+          checker_process_status: 'not_started',
+          evidence: {
+            ...inputEvidence,
+            diagnostic_code: 'checker_input_hash_mismatch',
+            diagnostic: 'locked problem input hash does not match the fixture manifest',
+            checker_started: false,
+          },
+        }, identity);
+        this.logger?.append({ event: 'checker.preflight.complete', status: result.status, checker_process_status: result.checker_process_status, diagnostic_code: result.diagnostic_code });
+        return result;
       }
     } catch (error) {
       const result = normalizePreflight({
@@ -150,14 +163,22 @@ export class LeanChecker {
     const observedVersion = toolchainVersion([process.stdout, process.stderr].filter(Boolean).join('\n'));
     const expectedVersion = toolchainVersion(fixtureManifest.lean_toolchain);
     const versionMismatch = Boolean(expectedVersion && observedVersion && expectedVersion !== observedVersion);
+    const versionUnverified = !expectedVersion || !observedVersion;
+    const processFailed = Boolean(process.error || process.timed_out || process.exit_code !== 0 || process.signal);
+    const versionDiagnosticCode = !processFailed && versionMismatch
+      ? 'checker_version_mismatch'
+      : !processFailed && versionUnverified
+        ? 'checker_version_unverified'
+        : undefined;
     const diagnosticText = diagnostic([
       process.stderr,
       process.stdout,
       process.error,
       versionMismatch ? `checker version mismatch: expected ${expectedVersion}, observed ${observedVersion}` : '',
+      versionUnverified ? `checker toolchain version could not be verified: expected ${expectedVersion ?? 'unknown'}, observed ${observedVersion ?? 'unknown'}` : '',
       process.timed_out ? 'checker timed out' : '',
     ].filter(Boolean).join('\n'));
-    const unavailable = process.error || process.timed_out || process.exit_code !== 0 || versionMismatch;
+    const unavailable = process.error || process.timed_out || process.exit_code !== 0 || versionMismatch || versionUnverified;
     const result = normalizePreflight({
       status: unavailable ? 'unavailable' : 'healthy',
       checker_process_status: process.error ? 'not_started' : process.timed_out ? 'timeout' : process.signal ? 'crashed' : 'completed',
@@ -167,7 +188,7 @@ export class LeanChecker {
         observed_toolchain_version: observedVersion,
         toolchain_version_verified: Boolean(expectedVersion && observedVersion && expectedVersion === observedVersion),
         preflight_verified: Boolean(fixtureManifest.project_root && inputEvidence.input_binding_verified && expectedVersion && observedVersion && expectedVersion === observedVersion),
-        diagnostic_code: versionMismatch ? 'checker_version_mismatch' : undefined,
+        diagnostic_code: versionDiagnosticCode,
         exit_code: process.exit_code ?? null,
         signal: process.signal ?? null,
         timed_out: Boolean(process.timed_out),

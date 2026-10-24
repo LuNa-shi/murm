@@ -250,7 +250,6 @@ export async function runRealAgentPath({
           type: 'checker_health',
           preflight_key: result.evidence.preflight_key,
           health_fingerprint: preflight.health_fingerprint,
-          retry_after: new Date().toISOString(),
           diagnostic_code: result.diagnostic_code,
           candidate_material_id: material.material_id,
         };

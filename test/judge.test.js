@@ -99,13 +99,57 @@ test('Checker result contract distinguishes source failure from a checker that n
 });
 
 test('Lean checker preflight reports an unavailable executable before proof checking', async () => {
-  const checker = new LeanChecker({ command: '/definitely-missing-swarmenv-checker' });
-  const result = await checker.preflight({ fixtureManifest });
-  assert.equal(result.status, 'unavailable');
-  assert.equal(result.checker_process_status, 'not_started');
-  assert.equal(result.diagnostic_code, 'checker_unavailable');
-  assert.equal(result.evidence.exit_code, null);
-  assert.equal(result.evidence.signal, null);
+  const root = await mkdtemp('/tmp/swarmenv-checker-missing-executable-');
+  const projectRoot = join(root, 'lean4');
+  const problemPath = join(projectRoot, 'src', 'putnam_1966_a1.lean');
+  const source = await readFile('fixtures/putnam-1966-a1/putnam_1966_a1.lean');
+  try {
+    await mkdir(join(projectRoot, 'src'), { recursive: true });
+    await writeFile(problemPath, source);
+    const manifest = { ...fixtureManifest, project_root: projectRoot, problem_file_hash: createHash('sha256').update(source).digest('hex') };
+    const checker = new LeanChecker({ command: '/definitely-missing-swarmenv-checker' });
+    const result = await checker.preflight({ fixtureManifest: manifest });
+    assert.equal(result.status, 'unavailable');
+    assert.equal(result.checker_process_status, 'not_started');
+    assert.equal(result.diagnostic_code, 'checker_unavailable');
+    assert.equal(result.evidence.exit_code, null);
+    assert.equal(result.evidence.signal, null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Lean checker preflight refuses an unbound fixture or an unknown toolchain version', async () => {
+  const unbound = await new LeanChecker({ runner: async () => ({ exit_code: 0, checker_started: true, stdout: 'Lean (version 4.33.1)', stderr: '' }) })
+    .preflight({ fixtureManifest });
+  assert.equal(unbound.status, 'unavailable');
+  assert.equal(unbound.checker_process_status, 'not_started');
+  assert.equal(unbound.diagnostic_code, 'checker_input_binding_unverified');
+  assert.equal(unbound.evidence.input_binding_verified, false);
+
+  const root = await mkdtemp('/tmp/swarmenv-checker-unknown-version-');
+  const projectRoot = join(root, 'lean4');
+  const problemPath = join(projectRoot, 'src', 'input.lean');
+  const source = 'import Mathlib\ntheorem input : True := by trivial\n';
+  await mkdir(join(projectRoot, 'src'), { recursive: true });
+  await writeFile(problemPath, source, 'utf8');
+  const manifest = {
+    ...fixtureManifest,
+    project_root: projectRoot,
+    problem_file: 'lean4/src/input.lean',
+    problem_file_hash: createHash('sha256').update(source).digest('hex'),
+  };
+  try {
+    const checker = new LeanChecker({ runner: async () => ({ exit_code: 0, signal: null, stdout: 'lake is ready', stderr: '', checker_started: true }) });
+    const result = await checker.preflight({ fixtureManifest: manifest });
+    assert.equal(result.status, 'unavailable');
+    assert.equal(result.checker_process_status, 'completed');
+    assert.equal(result.diagnostic_code, 'checker_version_unverified');
+    assert.equal(result.evidence.toolchain_version_verified, false);
+    assert.equal(result.evidence.preflight_verified, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('Lean checker preflight binds the locked input, project cwd, and toolchain version', async () => {
