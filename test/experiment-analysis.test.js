@@ -157,9 +157,13 @@ test('analyzes a complete fixture into stable per-Execution windows without copy
     assert.ok(first.report.includes('## Error analysis'));
     assert.ok(first.report.includes('## Optimization recommendations'));
     assert.ok(first.report.includes('## Candidate/Judge review'));
+    assert.ok(first.report.includes('## Coordination layer'));
+    assert.ok(first.report.includes('## Tool layer'));
+    assert.ok(first.report.includes('## System efficiency and health'));
     assert.ok(first.report.includes('tactic_no_progress') || first.report.includes('No diagnostic class repeated'));
     assert.ok(first.report.includes('Material'));
     assert.ok(!first.report.includes('must-not-be-copied'));
+    assert.ok(!first.report.includes(root));
     assert.equal(first.facts.map((fact) => fact.id).join(','), second.facts.map((fact) => fact.id).join(','));
     assert.equal(first.report, await readFile(firstPath, 'utf8'));
     assert.equal(first.report, second.report);
@@ -221,5 +225,27 @@ test('resolves an experiment ID under an explicit experiments root', async () =>
   try {
     assert.equal(await resolveExperiment('by-id', { experimentsRoot: root }), experiment);
     await assert.rejects(() => resolveExperiment('..', { experimentsRoot: root }), /experiment not found|escapes/);
+  } finally { await cleanup(root); }
+});
+
+test('keeps durable Execution identity explicit and uses bounded semantic windows', async () => {
+  const root = await createFixture();
+  const dbPath = join(root, 'state', 'projects', 'demo', 'project.sqlite');
+  const db = new DatabaseSync(dbPath);
+  db.prepare('insert into executions values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    'execution-2', TASK, 'agent:core-2', 'RUNNING', 1, 2, 2, 2,
+    'workspace://task/task-root/rework-2', 1, null, null, null, T4, END,
+  );
+  db.close();
+  try {
+    const analysis = await analyzeExperiment(root);
+    const first = analysis.executions.find((item) => item.execution.execution_id === EXECUTION);
+    const second = analysis.executions.find((item) => item.execution.execution_id === 'execution-2');
+    assert.equal(analysis.windowSizeMinutes, 5);
+    assert.equal(first.successor_execution_id, null);
+    assert.equal(second.predecessor_execution_id, null);
+    assert.equal(second.lifecycle_role, 'initial or only Execution');
+    assert.ok(first.windows.every((window) => !window.operations.some((operation) => operation.includes('[F-'))));
+    assert.ok(first.windows.every((window) => 'semantic_summary' in window));
   } finally { await cleanup(root); }
 });

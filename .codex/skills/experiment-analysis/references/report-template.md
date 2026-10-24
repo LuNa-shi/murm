@@ -1,121 +1,141 @@
 # Report template
 
-The generated file is `<experiment-directory>/analysis/experiment-analysis.md`. Keep this structure stable so reports can be compared across runs.
+The generated file is `<experiment-directory>/analysis/experiment-analysis.md`. Keep the section order stable so reports can be compared across runs.
 
 ## 1. Executive conclusion
 
-State only what the records support. Include:
+State what the run demonstrated, what it did not demonstrate, and the largest evidence limitation. Label non-trivial statements as:
 
-- experiment ID and evidence mode;
-- what the run demonstrated;
-- what it did not demonstrate;
-- confidence and the largest evidence limitation.
-
-Label each non-trivial statement as one of:
-
-- **Fact** — directly recorded in a source;
-- **Derived metric** — deterministic arithmetic/count from recorded facts;
-- **Interpretation** — an evidence-backed reading of observable behavior;
-- **Unknown** — the sources do not support the claim.
-
-Do not call a Material useful because it was published/read/accepted. Do not call a scheduler interval a bug when the source is missing.
+- **Fact** — directly recorded;
+- **Derived metric** — deterministic arithmetic/count;
+- **Interpretation** — evidence-backed semantic reading;
+- **Unknown** — unsupported by the available sources.
 
 ## 2. Evidence boundary
 
-Include a completeness matrix:
+Include the experiment identity, provenance, privacy mode, exact relative evidence paths, completeness status for every evidence class, malformed lines, and unmatched Task/Execution/Session/Core references.
 
-| Class | Status | Exact relative paths/database identity | Effect of a gap |
-|---|---|---|---|
-| Metadata | present/missing/malformed/empty/not applicable | … | … |
-| Agent | … | … | … |
-| Bridge | … | … | … |
-| Runtime | … | … | … |
-| Service | … | … | … |
-| Judge | … | … | … |
-| SQLite/state | … | … | … |
-| Observation | … | … | … |
-| Workspace | … | … | … |
-| Summary | … | … | supporting only |
+## 3. Run overview and attempt graph
 
-Record privacy mode, repository/environment provenance, malformed lines, and unknown Task/Execution references. Explain how each gap limits a conclusion.
+Show project outcomes and supporting metrics, then list Tasks and Execution attempts. Each Execution row must include:
 
-## 3. Run overview and Task/Execution inventory
+- Task and attempt number;
+- owner, Core, Session;
+- Workspace lineage;
+- predecessor/successor Execution for rework;
+- terminal state;
+- evidence references.
 
-Give the root/project outcome and supporting metrics. Link every high-impact value to a source. Then show:
+The authoritative durable Execution is distinct from an Agent Session. A
+wait/resume, Core handoff, or valid in-place parent rework remains one
+Execution; a new Execution ID is a separate attempt only when durable evidence
+records it. Do not infer rework from same-Task row order.
 
-| Task | Parent | Owner | State | Goal/contract summary | Evidence |
-|---|---|---|---|---|---|
-| … | … | … | … | … | … |
+## 4. Coordination layer
 
-| Execution | Task | Attempt | Owner/Core/Session | Workspace lineage | State | Evidence |
-|---|---|---:|---|---|---|---|
-| … | … | … | … | … | … | … |
+Report public-service availability, completion/error rates, state consistency,
+idempotency, Task queue supply and claim transitions, ready-but-unassigned work,
+Context/Material publication and consumption, Workspace/checkpoint lineage,
+Judge/checker handoff, and the full collaboration loop:
 
-A completed child is local completion only. A `PASS` is a checker result only. Neither alone proves root progress.
+`decompose → claim → independent work → deliver → consumer reads → review/rework → resume`.
 
-## 4. Per-Execution analysis
+For each service include the observed calls, failed finishes, latency/error
+limits when available, affected entities, and unknowns caused by missing sources.
 
-Create one section for every discovered Execution, including sparse, unmatched, waiting, superseded, or failed Executions. Include artifact/check facts, Service interactions, errors, waits, handoffs, and unresolved questions.
+## 5. Execution layer: semantic work windows
 
-### Execution `<execution-id>`
+Create one section for every Execution attempt, including sparse, waiting, failed, superseded, and reworked attempts.
 
-- Task, owner, attempt, Core/Session and state;
-- Workspace reference and revision lineage;
-- evidence sources and sparse/missing warning;
-- artifact, Material, Candidate, Judge, and terminal facts.
+Use 5-minute windows by default or 10-minute windows when configured. Split earlier for a clear objective/lifecycle change. Each row must include:
 
-#### Time-window summary
+| Field | Required content |
+|---|---|
+| Time/duration | bounded interval and evidence gap marker |
+| Phase | research, editing, candidate construction, feedback, collaboration, waiting, recovery, or unknown |
+| Semantic summary | route/question/objective visible in the cited records |
+| Route change | comparison with the prior window or Candidate |
+| Durable changes | Workspace, Material, Candidate, Judge, Task, review, or lifecycle change |
+| Result | actual state/artifact/feedback/error |
+| Next state/handoff | expected owner, wait condition, consumer, or blocker |
+| Evidence/confidence | source references and confidence |
 
-Use actual timestamps. Split at claim/assignment, Session/Core handoff, Task state change, Workspace revision, Material publication/explicit consumption, Candidate, Judge, wait/wake/resume/review/rework, terminal event, or a material objective change. Split long continuous activity at 15 minutes. Preserve long silent gaps as separate `no observed event` intervals.
+Supporting event counts may appear below the narrative. Millisecond-level call listings are audit evidence, not the main report.
 
-| Time | Duration | Operations | Observed intent | Intent basis/confidence | Result | Next state | Handoff/blocker | Evidence |
-|---|---:|---|---|---|---|---|---|---|
-| actual start–end | … | concrete tools/Service calls/reads/writes | observable objective, or `unknown` | source IDs + high/medium/low/unknown | state/artifact/feedback/error/no effect | Task/Execution/Workspace/Judge state | consumer, wait condition, error, missing source, or none | path:line/event ID |
+## 6. Collaboration review
 
-Intent must come from visible Task/Agent tool objectives. Never summarize hidden chain-of-thought.
+Follow:
 
-## 5. Collaboration review
+`decompose → claim → independent work → deliver → consumer reads → review/rework → resume`.
 
-Trace only explicit links:
+For each delivery explain producer, expected consumer, semantic handoff, actual read, downstream action, state effect, and whether the loop closed. Distinguish closed collaboration, one-way delivery, unused result, consumed-without-effect, and unknown.
 
-```text
-Material publication → explicit read/consumption → later Workspace/Task/Candidate/Judge/review operation
-```
+## 7. Candidate/Judge semantic review
 
-Use separate labels:
+For every Candidate show:
 
-- `accepted-but-unused`;
-- `consumed-without-recorded-downstream-effect`;
-- `explicit downstream operation recorded; semantic usefulness not inferred`;
-- `no recorded consumer`;
-- `unknown` when the source is incomplete.
+- bounded strategy summary;
+- visible Workspace/Material changes;
+- change from the previous Candidate;
+- Judge diagnostic in operator language;
+- explicit feedback reads;
+- whether the next route changed;
+- later review, rework, Workspace, or Candidate action;
+- evidence and unknowns.
 
-## 6. Scheduling/health review
+Never copy proof/candidate source into a shareable report.
 
-Separate Core assignment/release, Runtime RUNNING/WAITING/IDLE, Agent turn, process/session health, Service activity, Judge time, scheduler polling, and heartbeat lease activity. State ready-work evidence when available. Do not merge them into a single productivity score or infer a scheduler fault from an unexplained gap.
+Before interpreting a Candidate verdict, classify the checker lifecycle:
 
-## 7. Error analysis
+`request rejected → checker not started → checker started/no result →
+source-level FAIL/PASS → timeout/crash`.
 
-Group Agent-visible errors with their underlying Service/Runtime/Checker records. Report independent occurrences separately from supporting duplicate records. For each category include:
+Keep Judge request persistence (`ok=true`) separate from checker process success.
+If the checker never starts, report the mathematical result as **unassessed**
+and analyze the infrastructure failure and retry policy first.
 
-| Severity | Category | Unique occurrences | Supporting records | Operation | Evidence-backed interpretation | Evidence |
-|---|---|---:|---:|---|---|---|
-| … | … | … | … | … | … | … |
+## 8. Tool layer
 
-Do not label a repeated `CONFLICT` or `NOT_ALLOWED` response a Runtime bug without checking the Task contract, active quota, later recovery, and state ownership. Distinguish transport echoes from independent failures.
+Measure provider/transport errors, invalid tool use, response-schema quality,
+idempotency, and actionable error fields (code, message, correlation ID).
+Review Judge/checker diagnostic accuracy and whether the Agent read and acted on
+feedback. Keep tool-call volume as supporting evidence rather than a work
+summary.
 
-## 8. Optimization recommendations
+The tool section must state whether each error came from request validation,
+provider/transport, checker launch, checker execution, or source-level
+diagnostics. A repeated pre-checker error is one environment failure with
+supporting retry records, not a series of independent mathematical failures.
 
-Every recommendation must state the evidence-backed reason and a validation condition. Separate likely Agent/tool-contract improvements, scheduler/Runtime improvements, timebox/cleanup improvements, and analysis/instrumentation improvements. Recommendations are proposed next actions, not proof that the current trace contains a code defect.
+## 9. System efficiency and health
 
-| Priority | Category | Proposed optimization | Why this run supports it | How to validate | Evidence |
-|---|---|---|---|---|---|
-| … | … | … | … | … | … |
+Separate Core assignment/release, Runtime RUNNING/WAITING/IDLE, Agent turns, Judge time, scheduler polling, and heartbeat lease activity. Report low capacity, serial execution, ready-unassigned work, claim contention, handoff loss, wake/resume failure, and cleanup truncation only when the trace supports them.
 
-## 9. Candidate/Judge review
+Keep configured capacity separate from effective work: Core occupancy,
+concurrency, ready-but-unassigned work, claim contention, capacity release,
+WAITING/IDLE/Judge/scheduler time, wake/resume, serial degradation, and cleanup.
+Use Runtime RUNNING and queue intervals where available; call duration-based
+occupancy a proxy otherwise. A missing source is an Unknown/limitation, not a
+scheduler failure.
 
-For each Candidate, show ordered submission, Workspace revision, CheckResult ID, verdict, bounded diagnostic class, feedback read, and subsequent observable action. A FAIL is feedback; a PASS is a verified checker result. Neither proves that the Agent used feedback or that a route was mathematically useful.
+## 10. Error analysis
 
-## 10. Conclusions and follow-up
+Lead with system-level Swarm findings. For each finding include observed pattern, affected Tasks/Executions/Cores, impact, confidence, competing explanations, validation condition, and evidence. List isolated Agent/Service/tool errors afterward as supporting records.
 
-Separate observed facts, deterministic derivations, interpretations, and unknowns. Give concrete operator actions, such as repairing a missing log, opening a cited source record, or rerunning the analyzer after collection is fixed.
+## 11. Evidence, outcome, and optimization
+
+Separate evidence completeness/provenance/privacy from outcomes. Report
+protocol/lifecycle validity, collaboration closure, and domain or mathematical
+success as different conclusions.
+
+## 12. Optimization recommendations
+
+Prioritize proposed next actions and state a validation condition for each. Recommendations are not proof of a current code defect.
+
+## 13. Conclusions and follow-up
+
+Separate facts, derived metrics, interpretations, unknowns, evidence limitations, and concrete operator actions. State whether the report supports semantic conclusions or is diagnostic-only.
+
+The analysis directory must also contain `semantic-review.md`, the independent
+summary-agent review and rubric score. The final report should state whether
+that review was merged completely, partially, or not at all.
