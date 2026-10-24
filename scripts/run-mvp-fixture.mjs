@@ -37,7 +37,7 @@ let report;
 
 try {
   if (realAgent) {
-    report = await runRealAgentPath({ rootDir, fixtureManifest, firstCandidate, fixedCandidate });
+    report = await runRealAgentPath({ rootDir, fixtureManifest, firstCandidate });
   } else {
     const environment = createScriptFixtureEnvironment({
       rootDir,

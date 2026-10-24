@@ -7,6 +7,7 @@ import {
   createScriptFixtureEnvironment,
   ScriptExecutor,
   probeRealAgentConfig,
+  summarizeFeedbackTrace,
 } from '../src/index.js';
 
 async function fixtureManifest() {
@@ -71,4 +72,16 @@ test('real-agent probe rejects conflicting OpenAI route selectors before launch'
   assert.equal(probe.status, 'BLOCKED');
   assert.ok(probe.blockers.some((reason) => reason.includes('both account and group')));
   assert.equal(probe.secret_values_recorded, false);
+});
+
+test('real-agent feedback trace proves the revision submission follows the delivered source failure', () => {
+  const trace = summarizeFeedbackTrace([
+    { type: 'tool_call', toolName: 'swarmenv_submit_candidate', args: { candidate_material_id: 'candidate-1' } },
+    { type: 'tool_result', toolName: 'swarmenv_submit_candidate', result: { check_result: { check_result_id: 'check-1', result_class: 'source_failure', checker_process_status: 'completed' } } },
+    { type: 'tool_call', toolName: 'swarmenv_publish_material', args: { scope: 'proof_relevant' } },
+    { type: 'tool_call', toolName: 'swarmenv_submit_candidate', args: { candidate_material_id: 'candidate-2' } },
+  ]);
+  assert.equal(trace.first_source_failure_result_delivered, true);
+  assert.equal(trace.revision_submission_after_feedback, true);
+  assert.ok(trace.revision_submission_event_index > trace.first_failure_event_index);
 });

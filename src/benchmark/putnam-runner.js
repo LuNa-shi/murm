@@ -803,17 +803,18 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
     progress_kind: 'candidate_check',
   });
   await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
+  let deferredWait = null;
   if (retryableInfrastructure) {
     const preflightKey = result.evidence?.preflight_key;
     const preflight = preflightKey ? state.judgeService.getCheckerPreflight(preflightKey) : null;
     if (!preflight?.health_fingerprint) {
       throw new Error('retryable checker failure has no durable preflight health fingerprint');
     }
-    // The checker result is synchronous from the Agent's perspective, but a
-    // retryable infrastructure result still has to release the live Runtime
-    // process and physical Core.  Runtime saves a Workspace revision and
-    // checkpoint before persisting this typed checker-health wait.
-    const waited = await core.runtime.requestWait(pending.executionId, {
+    // The checker result is synchronous from the Agent's perspective. Stage
+    // the health wait for ServicesBridge to flush after its HTTP response has
+    // been written, so Runtime cannot stop the Session before the Agent sees
+    // the typed infrastructure result.
+    deferredWait = {
       waitCondition: {
         type: 'checker_health',
         preflight_key: preflightKey,
@@ -828,14 +829,17 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
         preflight_key: preflightKey,
         diagnostic_code: result.diagnostic_code,
       },
-    });
-    applied = { ...applied, execution: waited.execution, task: waited.task };
+    };
   }
   if (result.verdict === 'PASS' && applied.task.state === 'SATISFIED' && pending.taskId === state.rootTaskId) {
     state.solvedAt = Date.now();
     state.solvedBy = core.index;
   }
-  return { check_result: sanitizedCheck(result, material), applied };
+  return {
+    check_result: sanitizedCheck(result, material),
+    applied,
+    ...(deferredWait ? { deferred_wait: deferredWait } : {}),
+  };
 }
 
 async function stopCore(state, core) {

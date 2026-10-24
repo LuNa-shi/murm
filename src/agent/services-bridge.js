@@ -91,6 +91,11 @@ export class ServicesBridge {
     this.token = randomUUID();
     this.server = null;
     this.address = null;
+    // Candidate feedback is returned synchronously.  A checker-health wait is
+    // therefore staged here and flushed only after the bridge has written the
+    // Agent-visible HTTP response.  Keeping this state on the bridge also
+    // makes the handoff boundary explicit for direct seam tests.
+    this.deferredLifecycle = null;
   }
 
   async start({ port = 0 } = {}) {
@@ -147,9 +152,32 @@ export class ServicesBridge {
       const input = await readBody(request);
       const result = await this.call(input);
       send(response, 200, { ok: true, result });
+      this.logger?.append({ event: 'bridge.response_sent', operation: input.operation });
+      await this.flushDeferredLifecycle();
     } catch (error) {
-      send(response, 400, { ok: false, error: errorBody(error) });
+      if (!response.writableEnded) send(response, 400, { ok: false, error: errorBody(error) });
+      else this.logger?.append({ event: 'bridge.lifecycle_error', operation: 'deferred_lifecycle', ok: false, error: { name: error.name, code: error.code, message: error.message } });
     }
+  }
+
+  async flushDeferredLifecycle() {
+    const deferred = this.deferredLifecycle;
+    if (!deferred) return null;
+    this.deferredLifecycle = null;
+    const waited = await this.runtime.requestWait(deferred.executionId, deferred.wait);
+    if (this.taskId === deferred.taskId && this.executionId === deferred.executionId) {
+      await this.releaseClaim({
+        result: {
+          ...deferred.result,
+          applied: {
+            ...(deferred.result?.applied ?? {}),
+            execution: waited?.execution ?? deferred.result?.applied?.execution,
+            task: waited?.task ?? deferred.result?.applied?.task,
+          },
+        },
+      });
+    }
+    return waited;
   }
 
   async call({ operation, payload = {}, operation_id: operationId = null } = {}) {
@@ -279,14 +307,17 @@ export class ServicesBridge {
         case 'submit_candidate':
           result = sdk.submitCandidate(payload, options);
           if (this.onSubmitCandidate) {
-            result = { ...result, ...(await this.onSubmitCandidate({ taskId: boundTaskId, executionId: boundExecutionId, payload, result })) };
-            // A Judge callback may synchronously apply a terminal CheckResult
-            // or move a retryable checker failure into a persisted WAITING
-            // health condition. Release the physical Agent/Core binding before
-            // returning that typed tool result.
-            const lifecycleExecution = result?.applied?.execution ?? result?.execution;
-            if (lifecycleExecution?.state === 'WAITING') {
-              await this.releaseClaim({ result });
+            const callbackResult = await this.onSubmitCandidate({ taskId: boundTaskId, executionId: boundExecutionId, payload, result });
+            const { deferred_wait: deferredWait = null, ...visibleCallbackResult } = callbackResult ?? {};
+            result = { ...result, ...visibleCallbackResult };
+            if (deferredWait) {
+              if (this.deferredLifecycle) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'a deferred candidate lifecycle is already pending');
+              this.deferredLifecycle = {
+                taskId: boundTaskId,
+                executionId: boundExecutionId,
+                wait: deferredWait,
+                result,
+              };
             }
           }
           break;
