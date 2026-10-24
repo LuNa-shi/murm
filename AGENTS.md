@@ -24,11 +24,16 @@ changing the corresponding area.
 - Use `openai` with `gpt-6.1-sol` as the default local route unless the Issue
   specifies another provider or model. Keep the route in `.env` or in the
   process environment; never put credentials in this file.
-- Before launching, record the exact implementation commit, PutnamBench
-  commit, Lean project root (normally `<PutnamBench>/lean4`), Core count,
-  timebox, provider, and model. Run the real-agent probe first and require
-  `READY_TO_LAUNCH`; a `BLOCKED` probe is an environment result, not a failed
-  Agent experiment.
+- Before launching, record the exact `git rev-parse HEAD` and
+  `git status --porcelain` result, PutnamBench commit, Lean project root
+  (normally `<PutnamBench>/lean4`), Core count, timebox, provider, and model.
+  Acceptance evidence must point at the exact clean implementation commit; a
+  dirty or different-commit run is diagnostic-only until rerun.
+- Run the real-agent probe first and require `READY_TO_LAUNCH`; a `BLOCKED`
+  probe is an environment result, not a failed Agent experiment. If the local
+  `main` checkout has no `.env`, provide the required route explicitly in the
+  process environment or stop with `BLOCKED`; do not silently use an
+  unverified default.
 - Use the locked fixture and its project root. Confirm that the local
   PutnamBench checkout matches the fixture commit and that `lean`, `lake`,
   `nurouter`, and `pi` are available before spending the experiment timebox.
@@ -41,7 +46,9 @@ changing the corresponding area.
   never paste raw Agent transcripts, proof contents, credentials, stdout, or
   stderr into GitHub, `AGENTS.md`, or a report.
 - Record the final experiment status, blocker or result, report path, and the
-  exact rerun command in the PR or experiment evidence document.
+  exact rerun command in the PR or experiment evidence document. The
+  sanitized report must repeat the exact implementation commit used by the
+  run, so a later code or harness commit requires a fresh acceptance run.
 
 See [docs/agents/workflow.md](docs/agents/workflow.md) and [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 

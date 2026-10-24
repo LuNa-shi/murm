@@ -2,7 +2,7 @@
   "schema_version": 1,
   "mode": "real-agent",
   "status": "SUCCEEDED",
-  "implementation_commit": "58ceab37f9f155ebff7409136f2c4341b7d3c1e6",
+  "implementation_commit": "41d8ce949e9f7864142fcf319823a32a78660870",
   "command": "NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 node scripts/run-mvp-fixture.mjs --real-agent",
   "core_count": 1,
   "per_turn_timeout_ms": 180000,
@@ -21,12 +21,12 @@
     "environment_ref": "putnambench-lean4@a635813f5edf297d928f9bd5ef8324a26bdde09c"
   },
   "runtime": {
-    "task_id": "4d12eb5f-0daf-4978-b396-9ccb5442e6ed",
+    "task_id": "70d280f2-01ee-4a7e-b8c3-3134f4e97f74",
     "execution_id": "real-agent-execution",
     "task_state": "SATISFIED",
     "execution_state": "SUCCEEDED",
     "same_workspace_lineage": true,
-    "input_snapshot_hash": "91e3c66ced324e3a083d85cc5e0a2d63f5b299672ec0bd454badbd927bba56b8",
+    "input_snapshot_hash": "c7248f84556c5ed69ba565a92ba6db143ddac5cfe728d9c8ad30e3d61205d8bf",
     "workspace_revision_after_wake": 5
   },
   "agent": {
@@ -34,12 +34,12 @@
     "nurouter_version": "0.2.12",
     "node_version": "24.21.0",
     "first_turn_expected_runtime_stop": true,
-    "first_turn_tool_execution_count": 12,
+    "first_turn_tool_execution_count": 7,
     "second_turn_tool_execution_count": 8
   },
   "check_results": [
     {
-      "check_result_id": "238a35ec-ce4f-4e6d-960e-129ceba1fdb4",
+      "check_result_id": "b986a076-0ee8-4e8e-966d-14ec02e58f9a",
       "status": "APPLIED",
       "verdict": "FAIL",
       "judge_operation_status": "persisted",
@@ -57,7 +57,7 @@
       }
     },
     {
-      "check_result_id": "452873f5-94c7-4d56-ab9a-e7a272a0b5c0",
+      "check_result_id": "4e8829a4-4537-46bc-8a4c-347f56d81e8c",
       "status": "APPLIED",
       "verdict": "PASS",
       "judge_operation_status": "persisted",

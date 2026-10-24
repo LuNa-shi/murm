@@ -1,9 +1,9 @@
 # Issue #53 checker health acceptance evidence
 
 This document records the evidence for the checker-health implementation. It
-keeps the deterministic protocol evidence separate from the real Agent gate;
-the latter cannot be called complete until a real NuRouter/Pi route is
-available.
+keeps the deterministic protocol evidence separate from the real Agent gate.
+The real-Agent evidence below was rerun at the exact implementation commit
+recorded in the sanitized report.
 
 ## Deterministic gates
 
@@ -44,6 +44,9 @@ NUROUTER_PI_MODEL=gpt-6.1-sol \
 SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 \
 node scripts/run-mvp-fixture.mjs --real-agent
 ```
+
+The run was executed at implementation commit
+`41d8ce949e9f7864142fcf319823a32a78660870`.
 
 The probe returned `READY_TO_LAUNCH`, and the experiment completed with
 `status: SUCCEEDED`. It used one real Agent/Core session, Pi 1.4.0, NuRouter
