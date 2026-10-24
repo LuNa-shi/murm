@@ -2,7 +2,7 @@ import { listTools } from '../sdk/service-catalog.js';
 
 const OPERATIONS = [
   'list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'get_task', 'get_execution',
-  'claim', 'create_child_task', 'accept_task', 'request_rework', 'get_check_result',
+  'claim', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task', 'accept_task', 'request_rework', 'get_check_result',
   'get_workspace', 'list_workspace_revisions', 'list_workspace_files', 'read_workspace_file', 'write_workspace_file', 'workspace_diff', 'list_executions',
   'read_materials', 'publish_material', 'submit_candidate', 'heartbeat', 'request_wait',
 ];
