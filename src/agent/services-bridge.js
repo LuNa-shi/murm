@@ -172,7 +172,7 @@ export class ServicesBridge {
           return result;
         }
         const discoveryPayload = operation === 'list_tasks' && this.taskId === null && payload.available_only !== false
-          ? { ...payload, states: ['OPEN', 'RUNNING'] }
+          ? { ...payload, states: ['OPEN', 'RUNNING', 'WAITING'] }
           : (['get_task_structure', 'explain_task_readiness'].includes(operation) && payload.task_id === undefined && this.taskId
             ? { ...payload, task_id: this.taskId }
             : payload);
@@ -256,10 +256,12 @@ export class ServicesBridge {
           deadline: payload.deadline ?? payload.wait_deadline,
         });
         const released = { taskId: this.taskId, executionId: this.executionId, result };
+        // Record the durable wait request before releasing the bridge binding;
+        // the runner uses this ordering to measure physical Core release.
+        await this.onWorkUnit?.({ operation, taskId: released.taskId, executionId: released.executionId, payload, result });
         this.taskId = null;
         this.executionId = null;
         if (this.onRelease) await this.onRelease(released);
-        await this.onWorkUnit?.({ operation, taskId: released.taskId, executionId: released.executionId, payload, result });
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }

@@ -98,6 +98,23 @@ function observedEligibleWorkCount(state, readyTasks) {
   }).length;
 }
 
+function isPhysicallyAvailableCore(core) {
+  return !core.taskId && !core.turnInFlight && !core.dispatchReserved && !core.stopping &&
+    !core.recoveryInFlight && (core.runtime?.getActiveProcessCount?.() ?? 0) === 0;
+}
+
+function observeReadyTasks(state, tasks, at = Date.now()) {
+  for (const task of tasks) {
+    const taskId = task?.task_id;
+    if (!taskId) continue;
+    if (!state.readyObservedAt.has(taskId)) state.readyObservedAt.set(taskId, at);
+    const execution = task.latest_execution;
+    if (task.state === 'WAITING' && execution?.execution_id && !state.waitEligibilityAt.has(execution.execution_id)) {
+      state.waitEligibilityAt.set(execution.execution_id, at);
+    }
+  }
+}
+
 function safeDiagnostic(value) {
   const text = String(value ?? '');
   if (!text) return null;
@@ -451,7 +468,7 @@ function attachRecoveredSession(core, { execution, session }) {
       }
       if (core.session === session) {
         core.recoveryInFlight = false;
-        if (core.runtime.activeProcesses.has(execution.execution_id)) {
+        if (core.runtime.hasActiveExecution(execution.execution_id)) {
           core.turns += 1;
           core.turnInFlight = false;
           core.nextTurnAt = now;
@@ -465,7 +482,6 @@ function attachRecoveredSession(core, { execution, session }) {
 }
 
 async function ensureAgentSession(core) {
-  if (core.waitingExecutionId) return false;
   if (core.releasedSession) {
     if (!core.releasedSession.closed) await Promise.resolve(core.releasedSession.stop?.()).catch(() => undefined);
     core.releasedSession = null;
@@ -485,111 +501,6 @@ async function ensureAgentSession(core) {
   }
 }
 
-async function wakeWaitingCore(state, core, waitingExecution) {
-  if (core.waitingExecutionId && core.waitingExecutionId !== waitingExecution.execution_id) return false;
-  if (core.taskId) return false;
-  // request_wait stops Runtime's active process before the Agent transport
-  // necessarily settles its outer prompt. If no process remains, the waiting
-  // slot is physically free and must not be stranded behind a stale
-  // turnInFlight flag.
-  if (core.turnInFlight && core.runtime.activeProcesses.has(waitingExecution.execution_id)) return false;
-  if (core.turnInFlight) {
-    core.parallelism.endAgentTurn(core.index, Date.now(), 'wait_handoff_complete');
-    core.agentTurnSession = null;
-    core.turnInFlight = false;
-  }
-  await Promise.resolve(core.releasedSession?.stop?.()).catch(() => undefined);
-  core.releasedSession = null;
-  const claimRecord = {
-    task_id: waitingExecution.task_id,
-    execution_id: waitingExecution.execution_id,
-    workspace_revision_start: waitingExecution.workspace_revision,
-  };
-  core.claimHistory.push(claimRecord);
-  const resumed = await core.runtime.wakeExecution(waitingExecution.execution_id, {
-    wakeKey: waitingExecution.resume_token,
-    beforePrompt: async ({ execution, session }) => {
-      core.waitingExecutionId = null;
-      core.taskId = execution.task_id;
-      core.executionId = execution.execution_id;
-      core.claim = { task: state.taskService.getTask(execution.task_id), execution };
-      core.bridge.taskId = core.taskId;
-      core.bridge.executionId = core.executionId;
-      core.bridge.actorRef = waitingExecution.owner_ref;
-      core.session = session;
-      core.sessionHistory.push(session);
-      core.versionManifest = session.manifest ?? core.versionManifest;
-      if (core.agentTurnSession && core.runtime.activeProcesses.size === 0) {
-        core.parallelism.endAgentTurn(core.index, Date.now(), 'stale_wait_handoff');
-        core.agentTurnSession = null;
-      }
-      core.turnInFlight = true;
-      core.turnStartedAt = Date.now();
-      core.parallelism.transition(core.index, 'RUNNING', {
-        task_id: core.taskId,
-        execution_id: core.executionId,
-        reason: 'execution_woken',
-      });
-      core.parallelism.beginAgentTurn(core.index, {
-        task_id: core.taskId,
-        execution_id: core.executionId,
-        reason: 'resumed_turn',
-      });
-      core.agentTurnSession = session;
-    },
-  });
-  core.nextTurnAt = Date.now();
-  void (async () => {
-    try {
-      await resumed.session.waitForSettled({
-        timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000),
-      });
-    } catch (error) {
-      const expectedHandoff = resumed.session.expectedStop || core.session !== resumed.session || core.stopping;
-      if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
-    } finally {
-      collectToolEvents(core, resumed.session.rpcRecords ?? []);
-      if (core.agentTurnSession === resumed.session) {
-        core.parallelism.endAgentTurn(core.index, Date.now());
-        core.agentTurnSession = null;
-      }
-      if (core.session === resumed.session || (!core.executionId && !core.runtime.activeProcesses.has(resumed.execution.execution_id))) {
-        core.turns += 1;
-        core.turnInFlight = false;
-        core.nextTurnAt = Date.now();
-      }
-    }
-  })();
-  claimRecord.workspace_revision_start = resumed.workspace.workspace_revision;
-  return true;
-}
-
-async function wakeEligibleWaiting(state) {
-  if (state.waitWakePromise) return state.waitWakePromise;
-  state.waitWakePromise = (async () => {
-    const resumableWaiting = state.taskService.listResumableExecutions({ rootId: state.rootTaskId });
-    const resumableWaitingIds = new Set(resumableWaiting.map((execution) => execution.execution_id));
-    for (const candidate of state.cores) {
-      if (candidate.waitingExecutionId && !resumableWaitingIds.has(candidate.waitingExecutionId)) {
-        candidate.waitingExecutionId = null;
-      }
-    }
-    for (const waitingExecution of resumableWaiting) {
-      const waitingCore = state.cores.find((candidate) => candidate.waitingExecutionId === waitingExecution.execution_id) ??
-        state.cores.find((candidate) => !candidate.taskId && !candidate.waitingExecutionId && !candidate.turnInFlight);
-      if (waitingCore && !waitingCore.taskId &&
-        (!waitingCore.turnInFlight || !waitingCore.runtime.activeProcesses.has(waitingExecution.execution_id))) {
-        await wakeWaitingCore(state, waitingCore, waitingExecution).catch((error) => {
-          waitingCore.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'wake_error' });
-        });
-      }
-    }
-  })().finally(() => {
-    state.waitWakePromise = null;
-  });
-  return state.waitWakePromise;
-}
-
 async function releaseTerminalExecution(core) {
   if (!core.executionId) return;
   const execution = core.runtime.taskService.getExecution(core.executionId);
@@ -599,20 +510,7 @@ async function releaseTerminalExecution(core) {
     execution_id: execution.execution_id,
     reason: `terminal:${execution.state.toLowerCase()}`,
   });
-  const active = core.runtime.activeProcesses.get(core.executionId);
-  if (active) {
-    core.runtime.activeProcesses.delete(core.executionId);
-    await Promise.resolve(active.session.stop()).catch(() => undefined);
-  } else {
-    await Promise.resolve(core.session?.stop?.()).catch(() => undefined);
-  }
-  if (execution.workspace_ref) {
-    await core.workspaceManager.releaseWorkspace({
-      workspaceRef: execution.workspace_ref,
-      executionId: execution.execution_id,
-      fencingVersion: execution.fencing_version,
-    }).catch(() => undefined);
-  }
+  await core.runtime.releaseExecution(core.executionId).catch(() => undefined);
   await core.bridge.releaseClaim({ result: { execution } });
 }
 
@@ -855,11 +753,6 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
 
 async function stopCore(state, core) {
   core.stopping = true;
-  // Prevent a transport close racing cleanup from starting Runtime recovery.
-  // The project is already ending; any late process exit must be fenced or
-  // stopped, never relaunched against a database that is about to close.
-  core.runtime.stopping = true;
-  core.runtime.maxRecoveryAttempts = 0;
   if (core.taskId && core.executionId) {
     core.parallelism.transition(core.index, 'STOPPING', {
       task_id: core.taskId,
@@ -867,19 +760,14 @@ async function stopCore(state, core) {
       reason: 'benchmark_cleanup',
     });
   }
-  const execution = core.executionId ? state.taskService.getExecution(core.executionId) : null;
-  const active = core.executionId ? core.runtime.activeProcesses.get(core.executionId) : null;
-  const activeExecutionIds = [...core.runtime.activeProcesses.keys()];
-  // Fence the Runtime callback path before stopping transport sessions. Pi's
-  // close event is asynchronous and must not start recovery after cleanup has
-  // begun or after the project database is closed.
-  for (const executionId of activeExecutionIds) core.runtime.activeProcesses.delete(executionId);
   const sessions = new Set([
     ...core.sessionHistory,
     core.session,
     core.releasedSession,
-    active?.session,
   ].filter(Boolean));
+  // Runtime owns process termination, capacity release, fencing, and recovery
+  // suppression. Keep those effects behind its public shutdown seam.
+  await core.runtime.shutdown({ terminalState: 'FAILED' });
   await Promise.all([...sessions].map(async (session) => {
     try {
       await session.stop?.();
@@ -894,28 +782,7 @@ async function stopCore(state, core) {
       sleep(5_000),
     ]);
   }
-  await core.runtime.waitForSettled?.();
-  // A claim handoff may clear the Core's local task/execution fields before
-  // the Runtime process-exit callback settles. Stop every process still owned
-  // by this single-worker Runtime before closing the project database so a
-  // late provider exit cannot start recovery against a closed store.
-  for (const executionId of activeExecutionIds) {
-    await core.runtime.stopExecution(executionId, 'FAILED').catch(() => undefined);
-  }
-  if (execution?.workspace_ref) {
-    await core.workspaceManager.releaseWorkspace({
-      workspaceRef: execution.workspace_ref,
-      executionId: core.executionId,
-      fencingVersion: execution.fencing_version,
-    }).catch(() => undefined);
-  }
   const current = core.executionId ? state.taskService.getExecution(core.executionId) : null;
-  // WAITING has already released its process and Workspace lease. Preserve
-  // that durable state for the report and a later explicit claim; only an
-  // unfinished live/created Execution needs a terminal cleanup state.
-  if (current && ['CREATED', 'RUNNING'].includes(current.state)) {
-    await core.runtime.stopExecution(core.executionId, 'FAILED').catch(() => undefined);
-  }
   if (core.parallelism) core.parallelism.transition(core.index, 'IDLE', {
     task_id: current?.task_id ?? null,
     execution_id: current?.execution_id ?? null,
@@ -971,6 +838,7 @@ function projectReport(state, startedAt, deadline) {
         ...claim,
         workspace_revision_end: state.taskService.getExecution(claim.execution_id)?.workspace_revision ?? null,
       })),
+      latency_samples: core.latencySamples,
       tool_events: [...new Set(core.toolEvents)],
       workspace_writes: core.workspaceWrites,
       tool_errors: core.toolErrors,
@@ -1132,6 +1000,20 @@ function projectReport(state, startedAt, deadline) {
       scheduler_status_count: state.schedulerStatusCount,
       scheduler: state.scheduler?.snapshot() ?? null,
       scheduler_events: state.schedulerEvents,
+      latency_samples: cores.flatMap((core) => core.latency_samples ?? []),
+      latency_summary: {
+        ready_to_session_start_ms: state.schedulerEvents
+          .filter((event) => event.kind === 'scheduler_dispatch_started' && Number.isFinite(event.ready_to_dispatch_ms))
+          .map((event) => event.ready_to_dispatch_ms),
+        ready_to_claim_ms: cores.flatMap((core) => core.latency_samples ?? [])
+          .map((sample) => sample.ready_to_claim_ms).filter(Number.isFinite),
+        claim_to_first_turn_ms: cores.flatMap((core) => core.latency_samples ?? [])
+          .map((sample) => sample.claim_to_first_turn_ms).filter(Number.isFinite),
+        wait_to_core_release_ms: cores.flatMap((core) => core.latency_samples ?? [])
+          .map((sample) => sample.wait_to_core_release_ms).filter(Number.isFinite),
+        condition_to_resumed_turn_ms: cores.flatMap((core) => core.latency_samples ?? [])
+          .map((sample) => sample.condition_to_resumed_turn_ms).filter(Number.isFinite),
+      },
       decomposition_available: decompositionAvailable,
       lifecycle_events: lifecycle,
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
@@ -1318,6 +1200,8 @@ async function createProjectState(problem, config, options) {
       prompt: GENERIC_AGENT_PROMPT,
       claim: null,
       claimHistory: [],
+      latencySamples: [],
+      latencyByExecution: new Map(),
       runtime,
       workspaceManager,
       bridge: null,
@@ -1370,6 +1254,12 @@ async function createProjectState(problem, config, options) {
       actorRef: `agent:core-${index}`,
       onClaim: async (claim) => {
         core.dispatchReserved = false;
+        // A resumable WAITING Execution is selected through the normal claim
+        // path. The claim itself clears the logical wait association; the
+        // Scheduler remains the only component that reserved this Core.
+        const claimedAt = Date.now();
+        const priorWaitingExecutionId = core.waitingExecutionId;
+        core.waitingExecutionId = null;
         core.parallelism.transition(core.index, 'ASSIGNED', {
           task_id: claim.task.task_id,
           execution_id: claim.execution.execution_id,
@@ -1384,7 +1274,17 @@ async function createProjectState(problem, config, options) {
           task_id: claim.task.task_id,
           execution_id: claim.execution.execution_id,
           workspace_revision_start: null,
+          claimed_at: new Date(claimedAt).toISOString(),
+          ready_observed_at: core.stateRef?.readyObservedAt.get(claim.task.task_id)
+            ? new Date(core.stateRef.readyObservedAt.get(claim.task.task_id)).toISOString()
+            : null,
+          ready_to_claim_ms: core.stateRef?.readyObservedAt.has(claim.task.task_id)
+            ? Math.max(0, claimedAt - core.stateRef.readyObservedAt.get(claim.task.task_id))
+            : null,
+          resumed_from_wait: priorWaitingExecutionId === claim.execution.execution_id || claim.execution.attempt_no > 1,
         };
+        core.latencySamples.push(claimRecord);
+        core.latencyByExecution.set(claim.execution.execution_id, claimRecord);
         core.claimHistory.push(claimRecord);
         const bound = await runtime.bindAgentExecution(claim.execution.execution_id, null, {
           workspaceRef: join(workspaceRoot, claim.execution.execution_id),
@@ -1420,13 +1320,25 @@ async function createProjectState(problem, config, options) {
               reason: 'initial_bound_turn',
             });
             core.agentTurnSession = session;
+            const latency = core.latencyByExecution.get(execution.execution_id);
+            if (latency && !latency.first_turn_started_at) {
+              const firstTurnAt = Date.now();
+              latency.first_turn_started_at = new Date(firstTurnAt).toISOString();
+              latency.claim_to_first_turn_ms = Math.max(0, firstTurnAt - Date.parse(latency.claimed_at));
+              const eligibilityAt = core.stateRef?.waitEligibilityAt.get(execution.execution_id);
+              if (eligibilityAt !== undefined) {
+                latency.condition_satisfied_observed_at = new Date(eligibilityAt).toISOString();
+                latency.resume_eligible_at = new Date(eligibilityAt).toISOString();
+                latency.condition_to_resumed_turn_ms = Math.max(0, firstTurnAt - eligibilityAt);
+              }
+            }
             return session;
           },
           agentPrompt: BOUND_AGENT_PROMPT,
         });
         const boundSession = core.session;
         const boundExecutionId = claim.execution.execution_id;
-        if (boundSession && core.runtime.activeProcesses.has(claim.execution.execution_id)) {
+        if (boundSession && core.runtime.hasActiveExecution(claim.execution.execution_id)) {
           core.turnInFlight = true;
           void (async () => {
             try {
@@ -1440,7 +1352,7 @@ async function createProjectState(problem, config, options) {
                 core.parallelism.endAgentTurn(core.index, Date.now());
                 core.agentTurnSession = null;
               }
-              if (core.session === boundSession || (!core.executionId && !core.runtime.activeProcesses.has(boundExecutionId))) {
+              if (core.session === boundSession || (!core.executionId && !core.runtime.hasActiveExecution(boundExecutionId))) {
                 core.turns += 1;
                 core.turnInFlight = false;
                 core.nextTurnAt = Date.now();
@@ -1513,6 +1425,14 @@ async function createProjectState(problem, config, options) {
         };
       },
       onRelease: async ({ taskId, executionId }) => {
+        const releasedAt = Date.now();
+        const releaseLatency = core.latencyByExecution.get(executionId);
+        if (releaseLatency) {
+          releaseLatency.core_released_at = new Date(releasedAt).toISOString();
+          if (releaseLatency.wait_requested_at) {
+            releaseLatency.wait_to_core_release_ms = Math.max(0, releasedAt - Date.parse(releaseLatency.wait_requested_at));
+          }
+        }
         const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
         const releasedState = releasedExecution?.state ?? 'RELEASED';
         // A claim record is created before Runtime binds its Workspace. If a
@@ -1628,6 +1548,10 @@ async function createProjectState(problem, config, options) {
             progress_kind: 'candidate_submission',
           });
         } else if (operation === 'request_wait') {
+          const waitLatency = core.latencyByExecution.get(executionId);
+          if (waitLatency && !waitLatency.wait_requested_at) {
+            waitLatency.wait_requested_at = new Date(Date.now()).toISOString();
+          }
           core.parallelism.recordWorkUnit({
             task_id: taskId,
             execution_id: executionId,
@@ -1661,9 +1585,7 @@ async function createProjectState(problem, config, options) {
   } catch (error) {
     for (const core of cores.reverse()) {
       await Promise.resolve(core.session?.stop?.()).catch(() => undefined);
-      if (core.executionId && core.runtime.activeProcesses.has(core.executionId)) {
-        await core.runtime.stopExecution(core.executionId, 'FAILED').catch(() => undefined);
-      }
+      await core.runtime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
       await core.bridge?.stop().catch(() => undefined);
     }
     taskService.close();
@@ -1701,7 +1623,8 @@ async function createProjectState(problem, config, options) {
     executionTimeoutErrorCount: 0,
     schedulerStatusCount: 0,
     schedulerEvents: [],
-    waitWakePromise: null,
+    readyObservedAt: new Map(),
+    waitEligibilityAt: new Map(),
     resourcesAtStart: resourceSnapshot(),
     repositoryCommit: options.repositoryCommit ?? null,
     repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
@@ -1734,7 +1657,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       availableOnly: true,
     }),
     listCores: () => state.cores,
-    isCoreAvailable: (core) => !core.taskId && !core.waitingExecutionId && !core.turnInFlight &&
+    isCoreAvailable: (core) => !core.taskId && !core.turnInFlight &&
       !core.dispatchReserved && !core.stopping,
     maxStartupAttempts: options.maxStartupAttempts ?? 3,
     retryBackoffMs: options.schedulerRetryBackoffMs ?? 1_000,
@@ -1782,9 +1705,10 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           limit: 100,
           availableOnly: true,
         });
+        observeReadyTasks(state, readyTasks, event.timestamp ?? Date.now());
         state.parallelism.recordReadyWork({
           readyCount: readyTasks.length,
-          idleCoreCount: state.cores.filter((core) => !core.taskId && !core.turnInFlight && !core.dispatchReserved).length,
+          idleCoreCount: state.cores.filter(isPhysicallyAvailableCore).length,
           eligibleWorkCount: observedEligibleWorkCount(state, readyTasks),
         });
       }
@@ -1803,7 +1727,6 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   state.requestSchedulerWake = (reason = 'event') => {
     state.schedulerWakeRequested = true;
     resolveSchedulerWake();
-    void wakeEligibleWaiting(state);
     // Notification is event-driven, while the main loop remains the bounded
     // reconciliation path for missed events and Runtime restarts.
     void state.scheduler.notify(reason).catch(() => undefined);
@@ -1882,19 +1805,13 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           limit: 100,
           availableOnly: true,
         });
+        observeReadyTasks(state, readyTasks);
         state.parallelism.recordSchedulerPoll(Date.now() - readyStartedAt);
         state.parallelism.recordReadyWork({
           readyCount: readyTasks.length,
-          idleCoreCount: state.cores.filter((core) => !core.taskId && !core.turnInFlight && !core.dispatchReserved).length,
+          idleCoreCount: state.cores.filter(isPhysicallyAvailableCore).length,
           eligibleWorkCount: observedEligibleWorkCount(state, readyTasks),
         });
-        // A waiting Execution keeps its responsibility, but its physical Core
-        // is reusable. If the wait condition is not yet satisfied, release the
-        // old Core's local association; a later wake can resume the Execution
-        // on any available Core. A resumable wait is woken before new work is
-        // reserved so the waiting responsibility gets first access to idle
-        // capacity.
-        await wakeEligibleWaiting(state);
         for (const core of state.cores) {
           if (state.solvedAt === null) await releaseTerminalExecution(core);
         }

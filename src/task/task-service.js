@@ -564,6 +564,13 @@ export class TaskService {
     return this.db.prepare('SELECT * FROM task_structure_versions WHERE task_id = ?').get(taskId);
   }
 
+  #readStructureVersion(taskId) {
+    return this.db.prepare('SELECT * FROM task_structure_versions WHERE task_id = ?').get(taskId) ?? {
+      task_id: taskId,
+      structural_version: 1,
+    };
+  }
+
   #assertStructureAuthority(taskId, envelope) {
     requireString(taskId, 'task_id');
     if (envelope.task_id !== taskId) {
@@ -1063,7 +1070,7 @@ export class TaskService {
   }
 
   #explainTaskReadiness(taskId) {
-    const task = this.#ensureTaskStructure(taskId);
+    const task = this.getTask(taskId);
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
     const readiness = this.#taskReadiness(task);
     const latestExecution = this.#latestExecution(taskId);
@@ -1087,7 +1094,7 @@ export class TaskService {
   }
 
   #getTaskStructure(taskId) {
-    const task = this.#ensureTaskStructure(taskId);
+    const task = this.getTask(taskId);
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
     const groupRows = this.db.prepare(`SELECT group_id FROM task_structure_groups WHERE owner_task_id = ? AND retired_at IS NULL ORDER BY created_at, group_id`).all(taskId);
     const groups = groupRows.map(({ group_id: groupId }) => this.#structureGroup(groupId));
@@ -1106,7 +1113,7 @@ export class TaskService {
     const readiness = this.#explainTaskReadiness(taskId);
     return {
       task,
-      structural_version: this.#structureVersion(taskId).structural_version,
+      structural_version: this.#readStructureVersion(taskId).structural_version,
       branches: branchGroups,
       branch_groups: branchGroups,
       required_subtasks: requiredSubtaskGroups,

@@ -97,3 +97,10 @@ test('ServicesBridge lets an unbound Agent inspect structure and a bound Agent m
   assert.equal(calls[2].envelope.task_id, 'task-1');
   assert.equal(calls[2].envelope.execution_id, 'execution-1');
 });
+
+test('Runtime-only handoff transitions are not exposed as Agent Service tools', () => {
+  const { taskService, contextService } = services();
+  const router = new ServicesRouter({ taskService, contextService });
+  assert.throws(() => router.dispatch('handoff_execution', {}, { actor_ref: 'agent:test' }), /no service route/);
+  assert.throws(() => router.dispatch('record_handoff_reminder', {}, { actor_ref: 'agent:test' }), /no service route/);
+});

@@ -77,10 +77,36 @@ export class Runtime {
     return this.activeProcesses.size;
   }
 
+  hasActiveExecution(executionId) {
+    return this.activeProcesses.has(executionId);
+  }
+
   async waitForSettled() {
     while (this.pendingFailurePromises.size > 0) {
       await Promise.allSettled([...this.pendingFailurePromises]);
     }
+  }
+
+  /**
+   * Stop every live process owned by this Runtime before its store is closed.
+   * The benchmark uses this seam for terminal cleanup so it never has to
+   * mutate Runtime ownership maps or recovery flags directly.
+   */
+  async shutdown({ terminalState = 'FAILED' } = {}) {
+    this.stopping = true;
+    const executionIds = [...this.activeProcesses.keys()];
+    for (const executionId of executionIds) {
+      const execution = this.taskService.getExecution(executionId);
+      if (execution && ['CREATED', 'RUNNING'].includes(execution.state)) {
+        await this.stopExecution(executionId, terminalState).catch(() => undefined);
+      } else {
+        const active = this.activeProcesses.get(executionId);
+        this.activeProcesses.delete(executionId);
+        await Promise.resolve(active?.session?.stop?.()).catch(() => undefined);
+      }
+    }
+    await this.waitForSettled();
+    return { active_process_count: this.activeProcesses.size };
   }
 
   getSchedulerStatus({ rootId = null, taskId = null, executionId = null, limit = 100 } = {}) {
@@ -549,6 +575,28 @@ export class Runtime {
       await this.workspaceManager.releaseWorkspace({ workspaceRef: execution.workspace_ref, executionId, fencingVersion: execution.fencing_version });
     }
     return result;
+  }
+
+  /** Release a process and its Workspace after Task Service already reached a
+   * terminal state. This preserves Runtime ownership without another Task
+   * state transition.
+   */
+  async releaseExecution(executionId) {
+    const id = requireString(executionId, 'execution_id');
+    const execution = this.#getExecution(id);
+    const active = this.activeProcesses.get(id);
+    if (active) {
+      this.activeProcesses.delete(id);
+      await Promise.resolve(active.session.stop()).catch(() => undefined);
+    }
+    if (execution.workspace_ref) {
+      await this.workspaceManager.releaseWorkspace({
+        workspaceRef: execution.workspace_ref,
+        executionId: id,
+        fencingVersion: execution.fencing_version,
+      });
+    }
+    return { execution };
   }
 
   async fenceExecution(executionId) {

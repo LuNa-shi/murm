@@ -126,10 +126,6 @@ export class ServicesSDK {
     return this.#write('heartbeat', payload, options);
   }
 
-  handoffExecution(payload = {}, options = {}) {
-    return this.#write('handoff_execution', payload, options);
-  }
-
   requestWait(payload, options = {}) {
     return this.#write('request_wait', payload, options);
   }

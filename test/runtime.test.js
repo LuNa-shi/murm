@@ -97,6 +97,23 @@ test('Runtime waits for Agent exit before releasing a waiting Core', async () =>
   }
 });
 
+test('Runtime shutdown owns terminal process cleanup and suppresses recovery', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, adapter } = fixtureData;
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    const result = await runtime.shutdown({ terminalState: 'FAILED' });
+    assert.equal(result.active_process_count, 0);
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(runtime.stopping, true);
+    assert.equal(adapter.sessions[0].closed, true);
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'FAILED');
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('Runtime creates an isolated workspace before Pi, saves checkpoint before wait, and restores the same lineage', async () => {
   const fixtureData = await fixture();
   const { runtime, taskService, claimed, rootDir } = fixtureData;

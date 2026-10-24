@@ -104,3 +104,18 @@ test('explicit Task dependencies explain BLOCKED/READY while rework creates link
   void sdk;
   service.close();
 });
+
+test('structure and readiness reads do not backfill durable structure rows', () => {
+  const { service, task } = fixture();
+  service.db.prepare('DELETE FROM task_creation_provenance WHERE task_id = ?').run(task.task_id);
+  service.db.prepare('DELETE FROM task_structure_versions WHERE task_id = ?').run(task.task_id);
+
+  const readiness = service.explainTaskReadiness(task.task_id);
+  const structure = service.getTaskStructure(task.task_id);
+
+  assert.equal(readiness.ready, true);
+  assert.equal(structure.structural_version, 1);
+  assert.equal(service.db.prepare('SELECT COUNT(*) AS count FROM task_creation_provenance WHERE task_id = ?').get(task.task_id).count, 0);
+  assert.equal(service.db.prepare('SELECT COUNT(*) AS count FROM task_structure_versions WHERE task_id = ?').get(task.task_id).count, 0);
+  service.close();
+});

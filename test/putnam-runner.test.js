@@ -893,14 +893,14 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.ok(report.run.accept_count + report.run.rework_count > 0);
     assert.equal(report.parallelism.decomposition_available, true);
     assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'request_wait' && event.dependency_ids.length > 0));
-    assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'wake_execution'));
+    assert.ok(report.run.resumed_execution_count >= 1, 'a resumable WAITING Execution should return through claim and Scheduler');
     assert.ok(report.cores.some((core) => core.material_reads.some((read) => read.source_task_ids.includes('collab-research'))));
     assert.equal(report.project.task_tree.filter((task) => task.parent_id !== null).length, 3);
     assert.ok(report.run.claim_count >= 4, `expected root and three child claims, got ${report.run.claim_count}`);
     assert.ok(report.run.child_claim_count >= 3, `expected every child to be claimed, got ${report.run.child_claim_count}`);
     assert.ok(report.run.root_claim_count >= 2, `expected root to be reclaimed after waiting, got ${report.run.root_claim_count}`);
     assert.ok(report.run.resumed_execution_count >= 1, `expected at least one Execution to be resumed; root=${report.run.root_claim_count}, claims=${report.run.claim_count}, details=${JSON.stringify(report.project.execution_history)}`);
-    assert.ok(report.run.wake_count >= 1, `expected Runtime wake_execution, got ${report.run.wake_count}`);
+    assert.ok(report.run.resumed_execution_count >= 1, `expected a Scheduler-mediated resumed Execution, got ${report.run.resumed_execution_count}`);
     const rootExecutionIds = new Set(report.cores.flatMap((core) => core.claims)
       .filter((claim) => claim.task_id === report.project.task_tree.find((task) => task.parent_id === null).task_id)
       .map((claim) => claim.execution_id));
@@ -952,7 +952,7 @@ test('production queue dynamically reuses Cores across two waves and releases pa
     assert.ok(coreTaskSets.some((tasks) => tasks.size >= 2), 'a Core must claim different Tasks across waves');
     assert.ok(report.run.rework_count >= 1);
     assert.ok(report.run.accept_count >= 4);
-    assert.ok(report.run.wake_count >= 2);
+    assert.ok(report.run.resumed_execution_count >= 2, 'two wait/reuse waves should resume durable Execution lineages through claim');
     assert.ok(report.parallelism.eligible_window_ms > 0);
     assert.ok(report.cores.some((core) => core.material_reads.some((read) =>
       childTaskIds.size === new Set([...childTaskIds].filter((taskId) => read.source_task_ids.includes(taskId))).size)));
