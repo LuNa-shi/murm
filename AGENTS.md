@@ -47,8 +47,11 @@ changing the corresponding area.
   stderr into GitHub, `AGENTS.md`, or a report.
 - Record the final experiment status, blocker or result, report path, and the
   exact rerun command in the PR or experiment evidence document. The
-  sanitized report must repeat the exact implementation commit used by the
-  run, so a later code or harness commit requires a fresh acceptance run.
+  sanitized report must repeat the exact implementation commit whose runtime
+  and harness code was executed. A later documentation-only commit that
+  records randomized task/check IDs does not change that implementation and
+  does not require another run; any later code or harness commit does require
+  fresh acceptance evidence.
 
 See [docs/agents/workflow.md](docs/agents/workflow.md) and [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 

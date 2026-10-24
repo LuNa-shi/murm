@@ -46,7 +46,10 @@ node scripts/run-mvp-fixture.mjs --real-agent
 ```
 
 The run was executed at implementation commit
-`ac48961fbe6a420fe0795bbc17ace2d123f3dc7c`.
+`ac48961fbe6a420fe0795bbc17ace2d123f3dc7c`. The subsequent evidence-only
+commit updates randomized task and CheckResult IDs; it does not change the
+runtime or harness code, so the report remains bound to this implementation
+commit.
 
 The probe returned `READY_TO_LAUNCH`, and the experiment completed with
 `status: SUCCEEDED`. It used one real Agent/Core session, Pi 1.4.0, NuRouter
