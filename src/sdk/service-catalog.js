@@ -63,7 +63,7 @@ const TOOL_DEFINITIONS = Object.freeze([
     name: 'task_add_required_subtask', service: 'task', operation: 'add_required_subtask', version: '1.0',
     description: 'Add an ordinary Task as a jointly required subtask. Required subtasks may become ready concurrently; only an explicit execution dependency blocks work, and provenance remains audit information.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['owner_task_id'], properties: { owner_task_id: { type: 'string' }, subtask_task_id: { type: 'string' }, subtask: { type: 'object' }, expected_structural_version: { type: 'integer', minimum: 0 } }, additionalProperties: true },
+    parameters: { type: 'object', required: ['owner_task_id'], properties: { owner_task_id: { type: 'string' }, group_id: { type: 'string', description: 'Optional stable group ID; use the same ID as required_subtask_groups in the owner completion contract.' }, subtask_task_id: { type: 'string' }, subtask: { type: 'object' }, expected_structural_version: { type: 'integer', minimum: 0 } }, additionalProperties: true },
   },
   {
     name: 'task_get_structure', service: 'task', operation: 'get_task_structure', version: '1.0',
@@ -91,7 +91,7 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'task_accept', service: 'task', operation: 'accept_task', version: '1.0',
-    description: 'Accept a child Task after reviewing its delivered Material or checked candidate. First read the child Task and latest Execution; the child must be WAITING for parent_review and its completion contract must be satisfied.',
+    description: 'Complete a Task whose own completion contract is satisfied. A parent review is required only when the target contract explicitly sets parent_review=true; otherwise the current Task owner may accept its own work after reading the evidence.',
     scope: 'execution-write', side_effect: true,
     parameters: { type: 'object', required: ['target_task_id'], properties: { target_task_id: { type: 'string' }, target_state_version: { type: 'integer', minimum: 0 } }, additionalProperties: false },
   },

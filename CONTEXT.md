@@ -16,6 +16,26 @@ needs a separate research, proof, or implementation path. Child Tasks enter
 the same root Task queue and inherit the parent Workspace description unless
 they provide a more specific one.
 
+**Branch membership** is a semantic relation over ordinary Task IDs. A Branch
+group contains alternative Tasks for one owner objective; each member remains
+independently claimable. A Task that is a Branch member may create required
+subtasks, but it may not create another Branch group.
+
+**Required-subtask membership** is a semantic relation over ordinary Task IDs
+that are jointly required only when the owner Task's completion contract names
+the group. Membership does not put the owner Execution into a wait state.
+
+**Execution dependency** is an explicit prerequisite on a Task result,
+Material, or CheckResult. It is the only Task-structure relation that blocks
+claimability. **Creation provenance** records who proposed a Task and which
+prior evidence or Workspace lineage informed rework; it does not grant an
+exclusive claim or universal approval authority.
+
+Task structure mutations have their own monotonic structural version and an
+append-only event record. This version is separate from the Task and
+Execution lifecycle versions, so adding parallel work does not invalidate a
+currently running Execution.
+
 **Task list** is the query of claimable Tasks, normally ordered by priority,
 creation time, and ID. Agents browse the list and explicitly claim the Task
 they choose. The Task Service never chooses a Task on an Agent's behalf.
