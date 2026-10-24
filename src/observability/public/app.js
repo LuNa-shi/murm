@@ -2,7 +2,7 @@
 const state = {
   experiment: null, experiments: [], events: [], timeline: null, model: null,
   source: null, selectedExecution: null, selectedTask: null, selectedMaterial: null,
-  refreshInFlight: false, lastUpdated: null,
+  refreshInFlight: false, timelineTimer: null, timelineRequest: 0, lastUpdated: null,
 };
 
 const $ = (selector, root) => (root || document).querySelector(selector);
@@ -148,7 +148,8 @@ function buildModel() {
       task.event_count += 1;
       task.updated_at = event.occurred_at;
       if (executionId) task.executions.add(executionId);
-      if (event.kind === 'task_state_changed' || payload.task_state || ['OPEN', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED'].includes(payload.state)) task.state = payload.task_state || payload.state || task.state;
+      const nestedTaskState = taskPayload && typeof taskPayload === 'object' ? taskPayload.state : null;
+      if (nestedTaskState || event.kind === 'task_state_changed' || payload.task_state || ['OPEN', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED'].includes(payload.state)) task.state = nestedTaskState || payload.task_state || payload.state || task.state;
       if (payload.block_reason || payload.wait_condition || payload.wait_reason) task.block_reason = payload.block_reason || payload.wait_reason || payload.wait_condition.type;
       if (taskPayload && taskPayload.parent_id) { task.parent_id = taskPayload.parent_id; ensureTask(task.parent_id).children.add(task.task_id); }
       if (taskPayload && taskPayload.goal) task.goal = taskPayload.goal;
@@ -160,7 +161,8 @@ function buildModel() {
       execution.task_id = execution.task_id || taskId;
       execution.core_id = execution.core_id || event.core_id;
       execution.session_id = execution.session_id || event.session_id;
-      if (event.kind === 'execution_released' || event.kind === 'core_state_changed' || payload.state) execution.state = payload.state || execution.state;
+      const nestedExecutionState = executionPayload && typeof executionPayload === 'object' ? executionPayload.state : null;
+      if (nestedExecutionState || event.kind === 'execution_released' || event.kind === 'core_state_changed' || payload.state) execution.state = nestedExecutionState || payload.state || execution.state;
       if (/error|failed|timeout/i.test(event.kind)) execution.errors = (execution.errors || 0) + 1;
       if (task) task.executions.add(execution.execution_id);
     }
@@ -405,7 +407,7 @@ function renderMaterialPage(id) {
   const task = model.tasks.find((item) => item.task_id === selected.source_task);
   const execution = model.executions.find((item) => item.execution_id === selected.source_execution);
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><a href="#materials">Materials</a><span class="crumb-separator">/</span><strong>' + escapeHtml(shortId(selected.material_id)) + '</strong>';
-  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">CONTEXT / MATERIAL</span><h1>' + escapeHtml(selected.kind || 'Material') + ' <span class="muted">' + escapeHtml(shortId(selected.material_id, 16)) + '</span></h1><p>Immutable shared work, provenance, evidence state, and observed downstream use.</p></div><div class="heading-actions">' + statusPill(selected.evidence_state) + '<button class="button" data-route="materials">All materials</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">PROVENANCE</span><h2>Source and lineage</h2></div></div><div class="card-body"><div class="meta-item"><span>Material ID</span><strong>' + escapeHtml(selected.material_id) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Content hash</span><strong>' + escapeHtml(selected.content_hash || '—') + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Version</span><strong>' + escapeHtml(selected.version || '—') + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Created</span><strong>' + escapeHtml(formatTime(selected.created_at, true)) + '</strong></div><div class="relation-list" style="margin-top:18px">' + (task ? relationLink('task', task.task_id, 'Task · ' + shortId(task.task_id, 9)) : '') + (execution ? relationLink('execution', execution.execution_id, 'Execution · ' + shortId(execution.execution_id, 9)) : '') + (selected.supersedes ? relationLink('material', selected.supersedes, 'Supersedes · ' + shortId(selected.supersedes, 9)) : '') + '</div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">DOWNSTREAM USE</span><h2>Observed consumers</h2><p>Read and action links captured in the current event stream.</p></div></div><div class="card-body">' + (selected.consumers.length ? '<div class="relation-list">' + selected.consumers.map((consumer) => relationLink('execution', consumer, 'Execution · ' + shortId(consumer, 10))).join('') + '</div>' : emptyState('No explicit consumers', 'This Material has provenance, but no downstream read or action has been observed yet.')) + '</div></section></div><section class="card"><div class="card-header"><div><span class="eyebrow">CONTENT PREVIEW</span><h2>Payload</h2><p>Local operator view; public projections should remain redacted.</p></div></div><div class="card-body"><pre class="payload-preview">' + escapeHtml(JSON.stringify(selected.content || selected.content_json || { material_id: selected.material_id }, null, 2).slice(0, 12000)) + '</pre></div></section></div>';
+  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">CONTEXT / MATERIAL</span><h1>' + escapeHtml(selected.kind || 'Material') + ' <span class="muted">' + escapeHtml(shortId(selected.material_id, 16)) + '</span></h1><p>Immutable shared work, provenance, evidence state, and observed downstream use.</p></div><div class="heading-actions">' + statusPill(selected.evidence_state) + '<button class="button" data-route="materials">All materials</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">PROVENANCE</span><h2>Source and lineage</h2></div></div><div class="card-body"><div class="meta-item"><span>Material ID</span><strong>' + escapeHtml(selected.material_id) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Content hash</span><strong>' + escapeHtml(selected.content_hash || '—') + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Version</span><strong>' + escapeHtml(selected.version || '—') + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Created</span><strong>' + escapeHtml(formatTime(selected.created_at, true)) + '</strong></div><div class="relation-list" style="margin-top:18px">' + (task ? relationLink('task', task.task_id, 'Task · ' + shortId(task.task_id, 9)) : '') + (execution ? relationLink('execution', execution.execution_id, 'Execution · ' + shortId(execution.execution_id, 9)) : '') + (selected.supersedes ? relationLink('material', selected.supersedes, 'Supersedes · ' + shortId(selected.supersedes, 9)) : '') + '</div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">DOWNSTREAM USE</span><h2>Observed consumers</h2><p>Read and action links captured in the current event stream.</p></div></div><div class="card-body">' + (selected.consumers.length ? '<div class="relation-list">' + selected.consumers.map((consumer) => relationLink('execution', consumer, 'Execution · ' + shortId(consumer, 10))).join('') + '</div>' : emptyState('No explicit consumers', 'This Material has provenance, but no downstream read or action has been observed yet.')) + '</div></section></div><section class="card"><div class="card-header"><div><span class="eyebrow">CONTENT PREVIEW</span><h2>Payload</h2><p>Redacted browser projection; private fields stay out of the dashboard.</p></div></div><div class="card-body"><pre class="payload-preview">' + escapeHtml(JSON.stringify(selected.content || selected.content_json || { material_id: selected.material_id }, null, 2).slice(0, 12000)) + '</pre></div></section></div>';
 }
 
 function renderMaterialList() {
@@ -464,7 +466,7 @@ function setConnection(label, tone) { $('#connection').textContent = label; $('#
 
 function connectStream(id) {
   if (state.source) state.source.close();
-  state.source = new EventSource('/api/experiments/' + encodeURIComponent(id) + '/stream?after_sequence=' + (state.events.at(-1) && state.events.at(-1).sequence || 0));
+  state.source = new EventSource('/api/experiments/' + encodeURIComponent(id) + '/stream?after_sequence=' + (state.events.at(-1) && state.events.at(-1).sequence || 0) + '&view=agent');
   state.source.onopen = () => setConnection('Live', 'live');
   state.source.onerror = () => setConnection('Reconnecting…', 'error');
   state.source.addEventListener('observation', (message) => {
@@ -475,7 +477,26 @@ function connectStream(id) {
     state.lastUpdated = new Date();
     updateNav();
     renderCurrent();
+    if (['core_state_changed', 'execution_assigned', 'execution_released'].includes(event.kind)) scheduleTimelineRefresh(id);
   });
+}
+
+function scheduleTimelineRefresh(id) {
+  if (state.timelineTimer) clearTimeout(state.timelineTimer);
+  state.timelineTimer = setTimeout(() => { void refreshTimeline(id); }, 80);
+}
+
+async function refreshTimeline(id) {
+  const request = ++state.timelineRequest;
+  try {
+    const timeline = await get('/api/experiments/' + encodeURIComponent(id) + '/timeline?limit=1000&view=agent');
+    if (request !== state.timelineRequest || state.experiment?.experiment_id !== id) return;
+    state.timeline = timeline;
+    state.model = buildModel();
+    renderCurrent();
+  } catch {
+    // The event itself remains visible; a later SSE event or refresh retries the timeline query.
+  }
 }
 
 function renderCurrent() {
@@ -496,8 +517,8 @@ async function selectExperiment(id) {
   try {
     const experiment = await get('/api/experiments/' + encodeURIComponent(id));
     const results = await Promise.all([
-      getAllPages('/api/experiments/' + encodeURIComponent(id) + '/events?limit=1000'),
-      get('/api/experiments/' + encodeURIComponent(id) + '/timeline?limit=1000'),
+      getAllPages('/api/experiments/' + encodeURIComponent(id) + '/events?limit=1000&view=agent'),
+      get('/api/experiments/' + encodeURIComponent(id) + '/timeline?limit=1000&view=agent'),
     ]);
     state.experiment = experiment;
     state.events = results[0].events;

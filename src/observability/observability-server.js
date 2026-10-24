@@ -370,17 +370,18 @@ export class ObservabilityServer {
     response.flushHeaders?.();
     response.write(': connected\n\n');
     let cursor = parseCursor(url.searchParams.get('after_sequence'), 0);
+    const view = url.searchParams.get('view') === 'agent' ? 'agent' : 'operator';
     const emit = (event) => {
       response.write(`event: observation\ndata: ${json(event)}\n\n`);
       cursor = Math.max(cursor, event.sequence);
     };
-    for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view: 'operator', limit: 1_000 }).events) emit(event);
+    for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view, limit: 1_000 }).events) emit(event);
     // The writer is usually a different process from this long-lived server.
     // Polling the WAL-backed store keeps SSE useful across process boundaries;
     // the in-process EventEmitter alone would miss those events.
     const poll = setInterval(() => {
       try {
-        for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view: 'operator', limit: 1_000 }).events) emit(event);
+        for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view, limit: 1_000 }).events) emit(event);
       } catch {
         // A reconnect will retry the cursor if the backing store is briefly busy.
       }
