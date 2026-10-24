@@ -46,7 +46,7 @@ node scripts/run-mvp-fixture.mjs --real-agent
 ```
 
 The run was executed at implementation commit
-`41d8ce949e9f7864142fcf319823a32a78660870`.
+`ac48961fbe6a420fe0795bbc17ace2d123f3dc7c`.
 
 The probe returned `READY_TO_LAUNCH`, and the experiment completed with
 `status: SUCCEEDED`. It used one real Agent/Core session, Pi 1.4.0, NuRouter
