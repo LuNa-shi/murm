@@ -11,7 +11,7 @@ import {
   validateTaskProposal,
 } from './task-types.js';
 
-const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'expire_execution', 'fence_execution', 'heartbeat', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
+const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'expire_execution', 'fence_execution', 'handoff_execution', 'heartbeat', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
 const CLAIM_OPERATION = 'claim';
 const STRUCTURE_MUTATING_OPERATIONS = new Set(['create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task']);
 const TASK_MUTATING_OPERATIONS = new Set(['accept_task', 'apply_check_result', 'create_child_task', 'propose_task', 'request_rework', 'submit_candidate', ...STRUCTURE_MUTATING_OPERATIONS]);
@@ -57,6 +57,7 @@ function rowToExecution(row) {
     workspace_selection: parse(row.workspace_selection_json) ?? {},
     steer_material_refs: parse(row.steer_material_refs_json),
     wait_condition: parse(row.wait_condition_json),
+    handoff_metadata: parse(row.handoff_metadata_json),
   };
 }
 
@@ -127,6 +128,12 @@ export class TaskService {
     }
     if (!executionColumns.has('workspace_selection_json')) this.db.exec("ALTER TABLE executions ADD COLUMN workspace_selection_json TEXT NOT NULL DEFAULT '{}'");
     if (!executionColumns.has('candidate_material_id')) this.db.exec('ALTER TABLE executions ADD COLUMN candidate_material_id TEXT');
+    if (!executionColumns.has('started_at')) this.db.exec('ALTER TABLE executions ADD COLUMN started_at TEXT');
+    if (!executionColumns.has('handoff_deadline')) this.db.exec('ALTER TABLE executions ADD COLUMN handoff_deadline TEXT');
+    if (!executionColumns.has('execution_deadline')) this.db.exec('ALTER TABLE executions ADD COLUMN execution_deadline TEXT');
+    if (!executionColumns.has('handoff_reminder_sent_at')) this.db.exec('ALTER TABLE executions ADD COLUMN handoff_reminder_sent_at TEXT');
+    if (!executionColumns.has('handoff_metadata_json')) this.db.exec("ALTER TABLE executions ADD COLUMN handoff_metadata_json TEXT");
+    if (!executionColumns.has('terminal_reason')) this.db.exec('ALTER TABLE executions ADD COLUMN terminal_reason TEXT');
     this.db.exec('DROP INDEX IF EXISTS executions_one_active_per_task');
     ensureJudgeSchema(this.db);
     this.contextService = contextService;
@@ -203,6 +210,14 @@ export class TaskService {
 
   getExecution(executionId) {
     return rowToExecution(this.db.prepare('SELECT * FROM executions WHERE execution_id = ?').get(executionId));
+  }
+
+  recordHandoffReminder(payload, envelope) {
+    return this.dispatch('record_handoff_reminder', payload, envelope);
+  }
+
+  handoffExecution(payload, envelope) {
+    return this.dispatch('handoff_execution', payload, envelope);
   }
 
   getCheckResult(checkResultId) {
@@ -290,6 +305,31 @@ export class TaskService {
     });
   }
 
+  /**
+   * Validate a wait request without writing a checkpoint, changing ownership,
+   * or changing the Task projection. Runtime uses this read seam before it
+   * materializes a checkpoint so malformed waits are non-mutating.
+   */
+  validateWaitCondition(executionId, { waitCondition, waitDeadline = null } = {}) {
+    const execution = this.getExecution(requireString(executionId, 'execution_id'));
+    if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
+    const task = this.getTask(execution.task_id);
+    const normalized = this.#validateWaitCondition(execution, task, waitCondition, waitDeadline);
+    return { execution, task, wait_condition: normalized.waitCondition, wait_deadline: normalized.waitDeadline };
+  }
+
+  /** Return whether the persisted condition is already satisfied. */
+  isWaitConditionSatisfied(executionId, waitCondition = undefined) {
+    const execution = this.getExecution(requireString(executionId, 'execution_id'));
+    if (!execution) return false;
+    const candidate = waitCondition === undefined ? execution : {
+      ...execution,
+      wait_condition: waitCondition,
+      wait_deadline: waitCondition?.deadline ?? execution.wait_deadline,
+    };
+    return this.#isWaitingResumable(candidate);
+  }
+
   #read(operation, payload, envelope) {
     if (operation === 'get_task') {
       const taskId = payload.task_id ?? envelope.task_id;
@@ -333,6 +373,8 @@ export class TaskService {
       case 'create_rework_task': return this.#createReworkTask(payload, envelope);
       case 'claim': return this.#claim(payload, envelope);
       case 'heartbeat': return this.#heartbeat(payload, envelope);
+      case 'record_handoff_reminder': return this.#recordHandoffReminder(payload, envelope);
+      case 'handoff_execution': return this.#handoffExecution(payload, envelope);
       case 'start_execution': return this.#startExecution(payload, envelope);
       case 'resume_execution': return this.#resumeExecution(payload, envelope);
       case 'request_wait': return this.#requestWait(payload, envelope);
@@ -1251,6 +1293,12 @@ export class TaskService {
       workspace_content_hash: null,
       checkpoint_ref: null,
       checkpoint_hash: null,
+      started_at: null,
+      handoff_deadline: null,
+      execution_deadline: null,
+      handoff_reminder_sent_at: null,
+      handoff_metadata: null,
+      terminal_reason: null,
       instruction_version: 1,
       steer_material_refs: [],
       wait_condition: null,
@@ -1263,13 +1311,16 @@ export class TaskService {
       execution_id, task_id, owner_ref, state, state_version, attempt_no, fencing_version, runtime_generation,
       lease_expires_at, heartbeat_at, launch_token, spec_version, spec_hash, agent_prompt, workspace_manifest_ref,
       input_material_refs_json, input_snapshot_hash, workspace_selection_json, candidate_material_id, workspace_ref, workspace_revision, workspace_content_hash, checkpoint_ref, checkpoint_hash,
+      started_at, handoff_deadline, execution_deadline, handoff_reminder_sent_at, handoff_metadata_json, terminal_reason,
       instruction_version, steer_material_refs_json, wait_condition_json, wait_deadline, resume_token, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    ) VALUES (${Array.from({ length: 37 }, () => '?').join(', ')})`)
       .run(execution.execution_id, execution.task_id, execution.owner_ref, execution.state, execution.state_version,
         execution.attempt_no, execution.fencing_version, execution.runtime_generation, execution.lease_expires_at,
         execution.heartbeat_at, execution.launch_token, execution.spec_version, execution.spec_hash, execution.agent_prompt,
         execution.workspace_manifest_ref, json(execution.input_material_refs), execution.input_snapshot_hash, json(execution.workspace_selection), execution.candidate_material_id, execution.workspace_ref,
-        execution.workspace_revision, execution.workspace_content_hash, execution.checkpoint_ref, execution.checkpoint_hash, execution.instruction_version,
+        execution.workspace_revision, execution.workspace_content_hash, execution.checkpoint_ref, execution.checkpoint_hash,
+        execution.started_at, execution.handoff_deadline, execution.execution_deadline, execution.handoff_reminder_sent_at, json(execution.handoff_metadata), execution.terminal_reason,
+        execution.instruction_version,
         json(execution.steer_material_refs), json(execution.wait_condition), execution.wait_deadline, execution.resume_token,
         execution.created_at, execution.updated_at);
     this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
@@ -1300,12 +1351,75 @@ export class TaskService {
     return { execution: this.getExecution(execution.execution_id) };
   }
 
+  #recordHandoffReminder(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    if (!['CREATED', 'RUNNING'].includes(execution.state)) {
+      return { execution };
+    }
+    if (execution.handoff_reminder_sent_at) return { execution };
+    const remindedAt = payload.reminded_at ?? now();
+    if (typeof remindedAt !== 'string' || Number.isNaN(Date.parse(remindedAt))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'reminded_at must be an ISO timestamp');
+    }
+    this.db.prepare(`UPDATE executions SET handoff_reminder_sent_at = ?, state_version = state_version + 1, updated_at = ?
+      WHERE execution_id = ?`).run(remindedAt, now(), execution.execution_id);
+    return { execution: this.getExecution(execution.execution_id), reminded: true };
+  }
+
+  #handoffExecution(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    if (!['CREATED', 'RUNNING'].includes(execution.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot handoff Execution from ${execution.state}`);
+    }
+    const terminalState = payload.terminal_state ?? 'FENCED';
+    if (!['EXPIRED', 'FENCED'].includes(terminalState)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoff terminal_state must be EXPIRED or FENCED');
+    }
+    const terminalReason = requireString(payload.terminal_reason ?? payload.reason, 'terminal_reason');
+    const handoffMetadata = payload.handoff_metadata ?? payload.handoff ?? {};
+    if (!handoffMetadata || typeof handoffMetadata !== 'object' || Array.isArray(handoffMetadata)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoff_metadata must be an object');
+    }
+    const checkpointRef = payload.checkpoint_ref ?? execution.checkpoint_ref;
+    const checkpointHash = payload.checkpoint_hash ?? execution.checkpoint_hash;
+    if (checkpointRef !== null && checkpointRef !== undefined) requireString(checkpointRef, 'checkpoint_ref');
+    if (checkpointHash !== null && checkpointHash !== undefined) requireString(checkpointHash, 'checkpoint_hash');
+    if ((checkpointRef && !checkpointHash) || (!checkpointRef && checkpointHash)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'checkpoint_ref and checkpoint_hash must be provided together');
+    }
+    const updatedAt = now();
+    const nextFence = execution.fencing_version + 1;
+    this.db.prepare(`UPDATE executions SET state = ?, fencing_version = ?, checkpoint_ref = COALESCE(?, checkpoint_ref),
+      checkpoint_hash = COALESCE(?, checkpoint_hash), workspace_ref = COALESCE(?, workspace_ref),
+      workspace_revision = COALESCE(?, workspace_revision), workspace_content_hash = COALESCE(?, workspace_content_hash),
+      handoff_metadata_json = ?, terminal_reason = ?, wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL,
+      state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
+      .run(terminalState, nextFence, checkpointRef ?? null, checkpointHash ?? null,
+        payload.workspace_ref ?? null, payload.workspace_revision ?? null, payload.workspace_content_hash ?? null,
+        json(handoffMetadata), terminalReason, updatedAt, execution.execution_id);
+    const task = this.getTask(execution.task_id);
+    if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt });
+    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id), handoff: handoffMetadata };
+  }
+
   #startExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot start Execution from ${execution.state}`);
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('RUNNING', updatedAt, execution.execution_id);
+    const startedAt = payload.started_at ?? updatedAt;
+    if (typeof startedAt !== 'string' || Number.isNaN(Date.parse(startedAt))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'started_at must be an ISO timestamp');
+    }
+    const handoffDeadline = payload.handoff_deadline ?? null;
+    const executionDeadline = payload.execution_deadline ?? null;
+    for (const [name, value] of [['handoff_deadline', handoffDeadline], ['execution_deadline', executionDeadline]]) {
+      if (value !== null && (typeof value !== 'string' || Number.isNaN(Date.parse(value)))) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${name} must be an ISO timestamp`);
+      }
+    }
+    this.db.prepare(`UPDATE executions SET state = ?, started_at = ?, handoff_deadline = ?, execution_deadline = ?,
+      handoff_reminder_sent_at = NULL, terminal_reason = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
+      .run('RUNNING', startedAt, handoffDeadline, executionDeadline, updatedAt, execution.execution_id);
     return { execution: this.getExecution(execution.execution_id) };
   }
 
@@ -1320,26 +1434,11 @@ export class TaskService {
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
   }
 
-  #requestWait(payload, envelope) {
-    const executionId = requireString(envelope.execution_id, 'execution_id');
-    const waitKey = requireString(payload.wait_key ?? payload.request_key ?? payload.checkpoint_ref, 'wait_key');
-    const waitFingerprint = stableStringify({ operation: 'request_wait', payload: { ...payload, wait_key: waitKey }, execution_id: executionId });
-    const existingKey = this.db.prepare('SELECT * FROM wait_keys WHERE request_key = ?').get(waitKey);
-    if (existingKey) {
-      if (existingKey.execution_id !== executionId || existingKey.fingerprint !== waitFingerprint) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'wait_key was reused with another payload');
-      }
-      const current = this.getExecution(executionId);
-      return { execution: current, task: this.getTask(current.task_id) };
+  #validateWaitCondition(execution, task, rawCondition, rawDeadline = null) {
+    if (!rawCondition || typeof rawCondition !== 'object' || Array.isArray(rawCondition)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
     }
-    const execution = this.#executionForWrite(envelope);
-    requireString(payload.checkpoint_ref, 'checkpoint_ref');
-    requireString(payload.checkpoint_hash, 'checkpoint_hash');
-    if (execution.checkpoint_ref !== payload.checkpoint_ref || execution.checkpoint_hash !== payload.checkpoint_hash) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'request_wait requires a checkpoint already saved for this Execution');
-    }
-    if (!payload.wait_condition || typeof payload.wait_condition !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
-    const waitCondition = { ...payload.wait_condition };
+    const waitCondition = { ...rawCondition };
     if (waitCondition.type === 'check_result_arrived' && waitCondition.candidate_material_id !== undefined) {
       requireString(waitCondition.candidate_material_id, 'wait_condition.candidate_material_id');
       if (waitCondition.candidate_material_id !== execution.candidate_material_id) {
@@ -1351,7 +1450,6 @@ export class TaskService {
     }
     const allowed = new Set(['child_task_terminal', 'children_all_terminal', 'parent_review', 'check_result_arrived', 'checker_health', 'timer']);
     if (!allowed.has(waitCondition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
-    const task = this.getTask(execution.task_id);
     if (waitCondition.type === 'parent_review' && !task.parent_id) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent_review requires a child Task');
     }
@@ -1383,10 +1481,41 @@ export class TaskService {
       requireString(waitCondition.health_fingerprint, 'wait_condition.health_fingerprint');
       if (waitCondition.retry_after !== undefined) requireString(waitCondition.retry_after, 'wait_condition.retry_after');
     }
-    const waitDeadline = payload.wait_deadline ?? waitCondition.deadline ?? null;
+    const waitDeadline = rawDeadline ?? waitCondition.deadline ?? null;
     if (waitCondition.type === 'timer' && !waitDeadline) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timer wait requires a deadline');
     }
+    if (waitDeadline !== null && (typeof waitDeadline !== 'string' || Number.isNaN(Date.parse(waitDeadline)))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_deadline must be an ISO timestamp');
+    }
+    return { waitCondition, waitDeadline };
+  }
+
+  #requestWait(payload, envelope) {
+    const executionId = requireString(envelope.execution_id, 'execution_id');
+    const waitKey = requireString(payload.wait_key ?? payload.request_key ?? payload.checkpoint_ref, 'wait_key');
+    const waitFingerprint = stableStringify({ operation: 'request_wait', payload: { ...payload, wait_key: waitKey }, execution_id: executionId });
+    const existingKey = this.db.prepare('SELECT * FROM wait_keys WHERE request_key = ?').get(waitKey);
+    if (existingKey) {
+      if (existingKey.execution_id !== executionId || existingKey.fingerprint !== waitFingerprint) {
+        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'wait_key was reused with another payload');
+      }
+      const current = this.getExecution(executionId);
+      return { execution: current, task: this.getTask(current.task_id) };
+    }
+    const execution = this.#executionForWrite(envelope);
+    requireString(payload.checkpoint_ref, 'checkpoint_ref');
+    requireString(payload.checkpoint_hash, 'checkpoint_hash');
+    if (execution.checkpoint_ref !== payload.checkpoint_ref || execution.checkpoint_hash !== payload.checkpoint_hash) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'request_wait requires a checkpoint already saved for this Execution');
+    }
+    const task = this.getTask(execution.task_id);
+    const { waitCondition, waitDeadline } = this.#validateWaitCondition(
+      execution,
+      task,
+      payload.wait_condition,
+      payload.wait_deadline ?? payload.wait_condition?.deadline ?? null,
+    );
     const updatedAt = now();
     this.db.prepare(`UPDATE executions SET state = 'WAITING', checkpoint_ref = ?, checkpoint_hash = ?, workspace_ref = COALESCE(?, workspace_ref), workspace_revision = COALESCE(?, workspace_revision), workspace_content_hash = COALESCE(?, workspace_content_hash), wait_condition_json = ?, wait_deadline = ?, resume_token = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
       .run(payload.checkpoint_ref, payload.checkpoint_hash, payload.workspace_ref ?? null, payload.workspace_revision ?? null, payload.workspace_content_hash ?? null,
@@ -1438,8 +1567,8 @@ export class TaskService {
     const terminalState = payload.terminal_state ?? 'FAILED';
     if (!TERMINAL_EXECUTION_STATES.includes(terminalState)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_state must be an Execution terminal state');
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run(terminalState, updatedAt, execution.execution_id);
+    this.db.prepare('UPDATE executions SET state = ?, terminal_reason = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run(terminalState, payload.terminal_reason ?? null, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt, cancelIfIdle: terminalState === 'CANCELLED' });
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
@@ -1448,8 +1577,8 @@ export class TaskService {
   #expireExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('EXPIRED', payload.runtime_generation ?? null, updatedAt, execution.execution_id);
+    this.db.prepare('UPDATE executions SET state = ?, terminal_reason = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run('EXPIRED', payload.terminal_reason ?? 'lease_expired', payload.runtime_generation ?? null, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt });
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
@@ -1458,8 +1587,8 @@ export class TaskService {
   #fenceExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('FENCED', payload.runtime_generation ?? null, updatedAt, execution.execution_id);
+    this.db.prepare('UPDATE executions SET state = ?, terminal_reason = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run('FENCED', payload.terminal_reason ?? 'fenced', payload.runtime_generation ?? null, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt });
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
@@ -1472,7 +1601,9 @@ export class TaskService {
     const nextLease = payload.lease_expires_at ?? new Date(Date.now() + 30_000).toISOString();
     this.db.prepare(`UPDATE executions SET state = 'CREATED', fencing_version = fencing_version + 1,
       runtime_generation = COALESCE(?, runtime_generation), attempt_no = attempt_no + 1,
-      lease_expires_at = ?, heartbeat_at = ?, agent_prompt = ?, state_version = state_version + 1, updated_at = ?
+      lease_expires_at = ?, heartbeat_at = ?, agent_prompt = ?, started_at = NULL, handoff_deadline = NULL,
+      execution_deadline = NULL, handoff_reminder_sent_at = NULL, terminal_reason = NULL,
+      state_version = state_version + 1, updated_at = ?
       WHERE execution_id = ?`)
       .run(payload.runtime_generation ?? null, nextLease, updatedAt, payload.agent_prompt ?? execution.agent_prompt, updatedAt, execution.execution_id);
     this.db.prepare("UPDATE tasks SET state = 'RUNNING', block_reason = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
@@ -1562,7 +1693,8 @@ export class TaskService {
     if (['CREATED', 'RUNNING', 'WAITING'].includes(current.state)) {
       this.db.prepare(`UPDATE executions SET state = 'CREATED', candidate_material_id = NULL, instruction_version = instruction_version + 1,
         steer_material_refs_json = ?, wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL,
-        lease_expires_at = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
+        started_at = NULL, handoff_deadline = NULL, execution_deadline = NULL, handoff_reminder_sent_at = NULL,
+        terminal_reason = NULL, handoff_metadata_json = NULL, lease_expires_at = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
         .run(json(steerRefs), updatedAt, updatedAt, current.execution_id);
       execution = this.getExecution(current.execution_id);
     } else if (['EXPIRED', 'FENCED'].includes(current.state)) {

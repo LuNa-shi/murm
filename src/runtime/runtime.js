@@ -13,6 +13,8 @@ function operationId(prefix) {
 }
 
 const DEFAULT_WATCHDOG_TIMEOUT_MS = 120_000;
+const DEFAULT_EXECUTION_TIMEOUT_MS = 60 * 60 * 1000;
+const DEFAULT_HANDOFF_REMINDER_MS = 55 * 60 * 1000;
 const PI_PROJECT_SETTINGS = Object.freeze({
   compaction: { enabled: true },
   retry: { enabled: true, maxRetries: 15, baseDelayMs: 2_000, maxAgentDelayMs: 60_000 },
@@ -45,7 +47,7 @@ function normalizeWaitFiles(files) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, clock = () => Date.now(), onSessionStarted = null }) {
+  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, clock = () => Date.now(), onSessionStarted = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -57,10 +59,16 @@ export class Runtime {
     this.agentLogger = agentLogger;
     this.maxRecoveryAttempts = maxRecoveryAttempts;
     this.watchdogTimeoutMs = watchdogTimeoutMs;
+    if (!Number.isFinite(executionTimeoutMs) || executionTimeoutMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'executionTimeoutMs must be positive');
+    if (!Number.isFinite(handoffReminderMs) || handoffReminderMs <= 0 || handoffReminderMs >= executionTimeoutMs) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffReminderMs must be positive and less than executionTimeoutMs');
+    this.executionTimeoutMs = executionTimeoutMs;
+    this.handoffReminderMs = handoffReminderMs;
     this.clock = clock;
     this.onSessionStarted = onSessionStarted;
     this.activeProcesses = new Map();
     this.recoveryAttempts = new Map();
+    this.handoffPromises = new Map();
+    this.reminderPromises = new Map();
   }
 
   getActiveProcessCount() {
@@ -179,7 +187,7 @@ export class Runtime {
     // A recovery start restores the already persisted revision. Rewriting that
     // same revision would violate the Workspace Manager's monotonic CAS rule.
     let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
-    const started = this.taskService.dispatch('start_execution', {}, this.#executionEnvelope(current, operationId('start')));
+    const started = this.taskService.dispatch('start_execution', this.#executionTimingPayload(), this.#executionEnvelope(current, operationId('start')));
     current = started.execution;
     try {
       return await this.#launch(current, workspace, { sessionReason });
@@ -205,7 +213,7 @@ export class Runtime {
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
     const workspace = await this.#prepareWorkspace(execution, workspaceRef);
     let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
-    current = this.taskService.dispatch('start_execution', {}, this.#executionEnvelope(current, operationId('bind'))).execution;
+    current = this.taskService.dispatch('start_execution', this.#executionTimingPayload(), this.#executionEnvelope(current, operationId('bind'))).execution;
     let boundSession = session;
     try {
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
@@ -239,11 +247,22 @@ export class Runtime {
     return this.#launch(resumed, workspace, { beforePrompt, sessionReason: 'wake' });
   }
 
-  async requestWait(executionId, { waitCondition, checkpoint = {}, files = {}, deadline = null }) {
+  async requestWait(executionId, { waitCondition, checkpoint = {}, files = {}, deadline = null, waitKey = null }) {
     this.logger?.append({ event: 'runtime.request_wait', execution_id: executionId, wait_condition: waitCondition, deadline });
     const active = this.activeProcesses.get(executionId);
     const execution = this.#getExecution(executionId);
     if (!active || execution.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime process can request wait');
+    const validatedWait = this.taskService.validateWaitCondition?.(executionId, {
+      waitCondition,
+      waitDeadline: deadline ?? waitCondition?.deadline ?? null,
+    });
+    if (!validatedWait && (!waitCondition || typeof waitCondition !== 'object')) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
+    }
+    if (this.taskService.isWaitConditionSatisfied?.(executionId, validatedWait?.wait_condition ?? waitCondition)) {
+      this.logger?.append({ event: 'runtime.wait_already_satisfied', execution_id: executionId, wait_condition: waitCondition });
+      return { execution, task: this.taskService.getTask(execution.task_id), disposition: 'already_satisfied' };
+    }
     const workspace = await this.workspaceManager.saveWorkspaceRevision({
       workspaceRef: requireString(execution.workspace_ref, 'workspace_ref'), executionId, fencingVersion: execution.fencing_version, files: normalizeWaitFiles(files),
     });
@@ -254,6 +273,7 @@ export class Runtime {
     const checkpointResult = this.taskService.dispatch('save_checkpoint', savedCheckpoint, this.#executionEnvelope(current, operationId('checkpoint')));
     current = checkpointResult.execution;
     const waited = this.taskService.dispatch('request_wait', {
+      ...(waitKey ? { wait_key: waitKey } : {}),
       checkpoint_ref: savedCheckpoint.checkpoint_ref,
       checkpoint_hash: savedCheckpoint.checkpoint_hash,
       workspace_ref: workspace.workspace_ref,
@@ -266,6 +286,205 @@ export class Runtime {
     await Promise.resolve(active.session.stop()).catch(() => undefined);
     await this.workspaceManager.releaseWorkspace({ workspaceRef: workspace.workspace_ref, executionId, fencingVersion: execution.fencing_version });
     return waited;
+  }
+
+  /**
+   * Reconcile durable Execution deadlines. The sweep is intentionally
+   * idempotent: the reminder is persisted before it is sent, and timeout is a
+   * fenced Task Service transition. Schedulers may call this on every poll or
+   * after a Runtime restart without creating another owner.
+   */
+  async sweepExecutionTimeouts(at = new Date(this.clock())) {
+    const atDate = at instanceof Date ? at : new Date(at);
+    if (Number.isNaN(atDate.getTime())) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timeout sweep time must be a valid Date');
+    const events = [];
+    for (const execution of this.taskService.listActiveExecutions()) {
+      if (!['CREATED', 'RUNNING'].includes(execution.state)) continue;
+      const startedMs = Date.parse(execution.started_at ?? '');
+      if (Number.isNaN(startedMs)) continue;
+      const reminderMs = Date.parse(execution.handoff_deadline ?? '') || startedMs + this.handoffReminderMs;
+      const timeoutMs = Date.parse(execution.execution_deadline ?? '') || startedMs + this.executionTimeoutMs;
+      if (atDate.getTime() >= timeoutMs) {
+        const result = await this.handoffExecution(execution.execution_id, {
+          terminalState: 'EXPIRED',
+          reason: 'timeout',
+          handoffKey: `timeout:${execution.execution_deadline ?? timeoutMs}`,
+          at: atDate,
+        });
+        if (result.disposition !== 'already_terminal' && result.disposition !== 'already_waiting') events.push({ kind: 'timeout', ...result });
+      } else if (atDate.getTime() >= reminderMs && !execution.handoff_reminder_sent_at) {
+        const reminder = await this.#sendHandoffReminder(execution.execution_id, atDate);
+        if (reminder) events.push(reminder);
+      }
+    }
+    return events;
+  }
+
+  sweepTimeouts(at = new Date(this.clock())) {
+    return this.sweepExecutionTimeouts(at);
+  }
+
+  /**
+   * End one unfinished Execution attempt and return its Task to the OPEN
+   * (claimable/READY) projection. Checkpoint and Workspace writes happen
+   * before the fence; the fence is durable before the old session is stopped.
+   */
+  async handoffExecution(executionId, {
+    checkpoint = {},
+    files = {},
+    handoffMetadata = null,
+    summary = null,
+    reason = 'voluntary_handoff',
+    terminalState = 'FENCED',
+    handoffKey = null,
+    at = new Date(this.clock()),
+  } = {}) {
+    const id = requireString(executionId, 'execution_id');
+    const existing = this.#getExecution(id);
+    if (['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(existing.state)) {
+      return { execution: existing, task: this.taskService.getTask(existing.task_id), disposition: 'already_terminal' };
+    }
+    if (existing.state === 'WAITING') {
+      return { execution: existing, task: this.taskService.getTask(existing.task_id), disposition: 'already_waiting' };
+    }
+    const inFlight = this.handoffPromises.get(id);
+    if (inFlight) return inFlight;
+    const promise = this.#performHandoff(id, {
+      checkpoint,
+      files,
+      handoffMetadata,
+      summary,
+      reason,
+      terminalState,
+      handoffKey,
+      at,
+    });
+    this.handoffPromises.set(id, promise);
+    try {
+      return await promise;
+    } finally {
+      this.handoffPromises.delete(id);
+    }
+  }
+
+  async #performHandoff(executionId, { checkpoint, files, handoffMetadata, summary, reason, terminalState, handoffKey, at }) {
+    const started = this.#getExecution(executionId);
+    if (!['CREATED', 'RUNNING'].includes(started.state)) {
+      return { execution: started, task: this.taskService.getTask(started.task_id), disposition: started.state === 'WAITING' ? 'already_waiting' : 'already_terminal' };
+    }
+    if (!checkpoint || typeof checkpoint !== 'object' || Array.isArray(checkpoint)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoff checkpoint must be an object');
+    }
+    const normalizedFiles = normalizeWaitFiles(files);
+    if (handoffMetadata !== null && (typeof handoffMetadata !== 'object' || Array.isArray(handoffMetadata))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoff metadata must be an object');
+    }
+    const metadata = {
+      ...(handoffMetadata ?? {}),
+      summary: summary ?? handoffMetadata?.summary ?? null,
+      reason,
+      requested_at: new Date(at instanceof Date ? at.getTime() : at).toISOString(),
+    };
+    let current = started;
+    let workspace = null;
+    let checkpointResult = null;
+    if (current.workspace_ref) {
+      workspace = await this.workspaceManager.saveWorkspaceRevision({
+        workspaceRef: current.workspace_ref,
+        executionId,
+        fencingVersion: current.fencing_version,
+        files: normalizedFiles,
+      });
+      current = this.#saveWorkspaceReference(current, workspace, `runtime:handoff-workspace:${executionId}:${current.state_version}`);
+      const activeAfterWorkspace = this.activeProcesses.get(executionId);
+      if (activeAfterWorkspace) {
+        activeAfterWorkspace.execution = current;
+        activeAfterWorkspace.workspace = workspace;
+      }
+      checkpointResult = await this.workspaceManager.saveCheckpoint({
+        workspaceRef: workspace.workspace_ref,
+        executionId,
+        fencingVersion: current.fencing_version,
+        checkpoint,
+      });
+      current = this.taskService.dispatch('save_checkpoint', checkpointResult, this.#executionEnvelope(current, `runtime:handoff-checkpoint:${executionId}:${current.state_version}`)).execution;
+      const activeAfterCheckpoint = this.activeProcesses.get(executionId);
+      if (activeAfterCheckpoint) activeAfterCheckpoint.execution = current;
+    }
+    const handoffOperationId = `runtime:handoff:${executionId}:${handoffKey ?? `${reason}:${current.state_version}`}`;
+    const oldFence = current.fencing_version;
+    if (current.workspace_ref) {
+      await this.workspaceManager.fenceWorkspace({
+        workspaceRef: current.workspace_ref,
+        executionId,
+        fencingVersion: oldFence,
+        newFencingVersion: oldFence + 1,
+      });
+    }
+    const result = this.taskService.dispatch('handoff_execution', {
+      terminal_state: terminalState,
+      terminal_reason: reason,
+      checkpoint_ref: checkpointResult?.checkpoint_ref ?? current.checkpoint_ref,
+      checkpoint_hash: checkpointResult?.checkpoint_hash ?? current.checkpoint_hash,
+      workspace_ref: workspace?.workspace_ref ?? current.workspace_ref,
+      workspace_revision: workspace?.workspace_revision ?? current.workspace_revision,
+      workspace_content_hash: workspace?.content_hash ?? current.workspace_content_hash,
+      handoff_metadata: metadata,
+    }, this.#executionEnvelope(current, handoffOperationId));
+    const active = this.activeProcesses.get(executionId);
+    if (active) {
+      active.closing = true;
+      await Promise.resolve(active.session.stop?.()).catch((error) => {
+        this.logger?.append({ event: 'runtime.handoff_stop_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'session_stop_error' });
+      });
+      this.activeProcesses.delete(executionId);
+    }
+    if (result.execution.workspace_ref) {
+      await this.workspaceManager.releaseWorkspace({
+        workspaceRef: result.execution.workspace_ref,
+        executionId,
+        fencingVersion: result.execution.fencing_version,
+      }).catch((error) => {
+        this.logger?.append({ event: 'runtime.handoff_release_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'workspace_release_error' });
+      });
+    }
+    this.logger?.append({ event: 'runtime.execution_handoff', execution_id: executionId, terminal_reason: reason, terminal_state: terminalState });
+    return { ...result, disposition: 'handed_off', checkpoint: checkpointResult, workspace };
+  }
+
+  async #sendHandoffReminder(executionId, at) {
+    const inFlight = this.reminderPromises.get(executionId);
+    if (inFlight) return inFlight;
+    const promise = (async () => {
+      const execution = this.#getExecution(executionId);
+      if (!['CREATED', 'RUNNING'].includes(execution.state) || execution.handoff_reminder_sent_at) return null;
+      const marked = this.taskService.dispatch('record_handoff_reminder', {
+        reminded_at: new Date(at.getTime()).toISOString(),
+      }, this.#executionEnvelope(execution, `runtime:handoff-reminder:${executionId}:${execution.state_version}`));
+      const active = this.activeProcesses.get(executionId);
+      if (active) {
+        active.execution = marked.execution;
+        const prompt = [
+          'Execution handoff reminder: this bounded attempt is approaching its deadline.',
+          'Publish durable Materials, save the current Workspace/checkpoint, summarize what was attempted and learned, list outstanding questions, and recommend the next step.',
+          'Continue only if useful progress remains; otherwise call the Runtime handoff boundary.',
+        ].join('\n');
+        // Follow-up is queued by Pi when the Agent is already in a turn. A
+        // reminder must never race the Agent's current prompt and create a
+        // second concurrent turn.
+        await Promise.resolve(active.session.prompt?.(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' })).catch((error) => {
+          this.logger?.append({ event: 'runtime.handoff_reminder_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'prompt_error' });
+        });
+      }
+      this.logger?.append({ event: 'runtime.handoff_reminder', execution_id: executionId, handoff_deadline: marked.execution.handoff_deadline ?? null });
+      return { kind: 'handoff_reminder', execution: marked.execution };
+    })();
+    this.reminderPromises.set(executionId, promise);
+    try {
+      return await promise;
+    } finally {
+      this.reminderPromises.delete(executionId);
+    }
   }
 
   getSessionHealth(executionId) {
@@ -649,5 +868,14 @@ export class Runtime {
       stateVersion: execution.state_version,
       fencingVersion: execution.fencing_version,
     });
+  }
+
+  #executionTimingPayload(at = this.clock()) {
+    const startedAt = new Date(at).toISOString();
+    return {
+      started_at: startedAt,
+      handoff_deadline: new Date(at + this.handoffReminderMs).toISOString(),
+      execution_deadline: new Date(at + this.executionTimeoutMs).toISOString(),
+    };
   }
 }
