@@ -133,13 +133,13 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'judge_submit_candidate', service: 'judge', operation: 'submit_candidate', version: '1.0',
-    description: 'Submit a candidate Material for the Task completion checker.',
+    description: 'Submit a candidate Material for the Task completion checker. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes; a checker that never starts is not a proof failure.',
     scope: 'execution-write', side_effect: true,
     parameters: { type: 'object', required: ['candidate_material_id'], properties: { candidate_material_id: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'judge_get_check_result', service: 'judge', operation: 'get_check_result', version: '1.0',
-    description: 'Read a Judge CheckResult and its diagnostic feedback.',
+    description: 'Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.',
     scope: 'execution-read', side_effect: false,
     parameters: { type: 'object', required: ['check_result_id'], properties: { check_result_id: { type: 'string' } }, additionalProperties: false },
   },

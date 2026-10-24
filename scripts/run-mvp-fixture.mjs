@@ -7,6 +7,25 @@ import { createScriptFixtureEnvironment, ScriptExecutor, runRealAgentPath } from
 const args = new Set(process.argv.slice(2));
 const keep = args.has('--keep');
 const realAgent = args.has('--real-agent');
+
+async function loadDotEnv(path = '.env') {
+  try {
+    const content = await readFile(path, 'utf8');
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const separator = trimmed.indexOf('=');
+      if (separator < 1) continue;
+      const key = trimmed.slice(0, separator).trim();
+      const value = trimmed.slice(separator + 1).trim().replace(/^['"]|['"]$/g, '');
+      if (process.env[key] === undefined) process.env[key] = value;
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
+
+await loadDotEnv();
 const fixturePath = resolve('fixtures/putnam-1966-a1/fixture-manifest.json');
 const fixtureManifest = JSON.parse(await readFile(fixturePath, 'utf8'));
 const [firstCandidate, fixedCandidate] = await Promise.all([

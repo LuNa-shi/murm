@@ -25,6 +25,26 @@ function problem(id) {
   };
 }
 
+function checkerWithPreflight(checker) {
+  if (typeof checker.preflight === 'function') return checker;
+  return {
+    ...checker,
+    preflight: async ({ fixtureManifest }) => ({
+      status: 'healthy',
+      checker_process_status: 'completed',
+      evidence: {
+        preflight_supported: true,
+        preflight_verified: true,
+        input_binding_verified: true,
+        toolchain_version_verified: true,
+        checker_version_verified: true,
+        expected_checker_version: fixtureManifest.checker_version,
+        observed_checker_version: fixtureManifest.checker_version,
+      },
+    }),
+  };
+}
+
 class FakeSession extends EventEmitter {
   constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false) {
     super();
@@ -580,16 +600,17 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500 }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
-    timeboxMs: 500,
+    timeboxMs,
     pollMs: 1,
     turnTimeoutMs: 100,
     turnIntervalMs: 10_000,
     watchdogTimeoutMs,
     watchdogIntervalMs,
+    maxInfrastructureRetries,
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
@@ -599,11 +620,11 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
       onAdapter?.(adapter);
       return adapter;
     },
-    checker: checker ?? {
+    checker: checkerWithPreflight(checker ?? {
       async check() {
         return { verdict: 'PASS', evidence: { exit_code: 0 } };
       },
-    },
+    }),
   });
 }
 
@@ -794,6 +815,40 @@ test('Workspace-referenced candidates are checked from the Workspace source file
   }
 });
 
+test('checker infrastructure errors returned by submit_candidate retain actionable safe process details', async () => {
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-checker-error-report-');
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-checker-error-');
+  try {
+    const report = await runFixture({
+      reportDir,
+      experimentDir,
+      id: 'putnam_checker_error_test',
+      maxInfrastructureRetries: 1,
+      timeboxMs: 1_500,
+      checker: {
+        preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: { exit_code: 0 } }),
+        check: async () => ({ verdict: 'ERROR', evidence: { checker_started: false, error_code: 'ENOENT', diagnostic: 'spawn lake ENOENT' } }),
+      },
+    });
+    const checks = report.cores.flatMap((core) => core.checks);
+    assert.ok(checks.length > 0);
+    assert.ok(checks.every((check) => check.result_class === 'infrastructure_failure'));
+    assert.ok(checks.every((check) => check.mathematical_outcome === 'unassessed'));
+    assert.ok(checks.every((check) => check.checker_process_status === 'not_started'));
+    assert.ok(checks.every((check) => check.diagnostic_code === 'checker_unavailable'));
+    assert.ok(checks.every((check) => Object.hasOwn(check, 'process_evidence')));
+    assert.ok(checks.every((check) => check.process_evidence.error_code === 'ENOENT'));
+    assert.ok(report.run.checker_infrastructure_failure_count >= 1);
+    assert.ok(report.run.checker_unassessed_count >= 1);
+    assert.ok(report.run.lifecycle_events.some((event) => event.wait_condition_type === 'checker_health'));
+    assert.ok(report.cores.every((core) => core.execution_state === null || ['FAILED', 'WAITING'].includes(core.execution_state)));
+    assert.equal(report.audit.invalid, false);
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
 test('short four-core collaboration proves root decomposition, parallel work, wait/resume, and parent review', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-collaboration-');
   const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-collaboration-report-');
@@ -814,7 +869,7 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
         adapters.push(adapter);
         return adapter;
       },
-      checker: { async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
     });
     assert.equal(report.run.protocol_valid, true);
     assert.equal(report.run.made_progress, true);
@@ -869,7 +924,7 @@ test('production queue dynamically reuses Cores across two waves and releases pa
         adapters.push(adapter);
         return adapter;
       },
-      checker: { async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
     });
     const childTasks = report.project.task_tree.filter((task) => task.parent_id !== null);
     const childTaskIds = new Set(childTasks.map((task) => task.task_id));
@@ -948,7 +1003,7 @@ test('production queue consumes pre-existing independent Tasks without Root synt
         adapters.push(adapter);
         return adapter;
       },
-      checker: { async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
     });
     const rootTask = report.project.task_tree.find((task) => task.parent_id === null);
     const childTasks = report.project.task_tree.filter((task) => task.parent_id !== null);
@@ -985,7 +1040,7 @@ test('batch runner isolates projects and preserves per-project results', async (
       stopOnSolved: true,
       projectParallelism: 2,
       agentAdapterFactory: ({ env }) => new FakeAdapter({ env }),
-      checker: { async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
     });
     assert.equal(reports.length, 2);
     assert.ok(reports.every((report) => report.run.solved));

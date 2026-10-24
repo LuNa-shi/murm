@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { storedCheckerProcessStatus, storedResultClass } from '../judge/check-result.js';
 import { makeEnvelope, operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
 import { SCHEMA_SQL } from '../storage/schema.js';
 import { ensureJudgeSchema } from '../storage/judge-schema.js';
@@ -59,7 +60,17 @@ function rowToExecution(row) {
 
 function rowToCheckResult(row) {
   if (!row) return null;
-  return { ...row, evidence: parse(row.evidence_json) };
+  const resultClass = storedResultClass({ verdict: row.verdict, resultClass: row.result_class, checkerProcessStatus: row.checker_process_status });
+  const checkerProcessStatus = storedCheckerProcessStatus({ verdict: row.verdict, resultClass: row.result_class, checkerProcessStatus: row.checker_process_status });
+  return {
+    ...row,
+    result_class: resultClass,
+    checker_process_status: checkerProcessStatus,
+    process_status: checkerProcessStatus,
+    mathematical_outcome: resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed',
+    retryable: Boolean(row.retryable),
+    evidence: parse(row.evidence_json),
+  };
 }
 
 function requireString(value, field) {
@@ -70,7 +81,7 @@ function requireString(value, field) {
 }
 
 export class TaskService {
-  constructor(database = ':memory:', { contextService = null, logger = null } = {}) {
+  constructor(database = ':memory:', { contextService = null, checkerHealthReader = null, logger = null } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(SCHEMA_SQL);
     // Older MVP databases made execution_id unique in claim_keys. A waiting
@@ -117,11 +128,19 @@ export class TaskService {
     this.db.exec('DROP INDEX IF EXISTS executions_one_active_per_task');
     ensureJudgeSchema(this.db);
     this.contextService = contextService;
+    this.checkerHealthReader = null;
+    this.setCheckerHealthReader(checkerHealthReader);
     this.logger = logger;
   }
 
   close() {
     this.db.close();
+  }
+
+  setCheckerHealthReader(reader) {
+    if (reader !== null && typeof reader !== 'function') throw new TypeError('checkerHealthReader must be a function or null');
+    this.checkerHealthReader = reader;
+    return this;
   }
 
   dispatch(operation, payload = {}, envelope) {
@@ -663,7 +682,7 @@ export class TaskService {
         waitCondition.check_request_key = waitCondition.candidate_material_id;
       }
     }
-    const allowed = new Set(['child_task_terminal', 'children_all_terminal', 'parent_review', 'check_result_arrived', 'timer']);
+    const allowed = new Set(['child_task_terminal', 'children_all_terminal', 'parent_review', 'check_result_arrived', 'checker_health', 'timer']);
     if (!allowed.has(waitCondition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
     const task = this.getTask(execution.task_id);
     if (waitCondition.type === 'parent_review' && !task.parent_id) {
@@ -691,6 +710,11 @@ export class TaskService {
     }
     if (waitCondition.type === 'check_result_arrived') {
       requireString(waitCondition.check_request_key ?? waitCondition.request_key, 'wait_condition.check_request_key');
+    }
+    if (waitCondition.type === 'checker_health') {
+      requireString(waitCondition.preflight_key, 'wait_condition.preflight_key');
+      requireString(waitCondition.health_fingerprint, 'wait_condition.health_fingerprint');
+      if (waitCondition.retry_after !== undefined) requireString(waitCondition.retry_after, 'wait_condition.retry_after');
     }
     const waitDeadline = payload.wait_deadline ?? waitCondition.deadline ?? null;
     if (waitCondition.type === 'timer' && !waitDeadline) {
@@ -924,7 +948,33 @@ export class TaskService {
     const updatedAt = now();
     this.db.prepare("UPDATE check_results SET status = 'APPLIED', applied_task_state_version = ?, applied_at = ?, updated_at = ? WHERE check_result_id = ?")
       .run(task.state_version + 1, updatedAt, updatedAt, checkResultId);
-    if (result.verdict === 'PASS') {
+    if (result.result_class === 'infrastructure_failure') {
+      if (!result.retryable || result.evidence?.retry_exhausted) {
+        const blockReason = `checker_unavailable:${result.diagnostic_code ?? 'unknown'}`;
+        this.db.prepare("UPDATE executions SET state = 'FAILED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
+          .run(updatedAt, execution.execution_id);
+        this.db.prepare("UPDATE tasks SET state = 'BLOCKED', state_version = state_version + 1, block_reason = ?, updated_at = ? WHERE task_id = ?")
+          .run(blockReason, updatedAt, task.task_id);
+      } else if (execution.state === 'WAITING') {
+        // A retryable infrastructure result is not mathematical feedback. Keep
+        // the checkpointed responsibility resumable while allowing the next
+        // Agent/Core to try again after the health gate changes.
+        const preflightKey = result.evidence?.preflight_key;
+        const healthFingerprint = result.evidence?.health_fingerprint;
+        const waitCondition = preflightKey && healthFingerprint
+          ? {
+            type: 'checker_health',
+            preflight_key: preflightKey,
+            health_fingerprint: healthFingerprint,
+            diagnostic_code: result.diagnostic_code ?? null,
+            candidate_material_id: result.candidate_material_id,
+          }
+          : execution.wait_condition;
+        this.db.prepare("UPDATE executions SET state = 'WAITING', wait_condition_json = ?, wait_deadline = NULL, resume_token = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
+          .run(waitCondition ? json(waitCondition) : null, randomUUID(), updatedAt, execution.execution_id);
+        this.#refreshTaskState(task.task_id, { updatedAt });
+      }
+    } else if (result.verdict === 'PASS') {
       const completion = this.#completion(task, execution, checkResultId);
       if (completion.satisfied) {
         this.db.prepare("UPDATE executions SET state = 'SUCCEEDED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
@@ -1048,6 +1098,18 @@ export class TaskService {
         candidateMaterialId,
       );
       return Boolean(result && ['RECEIVED', 'APPLIED', 'IGNORED'].includes(result.status));
+    }
+    if (condition.type === 'checker_health') {
+      // Judge owns checker health persistence. Task Service receives a small
+      // read seam from the composition root instead of reaching into the
+      // Judge schema directly.
+      const health = this.checkerHealthReader?.(condition.preflight_key) ?? null;
+      if (!health) return false;
+      // A checker-health wait is a health gate, not a timer.  The same
+      // unavailable fingerprint must not wake the Execution and submit the
+      // same candidate again.  Only a newly observed health fingerprint may
+      // make this responsibility claimable again.
+      return health.health_fingerprint !== condition.health_fingerprint;
     }
     return false;
   }

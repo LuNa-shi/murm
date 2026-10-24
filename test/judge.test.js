@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import {
   ERROR_CODES,
   JudgeService,
@@ -28,6 +30,26 @@ const workspace = { input_snapshot_hash: 'input-snapshot' };
 
 function candidate(content, materialId = 'material-1') {
   return { material_id: materialId, content };
+}
+
+function checkerWithPreflight(checker) {
+  if (typeof checker.preflight === 'function') return checker;
+  return {
+    ...checker,
+    preflight: async ({ fixtureManifest: manifest }) => ({
+      status: 'healthy',
+      checker_process_status: 'completed',
+      evidence: {
+        preflight_supported: true,
+        preflight_verified: true,
+        input_binding_verified: true,
+        toolchain_version_verified: true,
+        checker_version_verified: true,
+        expected_checker_version: manifest.checker_version,
+        observed_checker_version: manifest.checker_version,
+      },
+    }),
+  };
 }
 
 test('fixture manifest locks PutnamBench commit, problem hash, Lean, Mathlib, checker, and environment', async () => {
@@ -62,16 +84,336 @@ test('Lean checker returns PASS only for a clean zero exit and preserves failure
   assert.equal(timeoutResult.verdict, 'ERROR');
   assert.match(timeoutResult.evidence.diagnostic, /timed out/);
 
+  const crashed = new LeanChecker({ runner: async () => ({ exit_code: null, signal: 'SIGSEGV', stdout: '', stderr: '', checker_started: true }) });
+  const crashedResult = await crashed.check({ candidate: candidate('theorem crashed : True := by trivial'), targetTask, workspace, fixtureManifest });
+  assert.equal(crashedResult.verdict, 'ERROR');
+  assert.equal(crashedResult.checker_process_status, 'crashed');
+  assert.equal(crashedResult.result_class, 'infrastructure_failure');
+  assert.equal(crashedResult.mathematical_outcome, 'unassessed');
+  assert.match(crashedResult.evidence.diagnostic, /SIGSEGV/);
+
   const unavailable = new LeanChecker({ runner: async () => ({ exit_code: null, signal: null, stdout: '', stderr: '', error: 'lake: command not found' }) });
   const errorResult = await unavailable.check({ candidate: candidate('theorem unavailable : True := by trivial'), targetTask, workspace, fixtureManifest });
   assert.equal(errorResult.verdict, 'ERROR');
   assert.match(errorResult.evidence.diagnostic, /command not found/);
 });
 
+test('Checker result contract distinguishes source failure from a checker that never started', async () => {
+  const unavailable = new LeanChecker({
+    runner: async () => ({ exit_code: null, signal: null, error: 'spawn lake ENOENT', error_code: 'ENOENT', checker_started: false }),
+  });
+  const result = await unavailable.check({ candidate: candidate('theorem unavailable : True := by trivial'), targetTask, workspace, fixtureManifest });
+  assert.equal(result.verdict, 'ERROR');
+  assert.equal(result.checker_process_status, 'not_started');
+  assert.equal(result.result_class, 'infrastructure_failure');
+  assert.equal(result.mathematical_outcome, 'unassessed');
+  assert.equal(result.retryable, true);
+  assert.equal(result.diagnostic_code, 'checker_unavailable');
+
+  const sourceFailure = new LeanChecker({
+    runner: async () => ({ exit_code: 1, signal: null, stdout: '', stderr: 'type mismatch', checker_started: true }),
+  });
+  const failed = await sourceFailure.check({ candidate: candidate('theorem bad : True := by exact nope'), targetTask, workspace, fixtureManifest });
+  assert.equal(failed.verdict, 'FAIL');
+  assert.equal(failed.checker_process_status, 'completed');
+  assert.equal(failed.result_class, 'source_failure');
+  assert.equal(failed.mathematical_outcome, 'FAIL');
+  assert.equal(failed.retryable, false);
+
+  const rejected = await new LeanChecker({ runner: async () => ({ exit_code: 0, checker_started: true }) }).check({ candidate: candidate('theorem rejected : True := by sorry'), targetTask, workspace, fixtureManifest });
+  assert.equal(rejected.result_class, 'request_failure');
+  assert.equal(rejected.diagnostic_code, 'checker_request_rejected');
+  assert.equal(rejected.mathematical_outcome, 'unassessed');
+});
+
+test('Lean checker preflight reports an unavailable executable before proof checking', async () => {
+  const root = await mkdtemp('/tmp/swarmenv-checker-missing-executable-');
+  const projectRoot = join(root, 'lean4');
+  const problemPath = join(projectRoot, 'src', 'putnam_1966_a1.lean');
+  const source = await readFile('fixtures/putnam-1966-a1/putnam_1966_a1.lean');
+  try {
+    await mkdir(join(projectRoot, 'src'), { recursive: true });
+    await writeFile(problemPath, source);
+    const manifest = { ...fixtureManifest, project_root: projectRoot, problem_file_hash: createHash('sha256').update(source).digest('hex') };
+    const checker = new LeanChecker({ command: '/definitely-missing-swarmenv-checker' });
+    const result = await checker.preflight({ fixtureManifest: manifest });
+    assert.equal(result.status, 'unavailable');
+    assert.equal(result.checker_process_status, 'not_started');
+    assert.equal(result.diagnostic_code, 'checker_unavailable');
+    assert.equal(result.evidence.exit_code, null);
+    assert.equal(result.evidence.signal, null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Lean checker preflight refuses an unbound fixture or an unknown toolchain version', async () => {
+  const unbound = await new LeanChecker({ runner: async () => ({ exit_code: 0, checker_started: true, stdout: 'Lean (version 4.33.1)', stderr: '' }) })
+    .preflight({ fixtureManifest });
+  assert.equal(unbound.status, 'unavailable');
+  assert.equal(unbound.checker_process_status, 'not_started');
+  assert.equal(unbound.diagnostic_code, 'checker_input_binding_unverified');
+  assert.equal(unbound.evidence.input_binding_verified, false);
+
+  const root = await mkdtemp('/tmp/swarmenv-checker-unknown-version-');
+  const projectRoot = join(root, 'lean4');
+  const problemPath = join(projectRoot, 'src', 'input.lean');
+  const source = 'import Mathlib\ntheorem input : True := by trivial\n';
+  await mkdir(join(projectRoot, 'src'), { recursive: true });
+  await writeFile(problemPath, source, 'utf8');
+  const manifest = {
+    ...fixtureManifest,
+    project_root: projectRoot,
+    problem_file: 'lean4/src/input.lean',
+    problem_file_hash: createHash('sha256').update(source).digest('hex'),
+  };
+  try {
+    const checker = new LeanChecker({ runner: async () => ({ exit_code: 0, signal: null, stdout: 'lake is ready', stderr: '', checker_started: true }) });
+    const result = await checker.preflight({ fixtureManifest: manifest });
+    assert.equal(result.status, 'unavailable');
+    assert.equal(result.checker_process_status, 'completed');
+    assert.equal(result.diagnostic_code, 'checker_version_unverified');
+    assert.equal(result.evidence.toolchain_version_verified, false);
+    assert.equal(result.evidence.preflight_verified, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Lean checker preflight binds the locked input, project cwd, and toolchain version', async () => {
+  const root = await mkdtemp('/tmp/swarmenv-checker-preflight-');
+  const projectRoot = join(root, 'lean4');
+  const problemPath = join(projectRoot, 'src', 'input.lean');
+  const source = 'import Mathlib\ntheorem input : True := by trivial\n';
+  await mkdir(join(projectRoot, 'src'), { recursive: true });
+  await writeFile(problemPath, source, 'utf8');
+  const manifest = {
+    ...fixtureManifest,
+    project_root: projectRoot,
+    problem_file: 'lean4/src/input.lean',
+    problem_file_hash: createHash('sha256').update(source).digest('hex'),
+  };
+  const calls = [];
+  try {
+    const checker = new LeanChecker({
+      runner: async (command, args, options) => {
+        calls.push({ command, args, cwd: options.cwd });
+        return { exit_code: 0, signal: null, stdout: 'Lean (version 4.33.1)', stderr: '', checker_started: true };
+      },
+    });
+    const result = await checker.preflight({ fixtureManifest: manifest });
+    assert.equal(result.status, 'healthy');
+    assert.equal(result.evidence.input_binding_verified, true);
+    assert.equal(result.evidence.expected_input_hash, manifest.problem_file_hash);
+    assert.equal(result.evidence.observed_toolchain_version, '4.33.1');
+    assert.equal(result.evidence.toolchain_version_verified, true);
+    assert.equal(result.evidence.observed_checker_version, manifest.checker_version);
+    assert.equal(result.evidence.checker_version_verified, true);
+    assert.equal(result.evidence.preflight_verified, true);
+    assert.equal(calls[0].cwd, projectRoot);
+    assert.deepEqual(calls[0].args, ['env', 'lean', '--version']);
+
+    await writeFile(problemPath, `${source}-- drift\n`, 'utf8');
+    const drifted = await checker.preflight({ fixtureManifest: manifest });
+    assert.equal(drifted.status, 'unavailable');
+    assert.equal(drifted.diagnostic_code, 'checker_input_hash_mismatch');
+    assert.equal(drifted.checker_process_status, 'not_started');
+
+    const mismatchedChecker = new LeanChecker({
+      checkerVersion: 'mvp-0',
+      runner: async () => ({ exit_code: 0, signal: null, stdout: 'Lean (version 4.33.1)', stderr: '', checker_started: true }),
+    });
+    await writeFile(problemPath, source, 'utf8');
+    const versionMismatch = await mismatchedChecker.preflight({ fixtureManifest: manifest });
+    assert.equal(versionMismatch.status, 'unavailable');
+    assert.equal(versionMismatch.diagnostic_code, 'checker_version_mismatch');
+    assert.equal(versionMismatch.evidence.checker_version_verified, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Judge refuses a checker adapter without a preflight health gate', async () => {
+  let checks = 0;
+  const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    checker: { check: async () => { checks += 1; return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+  });
+  const result = await judge.judgeCandidate({
+    request_key: 'unsupported-preflight-request',
+    candidate_material_id: 'unsupported-preflight-material',
+    target_task_id: targetTask.task_id,
+    target_spec_version: targetTask.spec_version,
+    input_snapshot_hash: workspace.input_snapshot_hash,
+    checker_ref: fixtureManifest.checker_ref,
+    checker_version: fixtureManifest.checker_version,
+    environment_ref: fixtureManifest.environment_ref,
+    candidate: candidate('theorem unsupported : True := by trivial', 'unsupported-preflight-material'),
+    target_task: targetTask,
+    workspace,
+    fixture_manifest: fixtureManifest,
+  }, { operationId: 'unsupported-preflight-operation' });
+  assert.equal(checks, 0);
+  assert.equal(result.result_class, 'infrastructure_failure');
+  assert.equal(result.checker_process_status, 'not_started');
+  assert.equal(result.diagnostic_code, 'checker_preflight_unsupported');
+  assert.equal(result.mathematical_outcome, 'unassessed');
+  assert.equal(judge.listCheckerPreflights()[0].evidence.preflight_verified, false);
+  judge.close();
+});
+
+test('Judge persists checker preflight health and bounds identical infrastructure retries', async () => {
+  let checks = 0;
+  const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    maxInfrastructureRetries: 2,
+    checker: {
+      preflight: async () => ({
+        status: 'unavailable',
+        checker_process_status: 'not_started',
+        evidence: { diagnostic: 'spawn lake ENOENT', error_code: 'ENOENT', checker_started: false },
+      }),
+      check: async () => { checks += 1; return { verdict: 'PASS', evidence: { exit_code: 0 } }; },
+    },
+  });
+  const base = {
+    candidate_material_id: 'infra-material-1', target_task_id: targetTask.task_id, target_spec_version: 1,
+    input_snapshot_hash: workspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    environment_ref: fixtureManifest.environment_ref, target_task: targetTask, workspace, fixture_manifest: fixtureManifest,
+  };
+  const results = [];
+  for (let index = 1; index <= 3; index += 1) {
+    results.push(await judge.judgeCandidate({
+      ...base,
+      request_key: `infra-request-${index}`,
+      candidate_material_id: `infra-material-${index}`,
+      candidate: candidate(`theorem infra${index} : True := by trivial`, `infra-material-${index}`),
+    }, { operationId: `infra-operation-${index}` }));
+  }
+  assert.equal(checks, 0, 'preflight failure must prevent the checker from receiving Candidates');
+  assert.deepEqual(results.map((result) => result.result_class), ['infrastructure_failure', 'infrastructure_failure', 'infrastructure_failure']);
+  assert.deepEqual(results.map((result) => result.checker_process_status), ['not_started', 'not_started', 'not_started']);
+  assert.deepEqual(results.map((result) => result.evidence.infrastructure_attempt_count), [1, 2, 3]);
+  assert.deepEqual(results.map((result) => result.retryable), [true, true, false]);
+  assert.equal(results[2].evidence.retry_exhausted, true);
+  assert.equal(results[0].verdict, 'ERROR');
+  assert.equal(results[0].judge_operation_status, 'persisted');
+  assert.equal(judge.db.prepare('SELECT COUNT(*) AS count FROM checker_preflights').get().count, 1);
+  assert.equal(judge.db.prepare('SELECT attempt_count FROM checker_preflights').get().attempt_count, 3);
+  judge.close();
+});
+
+test('Judge also bounds a checker launch failure discovered after a healthy preflight', async () => {
+  let checks = 0;
+  const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    maxInfrastructureRetries: 2,
+    checker: {
+      preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: { exit_code: 0 } }),
+      check: async () => {
+        checks += 1;
+        return { verdict: 'ERROR', evidence: { diagnostic: 'spawn lake ENOENT', error_code: 'ENOENT', checker_started: false } };
+      },
+    },
+  });
+  const base = {
+    target_task_id: targetTask.task_id, target_spec_version: 1, input_snapshot_hash: workspace.input_snapshot_hash,
+    checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version, environment_ref: fixtureManifest.environment_ref,
+    target_task: targetTask, workspace, fixture_manifest: fixtureManifest,
+  };
+  const results = [];
+  for (let index = 1; index <= 3; index += 1) {
+    const materialId = `post-preflight-material-${index}`;
+    results.push(await judge.judgeCandidate({
+      ...base, request_key: `post-preflight-request-${index}`, candidate_material_id: materialId,
+      candidate: candidate(`theorem post${index} : True := by trivial`, materialId),
+    }, { operationId: `post-preflight-operation-${index}` }));
+  }
+  assert.equal(checks, 3);
+  assert.deepEqual(results.map((result) => result.evidence.infrastructure_attempt_count), [1, 2, 3]);
+  assert.deepEqual(results.map((result) => result.retryable), [true, true, false]);
+  assert.ok(results.every((result) => result.checker_process_status === 'not_started'));
+  judge.close();
+});
+
+test('A changed Checker health result allows a later source-level check', async () => {
+  let healthy = false;
+  let checks = 0;
+  const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    maxInfrastructureRetries: 0,
+    checker: {
+      preflight: async () => healthy
+        ? { status: 'healthy', checker_process_status: 'completed', evidence: { exit_code: 0 } }
+        : { status: 'unavailable', checker_process_status: 'not_started', evidence: { diagnostic: 'spawn lake ENOENT', error_code: 'ENOENT' } },
+      check: async () => { checks += 1; return { verdict: 'PASS', evidence: { exit_code: 0 } }; },
+    },
+  });
+  const input = {
+    request_key: 'health-change-1', candidate_material_id: 'health-change-material-1', target_task_id: targetTask.task_id, target_spec_version: 1,
+    input_snapshot_hash: workspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    environment_ref: fixtureManifest.environment_ref, candidate: candidate('theorem before : True := by trivial', 'health-change-material-1'), target_task: targetTask,
+    workspace, fixture_manifest: fixtureManifest,
+  };
+  const unavailable = await judge.judgeCandidate(input, { operationId: 'health-change-op-1' });
+  assert.equal(unavailable.retryable, false);
+  healthy = true;
+  const available = await judge.judgeCandidate({
+    ...input,
+    request_key: 'health-change-2', candidate_material_id: 'health-change-material-2',
+    candidate: candidate('theorem after : True := by trivial', 'health-change-material-2'),
+  }, { operationId: 'health-change-op-2' });
+  assert.equal(available.result_class, 'PASS');
+  assert.equal(available.mathematical_outcome, 'PASS');
+  assert.equal(checks, 1);
+  assert.equal(judge.db.prepare('SELECT attempt_count FROM checker_preflights').get().attempt_count, 0);
+  judge.close();
+});
+
+test('A changed unavailable diagnostic opens a fresh bounded retry window', async () => {
+  let diagnostic = 'spawn lake ENOENT: binary-a';
+  const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    maxInfrastructureRetries: 1,
+    checker: {
+      preflight: async () => ({ status: 'unavailable', checker_process_status: 'not_started', evidence: { diagnostic, error_code: 'ENOENT' } }),
+      check: async () => ({ verdict: 'PASS', evidence: { exit_code: 0 } }),
+    },
+  });
+  const input = {
+    target_task_id: targetTask.task_id, target_spec_version: 1, input_snapshot_hash: workspace.input_snapshot_hash,
+    checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version, environment_ref: fixtureManifest.environment_ref,
+    target_task: targetTask, workspace, fixture_manifest: fixtureManifest,
+  };
+  const first = await judge.judgeCandidate({ ...input, request_key: 'changed-health-1', candidate_material_id: 'changed-health-1', candidate: candidate('theorem changed1 : True := by trivial', 'changed-health-1') }, { operationId: 'changed-health-op-1' });
+  const second = await judge.judgeCandidate({ ...input, request_key: 'changed-health-2', candidate_material_id: 'changed-health-2', candidate: candidate('theorem changed2 : True := by trivial', 'changed-health-2') }, { operationId: 'changed-health-op-2' });
+  diagnostic = 'spawn lake ENOENT: binary-b';
+  const third = await judge.judgeCandidate({ ...input, request_key: 'changed-health-3', candidate_material_id: 'changed-health-3', candidate: candidate('theorem changed3 : True := by trivial', 'changed-health-3') }, { operationId: 'changed-health-op-3' });
+  assert.deepEqual([first.evidence.infrastructure_attempt_count, second.evidence.infrastructure_attempt_count, third.evidence.infrastructure_attempt_count], [1, 2, 1]);
+  assert.deepEqual([first.retryable, second.retryable, third.retryable], [true, false, true]);
+  judge.close();
+});
+
+test('Judge ok persistence is separate from source-level checker success', async () => {
+  const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    checker: {
+      preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: { exit_code: 0 } }),
+      check: async () => ({ verdict: 'PASS', evidence: { exit_code: 0, stdout: 'compiled' } }),
+    },
+  });
+  const result = await judge.judgeCandidate({
+    request_key: 'healthy-request', candidate_material_id: 'healthy-material', target_task_id: targetTask.task_id, target_spec_version: 1,
+    input_snapshot_hash: workspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    environment_ref: fixtureManifest.environment_ref, candidate: candidate('theorem healthy : True := by trivial', 'healthy-material'), target_task: targetTask,
+    workspace, fixture_manifest: fixtureManifest,
+  }, { operationId: 'healthy-operation' });
+  assert.equal(result.judge_operation_status, 'persisted');
+  assert.equal(result.checker_process_status, 'completed');
+  assert.equal(result.result_class, 'PASS');
+  assert.equal(result.verdict, 'PASS');
+  assert.equal(result.retryable, false);
+  judge.close();
+});
+
 test('JudgeService stores CheckResult truth, keeps Task untouched, and deduplicates request keys', async () => {
   let checks = 0;
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
-    checker: { check: async () => { checks += 1; return { verdict: 'PASS', evidence: { exit_code: 0, stdout: 'ok', stderr: '', candidate_hash: 'candidate-hash', input_snapshot_hash: 'input-snapshot' } }; } },
+    checker: checkerWithPreflight({ check: async () => { checks += 1; return { verdict: 'PASS', evidence: { exit_code: 0, stdout: 'ok', stderr: '', candidate_hash: 'candidate-hash', input_snapshot_hash: 'input-snapshot' } }; } }),
   });
   const input = {
     request_key: 'check-request-1', candidate_material_id: 'material-1', target_task_id: targetTask.task_id, target_spec_version: 1,
@@ -99,7 +441,7 @@ test('concurrent checks for one request_key elect one checker invocation', async
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
-    checker: { check: async () => { checks += 1; await gate; return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+    checker: checkerWithPreflight({ check: async () => { checks += 1; await gate; return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
   });
   const input = {
     request_key: 'concurrent-check', candidate_material_id: 'material-1', target_task_id: targetTask.task_id, target_spec_version: 1,
@@ -121,7 +463,7 @@ test('concurrent checks for one request_key elect one checker invocation', async
 
 test('Judge rejects results whose Task or Workspace binding has drifted', async () => {
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
-    checker: { check: async () => ({ verdict: 'PASS', evidence: {} }) },
+    checker: checkerWithPreflight({ check: async () => ({ verdict: 'PASS', evidence: {} }) }),
   });
   const input = {
     request_key: 'binding-check', candidate_material_id: 'material-1', target_task_id: targetTask.task_id, target_spec_version: 1,

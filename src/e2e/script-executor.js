@@ -46,8 +46,31 @@ export function createScriptFixtureEnvironment({ database = ':memory:', rootDir,
   const contextService = new ContextService(databaseConnection);
   const taskService = new TaskService(databaseConnection, { contextService });
   contextService.taskService = taskService;
-  const normalizedChecker = typeof checker === 'function' ? { check: checker } : checker;
+  const configuredChecker = typeof checker === 'function' ? { check: checker } : checker;
+  // ScriptExecutor is a deterministic protocol fixture rather than a real
+  // Lean environment. It still supplies the same preflight seam explicitly
+  // so Judge never treats a checker without a health gate as available.
+  const normalizedChecker = !configuredChecker || typeof configuredChecker.preflight === 'function'
+    ? configuredChecker
+    : {
+        ...configuredChecker,
+        preflight: async ({ fixtureManifest: manifest }) => ({
+          status: 'healthy',
+          checker_process_status: 'completed',
+          evidence: {
+            preflight_supported: true,
+            preflight_verified: true,
+            deterministic_fixture: true,
+            input_binding_verified: true,
+            toolchain_version_verified: true,
+            checker_version_verified: true,
+            expected_checker_version: manifest.checker_version,
+            observed_checker_version: manifest.checker_version,
+          },
+        }),
+      };
   const judgeService = new JudgeService(databaseConnection, { checker: normalizedChecker });
+  taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
   const router = new ServicesRouter({ taskService, contextService });
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const agentAdapter = new ScriptAgentAdapter();

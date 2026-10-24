@@ -93,10 +93,22 @@ function promptForCandidate({ phase, candidate, previousMaterialId = null }) {
 async function runAgentTurn(session, prompt, { timeoutMs = 180_000 } = {}) {
   await session.waitForReady({ timeoutMs: 15_000 });
   const sequence = session.rpcRecords.length;
-  const response = await session.prompt(prompt, { timeoutMs: 30_000 });
-  const settled = response?.data?.disposition === 'handled'
-    ? { type: 'agent_settled', handled: true }
-    : await session.waitForSettled({ timeoutMs, afterSequence: sequence });
+  // Runtime sends the Execution's initial agent_prompt as part of start/wake.
+  // The real-path harness may then add a phase-specific candidate prompt while
+  // that turn is still running. Queue it explicitly instead of issuing a
+  // second concurrent prompt, and wait for the actual agent_settled record.
+  const response = await session.prompt(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' });
+  let settled;
+  try {
+    settled = await session.waitForSettled({ timeoutMs, afterSequence: sequence });
+  } catch (error) {
+    // A candidate result can synchronously move the Execution to WAITING or
+    // a terminal state. Runtime then intentionally stops this Session before
+    // Pi emits agent_settled; that is a successful turn handoff, not a
+    // provider/process failure.
+    if (!session.expectedStop) throw error;
+    settled = { type: 'agent_settled', expected_stop: true };
+  }
   return { response, settled, rpc_records: session.rpcRecords.slice(sequence).map((record) => record.type) };
 }
 
@@ -165,6 +177,7 @@ export async function runRealAgentPath({
   const taskService = new TaskService(databaseConnection, { contextService });
   contextService.taskService = taskService;
   const judgeService = new JudgeService(databaseConnection, { checker: new LeanChecker({ workRoot: rootDir }) });
+  taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
   const router = new ServicesRouter({ taskService, contextService });
   const ownerSdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const task = ownerSdk.proposeTask({
@@ -206,56 +219,146 @@ export async function runRealAgentPath({
     env: childEnv,
   });
   const runtime = new Runtime({ taskService, contextService, workspaceManager: new WorkspaceManager({ rootDir }), agentAdapter: adapter, actorRef: 'runtime:local' });
-  const bridge = new ServicesBridge({ taskService, contextService, runtime, router, taskId: task.task_id, executionId });
+  let bridge;
+  const checkHistory = [];
+  let candidateSubmission = Promise.resolve();
+  const submitCandidate = async ({ taskId, executionId: submittedExecutionId, payload }) => {
+    const currentTask = taskService.getTask(taskId);
+    const currentExecution = taskService.getExecution(submittedExecutionId);
+    const material = contextService.getMaterial(payload.candidate_material_id);
+    if (!currentTask || !currentExecution || !material || typeof material.content !== 'string') {
+      throw new Error('real-agent candidate submission has no checkable Material or Execution');
+    }
+    const workspaceMetadata = await runtime.getWorkspace(submittedExecutionId);
+    const workspace = {
+      task_id: taskId,
+      execution_id: submittedExecutionId,
+      input_snapshot_hash: currentExecution.input_snapshot_hash,
+      workspace_ref: workspaceMetadata.workspace?.workspace_ref ?? currentExecution.workspace_ref,
+      workspace_revision: workspaceMetadata.workspace?.workspace_revision ?? currentExecution.workspace_revision,
+    };
+    const requestKey = `real:check:${material.material_id}`;
+    const result = await judgeService.judgeCandidate(checkRequest({
+      task: currentTask,
+      execution: currentExecution,
+      workspace,
+      fixtureManifest: lockedFixture,
+      material,
+      requestKey,
+    }));
+    const fresh = taskService.getExecution(submittedExecutionId);
+    let applied = ownerSdk.withContext({
+      taskId,
+      executionId: submittedExecutionId,
+      specVersion: fresh.spec_version,
+      stateVersion: fresh.state_version,
+      fencingVersion: fresh.fencing_version,
+    }).applyCheckResult({ check_result_id: result.check_result_id }, { operationId: `real:apply:${material.material_id}` });
+    const retryableInfrastructure = result.result_class === 'infrastructure_failure' && result.retryable && !result.evidence?.retry_exhausted;
+    if (result.result_class === 'source_failure' || retryableInfrastructure) {
+      let waitCondition;
+      if (retryableInfrastructure) {
+        const preflight = judgeService.getCheckerPreflight(result.evidence?.preflight_key);
+        if (!preflight?.health_fingerprint) throw new Error('real-agent retryable checker failure has no preflight fingerprint');
+        waitCondition = {
+          type: 'checker_health',
+          preflight_key: result.evidence.preflight_key,
+          health_fingerprint: preflight.health_fingerprint,
+          diagnostic_code: result.diagnostic_code,
+          candidate_material_id: material.material_id,
+        };
+      } else {
+        waitCondition = { type: 'check_result_arrived', check_request_key: requestKey, candidate_material_id: material.material_id };
+      }
+      const waited = await runtime.requestWait(submittedExecutionId, {
+        waitCondition,
+        checkpoint: {
+          phase: retryableInfrastructure ? 'checker_unavailable' : 'before-agent-retry',
+          candidate_material_id: material.material_id,
+          check_result_id: result.check_result_id,
+        },
+      });
+      applied = { ...applied, execution: waited.execution, task: waited.task };
+    }
+    const record = { result, applied };
+    checkHistory.push(record);
+    return { check_result: result, applied };
+  };
+  const onSubmitCandidate = (args) => {
+    candidateSubmission = submitCandidate(args);
+    return candidateSubmission;
+  };
+  bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime,
+    router,
+    taskId: task.task_id,
+    executionId,
+    onSubmitCandidate,
+    onRelease: async () => {
+      // ServicesBridge clears its own binding before invoking this hook. The
+      // callback is present so this path has the same explicit release seam as
+      // the benchmark runner.
+    },
+  });
   let firstRun;
   let secondRun;
   let firstWait;
   let secondWait;
   let firstResult;
   let secondResult;
+  let firstApplied;
+  let secondApplied;
   try {
     Object.assign(childEnv, await bridge.start());
     firstRun = await runtime.startExecution(executionId);
     report.launch = { workspace_ref: firstRun.execution.workspace_ref, runtime_manifest: firstRun.session.manifest };
     report.first_agent = await runAgentTurn(firstRun.session, promptForCandidate({ phase: 'first invalid candidate', candidate: firstCandidate }), { timeoutMs });
+    await candidateSubmission;
     const firstMaterial = latestArtifact(contextService, executionId);
     if (!firstMaterial) throw new Error('real Agent did not publish a first artifact Material through Services SDK');
     report.material_ids.push(firstMaterial.material_id);
-    firstWait = await runtime.requestWait(executionId, {
-      waitCondition: { type: 'check_result_arrived', check_request_key: 'real:check:fail' },
-      checkpoint: { phase: 'before-first-check', candidate_material_id: firstMaterial.material_id },
-      files: { 'candidate.lean': firstMaterial.content },
-    });
-    const workspace = { task_id: task.task_id, execution_id: executionId, input_snapshot_hash: firstWait.execution.input_snapshot_hash, workspace_ref: firstWait.execution.workspace_ref, workspace_revision: firstWait.execution.workspace_revision };
-    firstResult = await judgeService.judgeCandidate(checkRequest({ task: taskService.getTask(task.task_id), execution: firstWait.execution, workspace, fixtureManifest: lockedFixture, material: firstMaterial, requestKey: 'real:check:fail' }));
-    const failed = ownerSdk.withContext({ actorRef: 'owner:root', taskId: task.task_id, executionId, specVersion: firstWait.execution.spec_version, stateVersion: firstWait.execution.state_version, fencingVersion: firstWait.execution.fencing_version }).applyCheckResult({ check_result_id: firstResult.check_result_id }, { operationId: 'real:apply:fail' });
+    ({ result: firstResult, applied: firstApplied } = checkHistory.at(-1) ?? {});
+    if (!firstResult || !firstApplied) throw new Error('real Agent candidate submission did not return a CheckResult');
     report.check_result_ids.push(firstResult.check_result_id);
-    report.failure_evidence = failed.check_result.evidence;
-    if (firstResult.verdict !== 'FAIL') throw new Error(`real Agent first candidate expected FAIL, got ${firstResult.verdict}`);
+    report.failure_evidence = firstResult.evidence;
+    if (firstResult.result_class !== 'source_failure') throw new Error(`real Agent first candidate expected source-level FAIL, got ${firstResult.result_class}`);
 
-    secondRun = await runtime.startExecution(executionId);
+    firstWait = firstApplied.execution.state === 'WAITING' ? firstApplied : null;
+    if (!firstWait) throw new Error('real Agent source-level failure did not release a WAITING Execution');
+    secondRun = await runtime.wakeExecution(executionId, {
+      wakeKey: firstWait.execution.resume_token,
+      beforePrompt: async ({ execution }) => {
+        bridge.taskId = execution.task_id;
+        bridge.executionId = execution.execution_id;
+      },
+    });
     report.second_agent = await runAgentTurn(secondRun.session, promptForCandidate({ phase: 'fixed candidate', candidate: fixedCandidate, previousMaterialId: firstMaterial.material_id }), { timeoutMs });
+    await candidateSubmission;
     const secondMaterial = latestArtifact(contextService, executionId, firstMaterial.material_id);
     if (!secondMaterial) throw new Error('real Agent did not publish a superseding artifact Material through Services SDK');
     if (secondMaterial.supersedes !== firstMaterial.material_id) throw new Error('real Agent fixed candidate did not supersede the failed artifact');
     report.material_ids.push(secondMaterial.material_id);
-    secondWait = await runtime.requestWait(executionId, {
-      waitCondition: { type: 'check_result_arrived', check_request_key: 'real:check:pass' },
-      checkpoint: { phase: 'before-second-check', candidate_material_id: secondMaterial.material_id },
-      files: { 'candidate.lean': secondMaterial.content },
-    });
-    const secondWorkspace = { ...workspace, workspace_ref: secondWait.execution.workspace_ref, workspace_revision: secondWait.execution.workspace_revision };
-    secondResult = await judgeService.judgeCandidate(checkRequest({ task: taskService.getTask(task.task_id), execution: secondWait.execution, workspace: secondWorkspace, fixtureManifest: lockedFixture, material: secondMaterial, requestKey: 'real:check:pass' }));
-    const completed = ownerSdk.withContext({ actorRef: 'owner:root', taskId: task.task_id, executionId, specVersion: secondWait.execution.spec_version, stateVersion: secondWait.execution.state_version, fencingVersion: secondWait.execution.fencing_version }).applyCheckResult({ check_result_id: secondResult.check_result_id }, { operationId: 'real:apply:pass' });
+    ({ result: secondResult, applied: secondApplied } = checkHistory.at(-1) ?? {});
+    if (!secondResult || !secondApplied) throw new Error('real Agent fixed candidate did not return a CheckResult');
     report.check_result_ids.push(secondResult.check_result_id);
     report.fixture = lockedFixture;
     report.versions = { node: process.version, pi: secondRun.session.manifest.pi_version ?? null, nurouter: secondRun.session.manifest.nurouter_version ?? null, lean_toolchain: lockedFixture.lean_toolchain, mathlib: lockedFixture.mathlib_version, checker: lockedFixture.checker_version };
-    report.workspace = { input_snapshot_hash: workspace.input_snapshot_hash, first: firstRun.workspace, first_wait: firstWait.execution.workspace_ref, restored: secondRun.workspace, second_wait: secondWait.execution.workspace_ref, same_lineage: firstWait.execution.workspace_ref === secondWait.execution.workspace_ref, checkpoints: [firstWait.execution.checkpoint_ref, secondWait.execution.checkpoint_ref] };
+    report.workspace = {
+      input_snapshot_hash: firstRun.execution.input_snapshot_hash,
+      first: firstRun.workspace,
+      first_wait: firstWait.execution.workspace_ref,
+      restored: secondRun.workspace,
+      second_wait: secondWait?.execution.workspace_ref ?? null,
+      same_lineage: firstWait.execution.workspace_ref === secondRun.workspace.workspace_ref,
+      checkpoints: [firstWait.execution.checkpoint_ref, secondWait?.execution.checkpoint_ref].filter(Boolean),
+    };
     report.check_results = [taskService.getCheckResult(firstResult.check_result_id), taskService.getCheckResult(secondResult.check_result_id)];
     report.materials = [contextService.getMaterial(report.material_ids[0]), contextService.getMaterial(report.material_ids[1])];
-    report.task = completed.task;
-    report.execution = completed.execution;
-    report.status = completed.task.state === 'SATISFIED' && completed.execution.state === 'SUCCEEDED' ? 'SUCCEEDED' : 'FAILED';
+    report.task = secondApplied.task;
+    report.execution = secondApplied.execution;
+    report.status = secondApplied.task.state === 'SATISFIED' && secondApplied.execution.state === 'SUCCEEDED' ? 'SUCCEEDED' : 'FAILED';
     return report;
   } catch (error) {
     report.status = 'FAILED';
@@ -268,6 +371,11 @@ export async function runRealAgentPath({
   } finally {
     const execution = taskService.getExecution(executionId);
     if (execution?.state === 'RUNNING') await runtime.stopExecution(executionId, 'FAILED').catch(() => undefined);
+    const active = runtime.activeProcesses.get(executionId);
+    if (active) {
+      runtime.activeProcesses.delete(executionId);
+      await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+    }
     await bridge.stop();
     taskService.close();
   }

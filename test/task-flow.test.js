@@ -29,7 +29,28 @@ function environment({ checker = null } = {}) {
   const contextService = new ContextService(database);
   const taskService = new TaskService(database, { contextService });
   contextService.taskService = taskService;
-  const judgeService = new JudgeService(database, { checker: checker ?? { check: async () => ({ verdict: 'PASS', evidence: { exit_code: 0 } }) } });
+  const configuredChecker = checker ?? { check: async () => ({ verdict: 'PASS', evidence: { exit_code: 0 } }) };
+  const judgeService = new JudgeService(database, {
+    checker: typeof configuredChecker.preflight === 'function'
+      ? configuredChecker
+      : {
+        ...configuredChecker,
+        preflight: async ({ fixtureManifest: manifest }) => ({
+          status: 'healthy',
+          checker_process_status: 'completed',
+          evidence: {
+            preflight_supported: true,
+            preflight_verified: true,
+            input_binding_verified: true,
+            toolchain_version_verified: true,
+            checker_version_verified: true,
+            expected_checker_version: manifest.checker_version,
+            observed_checker_version: manifest.checker_version,
+          },
+        }),
+      },
+  });
+  taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
   const router = new ServicesRouter({ taskService, contextService });
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   return { database, contextService, taskService, judgeService, router, sdk };
@@ -389,6 +410,70 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
   assert.equal(completed.check_result.verdict, 'PASS');
   assert.equal(completed.task.state, 'SATISFIED');
   assert.equal(completed.execution.state, 'SUCCEEDED');
+  close(env);
+});
+
+test('exhausted checker infrastructure failures block the Task without claiming a mathematical FAIL', async () => {
+  const env = environment({
+    checker: {
+      preflight: async () => ({
+        status: 'unavailable',
+        checker_process_status: 'not_started',
+        evidence: { diagnostic: 'spawn lake ENOENT', error_code: 'ENOENT', checker_started: false },
+      }),
+      check: async () => ({ verdict: 'FAIL', evidence: { diagnostic: 'this must never run' } }),
+    },
+  });
+  env.judgeService.maxInfrastructureRetries = 0;
+  const task = env.sdk.proposeTask(proofInput(), { operationId: 'infra-block-propose' }).task;
+  const run = claimTask(env, task, { executionId: 'infra-block-execution', actorRef: 'owner:root' });
+  const material = run.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'candidate' } }, { operationId: 'infra-block-candidate' }).material;
+  const submitted = run.sdk.submitCandidate({ candidate_material_id: material.material_id }, { operationId: 'infra-block-submit' });
+  const result = await env.judgeService.judgeCandidate({
+    request_key: 'infra-block-request', candidate_material_id: material.material_id, target_task_id: task.task_id,
+    target_spec_version: task.spec_version, input_snapshot_hash: submitted.execution.input_snapshot_hash,
+    checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version, environment_ref: fixtureManifest.environment_ref,
+    execution_id: submitted.execution.execution_id, state_version: submitted.execution.state_version,
+    candidate: { material_id: material.material_id, content: 'theorem candidate : True := by trivial' },
+    target_task: env.taskService.getTask(task.task_id), workspace: { input_snapshot_hash: submitted.execution.input_snapshot_hash }, fixture_manifest: fixtureManifest,
+  });
+  const applied = run.sdk.withContext({ stateVersion: submitted.execution.state_version }).applyCheckResult({ check_result_id: result.check_result_id }, { operationId: 'infra-block-apply' });
+  assert.equal(result.result_class, 'infrastructure_failure');
+  assert.equal(result.mathematical_outcome, 'unassessed');
+  assert.equal(result.verdict, 'ERROR');
+  assert.equal(applied.check_result.status, 'APPLIED');
+  assert.equal(applied.task.state, 'BLOCKED');
+  assert.equal(applied.task.block_reason, 'checker_unavailable:checker_unavailable');
+  assert.equal(applied.execution.state, 'FAILED');
+  close(env);
+});
+
+test('checker health waits require a changed health fingerprint before resuming', () => {
+  const env = environment();
+  const task = env.sdk.proposeTask(proofInput(), { operationId: 'checker-health-wait-propose' }).task;
+  const run = claimTask(env, task, { executionId: 'checker-health-wait-execution', actorRef: 'owner:root' });
+  const checkpointed = saveCheckpoint(env, run.claim.execution, 'checker-health-wait-checkpoint');
+  const timestamp = new Date().toISOString();
+  env.taskService.db.prepare(`INSERT INTO checker_preflights (
+    preflight_key, fixture_id, checker_ref, checker_version, environment_ref, project_root,
+    status, checker_process_status, diagnostic_code, retryable, attempt_count, health_fingerprint,
+    evidence_json, first_seen_at, last_seen_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    'checker-health-wait-key', fixtureManifest.fixture_id, fixtureManifest.checker_ref, fixtureManifest.checker_version,
+    fixtureManifest.environment_ref, null, 'unavailable', 'not_started', 'checker_unavailable', 1, 1, 'same-health', '{}', timestamp, timestamp,
+  );
+  const waited = run.sdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
+    wait_key: 'checker-health-wait',
+    checkpoint_ref: checkpointed.checkpoint_ref,
+    checkpoint_hash: checkpointed.checkpoint_hash,
+    wait_condition: { type: 'checker_health', preflight_key: 'checker-health-wait-key', health_fingerprint: 'same-health' },
+  }, { operationId: 'checker-health-wait' });
+  assert.equal(waited.execution.state, 'WAITING');
+  assert.equal(env.taskService.listResumableExecutions().length, 0);
+
+  env.taskService.db.prepare('UPDATE checker_preflights SET health_fingerprint = ?, last_seen_at = ? WHERE preflight_key = ?')
+    .run('changed-health', new Date().toISOString(), 'checker-health-wait-key');
+  assert.equal(env.taskService.listResumableExecutions().length, 1);
   close(env);
 });
 

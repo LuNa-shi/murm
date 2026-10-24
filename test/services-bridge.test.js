@@ -179,6 +179,54 @@ test('ServicesBridge routes Judge feedback through the named Judge Service tool'
   }
 });
 
+test('ServicesBridge releases the physical binding when checker feedback moves an Execution to WAITING', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:checker-health' });
+  const task = owner.proposeTask({
+    task_type: 'proof', goal: 'checker health bridge', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:checker-health',
+    completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixture().environment_ref } },
+  }, { operationId: 'bridge:checker-health:propose' }).task;
+  const claim = owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
+    execution_id: 'bridge-checker-health-execution', claim_key: 'bridge:checker-health:claim', owner_ref: 'agent:checker-health', agent_prompt: 'bridge', input_material_refs: [],
+  }, { operationId: 'bridge:checker-health:claim' });
+  const agent = owner.withContext({
+    actorRef: 'agent:checker-health', taskId: task.task_id, executionId: claim.execution.execution_id,
+    specVersion: claim.execution.spec_version, stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
+  });
+  const material = agent.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: 'theorem checker_health : True := by trivial' }, { operationId: 'bridge:checker-health:material' }).material;
+  const released = [];
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router,
+    taskId: task.task_id,
+    executionId: claim.execution.execution_id,
+    onSubmitCandidate: async () => ({
+      check_result: { result_class: 'infrastructure_failure', checker_process_status: 'not_started', retryable: true, diagnostic_code: 'checker_unavailable' },
+      applied: { execution: { ...claim.execution, state: 'WAITING' }, task },
+    }),
+    onRelease: async (release) => released.push(release),
+  });
+  try {
+    const result = await bridge.call({ operation: 'submit_candidate', payload: { candidate_material_id: material.material_id } });
+    assert.equal(result.check_result.result_class, 'infrastructure_failure');
+    assert.equal(result.check_result.diagnostic_code, 'checker_unavailable');
+    assert.equal(bridge.taskId, null);
+    assert.equal(bridge.executionId, null);
+    assert.equal(released.length, 1);
+    assert.equal(released[0].taskId, task.task_id);
+    assert.equal(released[0].executionId, claim.execution.execution_id);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
 test('ServicesBridge rejects candidate-result waits because candidate checking is synchronous', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);
