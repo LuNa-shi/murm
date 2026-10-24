@@ -61,6 +61,7 @@ export class Runtime {
     this.onSessionStarted = onSessionStarted;
     this.activeProcesses = new Map();
     this.recoveryAttempts = new Map();
+    this.stopping = false;
   }
 
   getActiveProcessCount() {
@@ -550,6 +551,7 @@ export class Runtime {
   }
 
   async #handleSessionEvent(executionId, record) {
+    if (this.stopping) return;
     const active = this.activeProcesses.get(executionId);
     if (!active) return;
     active.lastEventAt = this.clock();
@@ -577,6 +579,10 @@ export class Runtime {
   }
 
   async #processExit(executionId) {
+    if (this.stopping) {
+      this.activeProcesses.delete(executionId);
+      return;
+    }
     const active = this.activeProcesses.get(executionId);
     if (!active) return;
     const execution = this.#getExecution(executionId);
@@ -585,6 +591,10 @@ export class Runtime {
   }
 
   async #handleSessionFailure(executionId, failureClass) {
+    if (this.stopping) {
+      this.activeProcesses.delete(executionId);
+      return null;
+    }
     const active = this.activeProcesses.get(executionId);
     if (!active) return null;
     if (active.failurePromise) return active.failurePromise;
