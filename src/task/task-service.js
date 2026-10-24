@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { storedCheckerProcessStatus, storedResultClass } from '../judge/check-result.js';
 import { makeEnvelope, operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
 import { SCHEMA_SQL } from '../storage/schema.js';
 import { ensureJudgeSchema } from '../storage/judge-schema.js';
@@ -59,7 +60,17 @@ function rowToExecution(row) {
 
 function rowToCheckResult(row) {
   if (!row) return null;
-  return { ...row, evidence: parse(row.evidence_json) };
+  const resultClass = storedResultClass({ verdict: row.verdict, resultClass: row.result_class, checkerProcessStatus: row.checker_process_status });
+  const checkerProcessStatus = storedCheckerProcessStatus({ verdict: row.verdict, resultClass: row.result_class, checkerProcessStatus: row.checker_process_status });
+  return {
+    ...row,
+    result_class: resultClass,
+    checker_process_status: checkerProcessStatus,
+    process_status: checkerProcessStatus,
+    mathematical_outcome: resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed',
+    retryable: Boolean(row.retryable),
+    evidence: parse(row.evidence_json),
+  };
 }
 
 function requireString(value, field) {
@@ -924,7 +935,22 @@ export class TaskService {
     const updatedAt = now();
     this.db.prepare("UPDATE check_results SET status = 'APPLIED', applied_task_state_version = ?, applied_at = ?, updated_at = ? WHERE check_result_id = ?")
       .run(task.state_version + 1, updatedAt, updatedAt, checkResultId);
-    if (result.verdict === 'PASS') {
+    if (result.result_class === 'infrastructure_failure') {
+      if (!result.retryable || result.evidence?.retry_exhausted) {
+        const blockReason = `checker_unavailable:${result.diagnostic_code ?? 'unknown'}`;
+        this.db.prepare("UPDATE executions SET state = 'FAILED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
+          .run(updatedAt, execution.execution_id);
+        this.db.prepare("UPDATE tasks SET state = 'BLOCKED', state_version = state_version + 1, block_reason = ?, updated_at = ? WHERE task_id = ?")
+          .run(blockReason, updatedAt, task.task_id);
+      } else if (execution.state === 'WAITING') {
+        // A retryable infrastructure result is not mathematical feedback. Keep
+        // the checkpointed responsibility resumable while allowing the next
+        // Agent/Core to try again after the health gate changes.
+        this.db.prepare("UPDATE executions SET state = 'WAITING', wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
+          .run(updatedAt, execution.execution_id);
+        this.#refreshTaskState(task.task_id, { updatedAt });
+      }
+    } else if (result.verdict === 'PASS') {
       const completion = this.#completion(task, execution, checkResultId);
       if (completion.satisfied) {
         this.db.prepare("UPDATE executions SET state = 'SUCCEEDED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")

@@ -100,6 +100,7 @@ function observedEligibleWorkCount(state, readyTasks) {
 function safeDiagnostic(value) {
   const text = String(value ?? '');
   if (!text) return null;
+  if (/spawn .*ENOENT|command not found|checker unavailable|executable/i.test(text)) return 'checker_unavailable';
   if (/unknown module prefix 'Mathlib'/.test(text)) return 'missing_mathlib_build';
   if (/sorry|admit|axiom/i.test(text)) return 'forbidden_placeholder';
   if (/timed out|timeout/i.test(text)) return 'checker_timeout';
@@ -601,12 +602,36 @@ async function releaseTerminalExecution(core) {
 }
 
 function sanitizedCheck(result, material) {
+  const evidence = result.evidence ?? {};
+  const checkerProcessStatus = result.checker_process_status ?? evidence.checker_process_status ?? 'unknown';
+  const resultClass = result.result_class ?? evidence.result_class ?? 'unassessed';
+  const mathematicalOutcome = evidence.mathematical_outcome ?? (resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed');
   return {
     candidate_material_id: material.material_id,
     material_hash: material.content_hash,
     verdict: result.verdict,
+    mathematical_outcome: mathematicalOutcome,
+    judge_operation_status: result.judge_operation_status ?? 'persisted',
+    checker_ref: result.checker_ref ?? null,
+    checker_version: result.checker_version ?? null,
+    environment_ref: result.environment_ref ?? null,
+    checker_process_status: checkerProcessStatus,
+    checker_started: evidence.checker_started ?? (checkerProcessStatus === 'started' || checkerProcessStatus === 'completed'),
+    result_class: resultClass,
+    retryable: result.retryable ?? Boolean(evidence.retryable),
+    diagnostic_code: result.diagnostic_code ?? evidence.diagnostic_code ?? null,
+    preflight_key: evidence.preflight_key ?? null,
+    preflight_status: evidence.preflight_status ?? null,
+    infrastructure_attempt_count: evidence.infrastructure_attempt_count ?? null,
+    retry_exhausted: Boolean(evidence.retry_exhausted),
+    process_evidence: {
+      exit_code: evidence.exit_code ?? null,
+      signal: evidence.signal ?? null,
+      timed_out: Boolean(evidence.timed_out),
+      error_code: evidence.error_code ?? null,
+    },
     check_result_id: result.check_result_id,
-    diagnostic_class: safeDiagnostic(result.evidence?.diagnostic),
+    diagnostic_class: safeDiagnostic(evidence.diagnostic),
   };
 }
 
@@ -665,6 +690,21 @@ async function publishFeedback(state, core, material, result, { taskId = core.ta
       project: state.problem.id,
       target_material_hash: material.content_hash,
       verdict: result.verdict,
+      result_class: result.result_class ?? result.evidence?.result_class ?? 'unassessed',
+      checker_process_status: result.checker_process_status ?? result.evidence?.checker_process_status ?? 'unknown',
+      mathematical_outcome: result.evidence?.mathematical_outcome ?? 'unassessed',
+      retryable: result.retryable ?? Boolean(result.evidence?.retryable),
+      diagnostic_code: result.diagnostic_code ?? result.evidence?.diagnostic_code ?? null,
+      preflight_key: result.evidence?.preflight_key ?? null,
+      preflight_status: result.evidence?.preflight_status ?? null,
+      infrastructure_attempt_count: result.evidence?.infrastructure_attempt_count ?? null,
+      retry_exhausted: Boolean(result.evidence?.retry_exhausted),
+      process_evidence: {
+        exit_code: result.evidence?.exit_code ?? null,
+        signal: result.evidence?.signal ?? null,
+        timed_out: Boolean(result.evidence?.timed_out),
+        error_code: result.evidence?.error_code ?? null,
+      },
       check_result_id: result.check_result_id,
       diagnostic_class: safeDiagnostic(result.evidence?.diagnostic),
     },
@@ -903,6 +943,10 @@ function projectReport(state, startedAt, deadline) {
   const candidateCount = cores.reduce((count, core) => count + core.checks.length, 0);
   const madeProgress = childTaskCount > 0 || workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || candidateCount > 0;
   const parallelism = state.parallelism.snapshot({ endedAt });
+  const checkerPreflights = state.taskService.db.prepare('SELECT preflight_key, fixture_id, checker_ref, checker_version, environment_ref, status, checker_process_status, diagnostic_code, retryable, attempt_count, first_seen_at, last_seen_at FROM checker_preflights ORDER BY first_seen_at, preflight_key').all().map((row) => ({
+    ...row,
+    retryable: Boolean(row.retryable),
+  }));
   const report = {
     schema_version: 1,
     protocol: {
@@ -1004,6 +1048,10 @@ function projectReport(state, startedAt, deadline) {
       accept_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'accept_task'").get().count,
       rework_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_rework'").get().count,
       resume_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'resume_execution'").get().count,
+      checker_preflights: checkerPreflights,
+      checker_infrastructure_failure_count: cores.reduce((count, core) => count + core.checks.filter((check) => check.result_class === 'infrastructure_failure').length, 0),
+      checker_source_failure_count: cores.reduce((count, core) => count + core.checks.filter((check) => check.result_class === 'source_failure').length, 0),
+      checker_unassessed_count: cores.reduce((count, core) => count + core.checks.filter((check) => check.mathematical_outcome === 'unassessed').length, 0),
     },
     cores,
     audit: {

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { storedCheckerProcessStatus, storedResultClass } from '../judge/check-result.js';
 
 // Reports are written for human review. Five-minute windows keep the narrative
 // bounded while still allowing an objective change, Judge result, handoff, or
@@ -30,7 +31,10 @@ const SAFE_RESULT_KEYS = new Set([
   'tool', 'operation', 'outcome', 'phase', 'service', 'error', 'stream', 'type',
   'event', 'decision', 'diagnostic', 'session_transport_id', 'file_count',
   'content_hash', 'assignment_basis', 'target_task_id', 'target_execution_id', 'authority_execution_id', 'parent_execution_id', 'parent_task_id', 'result', 'task', 'execution', 'material', 'check_result',
-  'material_ids', 'count', 'candidate_material_id', 'diagnostic_class',
+  'material_ids', 'count', 'candidate_material_id', 'diagnostic_class', 'judge_operation_status',
+  'checker_process_status', 'process_status', 'result_class', 'mathematical_outcome', 'retryable', 'checker_started',
+  'checker_ref', 'checker_version', 'environment_ref', 'checker_result_available',
+  'diagnostic_code', 'preflight_key', 'preflight_status', 'retry_exhausted', 'infrastructure_attempt_count',
 ]);
 
 const INTENT_BY_OPERATION = new Map([
@@ -194,7 +198,7 @@ function safeEntity(value, type) {
       : type === 'material'
         ? ['material_id', 'kind', 'scope', 'evidence_state', 'source_task', 'source_execution', 'version', 'created_at']
         : type === 'check_result'
-          ? ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'execution_id', 'status', 'verdict', 'checker_ref', 'checker_version', 'diagnostic_class', 'created_at', 'updated_at']
+          ? ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_process_status', 'result_class', 'retryable', 'diagnostic_code', 'checker_ref', 'checker_version', 'environment_ref', 'diagnostic_class', 'created_at', 'updated_at']
           : [...SAFE_RESULT_KEYS];
   for (const key of keys) {
     if (!(key in value) || SENSITIVE_KEYS.test(key)) continue;
@@ -523,6 +527,13 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
       verdict: payload?.verdict,
       check_result_id: payload?.check_result_id,
       ok: payload?.ok,
+      judge_operation_status: payload?.operation_status ?? payload?.judge_operation_status,
+      checker_process_status: payload?.checker_process_status,
+      result_class: payload?.result_class,
+      mathematical_outcome: payload?.mathematical_outcome,
+      checker_result_available: payload?.checker_result_available,
+      retryable: payload?.retryable,
+      diagnostic_code: payload?.diagnostic_code,
     });
     facts.push(base(payload?.event === 'judge.complete' ? 'judge_result' : 'judge_request', summary, { operation: 'judge' }));
     return facts;
@@ -533,6 +544,10 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
       target_task_id: payload?.target_task_id ?? payload?.evidence?.target_task_id,
       candidate_material_id: payload?.candidate_hash ? null : payload?.candidate_material_id,
       verdict: payload?.verdict,
+      checker_process_status: payload?.checker_process_status ?? payload?.evidence?.checker_process_status,
+      result_class: payload?.result_class ?? payload?.evidence?.result_class,
+      retryable: payload?.retryable ?? payload?.evidence?.retryable,
+      diagnostic_code: payload?.diagnostic_code ?? payload?.evidence?.diagnostic_code,
       diagnostic: payload?.evidence?.diagnostic ? 'diagnostic present' : null,
     });
     facts.push(base(payload?.event === 'checker.complete' ? 'judge_check' : 'judge_request', summary, { operation: 'checker' }));
@@ -633,7 +648,7 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
     facts.push(makeFact(root, {
       kind: event === 'judge.complete' ? 'judge_result' : 'judge_request', at, source,
       taskId: record.target_task_id ?? null, correlationId: record.operation_id ?? null,
-      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, candidate_material_id: record.candidate_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok }), priority: 2,
+      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, candidate_material_id: record.candidate_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok, judge_operation_status: record.operation_status ?? record.judge_operation_status, checker_process_status: record.checker_process_status, result_class: record.result_class, mathematical_outcome: record.mathematical_outcome, checker_result_available: record.checker_result_available, retryable: record.retryable, diagnostic_code: record.diagnostic_code }), priority: 2,
     }));
     return facts;
   }
@@ -642,7 +657,7 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
     facts.push(makeFact(root, {
       kind: event === 'judge.complete' ? 'judge_result' : 'judge_request', at, source,
       taskId: record.target_task_id ?? null, correlationId: record.operation_id ?? null,
-      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, candidate_material_id: record.candidate_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok }), priority: 2,
+      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, candidate_material_id: record.candidate_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok, judge_operation_status: record.operation_status ?? record.judge_operation_status, checker_process_status: record.checker_process_status, result_class: record.result_class, mathematical_outcome: record.mathematical_outcome, checker_result_available: record.checker_result_available, retryable: record.retryable, diagnostic_code: record.diagnostic_code }), priority: 2,
     }));
     return facts;
   }
@@ -651,7 +666,7 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
     facts.push(makeFact(root, {
       kind: event === 'checker.complete' ? 'judge_check' : 'judge_request', at, source,
       taskId: record.target_task_id ?? record.evidence?.target_task_id ?? null,
-      operation: 'checker', summary: safeResult({ event, target_task_id: record.target_task_id ?? record.evidence?.target_task_id, verdict: record.verdict, diagnostic: record.evidence?.diagnostic ? 'diagnostic present' : null }), priority: 2,
+      operation: 'checker', summary: safeResult({ event, target_task_id: record.target_task_id ?? record.evidence?.target_task_id, verdict: record.verdict, checker_process_status: record.checker_process_status ?? record.process_status ?? record.evidence?.checker_process_status, result_class: record.result_class ?? record.evidence?.result_class, retryable: record.retryable ?? record.evidence?.retryable, diagnostic_code: record.diagnostic_code ?? record.evidence?.diagnostic_code, diagnostic: record.evidence?.diagnostic ? 'diagnostic present' : null }), priority: 2,
     }));
     return facts;
   }
@@ -752,7 +767,7 @@ function closeDb(db) {
 }
 
 async function readDomainDatabases(root, dbPaths, errors, mode = 'full') {
-  const model = { tasks: [], executions: [], materials: [], checks: [], operations: [] };
+  const model = { tasks: [], executions: [], materials: [], checks: [], preflights: [], operations: [] };
   for (const dbPath of dbPaths) {
     let db;
     try { db = new DatabaseSync(dbPath); }
@@ -775,12 +790,31 @@ async function readDomainDatabases(root, dbPaths, errors, mode = 'full') {
         }
       }
       if (tables.has('check_results')) {
-        const checkColumns = ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'target_spec_version', 'execution_id', 'status', 'verdict', 'checker_ref', 'checker_version', 'environment_ref', ...(mode === 'full' ? ['evidence_json'] : []), 'created_at', 'updated_at'];
+        const checkColumns = ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'target_spec_version', 'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_process_status', 'result_class', 'retryable', 'diagnostic_code', 'checker_ref', 'checker_version', 'environment_ref', ...(mode === 'full' ? ['evidence_json'] : []), 'created_at', 'updated_at'];
         for (const row of selectRows(db, 'check_results', checkColumns)) {
           const evidence = mode === 'full' ? jsonParse(row.evidence_json) : null;
           const diagnostic = isObject(evidence) ? (evidence.diagnostic ?? evidence.stderr ?? evidence.stdout) : null;
           const { evidence_json: _evidenceJson, ...safeRow } = row;
-          model.checks.push({ ...safeRow, diagnostic_class: diagnosticClass(diagnostic), project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'check_results', `check_result_id=${row.check_result_id}`) });
+          const resultClass = storedResultClass({ verdict: row.verdict, resultClass: row.result_class, checkerProcessStatus: row.checker_process_status });
+          const checkerProcessStatus = storedCheckerProcessStatus({ verdict: row.verdict, resultClass: row.result_class, checkerProcessStatus: row.checker_process_status });
+          const diagnosticClassValue = row.diagnostic_code ?? (resultClass === 'infrastructure_failure' ? 'checker_unavailable' : diagnosticClass(diagnostic));
+          model.checks.push({
+            ...safeRow,
+            result_class: resultClass,
+            checker_process_status: checkerProcessStatus,
+            mathematical_outcome: evidence?.mathematical_outcome ?? (resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed'),
+            infrastructure_attempt_count: evidence?.infrastructure_attempt_count ?? null,
+            retry_exhausted: Boolean(evidence?.retry_exhausted),
+            preflight_key: evidence?.preflight_key ?? null,
+            diagnostic_class: diagnosticClassValue,
+            project: basename(dirname(dbPath)),
+            source: sourceForDb(root, dbPath, 'check_results', `check_result_id=${row.check_result_id}`),
+          });
+        }
+      }
+      if (tables.has('checker_preflights')) {
+        for (const row of selectRows(db, 'checker_preflights', ['preflight_key', 'fixture_id', 'checker_ref', 'checker_version', 'environment_ref', 'status', 'checker_process_status', 'diagnostic_code', 'retryable', 'attempt_count', 'first_seen_at', 'last_seen_at'])) {
+          model.preflights.push({ ...row, retryable: Boolean(row.retryable), project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'checker_preflights', `preflight_key=${row.preflight_key}`) });
         }
       }
       if (tables.has('operations')) {
@@ -814,6 +848,10 @@ function factsFromDomainModel(root, model) {
   for (const check of model.checks) {
     facts.push(makeFact(root, { kind: 'judge_check_record', at: check.updated_at ?? check.created_at, source: check.source,
       taskId: check.target_task_id, executionId: check.execution_id, summary: safeEntity(check, 'check_result'), priority: 3 }));
+  }
+  for (const preflight of model.preflights ?? []) {
+    facts.push(makeFact(root, { kind: 'checker_preflight', at: preflight.last_seen_at ?? preflight.first_seen_at, source: preflight.source,
+      summary: safeResult(preflight), priority: 3 }));
   }
   for (const operation of model.operations) {
     const result = operation.result;
@@ -1175,7 +1213,8 @@ function compactFact(fact) {
   if (fact.kind === 'material_published') return `publish Material ${summary.material?.material_id ?? summary.material_id ?? 'unknown'} [${fact.id}]`;
   if (fact.kind === 'material_consumed') return `read ${array(summary.material_ids).length} Material(s) [${fact.id}]`;
   if (fact.kind === 'candidate_submitted') return `submit Candidate ${summary.candidate_material_id ?? 'unknown'} [${fact.id}]`;
-  if (fact.kind === 'judge_result' || fact.kind === 'judge_check' || fact.kind === 'judge_check_record') return `Judge ${summary.verdict ?? summary.check_result?.verdict ?? 'result'} [${fact.id}]`;
+  if (fact.kind === 'checker_preflight') return `Checker preflight ${summary.status ?? 'unknown'}${summary.diagnostic_code ? `/${summary.diagnostic_code}` : ''} [${fact.id}]`;
+  if (fact.kind === 'judge_result' || fact.kind === 'judge_check' || fact.kind === 'judge_check_record') return `Judge ${summary.verdict ?? summary.check_result?.verdict ?? 'result'}${summary.result_class ? `/${summary.result_class}` : ''}${summary.checker_process_status ? ` (${summary.checker_process_status})` : ''} [${fact.id}]`;
   if (fact.kind === 'workspace_revision' || fact.kind === 'workspace_manifest') return `Workspace revision ${summary.workspace_revision ?? 'unknown'} [${fact.id}]`;
   if (fact.kind === 'wait_requested') return `wait (${summary.wait_condition?.type ?? 'condition unknown'}) [${fact.id}]`;
   if (fact.kind === 'execution_assigned') return `Execution assigned [${fact.id}]`;
@@ -1575,6 +1614,28 @@ function buildSystemFindings(analysis) {
     evidence: noConsumer.map((row) => evidenceRef(row.published_evidence)).slice(0, 12), confidence: 'medium',
     });
   }
+  const infrastructureRows = analysis.candidates.rows.filter((row) => row.result_class === 'infrastructure_failure');
+  if (infrastructureRows.length) {
+    const diagnosticGroups = new Map();
+    for (const row of infrastructureRows) {
+      const key = `${row.diagnostic_class ?? 'checker_unavailable'}|${row.checker_process_status ?? 'unknown'}`;
+      const group = diagnosticGroups.get(key) ?? { count: 0, rows: [] };
+      group.count += 1;
+      group.rows.push(row);
+      diagnosticGroups.set(key, group);
+    }
+    for (const [key, group] of diagnosticGroups) {
+      const [diagnostic, processStatus] = key.split('|');
+      const executionIds = group.rows.map((row) => row.execution_id).filter(Boolean);
+      findings.push({
+        severity: 'critical', category: 'checker_unavailable', title: 'Checker infrastructure failed before a mathematical result was produced',
+        interpretation: `${group.count} Candidate check(s) reached the Judge but the Checker process status was ${processStatus}; the recorded diagnostic was ${diagnostic}. These Candidates are mathematically unassessed. The causal risk is that Agent retries consume the timebox as if this were proof feedback.`,
+        validation: 'Run the same locked fixture with Checker preflight and require a source-level PASS/FAIL when the process starts; when preflight fails, require bounded retry followed by BLOCKED(checker_unavailable) and Core release.',
+        ...scopeForExecutions(executionIds),
+        evidence: group.rows.flatMap((row) => row.evidence).slice(0, 12), confidence: 'high',
+      });
+    }
+  }
   if (analysis.candidates.repeated_diagnostics.length) findings.push({
     severity: 'high', category: 'feedback_loop_no_route_change', title: 'Repeated Judge diagnostics did not produce a recorded route change',
     interpretation: `The same diagnostic class repeats for ${analysis.candidates.repeated_diagnostics.map((row) => `${row.task_id} (${row.count})`).join(', ')}. Candidate checking continued, but the available metadata does not show a meaningful strategy change.`,
@@ -1611,6 +1672,10 @@ function buildToolAnalysis(analysis) {
   const toolFacts = analysis.facts.filter((fact) => fact.kind === 'tool_call');
   const toolErrors = toolFacts.filter((fact) => fact.summary?.outcome === 'error' || errorInfo(fact));
   const checks = analysis.model.checks.length ? analysis.model.checks : analysis.facts.filter((fact) => ['judge_result', 'judge_check', 'judge_check_record'].includes(fact.kind));
+  const preflights = analysis.model.preflights ?? [];
+  const infrastructureFailures = checks.filter((check) => check.result_class === 'infrastructure_failure');
+  const sourceFailures = checks.filter((check) => check.result_class === 'source_failure' || (check.result_class === undefined && check.verdict === 'FAIL'));
+  const unassessed = checks.filter((check) => check.result_class === 'infrastructure_failure' || check.result_class === 'unassessed' || check.mathematical_outcome === 'unassessed');
   const diagnostics = checks.filter((check) => (check.diagnostic_class ?? check.evidence?.diagnostic ?? check.verdict) && check.verdict !== 'PASS');
   const providerErrors = analysis.errors.filter((error) => /provider|transport|timeout|rate|upstream/i.test(`${error.category} ${error.code ?? ''} ${error.operation}`));
   return {
@@ -1619,8 +1684,14 @@ function buildToolAnalysis(analysis) {
     provider_error_occurrences: providerErrors.reduce((sum, error) => sum + error.occurrence_count, 0),
     judge_checks: checks.length,
     judge_non_pass: diagnostics.length,
+    judge_infrastructure_failures: infrastructureFailures.length,
+    judge_source_failures: sourceFailures.length,
+    judge_unassessed: unassessed.length,
+    checker_preflight_count: preflights.length,
+    checker_preflight_unavailable: preflights.filter((preflight) => preflight.status === 'unavailable').length,
+    checker_preflight_healthy: preflights.filter((preflight) => preflight.status === 'healthy').length,
     judge_diagnostic_classes: [...new Set(diagnostics.map((check) => check.diagnostic_class ?? 'unknown'))].sort(),
-    evidence: [...new Set([...toolFacts, ...checks].flatMap((fact) => fact.sources))].slice(0, 12),
+    evidence: [...new Set([...toolFacts, ...checks, ...preflights].flatMap((fact) => fact.sources ?? []))].slice(0, 12),
   };
 }
 
@@ -1634,6 +1705,9 @@ function buildCandidateAnalysis(model, facts) {
   }
   const orderedChecks = [...model.checks].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   const rows = orderedChecks.map((check, index) => {
+    const resultClass = check.result_class ?? (check.verdict === 'PASS' ? 'PASS' : check.verdict === 'FAIL' ? 'source_failure' : 'unassessed');
+    const checkerProcessStatus = check.checker_process_status ?? (resultClass === 'source_failure' || resultClass === 'PASS' ? 'completed' : 'unknown');
+    const mathematicalOutcome = resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed';
     const submission = submissions.get(check.candidate_material_id);
     const start = timeMs(parseTime(check.created_at));
     const end = timeMs(parseTime(check.updated_at));
@@ -1661,7 +1735,12 @@ function buildCandidateAnalysis(model, facts) {
       execution_id: check.execution_id,
       verdict: check.verdict ?? 'unknown',
       status: check.status,
-      diagnostic_class: check.diagnostic_class ?? 'unknown',
+      diagnostic_class: check.diagnostic_code ?? check.diagnostic_class ?? 'unknown',
+      result_class: resultClass,
+      checker_process_status: checkerProcessStatus,
+      mathematical_outcome: mathematicalOutcome,
+      retryable: check.retryable === undefined ? null : Boolean(check.retryable),
+      infrastructure_attempt_count: check.evidence?.infrastructure_attempt_count ?? null,
       submitted_at: submission?.at ?? check.created_at,
       checked_at: check.updated_at,
       check_elapsed_ms: start !== null && end !== null ? Math.max(0, end - start) : null,
@@ -1671,7 +1750,9 @@ function buildCandidateAnalysis(model, facts) {
       strategy_summary: strategySummary,
       strategy_fingerprint: changedFiles.join('|'),
       change_from_previous: changeFromPrevious,
-      feedback_response: feedbackReads ? 'Judge feedback was explicitly read; whether the mathematical route improved remains an interpretation.' : 'No explicit Judge feedback read was recorded before later activity.',
+      feedback_response: resultClass === 'infrastructure_failure'
+        ? (check.retryable === false ? 'Checker health failure reached the retry bound; no mathematical route conclusion is valid.' : 'Checker health failure was exposed as infrastructure feedback; mathematical progress is unassessed.')
+        : feedbackReads ? 'Judge feedback was explicitly read; whether the mathematical route improved remains an interpretation.' : 'No explicit Judge feedback read was recorded before later activity.',
       evidence: [...new Set([check.source.ref, ...(submission?.sources ?? [])])],
     };
   });
@@ -1686,6 +1767,11 @@ function buildCandidateAnalysis(model, facts) {
       verdict: 'no recorded CheckResult',
       status: 'unknown',
       diagnostic_class: 'unknown',
+      result_class: 'unassessed',
+      checker_process_status: 'unknown',
+      mathematical_outcome: 'unassessed',
+      retryable: null,
+      infrastructure_attempt_count: null,
       submitted_at: submission.at,
       checked_at: null,
       check_elapsed_ms: null,
@@ -1698,6 +1784,7 @@ function buildCandidateAnalysis(model, facts) {
   rows.sort((a, b) => String(a.submitted_at ?? '').localeCompare(String(b.submitted_at ?? '')));
   const diagnosticCounts = {};
   for (const row of rows) {
+    if (row.result_class !== 'source_failure') continue;
     const key = `${row.task_id}|${row.diagnostic_class}`;
     diagnosticCounts[key] = (diagnosticCounts[key] ?? 0) + 1;
   }
@@ -1707,10 +1794,12 @@ function buildCandidateAnalysis(model, facts) {
   });
   return {
     rows,
-    pass_count: rows.filter((row) => row.verdict === 'PASS').length,
-    fail_count: rows.filter((row) => !['PASS', 'unknown', 'no recorded CheckResult'].includes(row.verdict)).length,
+    pass_count: rows.filter((row) => row.mathematical_outcome === 'PASS').length,
+    fail_count: rows.filter((row) => row.result_class === 'source_failure').length,
+    infrastructure_failure_count: rows.filter((row) => row.result_class === 'infrastructure_failure').length,
+    unassessed_count: rows.filter((row) => row.mathematical_outcome === 'unassessed').length,
     repeated_diagnostics: repeated,
-    all_failed: rows.length > 0 && rows.every((row) => !['PASS', 'unknown', 'no recorded CheckResult'].includes(row.verdict)),
+    all_failed: rows.length > 0 && rows.every((row) => row.result_class === 'source_failure'),
   };
 }
 
@@ -1768,6 +1857,7 @@ function deriveConclusions(analysis) {
   if (analysis.collaboration.some((row) => row.assessment === 'accepted-but-unused')) conclusions.push({ type: 'Interpretation', text: 'At least one Material is marked accepted but has no recorded consumer. This is an evidence-backed handoff result, not a claim that the Material was mathematically useless.', evidence: analysis.collaboration.filter((row) => row.assessment === 'accepted-but-unused').map((row) => row.published_evidence) });
   if (analysis.warnings.length) conclusions.push({ type: 'Unknown', text: `${analysis.warnings.length} event reference(s) point to an unknown Task or Execution in the authoritative model. Those events are retained as unmatched facts.`, evidence: analysis.warnings.slice(0, 8).flatMap((warning) => warning.sources ?? []) });
   for (const error of analysis.errors.slice(0, 8)) conclusions.push({ type: 'Interpretation', text: `${error.occurrence_count} unique ${error.category} occurrence(s) were found for ${error.operation}: ${error.interpretation}`, evidence: error.evidence.slice(0, 8) });
+  if (analysis.candidates.infrastructure_failure_count) conclusions.push({ type: 'Interpretation', text: `${analysis.candidates.infrastructure_failure_count} Candidate check(s) were infrastructure failures and produced no mathematical verdict. They are reported as unassessed rather than as proof failures.`, evidence: analysis.candidates.rows.filter((row) => row.result_class === 'infrastructure_failure').flatMap((row) => row.evidence).slice(0, 12) });
   if (analysis.candidates.all_failed) conclusions.push({ type: 'Interpretation', text: `None of the ${analysis.candidates.rows.length} recorded Candidate check(s) returned PASS. Repeated diagnostic classes are reported as route non-convergence, not as proof of a mathematical impossibility.`, evidence: analysis.candidates.rows.flatMap((row) => row.evidence).slice(0, 12) });
   if (analysis.terminal) conclusions.push({ type: 'Interpretation', text: analysis.terminal.interpretation, evidence: analysis.terminal.evidence.slice(0, 8) });
   conclusions.push({ type: 'Derived metric', text: 'The report treats heartbeat, turn count, Material count, Task acceptance, and report.json made_progress as activity or supporting metrics. None is labeled productive Goal progress by itself.', evidence: ['docs/benchmark-analysis-sop.md'] });
@@ -1942,11 +2032,11 @@ function renderMarkdown(analysis) {
     return `| ${md(row.material_id)} | ${md(row.kind)} / ${md(row.evidence_state)} | ${md(row.publisher.execution_id ?? 'unknown')} | ${consumerText} | ${effectText} | ${md(meaning)} | ${md(row.assessment)} |`;
   }).join('\n');
   const errorRows = analysis.errors.map((error) => `| ${md(error.severity)} | ${md(error.category)} | ${error.occurrence_count} | ${error.supporting_record_count} | ${md(error.operation)} | ${md(error.interpretation)} | ${error.evidence.slice(0, 6).join('<br>')} |`).join('\n');
-  const systemFindingRows = analysis.systemFindings.map((finding) => `| ${md(finding.severity)} | ${md(finding.category)} | ${md(finding.interpretation)} | ${md(finding.confidence)} | ${md(finding.validation)} | ${finding.evidence.slice(0, 6).join('<br>')} |`).join('\n');
+  const systemFindingRows = analysis.systemFindings.map((finding) => `| ${md(finding.severity)} | ${md(finding.category)} | ${finding.title ? `**${md(finding.title)}** ` : ''}${md(finding.interpretation)} | ${md(finding.confidence)} | ${md(finding.validation)} | ${finding.evidence.slice(0, 6).join('<br>')} |`).join('\n');
   const serviceRows = analysis.serviceAnalysis.map((row) => `| ${md(row.service)} | ${row.started} | ${row.finished} | ${row.failed} | ${row.observed_failure_rate === null ? 'unknown' : `${(row.observed_failure_rate * 100).toFixed(1)}%`} | ${md(row.operations.join(', ') || 'unknown')} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
   const tool = analysis.toolAnalysis;
   const optimizationRows = analysis.optimizations.map((item) => `| ${md(item.priority)} | ${md(item.category)} | ${md(item.action)} | ${md(item.rationale)} | ${md(item.validation)} | ${item.evidence.slice(0, 6).join('<br>')} |`).join('\n');
-  const candidateRows = analysis.candidates.rows.map((row) => `| ${md(row.candidate_material_id)} | ${md(row.task_id)} | ${md(row.execution_id)} | ${md(row.strategy_summary)} | ${md(row.change_from_previous)} | ${md(row.feedback_response)} | ${md(row.check_result_id ?? 'none')} | ${md(row.verdict)} / ${md(row.status)} | ${md(row.diagnostic_class)} | ${md(row.submitted_at)} | ${row.feedback_reads} | ${row.later_actions.join(', ') || 'none recorded'} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
+  const candidateRows = analysis.candidates.rows.map((row) => `| ${md(row.candidate_material_id)} | ${md(row.task_id)} | ${md(row.execution_id)} | ${md(row.strategy_summary)} | ${md(row.change_from_previous)} | ${md(row.feedback_response)} | ${md(row.check_result_id ?? 'none')} | ${md(row.verdict)} / ${md(row.mathematical_outcome)} / ${md(row.status)} | ${md(row.result_class)} | ${md(row.checker_process_status)} | ${md(row.diagnostic_class)} | ${md(row.submitted_at)} | ${row.feedback_reads} | ${row.later_actions.join(', ') || 'none recorded'} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
   const repeatedDiagnosticRows = analysis.candidates.repeated_diagnostics.map((row) => `| ${md(row.task_id)} | ${md(row.diagnostic_class)} | ${row.count} | ${row.evidence.slice(0, 6).join('<br>')} |`).join('\n');
   const healthByCore = {};
   for (const fact of analysis.facts.filter((candidate) => ['heartbeat', 'execution_assigned', 'wait_requested', 'execution_terminal', 'session_started', 'session_closed'].includes(candidate.kind))) {
@@ -2065,7 +2155,12 @@ This layer evaluates provider/transport failures, tool contract use, response sc
 | Agent/tool errors | ${tool.tool_errors} | Check whether failures contain an actionable code, message, and correlation ID. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
 | Provider/transport error occurrences | ${tool.provider_error_occurrences} | Unknown means the source did not classify provider errors separately. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
 | Judge checks | ${tool.judge_checks} | Checker coverage is distinct from mathematical success. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
+| Checker preflight records | ${tool.checker_preflight_count} | Persisted against checker/environment identity; an unavailable preflight gates proof checking. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
+| Unavailable checker preflights | ${tool.checker_preflight_unavailable} | A health failure is infrastructure evidence and cannot be read as a mathematical verdict. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
 | Judge non-PASS checks | ${tool.judge_non_pass} | Diagnostic classes and feedback response require semantic review. | ${tool.judge_diagnostic_classes.join(', ') || 'none recorded'} |
+| Judge infrastructure failures | ${tool.judge_infrastructure_failures} | Checker health failures are not mathematical proof failures. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
+| Judge source-level failures | ${tool.judge_source_failures} | Only these checks support a mathematical FAIL conclusion. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
+| Mathematical outcomes unassessed | ${tool.judge_unassessed} | No source-level verdict was produced for these checks. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
 
 ## Error analysis
 
@@ -2075,7 +2170,7 @@ Error Analysis prioritizes failures in the Swarm collaboration loop. Low-level A
 
 | Severity | Category | Affected Tasks | Affected Executions | Affected Cores | Evidence-backed interpretation / impact | Confidence | Validation condition | Evidence |
 |---|---|---|---|---|---|---|---|---|
-${analysis.systemFindings.map((finding) => `| ${md(finding.severity)} | ${md(finding.category)} | ${md(finding.affected_tasks?.join(', ') || 'unknown')} | ${md(finding.affected_executions?.join(', ') || 'unknown')} | ${md(finding.affected_cores?.join(', ') || 'unknown')} | ${md(finding.interpretation)} | ${md(finding.confidence)} | ${md(finding.validation)} | ${finding.evidence.slice(0, 6).join('<br>')} |`).join('\n') || '| — | none recorded | unknown | unknown | unknown | No system-level collaboration finding was derived from the available evidence. | — | — | — |'}
+${analysis.systemFindings.map((finding) => `| ${md(finding.severity)} | ${md(finding.category)} | ${md(finding.affected_tasks?.join(', ') || 'unknown')} | ${md(finding.affected_executions?.join(', ') || 'unknown')} | ${md(finding.affected_cores?.join(', ') || 'unknown')} | ${finding.title ? `**${md(finding.title)}** ` : ''}${md(finding.interpretation)} | ${md(finding.confidence)} | ${md(finding.validation)} | ${finding.evidence.slice(0, 6).join('<br>')} |`).join('\n') || '| — | none recorded | unknown | unknown | unknown | No system-level collaboration finding was derived from the available evidence. | — | — | — |'}
 
 ### Supporting operation errors
 
@@ -2102,8 +2197,8 @@ ${optimizationRows || '| — | none | No additional optimization was derived | �
 
 Candidate strategy summaries are bounded by visible Agent objectives, Workspace revision metadata, Material links, and Judge diagnostics. They summarize route changes without copying proof or candidate source. A semantic reviewer should inspect the cited local records when the strategy metadata is sparse.
 
-| Candidate/material | Task | Execution | Visible strategy summary | Change from previous | Feedback response | CheckResult | Verdict/status | Diagnostic class | Submitted | Feedback reads | Later observable action | Evidence |
-|---|---|---|---|---|---|---|---|---|---|---:|---|---|
+| Candidate/material | Task | Execution | Visible strategy summary | Change from previous | Feedback response | CheckResult | Verdict / mathematical outcome / status | Result class | Checker process | Diagnostic code | Submitted | Feedback reads | Later observable action | Evidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|---:|---|---|
 ${candidateRows || '| _none_ | — | — | — | — | — | — | — | — | — | — | — |'}
 
 ${repeatedDiagnosticRows ? `### Repeated diagnostic classes

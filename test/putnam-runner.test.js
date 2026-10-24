@@ -794,6 +794,36 @@ test('Workspace-referenced candidates are checked from the Workspace source file
   }
 });
 
+test('checker infrastructure errors returned by submit_candidate retain actionable safe process details', async () => {
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-checker-error-report-');
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-checker-error-');
+  try {
+    const report = await runFixture({
+      reportDir,
+      experimentDir,
+      id: 'putnam_checker_error_test',
+      checker: {
+        preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: { exit_code: 0 } }),
+        check: async () => ({ verdict: 'ERROR', evidence: { checker_started: false, error_code: 'ENOENT', diagnostic: 'spawn lake ENOENT' } }),
+      },
+    });
+    const checks = report.cores.flatMap((core) => core.checks);
+    assert.ok(checks.length > 0);
+    assert.ok(checks.every((check) => check.result_class === 'infrastructure_failure'));
+    assert.ok(checks.every((check) => check.mathematical_outcome === 'unassessed'));
+    assert.ok(checks.every((check) => check.checker_process_status === 'not_started'));
+    assert.ok(checks.every((check) => check.diagnostic_code === 'checker_unavailable'));
+    assert.ok(checks.every((check) => Object.hasOwn(check, 'process_evidence')));
+    assert.ok(checks.every((check) => check.process_evidence.error_code === 'ENOENT'));
+    assert.ok(report.run.checker_infrastructure_failure_count >= 1);
+    assert.ok(report.run.checker_unassessed_count >= 1);
+    assert.equal(report.audit.invalid, false);
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
 test('short four-core collaboration proves root decomposition, parallel work, wait/resume, and parent review', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-collaboration-');
   const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-collaboration-report-');

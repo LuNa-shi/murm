@@ -249,3 +249,37 @@ test('keeps durable Execution identity explicit and uses bounded semantic window
     assert.ok(first.windows.every((window) => 'semantic_summary' in window));
   } finally { await cleanup(root); }
 });
+
+test('classifies repeated pre-checker failures as one infrastructure cause with unassessed mathematics', async () => {
+  const root = await createFixture();
+  const dbPath = join(root, 'state', 'projects', 'demo', 'project.sqlite');
+  const db = new DatabaseSync(dbPath);
+  for (const [name, definition] of [
+    ['judge_operation_status', "text default 'persisted'"],
+    ['checker_process_status', "text default 'not_started'"],
+    ['result_class', "text default 'unassessed'"],
+    ['retryable', 'integer default 1'],
+    ['diagnostic_code', 'text'],
+  ]) db.exec(`alter table check_results add column ${name} ${definition}`);
+  db.exec("update check_results set judge_operation_status = 'persisted', checker_process_status = 'not_started', result_class = 'infrastructure_failure', retryable = 0, diagnostic_code = 'checker_unavailable'");
+  const insert = db.prepare(`insert into check_results (
+    check_result_id, request_key, candidate_material_id, target_task_id, target_spec_version, execution_id, status, verdict,
+    checker_ref, checker_version, environment_ref, judge_operation_status, checker_process_status, result_class, retryable, diagnostic_code, created_at, updated_at
+  ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  for (let index = 2; index <= 8; index += 1) {
+    insert.run(`check-${index}`, `request-${index}`, `material-${index}`, TASK, 1, EXECUTION, 'APPLIED', 'ERROR', 'fixture', '1', 'fixture-env', 'persisted', 'not_started', 'infrastructure_failure', 0, 'checker_unavailable', T3, T4);
+  }
+  db.close();
+  try {
+    const analysis = await analyzeExperiment(root);
+    assert.equal(analysis.candidates.infrastructure_failure_count, 8);
+    assert.equal(analysis.candidates.unassessed_count, 8);
+    assert.equal(analysis.candidates.fail_count, 0);
+    assert.equal(analysis.candidates.repeated_diagnostics.length, 0, 'infrastructure repeats must not be reported as mathematical route non-convergence');
+    const finding = analysis.systemFindings.find((item) => item.category === 'checker_unavailable');
+    assert.ok(finding);
+    assert.match(finding.interpretation, /mathematically unassessed/);
+    assert.match(analysis.report, /Checker infrastructure failed before a mathematical result was produced/);
+    assert.match(analysis.report, /Mathematical outcomes unassessed/);
+  } finally { await cleanup(root); }
+});

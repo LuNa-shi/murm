@@ -392,6 +392,41 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
   close(env);
 });
 
+test('exhausted checker infrastructure failures block the Task without claiming a mathematical FAIL', async () => {
+  const env = environment({
+    checker: {
+      preflight: async () => ({
+        status: 'unavailable',
+        checker_process_status: 'not_started',
+        evidence: { diagnostic: 'spawn lake ENOENT', error_code: 'ENOENT', checker_started: false },
+      }),
+      check: async () => ({ verdict: 'FAIL', evidence: { diagnostic: 'this must never run' } }),
+    },
+  });
+  env.judgeService.maxInfrastructureRetries = 0;
+  const task = env.sdk.proposeTask(proofInput(), { operationId: 'infra-block-propose' }).task;
+  const run = claimTask(env, task, { executionId: 'infra-block-execution', actorRef: 'owner:root' });
+  const material = run.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'candidate' } }, { operationId: 'infra-block-candidate' }).material;
+  const submitted = run.sdk.submitCandidate({ candidate_material_id: material.material_id }, { operationId: 'infra-block-submit' });
+  const result = await env.judgeService.judgeCandidate({
+    request_key: 'infra-block-request', candidate_material_id: material.material_id, target_task_id: task.task_id,
+    target_spec_version: task.spec_version, input_snapshot_hash: submitted.execution.input_snapshot_hash,
+    checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version, environment_ref: fixtureManifest.environment_ref,
+    execution_id: submitted.execution.execution_id, state_version: submitted.execution.state_version,
+    candidate: { material_id: material.material_id, content: 'theorem candidate : True := by trivial' },
+    target_task: env.taskService.getTask(task.task_id), workspace: { input_snapshot_hash: submitted.execution.input_snapshot_hash }, fixture_manifest: fixtureManifest,
+  });
+  const applied = run.sdk.withContext({ stateVersion: submitted.execution.state_version }).applyCheckResult({ check_result_id: result.check_result_id }, { operationId: 'infra-block-apply' });
+  assert.equal(result.result_class, 'infrastructure_failure');
+  assert.equal(result.mathematical_outcome, 'unassessed');
+  assert.equal(result.verdict, 'ERROR');
+  assert.equal(applied.check_result.status, 'APPLIED');
+  assert.equal(applied.task.state, 'BLOCKED');
+  assert.equal(applied.task.block_reason, 'checker_unavailable:checker_unavailable');
+  assert.equal(applied.execution.state, 'FAILED');
+  close(env);
+});
+
 test('candidate Material ID wakes a waiting proof Execution when Judge uses an internal request key', async () => {
   const env = environment({ checker: { check: async () => ({ verdict: 'FAIL', evidence: { diagnostic: 'type mismatch' } }) } });
   const task = env.sdk.proposeTask(proofInput(), { operationId: 'candidate-wait-propose' }).task;
