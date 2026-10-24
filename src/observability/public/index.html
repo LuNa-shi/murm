@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#08111f" />
+    <meta name="theme-color" content="#111113" />
     <title>SwarmEnv · Experiment monitor</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -12,15 +12,18 @@
       <aside class="sidebar" id="sidebar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-          <div><strong>SwarmEnv</strong><small>OBSERVABILITY PLANE</small></div>
+          <div><strong>SwarmEnv</strong><small>OBSERVABILITY</small></div>
         </div>
-        <div class="experiment-switcher">
-          <span class="eyebrow">ACTIVE EXPERIMENT</span>
+
+        <div class="experiment-picker">
+          <label for="experiments">ACTIVE EXPERIMENT</label>
           <select id="experiments" aria-label="Select experiment"><option>Loading experiments…</option></select>
+          <div class="experiment-meta" id="experiment-meta">Loading experiment registry…</div>
         </div>
+
         <nav class="nav" aria-label="Primary navigation">
           <span class="nav-label">WORKSPACE</span>
-          <a class="nav-item active" href="#home" data-route="home"><span class="nav-icon" data-icon="home"></span><span>Home</span><kbd>G</kbd></a>
+          <a class="nav-item active" href="#home" data-route="home"><span class="nav-icon" data-icon="home"></span><span>Home</span></a>
           <a class="nav-item" href="#executions" data-route="executions"><span class="nav-icon" data-icon="activity"></span><span>Executions</span><span class="nav-count" id="nav-executions">0</span></a>
           <a class="nav-item" href="#tasks" data-route="tasks"><span class="nav-icon" data-icon="tasks"></span><span>Tasks</span><span class="nav-count" id="nav-tasks">0</span></a>
           <a class="nav-item" href="#materials" data-route="materials"><span class="nav-icon" data-icon="layers"></span><span>Materials</span><span class="nav-count" id="nav-materials">0</span></a>
@@ -28,9 +31,10 @@
           <a class="nav-item" href="#diagnostics" data-route="diagnostics"><span class="nav-icon" data-icon="pulse"></span><span>Diagnostics</span><span class="nav-dot" id="nav-alert"></span></a>
           <a class="nav-item" href="#services" data-route="services"><span class="nav-icon" data-icon="server"></span><span>Services</span></a>
         </nav>
+
         <div class="sidebar-footer">
           <div class="connection"><span class="connection-dot" id="connection-dot"></span><span id="connection">Connecting…</span></div>
-          <div class="sidebar-footer-meta"><span>OBSERVATION PLANE</span><span>v1</span></div>
+          <div class="sidebar-footer-meta"><span>LOCAL OBSERVATION PLANE</span><span>v1</span></div>
         </div>
       </aside>
 

@@ -1,8 +1,17 @@
-
 const state = {
-  experiment: null, experiments: [], events: [], timeline: null, model: null,
-  source: null, selectedExecution: null, selectedTask: null, selectedMaterial: null,
-  refreshInFlight: false, timelineTimer: null, timelineRequest: 0, lastUpdated: null,
+  experiment: null,
+  experiments: [],
+  events: [],
+  timeline: null,
+  model: null,
+  source: null,
+  lastUpdated: null,
+  refreshInFlight: false,
+  timelineTimer: null,
+  timelineRequest: 0,
+  detailCache: new Map(),
+  range: 'all',
+  selectedExecution: null,
 };
 
 const $ = (selector, root) => (root || document).querySelector(selector);
@@ -24,15 +33,36 @@ const ICONS = {
   clock: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
 };
 
-function installIcons() { $$('[data-icon]').forEach((node) => { node.innerHTML = ICONS[node.dataset.icon] || ''; }); }
-function escapeHtml(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character])); }
-function shortId(value, length) { const text = String(value || ''); const size = length || 12; return text.length > size ? text.slice(0, size) + '…' : text || '—'; }
+function installIcons() {
+  $$('[data-icon]').forEach((node) => { node.innerHTML = ICONS[node.dataset.icon] || ''; });
+}
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character]));
+}
+
+function shortId(value, length) {
+  const text = String(value || '');
+  const size = length || 12;
+  return text.length > size ? text.slice(0, size) + '…' : text || '—';
+}
+
 function formatTime(value, withDate) {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString([], withDate ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' } : { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return date.toLocaleString([], withDate
+    ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }
+    : { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
+
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function formatDuration(milliseconds) {
   if (!Number.isFinite(milliseconds) || milliseconds <= 0) return '0s';
   const seconds = Math.round(milliseconds / 1000);
@@ -41,14 +71,37 @@ function formatDuration(milliseconds) {
   if (minutes < 60) return minutes + 'm ' + (seconds % 60) + 's';
   return Math.floor(minutes / 60) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
 }
+
 function formatNumber(value) { return Number(value || 0).toLocaleString(); }
 function normalizeState(value) { return String(value || 'UNKNOWN').toLowerCase().replace(/[^a-z0-9]+/g, '-'); }
 function eventLabel(event) { return String(event && event.kind || 'observation').replaceAll('_', ' ').replaceAll('.', ' · '); }
-function displayValue(value) { return value && typeof value === 'object' && value.redacted ? 'redacted · ' + shortId(value.sha256, 12) : value == null ? '—' : String(value); }
 function conditionLabel(value) { return typeof value === 'string' ? value : value && typeof value === 'object' ? value.type || value.reason || value.code || 'condition' : null; }
 function statusPill(status) { return '<span class="status-pill ' + escapeHtml(normalizeState(status)) + '">' + escapeHtml(status || 'UNKNOWN') + '</span>'; }
 function emptyState(title, description) { return '<div class="empty"><strong>' + escapeHtml(title) + '</strong><p>' + escapeHtml(description) + '</p></div>'; }
 function relationLink(type, id, label) { return '<button class="relation-link" data-route="' + escapeHtml(type) + '/' + escapeHtml(id) + '">' + escapeHtml(label || shortId(id)) + '</button>'; }
+
+function displayValue(value) {
+  if (value && typeof value === 'object' && value.redacted) return 'redacted · ' + shortId(value.sha256, 12);
+  if (value == null || value === '') return '—';
+  return String(value);
+}
+
+function jsonValue(value, maxLength) {
+  const limit = maxLength || 16_000;
+  if (value === undefined) return '—';
+  let text;
+  try { text = JSON.stringify(value, null, 2); } catch { text = String(value); }
+  return text.length > limit ? text.slice(0, limit) + '\n… [display truncated]' : text;
+}
+
+function redactSecrets(value, key) {
+  if (/(authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|secret)/i.test(String(key || ''))) return '[redacted]';
+  if (Array.isArray(value)) return value.map((item) => redactSecrets(item, ''));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, redactSecrets(child, childKey)]));
+}
+
+function safeJson(value, maxLength) { return jsonValue(redactSecrets(value), maxLength); }
 
 async function get(path) {
   const response = await fetch(path, { headers: { accept: 'application/json' } });
@@ -59,20 +112,20 @@ async function get(path) {
 async function getAllPages(path) {
   const events = [];
   let cursor = 0;
-  for (let pageNumber = 0; pageNumber < 100; pageNumber += 1) {
+  for (let pageNumber = 0; pageNumber < 200; pageNumber += 1) {
     const separator = path.includes('?') ? '&' : '?';
     const page = await get(path + separator + 'after_sequence=' + cursor);
     events.push(...(page.events || []));
-    if (!page.has_more || page.next_cursor == null) return { events: events, truncated: false };
+    if (!page.has_more || page.next_cursor == null) return { events, truncated: false };
     if (page.next_cursor <= cursor) throw new Error('event cursor did not advance');
     cursor = page.next_cursor;
   }
-  return { events: events, truncated: true };
+  return { events, truncated: true };
 }
 
 function readNested(value, keys, depth) {
   const level = depth || 0;
-  if (!value || typeof value !== 'object' || level > 4) return null;
+  if (!value || typeof value !== 'object' || level > 5) return null;
   for (const key of keys) if (value[key] !== undefined && value[key] !== null) return value[key];
   for (const child of Object.values(value)) {
     const found = readNested(child, keys, level + 1);
@@ -83,7 +136,7 @@ function readNested(value, keys, depth) {
 
 function materialCandidates(value, depth) {
   const level = depth || 0;
-  if (!value || typeof value !== 'object' || level > 4) return [];
+  if (!value || typeof value !== 'object' || level > 5) return [];
   const result = [];
   if (typeof value.material_id === 'string') result.push(value);
   if (Array.isArray(value)) value.forEach((child) => result.push(...materialCandidates(child, level + 1)));
@@ -93,8 +146,58 @@ function materialCandidates(value, depth) {
 
 function mergeDefined(target, source) {
   if (!source || typeof source !== 'object') return target;
-  Object.entries(source).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== '') target[key] = value; });
+  Object.entries(source).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') target[key] = value;
+  });
   return target;
+}
+
+function timelineSegments() {
+  return (state.timeline && state.timeline.lanes || []).flatMap((lane) => (lane.states || lane.segments || []).map((segment) => ({ ...segment, core_id: lane.core_id })));
+}
+
+function eventToolRecord(event) {
+  if (event.kind === 'rpc_record' && event.payload && event.payload.record) return event.payload.record;
+  return null;
+}
+
+function extractToolCalls(events) {
+  const calls = new Map();
+  (events || []).forEach((event) => {
+    const record = eventToolRecord(event);
+    if (!record) return;
+    if (record.type === 'tool_execution_start') {
+      calls.set(record.toolCallId, {
+        id: record.toolCallId,
+        toolName: record.toolName || 'unknown tool',
+        args: record.args,
+        start: event,
+        end: null,
+        result: null,
+        isError: false,
+      });
+    } else if (record.type === 'tool_execution_end') {
+      const call = calls.get(record.toolCallId) || {
+        id: record.toolCallId,
+        toolName: record.toolName || 'unknown tool',
+        args: null,
+        start: event,
+        end: null,
+        result: null,
+        isError: false,
+      };
+      call.toolName = record.toolName || call.toolName;
+      call.result = record.result;
+      call.isError = Boolean(record.isError);
+      call.end = event;
+      calls.set(record.toolCallId, call);
+    }
+  });
+  return [...calls.values()].sort((a, b) => (a.start.sequence || 0) - (b.start.sequence || 0));
+}
+
+function toolCountForExecution(events, executionId) {
+  return extractToolCalls((events || []).filter((event) => event.execution_id === executionId)).length;
 }
 
 function buildModel() {
@@ -102,27 +205,34 @@ function buildModel() {
   const executions = new Map();
   const materials = new Map();
   const taskLinks = new Map();
+
   function ensureTask(id, patch) {
     if (!id) return null;
-    const task = tasks.get(id) || { task_id: id, state: 'UNKNOWN', children: new Set(), executions: new Set(), material_ids: new Set(), event_count: 0, running_ms: 0, errors: 0 };
+    const task = tasks.get(id) || { task_id: id, state: 'UNKNOWN', children: new Set(), executions: new Set(), material_ids: new Set(), event_count: 0, running_ms: 0, errors: 0, fields: {} };
     mergeDefined(task, patch || {});
+    if (patch) mergeDefined(task.fields, patch);
     tasks.set(id, task);
     return task;
   }
+
   function ensureExecution(id, patch) {
     if (!id) return null;
-    const execution = executions.get(id) || { execution_id: id, state: 'UNKNOWN', task_id: null, material_ids: [], event_count: 0, running_ms: 0 };
+    const execution = executions.get(id) || { execution_id: id, state: 'UNKNOWN', task_id: null, material_ids: [], event_count: 0, running_ms: 0, errors: 0, tool_calls: 0, fields: {} };
     mergeDefined(execution, patch || {});
+    if (patch) mergeDefined(execution.fields, patch);
     executions.set(id, execution);
     return execution;
   }
+
   function ensureMaterial(material) {
     if (!material || !material.material_id) return null;
-    const existing = materials.get(material.material_id) || { material_id: material.material_id, links: new Set(), consumers: new Set(), event_count: 0 };
+    const existing = materials.get(material.material_id) || { material_id: material.material_id, links: new Set(), consumers: new Set(), event_count: 0, fields: {} };
     mergeDefined(existing, material);
+    mergeDefined(existing.fields, material);
     materials.set(material.material_id, existing);
     return existing;
   }
+
   function linkMaterial(id, event) {
     if (!id) return;
     const material = ensureMaterial({ material_id: id });
@@ -139,6 +249,7 @@ function buildModel() {
       ensureTask(event.task_id).material_ids.add(id);
     }
   }
+
   state.events.forEach((event) => {
     const payload = event.payload || {};
     const taskPayload = readNested(payload, ['task']);
@@ -146,19 +257,29 @@ function buildModel() {
     const taskId = event.task_id || taskPayload && taskPayload.task_id || executionPayload && executionPayload.task_id || readNested(payload, ['target_task_id', 'parent_task_id']);
     const executionId = event.execution_id || executionPayload && executionPayload.execution_id;
     const waitCondition = payload.wait_condition || payload.wait_reason || taskPayload && taskPayload.wait_condition || executionPayload && executionPayload.wait_condition || payload.result && payload.result.wait_condition;
-    const task = ensureTask(taskId, taskPayload || {});
-    const execution = ensureExecution(executionId, executionPayload || {});
+    // Keep the event envelope as the identity source. A recursive payload
+    // lookup can find an unrelated `execution` object inside a tool result;
+    // allowing that field to overwrite the map key creates duplicate rows for
+    // one Runtime Execution (for example, a Pi session id and the durable id).
+    const taskPatch = taskPayload && typeof taskPayload === 'object' ? { ...taskPayload } : {};
+    if (taskId && taskPatch.task_id && taskPatch.task_id !== taskId) delete taskPatch.task_id;
+    const executionPatch = executionPayload && typeof executionPayload === 'object' ? { ...executionPayload } : {};
+    if (executionId && executionPatch.execution_id && executionPatch.execution_id !== executionId) delete executionPatch.execution_id;
+    const task = ensureTask(taskId, taskPatch);
+    const execution = ensureExecution(executionId, executionPatch);
+
     if (task) {
       task.event_count += 1;
       task.updated_at = event.occurred_at;
       if (executionId) task.executions.add(executionId);
       const nestedTaskState = taskPayload && typeof taskPayload === 'object' ? taskPayload.state : null;
-      if (nestedTaskState || event.kind === 'task_state_changed' || payload.task_state || ['OPEN', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED'].includes(payload.state)) task.state = nestedTaskState || payload.task_state || payload.state || task.state;
+      if (nestedTaskState || event.kind === 'task_state_changed' || payload.task_state || ['OPEN', 'RUNNING', 'WAITING', 'SUCCEEDED', 'SATISFIED', 'FAILED'].includes(payload.state)) task.state = nestedTaskState || payload.task_state || payload.state || task.state;
       if (payload.block_reason || waitCondition) task.block_reason = conditionLabel(payload.block_reason || waitCondition);
       if (taskPayload && taskPayload.parent_id) { task.parent_id = taskPayload.parent_id; ensureTask(task.parent_id).children.add(task.task_id); }
       if (taskPayload && taskPayload.goal) task.goal = taskPayload.goal;
       if (/error|failed|timeout/i.test(event.kind)) task.errors += 1;
     }
+
     if (execution) {
       execution.event_count += 1;
       execution.updated_at = event.occurred_at;
@@ -168,9 +289,10 @@ function buildModel() {
       const nestedExecutionState = executionPayload && typeof executionPayload === 'object' ? executionPayload.state : null;
       if (nestedExecutionState || event.kind === 'execution_released' || event.kind === 'core_state_changed' || payload.state) execution.state = nestedExecutionState || payload.state || execution.state;
       if (waitCondition) execution.wait_condition = waitCondition;
-      if (/error|failed|timeout/i.test(event.kind)) execution.errors = (execution.errors || 0) + 1;
+      if (/error|failed|timeout/i.test(event.kind)) execution.errors += 1;
       if (task) task.executions.add(execution.execution_id);
     }
+
     materialCandidates(payload).forEach((material) => {
       const saved = ensureMaterial(material);
       if (saved.source_task) ensureTask(saved.source_task).material_ids.add(saved.material_id);
@@ -180,10 +302,11 @@ function buildModel() {
       }
       linkMaterial(saved.material_id, event);
     });
+
     const ids = new Set();
     function collectIds(value, depth) {
       const level = depth || 0;
-      if (!value || typeof value !== 'object' || level > 4) return;
+      if (!value || typeof value !== 'object' || level > 5) return;
       Object.entries(value).forEach(([key, child]) => {
         if (/material_id$/i.test(key) && typeof child === 'string') ids.add(child);
         if (/material_ids|input_material_refs|steer_material_refs/i.test(key) && Array.isArray(child)) child.filter((item) => typeof item === 'string').forEach((item) => ids.add(item));
@@ -194,18 +317,38 @@ function buildModel() {
     ids.forEach((id) => linkMaterial(id, event));
     if (taskId && executionId) taskLinks.set(taskId + ':' + executionId, { task_id: taskId, execution_id: executionId });
   });
+
   tasks.forEach((task) => { if (task.parent_id) ensureTask(task.parent_id).children.add(task.task_id); });
-  (state.timeline && state.timeline.lanes || []).forEach((lane) => (lane.states || []).forEach((segment) => {
-    const execution = ensureExecution(segment.execution_id, { task_id: segment.task_id, core_id: lane.core_id, state: segment.state });
+  timelineSegments().forEach((segment) => {
+    const execution = ensureExecution(segment.execution_id, { task_id: segment.task_id, core_id: segment.core_id, state: segment.state });
     const duration = segment.ended_at ? new Date(segment.ended_at).getTime() - new Date(segment.started_at).getTime() : 0;
     if (String(segment.state || '').toUpperCase() !== 'RUNNING') return;
     if (execution) execution.running_ms += Math.max(0, duration);
     if (segment.task_id) ensureTask(segment.task_id).running_ms += Math.max(0, duration);
-  }));
+  });
+
   executions.forEach((execution) => { if (execution.task_id) ensureTask(execution.task_id).executions.add(execution.execution_id); });
+  // The list count must match the operator stream opened by the Execution
+  // inspector. Session-scoped Pi records can sit beside Runtime records in
+  // the Agent view; attributing those records by Core time double-counts a
+  // durable Execution and makes the list disagree with its detail page.
+  executions.forEach((execution) => { execution.tool_calls = toolCountForExecution(state.events, execution.execution_id); });
+
+  // A Pi session can be restarted several times during one durable Execution.
+  // Session IDs still appear in the raw event stream, but the dashboard's
+  // Execution list should be about Runtime-owned attempts. Keep IDs that are
+  // anchored by a Core interval or an explicit Execution projection.
+  const durableExecutionIds = new Set(timelineSegments().map((segment) => segment.execution_id).filter(Boolean));
+  state.events.forEach((event) => {
+    if (event.execution_id && ['execution_assigned', 'execution_released', 'core_state_changed', 'execution_started', 'execution_waiting'].includes(event.kind)) durableExecutionIds.add(event.execution_id);
+    const nestedExecution = readNested(event.payload || {}, ['execution']);
+    if (nestedExecution && nestedExecution.execution_id && event.kind === 'dispatch.complete') durableExecutionIds.add(nestedExecution.execution_id);
+  });
+  tasks.forEach((task) => { task.executions = new Set([...task.executions].filter((executionId) => durableExecutionIds.has(executionId))); });
+
   const errors = state.events.filter((event) => {
     const payload = event.payload || {};
-    return /error|failed|timeout|stale|fenced/i.test(event.kind || '') || payload.ok === false || Boolean(payload.error || payload.result && payload.result.error);
+    return /error|failed|timeout|stale|fenced/i.test(event.kind || '') || payload.ok === false || Boolean(payload.error || payload.result && payload.result.error) || event.kind === 'process_stderr';
   });
   const waits = state.events.filter((event) => {
     const payload = event.payload || {};
@@ -219,34 +362,41 @@ function buildModel() {
     const service = event.payload && event.payload.service || (event.source === 'service' ? 'service' : null);
     if (!service && !/dispatch|service|judge|route/i.test(event.kind || '')) return;
     const name = service || (event.source === 'judge' ? 'judge' : event.source || 'runtime');
-    const item = services.get(name) || { name: name, calls: 0, errors: 0 };
+    const item = services.get(name) || { name, calls: 0, errors: 0 };
     item.calls += 1; item.last_at = event.occurred_at;
-    if (/error|failed/i.test(event.kind || '')) item.errors += 1;
+    if (/error|failed/i.test(event.kind || '') || event.payload && event.payload.ok === false) item.errors += 1;
     services.set(name, item);
   });
+
   return {
     tasks: [...tasks.values()].map((item) => ({ ...item, children: [...item.children], executions: [...item.executions], material_ids: [...item.material_ids] })),
-    executions: [...executions.values()].map((item) => ({ ...item, material_ids: [...new Set(item.material_ids)] })),
+    executions: [...executions.values()].filter((item) => durableExecutionIds.has(item.execution_id)).map((item) => ({ ...item, material_ids: [...new Set(item.material_ids)] })),
     materials: [...materials.values()].map((item) => ({ ...item, links: [...item.links], consumers: [...item.consumers] })),
-    taskLinks: [...taskLinks.values()], services: [...services.values()], errors: errors, waits: waits,
+    taskLinks: [...taskLinks.values()], services: [...services.values()], errors, waits,
   };
 }
 
 function timelineBounds() {
   const dates = state.events.map((event) => new Date(event.occurred_at).getTime()).filter(Number.isFinite);
-  (state.timeline && state.timeline.lanes || []).forEach((lane) => (lane.states || []).forEach((segment) => {
+  timelineSegments().forEach((segment) => {
     dates.push(new Date(segment.started_at).getTime());
     if (segment.ended_at) dates.push(new Date(segment.ended_at).getTime());
-  }));
-  const min = Math.min(...dates); const max = Math.max(...dates);
-  return Number.isFinite(min) ? { min: min, max: Math.max(max, min + 60000) } : { min: Date.now() - 3600000, max: Date.now() };
+  });
+  let min = Math.min(...dates); let max = Math.max(...dates);
+  if (!Number.isFinite(min)) return { min: Date.now() - 3_600_000, max: Date.now() };
+  max = Math.max(max, min + 60_000);
+  if (state.range !== 'all') {
+    const range = state.range === '15m' ? 900_000 : state.range === '1h' ? 3_600_000 : 14_400_000;
+    min = Math.max(min, max - range);
+  }
+  return { min, max };
 }
 
 function positionOf(start, end, bounds) {
   const span = Math.max(1, bounds.max - bounds.min);
   const left = Math.max(0, Math.min(100, (new Date(start).getTime() - bounds.min) / span * 100));
   const right = end ? Math.max(left + .7, Math.min(100, (new Date(end).getTime() - bounds.min) / span * 100)) : 100;
-  return { left: left, width: Math.max(.7, right - left) };
+  return { left, width: Math.max(.7, right - left) };
 }
 
 function renderTimeline() {
@@ -255,7 +405,7 @@ function renderTimeline() {
   const lanes = state.timeline && state.timeline.lanes || [];
   if (!lanes.length) { host.innerHTML = emptyState('No Core activity yet', 'Start an Experiment to see reusable Core lanes here.'); return; }
   const bounds = timelineBounds();
-  const ticks = [0, 25, 50, 75, 100].map((percentage) => {
+  const ticks = [0, 20, 40, 60, 80, 100].map((percentage) => {
     const value = bounds.min + (bounds.max - bounds.min) * percentage / 100;
     return '<span style="left:' + percentage + '%">' + escapeHtml(formatTime(value)) + '</span>';
   }).join('');
@@ -265,12 +415,14 @@ function renderTimeline() {
       const position = positionOf(segment.started_at, segment.ended_at, bounds);
       const stateName = normalizeState(segment.state);
       const executionId = segment.execution_id || '';
-      return '<button class="timeline-segment state-' + escapeHtml(stateName) + '" style="left:' + position.left + '%;width:' + position.width + '%" data-execution-id="' + escapeHtml(executionId) + '" title="' + escapeHtml((segment.state || 'unknown') + ' · ' + (executionId || 'idle')) + '"><strong>' + escapeHtml(executionId ? shortId(executionId, 9) : stateName) + '</strong><small>' + escapeHtml(segment.state || '') + '</small></button>';
+      const selected = executionId && executionId === state.selectedExecution ? ' selected' : '';
+      const title = (segment.state || 'unknown') + ' · ' + (executionId || 'idle') + ' · ' + formatTime(segment.started_at, true) + ' → ' + formatTime(segment.ended_at, true);
+      return '<button class="timeline-segment state-' + escapeHtml(stateName) + selected + '" style="left:' + position.left + '%;width:' + position.width + '%" data-execution-id="' + escapeHtml(executionId) + '" title="' + escapeHtml(title) + '"><strong>' + escapeHtml(executionId ? shortId(executionId, 9) : stateName) + '</strong><small>' + escapeHtml(segment.state || '') + '</small></button>';
     }).join('') : '<span class="lane-event">No recorded interval</span>';
-    return '<div class="lane"><div class="lane-label">' + escapeHtml(lane.core_id) + '</div><div class="lane-track">' + content + '</div></div>';
+    return '<div class="lane"><div class="lane-label" title="' + escapeHtml(lane.core_id) + '">' + escapeHtml(lane.core_id) + '</div><div class="lane-track">' + content + '</div></div>';
   }).join('');
-  host.innerHTML = '<div class="timeline-axis">' + ticks + '</div><div class="lanes">' + laneHtml + '</div><div class="timeline-legend"><span class="legend-item"><i class="legend-dot running"></i>Running</span><span class="legend-item"><i class="legend-dot waiting"></i>Waiting</span><span class="legend-item"><i class="legend-dot idle"></i>Idle</span><span class="legend-item"><i class="legend-dot error"></i>Error</span><span class="legend-item muted">Click any interval to inspect the Execution</span></div>';
-  $$('.timeline-segment', host).forEach((node) => node.addEventListener('click', () => { if (node.dataset.executionId) navigate('execution/' + node.dataset.executionId); }));
+  host.innerHTML = '<div class="timeline-axis">' + ticks + '</div><div class="lanes">' + laneHtml + '</div><div class="timeline-legend"><span class="legend-item"><i class="legend-dot running"></i>Running</span><span class="legend-item"><i class="legend-dot waiting"></i>Waiting</span><span class="legend-item"><i class="legend-dot idle"></i>Idle</span><span class="legend-item"><i class="legend-dot error"></i>Failure</span><span class="legend-item selected-execution-note">Click an Execution interval to inspect its complete activity</span></div>';
+  $$('.timeline-segment', host).forEach((node) => node.addEventListener('click', () => { if (node.dataset.executionId) { state.selectedExecution = node.dataset.executionId; navigate('execution/' + node.dataset.executionId); } }));
 }
 
 function signalMarkup(model) {
@@ -280,21 +432,21 @@ function signalMarkup(model) {
   const idle = (state.timeline && state.timeline.lanes || []).filter((lane) => (lane.states || []).at(-1) && lane.states.at(-1).state === 'IDLE').length;
   if (idle) signals.push({ tone: 'warning', icon: 'pulse', title: idle + ' Core lane' + (idle === 1 ? '' : 's') + ' idle', body: 'Idle capacity is visible separately from semantic WAITING.' });
   if (!signals.length) signals.push({ tone: 'good', icon: 'check', title: 'No active health signals', body: 'The current event stream has no derived errors or pending waits.' });
-  return signals.slice(0, 4).map((signal) => '<div class="signal-row"><span class="signal-icon ' + (signal.tone === 'good' ? '' : signal.tone) + '">' + ICONS[signal.icon] + '</span><span class="signal-copy"><strong>' + escapeHtml(signal.title) + '</strong><span>' + escapeHtml(signal.body) + '</span></span></div>').join('');
+  return signals.slice(0, 5).map((signal) => '<div class="signal-row"><span class="signal-icon ' + (signal.tone === 'good' ? '' : signal.tone) + '">' + ICONS[signal.icon] + '</span><span class="signal-copy"><strong>' + escapeHtml(signal.title) + '</strong><span>' + escapeHtml(signal.body) + '</span></span></div>').join('');
 }
 
 function renderMetrics(model) {
   const running = model.executions.filter((item) => ['RUNNING', 'ASSIGNED'].includes(String(item.state).toUpperCase())).length;
   const waiting = model.executions.filter((item) => String(item.state).toUpperCase() === 'WAITING').length;
-  const activeCores = new Set(model.executions.filter((item) => running > 0 && item.core_id && ['RUNNING', 'ASSIGNED'].includes(String(item.state).toUpperCase())).map((item) => item.core_id)).size;
+  const activeCores = new Set(model.executions.filter((item) => item.core_id && ['RUNNING', 'ASSIGNED'].includes(String(item.state).toUpperCase())).map((item) => item.core_id)).size;
   const runningMs = model.tasks.reduce((total, item) => total + (item.running_ms || 0), 0);
   const cards = [
-    ['RUN STATUS', state.experiment && state.experiment.status || '—', 'started ' + formatTime(state.experiment && state.experiment.started_at, true), state.experiment && state.experiment.status === 'RUNNING' ? 'accent' : ''],
+    ['STATUS', state.experiment && state.experiment.status || '—', formatDate(state.experiment && state.experiment.started_at), state.experiment && state.experiment.status === 'RUNNING' ? 'accent' : ''],
     ['ACTIVE CORES', activeCores || state.experiment && state.experiment.core_ids && state.experiment.core_ids.length || 0, running + ' running Executions', 'accent'],
     ['TASKS', model.tasks.length, model.tasks.filter((item) => /running|open/i.test(item.state)).length + ' active or open', ''],
     ['EXECUTIONS', model.executions.length, waiting + ' waiting', ''],
-    ['MATERIALS', model.materials.length, model.materials.filter((item) => item.evidence_state === 'accepted' || item.evidence_state === 'checked').length + ' checked / accepted', ''],
-    ['RUNNING TIME', formatDuration(runningMs), state.events.length + ' observed events', ''],
+    ['MATERIALS', model.materials.length, model.materials.filter((item) => /accepted|checked/i.test(item.evidence_state || '')).length + ' checked / accepted', ''],
+    ['RUNNING TIME', formatDuration(runningMs), formatNumber(state.events.length) + ' observed events', ''],
   ];
   return cards.map((card) => '<div class="metric metric-' + card[3] + '"><span class="metric-label">' + escapeHtml(card[0]) + '</span><strong class="metric-value">' + escapeHtml(card[1]) + '</strong><span class="metric-meta">' + escapeHtml(card[2]) + '</span></div>').join('');
 }
@@ -317,15 +469,16 @@ function renderRecentEvents() {
 
 function renderHome() {
   if (!state.model) return renderNoExperiment();
+  const title = state.experiment && state.experiment.metadata && state.experiment.metadata.problem_id || state.experiment && state.experiment.experiment_id || 'Experiment monitor';
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><strong>Home</strong>';
   $('#main-view').innerHTML = H(
-    '<div class="page-heading"><div><span class="eyebrow">EXPERIMENT MONITOR</span><h1>', escapeHtml(state.experiment && state.experiment.metadata && state.experiment.metadata.problem_id || state.experiment && state.experiment.experiment_id || 'Experiment monitor'), '</h1><p>Live operations view of Core capacity, Execution flow, Task progress, and shared Material context.</p></div><div class="heading-actions">',
-    statusPill(state.experiment && state.experiment.status), '<button class="button" data-route="executions"><span data-icon="activity"></span>Inspect activity</button></div></div>',
-    '<div class="metric-grid" id="metrics"></div><div class="dashboard-grid"><section class="card timeline-card"><div class="card-header"><div><span class="eyebrow">RUNTIME TOPOLOGY</span><h2>Core activity</h2><p>Reusable Core lanes across the selected Experiment window.</p></div><a class="card-link" href="#executions">View executions <span data-icon="arrow"></span></a></div><div class="timeline-wrap" id="timeline"></div></section>',
-    '<section class="card"><div class="card-header"><div><span class="eyebrow">HEALTH</span><h2>Signals</h2><p>Derived from append-only observations.</p></div><a class="card-link" href="#diagnostics">Open diagnostics</a></div><div class="card-body"><div class="signal-list" id="signals"></div></div></section></div>',
-    '<div class="content-grid three"><section class="card"><div class="card-header"><div><span class="eyebrow">IMPACT</span><h2>Top Tasks</h2><p>Activity and downstream progress.</p></div><a class="card-link" href="#tasks">All tasks</a></div><div class="card-body"><div class="rank-list" id="top-tasks"></div></div></section>',
-    '<section class="card"><div class="card-header"><div><span class="eyebrow">CONTEXT FLOW</span><h2>Top Materials</h2><p>Shared work with the widest observed use.</p></div><a class="card-link" href="#materials">All materials</a></div><div class="card-body"><div class="rank-list" id="top-materials"></div></div></section>',
-    '<section class="card"><div class="card-header"><div><span class="eyebrow">EVENT STREAM</span><h2>Recent activity</h2><p>Latest Runtime and Service facts.</p></div></div><div class="card-body"><div class="event-list" id="recent-events"></div></div></section></div>'
+    '<div class="page-heading"><div><span class="eyebrow">EXPERIMENT MONITOR</span><h1>', escapeHtml(title), '</h1><p>Real observation data across the selected run. The Core timeline is the primary surface; every interval opens the underlying Execution.</p></div><div class="heading-actions">', statusPill(state.experiment && state.experiment.status), '</div></div>',
+    '<section class="card timeline-card"><div class="card-header"><div><span class="eyebrow">RUNTIME TOPOLOGY</span><h2>Core activity</h2><p>', escapeHtml((state.experiment && state.experiment.core_ids || []).length + ' reusable Core lanes · ' + formatNumber(state.events.length) + ' ordered observations'), '</p></div><div class="timeline-tools"><button class="range-button ' + (state.range === 'all' ? 'active' : '') + '" data-range="all">Fit run</button><button class="range-button ' + (state.range === '15m' ? 'active' : '') + '" data-range="15m">15 min</button><button class="range-button ' + (state.range === '1h' ? 'active' : '') + '" data-range="1h">1 hour</button></div></div><div class="timeline-note">Intervals are positioned against the observed run clock. Nothing needs to be dragged; choose a time window, then click the exact Execution interval to inspect its tool calls and returns.</div><div class="timeline-wrap" id="timeline"></div></section>',
+    '<div class="summary-strip" id="metrics"></div>',
+    '<div class="content-grid three dashboard-lower"><section class="card"><div class="card-header"><div><span class="eyebrow">HEALTH</span><h2>Signals</h2><p>Derived from append-only observations.</p></div><a class="card-link" href="#diagnostics">Open diagnostics</a></div><div class="card-body"><div class="signal-list" id="signals"></div></div></section>',
+    '<section class="card"><div class="card-header"><div><span class="eyebrow">TASK ACTIVITY</span><h2>Top Tasks</h2><p>Click through to the complete Task fields.</p></div><a class="card-link" href="#tasks">All tasks</a></div><div class="card-body"><div class="rank-list" id="top-tasks"></div></div></section>',
+    '<section class="card"><div class="card-header"><div><span class="eyebrow">CONTEXT FLOW</span><h2>Top Materials</h2><p>Provenance and downstream consumers.</p></div><a class="card-link" href="#materials">All materials</a></div><div class="card-body"><div class="rank-list" id="top-materials"></div></div></section></div>',
+    '<section class="card dashboard-lower"><div class="card-header"><div><span class="eyebrow">EVENT STREAM</span><h2>Recent activity</h2><p>Latest Runtime, Agent, Service, and Judge facts.</p></div><a class="card-link" href="#executions">Browse executions</a></div><div class="card-body"><div class="event-list" id="recent-events"></div></div></section>'
   );
   installIcons();
   $('#metrics').innerHTML = renderMetrics(state.model);
@@ -334,6 +487,7 @@ function renderHome() {
   $('#nav-alert').classList.toggle('alert', state.model.errors.length > 0);
   renderTopLists(state.model);
   renderRecentEvents();
+  $$('.range-button').forEach((button) => button.addEventListener('click', () => { state.range = button.dataset.range; renderHome(); }));
 }
 
 function renderNoExperiment() {
@@ -342,8 +496,20 @@ function renderNoExperiment() {
 }
 
 function renderDetailEvents(events) {
-  if (!events.length) return emptyState('No Execution events', 'The observation stream has not recorded activity for this Execution.');
-  return events.map((event) => '<article class="detail-event"><span class="event-time">' + escapeHtml(formatTime(event.occurred_at)) + '</span><strong>' + escapeHtml(eventLabel(event)) + '</strong><span class="event-source">#' + event.sequence + '</span>' + (event.payload && Object.keys(event.payload).length ? '<pre>' + escapeHtml(JSON.stringify(event.payload, null, 2).slice(0, 5000)) + '</pre>' : '') + '</article>').join('');
+  const filtered = (events || []).filter((event) => event.kind !== 'rpc_record' && event.kind !== 'process_stdout' && event.kind !== 'process_stderr');
+  if (!filtered.length) return emptyState('No lifecycle events', 'The selected Execution has no non-tool lifecycle observations.');
+  return filtered.map((event) => '<details class="raw-event"><summary><strong>' + escapeHtml(eventLabel(event)) + '</strong><span class="event-source">#' + event.sequence + '</span><span class="event-time">' + escapeHtml(formatTime(event.occurred_at)) + '</span></summary><pre>' + escapeHtml(safeJson(event.payload, 20_000)) + '</pre></details>').join('');
+}
+
+function renderToolCalls(calls) {
+  if (!calls.length) return emptyState('No recorded tool calls', 'This Execution contains lifecycle observations but no Pi tool_execution records.');
+  return calls.map((call, index) => {
+    const started = call.start && call.start.occurred_at;
+    const ended = call.end && call.end.occurred_at;
+    const elapsed = started && ended ? formatDuration(new Date(ended).getTime() - new Date(started).getTime()) : 'in progress';
+    const status = call.isError ? '<span class="status-pill failed">error</span>' : call.end ? '<span class="status-pill succeeded">returned</span>' : '<span class="status-pill running">running</span>';
+    return '<article class="tool-card"><div class="tool-card-header"><span class="tool-index">' + (index + 1) + '</span><span class="tool-title"><strong>' + escapeHtml(call.toolName) + '</strong><span>' + escapeHtml(formatTime(started, true)) + ' · ' + escapeHtml(elapsed) + '</span></span><span class="tool-result-status">' + status + '</span></div><div class="tool-card-body"><div class="tool-pane"><label>Arguments</label><pre>' + escapeHtml(safeJson(call.args)) + '</pre></div><div class="tool-pane"><label>Return result</label><pre>' + escapeHtml(safeJson(call.result)) + '</pre></div></div><details><summary>Raw tool record</summary><pre>' + escapeHtml(safeJson({ start: call.start && call.start.payload, end: call.end && call.end.payload }, 30_000)) + '</pre></details></article>';
+  }).join('');
 }
 
 async function loadWorkspace(executionId) {
@@ -353,65 +519,86 @@ async function loadWorkspace(executionId) {
     const workspace = result.workspace || {};
     host.innerHTML = '<div class="workspace-summary"><div class="workspace-stat"><strong>' + escapeHtml(workspace.workspace_revision || '—') + '</strong><span>revision</span></div><div class="workspace-stat"><strong>' + escapeHtml(result.files && result.files.length || 0) + '</strong><span>files</span></div><div class="workspace-stat"><strong>' + escapeHtml(shortId(workspace.content_hash, 9)) + '</strong><span>content hash</span></div></div><div class="workspace-meta" style="margin-top:12px"><span>' + escapeHtml(workspace.workspace_ref || result.execution && result.execution.workspace_ref || 'workspace reference unavailable') + '</span></div>';
   } catch (error) {
-    host.innerHTML = emptyState('Workspace projection unavailable', error.message.includes('404') ? 'The standalone observer does not have a live Workspace Manager for this Execution.' : error.message);
+    host.innerHTML = emptyState('Workspace projection unavailable', error.message.includes('404') ? 'The standalone observer does not have a live Workspace Manager for this historical Execution.' : error.message);
   }
 }
+
+function executionDetail(id) { return state.detailCache.get(id) || null; }
 
 function renderExecutionPage(id) {
   const model = state.model;
   const execution = model && (model.executions.find((item) => item.execution_id === id) || model.executions[0]);
   if (!execution) return renderEmptyPage('Executions', 'No Execution facts have been observed for this Experiment yet.');
-  const events = state.events.filter((event) => event.execution_id === execution.execution_id).reverse();
+  state.selectedExecution = execution.execution_id;
+  const detail = executionDetail(execution.execution_id);
+  const events = detail ? detail.events : state.events.filter((event) => event.execution_id === execution.execution_id);
+  const calls = extractToolCalls(events);
   const task = model.tasks.find((item) => item.task_id === execution.task_id);
   const materials = model.materials.filter((item) => execution.material_ids.includes(item.material_id) || item.source_execution === execution.execution_id);
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><a href="#executions">Executions</a><span class="crumb-separator">/</span><strong>' + escapeHtml(shortId(execution.execution_id)) + '</strong>';
   $('#main-view').innerHTML = H(
-    '<div class="page-heading"><div><span class="eyebrow">EXECUTION INSPECTOR</span><h1>', escapeHtml(shortId(execution.execution_id, 16)), '</h1><p>One durable attempt, all observed sessions, state transitions, and shared context.</p></div><div class="heading-actions"><button class="button" data-route="executions"><span data-icon="arrow"></span>All executions</button>', statusPill(execution.state), '</div></div>',
-    '<div class="detail-grid"><div class="detail-stack"><section class="detail-hero"><div><span class="eyebrow">CURRENT STATE</span><h2>', escapeHtml(execution.state || 'UNKNOWN'), '</h2><p>', escapeHtml(task && task.goal || 'Task ' + shortId(execution.task_id)), '</p></div><div class="detail-meta">',
-    '<div class="meta-item"><span>Execution</span><strong>', escapeHtml(execution.execution_id), '</strong></div><div class="meta-item"><span>Task</span><strong>', escapeHtml(shortId(execution.task_id)), '</strong></div><div class="meta-item"><span>Core / Session</span><strong>', escapeHtml(execution.core_id || '—'), ' / ', escapeHtml(shortId(execution.session_id)), '</strong></div><div class="meta-item"><span>Observed</span><strong>', escapeHtml(formatDuration(execution.running_ms)), '</strong></div></div></section>',
-    '<section class="card"><div class="card-header"><div><span class="eyebrow">ORDERED RECORD</span><h2>Execution events</h2><p>', events.length, ' observations linked to this Execution.</p></div></div><div class="card-body">', renderDetailEvents(events), '</div></section></div>',
+    '<div class="page-heading"><div><span class="eyebrow">EXECUTION INSPECTOR</span><h1>', escapeHtml(shortId(execution.execution_id, 18)), '</h1><p>Complete observed activity for one durable attempt. Tool arguments and returned results are shown below from the local operator event stream.</p></div><div class="heading-actions"><button class="button" data-route="executions">All executions</button>', statusPill(execution.state), '</div></div>',
+    '<div class="detail-grid"><div class="detail-stack"><section class="detail-hero"><div><span class="eyebrow">CURRENT STATE</span><h2>', escapeHtml(execution.state || 'UNKNOWN'), '</h2><p>', escapeHtml(task && task.goal || 'Task ' + shortId(execution.task_id)), '</p></div><div class="detail-meta"><div class="meta-item"><span>Execution</span><strong>', escapeHtml(execution.execution_id), '</strong></div><div class="meta-item"><span>Task</span><strong>', escapeHtml(shortId(execution.task_id)), '</strong></div><div class="meta-item"><span>Core / Session</span><strong>', escapeHtml(execution.core_id || '—'), ' / ', escapeHtml(shortId(execution.session_id)), '</strong></div><div class="meta-item"><span>Running time</span><strong>', escapeHtml(formatDuration(execution.running_ms)), '</strong></div></div></section>',
+    '<section class="detail-metrics"><div class="detail-metric"><strong>', formatNumber(calls.length), '</strong><span>tool calls</span></div><div class="detail-metric"><strong>', formatNumber(calls.filter((call) => call.end).length), '</strong><span>returned</span></div><div class="detail-metric"><strong>', formatNumber((events || []).length), '</strong><span>observations</span></div><div class="detail-metric"><strong>', formatNumber(execution.errors || 0), '</strong><span>error signals</span></div></section>',
+    '<section class="card"><div class="card-header"><div><span class="eyebrow">AGENT ACTIVITY</span><h2>Tool calls and returns</h2><p>', detail ? 'Every recorded tool call is paired with its exact returned result.' : 'Loading the selected Execution’s operator event stream…', '</p></div></div><div class="card-body"><div class="tool-list" id="execution-tools">', detail ? renderToolCalls(calls) : emptyState('Loading tool activity…', 'Reading the historical event stream for this Execution.'), '</div></div></section>',
+    '<section class="card"><div class="card-header"><div><span class="eyebrow">LIFECYCLE</span><h2>Other observed events</h2><p>State, Runtime, Service, Workspace, and Judge boundaries.</p></div></div><div class="card-body">', renderDetailEvents(events), '</div></section></div>',
     '<div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">WORKSPACE</span><h2>Working surface</h2></div></div><div class="card-body" id="execution-workspace">', emptyState('Loading Workspace…', 'Reading the selected Execution Workspace projection.'), '</div></section>',
     '<section class="card"><div class="card-header"><div><span class="eyebrow">CONTEXT</span><h2>Linked Materials</h2></div></div><div class="card-body">', materials.length ? '<div class="relation-list">' + materials.map((material) => relationLink('material', material.material_id, (material.kind || 'material') + ' · ' + shortId(material.material_id, 9))).join('') + '</div>' : emptyState('No linked Materials', 'This Execution has not exposed a Material reference in the current observation stream.'), '</div></section>',
-    '<section class="card"><div class="card-header"><div><span class="eyebrow">TASK</span><h2>Owning responsibility</h2></div></div><div class="card-body">', task ? '<button class="rank-row" data-route="task/' + escapeHtml(task.task_id) + '"><span class="signal-icon">' + ICONS.tasks + '</span><span class="row-copy"><strong>' + escapeHtml(task.goal || shortId(task.task_id)) + '</strong><span>' + escapeHtml(task.state) + ' · ' + escapeHtml(shortId(task.task_id)) + '</span></span><span class="card-link">Open</span></button>' : emptyState('Task unavailable', 'The Task Service projection is not attached to this observation server.'), '</div></section></div></div>'
+    '<section class="card"><div class="card-header"><div><span class="eyebrow">TASK</span><h2>Owning responsibility</h2></div></div><div class="card-body">', task ? '<button class="rank-row" data-route="task/' + escapeHtml(task.task_id) + '"><span class="signal-icon">' + ICONS.tasks + '</span><span class="row-copy"><strong>' + escapeHtml(task.goal || shortId(task.task_id)) + '</strong><span>' + escapeHtml(task.state) + ' · ' + escapeHtml(shortId(task.task_id)) + '</span></span><span class="card-link">Open</span></button>' : emptyState('Task unavailable', 'The Task projection is not attached to this observation stream.'), '</div></section></div></div>'
   );
   installIcons();
   void loadWorkspace(execution.execution_id);
+  if (!detail) void loadExecutionDetail(execution.execution_id);
+}
+
+async function loadExecutionDetail(id) {
+  if (!state.experiment || state.detailCache.has(id)) return;
+  try {
+    const path = '/api/experiments/' + encodeURIComponent(state.experiment.experiment_id) + '/events?execution_id=' + encodeURIComponent(id) + '&limit=1000&view=operator';
+    const result = await getAllPages(path);
+    state.detailCache.set(id, { events: result.events, truncated: result.truncated });
+    if (location.hash === '#execution/' + id) route();
+  } catch (error) {
+    state.detailCache.set(id, { events: [], error: error.message });
+    if (location.hash === '#execution/' + id) route();
+  }
 }
 
 function renderExecutionList() {
   const model = state.model;
   if (!model || !model.executions.length) return renderEmptyPage('Executions', 'No Execution facts have been observed for this Experiment yet.');
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><strong>Executions</strong>';
-  const rows = model.executions.slice().sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || ''))).map((execution) => '<tr data-route="execution/' + escapeHtml(execution.execution_id) + '"><td><span class="id-cell">' + escapeHtml(shortId(execution.execution_id, 18)) + '</span><span class="table-sub">' + escapeHtml(execution.core_id || 'unassigned') + ' · ' + escapeHtml(shortId(execution.session_id)) + '</span></td><td>' + statusPill(execution.state) + '</td><td>' + escapeHtml(shortId(execution.task_id)) + '</td><td>' + escapeHtml(formatDuration(execution.running_ms)) + '</td><td>' + escapeHtml(formatTime(execution.updated_at, true)) + '</td></tr>').join('');
-  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">WORKSPACE / EXECUTIONS</span><h1>Execution activity</h1><p>Every leased attempt across reusable Core lanes.</p></div><div class="heading-actions"><span class="status-pill">' + model.executions.length + ' total</span></div></div><section class="card table-card"><div class="filter-bar" style="padding:18px 20px 4px"><input class="search" id="execution-filter" placeholder="Filter by Execution, Task, or Core" aria-label="Filter executions" /><span class="muted">' + escapeHtml(state.experiment.experiment_id) + '</span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Execution</th><th>State</th><th>Task</th><th>Running time</th><th>Last observed</th></tr></thead><tbody id="execution-table">' + rows + '</tbody></table></div></section>';
+  const rows = model.executions.slice().sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || ''))).map((execution) => '<tr data-route="execution/' + escapeHtml(execution.execution_id) + '"><td><span class="id-cell">' + escapeHtml(shortId(execution.execution_id, 18)) + '</span><span class="table-sub">' + escapeHtml(execution.core_id || 'unassigned') + ' · ' + escapeHtml(shortId(execution.session_id)) + '</span></td><td>' + statusPill(execution.state) + '</td><td>' + escapeHtml(shortId(execution.task_id)) + '</td><td>' + formatNumber(execution.tool_calls || 0) + '</td><td>' + escapeHtml(formatDuration(execution.running_ms)) + '</td><td>' + escapeHtml(formatTime(execution.updated_at, true)) + '</td></tr>').join('');
+  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">WORKSPACE / EXECUTIONS</span><h1>Execution activity</h1><p>Every leased attempt across reusable Core lanes. Open an attempt to see every tool call, argument, return result, and lifecycle boundary.</p></div><div class="heading-actions"><span class="status-pill">' + model.executions.length + ' total</span></div></div><section class="card table-card"><div class="filter-bar"><input class="search" id="execution-filter" placeholder="Filter by Execution, Task, or Core" aria-label="Filter executions" /></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Execution</th><th>State</th><th>Task</th><th>Tools</th><th>Running time</th><th>Updated</th></tr></thead><tbody id="execution-table">' + rows + '</tbody></table></div></section>';
   $('#execution-filter') && $('#execution-filter').addEventListener('input', (event) => filterTable(event.target.value, '#execution-table'));
 }
 
 function filterTable(value, selector) {
   const query = String(value || '').toLowerCase();
-  $$(selector + ' tr').forEach((row) => { row.hidden = Boolean(query && !row.textContent.toLowerCase().includes(query)); });
+  $$(selector + ' tr').forEach((row) => { row.hidden = !row.textContent.toLowerCase().includes(query); });
+}
+
+function fieldTable(fields, title) {
+  const entries = Object.entries(fields || {}).filter(([key]) => !['children', 'executions', 'material_ids', 'links', 'consumers', 'fields'].includes(key));
+  if (!entries.length) return emptyState('No structured fields observed', 'The event stream contains an identity but no complete entity payload.');
+  return '<table class="field-table"><caption>' + escapeHtml(title || 'Observed fields') + '</caption><tbody>' + entries.map(([key, value]) => '<tr><th>' + escapeHtml(key) + '</th><td><pre class="field-value">' + escapeHtml(value && typeof value === 'object' ? safeJson(value, 18_000) : displayValue(value)) + '</pre></td></tr>').join('') + '</tbody></table>';
 }
 
 function renderTaskPage(id) {
   const model = state.model;
   if (!model || !model.tasks.length) return renderEmptyPage('Tasks', 'No Task facts have been observed for this Experiment yet.');
-  const selected = model.tasks.find((item) => item.task_id === id) || model.tasks[0];
-  const roots = model.tasks.filter((task) => !task.parent_id);
-  function renderTree(task, depth) {
-    const children = task.children.map((childId) => model.tasks.find((candidate) => candidate.task_id === childId)).filter(Boolean);
-    return '<button class="rank-row" style="margin-left:' + Math.min(depth || 0, 5) * 18 + 'px" data-route="task/' + escapeHtml(task.task_id) + '"><span class="rank-number">' + (depth ? '↳' : 'R') + '</span><span class="row-copy"><strong>' + escapeHtml(task.goal || shortId(task.task_id)) + '</strong><span>' + escapeHtml(task.task_type || 'Task') + ' · ' + escapeHtml(shortId(task.task_id)) + '</span></span>' + statusPill(task.state) + '</button>' + children.map((child) => renderTree(child, (depth || 0) + 1)).join('');
-  }
-  const executions = model.executions.filter((execution) => selected.executions.includes(execution.execution_id));
-  const materials = model.materials.filter((material) => selected.material_ids.includes(material.material_id) || material.source_task === selected.task_id);
-  $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><a href="#tasks">Tasks</a><span class="crumb-separator">/</span><strong>' + escapeHtml(shortId(selected.task_id)) + '</strong>';
-  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">TASK FLOW</span><h1>' + escapeHtml(selected.goal || shortId(selected.task_id, 16)) + '</h1><p>Durable responsibility, child work, Execution attempts, and context delivery.</p></div><div class="heading-actions">' + statusPill(selected.state) + '<button class="button" data-route="tasks">All tasks</button></div></div><div class="content-grid"><section class="card"><div class="card-header"><div><span class="eyebrow">RELATIONSHIP MAP</span><h2>Task tree</h2><p>Parent and direct child ownership.</p></div></div><div class="card-body"><div class="rank-list">' + roots.map((root) => renderTree(root, 0)).join('') + '</div></div></section><div class="stack"><section class="card"><div class="card-header"><div><span class="eyebrow">SELECTED TASK</span><h2>Responsibility details</h2></div></div><div class="card-body"><div class="meta-item"><span>Task ID</span><strong>' + escapeHtml(selected.task_id) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>State</span><strong>' + escapeHtml(selected.state) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Running time</span><strong>' + escapeHtml(formatDuration(selected.running_ms)) + '</strong></div><p class="muted" style="margin:15px 0 0;font-size:12px">' + escapeHtml(selected.block_reason ? 'Waiting / blocked: ' + selected.block_reason : 'No blocking reason observed.') + '</p></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">EXECUTIONS</span><h2>Attempts</h2></div></div><div class="card-body">' + (executions.length ? '<div class="relation-list">' + executions.map((execution) => relationLink('execution', execution.execution_id, execution.state + ' · ' + shortId(execution.execution_id, 9))).join('') + '</div>' : emptyState('No attempts', 'This Task has not been claimed in the observed run.')) + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">CONTEXT</span><h2>Materials</h2></div></div><div class="card-body">' + (materials.length ? '<div class="relation-list">' + materials.map((material) => relationLink('material', material.material_id, (material.kind || 'material') + ' · ' + shortId(material.material_id, 9))).join('') + '</div>' : emptyState('No Materials linked', 'Material provenance has not been observed for this Task.')) + '</div></section></div></div>';
+  const task = model.tasks.find((item) => item.task_id === id) || model.tasks[0];
+  const executions = model.executions.filter((execution) => task.executions.includes(execution.execution_id) || execution.task_id === task.task_id);
+  const materials = model.materials.filter((material) => task.material_ids.includes(material.material_id) || material.source_task === task.task_id);
+  $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><a href="#tasks">Tasks</a><span class="crumb-separator">/</span><strong>' + escapeHtml(shortId(task.task_id)) + '</strong>';
+  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">TASK FLOW</span><h1>' + escapeHtml(task.goal || shortId(task.task_id, 18)) + '</h1><p>Complete observed Task specification, state, child relationships, Execution history, and shared Materials.</p></div><div class="heading-actions">' + statusPill(task.state) + '<button class="button" data-route="tasks">All tasks</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">TASK SPECIFICATION</span><h2>Every observed field</h2><p>Values are taken from the Task Service payload recorded in this Experiment.</p></div></div><div class="card-body">' + fieldTable(task.fields, 'Task fields') + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">TASK TREE</span><h2>Children and parent</h2></div></div><div class="card-body"><div class="relation-list">' + (task.parent_id ? relationLink('task', task.parent_id, 'Parent · ' + shortId(task.parent_id, 10)) : '<span class="tag">Root Task</span>') + task.children.map((child) => relationLink('task', child, 'Child · ' + shortId(child, 10))).join('') + '</div></div></section></div><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">STATE</span><h2>Scheduling facts</h2></div></div><div class="card-body"><div class="meta-item"><span>Task ID</span><strong>' + escapeHtml(task.task_id) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Running time</span><strong>' + escapeHtml(formatDuration(task.running_ms)) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Observed events</span><strong>' + escapeHtml(formatNumber(task.event_count)) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Wait / block reason</span><strong>' + escapeHtml(task.block_reason || '—') + '</strong></div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">EXECUTIONS</span><h2>Attempts</h2></div></div><div class="card-body">' + (executions.length ? '<div class="relation-list">' + executions.map((execution) => relationLink('execution', execution.execution_id, execution.state + ' · ' + shortId(execution.execution_id, 9))).join('') + '</div>' : emptyState('No attempts', 'This Task has not been claimed in the observed run.')) + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">CONTEXT</span><h2>Materials</h2></div></div><div class="card-body">' + (materials.length ? '<div class="relation-list">' + materials.map((material) => relationLink('material', material.material_id, (material.kind || 'material') + ' · ' + shortId(material.material_id, 9))).join('') + '</div>' : emptyState('No Materials linked', 'Material provenance has not been observed for this Task.')) + '</div></section></div></div>';
 }
 
 function renderTaskList() {
   if (!state.model || !state.model.tasks.length) return renderEmptyPage('Tasks', 'No Task facts have been observed for this Experiment yet.');
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><strong>Tasks</strong>';
-  const rows = state.model.tasks.slice().sort((a, b) => (b.running_ms || 0) - (a.running_ms || 0)).map((task) => '<tr data-route="task/' + escapeHtml(task.task_id) + '"><td><span class="id-cell">' + escapeHtml(shortId(task.task_id, 18)) + '</span><span class="table-sub">' + escapeHtml(task.goal || 'No goal recorded') + '</span></td><td>' + statusPill(task.state) + '</td><td>' + task.children.length + '</td><td>' + task.executions.length + '</td><td>' + escapeHtml(formatDuration(task.running_ms)) + '</td></tr>').join('');
-  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">WORKSPACE / TASKS</span><h1>Task flow</h1><p>Browse every responsibility and its relationship to Executions and shared context.</p></div></div><section class="card table-card"><div class="filter-bar" style="padding:18px 20px 4px"><input class="search" id="task-filter" placeholder="Filter Task ID or goal" aria-label="Filter tasks" /></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Task</th><th>State</th><th>Children</th><th>Executions</th><th>Running time</th></tr></thead><tbody id="task-table">' + rows + '</tbody></table></div></section>';
+  const rows = state.model.tasks.slice().sort((a, b) => (b.running_ms || 0) - (a.running_ms || 0)).map((task) => '<tr data-route="task/' + escapeHtml(task.task_id) + '"><td><span class="id-cell">' + escapeHtml(shortId(task.task_id, 18)) + '</span><span class="table-sub">' + escapeHtml(task.goal || 'No goal recorded') + '</span></td><td><span class="tag">' + escapeHtml(task.task_type || 'unknown') + '</span></td><td>' + statusPill(task.state) + '</td><td>' + task.children.length + '</td><td>' + task.executions.length + '</td><td>' + escapeHtml(formatDuration(task.running_ms)) + '</td></tr>').join('');
+  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">WORKSPACE / TASKS</span><h1>Task flow</h1><p>Browse every responsibility and open a Task to inspect its complete recorded field set.</p></div></div><section class="card table-card"><div class="filter-bar"><input class="search" id="task-filter" placeholder="Filter Task ID, type, or goal" aria-label="Filter tasks" /></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Task</th><th>Type</th><th>State</th><th>Children</th><th>Executions</th><th>Running time</th></tr></thead><tbody id="task-table">' + rows + '</tbody></table></div></section>';
   $('#task-filter') && $('#task-filter').addEventListener('input', (event) => filterTable(event.target.value, '#task-table'));
 }
 
@@ -422,14 +609,14 @@ function renderMaterialPage(id) {
   const task = model.tasks.find((item) => item.task_id === selected.source_task);
   const execution = model.executions.find((item) => item.execution_id === selected.source_execution);
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><a href="#materials">Materials</a><span class="crumb-separator">/</span><strong>' + escapeHtml(shortId(selected.material_id)) + '</strong>';
-  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">CONTEXT / MATERIAL</span><h1>' + escapeHtml(selected.kind || 'Material') + ' <span class="muted">' + escapeHtml(shortId(selected.material_id, 16)) + '</span></h1><p>Immutable shared work, provenance, evidence state, and observed downstream use.</p></div><div class="heading-actions">' + statusPill(selected.evidence_state) + '<button class="button" data-route="materials">All materials</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">PROVENANCE</span><h2>Source and lineage</h2></div></div><div class="card-body"><div class="meta-item"><span>Material ID</span><strong>' + escapeHtml(selected.material_id) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Content hash</span><strong>' + escapeHtml(displayValue(selected.content_hash)) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Version</span><strong>' + escapeHtml(displayValue(selected.version)) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Created</span><strong>' + escapeHtml(formatTime(selected.created_at, true)) + '</strong></div><div class="relation-list" style="margin-top:18px">' + (task ? relationLink('task', task.task_id, 'Task · ' + shortId(task.task_id, 9)) : '') + (execution ? relationLink('execution', execution.execution_id, 'Execution · ' + shortId(execution.execution_id, 9)) : '') + (selected.supersedes ? relationLink('material', selected.supersedes, 'Supersedes · ' + shortId(selected.supersedes, 9)) : '') + '</div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">DOWNSTREAM USE</span><h2>Observed consumers</h2><p>Read and action links captured in the current event stream.</p></div></div><div class="card-body">' + (selected.consumers.length ? '<div class="relation-list">' + selected.consumers.map((consumer) => relationLink('execution', consumer, 'Execution · ' + shortId(consumer, 10))).join('') + '</div>' : emptyState('No explicit consumers', 'This Material has provenance, but no downstream read or action has been observed yet.')) + '</div></section></div><section class="card"><div class="card-header"><div><span class="eyebrow">CONTENT PREVIEW</span><h2>Payload</h2><p>Redacted browser projection; private fields stay out of the dashboard.</p></div></div><div class="card-body"><pre class="payload-preview">' + escapeHtml(JSON.stringify(selected.content || selected.content_json || { material_id: selected.material_id }, null, 2).slice(0, 12000)) + '</pre></div></section></div>';
+  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">CONTEXT / MATERIAL</span><h1>' + escapeHtml(selected.kind || 'Material') + ' <span class="muted">' + escapeHtml(shortId(selected.material_id, 16)) + '</span></h1><p>Immutable shared work, complete observed fields, provenance, evidence state, and downstream use.</p></div><div class="heading-actions">' + statusPill(selected.evidence_state) + '<button class="button" data-route="materials">All materials</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">MATERIAL FIELDS</span><h2>Recorded payload</h2><p>Fields are read from the Context Service publication event.</p></div></div><div class="card-body">' + fieldTable(selected.fields, 'Material fields') + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">PROVENANCE</span><h2>Source and lineage</h2></div></div><div class="card-body"><div class="relation-list">' + (task ? relationLink('task', task.task_id, 'Task · ' + shortId(task.task_id, 9)) : '') + (execution ? relationLink('execution', execution.execution_id, 'Execution · ' + shortId(execution.execution_id, 9)) : '') + (selected.supersedes ? relationLink('material', selected.supersedes, 'Supersedes · ' + shortId(selected.supersedes, 9)) : '') + '</div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">DOWNSTREAM USE</span><h2>Observed consumers</h2><p>Read and action links captured in the event stream.</p></div></div><div class="card-body">' + (selected.consumers.length ? '<div class="relation-list">' + selected.consumers.map((consumer) => relationLink('execution', consumer, 'Execution · ' + shortId(consumer, 10))).join('') + '</div>' : emptyState('No explicit consumers', 'This Material has provenance, but no downstream read or action has been observed yet.')) + '</div></section></div><section class="card"><div class="card-header"><div><span class="eyebrow">CONTENT PREVIEW</span><h2>Payload</h2><p>Redacted browser projection; private fields stay out of the default dashboard stream.</p></div></div><div class="card-body"><pre class="payload-preview">' + escapeHtml(safeJson(selected.content || selected.content_json || { material_id: selected.material_id }, 20_000)) + '</pre></div></section></div>';
 }
 
 function renderMaterialList() {
   if (!state.model || !state.model.materials.length) return renderEmptyPage('Materials', 'No Material facts have been observed for this Experiment yet.');
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><strong>Materials</strong>';
   const rows = state.model.materials.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).map((material) => '<tr data-route="material/' + escapeHtml(material.material_id) + '"><td><span class="id-cell">' + escapeHtml(shortId(material.material_id, 18)) + '</span><span class="table-sub">' + escapeHtml(material.scope || 'unscoped') + '</span></td><td><span class="tag">' + escapeHtml(material.kind || 'unknown') + '</span></td><td>' + statusPill(material.evidence_state) + '</td><td>' + escapeHtml(shortId(material.source_task)) + '</td><td>' + material.consumers.length + '</td><td>' + escapeHtml(formatTime(material.created_at, true)) + '</td></tr>').join('');
-  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">WORKSPACE / MATERIALS</span><h1>Context flow</h1><p>Trace shared work from producer to downstream consumer.</p></div></div><section class="card table-card"><div class="filter-bar" style="padding:18px 20px 4px"><input class="search" id="material-filter" placeholder="Filter material, kind, or source" aria-label="Filter materials" /></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Material</th><th>Kind</th><th>Evidence</th><th>Source Task</th><th>Consumers</th><th>Created</th></tr></thead><tbody id="material-table">' + rows + '</tbody></table></div></section>';
+  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">WORKSPACE / MATERIALS</span><h1>Context flow</h1><p>Trace shared work from producer to downstream consumer, then open a Material to inspect every recorded field.</p></div></div><section class="card table-card"><div class="filter-bar"><input class="search" id="material-filter" placeholder="Filter material, kind, or source" aria-label="Filter materials" /></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Material</th><th>Kind</th><th>Evidence</th><th>Source Task</th><th>Consumers</th><th>Created</th></tr></thead><tbody id="material-table">' + rows + '</tbody></table></div></section>';
   $('#material-filter') && $('#material-filter').addEventListener('input', (event) => filterTable(event.target.value, '#material-table'));
 }
 
@@ -439,7 +626,8 @@ function renderDiagnostics() {
   const errorRows = model.errors.slice(-30).reverse();
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Operations</span><span class="crumb-separator">/</span><strong>Diagnostics</strong>';
   const rows = errorRows.length ? errorRows.map((event) => '<button class="event-row" data-route="' + (event.execution_id ? 'execution/' + escapeHtml(event.execution_id) : 'diagnostics') + '"><span class="signal-icon danger">' + ICONS.alert + '</span><span class="row-copy"><strong>' + escapeHtml(eventLabel(event)) + '</strong><span>' + escapeHtml(shortId(event.execution_id || event.task_id || event.core_id)) + ' · #' + event.sequence + '</span></span><span class="event-time">' + escapeHtml(formatTime(event.occurred_at)) + '</span></button>').join('') : emptyState('No error evidence', 'No process, tool, timeout, or failed-state events are present.');
-  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">OPERATIONS / DIAGNOSTICS</span><h1>System health</h1><p>Evidence-linked signals for scheduling, Session lifecycle, Services, and context delivery.</p></div><div class="heading-actions"><span class="status-pill ' + (model.errors.length ? 'failed' : 'succeeded') + '">' + (model.errors.length ? model.errors.length + ' signals' : 'healthy') + '</span></div></div><div class="content-grid"><section class="card"><div class="card-header"><div><span class="eyebrow">HEALTH SIGNALS</span><h2>Current projection</h2></div></div><div class="card-body"><div class="signal-list">' + signalMarkup(model) + '</div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">ERROR EVIDENCE</span><h2>Recent error events</h2></div></div><div class="card-body"><div class="event-list">' + rows + '</div></div></section></div><section class="card" style="margin-top:16px"><div class="card-header"><div><span class="eyebrow">OBSERVATION INTEGRITY</span><h2>Data plane facts</h2></div></div><div class="card-body"><div class="metric-grid" style="margin-bottom:0"><div class="metric"><span class="metric-label">Events</span><strong class="metric-value">' + formatNumber(state.events.length) + '</strong><span class="metric-meta">ordered by sequence</span></div><div class="metric"><span class="metric-label">Wait boundaries</span><strong class="metric-value">' + formatNumber(model.waits.length) + '</strong><span class="metric-meta">typed lifecycle observations</span></div><div class="metric"><span class="metric-label">Task links</span><strong class="metric-value">' + formatNumber(model.taskLinks.length) + '</strong><span class="metric-meta">Task / Execution pairs</span></div></div></div></section>';
+  const waits = model.waits.slice(-30).reverse().map((event) => '<button class="event-row" data-route="' + (event.execution_id ? 'execution/' + escapeHtml(event.execution_id) : 'diagnostics') + '"><span class="signal-icon warning">' + ICONS.clock + '</span><span class="row-copy"><strong>' + escapeHtml(conditionLabel(event.payload && (event.payload.wait_condition || event.payload.wait_reason)) || eventLabel(event)) + '</strong><span>' + escapeHtml(shortId(event.execution_id || event.task_id || event.core_id)) + ' · #' + event.sequence + '</span></span><span class="event-time">' + escapeHtml(formatTime(event.occurred_at)) + '</span></button>');
+  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">OPERATIONS / DIAGNOSTICS</span><h1>System health</h1><p>Evidence-linked signals for scheduling, Agent lifecycle, Services, and context delivery.</p></div><div class="heading-actions"><span class="status-pill ' + (model.errors.length ? 'failed' : 'succeeded') + '">' + (model.errors.length ? model.errors.length + ' signals' : 'healthy') + '</span></div></div><div class="content-grid"><section class="card"><div class="card-header"><div><span class="eyebrow">HEALTH SIGNALS</span><h2>Current projection</h2></div></div><div class="card-body"><div class="signal-list">' + signalMarkup(model) + '</div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">ERROR EVIDENCE</span><h2>Recent error events</h2></div></div><div class="card-body"><div class="event-list">' + rows + '</div></div></section></div><div class="content-grid dashboard-lower"><section class="card"><div class="card-header"><div><span class="eyebrow">WAIT EVIDENCE</span><h2>Observed wait boundaries</h2></div></div><div class="card-body"><div class="event-list">' + (waits.length ? waits.join('') : emptyState('No wait boundaries', 'No semantic WAITING condition was observed.')) + '</div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">OBSERVATION INTEGRITY</span><h2>Data plane facts</h2></div></div><div class="card-body"><div class="summary-strip" style="margin:0"><div class="metric"><span class="metric-label">Events</span><strong class="metric-value">' + formatNumber(state.events.length) + '</strong><span class="metric-meta">ordered by sequence</span></div><div class="metric"><span class="metric-label">Wait boundaries</span><strong class="metric-value">' + formatNumber(model.waits.length) + '</strong><span class="metric-meta">typed lifecycle observations</span></div><div class="metric"><span class="metric-label">Task links</span><strong class="metric-value">' + formatNumber(model.taskLinks.length) + '</strong><span class="metric-meta">Task / Execution pairs</span></div></div></div></section></div>';
 }
 
 async function renderServices() {
@@ -505,13 +693,11 @@ async function refreshTimeline(id) {
   const request = ++state.timelineRequest;
   try {
     const timeline = await get('/api/experiments/' + encodeURIComponent(id) + '/timeline?limit=1000&view=agent');
-    if (request !== state.timelineRequest || state.experiment?.experiment_id !== id) return;
+    if (request !== state.timelineRequest || state.experiment && state.experiment.experiment_id !== id) return;
     state.timeline = timeline;
     state.model = buildModel();
     renderCurrent();
-  } catch {
-    // The event itself remains visible; a later SSE event or refresh retries the timeline query.
-  }
+  } catch { /* A later event or manual refresh retries the timeline query. */ }
 }
 
 function renderCurrent() {
@@ -524,6 +710,15 @@ function updateNav() {
   $('#nav-tasks').textContent = model.tasks.length;
   $('#nav-executions').textContent = model.executions.length;
   $('#nav-materials').textContent = model.materials.length;
+}
+
+function updateExperimentMeta() {
+  const host = $('#experiment-meta');
+  if (!host) return;
+  const experiment = state.experiment;
+  if (!experiment) { host.textContent = state.experiments.length + ' experiments registered'; return; }
+  const problem = experiment.metadata && experiment.metadata.problem_id;
+  host.textContent = (problem ? problem + ' · ' : '') + formatDate(experiment.started_at) + ' · ' + formatNumber(experiment.event_count || 0) + ' events';
 }
 
 async function selectExperiment(id) {
@@ -539,8 +734,11 @@ async function selectExperiment(id) {
     state.events = results[0].events;
     state.timeline = results[1];
     state.model = buildModel();
+    state.detailCache = new Map();
+    state.selectedExecution = null;
     state.lastUpdated = new Date();
     updateNav();
+    updateExperimentMeta();
     connectStream(id);
     setConnection('Live', 'live');
     renderCurrent();
@@ -553,7 +751,11 @@ async function selectExperiment(id) {
 function updateExperimentOptions(experiments) {
   const select = $('#experiments');
   const current = state.experiment && state.experiment.experiment_id || select.value;
-  select.innerHTML = experiments.length ? experiments.map((experiment) => '<option value="' + escapeHtml(experiment.experiment_id) + '">' + escapeHtml(shortId(experiment.experiment_id, 22)) + ' · ' + escapeHtml(experiment.status) + '</option>').join('') : '<option value="">No experiments</option>';
+  select.innerHTML = experiments.length ? experiments.map((experiment) => {
+    const problem = experiment.metadata && experiment.metadata.problem_id || shortId(experiment.experiment_id, 12);
+    const label = problem + ' · ' + formatDate(experiment.started_at) + ' · ' + experiment.status + ' · ' + formatNumber(experiment.event_count || 0) + ' events';
+    return '<option value="' + escapeHtml(experiment.experiment_id) + '">' + escapeHtml(label) + '</option>';
+  }).join('') : '<option value="">No experiments</option>';
   if (current && experiments.some((experiment) => experiment.experiment_id === current)) select.value = current;
 }
 
@@ -568,8 +770,8 @@ async function refreshExperiments(initial) {
     const running = state.experiments.find((experiment) => experiment.status === 'RUNNING');
     const target = initial || !state.experiment ? running && running.experiment_id || state.experiments[0] && state.experiments[0].experiment_id : !current && state.experiments[0] && state.experiments[0].experiment_id;
     if (target && target !== (state.experiment && state.experiment.experiment_id)) await selectExperiment(target);
-    else if (current && state.experiment) { state.experiment = Object.assign({}, state.experiment, current); renderCurrent(); }
-    else if (!state.experiment) { setConnection('Waiting for data'); renderNoExperiment(); }
+    else if (current && state.experiment) { state.experiment = Object.assign({}, state.experiment, current); updateExperimentMeta(); renderCurrent(); }
+    else if (!state.experiment) { setConnection('Waiting for data'); updateExperimentMeta(); renderNoExperiment(); }
   } catch (error) {
     setConnection('Unavailable', 'error');
     if (!state.experiment) $('#main-view').innerHTML = '<section class="card"><div class="card-body">' + emptyState('Cannot reach observer', error.message) + '</div></section>';
