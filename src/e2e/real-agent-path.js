@@ -696,6 +696,13 @@ export async function runRealAgentPath({
       diagnostic_location: firstDiagnosticLocation,
       revision_changed_diagnostic_location: revisionMaterialChangedDiagnosticLocation,
     };
+    if (!feedbackConsumptionEvidence.failed_candidate_correlated
+      || !feedbackConsumptionEvidence.revision_candidate_correlated
+      || !feedbackConsumptionEvidence.revision_material_supersedes_failed_candidate
+      || !feedbackConsumptionEvidence.revision_material_changed
+      || !feedbackConsumptionEvidence.revision_changed_diagnostic_location) {
+      throw new Error('real Agent repair evidence did not correlate the diagnostic with the revised candidate');
+    }
     const lifecycleEvents = runtimeLifecycleEvents.map((event) => ({ ...event }));
     const lifecycleEventsBetweenCandidates = runtimeLifecycleEvents
       .slice(firstRecord.lifecycle_event_count_after, secondRecord.lifecycle_event_count_before)
