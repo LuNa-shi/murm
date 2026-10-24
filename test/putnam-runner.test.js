@@ -25,6 +25,26 @@ function problem(id) {
   };
 }
 
+function checkerWithPreflight(checker) {
+  if (typeof checker.preflight === 'function') return checker;
+  return {
+    ...checker,
+    preflight: async ({ fixtureManifest }) => ({
+      status: 'healthy',
+      checker_process_status: 'completed',
+      evidence: {
+        preflight_supported: true,
+        preflight_verified: true,
+        input_binding_verified: true,
+        toolchain_version_verified: true,
+        checker_version_verified: true,
+        expected_checker_version: fixtureManifest.checker_version,
+        observed_checker_version: fixtureManifest.checker_version,
+      },
+    }),
+  };
+}
+
 class FakeSession extends EventEmitter {
   constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false) {
     super();
@@ -600,11 +620,11 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
       onAdapter?.(adapter);
       return adapter;
     },
-    checker: checker ?? {
+    checker: checkerWithPreflight(checker ?? {
       async check() {
         return { verdict: 'PASS', evidence: { exit_code: 0 } };
       },
-    },
+    }),
   });
 }
 
@@ -849,7 +869,7 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
         adapters.push(adapter);
         return adapter;
       },
-      checker: { async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
     });
     assert.equal(report.run.protocol_valid, true);
     assert.equal(report.run.made_progress, true);
@@ -904,7 +924,7 @@ test('production queue dynamically reuses Cores across two waves and releases pa
         adapters.push(adapter);
         return adapter;
       },
-      checker: { async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
     });
     const childTasks = report.project.task_tree.filter((task) => task.parent_id !== null);
     const childTaskIds = new Set(childTasks.map((task) => task.task_id));
@@ -983,7 +1003,7 @@ test('production queue consumes pre-existing independent Tasks without Root synt
         adapters.push(adapter);
         return adapter;
       },
-      checker: { async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
     });
     const rootTask = report.project.task_tree.find((task) => task.parent_id === null);
     const childTasks = report.project.task_tree.filter((task) => task.parent_id !== null);
@@ -1020,7 +1040,7 @@ test('batch runner isolates projects and preserves per-project results', async (
       stopOnSolved: true,
       projectParallelism: 2,
       agentAdapterFactory: ({ env }) => new FakeAdapter({ env }),
-      checker: { async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
     });
     assert.equal(reports.length, 2);
     assert.ok(reports.every((report) => report.run.solved));

@@ -77,8 +77,10 @@ export function runProcess(command, args, { cwd, env = process.env, timeoutMs = 
 }
 
 export class LeanChecker {
-  constructor({ command = 'lake', timeoutMs = 120_000, maxOutputBytes = 1_000_000, workRoot = tmpdir(), runner = runProcess, rejectSorry = true, logger = null } = {}) {
+  constructor({ command = 'lake', checkerRef = 'lean', checkerVersion = 'mvp-1', timeoutMs = 120_000, maxOutputBytes = 1_000_000, workRoot = tmpdir(), runner = runProcess, rejectSorry = true, logger = null } = {}) {
     this.command = command;
+    this.checkerRef = checkerRef;
+    this.checkerVersion = checkerVersion;
     this.timeoutMs = timeoutMs;
     this.maxOutputBytes = maxOutputBytes;
     this.workRoot = workRoot;
@@ -142,7 +144,15 @@ export class LeanChecker {
       const result = normalizePreflight({
         status: 'unavailable',
         checker_process_status: 'not_started',
-        evidence: { ...inputEvidence, diagnostic: `checker input or working directory unavailable: ${error.message}`, error_code: error.code, checker_started: false },
+        evidence: {
+          ...inputEvidence,
+          input_binding_verified: false,
+          preflight_verified: false,
+          diagnostic_code: 'checker_input_binding_unavailable',
+          diagnostic: `checker input or working directory unavailable: ${error.message}`,
+          error_code: error.code,
+          checker_started: false,
+        },
       }, identity);
       this.logger?.append({ event: 'checker.preflight.complete', status: result.status, checker_process_status: result.checker_process_status, diagnostic_code: result.diagnostic_code });
       return result;
@@ -164,21 +174,30 @@ export class LeanChecker {
     const expectedVersion = toolchainVersion(fixtureManifest.lean_toolchain);
     const versionMismatch = Boolean(expectedVersion && observedVersion && expectedVersion !== observedVersion);
     const versionUnverified = !expectedVersion || !observedVersion;
+    const expectedCheckerRef = fixtureManifest.checker_ref;
+    const expectedCheckerVersion = fixtureManifest.checker_version;
+    const checkerRefVerified = expectedCheckerRef === this.checkerRef;
+    const checkerVersionVerified = expectedCheckerVersion === this.checkerVersion;
+    const checkerIdentityMismatch = !checkerRefVerified || !checkerVersionVerified;
     const processFailed = Boolean(process.error || process.timed_out || process.exit_code !== 0 || process.signal);
-    const versionDiagnosticCode = !processFailed && versionMismatch
-      ? 'checker_version_mismatch'
-      : !processFailed && versionUnverified
-        ? 'checker_version_unverified'
-        : undefined;
+    const versionDiagnosticCode = !processFailed && checkerIdentityMismatch
+      ? checkerVersionVerified ? 'checker_identity_mismatch' : 'checker_version_mismatch'
+      : !processFailed && versionMismatch
+        ? 'checker_toolchain_version_mismatch'
+        : !processFailed && versionUnverified
+          ? 'checker_version_unverified'
+          : undefined;
     const diagnosticText = diagnostic([
       process.stderr,
       process.stdout,
       process.error,
+      !checkerRefVerified ? `checker identity mismatch: expected ${expectedCheckerRef}, observed ${this.checkerRef}` : '',
+      !checkerVersionVerified ? `checker version mismatch: expected ${expectedCheckerVersion}, observed ${this.checkerVersion ?? 'unknown'}` : '',
       versionMismatch ? `checker version mismatch: expected ${expectedVersion}, observed ${observedVersion}` : '',
       versionUnverified ? `checker toolchain version could not be verified: expected ${expectedVersion ?? 'unknown'}, observed ${observedVersion ?? 'unknown'}` : '',
       process.timed_out ? 'checker timed out' : '',
     ].filter(Boolean).join('\n'));
-    const unavailable = process.error || process.timed_out || process.exit_code !== 0 || versionMismatch || versionUnverified;
+    const unavailable = process.error || process.timed_out || process.exit_code !== 0 || checkerIdentityMismatch || versionMismatch || versionUnverified;
     const result = normalizePreflight({
       status: unavailable ? 'unavailable' : 'healthy',
       checker_process_status: process.error ? 'not_started' : process.timed_out ? 'timeout' : process.signal ? 'crashed' : 'completed',
@@ -187,7 +206,14 @@ export class LeanChecker {
         expected_toolchain_version: expectedVersion,
         observed_toolchain_version: observedVersion,
         toolchain_version_verified: Boolean(expectedVersion && observedVersion && expectedVersion === observedVersion),
-        preflight_verified: Boolean(fixtureManifest.project_root && inputEvidence.input_binding_verified && expectedVersion && observedVersion && expectedVersion === observedVersion),
+        expected_checker_ref: expectedCheckerRef,
+        observed_checker_ref: this.checkerRef,
+        checker_ref_verified: checkerRefVerified,
+        expected_checker_version: expectedCheckerVersion,
+        observed_checker_version: this.checkerVersion,
+        checker_version_verified: checkerVersionVerified,
+        checker_identity_verified: checkerRefVerified && checkerVersionVerified,
+        preflight_verified: Boolean(fixtureManifest.project_root && inputEvidence.input_binding_verified && expectedVersion && observedVersion && expectedVersion === observedVersion && checkerRefVerified && checkerVersionVerified),
         diagnostic_code: versionDiagnosticCode,
         exit_code: process.exit_code ?? null,
         signal: process.signal ?? null,

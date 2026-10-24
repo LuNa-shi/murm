@@ -289,11 +289,22 @@ export class JudgeService {
     const identity = checkerIdentity(normalized.fixture_manifest);
     let result;
     if (typeof this.checker.preflight !== 'function') {
-      // Deterministic checker doubles may not expose an external toolchain
-      // preflight. Keep that adapter usable for protocol tests, but persist
-      // the fact that its environment and input binding were not verified;
-      // the production LeanChecker always implements this gate.
-      result = normalizePreflight({ status: 'healthy', evidence: { preflight_supported: false, preflight_verified: false, diagnostic: 'checker adapter does not expose preflight' } }, identity);
+      // A checker that cannot prove its executable, toolchain, working
+      // directory, and locked input binding is unavailable. Treating an
+      // adapter without this gate as healthy would let a Candidate reach the
+      // Judge with no evidence that the checker can produce a mathematical
+      // result.
+      result = normalizePreflight({
+        status: 'unavailable',
+        checker_process_status: 'not_started',
+        evidence: {
+          preflight_supported: false,
+          preflight_verified: false,
+          diagnostic_code: 'checker_preflight_unsupported',
+          diagnostic: 'checker adapter does not expose the required preflight gate',
+          checker_started: false,
+        },
+      }, identity);
     } else {
       try {
         result = normalizePreflight(await this.checker.preflight({ fixtureManifest: normalized.fixture_manifest }), identity);

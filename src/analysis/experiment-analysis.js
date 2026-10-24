@@ -36,6 +36,8 @@ const SAFE_RESULT_KEYS = new Set([
   'checker_ref', 'checker_version', 'environment_ref', 'checker_result_available',
   'diagnostic_code', 'preflight_key', 'preflight_status', 'retry_exhausted', 'infrastructure_attempt_count',
   'health_fingerprint', 'preflight_supported', 'preflight_verified', 'input_binding_verified', 'toolchain_version_verified',
+  'checker_ref_verified', 'checker_version_verified', 'checker_identity_verified', 'expected_checker_ref', 'observed_checker_ref',
+  'expected_checker_version', 'observed_checker_version',
 ]);
 
 const INTENT_BY_OPERATION = new Map([

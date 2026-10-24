@@ -29,7 +29,27 @@ function environment({ checker = null } = {}) {
   const contextService = new ContextService(database);
   const taskService = new TaskService(database, { contextService });
   contextService.taskService = taskService;
-  const judgeService = new JudgeService(database, { checker: checker ?? { check: async () => ({ verdict: 'PASS', evidence: { exit_code: 0 } }) } });
+  const configuredChecker = checker ?? { check: async () => ({ verdict: 'PASS', evidence: { exit_code: 0 } }) };
+  const judgeService = new JudgeService(database, {
+    checker: typeof configuredChecker.preflight === 'function'
+      ? configuredChecker
+      : {
+        ...configuredChecker,
+        preflight: async ({ fixtureManifest: manifest }) => ({
+          status: 'healthy',
+          checker_process_status: 'completed',
+          evidence: {
+            preflight_supported: true,
+            preflight_verified: true,
+            input_binding_verified: true,
+            toolchain_version_verified: true,
+            checker_version_verified: true,
+            expected_checker_version: manifest.checker_version,
+            observed_checker_version: manifest.checker_version,
+          },
+        }),
+      },
+  });
   const router = new ServicesRouter({ taskService, contextService });
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   return { database, contextService, taskService, judgeService, router, sdk };

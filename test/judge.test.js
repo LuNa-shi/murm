@@ -32,6 +32,26 @@ function candidate(content, materialId = 'material-1') {
   return { material_id: materialId, content };
 }
 
+function checkerWithPreflight(checker) {
+  if (typeof checker.preflight === 'function') return checker;
+  return {
+    ...checker,
+    preflight: async ({ fixtureManifest: manifest }) => ({
+      status: 'healthy',
+      checker_process_status: 'completed',
+      evidence: {
+        preflight_supported: true,
+        preflight_verified: true,
+        input_binding_verified: true,
+        toolchain_version_verified: true,
+        checker_version_verified: true,
+        expected_checker_version: manifest.checker_version,
+        observed_checker_version: manifest.checker_version,
+      },
+    }),
+  };
+}
+
 test('fixture manifest locks PutnamBench commit, problem hash, Lean, Mathlib, checker, and environment', async () => {
   validateFixtureManifest(fixtureManifest);
   const source = await readFile('fixtures/putnam-1966-a1/putnam_1966_a1.lean');
@@ -179,6 +199,8 @@ test('Lean checker preflight binds the locked input, project cwd, and toolchain 
     assert.equal(result.evidence.expected_input_hash, manifest.problem_file_hash);
     assert.equal(result.evidence.observed_toolchain_version, '4.33.1');
     assert.equal(result.evidence.toolchain_version_verified, true);
+    assert.equal(result.evidence.observed_checker_version, manifest.checker_version);
+    assert.equal(result.evidence.checker_version_verified, true);
     assert.equal(result.evidence.preflight_verified, true);
     assert.equal(calls[0].cwd, projectRoot);
     assert.deepEqual(calls[0].args, ['env', 'lean', '--version']);
@@ -188,9 +210,47 @@ test('Lean checker preflight binds the locked input, project cwd, and toolchain 
     assert.equal(drifted.status, 'unavailable');
     assert.equal(drifted.diagnostic_code, 'checker_input_hash_mismatch');
     assert.equal(drifted.checker_process_status, 'not_started');
+
+    const mismatchedChecker = new LeanChecker({
+      checkerVersion: 'mvp-0',
+      runner: async () => ({ exit_code: 0, signal: null, stdout: 'Lean (version 4.33.1)', stderr: '', checker_started: true }),
+    });
+    await writeFile(problemPath, source, 'utf8');
+    const versionMismatch = await mismatchedChecker.preflight({ fixtureManifest: manifest });
+    assert.equal(versionMismatch.status, 'unavailable');
+    assert.equal(versionMismatch.diagnostic_code, 'checker_version_mismatch');
+    assert.equal(versionMismatch.evidence.checker_version_verified, false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('Judge refuses a checker adapter without a preflight health gate', async () => {
+  let checks = 0;
+  const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    checker: { check: async () => { checks += 1; return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+  });
+  const result = await judge.judgeCandidate({
+    request_key: 'unsupported-preflight-request',
+    candidate_material_id: 'unsupported-preflight-material',
+    target_task_id: targetTask.task_id,
+    target_spec_version: targetTask.spec_version,
+    input_snapshot_hash: workspace.input_snapshot_hash,
+    checker_ref: fixtureManifest.checker_ref,
+    checker_version: fixtureManifest.checker_version,
+    environment_ref: fixtureManifest.environment_ref,
+    candidate: candidate('theorem unsupported : True := by trivial', 'unsupported-preflight-material'),
+    target_task: targetTask,
+    workspace,
+    fixture_manifest: fixtureManifest,
+  }, { operationId: 'unsupported-preflight-operation' });
+  assert.equal(checks, 0);
+  assert.equal(result.result_class, 'infrastructure_failure');
+  assert.equal(result.checker_process_status, 'not_started');
+  assert.equal(result.diagnostic_code, 'checker_preflight_unsupported');
+  assert.equal(result.mathematical_outcome, 'unassessed');
+  assert.equal(judge.listCheckerPreflights()[0].evidence.preflight_verified, false);
+  judge.close();
 });
 
 test('Judge persists checker preflight health and bounds identical infrastructure retries', async () => {
@@ -345,7 +405,7 @@ test('Judge ok persistence is separate from source-level checker success', async
 test('JudgeService stores CheckResult truth, keeps Task untouched, and deduplicates request keys', async () => {
   let checks = 0;
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
-    checker: { check: async () => { checks += 1; return { verdict: 'PASS', evidence: { exit_code: 0, stdout: 'ok', stderr: '', candidate_hash: 'candidate-hash', input_snapshot_hash: 'input-snapshot' } }; } },
+    checker: checkerWithPreflight({ check: async () => { checks += 1; return { verdict: 'PASS', evidence: { exit_code: 0, stdout: 'ok', stderr: '', candidate_hash: 'candidate-hash', input_snapshot_hash: 'input-snapshot' } }; } }),
   });
   const input = {
     request_key: 'check-request-1', candidate_material_id: 'material-1', target_task_id: targetTask.task_id, target_spec_version: 1,
@@ -373,7 +433,7 @@ test('concurrent checks for one request_key elect one checker invocation', async
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
-    checker: { check: async () => { checks += 1; await gate; return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
+    checker: checkerWithPreflight({ check: async () => { checks += 1; await gate; return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
   });
   const input = {
     request_key: 'concurrent-check', candidate_material_id: 'material-1', target_task_id: targetTask.task_id, target_spec_version: 1,
@@ -395,7 +455,7 @@ test('concurrent checks for one request_key elect one checker invocation', async
 
 test('Judge rejects results whose Task or Workspace binding has drifted', async () => {
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
-    checker: { check: async () => ({ verdict: 'PASS', evidence: {} }) },
+    checker: checkerWithPreflight({ check: async () => ({ verdict: 'PASS', evidence: {} }) }),
   });
   const input = {
     request_key: 'binding-check', candidate_material_id: 'material-1', target_task_id: targetTask.task_id, target_spec_version: 1,
