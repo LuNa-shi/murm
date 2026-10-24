@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import {
   ERROR_CODES,
   JudgeService,
@@ -104,6 +106,47 @@ test('Lean checker preflight reports an unavailable executable before proof chec
   assert.equal(result.diagnostic_code, 'checker_unavailable');
   assert.equal(result.evidence.exit_code, null);
   assert.equal(result.evidence.signal, null);
+});
+
+test('Lean checker preflight binds the locked input, project cwd, and toolchain version', async () => {
+  const root = await mkdtemp('/tmp/swarmenv-checker-preflight-');
+  const projectRoot = join(root, 'lean4');
+  const problemPath = join(projectRoot, 'src', 'input.lean');
+  const source = 'import Mathlib\ntheorem input : True := by trivial\n';
+  await mkdir(join(projectRoot, 'src'), { recursive: true });
+  await writeFile(problemPath, source, 'utf8');
+  const manifest = {
+    ...fixtureManifest,
+    project_root: projectRoot,
+    problem_file: 'lean4/src/input.lean',
+    problem_file_hash: createHash('sha256').update(source).digest('hex'),
+  };
+  const calls = [];
+  try {
+    const checker = new LeanChecker({
+      runner: async (command, args, options) => {
+        calls.push({ command, args, cwd: options.cwd });
+        return { exit_code: 0, signal: null, stdout: 'Lean (version 4.33.1)', stderr: '', checker_started: true };
+      },
+    });
+    const result = await checker.preflight({ fixtureManifest: manifest });
+    assert.equal(result.status, 'healthy');
+    assert.equal(result.evidence.input_binding_verified, true);
+    assert.equal(result.evidence.expected_input_hash, manifest.problem_file_hash);
+    assert.equal(result.evidence.observed_toolchain_version, '4.33.1');
+    assert.equal(result.evidence.toolchain_version_verified, true);
+    assert.equal(result.evidence.preflight_verified, true);
+    assert.equal(calls[0].cwd, projectRoot);
+    assert.deepEqual(calls[0].args, ['env', 'lean', '--version']);
+
+    await writeFile(problemPath, `${source}-- drift\n`, 'utf8');
+    const drifted = await checker.preflight({ fixtureManifest: manifest });
+    assert.equal(drifted.status, 'unavailable');
+    assert.equal(drifted.diagnostic_code, 'checker_input_hash_mismatch');
+    assert.equal(drifted.checker_process_status, 'not_started');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('Judge persists checker preflight health and bounds identical infrastructure retries', async () => {

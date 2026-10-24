@@ -674,7 +674,7 @@ export class TaskService {
         waitCondition.check_request_key = waitCondition.candidate_material_id;
       }
     }
-    const allowed = new Set(['child_task_terminal', 'children_all_terminal', 'parent_review', 'check_result_arrived', 'timer']);
+    const allowed = new Set(['child_task_terminal', 'children_all_terminal', 'parent_review', 'check_result_arrived', 'checker_health', 'timer']);
     if (!allowed.has(waitCondition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
     const task = this.getTask(execution.task_id);
     if (waitCondition.type === 'parent_review' && !task.parent_id) {
@@ -702,6 +702,11 @@ export class TaskService {
     }
     if (waitCondition.type === 'check_result_arrived') {
       requireString(waitCondition.check_request_key ?? waitCondition.request_key, 'wait_condition.check_request_key');
+    }
+    if (waitCondition.type === 'checker_health') {
+      requireString(waitCondition.preflight_key, 'wait_condition.preflight_key');
+      requireString(waitCondition.health_fingerprint, 'wait_condition.health_fingerprint');
+      if (waitCondition.retry_after !== undefined) requireString(waitCondition.retry_after, 'wait_condition.retry_after');
     }
     const waitDeadline = payload.wait_deadline ?? waitCondition.deadline ?? null;
     if (waitCondition.type === 'timer' && !waitDeadline) {
@@ -946,8 +951,20 @@ export class TaskService {
         // A retryable infrastructure result is not mathematical feedback. Keep
         // the checkpointed responsibility resumable while allowing the next
         // Agent/Core to try again after the health gate changes.
-        this.db.prepare("UPDATE executions SET state = 'WAITING', wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
-          .run(updatedAt, execution.execution_id);
+        const preflightKey = result.evidence?.preflight_key;
+        const healthFingerprint = result.evidence?.health_fingerprint;
+        const waitCondition = preflightKey && healthFingerprint
+          ? {
+            type: 'checker_health',
+            preflight_key: preflightKey,
+            health_fingerprint: healthFingerprint,
+            retry_after: updatedAt,
+            diagnostic_code: result.diagnostic_code ?? null,
+            candidate_material_id: result.candidate_material_id,
+          }
+          : execution.wait_condition;
+        this.db.prepare("UPDATE executions SET state = 'WAITING', wait_condition_json = ?, wait_deadline = NULL, resume_token = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
+          .run(waitCondition ? json(waitCondition) : null, randomUUID(), updatedAt, execution.execution_id);
         this.#refreshTaskState(task.task_id, { updatedAt });
       }
     } else if (result.verdict === 'PASS') {
@@ -1074,6 +1091,12 @@ export class TaskService {
         candidateMaterialId,
       );
       return Boolean(result && ['RECEIVED', 'APPLIED', 'IGNORED'].includes(result.status));
+    }
+    if (condition.type === 'checker_health') {
+      const health = this.db.prepare('SELECT status, health_fingerprint FROM checker_preflights WHERE preflight_key = ?').get(condition.preflight_key);
+      if (!health) return false;
+      if (condition.retry_after && Date.parse(condition.retry_after) <= nowMs) return true;
+      return health.health_fingerprint !== condition.health_fingerprint;
     }
     return false;
   }

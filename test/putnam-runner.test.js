@@ -580,16 +580,17 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500 }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
-    timeboxMs: 500,
+    timeboxMs,
     pollMs: 1,
     turnTimeoutMs: 100,
     turnIntervalMs: 10_000,
     watchdogTimeoutMs,
     watchdogIntervalMs,
+    maxInfrastructureRetries,
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
@@ -802,6 +803,8 @@ test('checker infrastructure errors returned by submit_candidate retain actionab
       reportDir,
       experimentDir,
       id: 'putnam_checker_error_test',
+      maxInfrastructureRetries: 1,
+      timeboxMs: 1_500,
       checker: {
         preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: { exit_code: 0 } }),
         check: async () => ({ verdict: 'ERROR', evidence: { checker_started: false, error_code: 'ENOENT', diagnostic: 'spawn lake ENOENT' } }),
@@ -817,6 +820,8 @@ test('checker infrastructure errors returned by submit_candidate retain actionab
     assert.ok(checks.every((check) => check.process_evidence.error_code === 'ENOENT'));
     assert.ok(report.run.checker_infrastructure_failure_count >= 1);
     assert.ok(report.run.checker_unassessed_count >= 1);
+    assert.ok(report.run.lifecycle_events.some((event) => event.wait_condition_type === 'checker_health'));
+    assert.ok(report.cores.every((core) => core.execution_state === null || core.execution_state === 'FAILED'));
     assert.equal(report.audit.invalid, false);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });

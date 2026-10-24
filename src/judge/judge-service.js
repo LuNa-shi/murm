@@ -57,6 +57,11 @@ export class JudgeService {
     return { ...row, retryable: Boolean(row.retryable), evidence: parse(row.evidence_json) };
   }
 
+  listCheckerPreflights() {
+    return this.db.prepare('SELECT * FROM checker_preflights ORDER BY first_seen_at, preflight_key').all()
+      .map((row) => ({ ...row, retryable: Boolean(row.retryable), evidence: parse(row.evidence_json) }));
+  }
+
   dispatch(operation, payload = {}, envelope) {
     validateEnvelope(envelope);
     if (operation === 'get_check_result') return this.getCheckResult(required(payload.check_result_id, 'check_result_id'));
@@ -284,7 +289,11 @@ export class JudgeService {
     const identity = checkerIdentity(normalized.fixture_manifest);
     let result;
     if (typeof this.checker.preflight !== 'function') {
-      result = normalizePreflight({ status: 'healthy', evidence: { preflight_supported: false } }, identity);
+      // Deterministic checker doubles may not expose an external toolchain
+      // preflight. Keep that adapter usable for protocol tests, but persist
+      // the fact that its environment and input binding were not verified;
+      // the production LeanChecker always implements this gate.
+      result = normalizePreflight({ status: 'healthy', evidence: { preflight_supported: false, preflight_verified: false, diagnostic: 'checker adapter does not expose preflight' } }, identity);
     } else {
       try {
         result = normalizePreflight(await this.checker.preflight({ fixtureManifest: normalized.fixture_manifest }), identity);
@@ -322,6 +331,7 @@ export class JudgeService {
       ...(result.evidence ?? {}),
       preflight_status: result.status,
       preflight_key: preflightKey,
+      health_fingerprint: fingerprint,
       infrastructure_attempt_count: attemptCount,
       retry_exhausted: retryExhausted,
     };

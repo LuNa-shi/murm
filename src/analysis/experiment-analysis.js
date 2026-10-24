@@ -35,6 +35,7 @@ const SAFE_RESULT_KEYS = new Set([
   'checker_process_status', 'process_status', 'result_class', 'mathematical_outcome', 'retryable', 'checker_started',
   'checker_ref', 'checker_version', 'environment_ref', 'checker_result_available',
   'diagnostic_code', 'preflight_key', 'preflight_status', 'retry_exhausted', 'infrastructure_attempt_count',
+  'health_fingerprint', 'preflight_supported', 'preflight_verified', 'input_binding_verified', 'toolchain_version_verified',
 ]);
 
 const INTENT_BY_OPERATION = new Map([
@@ -209,6 +210,9 @@ function safeEntity(value, type) {
         type: text(condition.type, 80),
         check_request_key: text(condition.check_request_key ?? condition.request_key, 120),
         child_task_id: text(condition.child_task_id, 120),
+        preflight_key: text(condition.preflight_key, 120),
+        health_fingerprint: text(condition.health_fingerprint, 120),
+        diagnostic_code: text(condition.diagnostic_code, 120),
       } : null;
     } else result[key] = safeResult(value[key]);
   }
@@ -813,8 +817,20 @@ async function readDomainDatabases(root, dbPaths, errors, mode = 'full') {
         }
       }
       if (tables.has('checker_preflights')) {
-        for (const row of selectRows(db, 'checker_preflights', ['preflight_key', 'fixture_id', 'checker_ref', 'checker_version', 'environment_ref', 'status', 'checker_process_status', 'diagnostic_code', 'retryable', 'attempt_count', 'first_seen_at', 'last_seen_at'])) {
-          model.preflights.push({ ...row, retryable: Boolean(row.retryable), project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'checker_preflights', `preflight_key=${row.preflight_key}`) });
+        const preflightColumns = ['preflight_key', 'fixture_id', 'checker_ref', 'checker_version', 'environment_ref', 'status', 'checker_process_status', 'diagnostic_code', 'retryable', 'attempt_count', ...(mode === 'full' ? ['evidence_json'] : []), 'first_seen_at', 'last_seen_at'];
+        for (const row of selectRows(db, 'checker_preflights', preflightColumns)) {
+          const evidence = mode === 'full' ? jsonParse(row.evidence_json) : null;
+          const { evidence_json: _evidenceJson, ...safeRow } = row;
+          model.preflights.push({
+            ...safeRow,
+            retryable: Boolean(row.retryable),
+            preflight_verified: evidence?.preflight_verified ?? null,
+            preflight_supported: evidence?.preflight_supported ?? null,
+            input_binding_verified: evidence?.input_binding_verified ?? null,
+            toolchain_version_verified: evidence?.toolchain_version_verified ?? null,
+            project: basename(dirname(dbPath)),
+            source: sourceForDb(root, dbPath, 'checker_preflights', `preflight_key=${row.preflight_key}`),
+          });
         }
       }
       if (tables.has('operations')) {
@@ -1740,6 +1756,7 @@ function buildCandidateAnalysis(model, facts) {
       checker_process_status: checkerProcessStatus,
       mathematical_outcome: mathematicalOutcome,
       retryable: check.retryable === undefined ? null : Boolean(check.retryable),
+      preflight_verified: check.evidence?.preflight_verified ?? null,
       infrastructure_attempt_count: check.evidence?.infrastructure_attempt_count ?? null,
       submitted_at: submission?.at ?? check.created_at,
       checked_at: check.updated_at,

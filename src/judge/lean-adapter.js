@@ -1,7 +1,7 @@
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { randomUUID } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -21,6 +21,26 @@ function truncate(value, maxBytes) {
 
 function diagnostic(value) {
   return truncate(value, 16_000).value;
+}
+
+function toolchainVersion(value) {
+  const match = String(value ?? '').match(/\d+\.\d+\.\d+/);
+  return match?.[0] ?? null;
+}
+
+async function lockedInputPath(projectRoot, problemFile) {
+  if (isAbsolute(problemFile)) return resolve(problemFile);
+  const direct = resolve(projectRoot, problemFile);
+  try {
+    await access(direct);
+    return direct;
+  } catch {
+    // PutnamBench manifests name files from the repository root (for example
+    // `lean4/src/...`) while the locked Lean project root is the `lean4`
+    // subdirectory.  Resolve that repository-root form before declaring the
+    // input unavailable.
+    return resolve(dirname(projectRoot), problemFile);
+  }
 }
 
 export function runProcess(command, args, { cwd, env = process.env, timeoutMs = 120_000, maxOutputBytes = 1_000_000 } = {}) {
@@ -72,17 +92,44 @@ export class LeanChecker {
     const identity = checkerIdentity(fixtureManifest);
     const projectRoot = fixtureManifest.project_root ?? this.workRoot;
     this.logger?.append({ event: 'checker.preflight.start', checker_ref: identity.checker_ref, checker_version: identity.checker_version, environment_ref: identity.environment_ref });
+    let inputEvidence = {};
     try {
       // A locked fixture project root is an input binding.  Only the default
       // scratch root may be created by the checker; a missing configured root
       // must be reported as an unavailable environment.
       if (!fixtureManifest.project_root) await mkdir(projectRoot, { recursive: true });
       await access(projectRoot);
+      if (!(await stat(projectRoot)).isDirectory()) throw new Error('checker project root is not a directory');
+      if (fixtureManifest.project_root) {
+        const inputPath = await lockedInputPath(projectRoot, fixtureManifest.problem_file);
+        const input = await readFile(inputPath);
+        const inputHash = sha256(input);
+        inputEvidence = {
+          input_path: inputPath,
+          input_hash: inputHash,
+          expected_input_hash: fixtureManifest.problem_file_hash,
+          input_binding_verified: inputHash === fixtureManifest.problem_file_hash,
+        };
+        if (inputHash !== fixtureManifest.problem_file_hash) {
+          const result = normalizePreflight({
+            status: 'unavailable',
+            checker_process_status: 'not_started',
+            evidence: {
+              ...inputEvidence,
+              diagnostic_code: 'checker_input_hash_mismatch',
+              diagnostic: 'locked problem input hash does not match the fixture manifest',
+              checker_started: false,
+            },
+          }, identity);
+          this.logger?.append({ event: 'checker.preflight.complete', status: result.status, checker_process_status: result.checker_process_status, diagnostic_code: result.diagnostic_code });
+          return result;
+        }
+      }
     } catch (error) {
       const result = normalizePreflight({
         status: 'unavailable',
         checker_process_status: 'not_started',
-        evidence: { diagnostic: `checker working directory unavailable: ${error.message}`, error_code: error.code },
+        evidence: { ...inputEvidence, diagnostic: `checker input or working directory unavailable: ${error.message}`, error_code: error.code, checker_started: false },
       }, identity);
       this.logger?.append({ event: 'checker.preflight.complete', status: result.status, checker_process_status: result.checker_process_status, diagnostic_code: result.diagnostic_code });
       return result;
@@ -100,11 +147,27 @@ export class LeanChecker {
     } catch (error) {
       process = { exit_code: null, signal: null, error: error.message, error_code: error.code, checker_started: false };
     }
-    const diagnosticText = diagnostic([process.stderr, process.stdout, process.error, process.timed_out ? 'checker timed out' : ''].filter(Boolean).join('\n'));
+    const observedVersion = toolchainVersion([process.stdout, process.stderr].filter(Boolean).join('\n'));
+    const expectedVersion = toolchainVersion(fixtureManifest.lean_toolchain);
+    const versionMismatch = Boolean(expectedVersion && observedVersion && expectedVersion !== observedVersion);
+    const diagnosticText = diagnostic([
+      process.stderr,
+      process.stdout,
+      process.error,
+      versionMismatch ? `checker version mismatch: expected ${expectedVersion}, observed ${observedVersion}` : '',
+      process.timed_out ? 'checker timed out' : '',
+    ].filter(Boolean).join('\n'));
+    const unavailable = process.error || process.timed_out || process.exit_code !== 0 || versionMismatch;
     const result = normalizePreflight({
-      status: process.error || process.timed_out || process.exit_code !== 0 ? 'unavailable' : 'healthy',
+      status: unavailable ? 'unavailable' : 'healthy',
       checker_process_status: process.error ? 'not_started' : process.timed_out ? 'timeout' : process.signal ? 'crashed' : 'completed',
       evidence: {
+        ...inputEvidence,
+        expected_toolchain_version: expectedVersion,
+        observed_toolchain_version: observedVersion,
+        toolchain_version_verified: Boolean(expectedVersion && observedVersion && expectedVersion === observedVersion),
+        preflight_verified: Boolean(fixtureManifest.project_root && inputEvidence.input_binding_verified && expectedVersion && observedVersion && expectedVersion === observedVersion),
+        diagnostic_code: versionMismatch ? 'checker_version_mismatch' : undefined,
         exit_code: process.exit_code ?? null,
         signal: process.signal ?? null,
         timed_out: Boolean(process.timed_out),
@@ -148,7 +211,10 @@ export class LeanChecker {
         this.logger?.append({ event: 'checker.complete', verdict: result.verdict, evidence: result.evidence });
         return result;
       }
-      const projectRoot = fixtureManifest.project_root ?? directory;
+      // Preflight and candidate checking must exercise the same locked
+      // project/toolchain cwd.  The per-candidate directory only stores the
+      // candidate file; it is not a substitute for the project root.
+      const projectRoot = fixtureManifest.project_root ?? this.workRoot;
       const result = await this.runner(this.command, ['env', 'lean', candidatePath], { cwd: projectRoot, timeoutMs: this.timeoutMs, maxOutputBytes: this.maxOutputBytes });
       const verdict = result.error || result.timed_out ? 'ERROR' : result.exit_code === 0 ? 'PASS' : 'FAIL';
       const diagnosticText = diagnostic([result.stderr, result.stdout, result.error, result.timed_out ? 'checker timed out' : ''].filter(Boolean).join('\n'));

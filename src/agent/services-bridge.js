@@ -240,6 +240,8 @@ export class ServicesBridge {
       const execution = this.taskService.getExecution(this.executionId);
       if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${this.executionId}`, { execution_id: this.executionId });
       if (execution.task_id !== this.taskId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'bridge execution does not match task', { task_id: this.taskId, execution_id: this.executionId });
+      const boundTaskId = this.taskId;
+      const boundExecutionId = this.executionId;
       if (operation === 'request_wait') {
         const waitCondition = normalizeWaitCondition(payload.waitCondition ?? payload.wait_condition, payload.checkpoint);
         if (waitCondition?.type === 'check_result_arrived') {
@@ -276,7 +278,17 @@ export class ServicesBridge {
         case 'publish_material': result = sdk.publishMaterial(payload, options); break;
         case 'submit_candidate':
           result = sdk.submitCandidate(payload, options);
-          if (this.onSubmitCandidate) result = { ...result, ...(await this.onSubmitCandidate({ taskId: this.taskId, executionId: this.executionId, payload, result })) };
+          if (this.onSubmitCandidate) {
+            result = { ...result, ...(await this.onSubmitCandidate({ taskId: boundTaskId, executionId: boundExecutionId, payload, result })) };
+            // A Judge callback may synchronously apply a terminal CheckResult
+            // or move a retryable checker failure into a persisted WAITING
+            // health condition. Release the physical Agent/Core binding before
+            // returning that typed tool result.
+            const lifecycleExecution = result?.applied?.execution ?? result?.execution;
+            if (lifecycleExecution?.state === 'WAITING') {
+              await this.releaseClaim({ result });
+            }
+          }
           break;
         case 'heartbeat': result = sdk.heartbeat(payload, options); break;
         case 'create_child_task': result = sdk.createChildTask(payload, options); break;
@@ -300,10 +312,10 @@ export class ServicesBridge {
         default: throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `unsupported Agent operation: ${operation}`, { operation });
       }
       if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {
-        await this.onWorkspaceWrite({ taskId: this.taskId, executionId: this.executionId, result });
+        await this.onWorkspaceWrite({ taskId: boundTaskId, executionId: boundExecutionId, result });
       }
       if (this.onWorkUnit && ['read_materials', 'publish_material', 'create_child_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
-        await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
+        await this.onWorkUnit({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
       return result;
