@@ -57,13 +57,13 @@ const TOOL_DEFINITIONS = Object.freeze([
     name: 'task_create_branch_group', service: 'task', operation: 'create_branch_group', version: '1.0',
     description: 'Create a versioned group of alternative ordinary Tasks. Branch membership expresses alternatives; it does not create an implicit wait, ownership, or execution dependency, and the creating Task may continue useful work.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['parent_task_id', 'branch_tasks'], properties: { parent_task_id: { type: 'string' }, branch_tasks: { type: 'array', items: { type: 'object' } }, group_key: { type: 'string' }, expected_structural_version: { type: 'integer', minimum: 0 } }, additionalProperties: true },
+    parameters: { type: 'object', required: ['parent_task_id', 'branch_tasks'], properties: { parent_task_id: { type: 'string' }, branch_tasks: { type: 'array', items: { type: 'object' } }, group_key: { type: 'string' }, expected_structural_version: { type: 'integer', minimum: 1 } }, additionalProperties: true },
   },
   {
     name: 'task_add_required_subtask', service: 'task', operation: 'add_required_subtask', version: '1.0',
     description: 'Add an ordinary Task as a jointly required subtask. Required subtasks may become ready concurrently; only an explicit execution dependency blocks work, and provenance remains audit information.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['owner_task_id'], properties: { owner_task_id: { type: 'string' }, group_id: { type: 'string', description: 'Optional stable group ID; use the same ID as required_subtask_groups in the owner completion contract.' }, subtask_task_id: { type: 'string' }, subtask: { type: 'object' }, expected_structural_version: { type: 'integer', minimum: 0 } }, additionalProperties: true },
+    parameters: { type: 'object', required: ['owner_task_id'], properties: { owner_task_id: { type: 'string' }, group_id: { type: 'string', description: 'Optional stable group ID; use the same ID as required_subtask_groups in the owner completion contract.' }, subtask_task_id: { type: 'string' }, subtask: { type: 'object' }, expected_structural_version: { type: 'integer', minimum: 1 } }, additionalProperties: true },
   },
   {
     name: 'task_get_structure', service: 'task', operation: 'get_task_structure', version: '1.0',
@@ -75,7 +75,7 @@ const TOOL_DEFINITIONS = Object.freeze([
     name: 'task_propose_structure_change', service: 'task', operation: 'propose_structure_change', version: '1.0',
     description: 'Propose an auditable, version-checked Task structure change based on new evidence. Structural membership, explicit execution dependencies, and creation provenance stay distinct; active work is preserved.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['task_id', 'change'], properties: { task_id: { type: 'string' }, expected_structural_version: { type: 'integer', minimum: 0 }, change: { type: 'object' }, change_key: { type: 'string' } }, additionalProperties: true },
+    parameters: { type: 'object', required: ['task_id', 'change'], properties: { task_id: { type: 'string' }, expected_structural_version: { type: 'integer', minimum: 1 }, change: { type: 'object' }, change_key: { type: 'string' } }, additionalProperties: true },
   },
   {
     name: 'task_explain_readiness', service: 'task', operation: 'explain_task_readiness', version: '1.0',

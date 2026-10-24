@@ -725,6 +725,10 @@ export class TaskService {
     if (task.state === 'BLOCKED') missing.push(task.block_reason ?? 'task_blocked');
     if (blockers.length > 0) missing.push(...blockers.map((dependency) => `dependency:${dependency.dependency_id}`));
     if (activeCount >= task.parallel_quota) missing.push('execution_quota');
+    const waiting = active.filter((execution) => execution.state === 'WAITING');
+    if (task.state === 'WAITING' && waiting.length > 0 && !waiting.some((execution) => this.#isWaitingResumable(execution))) {
+      return { task_id: taskId, readiness: 'WAITING', reasons: ['execution_waiting'], missing: [...new Set(missing)], structure };
+    }
     const latest = this.#latestExecution(taskId, true);
     const completion = this.#completion(task, latest);
     if (completion.missing.length > 0) missing.push(...completion.missing);
@@ -773,7 +777,7 @@ export class TaskService {
     if (currentDepth + 1 > owner.max_depth) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'maximum task depth exceeded');
     const current = this.#assertExpectedStructureVersion(ownerTaskId, payload.expected_structural_version);
     const next = current + 1;
-    const groupId = payload.group_id ?? randomUUID();
+    const groupId = payload.group_id ?? payload.group_key ?? randomUUID();
     const group = this.#createGroup({ ownerTaskId, groupKind: 'BRANCH', envelope, groupId, structuralVersion: next });
     const tasks = [];
     try {
