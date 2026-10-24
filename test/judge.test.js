@@ -84,6 +84,14 @@ test('Lean checker returns PASS only for a clean zero exit and preserves failure
   assert.equal(timeoutResult.verdict, 'ERROR');
   assert.match(timeoutResult.evidence.diagnostic, /timed out/);
 
+  const crashed = new LeanChecker({ runner: async () => ({ exit_code: null, signal: 'SIGSEGV', stdout: '', stderr: '', checker_started: true }) });
+  const crashedResult = await crashed.check({ candidate: candidate('theorem crashed : True := by trivial'), targetTask, workspace, fixtureManifest });
+  assert.equal(crashedResult.verdict, 'ERROR');
+  assert.equal(crashedResult.checker_process_status, 'crashed');
+  assert.equal(crashedResult.result_class, 'infrastructure_failure');
+  assert.equal(crashedResult.mathematical_outcome, 'unassessed');
+  assert.match(crashedResult.evidence.diagnostic, /SIGSEGV/);
+
   const unavailable = new LeanChecker({ runner: async () => ({ exit_code: null, signal: null, stdout: '', stderr: '', error: 'lake: command not found' }) });
   const errorResult = await unavailable.check({ candidate: candidate('theorem unavailable : True := by trivial'), targetTask, workspace, fixtureManifest });
   assert.equal(errorResult.verdict, 'ERROR');

@@ -196,11 +196,18 @@ export class LeanChecker {
       versionMismatch ? `checker version mismatch: expected ${expectedVersion}, observed ${observedVersion}` : '',
       versionUnverified ? `checker toolchain version could not be verified: expected ${expectedVersion ?? 'unknown'}, observed ${observedVersion ?? 'unknown'}` : '',
       process.timed_out ? 'checker timed out' : '',
-    ].filter(Boolean).join('\n'));
+      ].filter(Boolean).join('\n'));
     const unavailable = process.error || process.timed_out || process.exit_code !== 0 || checkerIdentityMismatch || versionMismatch || versionUnverified;
+    const preflightProcessStatus = process.error || process.checker_started === false
+      ? 'not_started'
+      : process.timed_out
+        ? 'timeout'
+        : process.signal || process.exit_code === null
+          ? 'crashed'
+          : 'completed';
     const result = normalizePreflight({
       status: unavailable ? 'unavailable' : 'healthy',
-      checker_process_status: process.error ? 'not_started' : process.timed_out ? 'timeout' : process.signal ? 'crashed' : 'completed',
+      checker_process_status: preflightProcessStatus,
       evidence: {
         ...inputEvidence,
         expected_toolchain_version: expectedVersion,
@@ -263,15 +270,25 @@ export class LeanChecker {
       // candidate file; it is not a substitute for the project root.
       const projectRoot = fixtureManifest.project_root ?? this.workRoot;
       const result = await this.runner(this.command, ['env', 'lean', candidatePath], { cwd: projectRoot, timeoutMs: this.timeoutMs, maxOutputBytes: this.maxOutputBytes });
-      const verdict = result.error || result.timed_out ? 'ERROR' : result.exit_code === 0 ? 'PASS' : 'FAIL';
-      const diagnosticText = diagnostic([result.stderr, result.stdout, result.error, result.timed_out ? 'checker timed out' : ''].filter(Boolean).join('\n'));
+      const processStatus = result.error || result.checker_started === false
+        ? 'not_started'
+        : result.timed_out
+          ? 'timeout'
+          : result.signal || result.exit_code === null
+            ? 'crashed'
+            : 'completed';
+      const verdict = processStatus === 'not_started' || processStatus === 'timeout' || processStatus === 'crashed'
+        ? 'ERROR'
+        : result.exit_code === 0 ? 'PASS' : 'FAIL';
+      const diagnosticText = diagnostic([result.stderr, result.stdout, result.error, result.signal ? `checker terminated by ${result.signal}` : '', result.timed_out ? 'checker timed out' : ''].filter(Boolean).join('\n'));
       const checked = normalizeCheckerResult({
         verdict,
+        checker_process_status: processStatus,
         evidence: {
           exit_code: result.exit_code,
           signal: result.signal,
           timed_out: Boolean(result.timed_out),
-          checker_started: result.checker_started,
+          checker_started: result.checker_started ?? processStatus !== 'not_started',
           error_code: result.error_code ?? null,
           stdout: result.stdout,
           stderr: result.stderr,
