@@ -36,6 +36,20 @@ test('ObservabilityServer serves experiment queries and reconstructs Core execut
   assert.equal(staticResponse.headers.get('content-disposition'), null);
   const staticPage = await staticResponse.text();
   assert.match(staticPage, /Experiment monitor/);
+  assert.match(staticPage, /href="#home"/);
+  assert.match(staticPage, /href="#executions"/);
+  assert.match(staticPage, /href="#tasks"/);
+  assert.match(staticPage, /href="#materials"/);
+  assert.match(staticPage, /href="#diagnostics"/);
+  assert.match(staticPage, /href="#services"/);
+  const [appResponse, stylesResponse] = await Promise.all([
+    fetch(`${url}/app.js`),
+    fetch(`${url}/styles.css`),
+  ]);
+  assert.equal(appResponse.status, 200);
+  assert.equal(stylesResponse.status, 200);
+  assert.match(await appResponse.text(), /function renderTimeline/);
+  assert.match(await stylesResponse.text(), /\.timeline-segment/);
   await server.stop();
   store.close();
 });
