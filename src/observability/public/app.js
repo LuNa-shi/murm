@@ -44,6 +44,8 @@ function formatDuration(milliseconds) {
 function formatNumber(value) { return Number(value || 0).toLocaleString(); }
 function normalizeState(value) { return String(value || 'UNKNOWN').toLowerCase().replace(/[^a-z0-9]+/g, '-'); }
 function eventLabel(event) { return String(event && event.kind || 'observation').replaceAll('_', ' ').replaceAll('.', ' · '); }
+function displayValue(value) { return value && typeof value === 'object' && value.redacted ? 'redacted · ' + shortId(value.sha256, 12) : value == null ? '—' : String(value); }
+function conditionLabel(value) { return typeof value === 'string' ? value : value && typeof value === 'object' ? value.type || value.reason || value.code || 'condition' : null; }
 function statusPill(status) { return '<span class="status-pill ' + escapeHtml(normalizeState(status)) + '">' + escapeHtml(status || 'UNKNOWN') + '</span>'; }
 function emptyState(title, description) { return '<div class="empty"><strong>' + escapeHtml(title) + '</strong><p>' + escapeHtml(description) + '</p></div>'; }
 function relationLink(type, id, label) { return '<button class="relation-link" data-route="' + escapeHtml(type) + '/' + escapeHtml(id) + '">' + escapeHtml(label || shortId(id)) + '</button>'; }
@@ -129,7 +131,7 @@ function buildModel() {
       material.links.add(event.execution_id);
       const execution = ensureExecution(event.execution_id);
       if (!execution.material_ids.includes(id)) execution.material_ids.push(id);
-      if (event.kind.includes('read') || event.kind.includes('consume') || event.kind.includes('dispatch')) material.consumers.add(event.execution_id);
+      if (/read|consume|use|action/i.test(event.kind)) material.consumers.add(event.execution_id);
     }
     if (event.task_id) {
       material.links.add(event.task_id);
@@ -142,6 +144,7 @@ function buildModel() {
     const executionPayload = readNested(payload, ['execution']);
     const taskId = event.task_id || taskPayload && taskPayload.task_id || executionPayload && executionPayload.task_id || readNested(payload, ['target_task_id', 'parent_task_id']);
     const executionId = event.execution_id || executionPayload && executionPayload.execution_id;
+    const waitCondition = payload.wait_condition || payload.wait_reason || taskPayload && taskPayload.wait_condition || executionPayload && executionPayload.wait_condition || payload.result && payload.result.wait_condition;
     const task = ensureTask(taskId, taskPayload || {});
     const execution = ensureExecution(executionId, executionPayload || {});
     if (task) {
@@ -150,7 +153,7 @@ function buildModel() {
       if (executionId) task.executions.add(executionId);
       const nestedTaskState = taskPayload && typeof taskPayload === 'object' ? taskPayload.state : null;
       if (nestedTaskState || event.kind === 'task_state_changed' || payload.task_state || ['OPEN', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED'].includes(payload.state)) task.state = nestedTaskState || payload.task_state || payload.state || task.state;
-      if (payload.block_reason || payload.wait_condition || payload.wait_reason) task.block_reason = payload.block_reason || payload.wait_reason || payload.wait_condition.type;
+      if (payload.block_reason || waitCondition) task.block_reason = conditionLabel(payload.block_reason || waitCondition);
       if (taskPayload && taskPayload.parent_id) { task.parent_id = taskPayload.parent_id; ensureTask(task.parent_id).children.add(task.task_id); }
       if (taskPayload && taskPayload.goal) task.goal = taskPayload.goal;
       if (/error|failed|timeout/i.test(event.kind)) task.errors += 1;
@@ -163,6 +166,7 @@ function buildModel() {
       execution.session_id = execution.session_id || event.session_id;
       const nestedExecutionState = executionPayload && typeof executionPayload === 'object' ? executionPayload.state : null;
       if (nestedExecutionState || event.kind === 'execution_released' || event.kind === 'core_state_changed' || payload.state) execution.state = nestedExecutionState || payload.state || execution.state;
+      if (waitCondition) execution.wait_condition = waitCondition;
       if (/error|failed|timeout/i.test(event.kind)) execution.errors = (execution.errors || 0) + 1;
       if (task) task.executions.add(execution.execution_id);
     }
@@ -197,8 +201,17 @@ function buildModel() {
     if (segment.task_id) ensureTask(segment.task_id).running_ms += Math.max(0, duration);
   }));
   executions.forEach((execution) => { if (execution.task_id) ensureTask(execution.task_id).executions.add(execution.execution_id); });
-  const errors = state.events.filter((event) => /error|failed|timeout|stale|fenced/i.test((event.kind || '') + ' ' + (event.payload && event.payload.state || '')));
-  const waits = state.events.filter((event) => /wait/i.test(event.kind || '') || event.payload && event.payload.state === 'WAITING');
+  const errors = state.events.filter((event) => {
+    const payload = event.payload || {};
+    return /error|failed|timeout|stale|fenced/i.test(event.kind || '') || payload.ok === false || Boolean(payload.error || payload.result && payload.result.error);
+  });
+  const waits = state.events.filter((event) => {
+    const payload = event.payload || {};
+    const executionPayload = readNested(payload, ['execution']);
+    const taskPayload = readNested(payload, ['task']);
+    const stateValue = payload.state || executionPayload && executionPayload.state || taskPayload && taskPayload.state;
+    return /wait/i.test(event.kind || '') || stateValue === 'WAITING' || Boolean(payload.wait_condition || payload.wait_reason || executionPayload && executionPayload.wait_condition || taskPayload && taskPayload.wait_condition);
+  });
   const services = new Map();
   state.events.forEach((event) => {
     const service = event.payload && event.payload.service || (event.source === 'service' ? 'service' : null);
@@ -407,7 +420,7 @@ function renderMaterialPage(id) {
   const task = model.tasks.find((item) => item.task_id === selected.source_task);
   const execution = model.executions.find((item) => item.execution_id === selected.source_execution);
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><a href="#materials">Materials</a><span class="crumb-separator">/</span><strong>' + escapeHtml(shortId(selected.material_id)) + '</strong>';
-  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">CONTEXT / MATERIAL</span><h1>' + escapeHtml(selected.kind || 'Material') + ' <span class="muted">' + escapeHtml(shortId(selected.material_id, 16)) + '</span></h1><p>Immutable shared work, provenance, evidence state, and observed downstream use.</p></div><div class="heading-actions">' + statusPill(selected.evidence_state) + '<button class="button" data-route="materials">All materials</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">PROVENANCE</span><h2>Source and lineage</h2></div></div><div class="card-body"><div class="meta-item"><span>Material ID</span><strong>' + escapeHtml(selected.material_id) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Content hash</span><strong>' + escapeHtml(selected.content_hash || '—') + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Version</span><strong>' + escapeHtml(selected.version || '—') + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Created</span><strong>' + escapeHtml(formatTime(selected.created_at, true)) + '</strong></div><div class="relation-list" style="margin-top:18px">' + (task ? relationLink('task', task.task_id, 'Task · ' + shortId(task.task_id, 9)) : '') + (execution ? relationLink('execution', execution.execution_id, 'Execution · ' + shortId(execution.execution_id, 9)) : '') + (selected.supersedes ? relationLink('material', selected.supersedes, 'Supersedes · ' + shortId(selected.supersedes, 9)) : '') + '</div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">DOWNSTREAM USE</span><h2>Observed consumers</h2><p>Read and action links captured in the current event stream.</p></div></div><div class="card-body">' + (selected.consumers.length ? '<div class="relation-list">' + selected.consumers.map((consumer) => relationLink('execution', consumer, 'Execution · ' + shortId(consumer, 10))).join('') + '</div>' : emptyState('No explicit consumers', 'This Material has provenance, but no downstream read or action has been observed yet.')) + '</div></section></div><section class="card"><div class="card-header"><div><span class="eyebrow">CONTENT PREVIEW</span><h2>Payload</h2><p>Redacted browser projection; private fields stay out of the dashboard.</p></div></div><div class="card-body"><pre class="payload-preview">' + escapeHtml(JSON.stringify(selected.content || selected.content_json || { material_id: selected.material_id }, null, 2).slice(0, 12000)) + '</pre></div></section></div>';
+  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">CONTEXT / MATERIAL</span><h1>' + escapeHtml(selected.kind || 'Material') + ' <span class="muted">' + escapeHtml(shortId(selected.material_id, 16)) + '</span></h1><p>Immutable shared work, provenance, evidence state, and observed downstream use.</p></div><div class="heading-actions">' + statusPill(selected.evidence_state) + '<button class="button" data-route="materials">All materials</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">PROVENANCE</span><h2>Source and lineage</h2></div></div><div class="card-body"><div class="meta-item"><span>Material ID</span><strong>' + escapeHtml(selected.material_id) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Content hash</span><strong>' + escapeHtml(displayValue(selected.content_hash)) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Version</span><strong>' + escapeHtml(displayValue(selected.version)) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Created</span><strong>' + escapeHtml(formatTime(selected.created_at, true)) + '</strong></div><div class="relation-list" style="margin-top:18px">' + (task ? relationLink('task', task.task_id, 'Task · ' + shortId(task.task_id, 9)) : '') + (execution ? relationLink('execution', execution.execution_id, 'Execution · ' + shortId(execution.execution_id, 9)) : '') + (selected.supersedes ? relationLink('material', selected.supersedes, 'Supersedes · ' + shortId(selected.supersedes, 9)) : '') + '</div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">DOWNSTREAM USE</span><h2>Observed consumers</h2><p>Read and action links captured in the current event stream.</p></div></div><div class="card-body">' + (selected.consumers.length ? '<div class="relation-list">' + selected.consumers.map((consumer) => relationLink('execution', consumer, 'Execution · ' + shortId(consumer, 10))).join('') + '</div>' : emptyState('No explicit consumers', 'This Material has provenance, but no downstream read or action has been observed yet.')) + '</div></section></div><section class="card"><div class="card-header"><div><span class="eyebrow">CONTENT PREVIEW</span><h2>Payload</h2><p>Redacted browser projection; private fields stay out of the dashboard.</p></div></div><div class="card-body"><pre class="payload-preview">' + escapeHtml(JSON.stringify(selected.content || selected.content_json || { material_id: selected.material_id }, null, 2).slice(0, 12000)) + '</pre></div></section></div>';
 }
 
 function renderMaterialList() {
