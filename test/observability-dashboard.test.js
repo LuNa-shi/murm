@@ -125,10 +125,17 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
     };
     assert.match(await navigate('execution/exec-root'), /SUCCEEDED/);
     await waitFor(() => harness.fetchCalls.some((path) => path.includes('execution_id=exec-root') && path.includes('view=agent')));
+    await waitFor(() => harness.fetchCalls.some((path) => path.includes('/execution-insight?execution_id=exec-root')));
+    assert.match(harness.elements.get('#main-view').innerHTML, /STARTING CONTEXT/);
+    assert.match(harness.elements.get('#main-view').innerHTML, /Click a row to expand/);
     assert.match(await navigate('task/task-root'), /TASK FLOW/);
     assert.match(await navigate('task/task-wait'), /parent_review/);
     assert.match(harness.elements.get('#main-view').innerHTML, /0s/);
     assert.match(await navigate('material/material-1'), /Redacted browser projection/);
+    await waitFor(() => harness.fetchCalls.some((path) => path.includes('/materials/material-1')));
+    assert.match(harness.elements.get('#main-view').innerHTML, /MATERIAL CONTENT/);
+    assert.match(harness.elements.get('#main-view').innerHTML, /Raw Material payload/);
+    assert.doesNotMatch(harness.elements.get('#main-view').innerHTML, /private-secret/);
     assert.match(harness.elements.get('#main-view').innerHTML, /exec-wait/);
     assert.doesNotMatch(harness.elements.get('#main-view').innerHTML, /private-secret/);
     assert.match(await navigate('diagnostics'), /wait boundaries/);

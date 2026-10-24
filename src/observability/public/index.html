@@ -3,7 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#111113" />
+    <meta name="theme-color" content="#f7f7f8" />
+    <script>
+      try {
+        document.documentElement.dataset.theme = localStorage.getItem('swarmenv-theme') === 'black' ? 'black' : 'light';
+      } catch {
+        document.documentElement.dataset.theme = 'light';
+      }
+    </script>
     <title>SwarmEnv · Experiment monitor</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -44,6 +51,7 @@
           <div class="breadcrumbs" id="breadcrumbs"><span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><strong>Home</strong></div>
           <div class="top-actions">
             <span class="last-refresh" id="last-refresh">—</span>
+            <label class="theme-control" for="theme-select"><span class="theme-label">Theme</span><select id="theme-select" aria-label="Color theme"><option value="light">White</option><option value="black">Black</option></select></label>
             <button class="icon-button" id="refresh" type="button" title="Refresh data" aria-label="Refresh data"><span data-icon="refresh"></span></button>
             <button class="mobile-menu icon-button" id="mobile-menu" type="button" title="Open navigation" aria-label="Open navigation"><span data-icon="menu"></span></button>
           </div>

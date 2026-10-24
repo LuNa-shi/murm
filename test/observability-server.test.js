@@ -42,14 +42,19 @@ test('ObservabilityServer serves experiment queries and reconstructs Core execut
   assert.match(staticPage, /href="#materials"/);
   assert.match(staticPage, /href="#diagnostics"/);
   assert.match(staticPage, /href="#services"/);
+  assert.match(staticPage, /id="theme-select"/);
+  assert.match(staticPage, /localStorage\.getItem\('swarmenv-theme'\)/);
   const [appResponse, stylesResponse] = await Promise.all([
     fetch(`${url}/app.js`),
     fetch(`${url}/styles.css`),
   ]);
   assert.equal(appResponse.status, 200);
   assert.equal(stylesResponse.status, 200);
-  assert.match(await appResponse.text(), /function renderTimeline/);
-  assert.match(await stylesResponse.text(), /\.timeline-segment/);
+  const [appSource, stylesSource] = await Promise.all([appResponse.text(), stylesResponse.text()]);
+  assert.match(appSource, /function renderTimeline/);
+  assert.match(appSource, /function renderExecutionInsight/);
+  assert.match(stylesSource, /\.timeline-segment/);
+  assert.match(stylesSource, /\.material-content-summary/);
   await server.stop();
   store.close();
 });

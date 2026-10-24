@@ -10,6 +10,9 @@ const state = {
   timelineTimer: null,
   timelineRequest: 0,
   detailCache: new Map(),
+  executionInsightCache: new Map(),
+  materialDetailCache: new Map(),
+  reportCache: new Map(),
   range: 'all',
   selectedExecution: null,
 };
@@ -109,6 +112,63 @@ function redactSecrets(value, key, depth) {
 }
 
 function safeJson(value, maxLength) { return jsonValue(redactSecrets(value), maxLength); }
+
+function compactText(value, maxLength = 240) {
+  const text = String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return text.length > maxLength ? text.slice(0, maxLength - 1) + '…' : text;
+}
+
+function detailValue(value, keys) {
+  if (!value || typeof value !== 'object') return null;
+  for (const key of keys) if (value[key] !== undefined && value[key] !== null && value[key] !== '') return value[key];
+  return null;
+}
+
+function resultDetails(value) {
+  if (!value || typeof value !== 'object') return value;
+  return value.details && typeof value.details === 'object' ? value.details : value.result && typeof value.result === 'object' ? value.result : value;
+}
+
+function toolSummary(call) {
+  if (!call.end) return 'Waiting for the tool to return';
+  const result = resultDetails(call.result);
+  if (call.isError || result && result.ok === false || result && result.error) {
+    return 'Error · ' + compactText(detailValue(result && result.error, ['message', 'code']) || result && result.message || 'tool returned an error');
+  }
+  const task = result && (result.task || result.task_id && (result.goal || result.task_type) && result);
+  if (task) return compactText((task.task_type || 'Task') + ' · ' + (task.goal || task.task_id || '') + (task.state ? ' · ' + task.state : ''));
+  const execution = result && (result.execution || result.execution_id && (result.owner_ref || result.attempt_no || result.workspace_ref) && result);
+  if (execution) return compactText('Execution ' + shortId(execution.execution_id, 12) + (execution.state ? ' · ' + execution.state : '') + (execution.workspace_revision ? ' · revision ' + execution.workspace_revision : ''));
+  const material = result && (result.material || result.material_id && (result.kind || result.evidence_state) && result);
+  if (material) return compactText((material.kind || 'Material') + ' · ' + (material.description || material.material_id || material.evidence_state || 'published'));
+  if (Array.isArray(result && result.tools)) return result.tools.length + ' tools in the visible catalog';
+  if (Array.isArray(result && result.tasks)) return result.tasks.length + ' Tasks returned';
+  if (Array.isArray(result && result.files)) return result.files.length + ' Workspace files returned';
+  const message = detailValue(result, ['message', 'description', 'reason', 'operation', 'path', 'workspace_ref', 'state', 'status']);
+  if (message !== null) return compactText(typeof message === 'object' ? safeJson(message, 240) : message);
+  if (typeof result === 'string') return compactText(result);
+  return compactText(safeJson(result, 260));
+}
+
+function toolArgumentSummary(call) {
+  const args = call.args;
+  if (!args || typeof args !== 'object' || !Object.keys(args).length) return 'No arguments';
+  const command = detailValue(args, ['command', 'cmd', 'script']);
+  if (command) return compactText(String(command), 300);
+  const keys = ['task_id', 'execution_id', 'root_id', 'service', 'path', 'operation', 'kind', 'scope', 'workspace_mode', 'wait_condition'];
+  const parts = keys.flatMap((key) => args[key] === undefined ? [] : [key + '=' + compactText(typeof args[key] === 'object' ? safeJson(args[key], 120) : args[key], 120)]);
+  return parts.length ? parts.slice(0, 3).join(' · ') : compactText(safeJson(args, 220));
+}
+
+function toolKind(name) {
+  if (/bash|shell|exec_command|terminal/i.test(String(name || ''))) return 'shell';
+  if (/workspace|file/i.test(String(name || ''))) return 'workspace';
+  if (/task|execution/i.test(String(name || ''))) return 'runtime';
+  if (/context|material/i.test(String(name || ''))) return 'context';
+  if (/judge|check/i.test(String(name || ''))) return 'judge';
+  return 'service';
+}
 
 async function get(path) {
   const response = await fetch(path, { headers: { accept: 'application/json' } });
@@ -474,6 +534,42 @@ function renderRecentEvents() {
   host.innerHTML = events.length ? events.map((event) => '<button class="event-row" data-route="' + (event.execution_id ? 'execution/' + escapeHtml(event.execution_id) : 'diagnostics') + '"><span class="event-source">' + escapeHtml(event.source) + '</span><span class="row-copy"><strong class="event-kind">' + escapeHtml(eventLabel(event)) + '</strong><span>' + escapeHtml(shortId(event.execution_id || event.task_id || event.core_id || 'observation')) + ' · #' + event.sequence + '</span></span><span class="event-time">' + escapeHtml(formatTime(event.occurred_at)) + '</span></button>').join('') : emptyState('No events yet', 'New Runtime and Service observations will appear here.');
 }
 
+function reportMetric(label, value, tone) {
+  return '<div class="report-metric ' + (tone || '') + '"><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value == null ? '—' : String(value)) + '</strong></div>';
+}
+
+function renderReportPanel(report) {
+  if (!report) return '<div class="report-loading"><span class="spinner"></span><span>Loading the benchmark report…</span></div>';
+  if (!report.available) return emptyState('No analysis report attached', report.reason || 'This Experiment was recorded from live observations without a report file.');
+  const summary = report.summary || {};
+  const analysis = report.analysis || [];
+  const status = summary.solved ? 'solved' : summary.protocol_valid === false ? 'invalid protocol' : 'observed run';
+  const metricHtml = [
+    reportMetric('Run', status, summary.solved ? 'good' : 'neutral'),
+    reportMetric('Tasks', summary.task_count),
+    reportMetric('Claims', summary.claim_count),
+    reportMetric('Waits', summary.wait_count),
+    reportMetric('Agent time', formatDuration(summary.agent_time_ms || 0)),
+    reportMetric('Active cores', summary.max_active_core_count),
+  ].join('');
+  const analysisHtml = analysis.length ? analysis.map((item, index) => '<details class="report-analysis" ' + (index === 0 ? 'open' : '') + '><summary>' + escapeHtml(item.name) + '</summary><pre>' + escapeHtml(item.content) + '</pre></details>').join('') : '<p class="report-empty">The attached report has benchmark metrics but no adjacent Markdown analysis file.</p>';
+  return '<div class="report-overview"><div><span class="report-source">' + escapeHtml(report.source || 'report.json') + '</span><p>' + escapeHtml(summary.problem_id || 'Benchmark report') + ' · ' + escapeHtml(summary.started_at ? formatDate(summary.started_at) : 'undated') + '</p></div><div class="report-metrics">' + metricHtml + '</div></div><div class="report-analysis-list"><div class="report-section-label">ANALYSIS REPORT</div>' + analysisHtml + '</div><details class="advanced-details report-raw"><summary>Raw report metrics</summary><pre class="payload-preview">' + escapeHtml(safeJson(report.raw || summary, 30_000)) + '</pre></details>';
+}
+
+async function loadReport() {
+  if (!state.experiment || !state.experiment.metadata || !state.experiment.metadata.report_path) return;
+  const experimentId = state.experiment.experiment_id;
+  if (state.reportCache.has(experimentId)) return;
+  try {
+    const report = await get('/api/experiments/' + encodeURIComponent(experimentId) + '/report');
+    state.reportCache.set(experimentId, report);
+    if (location.hash === '#home') route();
+  } catch (error) {
+    state.reportCache.set(experimentId, { available: false, reason: error.message });
+    if (location.hash === '#home') route();
+  }
+}
+
 function renderHome() {
   if (!state.model) return renderNoExperiment();
   const title = state.experiment && state.experiment.metadata && state.experiment.metadata.problem_id || state.experiment && state.experiment.experiment_id || 'Experiment monitor';
@@ -482,6 +578,7 @@ function renderHome() {
     '<div class="page-heading"><div><span class="eyebrow">EXPERIMENT MONITOR</span><h1>', escapeHtml(title), '</h1><p>Real observation data across the selected run. The Core timeline is the primary surface; every interval opens the underlying Execution.</p></div><div class="heading-actions">', statusPill(state.experiment && state.experiment.status), '</div></div>',
     '<section class="card timeline-card"><div class="card-header"><div><span class="eyebrow">RUNTIME TOPOLOGY</span><h2>Core activity</h2><p>', escapeHtml((state.experiment && state.experiment.core_ids || []).length + ' reusable Core lanes · ' + formatNumber(state.events.length) + ' ordered observations'), '</p></div><div class="timeline-tools"><button class="range-button ' + (state.range === 'all' ? 'active' : '') + '" data-range="all">Fit run</button><button class="range-button ' + (state.range === '15m' ? 'active' : '') + '" data-range="15m">15 min</button><button class="range-button ' + (state.range === '1h' ? 'active' : '') + '" data-range="1h">1 hour</button></div></div><div class="timeline-note">Intervals are positioned against the observed run clock. Nothing needs to be dragged; choose a time window, then click the exact Execution interval to inspect its tool calls and returns.</div><div class="timeline-wrap" id="timeline"></div></section>',
     '<div class="summary-strip" id="metrics"></div>',
+    state.experiment && state.experiment.metadata && state.experiment.metadata.report_path ? '<section class="card report-card dashboard-lower"><div class="card-header"><div><span class="eyebrow">RUN REPORT</span><h2>Experiment analysis</h2><p>Attached benchmark metrics and any local analysis report for this run.</p></div></div><div class="card-body" id="experiment-report">' + renderReportPanel(state.reportCache.get(state.experiment.experiment_id) || null) + '</div></section>' : '',
     '<div class="content-grid three dashboard-lower"><section class="card"><div class="card-header"><div><span class="eyebrow">HEALTH</span><h2>Signals</h2><p>Derived from append-only observations.</p></div><a class="card-link" href="#diagnostics">Open diagnostics</a></div><div class="card-body"><div class="signal-list" id="signals"></div></div></section>',
     '<section class="card"><div class="card-header"><div><span class="eyebrow">TASK ACTIVITY</span><h2>Top Tasks</h2><p>Click through to the complete Task fields.</p></div><a class="card-link" href="#tasks">All tasks</a></div><div class="card-body"><div class="rank-list" id="top-tasks"></div></div></section>',
     '<section class="card"><div class="card-header"><div><span class="eyebrow">CONTEXT FLOW</span><h2>Top Materials</h2><p>Provenance and downstream consumers.</p></div><a class="card-link" href="#materials">All materials</a></div><div class="card-body"><div class="rank-list" id="top-materials"></div></div></section></div>',
@@ -494,6 +591,7 @@ function renderHome() {
   $('#nav-alert').classList.toggle('alert', state.model.errors.length > 0);
   renderTopLists(state.model);
   renderRecentEvents();
+  void loadReport();
   $$('.range-button').forEach((button) => button.addEventListener('click', () => { state.range = button.dataset.range; renderHome(); }));
 }
 
@@ -515,8 +613,30 @@ function renderToolCalls(calls) {
     const ended = call.end && call.end.occurred_at;
     const elapsed = started && ended ? formatDuration(new Date(ended).getTime() - new Date(started).getTime()) : 'in progress';
     const status = call.isError ? '<span class="status-pill failed">error</span>' : call.end ? '<span class="status-pill succeeded">returned</span>' : '<span class="status-pill running">running</span>';
-    return '<article class="tool-card"><div class="tool-card-header"><span class="tool-index">' + (index + 1) + '</span><span class="tool-title"><strong>' + escapeHtml(call.toolName) + '</strong><span>' + escapeHtml(formatTime(started, true)) + ' · ' + escapeHtml(elapsed) + '</span></span><span class="tool-result-status">' + status + '</span></div><div class="tool-card-body"><div class="tool-pane"><label>Arguments</label><pre>' + escapeHtml(safeJson(call.args)) + '</pre></div><div class="tool-pane"><label>Return result</label><pre>' + escapeHtml(safeJson(call.result)) + '</pre></div></div><details><summary>Raw tool record</summary><pre>' + escapeHtml(safeJson({ start: call.start && call.start.payload, end: call.end && call.end.payload }, 30_000)) + '</pre></details></article>';
+    const kind = toolKind(call.toolName);
+    return '<details class="tool-card tool-' + kind + '"><summary class="tool-card-summary"><span class="tool-index">' + (index + 1) + '</span><span class="tool-title"><strong>' + escapeHtml(call.toolName) + '</strong><span>' + escapeHtml(toolArgumentSummary(call)) + '</span></span><span class="tool-summary-result">' + escapeHtml(toolSummary(call)) + '</span><span class="tool-time">' + escapeHtml(formatTime(started, true)) + ' · ' + escapeHtml(elapsed) + '</span><span class="tool-result-status">' + status + '</span></summary><div class="tool-card-expanded"><div class="tool-result-preview"><label>Key result</label><p>' + escapeHtml(toolSummary(call)) + '</p></div><div class="tool-card-body"><details class="tool-json-details"><summary>Full arguments</summary><pre>' + escapeHtml(safeJson(call.args)) + '</pre></details><details class="tool-json-details"><summary>Full return result</summary><pre>' + escapeHtml(safeJson(call.result)) + '</pre></details></div><details class="tool-json-details raw-tool-details"><summary>Raw tool record</summary><pre>' + escapeHtml(safeJson({ start: call.start && call.start.payload, end: call.end && call.end.payload }, 30_000)) + '</pre></details></div></details>';
   }).join('');
+}
+
+function renderExecutionInsight(insight) {
+  if (!insight) return emptyState('Loading starting context…', 'Reading the recorded prompt, workspace selection, and visible tool surface.');
+  const task = insight.task || {};
+  const workspace = insight.workspace || {};
+  const tools = insight.tool_surface || [];
+  const observed = insight.observed_tools || [];
+  const prompt = insight.initial_prompt || 'No initial Agent prompt was captured for this Execution.';
+  const instructions = insight.task_instructions || task.task_instructions || 'No Task-specific instructions were captured.';
+  const workspaceItems = [
+    ['project', task.workspace && task.workspace.project],
+    ['problem file', task.workspace && task.workspace.problem_file],
+    ['workspace mode', workspace.workspace_selection && workspace.workspace_selection.mode],
+    ['workspace revision', workspace.workspace_revision],
+    ['workspace ref', workspace.workspace_ref || workspace.workspace_manifest_ref],
+    ['input materials', Array.isArray(workspace.input_material_refs) ? workspace.input_material_refs.length : null],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== '');
+  const toolNames = tools.length ? tools.map((tool) => '<span class="tool-chip" title="' + escapeHtml(tool.description || '') + '">' + escapeHtml(tool.name) + '</span>').join('') : observed.map((name) => '<span class="tool-chip">' + escapeHtml(name) + '</span>').join('');
+  const bashNotice = insight.bash_observed ? '<span class="context-note good">bash/shell observed</span>' : '<span class="context-note">bash/shell not observed in this Execution</span>';
+  return '<div class="execution-context-grid"><section class="context-block context-prompt"><div class="context-block-heading"><span class="eyebrow">INITIAL PROMPT</span><span class="context-note">bounded projection</span></div><p class="context-copy">' + escapeHtml(compactText(prompt, 900)) + '</p><details class="context-details"><summary>Show full prompt</summary><pre>' + escapeHtml(prompt) + '</pre></details></section><section class="context-block"><div class="context-block-heading"><span class="eyebrow">TASK INSTRUCTIONS</span></div><p class="context-copy">' + escapeHtml(compactText(instructions, 700)) + '</p><details class="context-details"><summary>Show full instructions</summary><pre>' + escapeHtml(instructions) + '</pre></details></section><section class="context-block"><div class="context-block-heading"><span class="eyebrow">INITIAL WORKSPACE</span></div><div class="context-facts">' + (workspaceItems.length ? workspaceItems.map(([key, value]) => '<div class="context-fact"><span>' + escapeHtml(key) + '</span><strong>' + escapeHtml(typeof value === 'object' ? safeJson(value, 600) : value) + '</strong></div>').join('') : emptyState('No workspace facts', 'No workspace projection was captured for this Execution.')) + '</div><details class="context-details"><summary>Show workspace selection</summary><pre>' + escapeHtml(safeJson(workspace, 12_000)) + '</pre></details></section><section class="context-block"><div class="context-block-heading"><span class="eyebrow">VISIBLE TOOL SURFACE</span>' + bashNotice + '</div><div class="tool-chips">' + (toolNames || '<span class="muted">No catalog response captured.</span>') + '</div><p class="context-caption">' + tools.length + ' catalog tools · ' + observed.length + ' observed names in this Execution</p></section></div>';
 }
 
 async function loadWorkspace(executionId) {
@@ -530,6 +650,19 @@ async function loadWorkspace(executionId) {
   }
 }
 
+async function loadExecutionInsight(executionId) {
+  if (!state.experiment || state.executionInsightCache.has(executionId)) return;
+  try {
+    const path = '/api/experiments/' + encodeURIComponent(state.experiment.experiment_id) + '/execution-insight?execution_id=' + encodeURIComponent(executionId);
+    const insight = await get(path);
+    state.executionInsightCache.set(executionId, insight);
+    if (location.hash === '#execution/' + executionId) route();
+  } catch (error) {
+    state.executionInsightCache.set(executionId, { error: error.message, tool_surface: [], observed_tools: [] });
+    if (location.hash === '#execution/' + executionId) route();
+  }
+}
+
 function executionDetail(id) { return state.detailCache.get(id) || null; }
 
 function renderExecutionPage(id) {
@@ -538,6 +671,7 @@ function renderExecutionPage(id) {
   if (!execution) return renderEmptyPage('Executions', 'No Execution facts have been observed for this Experiment yet.');
   state.selectedExecution = execution.execution_id;
   const detail = executionDetail(execution.execution_id);
+  const insight = state.executionInsightCache.get(execution.execution_id) || null;
   const events = detail ? detail.events : state.events.filter((event) => event.execution_id === execution.execution_id);
   const calls = extractToolCalls(events);
   const task = model.tasks.find((item) => item.task_id === execution.task_id);
@@ -547,7 +681,8 @@ function renderExecutionPage(id) {
     '<div class="page-heading"><div><span class="eyebrow">EXECUTION INSPECTOR</span><h1>', escapeHtml(shortId(execution.execution_id, 18)), '</h1><p>Complete observed activity for one durable attempt. Tool arguments and returned results are shown below from the bounded operator projection; private fields remain redacted.</p></div><div class="heading-actions"><button class="button" data-route="executions">All executions</button>', statusPill(execution.state), '</div></div>',
     '<div class="detail-grid"><div class="detail-stack"><section class="detail-hero"><div><span class="eyebrow">CURRENT STATE</span><h2>', escapeHtml(execution.state || 'UNKNOWN'), '</h2><p>', escapeHtml(task && task.goal || 'Task ' + shortId(execution.task_id)), '</p></div><div class="detail-meta"><div class="meta-item"><span>Execution</span><strong>', escapeHtml(execution.execution_id), '</strong></div><div class="meta-item"><span>Task</span><strong>', escapeHtml(shortId(execution.task_id)), '</strong></div><div class="meta-item"><span>Core / Session</span><strong>', escapeHtml(execution.core_id || '—'), ' / ', escapeHtml(shortId(execution.session_id)), '</strong></div><div class="meta-item"><span>Running time</span><strong>', escapeHtml(formatDuration(execution.running_ms)), '</strong></div></div></section>',
     '<section class="detail-metrics"><div class="detail-metric"><strong>', formatNumber(calls.length), '</strong><span>tool calls</span></div><div class="detail-metric"><strong>', formatNumber(calls.filter((call) => call.end).length), '</strong><span>returned</span></div><div class="detail-metric"><strong>', formatNumber((events || []).length), '</strong><span>observations</span></div><div class="detail-metric"><strong>', formatNumber(execution.errors || 0), '</strong><span>error signals</span></div></section>',
-    '<section class="card"><div class="card-header"><div><span class="eyebrow">AGENT ACTIVITY</span><h2>Tool calls and returns</h2><p>', detail ? 'Every recorded tool call is paired with its returned result; private values are represented by bounded redactions.' : 'Loading the selected Execution’s bounded event stream…', '</p></div></div><div class="card-body"><div class="tool-list" id="execution-tools">', detail ? renderToolCalls(calls) : emptyState('Loading tool activity…', 'Reading the historical event stream for this Execution.'), '</div></div></section>',
+    '<section class="card execution-context-card"><div class="card-header"><div><span class="eyebrow">STARTING CONTEXT</span><h2>What this Agent could see</h2><p>The initial prompt, Task instructions, Workspace selection, and visible tool surface are separated from the event transcript.</p></div></div><div class="card-body">', renderExecutionInsight(insight), '</div></section>',
+    '<section class="card"><div class="card-header"><div><span class="eyebrow">AGENT ACTIVITY</span><h2>Tool calls and returns</h2><p>', detail ? 'Click a row to expand full arguments, key return output, and the bounded raw record.' : 'Loading the selected Execution’s bounded event stream…', '</p></div></div><div class="card-body"><div class="tool-list" id="execution-tools">', detail ? renderToolCalls(calls) : emptyState('Loading tool activity…', 'Reading the historical event stream for this Execution.'), '</div></div></section>',
     '<section class="card"><div class="card-header"><div><span class="eyebrow">LIFECYCLE</span><h2>Other observed events</h2><p>State, Runtime, Service, Workspace, and Judge boundaries.</p></div></div><div class="card-body">', renderDetailEvents(events), '</div></section></div>',
     '<div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">WORKSPACE</span><h2>Working surface</h2></div></div><div class="card-body" id="execution-workspace">', emptyState('Loading Workspace…', 'Reading the selected Execution Workspace projection.'), '</div></section>',
     '<section class="card"><div class="card-header"><div><span class="eyebrow">CONTEXT</span><h2>Linked Materials</h2></div></div><div class="card-body">', materials.length ? '<div class="relation-list">' + materials.map((material) => relationLink('material', material.material_id, (material.kind || 'material') + ' · ' + shortId(material.material_id, 9))).join('') + '</div>' : emptyState('No linked Materials', 'This Execution has not exposed a Material reference in the current observation stream.'), '</div></section>',
@@ -555,6 +690,7 @@ function renderExecutionPage(id) {
   );
   installIcons();
   void loadWorkspace(execution.execution_id);
+  void loadExecutionInsight(execution.execution_id);
   if (!detail) void loadExecutionDetail(execution.execution_id);
 }
 
@@ -591,6 +727,29 @@ function fieldTable(fields, title) {
   return '<table class="field-table"><caption>' + escapeHtml(title || 'Observed fields') + '</caption><tbody>' + entries.map(([key, value]) => '<tr><th>' + escapeHtml(key) + '</th><td><pre class="field-value">' + escapeHtml(value && typeof value === 'object' ? safeJson(value, 18_000) : displayValue(value)) + '</pre></td></tr>').join('') + '</tbody></table>';
 }
 
+function materialContentText(detail, selected) {
+  if (detail && detail.content_summary) return String(detail.content_summary);
+  const content = detail && detail.content_preview || selected && (selected.content || selected.content_json);
+  if (!content) return 'The Material record has no readable content summary.';
+  if (typeof content === 'string') return compactText(content, 2_400);
+  const primary = detailValue(content, ['summary', 'description', 'title', 'text', 'claim', 'path']);
+  if (primary) return compactText(primary, 2_400);
+  const readable = Object.fromEntries(Object.entries(content).filter(([key]) => !/(^|_)(?:hash|ref|id|version|timestamp|created_at|updated_at)(?:$|_)/i.test(key)));
+  return safeJson(readable, 2_400);
+}
+
+function materialVisibleFields(selected, detail) {
+  const fields = { ...(selected && selected.fields || {}), ...(detail && detail.fields || {}) };
+  return Object.fromEntries(Object.entries(fields).filter(([key]) => !['content', 'content_json', 'content_hash', 'provenance_json', 'provenance', 'content_ref'].includes(key)));
+}
+
+function materialAdvancedFields(selected, detail) {
+  return {
+    ...(detail && detail.advanced || {}),
+    ...(selected && selected.fields || {}),
+  };
+}
+
 function renderTaskPage(id) {
   const model = state.model;
   if (!model || !model.tasks.length) return renderEmptyPage('Tasks', 'No Task facts have been observed for this Experiment yet.');
@@ -613,6 +772,7 @@ function renderMaterialPage(id) {
   const model = state.model;
   if (!model || !model.materials.length) return renderEmptyPage('Materials', 'No Material facts have been observed for this Experiment yet.');
   const selected = model.materials.find((item) => item.material_id === id) || model.materials[0];
+  const detail = state.materialDetailCache.get(selected.material_id) || null;
   const task = model.tasks.find((item) => item.task_id === selected.source_task);
   const execution = model.executions.find((item) => item.execution_id === selected.source_execution);
   const provenance = [
@@ -621,7 +781,21 @@ function renderMaterialPage(id) {
     selected.supersedes ? relationLink('material', selected.supersedes, 'Supersedes · ' + shortId(selected.supersedes, 9)) : '',
   ].join('');
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><a href="#materials">Materials</a><span class="crumb-separator">/</span><strong>' + escapeHtml(shortId(selected.material_id)) + '</strong>';
-  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">CONTEXT / MATERIAL</span><h1>' + escapeHtml(selected.kind || 'Material') + ' <span class="muted">' + escapeHtml(shortId(selected.material_id, 16)) + '</span></h1><p>Immutable shared work, complete observed fields, provenance, evidence state, and downstream use.</p></div><div class="heading-actions">' + statusPill(selected.evidence_state) + '<button class="button" data-route="materials">All materials</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">MATERIAL FIELDS</span><h2>Recorded payload</h2><p>Fields are read from the Context Service publication event.</p></div></div><div class="card-body">' + fieldTable(selected.fields, 'Material fields') + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">PROVENANCE</span><h2>Source and lineage</h2></div></div><div class="card-body">' + (provenance ? '<div class="relation-list">' + provenance + '</div>' : emptyState('No provenance observed', 'The current Experiment contains no source Task, source Execution, or supersession link for this Material.')) + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">DOWNSTREAM USE</span><h2>Observed consumers</h2><p>Read and action links captured in the event stream.</p></div></div><div class="card-body">' + (selected.consumers.length ? '<div class="relation-list">' + selected.consumers.map((consumer) => relationLink('execution', consumer, 'Execution · ' + shortId(consumer, 10))).join('') + '</div>' : emptyState('No explicit consumers', 'This Material has provenance, but no downstream read or action has been observed yet.')) + '</div></section></div><section class="card"><div class="card-header"><div><span class="eyebrow">CONTENT PREVIEW</span><h2>Payload</h2><p>Redacted browser projection; private fields stay out of the default dashboard stream.</p></div></div><div class="card-body"><pre class="payload-preview">' + escapeHtml(safeJson(selected.content || selected.content_json || { material_id: selected.material_id }, 20_000)) + '</pre></div></section></div>';
+  const content = detail ? '<div class="material-content-summary"><strong>' + escapeHtml(materialContentText(detail, selected)) + '</strong><span>' + escapeHtml(detail.available ? 'Readable content projection loaded from the local Material record.' : 'Only the bounded event projection is available.') + '</span></div><details class="advanced-details"><summary>Raw Material payload, hashes, and provenance</summary><div class="advanced-details-body">' + fieldTable(materialAdvancedFields(selected, detail), 'Advanced Material fields') + '<pre class="payload-preview">' + escapeHtml(safeJson(detail.content_preview || selected.content || selected.content_json || { material_id: selected.material_id }, 20_000)) + '</pre></div></details>' : '<div class="material-content-summary loading"><span class="spinner"></span><span>Loading the readable Material content…</span></div>';
+  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">CONTEXT / MATERIAL</span><h1>' + escapeHtml(selected.kind || 'Material') + ' <span class="muted">' + escapeHtml(shortId(selected.material_id, 16)) + '</span></h1><p>Read the useful Material content first; hashes, provenance JSON, and the raw payload stay behind an explicit disclosure.</p></div><div class="heading-actions">' + statusPill(selected.evidence_state) + '<button class="button" data-route="materials">All materials</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card material-content-card"><div class="card-header"><div><span class="eyebrow">MATERIAL CONTENT</span><h2>What was published</h2><p>Redacted browser projection with a readable content summary.</p></div></div><div class="card-body">' + content + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">MATERIAL FIELDS</span><h2>Identity and semantics</h2><p>Stable fields remain visible; technical payload fields are folded below.</p></div></div><div class="card-body">' + fieldTable(materialVisibleFields(selected, detail), 'Material fields') + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">PROVENANCE</span><h2>Source and lineage</h2></div></div><div class="card-body">' + (provenance ? '<div class="relation-list">' + provenance + '</div>' : emptyState('No provenance observed', 'The current Experiment contains no source Task, source Execution, or supersession link for this Material.')) + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">DOWNSTREAM USE</span><h2>Observed consumers</h2><p>Read and action links captured in the event stream.</p></div></div><div class="card-body">' + (selected.consumers.length ? '<div class="relation-list">' + selected.consumers.map((consumer) => relationLink('execution', consumer, 'Execution · ' + shortId(consumer, 10))).join('') + '</div>' : emptyState('No explicit consumers', 'This Material has provenance, but no downstream read or action has been observed yet.')) + '</div></section></div><section class="card"><div class="card-header"><div><span class="eyebrow">TECHNICAL PREVIEW</span><h2>Payload inspection</h2><p>Raw Material content is available behind the disclosure above when the local record contains it.</p></div></div><div class="card-body"><details class="advanced-details"><summary>Open technical payload</summary><pre class="payload-preview">' + escapeHtml(safeJson(materialAdvancedFields(selected, detail), 20_000)) + '</pre></details></div></section></div>';
+  if (!detail) void loadMaterialDetail(selected.material_id);
+}
+
+async function loadMaterialDetail(materialId) {
+  if (!state.experiment || state.materialDetailCache.has(materialId)) return;
+  try {
+    const detail = await get('/api/experiments/' + encodeURIComponent(state.experiment.experiment_id) + '/materials/' + encodeURIComponent(materialId));
+    state.materialDetailCache.set(materialId, detail);
+    if (location.hash === '#material/' + materialId) route();
+  } catch (error) {
+    state.materialDetailCache.set(materialId, { available: false, error: error.message });
+    if (location.hash === '#material/' + materialId) route();
+  }
 }
 
 function renderMaterialList() {
@@ -678,6 +852,18 @@ function route() {
 
 function navigate(path) { if (location.hash === '#' + path) route(); else location.hash = path; }
 function setConnection(label, tone) { $('#connection').textContent = label; $('#connection-dot').className = 'connection-dot ' + (tone || ''); }
+
+function applyTheme(theme, persist) {
+  const nextTheme = theme === 'black' ? 'black' : 'light';
+  if (document.documentElement) document.documentElement.dataset.theme = nextTheme;
+  const selector = $('#theme-select');
+  if (selector) selector.value = nextTheme;
+  const themeColor = document.querySelector('meta[name="theme-color"]');
+  if (themeColor) themeColor.content = nextTheme === 'black' ? '#111113' : '#f7f7f8';
+  if (persist && typeof localStorage !== 'undefined') {
+    try { localStorage.setItem('swarmenv-theme', nextTheme); } catch { /* private browsing can disable storage */ }
+  }
+}
 
 function connectStream(id) {
   if (state.source) state.source.close();
@@ -747,6 +933,9 @@ async function selectExperiment(id) {
     state.timeline = results[1];
     state.model = buildModel();
     state.detailCache = new Map();
+    state.executionInsightCache = new Map();
+    state.materialDetailCache = new Map();
+    state.reportCache = new Map();
     state.selectedExecution = null;
     state.lastUpdated = new Date();
     updateNav();
@@ -791,7 +980,9 @@ async function refreshExperiments(initial) {
 }
 
 function bindInteractions() {
+  applyTheme(document.documentElement && document.documentElement.dataset.theme, false);
   $('#experiments').addEventListener('change', (event) => { void selectExperiment(event.target.value); });
+  $('#theme-select').addEventListener('change', (event) => applyTheme(event.target.value, true));
   $('#refresh').addEventListener('click', () => { void refreshExperiments(!state.experiment); if (state.experiment) void selectExperiment(state.experiment.experiment_id); });
   $('#mobile-menu').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
   document.addEventListener('click', (event) => {

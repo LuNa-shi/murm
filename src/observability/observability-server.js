@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { listServices } from '../sdk/service-catalog.js';
@@ -52,6 +52,117 @@ function contentType(path) {
     '.css': 'text/css; charset=utf-8',
     '.json': 'application/json; charset=utf-8',
   }[extension] ?? 'application/octet-stream';
+}
+
+const DASHBOARD_SECRET_KEY = /(?:authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|credential|bearer|cookie|secret|(?:^|[_-])token(?:$|[_-]))/i;
+const DASHBOARD_MAX_STRING = 8_000;
+const DASHBOARD_MAX_ARRAY = 100;
+
+function parseJson(value) {
+  if (typeof value !== 'string' || value.length === 0) return value;
+  try { return JSON.parse(value); } catch { return value; }
+}
+
+function dashboardValue(value, key = '', depth = 0) {
+  if (DASHBOARD_SECRET_KEY.test(String(key))) return '[redacted]';
+  if (typeof value === 'string') return value.length <= DASHBOARD_MAX_STRING ? value : `${value.slice(0, DASHBOARD_MAX_STRING)}\n… [display truncated]`;
+  if (depth > 7) return '[nested value truncated]';
+  if (Array.isArray(value)) {
+    const items = value.slice(0, DASHBOARD_MAX_ARRAY).map((item) => dashboardValue(item, '', depth + 1));
+    if (value.length > DASHBOARD_MAX_ARRAY) items.push(`[${value.length - DASHBOARD_MAX_ARRAY} array items truncated]`);
+    return items;
+  }
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, dashboardValue(child, childKey, depth + 1)]));
+}
+
+function nestedValue(value, keys, depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 6) return null;
+  for (const key of keys) if (value[key] !== undefined && value[key] !== null) return value[key];
+  for (const child of Object.values(value)) {
+    const found = nestedValue(child, keys, depth + 1);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+function materialFromPayload(value, materialId, depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 7) return null;
+  if (value.material_id === materialId) return value;
+  if (Array.isArray(value)) {
+    for (const child of value) {
+      const found = materialFromPayload(child, materialId, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  for (const child of Object.values(value)) {
+    const found = materialFromPayload(child, materialId, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+function toolDetails(record) {
+  return record?.result?.details ?? record?.result?.result ?? record?.result ?? null;
+}
+
+function reportSummary(report) {
+  if (!report || typeof report !== 'object') return null;
+  const project = report.project ?? {};
+  const run = report.run ?? {};
+  const parallelism = report.parallelism ?? {};
+  return {
+    schema_version: report.schema_version ?? null,
+    problem_id: project.problem_id ?? null,
+    run_id: project.run_id ?? null,
+    tags: project.tags ?? [],
+    repository_commit: report.protocol?.repository_commit ?? null,
+    started_at: run.started_at ?? null,
+    ended_at: run.ended_at ?? null,
+    elapsed_ms: run.elapsed_ms ?? null,
+    solved: run.solved ?? null,
+    protocol_valid: run.protocol_valid ?? null,
+    made_progress: run.made_progress ?? null,
+    task_count: project.task_count ?? project.task_tree?.length ?? null,
+    material_count: run.material_count ?? null,
+    candidate_count: run.candidate_count ?? null,
+    tool_error_count: run.tool_error_count ?? null,
+    claim_count: run.claim_count ?? null,
+    child_claim_count: run.child_claim_count ?? null,
+    wait_count: run.wait_count ?? null,
+    wake_count: run.wake_count ?? null,
+    accept_count: run.accept_count ?? null,
+    rework_count: run.rework_count ?? null,
+    resume_count: run.resume_count ?? null,
+    core_count: parallelism.core_count ?? report.protocol?.core_count ?? null,
+    agent_time_ms: parallelism.agent_time_ms ?? null,
+    mean_active_core_count: parallelism.mean_active_core_count ?? null,
+    max_active_core_count: parallelism.max_active_core_count ?? null,
+    state_time_ms: parallelism.state_time_ms ?? null,
+    task_tree: (project.task_tree ?? []).map((task) => ({
+      task_id: task.task_id,
+      parent_id: task.parent_id ?? null,
+      task_type: task.task_type ?? null,
+      goal: task.goal ?? null,
+      state: task.state ?? task.task_state ?? null,
+    })),
+    cores: (report.cores ?? []).map((core) => ({
+      core: core.core,
+      task_id: core.task_id ?? null,
+      execution_id: core.execution_id ?? null,
+      task_state: core.task_state ?? null,
+      execution_state: core.execution_state ?? null,
+      tool_events: core.tool_events ?? [],
+      tool_errors: core.tool_errors ?? [],
+      workspace_writes: core.workspace_writes?.length ?? 0,
+      checks: (core.checks ?? []).map((check) => ({
+        verdict: check.verdict ?? check.status ?? null,
+        checker_ref: check.checker_ref ?? null,
+        error_class: check.error_class ?? null,
+      })),
+    })),
+  };
 }
 
 async function readStatic(path) {
@@ -173,6 +284,21 @@ export class ObservabilityServer {
         send(response, 200, this.#timeline(experimentId, url));
         return;
       }
+      if (parts[3] === 'execution-insight') {
+        const executionId = url.searchParams.get('execution_id');
+        if (!executionId) throw new TypeError('execution_id is required for execution insight queries');
+        send(response, 200, await this.#executionInsight(experimentId, executionId));
+        return;
+      }
+      if (parts[3] === 'materials' && parts.length >= 5) {
+        const materialId = decodeURIComponent(parts[4]);
+        send(response, 200, await this.#materialDetail(experimentId, materialId));
+        return;
+      }
+      if (parts[3] === 'report') {
+        send(response, 200, await this.#report(experiment));
+        return;
+      }
       send(response, 200, this.#summary(experiment));
       return;
     }
@@ -262,6 +388,200 @@ export class ObservabilityServer {
 
   #eventsQuery(experimentId, url) {
     return this.observationStore.listEvents({ ...this.#eventFilters(url), experimentId, executionId: url.searchParams.get('execution_id') ?? null });
+  }
+
+  async #allEvents(options, maxPages = 20) {
+    const events = [];
+    let afterSequence = 0;
+    for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
+      const page = this.observationStore.listEvents({ ...options, afterSequence, limit: 1_000 });
+      events.push(...page.events);
+      if (!page.has_more || page.next_cursor === null) break;
+      if (page.next_cursor <= afterSequence) break;
+      afterSequence = page.next_cursor;
+    }
+    return events;
+  }
+
+  async #executionInsight(experimentId, executionId) {
+    const events = await this.#allEvents({ experimentId, executionId, view: 'operator' });
+    const insight = {
+      execution_id: executionId,
+      initial_prompt: null,
+      task_instructions: null,
+      task: null,
+      workspace: null,
+      tool_surface: [],
+      observed_tools: [],
+      bash_observed: false,
+      source_events: events.length,
+    };
+    const tools = new Map();
+    const addCatalogTools = (details) => {
+      const catalogTools = details?.tools ?? details;
+      if (!Array.isArray(catalogTools)) return;
+      catalogTools.forEach((tool) => {
+        if (!tool?.name) return;
+        insight.tool_surface.push(dashboardValue({
+          name: tool.name,
+          service: tool.service,
+          operation: tool.operation,
+          description: tool.description,
+          scope: tool.scope,
+          side_effect: tool.side_effect,
+        }));
+      });
+    };
+    for (const event of events) {
+      const record = event.kind === 'rpc_record' ? event.payload?.record : null;
+      if (!record?.toolName) continue;
+      if (record.type === 'tool_execution_start' || record.type === 'tool_execution_end') {
+        tools.set(record.toolName, true);
+      }
+      if (record.type !== 'tool_execution_end') continue;
+      const details = toolDetails(record);
+      if (!details || typeof details !== 'object') continue;
+      if (record.toolName === 'swarmenv_task_get') {
+        const task = details.task ?? details;
+        if (task && typeof task === 'object') {
+          insight.task = dashboardValue({
+            task_id: task.task_id,
+            root_id: task.root_id,
+            parent_id: task.parent_id,
+            owner_ref: task.owner_ref,
+            task_type: task.task_type,
+            task_type_version: task.task_type_version,
+            goal: task.goal,
+            expected_output: task.expected_output,
+            priority: task.priority,
+            task_instructions: task.task_instructions,
+            workspace: task.workspace,
+            acceptance_conditions: task.acceptance_conditions,
+            input_material_refs: task.input_material_refs,
+            state: task.state,
+          });
+          insight.task_instructions = dashboardValue(task.task_instructions ?? task.initial_prompt ?? null, 'task_instructions');
+        }
+      } else if (record.toolName === 'swarmenv_execution_get') {
+        const execution = details.execution ?? details;
+        if (execution && typeof execution === 'object') {
+          insight.initial_prompt = dashboardValue(execution.agent_prompt ?? execution.initial_prompt ?? null, 'agent_prompt');
+          insight.workspace = dashboardValue({
+            workspace_manifest_ref: execution.workspace_manifest_ref,
+            workspace_ref: execution.workspace_ref,
+            workspace_revision: execution.workspace_revision,
+            workspace_content_hash: execution.workspace_content_hash,
+            input_snapshot_hash: execution.input_snapshot_hash,
+            input_material_refs: execution.input_material_refs,
+            workspace_selection: execution.workspace_selection,
+            checkpoint_ref: execution.checkpoint_ref,
+            parent_workspace_ref: execution.workspace_selection?.source_workspace_ref,
+          });
+        }
+      } else if (record.toolName === 'swarmenv_catalog_list_tools') {
+        addCatalogTools(details);
+      }
+    }
+    if (!insight.tool_surface.length) {
+      const catalogEvents = await this.#allEvents({ experimentId, kinds: ['rpc_record'], view: 'operator' }, 2);
+      for (const event of catalogEvents) {
+        const record = event.payload?.record;
+        if (record?.type === 'tool_execution_end' && record.toolName === 'swarmenv_catalog_list_tools') addCatalogTools(toolDetails(record));
+      }
+    }
+    insight.observed_tools = [...tools.keys()].sort();
+    insight.bash_observed = insight.observed_tools.some((name) => /bash|shell|exec_command|terminal/i.test(name));
+    const uniqueTools = new Map(insight.tool_surface.map((tool) => [tool.name, tool]));
+    insight.tool_surface = [...uniqueTools.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return insight;
+  }
+
+  async #materialDetail(experimentId, materialId) {
+    const events = await this.#allEvents({
+      experimentId,
+      source: 'context-service',
+      kinds: ['dispatch.complete'],
+      view: 'operator',
+    });
+    let material = null;
+    let observedAt = null;
+    let sourceEventId = null;
+    for (const event of events) {
+      const candidate = materialFromPayload(event.payload, materialId);
+      if (candidate) {
+        material = candidate;
+        observedAt = event.occurred_at;
+        sourceEventId = event.event_id;
+      }
+    }
+    if (!material) return { material_id: materialId, available: false, fields: {}, content_summary: null, content_preview: null, raw: null };
+    const parsedContent = parseJson(material.content_json ?? material.content);
+    const content = parsedContent && typeof parsedContent === 'object' ? parsedContent : { value: parsedContent };
+    const contentSummary = material.summary ?? material.description ?? content.summary ?? content.description ?? content.title ?? content.text ?? content.path ?? null;
+    const fields = {
+      material_id: material.material_id,
+      kind: material.kind,
+      scope: material.scope,
+      evidence_state: material.evidence_state,
+      version: material.version,
+      source_task: material.source_task,
+      source_execution: material.source_execution,
+      supersedes: material.supersedes,
+      created_at: material.created_at,
+      content_ref: material.content_ref,
+    };
+    const advanced = {
+      content_hash: material.content_hash,
+      provenance_json: material.provenance_json,
+      provenance: material.provenance,
+      content_ref: material.content_ref,
+      source_event_id: sourceEventId,
+      observed_at: observedAt,
+    };
+    return {
+      available: true,
+      material_id: materialId,
+      fields: dashboardValue(fields),
+      content_summary: typeof contentSummary === 'string' ? dashboardValue(contentSummary, 'summary') : null,
+      content_preview: dashboardValue(content, 'material_content'),
+      advanced: dashboardValue(advanced),
+    };
+  }
+
+  async #report(experiment) {
+    const metadata = experiment.metadata ?? {};
+    const reportPath = metadata.report_path;
+    if (!reportPath) return { available: false, reason: 'No report_path was recorded for this Experiment.' };
+    let report;
+    try {
+      report = JSON.parse(await readFile(reportPath, 'utf8'));
+    } catch (error) {
+      return { available: false, reason: `Report unavailable: ${error.message}`, source: basename(reportPath) };
+    }
+    const analysisCandidates = [
+      join(dirname(reportPath), 'analysis'),
+      join(dirname(dirname(reportPath)), 'analysis'),
+      metadata.experiment_root ? join(metadata.experiment_root, 'analysis') : null,
+    ].filter(Boolean);
+    const analysis = [];
+    for (const directory of analysisCandidates) {
+      let entries;
+      try { entries = await (await import('node:fs/promises')).readdir(directory, { withFileTypes: true }); } catch { continue; }
+      for (const entry of entries.filter((candidate) => candidate.isFile() && /\.(md|txt)$/i.test(candidate.name))) {
+        if (analysis.some((item) => item.name === entry.name)) continue;
+        try {
+          const content = await readFile(join(directory, entry.name), 'utf8');
+          analysis.push({ name: entry.name, content: content.length <= 80_000 ? content : `${content.slice(0, 80_000)}\n… [report truncated]` });
+        } catch { /* report files can disappear while a run is being archived */ }
+      }
+    }
+    return {
+      available: true,
+      source: basename(reportPath),
+      summary: reportSummary(report),
+      analysis,
+      raw: dashboardValue({ protocol: report.protocol, run: report.run, parallelism: report.parallelism, audit: report.audit }),
+    };
   }
 
   async #workspaceFromManager(execution) {
