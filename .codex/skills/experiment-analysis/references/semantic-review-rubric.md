@@ -35,6 +35,8 @@ The evaluator rejects a review when any of these conditions holds:
   work, Runtime RUNNING, or Core-capacity evidence;
 - a tool error is listed without classifying provider, transport, contract,
   schema, checker, or diagnostic-quality impact;
+- a Judge `ERROR` is treated as a mathematical Candidate failure without first
+  proving that the checker process started and produced a source-level result;
 - an absence is called a failure when the relevant evidence class is missing,
   malformed, or not correlated.
 

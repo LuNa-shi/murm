@@ -130,6 +130,23 @@ For each Candidate, summarize the route at the level supported by evidence:
 
 A PASS is a checker result. A FAIL is feedback. Neither proves mathematical usefulness by itself. If candidate source or route evidence is unavailable, say so and retain the Candidate as an unresolved semantic question.
 
+Before interpreting any Candidate verdict, classify the Judge/checker path as
+one of these states:
+
+```text
+request rejected → checker not started → checker started/no result
+→ source-level FAIL/PASS → timeout/crash
+```
+
+`Judge operation ok=true` means that the Judge request and persistence path
+completed; it does not mean that the checker proved the Candidate. A checker
+launch failure such as missing `lake`, missing wrapper, invalid working
+directory, or unavailable toolchain is an infrastructure result. It must be
+reported separately from mathematical failure, and the Candidate's mathematical
+status is `unassessed` until a checker process starts and produces a source-level
+result. If the same infrastructure diagnostic repeats, look for a preflight or
+health gate; do not describe each retry as new proof feedback.
+
 ## Analysis hierarchy: three operational layers plus two cross-cutting lenses
 
 Use this top-down order in every report:
@@ -194,6 +211,22 @@ For every finding state:
 - a concrete validation condition for the next run.
 
 Do not call a scheduler defect from an unexplained gap. Separate deterministic facts, derived metrics, interpretation, and unknowns.
+
+For deep causal analysis, test the following feedback loops explicitly:
+
+- **Judge loop:** Candidate submitted → checker process state → diagnostic
+  quality → Agent interpretation → next route. A repeated pre-checker error is
+  a broken environment loop, not evidence about the theorem.
+- **Handoff loop:** producer publishes → intended consumer can read → consumer
+  changes Task/Workspace/Candidate state → parent reviews or resumes. A read
+  without a durable downstream change is not closed collaboration.
+- **Capacity loop:** ready work exists → claim succeeds → Core runs → WAITING
+  releases capacity → wake/resume reclaims the right Execution. Without ready
+  work and auditable RUNNING intervals, report a capacity signal rather than a
+  scheduler defect.
+- **Terminal loop:** retry/recovery condition changes → Execution reaches a
+  typed terminal state → dependent Tasks are accepted, blocked, or cancelled.
+  An experiment timebox must not be presented as mathematical failure.
 
 ## Evidence and privacy rules
 

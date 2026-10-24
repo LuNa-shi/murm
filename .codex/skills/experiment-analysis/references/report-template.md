@@ -85,6 +85,15 @@ For every Candidate show:
 
 Never copy proof/candidate source into a shareable report.
 
+Before interpreting a Candidate verdict, classify the checker lifecycle:
+
+`request rejected → checker not started → checker started/no result →
+source-level FAIL/PASS → timeout/crash`.
+
+Keep Judge request persistence (`ok=true`) separate from checker process success.
+If the checker never starts, report the mathematical result as **unassessed**
+and analyze the infrastructure failure and retry policy first.
+
 ## 8. Tool layer
 
 Measure provider/transport errors, invalid tool use, response-schema quality,
@@ -92,6 +101,11 @@ idempotency, and actionable error fields (code, message, correlation ID).
 Review Judge/checker diagnostic accuracy and whether the Agent read and acted on
 feedback. Keep tool-call volume as supporting evidence rather than a work
 summary.
+
+The tool section must state whether each error came from request validation,
+provider/transport, checker launch, checker execution, or source-level
+diagnostics. A repeated pre-checker error is one environment failure with
+supporting retry records, not a series of independent mathematical failures.
 
 ## 9. System efficiency and health
 
