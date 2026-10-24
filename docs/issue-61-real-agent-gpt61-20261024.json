@@ -1,10 +1,10 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "mode": "real-agent",
   "status": "SUCCEEDED",
-  "implementation_commit": "7584e5226561dcb9d0b4ffe9370cb090acaf4b5d",
-  "command": "NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 SWARMENV_IMPLEMENTATION_COMMIT=7584e5226561dcb9d0b4ffe9370cb090acaf4b5d SWARMENV_WORKTREE_DIRTY=false SWARMENV_WORKTREE_STATUS=clean SWARMENV_TIMEBOX_MS=360000 timeout 360s node scripts/run-mvp-fixture.mjs --real-agent",
-  "raw_report_path": "experiments/exp-20261024-issue61-a3-7584e52/logs/real-agent.json",
+  "implementation_commit": "ac723dbb511d51c606965d88ec2f1d756ff5c253",
+  "command": "NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 SWARMENV_IMPLEMENTATION_COMMIT=ac723dbb511d51c606965d88ec2f1d756ff5c253 SWARMENV_WORKTREE_DIRTY=false SWARMENV_WORKTREE_STATUS=clean SWARMENV_TIMEBOX_MS=360000 timeout 360s node scripts/run-mvp-fixture.mjs --real-agent",
+  "raw_report_path": "experiments/exp-20261024-issue61-a6-ac723db/logs/real-agent.json",
   "core_count": 1,
   "timebox_ms": 360000,
   "agent_turn_timeout_ms": 180000,
@@ -53,12 +53,12 @@
     "environment_ref": "putnambench-lean4@a635813f5edf297d928f9bd5ef8324a26bdde09c"
   },
   "runtime": {
-    "task_id": "4c26d4f0-51f4-4dc9-89b2-7b851e6c1f99",
+    "task_id": "5f0437e6-033b-47d8-9820-9e18e51163ef",
     "execution_id": "real-agent-execution",
     "task_state": "SATISFIED",
     "execution_state": "SUCCEEDED",
     "same_workspace_lineage": true,
-    "input_snapshot_hash": "6f4b613977f9d7732fe893455263754b96d88d1523d68d3da770d0295e08732b"
+    "input_snapshot_hash": "de128c0792ec15ca5545622c9b92f4bfe2e6143a39f390219530a433c5a9c6e9"
   },
   "agent": {
     "pi_version": "1.4.0",
@@ -68,7 +68,7 @@
   },
   "check_results": [
     {
-      "check_result_id": "48c2f3e9-2632-4446-b1d5-1c82763476cb",
+      "check_result_id": "5acd3c5f-ac2e-4d53-96ca-d74152b03f6e",
       "status": "APPLIED",
       "verdict": "FAIL",
       "judge_operation_status": "persisted",
@@ -79,7 +79,7 @@
       "retryable": false,
       "diagnostic_code": "source_failure",
       "diagnostic_location": {
-        "file": "/tmp/swarmenv-mvp-BpwEpx/swarmenv-lean-hbQinv/Candidate.lean",
+        "file": "/tmp/swarmenv-mvp-80ocfW/swarmenv-lean-YHTJCP/Candidate.lean",
         "line": 42,
         "column": 4
       },
@@ -91,7 +91,7 @@
       }
     },
     {
-      "check_result_id": "3a21cea9-bd19-489e-89dd-df0e7508e70d",
+      "check_result_id": "a13a3e25-8a2d-42ba-989b-2c650c05f571",
       "status": "APPLIED",
       "verdict": "PASS",
       "judge_operation_status": "persisted",
@@ -116,12 +116,12 @@
     "source_failure_execution_state": "RUNNING",
     "wait_between_candidates": false,
     "lifecycle_events_between_candidates": [],
-    "first_check_result_id": "48c2f3e9-2632-4446-b1d5-1c82763476cb",
-    "second_check_result_id": "3a21cea9-bd19-489e-89dd-df0e7508e70d",
+    "first_check_result_id": "5acd3c5f-ac2e-4d53-96ca-d74152b03f6e",
+    "second_check_result_id": "a13a3e25-8a2d-42ba-989b-2c650c05f571",
     "first_result_delivered_before_revision": true,
     "first_diagnostic_delivered": true,
-    "first_failure_candidate_id": "95cc39c0-b1ef-40ad-b033-ee4aa44fa453",
-    "revision_candidate_id": "ba30d770-c480-40e4-8c20-f672154e409d",
+    "first_failure_candidate_id": "c54f2e1e-91f5-4419-8dbf-0c66deb3316b",
+    "revision_candidate_id": "ae86cd60-85fd-4f07-b5a1-d683ba973e6d",
     "revision_material_changed": true,
     "revision_changed_diagnostic_location": true,
     "feedback_consumption_evidence": {
@@ -132,7 +132,7 @@
       "revision_material_supersedes_failed_candidate": true,
       "revision_material_changed": true,
       "diagnostic_location": {
-        "file": "/tmp/swarmenv-mvp-BpwEpx/swarmenv-lean-hbQinv/Candidate.lean",
+        "file": "/tmp/swarmenv-mvp-80ocfW/swarmenv-lean-YHTJCP/Candidate.lean",
         "line": 42,
         "column": 4
       },
@@ -144,11 +144,11 @@
     "first_source_failure_diagnostic_delivered": true,
     "revision_submission_after_feedback": true,
     "first_failure_event_index": 7,
-    "revision_submission_event_index": 12,
-    "first_failure_candidate_id": "95cc39c0-b1ef-40ad-b033-ee4aa44fa453",
-    "revision_candidate_id": "ba30d770-c480-40e4-8c20-f672154e409d",
+    "revision_submission_event_index": 10,
+    "first_failure_candidate_id": "c54f2e1e-91f5-4419-8dbf-0c66deb3316b",
+    "revision_candidate_id": "ae86cd60-85fd-4f07-b5a1-d683ba973e6d",
     "first_failure_diagnostic_location": {
-      "file": "/tmp/swarmenv-mvp-BpwEpx/swarmenv-lean-hbQinv/Candidate.lean",
+      "file": "/tmp/swarmenv-mvp-80ocfW/swarmenv-lean-YHTJCP/Candidate.lean",
       "line": 42,
       "column": 4
     },
@@ -235,7 +235,7 @@
         "type": "tool_call",
         "raw_type": "tool_execution_start",
         "operation": "submit_candidate",
-        "candidate_material_id": "95cc39c0-b1ef-40ad-b033-ee4aa44fa453",
+        "candidate_material_id": "c54f2e1e-91f5-4419-8dbf-0c66deb3316b",
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -248,13 +248,13 @@
         "type": "tool_result",
         "raw_type": "tool_execution_end",
         "operation": "submit_candidate",
-        "candidate_material_id": "95cc39c0-b1ef-40ad-b033-ee4aa44fa453",
+        "candidate_material_id": "c54f2e1e-91f5-4419-8dbf-0c66deb3316b",
         "result_class": "source_failure",
         "checker_process_status": "completed",
-        "check_result_id": "48c2f3e9-2632-4446-b1d5-1c82763476cb",
+        "check_result_id": "5acd3c5f-ac2e-4d53-96ca-d74152b03f6e",
         "diagnostic_code": "source_failure",
         "diagnostic_location": {
-          "file": "/tmp/swarmenv-mvp-BpwEpx/swarmenv-lean-hbQinv/Candidate.lean",
+          "file": "/tmp/swarmenv-mvp-80ocfW/swarmenv-lean-YHTJCP/Candidate.lean",
           "line": 42,
           "column": 4
         },
@@ -264,32 +264,6 @@
       {
         "type": "tool_call",
         "raw_type": "tool_execution_start",
-        "operation": "get_check_result",
-        "candidate_material_id": null,
-        "result_class": null,
-        "checker_process_status": null,
-        "check_result_id": null,
-        "diagnostic_code": null,
-        "diagnostic_location": null,
-        "diagnostic_excerpt_present": false,
-        "feedback_for_candidate": false
-      },
-      {
-        "type": "tool_result",
-        "raw_type": "tool_execution_end",
-        "operation": "get_check_result",
-        "candidate_material_id": null,
-        "result_class": null,
-        "checker_process_status": null,
-        "check_result_id": null,
-        "diagnostic_code": null,
-        "diagnostic_location": null,
-        "diagnostic_excerpt_present": false,
-        "feedback_for_candidate": false
-      },
-      {
-        "type": "tool_call",
-        "raw_type": "tool_execution_start",
         "operation": "context_publish",
         "candidate_material_id": null,
         "result_class": null,
@@ -317,7 +291,7 @@
         "type": "tool_call",
         "raw_type": "tool_execution_start",
         "operation": "submit_candidate",
-        "candidate_material_id": "ba30d770-c480-40e4-8c20-f672154e409d",
+        "candidate_material_id": "ae86cd60-85fd-4f07-b5a1-d683ba973e6d",
         "result_class": null,
         "checker_process_status": null,
         "check_result_id": null,
@@ -330,10 +304,10 @@
         "type": "tool_result",
         "raw_type": "tool_execution_end",
         "operation": "submit_candidate",
-        "candidate_material_id": "ba30d770-c480-40e4-8c20-f672154e409d",
+        "candidate_material_id": "ae86cd60-85fd-4f07-b5a1-d683ba973e6d",
         "result_class": "PASS",
         "checker_process_status": "completed",
-        "check_result_id": "3a21cea9-bd19-489e-89dd-df0e7508e70d",
+        "check_result_id": "a13a3e25-8a2d-42ba-989b-2c650c05f571",
         "diagnostic_code": "checker_pass",
         "diagnostic_location": null,
         "diagnostic_excerpt_present": false,

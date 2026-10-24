@@ -33,7 +33,7 @@ lineage and diagnostic-line change without exporting proof source.
 ## Final real-Agent gate
 
 The worktree was clean at implementation commit
-`7584e5226561dcb9d0b4ffe9370cb090acaf4b5d`. The probe returned
+`ac723dbb511d51c606965d88ec2f1d756ff5c253`. The probe returned
 `READY_TO_LAUNCH` with the explicit `openai` / `gpt-6.1-sol` route. The run
 used one Core, a 360000 ms process timebox, and a 180000 ms Agent-turn timeout.
 The locked fixture used PutnamBench commit
@@ -47,7 +47,7 @@ The exact command was:
 NUROUTER_PI_PROVIDER=openai \
 NUROUTER_PI_MODEL=gpt-6.1-sol \
 SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 \
-SWARMENV_IMPLEMENTATION_COMMIT=7584e5226561dcb9d0b4ffe9370cb090acaf4b5d \
+SWARMENV_IMPLEMENTATION_COMMIT=ac723dbb511d51c606965d88ec2f1d756ff5c253 \
 SWARMENV_WORKTREE_DIRTY=false \
 SWARMENV_WORKTREE_STATUS=clean \
 SWARMENV_TIMEBOX_MS=360000 \
@@ -71,7 +71,8 @@ The Task ended `SATISFIED` and the Execution ended `SUCCEEDED`.
 The feedback trace links the first failure Candidate to the later revision by
 Candidate ID, confirms the revised Material superseded the failed Material,
 confirms the Material hash changed at the reported diagnostic line, and records
-that the diagnostic was delivered before the revision. The handoff used the
+that the diagnostic was delivered before the revision. The harness asserts each
+of these correlations before it can report `SUCCEEDED`. The handoff used the
 same Agent session and Execution, with no Runtime lifecycle event between
 candidates and no WAITING/wake transition. These are structural observations
 of the feedback path; the report does not claim access to private model
