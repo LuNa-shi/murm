@@ -851,7 +851,7 @@ export class TaskService {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(dependencyId, taskId, dependencyKind, dependencyKind === 'TASK' ? prerequisiteTaskId : null,
         dependencyKind === 'MATERIAL' ? materialId : null, dependencyKind === 'CHECK_RESULT' ? checkResultId : null,
-        json(payload.requirement ?? payload.requirement_json ?? {}), taskId, envelope.execution_id, envelope.actor_ref, createdAt);
+        json(payload.requirement ?? payload.requirement_json ?? {}), authority.task.task_id, envelope.execution_id, envelope.actor_ref, createdAt);
     const structuralVersion = this.#finishStructureMutation(taskId, currentVersion + 1, 'dependency_added', {
       dependency_id: dependencyId,
       dependency_kind: dependencyKind,
