@@ -2029,7 +2029,7 @@ ${executionTable(analysis.executions)}
 
 ## Execution layer
 
-The authoritative domain model keeps a durable Execution distinct from an Agent Session. This report presents each Execution attempt and its Session/Core segments; an explicit rework creates a successor Execution. A wait/resume or Core handoff remains the same Execution unless the durable model records a new one.
+The authoritative domain model keeps a durable Execution distinct from an Agent Session. This report presents each Execution attempt and its Session/Core segments; a successor Execution is shown only when the durable model records a new ID. A wait/resume, Core handoff, or in-place parent rework remains the same Execution.
 
 ## Per-Execution analysis
 

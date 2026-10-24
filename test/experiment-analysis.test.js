@@ -242,9 +242,9 @@ test('keeps durable Execution identity explicit and uses bounded semantic window
     const first = analysis.executions.find((item) => item.execution.execution_id === EXECUTION);
     const second = analysis.executions.find((item) => item.execution.execution_id === 'execution-2');
     assert.equal(analysis.windowSizeMinutes, 5);
-    assert.equal(first.successor_execution_id, 'execution-2');
-    assert.equal(second.predecessor_execution_id, EXECUTION);
-    assert.equal(second.lifecycle_role, 'later Execution for the same Task (rework relation unconfirmed)');
+    assert.equal(first.successor_execution_id, null);
+    assert.equal(second.predecessor_execution_id, null);
+    assert.equal(second.lifecycle_role, 'initial or only Execution');
     assert.ok(first.windows.every((window) => !window.operations.some((operation) => operation.includes('[F-'))));
     assert.ok(first.windows.every((window) => 'semantic_summary' in window));
   } finally { await cleanup(root); }
