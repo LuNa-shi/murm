@@ -54,6 +54,42 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', required: ['child_creation_key', 'task_type', 'goal', 'expected_output', 'acceptance_conditions'], properties: { child_creation_key: { type: 'string' }, task_type: { type: 'string' }, goal: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { type: 'object' }, priority: { type: 'integer', minimum: 0 } }, additionalProperties: true },
   },
   {
+    name: 'task_create_branch_group', service: 'task', operation: 'create_branch_group', version: '1.0',
+    description: 'Create a versioned group of alternative ordinary Tasks. Branch membership expresses alternatives; it does not create an implicit wait, ownership, or execution dependency, and the creating Task may continue useful work.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['parent_task_id', 'branch_tasks'], properties: { parent_task_id: { type: 'string' }, branch_tasks: { type: 'array', items: { type: 'object' } }, group_key: { type: 'string' }, expected_structural_version: { type: 'integer', minimum: 0 } }, additionalProperties: true },
+  },
+  {
+    name: 'task_add_required_subtask', service: 'task', operation: 'add_required_subtask', version: '1.0',
+    description: 'Add an ordinary Task as a jointly required subtask. Required subtasks may become ready concurrently; only an explicit execution dependency blocks work, and provenance remains audit information.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['owner_task_id'], properties: { owner_task_id: { type: 'string' }, subtask_task_id: { type: 'string' }, subtask: { type: 'object' }, expected_structural_version: { type: 'integer', minimum: 0 } }, additionalProperties: true },
+  },
+  {
+    name: 'task_get_structure', service: 'task', operation: 'get_task_structure', version: '1.0',
+    description: 'Inspect a Task structure in one view: alternative branches, jointly required subtasks, explicit execution dependencies, creation provenance, completion status, unresolved work, and structural version.',
+    scope: 'task-read', side_effect: false,
+    parameters: { type: 'object', properties: { task_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_propose_structure_change', service: 'task', operation: 'propose_structure_change', version: '1.0',
+    description: 'Propose an auditable, version-checked Task structure change based on new evidence. Structural membership, explicit execution dependencies, and creation provenance stay distinct; active work is preserved.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['task_id', 'change'], properties: { task_id: { type: 'string' }, expected_structural_version: { type: 'integer', minimum: 0 }, change: { type: 'object' }, change_key: { type: 'string' } }, additionalProperties: true },
+  },
+  {
+    name: 'task_explain_readiness', service: 'task', operation: 'explain_task_readiness', version: '1.0',
+    description: 'Explain why a Task is READY, BLOCKED, or SATISFIED, including missing contract evidence and explicit dependencies; branch alternatives and required subtasks are not generic waits.',
+    scope: 'task-read', side_effect: false,
+    parameters: { type: 'object', properties: { task_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_create_rework', service: 'task', operation: 'create_rework_task', version: '1.0',
+    description: 'Create a new rework Task linked to a prior deliverable, feedback, Materials, and Workspace lineage. Rework reuses prior evidence through explicit provenance and does not silently reopen the old Execution.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['prior_task_id'], properties: { prior_task_id: { type: 'string' }, instruction: { type: 'string' }, feedback: {}, input_material_refs: { type: 'array', items: { type: 'string' } }, workspace_source_execution_id: { type: 'string' }, workspace_revision: { type: 'integer', minimum: 1 } }, additionalProperties: true },
+  },
+  {
     name: 'task_accept', service: 'task', operation: 'accept_task', version: '1.0',
     description: 'Accept a child Task after reviewing its delivered Material or checked candidate. First read the child Task and latest Execution; the child must be WAITING for parent_review and its completion contract must be satisfied.',
     scope: 'execution-write', side_effect: true,
@@ -146,7 +182,7 @@ const TOOL_DEFINITIONS = Object.freeze([
 ]);
 
 const SERVICE_DEFINITIONS = Object.freeze([
-  { name: 'task', version: '1.0', description: 'Task goals, contracts, decomposition, browsing and explicit claim.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'task') },
+  { name: 'task', version: '1.0', description: 'Task goals, completion contracts, alternative branches, jointly required subtasks, explicit dependencies, provenance, structure discovery, rework, and explicit claim.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'task') },
   { name: 'execution', version: '1.0', description: 'Lease, heartbeat, wait and execution responsibility lifecycle.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'execution') },
   { name: 'workspace', version: '1.0', description: 'Workspace materialization, revisions and checkpoint lineage.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace') },
   { name: 'context', version: '1.0', description: 'Shared immutable Materials and their provenance.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'context') },
