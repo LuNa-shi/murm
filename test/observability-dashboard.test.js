@@ -12,6 +12,7 @@ const dashboardSource = await readFile(new URL('../src/observability/public/app.
 function browserHarness(baseUrl) {
   const elements = new Map();
   const windowListeners = new Map();
+  const fetchCalls = [];
   let latestEventSource = null;
   function element(selector) {
     if (!elements.has(selector)) {
@@ -43,13 +44,13 @@ function browserHarness(baseUrl) {
   const location = { get hash() { return hashValue; }, set hash(value) { hashValue = String(value).startsWith('#') ? String(value) : `#${value}`; } };
   const context = {
     document, window, location, EventSource: FakeEventSource,
-    fetch: (path, options) => fetch(new URL(path, baseUrl), options),
+    fetch: (path, options) => { fetchCalls.push(String(path)); return fetch(new URL(path, baseUrl), options); },
     setInterval() { return 0; }, clearInterval() {}, setTimeout, clearTimeout,
     console, Date, Number, String, Math, JSON, Object, Array, Set, Map, Promise, structuredClone, URL,
   };
   vm.createContext(context);
   return {
-    elements, windowListeners, location, context,
+    elements, windowListeners, fetchCalls, location, context,
     get eventSource() { return latestEventSource; },
     start() { vm.runInContext(dashboardSource, context, { filename: 'observability-dashboard.js' }); },
   };
@@ -123,6 +124,7 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
       return harness.elements.get('#main-view').innerHTML;
     };
     assert.match(await navigate('execution/exec-root'), /SUCCEEDED/);
+    await waitFor(() => harness.fetchCalls.some((path) => path.includes('execution_id=exec-root') && path.includes('view=agent')));
     assert.match(await navigate('task/task-root'), /TASK FLOW/);
     assert.match(await navigate('task/task-wait'), /parent_review/);
     assert.match(harness.elements.get('#main-view').innerHTML, /0s/);
