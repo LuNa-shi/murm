@@ -1355,7 +1355,7 @@ function materialCollaboration(model, facts) {
     rows.push({
       material_id: materialId, kind: material.kind, evidence_state: material.evidence_state,
       publisher: { task_id: material.source_task, execution_id: material.source_execution },
-      published_evidence: pub?.id ?? material.source,
+      published_evidence: pub?.id ?? evidenceRef(material.source),
       consumers: reads.map((fact) => ({ execution_id: fact.executionId, task_id: fact.taskId, evidence: fact.id })),
       downstream_effects: effects.slice(0, 8).map((fact) => ({ kind: fact.kind, execution_id: fact.executionId, evidence: fact.id })),
       assessment,
@@ -1384,8 +1384,8 @@ function executionInventory(model, facts, experimentEnd, maxWindowMs = DEFAULT_M
     const workspaceRefs = [...new Set([execution.workspace_ref, ...executionFacts.map((fact) => fact.summary?.workspace_ref).filter(Boolean)].filter(Boolean))].sort();
     const siblings = byTask.get(execution.task_id) ?? [];
     const position = siblings.findIndex((row) => row.execution_id === executionId);
-    const predecessor = position > 0 ? siblings[position - 1] : null;
-    const successor = position >= 0 && position < siblings.length - 1 ? siblings[position + 1] : null;
+    const predecessor = null;
+    const successor = null;
     return {
       execution,
       facts: executionFacts,
@@ -1551,7 +1551,7 @@ function buildSystemFindings(analysis) {
     interpretation: `The authoritative Execution intervals overlap at most ${maxOverlap} at a time while ${configuredCores} Cores were configured. This is a system-level serialization signal; the trace does not by itself identify whether the cause was insufficient ready work, claim policy, or Agent behavior.`,
     validation: 'Run with the same workload and record ready-work, claim, and Core assignment intervals; require at least two independent Tasks to overlap before labeling scheduling defective.',
     ...scopeForExecutions(executionIntervals.map((item) => item.execution.execution_id)),
-    evidence: executionIntervals.map((item) => item.execution.source).filter(Boolean), confidence: 'medium',
+    evidence: executionIntervals.map((item) => evidenceRef(item.execution.source)).filter(Boolean), confidence: 'medium',
   });
   if (configuredCores > 1 && elapsed !== null && executionIntervals.length) {
     const coreMs = executionIntervals.reduce((sum, item) => sum + Math.max(0, item.end - item.start) * Math.max(1, analysis.executions.find((row) => row.execution.execution_id === item.execution.execution_id)?.coreIds.length ?? 1), 0);
@@ -1572,7 +1572,7 @@ function buildSystemFindings(analysis) {
     interpretation: `${noConsumer.length} Material(s) have no recorded consumer. This is a collaboration-loop failure or an evidence gap; it is not a judgment that the content was mathematically useless.`,
     validation: 'Require an explicit parent read and review/rework decision for each child delivery, then compare root progress after the read.',
     ...scopeForExecutions(executionIds),
-    evidence: noConsumer.map((row) => row.published_evidence).slice(0, 12), confidence: 'medium',
+    evidence: noConsumer.map((row) => evidenceRef(row.published_evidence)).slice(0, 12), confidence: 'medium',
     });
   }
   if (analysis.candidates.repeated_diagnostics.length) findings.push({
@@ -1881,6 +1881,12 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
 
 function md(value) {
   return String(value ?? 'unknown').replaceAll('|', '\\|').replaceAll('\n', ' ');
+}
+
+function evidenceRef(value) {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') return value.ref ?? value.path ?? 'unknown evidence';
+  return 'unknown evidence';
 }
 
 function safeWorkspaceRef(value) {
