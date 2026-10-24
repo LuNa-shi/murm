@@ -27,10 +27,20 @@ test('ObservabilityServer serves experiment queries and reconstructs Core execut
     { state: 'RUNNING', reason: 'execution_bound', task_id: 'task-1', execution_id: 'exec-1', started_at: '2026-10-20T00:00:00.000Z', ended_at: '2026-10-20T00:00:02.000Z' },
     { state: 'WAITING', reason: 'execution_waiting', task_id: 'task-1', execution_id: 'exec-1', started_at: '2026-10-20T00:00:02.000Z', ended_at: null },
   ]);
+  const overview = await fetch(`${url}/api/experiments/run-http/overview?view=agent`).then((response) => response.json());
+  assert.equal(overview.events.length, 4);
+  assert.equal(overview.timeline.lanes.length, 1);
   const derivedExecution = await fetch(`${url}/api/executions/exec-1?experiment_id=run-http`).then((response) => response.json());
   assert.equal(derivedExecution.execution.state, 'WAITING');
   const derivedTask = await fetch(`${url}/api/tasks/task-1?experiment_id=run-http`).then((response) => response.json());
   assert.equal(derivedTask.task.state, 'WAITING');
+  const taskDetail = await fetch(`${url}/api/experiments/run-http/tasks/task-1`).then((response) => response.json());
+  assert.equal(taskDetail.task.task_id, 'task-1');
+  assert.equal(taskDetail.task.fields.task_id, 'task-1');
+  assert.equal(taskDetail.observed_events, 4);
+  const executionDetail = await fetch(`${url}/api/experiments/run-http/execution-detail?execution_id=exec-1`).then((response) => response.json());
+  assert.equal(executionDetail.observed_events, 5);
+  assert.equal(executionDetail.events.length, 4);
   const staticResponse = await fetch(`${url}/`);
   assert.equal(staticResponse.headers.get('content-type'), 'text/html; charset=utf-8');
   assert.equal(staticResponse.headers.get('content-disposition'), null);

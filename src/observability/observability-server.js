@@ -57,6 +57,43 @@ function contentType(path) {
 const DASHBOARD_SECRET_KEY = /(?:authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|credential|bearer|cookie|secret|(?:^|[_-])token(?:$|[_-]))/i;
 const DASHBOARD_MAX_STRING = 8_000;
 const DASHBOARD_MAX_ARRAY = 100;
+const OVERVIEW_EVENT_KINDS = [
+  'dispatch.complete',
+  'execution_assigned',
+  'execution_started',
+  'execution_waiting',
+  'execution_released',
+  'core_state_changed',
+  'session_started',
+  'session_closed',
+  'agent_settled',
+  'task_state_changed',
+  'task_child_created',
+  'judge.start',
+  'judge.complete',
+  'checker.start',
+  'checker.complete',
+  'experiment_started',
+  'experiment_finished',
+];
+const EXECUTION_DETAIL_LIFECYCLE_KINDS = new Set([
+  'session_started',
+  'session_closed',
+  'execution_assigned',
+  'execution_started',
+  'execution_waiting',
+  'execution_released',
+  'core_state_changed',
+  'agent_settled',
+  'dispatch.start',
+  'dispatch.complete',
+  'route.start',
+  'route.complete',
+  'judge.start',
+  'judge.complete',
+  'checker.start',
+  'checker.complete',
+]);
 
 function parseJson(value) {
   if (typeof value !== 'string' || value.length === 0) return value;
@@ -105,6 +142,129 @@ function materialFromPayload(value, materialId, depth = 0) {
 
 function toolDetails(record) {
   return record?.result?.details ?? record?.result?.result ?? record?.result ?? null;
+}
+
+function compactTask(value) {
+  if (!value || typeof value !== 'object') return value;
+  return dashboardValue({
+    task_id: value.task_id,
+    root_id: value.root_id,
+    parent_id: value.parent_id,
+    owner_ref: value.owner_ref,
+    task_type: value.task_type,
+    task_type_version: value.task_type_version,
+    goal: value.goal,
+    priority: value.priority,
+    state: value.state,
+    wait_condition: value.wait_condition,
+    block_reason: value.block_reason,
+    material_ids: value.material_ids,
+  });
+}
+
+function compactExecution(value) {
+  if (!value || typeof value !== 'object') return value;
+  return dashboardValue({
+    execution_id: value.execution_id,
+    task_id: value.task_id,
+    state: value.state,
+    owner_ref: value.owner_ref,
+    attempt_no: value.attempt_no,
+    core_id: value.core_id,
+    session_id: value.session_id,
+    wait_condition: value.wait_condition,
+    candidate_material_id: value.candidate_material_id,
+    material_ids: value.material_ids,
+  });
+}
+
+function overviewText(value) {
+  if (typeof value !== 'string') return dashboardValue(value);
+  return value.length <= 1_200 ? value : `${value.slice(0, 1_200)}\n… [display truncated]`;
+}
+
+function compactMaterial(value) {
+  if (!value || typeof value !== 'object') return value;
+  return dashboardValue({
+    material_id: value.material_id,
+    kind: value.kind,
+    scope: value.scope,
+    evidence_state: value.evidence_state,
+    version: value.version,
+    source_task: value.source_task,
+    source_execution: value.source_execution,
+    supersedes: value.supersedes,
+    summary: overviewText(value.summary),
+    description: overviewText(value.description),
+    title: overviewText(value.title),
+    text: overviewText(value.text),
+    path: value.path,
+  });
+}
+
+function compactOverviewResult(value) {
+  if (!value || typeof value !== 'object') return value;
+  const result = {};
+  for (const key of ['state', 'status', 'operation', 'wait_condition', 'block_reason', 'candidate_material_id']) {
+    if (value[key] !== undefined && value[key] !== null) result[key] = dashboardValue(value[key], key);
+  }
+  if (value.task) result.task = compactTask(value.task);
+  if (value.execution) result.execution = compactExecution(value.execution);
+  if (value.material) result.material = compactMaterial(value.material);
+  if (Array.isArray(value.tasks)) result.tasks = value.tasks.slice(0, 100).map(compactTask);
+  if (Array.isArray(value.executions)) result.executions = value.executions.slice(0, 100).map(compactExecution);
+  if (Array.isArray(value.materials)) result.materials = value.materials.slice(0, 100).map(compactMaterial);
+  if (value.error) result.error = dashboardValue(value.error, 'error');
+  return result;
+}
+
+function compactOverviewEvent(event) {
+  const payload = event.payload ?? {};
+  return {
+    event_id: event.event_id,
+    experiment_id: event.experiment_id,
+    sequence: event.sequence,
+    occurred_at: event.occurred_at,
+    source: event.source,
+    kind: event.kind,
+    core_id: event.core_id,
+    session_id: event.session_id,
+    task_id: event.task_id,
+    execution_id: event.execution_id,
+    correlation_id: event.correlation_id,
+    visibility: event.visibility,
+    payload: {
+      event: payload.event,
+      service: payload.service,
+      operation: payload.operation,
+      ok: payload.ok,
+      state: payload.state,
+      task_state: payload.task_state,
+      wait_condition: dashboardValue(payload.wait_condition, 'wait_condition'),
+      wait_reason: dashboardValue(payload.wait_reason, 'wait_reason'),
+      block_reason: dashboardValue(payload.block_reason, 'block_reason'),
+      error: dashboardValue(payload.error, 'error'),
+      result: compactOverviewResult(payload.result),
+    },
+  };
+}
+
+function compactOverviewEvents(events) {
+  const snapshots = new Map();
+  return events.map((event) => {
+    const compact = compactOverviewEvent(event);
+    const result = compact.payload?.result;
+    if (!result || typeof result !== 'object') return compact;
+    for (const [kind, id] of [['task', result.task?.task_id], ['execution', result.execution?.execution_id], ['material', result.material?.material_id]]) {
+      if (!id || !result[kind]) continue;
+      const key = `${kind}:${id}`;
+      const snapshot = JSON.stringify(result[kind]);
+      if (snapshots.get(key) === snapshot) delete result[kind];
+      else snapshots.set(key, snapshot);
+    }
+    if (!Object.keys(result).length) delete compact.payload.result;
+    return compact;
+  });
 }
 
 function reportSummary(report) {
@@ -276,6 +436,21 @@ export class ObservabilityServer {
         send(response, 200, this.#eventsQuery(experimentId, url));
         return;
       }
+      if (parts[3] === 'tasks' && parts.length >= 5) {
+        const taskId = decodeURIComponent(parts[4]);
+        send(response, 200, await this.#taskDetail(experimentId, taskId));
+        return;
+      }
+      if (parts[3] === 'execution-detail') {
+        const executionId = url.searchParams.get('execution_id');
+        if (!executionId) throw new TypeError('execution_id is required for execution detail queries');
+        send(response, 200, await this.#executionDetail(experimentId, executionId));
+        return;
+      }
+      if (parts[3] === 'overview') {
+        send(response, 200, await this.#overview(experimentId, url));
+        return;
+      }
       if (parts[3] === 'stream') {
         this.#stream(experimentId, response, url);
         return;
@@ -403,6 +578,37 @@ export class ObservabilityServer {
     return events;
   }
 
+  async #overview(experimentId, url) {
+    const [events, toolCounts] = await Promise.all([
+      this.#allEvents({
+        experimentId,
+        kinds: OVERVIEW_EVENT_KINDS,
+        view: 'agent',
+      }, 200),
+      this.#toolCounts(experimentId),
+    ]);
+    return {
+      experiment_id: experimentId,
+      events: compactOverviewEvents(events),
+      timeline: this.#timeline(experimentId, url),
+      tool_counts: toolCounts,
+    };
+  }
+
+  async #toolCounts(experimentId) {
+    const events = await this.#allEvents({ experimentId, kinds: ['rpc_record'], view: 'agent' }, 200);
+    const calls = new Map();
+    for (const event of events) {
+      const record = event.payload?.record;
+      if (!event.execution_id || !record || !['tool_execution_start', 'tool_execution_end'].includes(record.type)) continue;
+      const key = `${event.execution_id}:${record.toolCallId}`;
+      calls.set(key, event.execution_id);
+    }
+    const counts = {};
+    for (const executionId of calls.values()) counts[executionId] = (counts[executionId] ?? 0) + 1;
+    return counts;
+  }
+
   async #executionInsight(experimentId, executionId) {
     const events = await this.#allEvents({ experimentId, executionId, view: 'operator' });
     const insight = {
@@ -494,6 +700,47 @@ export class ObservabilityServer {
     const uniqueTools = new Map(insight.tool_surface.map((tool) => [tool.name, tool]));
     insight.tool_surface = [...uniqueTools.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
     return insight;
+  }
+
+  async #executionDetail(experimentId, executionId) {
+    const allEvents = await this.#allEvents({ experimentId, executionId, view: 'operator' }, 200);
+    const events = allEvents.filter((event) => {
+      if (event.kind === 'rpc_record') {
+        return ['tool_execution_start', 'tool_execution_end'].includes(event.payload?.record?.type);
+      }
+      return EXECUTION_DETAIL_LIFECYCLE_KINDS.has(event.kind);
+    });
+    return { experiment_id: experimentId, execution_id: executionId, events, observed_events: allEvents.length };
+  }
+
+  async #taskDetail(experimentId, taskId) {
+    const events = await this.#allEvents({ experimentId, taskId, view: 'agent' }, 200);
+    if (!events.length) throw new Error(`unknown task: ${taskId}`);
+    const fields = {};
+    for (const event of events) {
+      const payload = event.payload ?? {};
+      const record = payload.record;
+      const candidates = [payload.task, payload.result?.task];
+      if (record?.type === 'tool_execution_end' && record.toolName === 'swarmenv_task_get') {
+        const result = record.result ?? {};
+        candidates.unshift(result.details ?? result.task ?? result.result ?? result);
+      }
+      for (const candidate of candidates) {
+        if (!candidate || typeof candidate !== 'object') continue;
+        if (candidate.task_id && candidate.task_id !== taskId) continue;
+        for (const [key, value] of Object.entries(candidate)) {
+          if (value !== undefined) fields[key] = value;
+        }
+      }
+    }
+    fields.task_id ??= taskId;
+    const safeFields = dashboardValue(fields);
+    const executionIds = [...new Set(events.map((event) => event.execution_id).filter(Boolean))];
+    return {
+      task: { ...safeFields, fields: safeFields },
+      executions: executionIds.map((executionId) => this.#executionFromEvents(experimentId, executionId)),
+      observed_events: events.length,
+    };
   }
 
   async #materialDetail(experimentId, materialId) {
@@ -595,8 +842,19 @@ export class ObservabilityServer {
   }
 
   #summary(experiment) {
+    const metadata = experiment.metadata ?? {};
     return {
       ...experiment,
+      metadata: {
+        problem_id: metadata.problem_id ?? null,
+        report_path: metadata.report_path ? basename(metadata.report_path) : null,
+        repository_commit: metadata.repository_commit ?? null,
+        core_count: metadata.core_count ?? null,
+        elapsed_ms: metadata.elapsed_ms ?? null,
+        solved: metadata.solved ?? null,
+        protocol_valid: metadata.protocol_valid ?? null,
+        made_progress: metadata.made_progress ?? null,
+      },
       event_count: this.observationStore.countEvents(experiment.experiment_id),
       core_ids: this.observationStore.listEvents({ experimentId: experiment.experiment_id, limit: 1_000 }).events
         .map((event) => event.core_id).filter(Boolean).filter((id, index, ids) => ids.indexOf(id) === index),
@@ -691,17 +949,19 @@ export class ObservabilityServer {
     response.write(': connected\n\n');
     let cursor = parseCursor(url.searchParams.get('after_sequence'), 0);
     const view = url.searchParams.get('view') === 'agent' ? 'agent' : 'operator';
+    const overview = url.searchParams.get('overview') === '1';
+    const kinds = overview ? OVERVIEW_EVENT_KINDS : null;
     const emit = (event) => {
-      response.write(`event: observation\ndata: ${json(event)}\n\n`);
+      response.write(`event: observation\ndata: ${json(overview ? compactOverviewEvent(event) : event)}\n\n`);
       cursor = Math.max(cursor, event.sequence);
     };
-    for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view, limit: 1_000 }).events) emit(event);
+    for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view, kinds, limit: 1_000 }).events) emit(event);
     // The writer is usually a different process from this long-lived server.
     // Polling the WAL-backed store keeps SSE useful across process boundaries;
     // the in-process EventEmitter alone would miss those events.
     const poll = setInterval(() => {
       try {
-        for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view, limit: 1_000 }).events) emit(event);
+        for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view, kinds, limit: 1_000 }).events) emit(event);
       } catch {
         // A reconnect will retry the cursor if the backing store is briefly busy.
       }
