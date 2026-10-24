@@ -34,6 +34,11 @@ function send(response, status, body) {
   response.end(content);
 }
 
+async function waitForResponseFlush(response) {
+  if (response.writableFinished) return;
+  await once(response, 'finish').catch(() => undefined);
+}
+
 function normalizeWaitCondition(condition, checkpoint = {}) {
   if (!condition || typeof condition !== 'object' || Array.isArray(condition)) return condition;
   if (condition.type) {
@@ -153,6 +158,8 @@ export class ServicesBridge {
       const result = await this.call(input);
       send(response, 200, { ok: true, result });
       this.logger?.append({ event: 'bridge.response_sent', operation: input.operation });
+      await waitForResponseFlush(response);
+      this.logger?.append({ event: 'bridge.response_flushed', operation: input.operation });
       await this.flushDeferredLifecycle();
     } catch (error) {
       if (!response.writableEnded) send(response, 400, { ok: false, error: errorBody(error) });

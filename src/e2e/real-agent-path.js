@@ -11,6 +11,7 @@ import { Runtime } from '../runtime/runtime.js';
 import { WorkspaceManager } from '../runtime/workspace-manager.js';
 import { JudgeService } from '../judge/judge-service.js';
 import { LeanChecker } from '../judge/lean-adapter.js';
+import { agentCheckResult } from '../judge/check-result.js';
 import { validateFixtureManifest } from '../judge/fixture.js';
 import { DatabaseSync } from 'node:sqlite';
 import { GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
@@ -328,7 +329,7 @@ export async function runRealAgentPath({
     }
     const record = { material_id: material.material_id, result, applied };
     checkHistory.push(record);
-    return { check_result: result, applied, ...(deferredWait ? { deferred_wait: deferredWait } : {}) };
+    return { check_result: agentCheckResult(result), applied, ...(deferredWait ? { deferred_wait: deferredWait } : {}) };
   };
   const onSubmitCandidate = (args) => {
     candidateSubmission = submitCandidate(args);

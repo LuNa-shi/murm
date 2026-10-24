@@ -5,7 +5,7 @@ import { operationPayload, stableStringify, validateEnvelope } from '../protocol
 import { ensureJudgeSchema } from '../storage/judge-schema.js';
 import { validateFixtureManifest } from './fixture.js';
 import { LeanChecker } from './lean-adapter.js';
-import { checkerIdentity, checkerPreflightKey, normalizeCheckerResult, normalizePreflight, storedCheckerProcessStatus, storedResultClass } from './check-result.js';
+import { agentCheckResult, checkerIdentity, checkerPreflightKey, normalizeCheckerResult, normalizePreflight, storedCheckerProcessStatus, storedResultClass } from './check-result.js';
 
 function now() { return new Date().toISOString(); }
 function json(value) { return JSON.stringify(value ?? null); }
@@ -47,6 +47,10 @@ export class JudgeService {
     return resultFromRow(this.db.prepare('SELECT * FROM check_results WHERE check_result_id = ?').get(checkResultId));
   }
 
+  getAgentCheckResult(checkResultId) {
+    return agentCheckResult(this.getCheckResult(checkResultId));
+  }
+
   getByRequestKey(requestKey) {
     return resultFromRow(this.db.prepare('SELECT * FROM check_results WHERE request_key = ?').get(requestKey));
   }
@@ -64,7 +68,7 @@ export class JudgeService {
 
   dispatch(operation, payload = {}, envelope) {
     validateEnvelope(envelope);
-    if (operation === 'get_check_result') return this.getCheckResult(required(payload.check_result_id, 'check_result_id'));
+    if (operation === 'get_check_result') return this.getAgentCheckResult(required(payload.check_result_id, 'check_result_id'));
     if (operation !== 'submit_check_result') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Judge operation: ${operation}`);
     return this.#transaction(() => {
       const fingerprint = operationPayload(operation, payload, envelope);
