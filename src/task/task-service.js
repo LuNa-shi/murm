@@ -739,7 +739,6 @@ export class TaskService {
   }
 
   #createGroup({ ownerTaskId, groupKind, envelope, groupId = randomUUID(), structuralVersion }) {
-    const owner = this.#taskRow(ownerTaskId);
     if (this.db.prepare('SELECT 1 FROM task_structure_groups WHERE group_id = ?').get(groupId)) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'structure group already exists', { group_id: groupId });
     }
