@@ -987,10 +987,14 @@ function projectReport(state, startedAt, deadline) {
     !allowedTaskIds.has(material.source_task) || !allowedExecutionIds.has(material.source_execution));
   const rootTask = state.taskService.getTask(state.rootTaskId);
   const inputMaterialViolation = !rootTask?.workspace || rootTask.workspace.source_hash !== state.inputMaterialHash;
+  const allowedInputMaterialIds = new Set(materials
+    .filter((material) => allowedTaskIds.has(material.source_task) && allowedExecutionIds.has(material.source_execution))
+    .map((material) => material.material_id));
   const workspaceViolation = claimHistory.some((claim) => {
     const execution = state.taskService.getExecution(claim.execution_id);
     const task = state.taskService.getTask(claim.task_id);
-    return !execution || !task?.workspace || execution.input_material_refs.length !== 0 ||
+    const inputMaterialRefs = execution?.input_material_refs ?? [];
+    return !execution || !task?.workspace || inputMaterialRefs.some((materialId) => !allowedInputMaterialIds.has(materialId)) ||
       execution.input_snapshot_hash !== inputSnapshotHash(task, execution.input_material_refs);
   });
   const cores = state.cores.map((core) => {
