@@ -2,7 +2,7 @@
   "schema_version": 1,
   "mode": "real-agent",
   "status": "SUCCEEDED",
-  "implementation_commit": "pending-final-commit",
+  "implementation_commit": "58ceab37f9f155ebff7409136f2c4341b7d3c1e6",
   "command": "NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 node scripts/run-mvp-fixture.mjs --real-agent",
   "core_count": 1,
   "per_turn_timeout_ms": 180000,
