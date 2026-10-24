@@ -121,3 +121,7 @@ Prioritize proposed next actions and state a validation condition for each. Reco
 ## 13. Conclusions and follow-up
 
 Separate facts, derived metrics, interpretations, unknowns, evidence limitations, and concrete operator actions. State whether the report supports semantic conclusions or is diagnostic-only.
+
+The analysis directory must also contain `semantic-review.md`, the independent
+summary-agent review and rubric score. The final report should state whether
+that review was merged completely, partially, or not at all.

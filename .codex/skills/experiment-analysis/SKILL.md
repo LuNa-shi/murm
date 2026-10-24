@@ -13,7 +13,11 @@ The deliverable is:
 <experiment-directory>/analysis/experiment-analysis.md
 ```
 
-Start with the deterministic extractor, then run a semantic summary pass. The extractor establishes the evidence boundary and stable references; the summary pass turns the cited records into a readable operator report. Do not stop at the extractor's event tables.
+Start with the deterministic extractor, then run a semantic summary pass in a
+fresh Codex context. The extractor establishes the evidence boundary and stable
+references; the summary pass turns the cited records into a readable operator
+report. Do not stop at the extractor's event tables, and do not treat a manual
+paragraph appended by the operator as a substitute for the summary pass.
 
 From the repository root:
 
@@ -45,19 +49,28 @@ Execution when the Task Service updates that Execution in place.
 1. Resolve the directory or ID and run the analyzer. Never manually invent an evidence boundary.
 2. Inspect the completeness matrix and source warnings. A missing source limits a conclusion; it does not mean zero activity.
 3. Review every Execution attempt and its bounded semantic windows.
-4. For each window, act as a summary Agent:
+4. In a fresh Codex context, write `analysis/semantic-review.md` before merging
+   conclusions into the final report. Give that reviewer the experiment path,
+   this skill, and the report's stable evidence references; do not give it a
+   previous report's conclusions. For each window, act as a summary Agent:
    - read only the cited Agent-visible objectives/messages, tool arguments/results, Workspace revisions/diffs or manifests, Material metadata, Candidate metadata, Judge diagnostics, and lifecycle records needed for the conclusion;
    - write a 5- or 10-minute summary of the work being attempted;
    - identify the mathematical/research route when the visible evidence supports it;
    - describe research, editing, candidate construction, feedback processing, collaboration, waiting, or recovery;
    - state the durable result, next state, handoff, blocker, and uncertainty;
    - cite the source paths, line/sequence/event IDs, and confidence.
-5. Replace generic metadata-only wording with the semantic summary when the cited local evidence supports a more precise account. Keep the generated event counts as supporting audit data.
+5. Replace generic metadata-only wording with the semantic summary when the cited local evidence supports a more precise account. Keep the generated event counts as supporting audit data. If the reviewer cannot improve a window, retain the generic text only with an explicit evidence-gap reason.
 6. Review collaboration and Candidate sections as semantic analyses, not ID inventories.
 7. Review System-level Error Analysis. Prioritize Swarm capacity, serialization, handoff, recovery, feedback-loop, and cleanup failures. Keep isolated tool errors as supporting records unless they block a system loop.
 8. Keep raw traces, hidden chain-of-thought, proof/candidate source, credentials, stdout/stderr, and unrestricted private paths out of the report.
+9. Apply `references/semantic-review-rubric.md`. Record the six dimension scores
+   and mark the report diagnostic-only when the total is below 9/12.
 
 A summary Agent may interpret observable behavior. It must never claim access to hidden model reasoning. If the route or intent is not visible, write `unknown` and explain which evidence is missing.
+
+The semantic reviewer is an independent evidence-reading step, not a prose
+formatter. It must compare revisions and feedback, identify competing causal
+explanations, and state what next experiment would distinguish them.
 
 ## Semantic work windows
 
@@ -209,3 +222,5 @@ Before returning:
 - missing/malformed evidence is visible;
 - privacy rules are preserved;
 - the report states whether it is semantically complete or diagnostic-only because of evidence gaps.
+- `analysis/semantic-review.md` exists, records the rubric score, and identifies
+  any dimensions that remained template-level or evidence-limited;
