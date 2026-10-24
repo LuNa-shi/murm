@@ -6,7 +6,7 @@ shell. The repository records the non-secret route defaults in
 
 ```dotenv
 NUROUTER_PI_PROVIDER=openai
-NUROUTER_PI_MODEL=openai/gpt-6-luna
+NUROUTER_PI_MODEL=gpt-6.1-sol
 ```
 
 The current shell did not have either variable set when the previous benchmark

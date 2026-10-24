@@ -19,6 +19,30 @@ changing the corresponding area.
   required route variables such as `NUROUTER_PI_PROVIDER` and
   `NUROUTER_PI_MODEL` are present.
 
+## Real-Agent experiment SOP
+
+- Use `openai` with `gpt-6.1-sol` as the default local route unless the Issue
+  specifies another provider or model. Keep the route in `.env` or in the
+  process environment; never put credentials in this file.
+- Before launching, record the exact implementation commit, PutnamBench
+  commit, Lean project root (normally `<PutnamBench>/lean4`), Core count,
+  timebox, provider, and model. Run the real-agent probe first and require
+  `READY_TO_LAUNCH`; a `BLOCKED` probe is an environment result, not a failed
+  Agent experiment.
+- Use the locked fixture and its project root. Confirm that the local
+  PutnamBench checkout matches the fixture commit and that `lean`, `lake`,
+  `nurouter`, and `pi` are available before spending the experiment timebox.
+- Runtime sends the Execution's initial `agent_prompt` during
+  `startExecution`/`wakeExecution`. A harness must wait for that turn to
+  settle or explicitly queue a follow-up with `streamingBehavior: followUp` or
+  `steer`; never issue a second concurrent prompt.
+- Keep raw experiment output in an ignored experiment/temp directory. Inspect
+  only sanitized status, lifecycle, checker, and report fields in summaries;
+  never paste raw Agent transcripts, proof contents, credentials, stdout, or
+  stderr into GitHub, `AGENTS.md`, or a report.
+- Record the final experiment status, blocker or result, report path, and the
+  exact rerun command in the PR or experiment evidence document.
+
 See [docs/agents/workflow.md](docs/agents/workflow.md) and [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 
 ## Repository map

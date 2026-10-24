@@ -36,23 +36,40 @@ bounded process evidence in the shareable report surface.
 
 ## Real Agent gate
 
-The real-path probe was run from the clean implementation worktree with:
+The final real-path run used the local route and locked Lean project with:
 
 ```sh
+NUROUTER_PI_PROVIDER=openai \
+NUROUTER_PI_MODEL=gpt-6.1-sol \
+SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 \
 node scripts/run-mvp-fixture.mjs --real-agent
 ```
 
-The probe returned `status: BLOCKED` before creating a Task or Execution because
-the shell did not provide `NUROUTER_PI_PROVIDER` and
-`NUROUTER_PI_MODEL`. The local tool inventory was available (Node 24.21.0,
-NuRouter 0.2.12, Pi 1.0.1, Lean 4.33.1, and Lake 5.0.0), and the probe recorded
-`secret_values_recorded: false`. No real-Agent report path exists for this
-attempt because launch was correctly refused before an experiment began.
+The probe returned `READY_TO_LAUNCH`, and the experiment completed with
+`status: SUCCEEDED`. It used one real Agent/Core session, Pi 1.4.0, NuRouter
+0.2.12, Node 24.21.0, Lean 4.33.1, and Lake 5.0.0. The fixture was locked to
+PutnamBench commit `a635813f5edf297d928f9bd5ef8324a26bdde09c`, checker `lean`
+version `mvp-1`, and the pinned Mathlib revision.
 
-The remaining acceptance action is to load the local, non-secret route
-configuration and rerun the same command from a clean commit. The resulting
-experiment and sanitized report must be recorded under the normal
-`experiments/<id>/` and `reports/<id>/` paths. That run should show either a
-verified checker preflight followed by source-level PASS/FAIL, or an explicit
-preflight/process infrastructure result; it must never classify a checker that
-did not start as mathematical proof failure.
+The Agent submitted two Materials through the public `submit_candidate` tool.
+The first CheckResult was `APPLIED`, `verdict=FAIL`,
+`result_class=source_failure`, `checker_process_status=completed`, and
+`exit_code=1`. The second was `APPLIED`, `verdict=PASS`,
+`result_class=PASS`, `checker_process_status=completed`, and `exit_code=0`.
+The Task ended `SATISFIED`, the Execution ended `SUCCEEDED`, and both checks
+used the same Workspace lineage across the checkpoint and wake. No checker
+infrastructure failure was mistaken for a mathematical result, and
+`secret_values_recorded` remained false.
+
+The sanitized run record is
+[`docs/issue-53-real-agent-gpt61-20261024.json`](issue-53-real-agent-gpt61-20261024.json).
+It contains route, fixture, lifecycle, CheckResult, and bounded process-status
+metadata only; candidate source, proof text, raw transcript, stdout, stderr,
+and credentials are excluded.
+
+Earlier attempts exposed two harness issues before this final run: the target
+worktree did not have the local route environment, and the one-off real-agent
+driver sent a phase prompt while Runtime's initial prompt was still running.
+The worktree SOP and driver now copy/check the route configuration, queue the
+phase prompt as a follow-up, wait for the actual Agent turn or an expected
+Runtime stop after candidate submission, and then record the Judge result.

@@ -93,10 +93,22 @@ function promptForCandidate({ phase, candidate, previousMaterialId = null }) {
 async function runAgentTurn(session, prompt, { timeoutMs = 180_000 } = {}) {
   await session.waitForReady({ timeoutMs: 15_000 });
   const sequence = session.rpcRecords.length;
-  const response = await session.prompt(prompt, { timeoutMs: 30_000 });
-  const settled = response?.data?.disposition === 'handled'
-    ? { type: 'agent_settled', handled: true }
-    : await session.waitForSettled({ timeoutMs, afterSequence: sequence });
+  // Runtime sends the Execution's initial agent_prompt as part of start/wake.
+  // The real-path harness may then add a phase-specific candidate prompt while
+  // that turn is still running. Queue it explicitly instead of issuing a
+  // second concurrent prompt, and wait for the actual agent_settled record.
+  const response = await session.prompt(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' });
+  let settled;
+  try {
+    settled = await session.waitForSettled({ timeoutMs, afterSequence: sequence });
+  } catch (error) {
+    // A candidate result can synchronously move the Execution to WAITING or
+    // a terminal state. Runtime then intentionally stops this Session before
+    // Pi emits agent_settled; that is a successful turn handoff, not a
+    // provider/process failure.
+    if (!session.expectedStop) throw error;
+    settled = { type: 'agent_settled', expected_stop: true };
+  }
   return { response, settled, rpc_records: session.rpcRecords.slice(sequence).map((record) => record.type) };
 }
 
@@ -209,7 +221,8 @@ export async function runRealAgentPath({
   const runtime = new Runtime({ taskService, contextService, workspaceManager: new WorkspaceManager({ rootDir }), agentAdapter: adapter, actorRef: 'runtime:local' });
   let bridge;
   const checkHistory = [];
-  const onSubmitCandidate = async ({ taskId, executionId: submittedExecutionId, payload }) => {
+  let candidateSubmission = Promise.resolve();
+  const submitCandidate = async ({ taskId, executionId: submittedExecutionId, payload }) => {
     const currentTask = taskService.getTask(taskId);
     const currentExecution = taskService.getExecution(submittedExecutionId);
     const material = contextService.getMaterial(payload.candidate_material_id);
@@ -271,6 +284,10 @@ export async function runRealAgentPath({
     checkHistory.push(record);
     return { check_result: result, applied };
   };
+  const onSubmitCandidate = (args) => {
+    candidateSubmission = submitCandidate(args);
+    return candidateSubmission;
+  };
   bridge = new ServicesBridge({
     taskService,
     contextService,
@@ -298,6 +315,7 @@ export async function runRealAgentPath({
     firstRun = await runtime.startExecution(executionId);
     report.launch = { workspace_ref: firstRun.execution.workspace_ref, runtime_manifest: firstRun.session.manifest };
     report.first_agent = await runAgentTurn(firstRun.session, promptForCandidate({ phase: 'first invalid candidate', candidate: firstCandidate }), { timeoutMs });
+    await candidateSubmission;
     const firstMaterial = latestArtifact(contextService, executionId);
     if (!firstMaterial) throw new Error('real Agent did not publish a first artifact Material through Services SDK');
     report.material_ids.push(firstMaterial.material_id);
@@ -317,6 +335,7 @@ export async function runRealAgentPath({
       },
     });
     report.second_agent = await runAgentTurn(secondRun.session, promptForCandidate({ phase: 'fixed candidate', candidate: fixedCandidate, previousMaterialId: firstMaterial.material_id }), { timeoutMs });
+    await candidateSubmission;
     const secondMaterial = latestArtifact(contextService, executionId, firstMaterial.material_id);
     if (!secondMaterial) throw new Error('real Agent did not publish a superseding artifact Material through Services SDK');
     if (secondMaterial.supersedes !== firstMaterial.material_id) throw new Error('real Agent fixed candidate did not supersede the failed artifact');
