@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
-import { listServices } from '../sdk/service-catalog.js';
+import { listServices, listTools } from '../sdk/service-catalog.js';
 
 const PUBLIC_ROOT = fileURLToPath(new URL('./public/', import.meta.url));
 
@@ -54,7 +54,7 @@ function contentType(path) {
   }[extension] ?? 'application/octet-stream';
 }
 
-const DASHBOARD_SECRET_KEY = /(?:authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|credential|bearer|cookie|secret|(?:^|[_-])token(?:$|[_-]))/i;
+const DASHBOARD_SECRET_KEY = /(?:authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|credential|bearer|cookie|secret|proof|formal[_-]?source|raw[_-]?transcript|task[_-]?instructions|(?:^|[_-])token(?:$|[_-]))/i;
 const DASHBOARD_MAX_STRING = 8_000;
 const DASHBOARD_MAX_ARRAY = 100;
 const OVERVIEW_EVENT_KINDS = [
@@ -91,7 +91,7 @@ const OVERVIEW_EVENT_KINDS = [
   'experiment_started',
   'experiment_finished',
 ];
-const OVERVIEW_RPC_RECORD_TYPES = new Set(['tool_execution_start', 'tool_execution_end']);
+const OVERVIEW_RPC_RECORD_TYPES = new Set(['tool_execution_start', 'tool_execution_end', 'tool_call', 'tool_result']);
 const OVERVIEW_TOOL_NAMES = new Set([
   'swarmenv_task_get',
   'swarmenv_task_list',
@@ -105,6 +105,9 @@ const OVERVIEW_TOOL_NAMES = new Set([
   'swarmenv_context_read',
   'swarmenv_judge_submit_candidate',
   'swarmenv_judge_get_check_result',
+  // Older Agent sessions used this transport wrapper. The projection resolves
+  // its operation to the corresponding named Service tool below.
+  'swarmenv_call',
 ]);
 const EXECUTION_DETAIL_LIFECYCLE_KINDS = new Set([
   'session_started',
@@ -143,6 +146,67 @@ const DETAIL_MAX_BYTES = 4_000_000;
 function parseJson(value) {
   if (typeof value !== 'string' || value.length === 0) return value;
   try { return JSON.parse(value); } catch { return value; }
+}
+
+const COMPATIBILITY_TOOL_NAMES = new Map(listTools().map((tool) => [tool.operation, `swarmenv_${tool.name}`]));
+
+function rawToolName(record) {
+  return record?.toolName ?? record?.tool_name ?? record?.name ?? null;
+}
+
+function toolArguments(record) {
+  return record?.args ?? record?.arguments ?? record?.params ?? record?.input ?? undefined;
+}
+
+function compatibilityOperation(record) {
+  if (rawToolName(record) !== 'swarmenv_call') return null;
+  const args = toolArguments(record);
+  return args?.operation
+    ?? record?.arguments?.operation
+    ?? record?.params?.operation
+    ?? record?.input?.operation
+    ?? null;
+}
+
+function dashboardToolName(record) {
+  const raw = rawToolName(record);
+  if (raw !== 'swarmenv_call') return raw;
+  const operation = compatibilityOperation(record);
+  return COMPATIBILITY_TOOL_NAMES.get(operation) ?? raw;
+}
+
+function isToolRecord(record, type) {
+  return Boolean(record) && (record.type === type);
+}
+
+function isToolStart(record) {
+  return isToolRecord(record, 'tool_execution_start') || isToolRecord(record, 'tool_call');
+}
+
+function isToolEnd(record) {
+  return isToolRecord(record, 'tool_execution_end') || isToolRecord(record, 'tool_result');
+}
+
+function toolCallId(record, fallback = null) {
+  return record?.toolCallId ?? record?.tool_call_id ?? record?.id ?? fallback;
+}
+
+function compactToolRecord(record) {
+  if (!record || typeof record !== 'object') return null;
+  const raw = rawToolName(record);
+  const compact = {
+    type: record.type,
+    toolCallId: toolCallId(record),
+    toolName: dashboardToolName(record),
+    args: isToolStart(record) ? toolArguments(record) : undefined,
+    result: isToolEnd(record) ? compactOverviewToolResult(record.result) : undefined,
+    isError: record.isError,
+  };
+  if (raw === 'swarmenv_call') {
+    compact.transport_tool = raw;
+    compact.compatibility_operation = compatibilityOperation(record);
+  }
+  return dashboardValue(compact);
 }
 
 function dashboardValue(value, key = '', depth = 0) {
@@ -295,14 +359,7 @@ function compactOverviewToolResult(value) {
 
 function compactOverviewRecord(record) {
   if (!record || typeof record !== 'object' || !OVERVIEW_RPC_RECORD_TYPES.has(record.type)) return null;
-  return dashboardValue({
-    type: record.type,
-    toolCallId: record.toolCallId,
-    toolName: record.toolName,
-    args: record.type === 'tool_execution_start' ? record.args : undefined,
-    result: record.type === 'tool_execution_end' ? compactOverviewToolResult(record.result) : undefined,
-    isError: record.isError,
-  });
+  return compactToolRecord(record);
 }
 
 function compactOverviewEvent(event) {
@@ -709,10 +766,11 @@ export class ObservabilityServer {
     const overviewEvents = [];
     for (const event of events) {
       const record = event.payload?.record;
-      if (!event.execution_id || !record || !['tool_execution_start', 'tool_execution_end'].includes(record.type)) continue;
-      const key = `${event.execution_id}:${record.toolCallId}`;
+      const toolName = dashboardToolName(record);
+      if (!event.execution_id || !record || !OVERVIEW_RPC_RECORD_TYPES.has(record.type)) continue;
+      const key = `${event.execution_id}:${toolCallId(record, event.sequence)}`;
       calls.set(key, event.execution_id);
-      if (OVERVIEW_TOOL_NAMES.has(record.toolName)) overviewEvents.push(event);
+      if (OVERVIEW_TOOL_NAMES.has(toolName) || OVERVIEW_TOOL_NAMES.has(rawToolName(record))) overviewEvents.push(event);
     }
     const counts = {};
     for (const executionId of calls.values()) counts[executionId] = (counts[executionId] ?? 0) + 1;
@@ -750,14 +808,15 @@ export class ObservabilityServer {
     };
     for (const event of events) {
       const record = event.kind === 'rpc_record' ? event.payload?.record : null;
-      if (!record?.toolName) continue;
-      if (record.type === 'tool_execution_start' || record.type === 'tool_execution_end') {
-        tools.set(record.toolName, true);
+      const toolName = dashboardToolName(record);
+      if (!toolName) continue;
+      if (isToolStart(record) || isToolEnd(record)) {
+        tools.set(toolName, true);
       }
-      if (record.type !== 'tool_execution_end') continue;
+      if (!isToolEnd(record)) continue;
       const details = toolDetails(record);
       if (!details || typeof details !== 'object') continue;
-      if (record.toolName === 'swarmenv_task_get') {
+      if (toolName === 'swarmenv_task_get') {
         const task = details.task ?? details;
         if (task && typeof task === 'object') {
           insight.task = dashboardValue({
@@ -778,7 +837,7 @@ export class ObservabilityServer {
           });
           insight.task_instructions = dashboardValue(task.task_instructions ?? task.initial_prompt ?? null, 'task_instructions');
         }
-      } else if (record.toolName === 'swarmenv_execution_get') {
+      } else if (toolName === 'swarmenv_execution_get') {
         const execution = details.execution ?? details;
         if (execution && typeof execution === 'object') {
           insight.initial_prompt = dashboardValue(execution.agent_prompt ?? execution.initial_prompt ?? null, 'agent_prompt');
@@ -794,7 +853,7 @@ export class ObservabilityServer {
             parent_workspace_ref: execution.workspace_selection?.source_workspace_ref,
           });
         }
-      } else if (record.toolName === 'swarmenv_catalog_list_tools') {
+      } else if (toolName === 'swarmenv_catalog_list_tools') {
         addCatalogTools(details);
       }
     }
@@ -802,7 +861,7 @@ export class ObservabilityServer {
       const catalogEvents = await this.#allEvents({ experimentId, kinds: ['rpc_record'], view: 'agent' }, 2);
       for (const event of catalogEvents) {
         const record = event.payload?.record;
-        if (record?.type === 'tool_execution_end' && record.toolName === 'swarmenv_catalog_list_tools') addCatalogTools(toolDetails(record));
+        if (isToolEnd(record) && dashboardToolName(record) === 'swarmenv_catalog_list_tools') addCatalogTools(toolDetails(record));
       }
     }
     insight.observed_tools = [...tools.keys()].sort();
@@ -816,7 +875,7 @@ export class ObservabilityServer {
     const observed = await this.#allEventsWithMeta({ experimentId, executionId, view: 'agent' }, 200, DETAIL_MAX_EVENTS);
     const selected = observed.events.filter((event) => {
       if (event.kind === 'rpc_record') {
-        return ['tool_execution_start', 'tool_execution_end'].includes(event.payload?.record?.type);
+        return OVERVIEW_RPC_RECORD_TYPES.has(event.payload?.record?.type);
       }
       return EXECUTION_DETAIL_LIFECYCLE_KINDS.has(event.kind);
     });
@@ -824,7 +883,11 @@ export class ObservabilityServer {
     const events = [];
     let truncated = observed.truncated;
     for (const event of selected) {
-      const compact = { ...event, payload: dashboardValue(event.payload) };
+      const payload = event.payload ?? {};
+      const compact = {
+        ...event,
+        payload: payload.record ? { ...dashboardValue(payload), record: compactToolRecord(payload.record) } : dashboardValue(payload),
+      };
       const size = Buffer.byteLength(JSON.stringify(compact));
       if (events.length >= DETAIL_MAX_EVENTS || bytes + size > DETAIL_MAX_BYTES) {
         truncated = true;
@@ -852,9 +915,10 @@ export class ObservabilityServer {
       const payload = event.payload ?? {};
       const record = payload.record;
       const candidates = [payload.task, payload.result?.task];
-      if (record?.type === 'tool_execution_end' && record.toolName === 'swarmenv_task_get') {
+      if (isToolEnd(record) && dashboardToolName(record) === 'swarmenv_task_get') {
         const result = record.result ?? {};
-        candidates.unshift(result.details ?? result.task ?? result.result ?? result);
+        const details = result.details ?? result.result ?? result;
+        candidates.unshift(details?.task ?? details);
       }
       for (const candidate of candidates) {
         if (!candidate || typeof candidate !== 'object') continue;

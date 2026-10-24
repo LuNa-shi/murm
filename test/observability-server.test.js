@@ -105,7 +105,11 @@ test('ObservabilityServer keeps imported lifecycle facts and root-array projecti
   append({ source: 'judge', kind: 'judge_check_finished', taskId: 'task-root', executionId: 'exec-root', payload: { candidate_material_id: 'material-1', verdict: 'FAIL' } });
   append({ source: 'task-service', kind: 'dispatch.complete', taskId: 'task-root', executionId: 'exec-root', payload: { result: [{ task_id: 'task-root', goal: 'Imported task', state: 'WAITING' }, { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note' }] } });
   append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', args: { kind: 'artifact' } } } });
-  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', result: { details: { material: { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note', content: { summary: 'Readable material' }, source_task: 'task-root', source_execution: 'exec-root' } } } } } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', result: { details: { material: { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note', content: { summary: 'Readable material', proof: 'PROOFSECRET' }, source_task: 'task-root', source_execution: 'exec-root' } } } } } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-compat-task', toolName: 'swarmenv_call', args: { operation: 'get_task', payload: { task_id: 'task-root' } } } } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-compat-task', toolName: 'swarmenv_call', args: { operation: 'get_task', payload: { task_id: 'task-root' } }, result: { details: { task: { task_id: 'task-root', goal: 'Compatibility task', task_instructions: 'PRIVATE INSTRUCTIONS', state: 'WAITING' } } } } } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-compat-material', toolName: 'swarmenv_call', args: { operation: 'publish_material', payload: { kind: 'artifact' } } } } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-compat-material', toolName: 'swarmenv_call', args: { operation: 'publish_material', payload: { kind: 'artifact' } }, result: { details: { material: { material_id: 'material-1', kind: 'artifact', summary: 'Compatibility material', content: { summary: 'Compat readable material', proof: 'PROOFSECRET' }, source_task: 'task-root', source_execution: 'exec-root' } } } } } });
   const server = new ObservabilityServer({ observationStore: store });
   const { url } = await server.start();
   try {
@@ -116,11 +120,19 @@ test('ObservabilityServer keeps imported lifecycle facts and root-array projecti
     assert.equal(arrayResult[0].task_id, 'task-root');
     assert.equal(arrayResult[1].material_id, 'material-1');
     assert.ok(overview.events.some((event) => event.payload.record?.toolName === 'swarmenv_context_publish'));
-    assert.equal(overview.tool_counts['exec-root'], 1);
+    const compatibilityMaterial = overview.events.find((event) => event.payload.record?.compatibility_operation === 'publish_material');
+    assert.equal(compatibilityMaterial.payload.record.toolName, 'swarmenv_context_publish');
+    assert.equal(compatibilityMaterial.payload.record.transport_tool, 'swarmenv_call');
+    assert.equal(overview.tool_counts['exec-root'], 3);
 
     const material = await fetch(`${url}/api/experiments/run-imported/materials/material-1`).then((response) => response.json());
     assert.equal(material.available, true);
-    assert.equal(material.content_summary, 'Imported proof note');
+    assert.equal(material.content_summary, 'Compatibility material');
+    assert.equal(material.content_preview.proof, '[redacted]');
+    assert.doesNotMatch(JSON.stringify(material), /PROOFSECRET/);
+    const task = await fetch(`${url}/api/experiments/run-imported/tasks/task-root`).then((response) => response.json());
+    assert.equal(task.task.fields.goal, 'Compatibility task');
+    assert.equal(task.task.fields.task_instructions, '[redacted]');
     const detail = await fetch(`${url}/api/experiments/run-imported/execution-detail?execution_id=exec-root`).then((response) => response.json());
     assert.ok(detail.events.some((event) => event.payload.record?.toolName === 'swarmenv_context_publish'));
     assert.equal(detail.truncated, false);

@@ -101,7 +101,7 @@ function jsonValue(value, maxLength) {
 
 function redactSecrets(value, key, depth) {
   const level = depth || 0;
-  if (/(authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|secret|credential|bearer|cookie|(?:^|[_-])token(?:$|[_-]))/i.test(String(key || ''))) return '[redacted]';
+  if (/(authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|secret|proof|formal[_-]?source|raw[_-]?transcript|task[_-]?instructions|credential|bearer|cookie|(?:^|[_-])token(?:$|[_-]))/i.test(String(key || ''))) return '[redacted]';
   if (typeof value === 'string') return value.length <= 4_000 ? value : value.slice(0, 4_000) + '\n[display truncated]';
   if (level > 6) return '[nested value truncated]';
   if (Array.isArray(value)) {
@@ -235,9 +235,13 @@ function extractToolCalls(events) {
   (events || []).forEach((event) => {
     const record = eventToolRecord(event);
     if (!record) return;
-    if (record.type === 'tool_execution_start') {
-      calls.set(record.toolCallId, {
-        id: record.toolCallId,
+    const isStart = record.type === 'tool_execution_start' || record.type === 'tool_call';
+    const isEnd = record.type === 'tool_execution_end' || record.type === 'tool_result';
+    if (!isStart && !isEnd) return;
+    const id = record.toolCallId || record.tool_call_id || record.id || event.sequence;
+    if (isStart) {
+      calls.set(id, {
+        id,
         toolName: record.toolName || 'unknown tool',
         args: record.args,
         start: event,
@@ -245,9 +249,9 @@ function extractToolCalls(events) {
         result: null,
         isError: false,
       });
-    } else if (record.type === 'tool_execution_end') {
-      const call = calls.get(record.toolCallId) || {
-        id: record.toolCallId,
+    } else if (isEnd) {
+      const call = calls.get(id) || {
+        id,
         toolName: record.toolName || 'unknown tool',
         args: null,
         start: event,
@@ -259,7 +263,7 @@ function extractToolCalls(events) {
       call.result = record.result;
       call.isError = Boolean(record.isError);
       call.end = event;
-      calls.set(record.toolCallId, call);
+      calls.set(id, call);
     }
   });
   return [...calls.values()].sort((a, b) => (a.start.sequence || 0) - (b.start.sequence || 0));
