@@ -3,8 +3,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-const DEFAULT_MAX_WINDOW_MS = 15 * 60 * 1000;
-const SILENT_GAP_MS = 60 * 1000;
+// Reports are written for human review. Five-minute windows keep the narrative
+// bounded while still allowing an objective change, Judge result, handoff, or
+// wait to split a window earlier.
+const DEFAULT_MAX_WINDOW_MS = 5 * 60 * 1000;
+const SILENT_GAP_MS = 5 * 60 * 1000;
 const MAX_SOURCE_ERRORS = 20;
 const MAX_OPERATIONS_PER_WINDOW = 14;
 
@@ -1153,6 +1156,14 @@ function isBoundary(fact) {
   return ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'submit_candidate', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
 }
 
+function isSemanticBoundary(fact) {
+  return new Set([
+    'task_created', 'task_claimed',
+    'candidate_submitted', 'judge_result', 'judge_check', 'judge_check_record',
+    'wait_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
+  ]).has(fact.kind) || (!['service_call_started', 'service_call_finished', 'database_operation', 'tool_call'].includes(fact.kind) && ['create_child_task', 'submit_candidate', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(factOperation(fact)));
+}
+
 function sourceLabels(facts) {
   return [...new Set(facts.flatMap((fact) => fact.sources))].sort();
 }
@@ -1184,7 +1195,8 @@ function latestState(facts, execution) {
 }
 
 function resultForWindow(facts) {
-  const impactful = [...facts].reverse().find((fact) => {
+  const meaningful = [...facts].reverse().find((fact) => ['judge_result', 'judge_check', 'judge_check_record', 'candidate_submitted', 'wait_requested', 'review', 'rework', 'material_consumed', 'material_published', 'workspace_revision', 'execution_terminal', 'task_state_changed', 'execution_state_changed'].includes(fact.kind));
+  const impactful = meaningful ?? [...facts].reverse().find((fact) => {
     const durableOperations = ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'submit_candidate', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'];
     if (['heartbeat', 'agent_turn', 'agent_settled', 'process_event', 'agent_event', 'agent_rpc_request'].includes(fact.kind)) return false;
     if (durableOperations.includes(fact.operation)) return true;
@@ -1221,15 +1233,59 @@ function windowIntent(facts) {
   return { label: intentFor(factOperation(explicit), explicit.kind), confidence: explicit.operation ? 'high' : 'medium', basis: [explicit.id] };
 }
 
-function makeWindow(facts, startMs, endMs, { gap = false } = {}) {
+function semanticPhase(facts) {
+  const kinds = new Set(facts.map((fact) => fact.kind));
+  const operations = new Set(facts.map(factOperation));
+  if (kinds.has('judge_result') || kinds.has('judge_check') || kinds.has('judge_check_record')) return 'candidate checking and feedback';
+  if (kinds.has('candidate_submitted') || operations.has('submit_candidate')) return 'candidate construction and submission';
+  if (kinds.has('review') || kinds.has('rework')) return 'parent review and rework';
+  if (kinds.has('wait_requested')) return 'coordination and waiting';
+  if (kinds.has('material_published') || kinds.has('material_consumed') || operations.has('create_child_task')) return 'research and collaboration handoff';
+  if (kinds.has('workspace_revision') || operations.has('write_workspace_file') || operations.has('save_workspace_revision')) return 'Workspace editing';
+  if (operations.has('claim') || kinds.has('execution_assigned')) return 'Task discovery and claim';
+  if (facts.some((fact) => ['agent_turn', 'agent_event', 'agent_rpc_request'].includes(fact.kind))) return 'Agent reasoning activity';
+  return 'runtime or lifecycle activity';
+}
+
+function semanticSummary(facts, previousWindow = null) {
+  if (!facts.length) return {
+    phase: 'no observed event',
+    summary: 'No observable record was available in this interval; the gap does not prove that no work occurred.',
+    route_change: 'unknown',
+    durable_changes: [],
+    event_counts: {},
+  };
+  const counts = {};
+  for (const fact of facts) counts[fact.kind] = (counts[fact.kind] ?? 0) + 1;
+  const phase = semanticPhase(facts);
+  const durable = [...new Set(facts.filter((fact) => ['task_created', 'task_claimed', 'task_state_changed', 'execution_assigned', 'workspace_revision', 'material_published', 'material_consumed', 'candidate_submitted', 'judge_result', 'judge_check', 'judge_check_record', 'review', 'rework', 'wait_requested', 'wake', 'resume', 'execution_terminal'].includes(fact.kind)).map((fact) => compactFact(fact).replace(/ \[F-[A-Za-z0-9_-]+\]$/, '')))].slice(0, 8);
+  const candidate = facts.find((fact) => fact.kind === 'candidate_submitted');
+  const judge = facts.find((fact) => ['judge_result', 'judge_check', 'judge_check_record'].includes(fact.kind));
+  const material = facts.find((fact) => fact.kind === 'material_published' || fact.kind === 'material_consumed');
+  let summary = `The Agent was primarily engaged in ${phase.toLowerCase()}.`;
+  if (candidate) summary += ' A candidate was handed to the Judge path.';
+  if (judge) summary += ` Judge feedback was recorded (${judge.summary?.verdict ?? judge.summary?.check_result?.verdict ?? 'result unavailable'}).`;
+  if (material && phase === 'research and collaboration handoff') summary += ' The observable handoff involved shared Material or a child Task.';
+  if (previousWindow?.semantic_phase && previousWindow.semantic_phase !== phase) return {
+    phase, summary: `The activity changed from ${previousWindow.semantic_phase} to ${phase}. ${summary}`,
+    route_change: 'objective or lifecycle phase changed', durable_changes: durable, event_counts: counts,
+  };
+  return { phase, summary, route_change: 'no explicit route change observed', durable_changes: durable, event_counts: counts };
+}
+
+function makeWindow(facts, startMs, endMs, { gap = false, previousWindow = null } = {}) {
   const sorted = [...facts].sort((a, b) => (timeMs(a.at) ?? startMs) - (timeMs(b.at) ?? startMs) || a.id.localeCompare(b.id));
   const intent = gap ? { label: 'unknown', confidence: 'unknown', basis: [] } : windowIntent(sorted);
-  const operations = gap ? ['no observed event'] : [...new Set(sorted.map(compactFact))].slice(0, MAX_OPERATIONS_PER_WINDOW);
-  const overflow = gap ? 0 : Math.max(0, new Set(sorted.map(compactFact)).size - operations.length);
-  if (overflow) operations.push(`… ${overflow} additional operation(s) summarized`);
+  const semantic = semanticSummary(sorted, previousWindow);
+  const operations = gap ? ['no observed event'] : [semantic.phase];
   return {
     time: { start: new Date(startMs).toISOString(), end: new Date(endMs).toISOString(), duration_ms: Math.max(0, endMs - startMs), evidence_gap: gap },
     operations,
+    semantic_phase: semantic.phase,
+    semantic_summary: semantic.summary,
+    route_change: semantic.route_change,
+    durable_changes: semantic.durable_changes,
+    event_counts: semantic.event_counts,
     observed_intent: intent.label,
     intent_basis: intent.basis,
     intent_confidence: intent.confidence,
@@ -1254,18 +1310,19 @@ function buildWindows(execution, facts, experimentEnd, maxWindowMs = DEFAULT_MAX
     const at = timeMs(fact.at);
     const previousAt = timeMs(timed[index - 1].at);
     const gap = at - previousAt;
-    const boundary = isBoundary(fact);
+    const phaseChanged = semanticPhase(current) !== semanticPhase([...current, fact]);
+    const boundary = isSemanticBoundary(fact) && phaseChanged && at - currentStart > 1000;
     if (gap >= SILENT_GAP_MS) {
-      windows.push(makeWindow(current, currentStart, previousAt));
+      windows.push(makeWindow(current, currentStart, previousAt, { previousWindow: windows.at(-1) ?? null }));
       windows.push(makeWindow([], previousAt, at, { gap: true }));
       current = [fact]; currentStart = at; continue;
     }
     if (boundary && at > currentStart) {
-      windows.push(makeWindow(current, currentStart, at));
+      windows.push(makeWindow(current, currentStart, at, { previousWindow: windows.at(-1) ?? null }));
       current = [fact]; currentStart = at; continue;
     }
     if (at - currentStart >= maxWindowMs) {
-      windows.push(makeWindow(current, currentStart, previousAt));
+      windows.push(makeWindow(current, currentStart, previousAt, { previousWindow: windows.at(-1) ?? null }));
       const splitAt = previousAt;
       if (at > splitAt) windows.push(makeWindow([], splitAt, at, { gap: true }));
       current = [fact]; currentStart = at; continue;
@@ -1273,7 +1330,7 @@ function buildWindows(execution, facts, experimentEnd, maxWindowMs = DEFAULT_MAX
     current.push(fact);
   }
   const finalAt = timeMs(timed.at(-1).at);
-  windows.push(makeWindow(current, currentStart, finalAt));
+  windows.push(makeWindow(current, currentStart, finalAt, { previousWindow: windows.at(-1) ?? null }));
   return windows.filter((window) => window.time.duration_ms > 0 || window.operations.length > 0);
 }
 
@@ -1306,21 +1363,35 @@ function materialCollaboration(model, facts) {
   return rows;
 }
 
-function executionInventory(model, facts, experimentEnd) {
+function executionInventory(model, facts, experimentEnd, maxWindowMs = DEFAULT_MAX_WINDOW_MS) {
   const ids = new Set([
     ...model.executions.map((row) => row.execution_id),
     ...facts.map((fact) => fact.executionId).filter(Boolean),
   ]);
+  const byTask = new Map();
+  for (const row of model.executions) {
+    const group = byTask.get(row.task_id) ?? [];
+    group.push(row);
+    byTask.set(row.task_id, group);
+  }
+  for (const group of byTask.values()) group.sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')));
   return [...ids].sort().map((executionId) => {
     const execution = model.executions.find((row) => row.execution_id === executionId) ?? { execution_id: executionId, task_id: null, state: 'unknown', created_at: null, updated_at: null };
     const executionFacts = facts.filter((fact) => fact.executionId === executionId);
     const coreIds = [...new Set([String(execution.owner_ref ?? '').match(/core-\d+/)?.[0], ...executionFacts.map((fact) => fact.coreId)].filter(Boolean))].sort();
     const sessionIds = [...new Set(executionFacts.map((fact) => fact.sessionId).filter(Boolean))].sort();
     const workspaceRefs = [...new Set([execution.workspace_ref, ...executionFacts.map((fact) => fact.summary?.workspace_ref).filter(Boolean)].filter(Boolean))].sort();
+    const siblings = byTask.get(execution.task_id) ?? [];
+    const position = siblings.findIndex((row) => row.execution_id === executionId);
+    const predecessor = position > 0 ? siblings[position - 1] : null;
+    const successor = position >= 0 && position < siblings.length - 1 ? siblings[position + 1] : null;
     return {
       execution,
       facts: executionFacts,
-      windows: buildWindows(execution, executionFacts, experimentEnd),
+      windows: buildWindows(execution, executionFacts, experimentEnd, maxWindowMs),
+      lifecycle_role: predecessor || successor ? 'rework attempt' : 'initial or only attempt',
+      predecessor_execution_id: predecessor?.execution_id ?? null,
+      successor_execution_id: successor?.execution_id ?? null,
       counts: Object.fromEntries([...new Set(executionFacts.map((fact) => fact.kind))].sort().map((kind) => [kind, executionFacts.filter((fact) => fact.kind === kind).length])),
       sources: sourceLabels(executionFacts),
       coreIds,
@@ -1450,6 +1521,54 @@ function buildErrorAnalysis(facts) {
   }).sort((a, b) => b.occurrence_count - a.occurrence_count || a.category.localeCompare(b.category));
 }
 
+function buildSystemFindings(analysis) {
+  const findings = [];
+  const configuredCores = Number(analysis.inventory.metadata?.experiment?.protocol?.core_count ?? 0);
+  const start = timeMs(analysis.aggregate.started_at);
+  const end = timeMs(analysis.aggregate.ended_at);
+  const elapsed = start !== null && end !== null ? Math.max(0, end - start) : null;
+  const executionIntervals = analysis.model.executions.map((execution) => ({
+    execution,
+    start: timeMs(parseTime(execution.created_at)),
+    end: timeMs(parseTime(execution.updated_at)),
+  })).filter((item) => item.start !== null && item.end !== null);
+  let maxOverlap = 0;
+  for (const point of [...new Set(executionIntervals.flatMap((item) => [item.start, item.end]))]) {
+    const overlap = executionIntervals.filter((item) => item.start <= point && item.end >= point).length;
+    maxOverlap = Math.max(maxOverlap, overlap);
+  }
+  if (configuredCores > 1 && executionIntervals.length && maxOverlap <= 1) findings.push({
+    severity: 'high', category: 'serialized_swarm', title: 'Available Core capacity was not reflected in overlapping Executions',
+    interpretation: `The authoritative Execution intervals overlap at most ${maxOverlap} at a time while ${configuredCores} Cores were configured. This is a system-level serialization signal; the trace does not by itself identify whether the cause was insufficient ready work, claim policy, or Agent behavior.`,
+    validation: 'Run with the same workload and record ready-work, claim, and Core assignment intervals; require at least two independent Tasks to overlap before labeling scheduling defective.',
+    evidence: executionIntervals.map((item) => item.execution.source?.ref).filter(Boolean), confidence: 'medium',
+  });
+  if (configuredCores > 1 && elapsed !== null && executionIntervals.length) {
+    const coreMs = executionIntervals.reduce((sum, item) => sum + Math.max(0, item.end - item.start) * Math.max(1, analysis.executions.find((row) => row.execution.execution_id === item.execution.execution_id)?.coreIds.length ?? 1), 0);
+    const proxy = coreMs / (configuredCores * elapsed);
+    if (proxy < 0.5) findings.push({
+      severity: 'medium', category: 'low_core_occupancy', title: 'Core occupancy proxy stayed below half of configured capacity',
+      interpretation: `The derived Execution-duration proxy is ${(proxy * 100).toFixed(1)}% of configured Core capacity. This is a supply/dispatch diagnostic, not proof of wasted Agent time because IDLE, WAITING, Judge, and ready-work intervals are not all represented by Execution duration.`,
+      validation: 'Compare Runtime RUNNING intervals, ready-unassigned time, and Task supply before changing scheduler policy.',
+      evidence: analysis.executions.flatMap((row) => row.sources).slice(0, 8), confidence: 'low',
+    });
+  }
+  const noConsumer = analysis.collaboration.filter((row) => row.assessment === 'no recorded consumer');
+  if (noConsumer.length) findings.push({
+    severity: 'high', category: 'delivery_without_consumption', title: 'Child or Material delivery did not close the consumer loop',
+    interpretation: `${noConsumer.length} Material(s) have no recorded consumer. This is a collaboration-loop failure or an evidence gap; it is not a judgment that the content was mathematically useless.`,
+    validation: 'Require an explicit parent read and review/rework decision for each child delivery, then compare root progress after the read.',
+    evidence: noConsumer.map((row) => row.published_evidence).slice(0, 12), confidence: 'medium',
+  });
+  if (analysis.candidates.repeated_diagnostics.length) findings.push({
+    severity: 'high', category: 'feedback_loop_no_route_change', title: 'Repeated Judge diagnostics did not produce a recorded route change',
+    interpretation: `The same diagnostic class repeats for ${analysis.candidates.repeated_diagnostics.map((row) => `${row.task_id} (${row.count})`).join(', ')}. Candidate checking continued, but the available metadata does not show a meaningful strategy change.`,
+    validation: 'Require each repeated diagnostic to be followed by a changed Workspace route, parent review, or bounded research Task before another submission.',
+    evidence: analysis.candidates.repeated_diagnostics.flatMap((row) => row.evidence).slice(0, 12), confidence: 'medium',
+  });
+  return findings;
+}
+
 function buildCandidateAnalysis(model, facts) {
   const submissions = new Map();
   for (const fact of facts.filter((candidate) => candidate.kind === 'candidate_submitted')) {
@@ -1458,12 +1577,28 @@ function buildCandidateAnalysis(model, facts) {
     const existing = submissions.get(candidateId);
     if (!existing || (fact.at && (!existing.at || fact.at < existing.at))) submissions.set(candidateId, fact);
   }
-  const rows = [...model.checks].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).map((check) => {
+  const orderedChecks = [...model.checks].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const rows = orderedChecks.map((check, index) => {
     const submission = submissions.get(check.candidate_material_id);
     const start = timeMs(parseTime(check.created_at));
     const end = timeMs(parseTime(check.updated_at));
     const feedbackReads = facts.filter((fact) => fact.executionId === check.execution_id && ['get_check_result', 'apply_check_result'].includes(fact.operation) && timeMs(fact.at) !== null && end !== null && timeMs(fact.at) >= end).length;
     const laterActions = facts.filter((fact) => fact.executionId === check.execution_id && ['workspace_revision', 'candidate_submitted', 'material_published', 'material_consumed', 'review', 'rework'].includes(fact.kind) && timeMs(fact.at) !== null && end !== null && timeMs(fact.at) >= end).map((fact) => fact.kind);
+    const visibleRevisions = facts.filter((fact) => fact.executionId === check.execution_id && fact.kind === 'workspace_revision' && timeMs(fact.at) !== null && start !== null && timeMs(fact.at) <= start).slice(-3);
+    const changedFiles = [...new Set(visibleRevisions.flatMap((fact) => array(fact.summary?.changed_files)))].slice(0, 8);
+    const strategySummary = changedFiles.length
+      ? `The visible Workspace change touched ${changedFiles.join(', ')}; proof semantics are summarized only from observable metadata.`
+      : 'No bounded strategy metadata was recorded; a semantic reviewer must inspect the cited Agent objective and Workspace revision references.';
+    const previousCheck = index > 0 ? orderedChecks[index - 1] : null;
+    const previous = previousCheck ? {
+      diagnostic_class: previousCheck.diagnostic_class ?? 'unknown',
+      strategy_fingerprint: [...new Set(facts.filter((fact) => fact.executionId === previousCheck.execution_id && fact.kind === 'workspace_revision').flatMap((fact) => array(fact.summary?.changed_files)))].join('|'),
+    } : null;
+    const changeFromPrevious = !previous
+      ? 'initial Candidate; no previous route to compare'
+      : previous.diagnostic_class === (check.diagnostic_class ?? 'unknown') && previous.strategy_fingerprint === changedFiles.join('|')
+        ? 'same diagnostic class and same visible Workspace change pattern'
+        : 'visible diagnostic or Workspace change pattern differs from the previous Candidate';
     return {
       candidate_material_id: check.candidate_material_id,
       check_result_id: check.check_result_id,
@@ -1478,6 +1613,10 @@ function buildCandidateAnalysis(model, facts) {
       workspace_revision: submission?.summary?.workspace_revision ?? null,
       feedback_reads: feedbackReads,
       later_actions: [...new Set(laterActions)],
+      strategy_summary: strategySummary,
+      strategy_fingerprint: changedFiles.join('|'),
+      change_from_previous: changeFromPrevious,
+      feedback_response: feedbackReads ? 'Judge feedback was explicitly read; whether the mathematical route improved remains an interpretation.' : 'No explicit Judge feedback read was recorded before later activity.',
       evidence: [...new Set([check.source.ref, ...(submission?.sources ?? [])])],
     };
   });
@@ -1514,9 +1653,9 @@ function buildCandidateAnalysis(model, facts) {
   return {
     rows,
     pass_count: rows.filter((row) => row.verdict === 'PASS').length,
-    fail_count: rows.filter((row) => row.verdict === 'FAIL').length,
+    fail_count: rows.filter((row) => row.verdict !== 'PASS').length,
     repeated_diagnostics: repeated,
-    all_failed: rows.length > 0 && rows.every((row) => row.verdict === 'FAIL'),
+    all_failed: rows.length > 0 && rows.every((row) => row.verdict !== 'PASS'),
   };
 }
 
@@ -1574,7 +1713,7 @@ function deriveConclusions(analysis) {
   if (analysis.collaboration.some((row) => row.assessment === 'accepted-but-unused')) conclusions.push({ type: 'Interpretation', text: 'At least one Material is marked accepted but has no recorded consumer. This is an evidence-backed handoff result, not a claim that the Material was mathematically useless.', evidence: analysis.collaboration.filter((row) => row.assessment === 'accepted-but-unused').map((row) => row.published_evidence) });
   if (analysis.warnings.length) conclusions.push({ type: 'Unknown', text: `${analysis.warnings.length} event reference(s) point to an unknown Task or Execution in the authoritative model. Those events are retained as unmatched facts.`, evidence: analysis.warnings.slice(0, 8).flatMap((warning) => warning.sources ?? []) });
   for (const error of analysis.errors.slice(0, 8)) conclusions.push({ type: 'Interpretation', text: `${error.occurrence_count} unique ${error.category} occurrence(s) were found for ${error.operation}: ${error.interpretation}`, evidence: error.evidence.slice(0, 8) });
-  if (analysis.candidates.all_failed) conclusions.push({ type: 'Interpretation', text: `All ${analysis.candidates.rows.length} recorded Candidate check(s) returned FAIL. Repeated diagnostic classes are reported as route non-convergence, not as proof of a mathematical impossibility.`, evidence: analysis.candidates.rows.flatMap((row) => row.evidence).slice(0, 12) });
+  if (analysis.candidates.all_failed) conclusions.push({ type: 'Interpretation', text: `None of the ${analysis.candidates.rows.length} recorded Candidate check(s) returned PASS. Repeated diagnostic classes are reported as route non-convergence, not as proof of a mathematical impossibility.`, evidence: analysis.candidates.rows.flatMap((row) => row.evidence).slice(0, 12) });
   if (analysis.terminal) conclusions.push({ type: 'Interpretation', text: analysis.terminal.interpretation, evidence: analysis.terminal.evidence.slice(0, 8) });
   conclusions.push({ type: 'Derived metric', text: 'The report treats heartbeat, turn count, Material count, Task acceptance, and report.json made_progress as activity or supporting metrics. None is labeled productive Goal progress by itself.', evidence: ['docs/benchmark-analysis-sop.md'] });
   return conclusions;
@@ -1647,7 +1786,7 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
   const warnings = attachFactReferences(allFacts, model, intervals);
   const projectSummary = summaries.find((summary) => summary.data?.run?.protocol_valid !== null || summary.data?.run?.solved !== null) ?? summaries[0];
   const experimentEnd = inventory.metadata.experiment?.ended_at ?? projectSummary?.data?.run?.ended_at ?? new Date().toISOString();
-  const executions = executionInventory(model, allFacts, experimentEnd);
+  const executions = executionInventory(model, allFacts, experimentEnd, maxWindowMs);
   for (const execution of executions) execution.windows = execution.windows.map((window) => ({ ...window }));
   const collaboration = materialCollaboration(model, allFacts);
   const allErrors = [...inventory.errors, ...modelErrors, ...workspaceErrors, ...observationErrors, ...rawErrors].slice(0, MAX_SOURCE_ERRORS);
@@ -1666,12 +1805,15 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
     candidates: null,
     terminal: null,
     optimizations: [],
+    systemFindings: [],
+    windowSizeMinutes: maxWindowMs / 60000,
   };
   analysis.aggregate = aggregateSummary(summaries, model, allFacts, { ...inventory, executions_count: executions.length });
   analysis.errors = buildErrorAnalysis(allFacts);
   analysis.candidates = buildCandidateAnalysis(model, allFacts);
   analysis.terminal = buildTerminalAnalysis(analysis);
   analysis.optimizations = buildOptimizationRecommendations(analysis);
+  analysis.systemFindings = buildSystemFindings(analysis);
   analysis.conclusions = deriveConclusions(analysis);
   const report = renderMarkdown(analysis);
   const reportPath = resolve(outputPath ?? join(root, 'analysis', 'experiment-analysis.md'));
@@ -1702,13 +1844,16 @@ function taskTable(model) {
 }
 
 function executionTable(executions) {
-  const rows = executions.map(({ execution: item, counts, sources, coreIds, sessionIds, workspaceRefs }) => `| ${md(item.execution_id)} | ${md(item.task_id)} | ${md(item.owner_ref)} | ${md(coreIds.join(', ') || 'unknown')} | ${md(sessionIds.join(', ') || 'unknown')} | ${md(item.state)} | ${md(item.attempt_no ?? 'unknown')} | ${md(workspaceRefs.join(', ') || 'unknown')} | ${Object.values(counts).reduce((a, b) => a + b, 0)} | ${sources.slice(0, 3).join('<br>') || 'none'} |`);
-  return rows.length ? ['| Execution | Task | Owner | Core | Session | State | Attempt | Workspace lineage | Facts | Evidence |', '|---|---|---|---|---|---|---:|---|---:|---|', ...rows].join('\n') : '_No Execution was discoverable._';
+  const rows = executions.map(({ execution: item, counts, sources, coreIds, sessionIds, workspaceRefs, lifecycle_role, predecessor_execution_id, successor_execution_id }) => `| ${md(item.execution_id)} | ${md(item.task_id)} | ${md(lifecycle_role)} | ${md(predecessor_execution_id ?? 'none')} | ${md(successor_execution_id ?? 'none')} | ${md(item.owner_ref)} | ${md(coreIds.join(', ') || 'unknown')} | ${md(sessionIds.join(', ') || 'unknown')} | ${md(item.state)} | ${md(item.attempt_no ?? 'unknown')} | ${md(workspaceRefs.join(', ') || 'unknown')} | ${sources.slice(0, 2).join('<br>') || 'none'} |`);
+  return rows.length ? ['| Execution attempt | Task | Lifecycle role | Predecessor | Successor | Owner | Core | Session | State | Attempt | Workspace lineage | Evidence |', '|---|---|---|---|---|---|---|---|---|---:|---|---|', ...rows].join('\n') : '_No Execution was discoverable._';
 }
 
 function windowTable(item) {
-  const rows = item.windows.map((window, index) => `| ${index + 1} | ${window.time.start}<br>${window.time.end} | ${window.time.duration_ms} ms${window.time.evidence_gap ? ' (evidence gap)' : ''} | ${window.operations.map(md).join('<br>')} | ${md(window.observed_intent)} | ${md(window.intent_confidence)}<br>${md(window.intent_basis.join(', '))} | ${md(window.result)} | ${md(window.next_state)} | ${md(window.handoff_or_blocker)} |`);
-  return ['| # | Time | Duration | Operations | Observed intent | Basis/confidence | Result | Next state | Handoff/blocker |', '|---:|---|---:|---|---|---|---|---|---|', ...rows].join('\n');
+  const rows = item.windows.map((window, index) => {
+    const counts = Object.entries(window.event_counts ?? {}).filter(([kind]) => !['heartbeat', 'agent_turn', 'agent_event', 'process_event'].includes(kind)).map(([kind, count]) => `${kind}=${count}`).join(', ') || 'no durable event count';
+    return `| ${index + 1} | ${window.time.start}<br>${window.time.end} | ${Math.round(window.time.duration_ms / 1000)} s${window.time.evidence_gap ? ' (evidence gap)' : ''} | ${md(window.semantic_phase)} | ${md(window.semantic_summary)} | ${md(window.route_change)} | ${md(window.durable_changes.join('; ') || 'none recorded')}<br><small>${md(counts)}</small> | ${md(window.result)} | ${md(window.next_state)} | ${md(window.handoff_or_blocker)} | ${window.evidence.slice(0, 4).join('<br>') || 'none'} |`;
+  });
+  return ['| # | Time | Duration | Phase | Semantic summary | Route change | Durable changes / supporting counts | Result | Next state | Handoff/blocker | Evidence |', '|---:|---|---:|---|---|---|---|---|---|---|---|', ...rows].join('\n');
 }
 
 function renderMarkdown(analysis) {
@@ -1718,12 +1863,18 @@ function renderMarkdown(analysis) {
   const executionSections = analysis.executions.map((item) => {
     const counts = Object.entries(item.counts).map(([key, value]) => `${key}=${value}`).join(', ') || 'no normalized facts';
     const artifacts = item.facts.filter((fact) => ['material_published', 'material_consumed', 'candidate_submitted', 'workspace_revision', 'judge_result', 'judge_check'].includes(fact.kind)).slice(0, 40).map((fact) => `- ${compactFact(fact)} — ${fact.sources.join(', ')}`).join('\n') || '- No artifact/check fact was observed for this Execution.';
-    return `### Execution \`${md(item.execution.execution_id)}\`\n\n- Task: \`${md(item.execution.task_id)}\`\n- Owner: ${md(item.execution.owner_ref)}\n- Core(s): ${md(item.coreIds.join(', ') || 'unknown')}\n- Session(s): ${md(item.sessionIds.join(', ') || 'unknown')}\n- Current/terminal state: **${md(item.execution.state)}**\n- Attempt: ${md(item.execution.attempt_no ?? 'unknown')}\n- Workspace lineage: ${md(item.workspaceRefs.join(', ') || 'unknown')}\n- Wait condition: ${md(item.waitCondition?.type ?? 'none recorded')}\n- Normalized fact counts: ${counts}\n- Evidence mode: ${analysis.inventory.evidenceMode}\n\n#### Time-window summaries\n\n${windowTable(item)}\n\n#### Artifacts, Service effects, and errors\n\n${artifacts}\n`;
+    return `### Execution \`${md(item.execution.execution_id)}\` — ${md(item.lifecycle_role)}\n\n- Task: \`${md(item.execution.task_id)}\`\n- Lifecycle role: **${md(item.lifecycle_role)}**\n- Predecessor/rework source: ${md(item.predecessor_execution_id ?? 'none recorded')}\n- Successor/rework target: ${md(item.successor_execution_id ?? 'none recorded')}\n- Owner: ${md(item.execution.owner_ref)}\n- Core(s): ${md(item.coreIds.join(', ') || 'unknown')}\n- Session(s): ${md(item.sessionIds.join(', ') || 'unknown')}\n- Current/terminal state: **${md(item.execution.state)}**\n- Attempt: ${md(item.execution.attempt_no ?? 'unknown')}\n- Workspace lineage: ${md(item.workspaceRefs.join(', ') || 'unknown')}\n- Wait condition: ${md(item.waitCondition?.type ?? 'none recorded')}\n- Normalized evidence counts: ${counts}\n- Evidence mode: ${analysis.inventory.evidenceMode}\n\n#### ${analysis.windowSizeMinutes}-minute semantic work windows\n\nThe table summarizes observable Agent objectives, Workspace/Material/Judge changes, and lifecycle state. Supporting event counts are included for audit; low-level calls are not the narrative.\n\n${windowTable(item)}\n\n#### Artifacts, Service effects, and errors\n\n${artifacts}\n`;
   }).join('\n');
-  const collaborationRows = analysis.collaboration.map((row) => `| ${md(row.material_id)} | ${md(row.kind)} / ${md(row.evidence_state)} | ${md(row.publisher.execution_id ?? 'unknown')} | ${row.consumers.map((consumer) => `${consumer.execution_id ?? 'unknown'} (${consumer.evidence})`).join('<br>') || 'none recorded'} | ${row.downstream_effects.map((effect) => `${effect.kind} (${effect.evidence})`).join('<br>') || 'none recorded'} | ${md(row.assessment)} |`).join('\n');
+  const collaborationRows = analysis.collaboration.map((row) => {
+    const consumerText = row.consumers.map((consumer) => `${consumer.execution_id ?? 'unknown'} (${consumer.evidence})`).join('<br>') || 'none recorded';
+    const effectText = row.downstream_effects.map((effect) => `${effect.kind} (${effect.evidence})`).join('<br>') || 'none recorded';
+    const meaning = row.downstream_effects.length ? 'Delivery reached a recorded downstream operation; semantic usefulness still requires review.' : row.consumers.length ? 'Consumer read was recorded without a linked downstream state change.' : 'No recorded consumer; delivery loop is incomplete in the available evidence.';
+    return `| ${md(row.material_id)} | ${md(row.kind)} / ${md(row.evidence_state)} | ${md(row.publisher.execution_id ?? 'unknown')} | ${consumerText} | ${effectText} | ${md(meaning)} | ${md(row.assessment)} |`;
+  }).join('\n');
   const errorRows = analysis.errors.map((error) => `| ${md(error.severity)} | ${md(error.category)} | ${error.occurrence_count} | ${error.supporting_record_count} | ${md(error.operation)} | ${md(error.interpretation)} | ${error.evidence.slice(0, 6).join('<br>')} |`).join('\n');
+  const systemFindingRows = analysis.systemFindings.map((finding) => `| ${md(finding.severity)} | ${md(finding.category)} | ${md(finding.interpretation)} | ${md(finding.confidence)} | ${md(finding.validation)} | ${finding.evidence.slice(0, 6).join('<br>')} |`).join('\n');
   const optimizationRows = analysis.optimizations.map((item) => `| ${md(item.priority)} | ${md(item.category)} | ${md(item.action)} | ${md(item.rationale)} | ${md(item.validation)} | ${item.evidence.slice(0, 6).join('<br>')} |`).join('\n');
-  const candidateRows = analysis.candidates.rows.map((row) => `| ${md(row.candidate_material_id)} | ${md(row.task_id)} | ${md(row.execution_id)} | ${md(row.check_result_id ?? 'none')} | ${md(row.verdict)} / ${md(row.status)} | ${md(row.diagnostic_class)} | ${md(row.submitted_at)} | ${md(row.checked_at)} | ${md(row.check_elapsed_ms)} | ${row.feedback_reads} | ${row.later_actions.join(', ') || 'none recorded'} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
+  const candidateRows = analysis.candidates.rows.map((row) => `| ${md(row.candidate_material_id)} | ${md(row.task_id)} | ${md(row.execution_id)} | ${md(row.strategy_summary)} | ${md(row.change_from_previous)} | ${md(row.feedback_response)} | ${md(row.check_result_id ?? 'none')} | ${md(row.verdict)} / ${md(row.status)} | ${md(row.diagnostic_class)} | ${md(row.submitted_at)} | ${row.feedback_reads} | ${row.later_actions.join(', ') || 'none recorded'} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
   const repeatedDiagnosticRows = analysis.candidates.repeated_diagnostics.map((row) => `| ${md(row.task_id)} | ${md(row.diagnostic_class)} | ${row.count} | ${row.evidence.slice(0, 6).join('<br>')} |`).join('\n');
   const healthByCore = {};
   for (const fact of analysis.facts.filter((candidate) => ['heartbeat', 'execution_assigned', 'wait_requested', 'execution_terminal', 'session_started', 'session_closed'].includes(candidate.kind))) {
@@ -1800,8 +1951,10 @@ ${executionSections || '_No Execution section can be rendered from the available
 
 ## Collaboration review
 
-| Material | Kind/state | Publisher | Explicit consumers | Recorded downstream effects | Assessment |
-|---|---|---|---|---|---|
+This section follows the collaboration loop: decompose → claim → independent work → deliver → consumer reads → review/rework → resume. A Material is treated as a delivery artifact; it is not treated as useful merely because it exists.
+
+| Material | Kind/state | Producer | Explicit consumers | Recorded downstream effects | Semantic handoff reading | Assessment |
+|---|---|---|---|---|---|---|
 ${collaborationRows || '| _none_ | — | — | — | — | No Material rows available |'}
 
 The assessment labels are deliberately narrow: 'accepted-but-unused' means the authoritative Material state says accepted and no explicit read was found; 'consumed-without-recorded-downstream-effect' means a read was recorded but no later Workspace/Candidate/Judge/review operation was linked. Neither label is a semantic judgment of mathematical value.
@@ -1816,7 +1969,15 @@ Heartbeats are lease activity only. Agent turns, process health, Judge time, IDL
 
 ## Error analysis
 
-The analyzer groups raw Agent, Bridge, Service, and Observation echoes into unique operation-time occurrences. 'occurrence_count' is the estimated number of independent failures; source references show supporting records and are not additional failures.
+Error Analysis prioritizes failures in the Swarm collaboration loop. Low-level Agent, Bridge, and Service errors are supporting evidence; they are not the main conclusion unless they block claim, handoff, feedback, recovery, or cleanup. 'occurrence_count' is the estimated number of independent failures; source references show supporting records and are not additional failures.
+
+### System-level findings
+
+| Severity | Category | Evidence-backed interpretation | Confidence | Validation condition | Evidence |
+|---|---|---|---|---|---|
+${systemFindingRows || '| — | none recorded | No system-level collaboration finding was derived from the available evidence. | — | — | — |'}
+
+### Supporting operation errors
 
 | Severity | Category | Unique occurrences | Supporting records | Operation | Evidence-backed interpretation | Evidence |
 |---|---|---:|---:|---|---|---|
@@ -1839,8 +2000,10 @@ ${optimizationRows || '| — | none | No additional optimization was derived | �
 
 ## Candidate/Judge review
 
-| Candidate/material | Task | Execution | CheckResult | Verdict/status | Diagnostic class | Submitted | Checked | Check elapsed (ms) | Feedback reads | Later observable action | Evidence |
-|---|---|---|---|---|---|---|---|---:|---:|---|---|
+Candidate strategy summaries are bounded by visible Agent objectives, Workspace revision metadata, Material links, and Judge diagnostics. They summarize route changes without copying proof or candidate source. A semantic reviewer should inspect the cited local records when the strategy metadata is sparse.
+
+| Candidate/material | Task | Execution | Visible strategy summary | Change from previous | Feedback response | CheckResult | Verdict/status | Diagnostic class | Submitted | Feedback reads | Later observable action | Evidence |
+|---|---|---|---|---|---|---|---|---|---|---:|---|---|
 ${candidateRows || '| _none_ | — | — | — | — | — | — | — | — | — | — | — |'}
 
 ${repeatedDiagnosticRows ? `### Repeated diagnostic classes

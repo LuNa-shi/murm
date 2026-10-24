@@ -223,3 +223,25 @@ test('resolves an experiment ID under an explicit experiments root', async () =>
     await assert.rejects(() => resolveExperiment('..', { experimentsRoot: root }), /experiment not found|escapes/);
   } finally { await cleanup(root); }
 });
+
+test('models rework as a successor Execution and uses bounded semantic windows', async () => {
+  const root = await createFixture();
+  const dbPath = join(root, 'state', 'projects', 'demo', 'project.sqlite');
+  const db = new DatabaseSync(dbPath);
+  db.prepare('insert into executions values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    'execution-2', TASK, 'agent:core-2', 'RUNNING', 1, 2, 2, 2,
+    'workspace://task/task-root/rework-2', 1, null, null, null, T4, END,
+  );
+  db.close();
+  try {
+    const analysis = await analyzeExperiment(root);
+    const first = analysis.executions.find((item) => item.execution.execution_id === EXECUTION);
+    const second = analysis.executions.find((item) => item.execution.execution_id === 'execution-2');
+    assert.equal(analysis.windowSizeMinutes, 5);
+    assert.equal(first.successor_execution_id, 'execution-2');
+    assert.equal(second.predecessor_execution_id, EXECUTION);
+    assert.equal(second.lifecycle_role, 'rework attempt');
+    assert.ok(first.windows.every((window) => !window.operations.some((operation) => operation.includes('[F-'))));
+    assert.ok(first.windows.every((window) => 'semantic_summary' in window));
+  } finally { await cleanup(root); }
+});

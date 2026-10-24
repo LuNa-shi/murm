@@ -1,145 +1,165 @@
 ---
 name: experiment-analysis
-description: Analyze a completed SwarmEnv experiment from its local traces, reconstruct each Execution, and write an evidence-linked Markdown report with time-window summaries. Use when the user provides an experiment directory or ID and asks what the Agents did, intended, achieved, or where the run stalled.
+description: Analyze a completed SwarmEnv experiment as a semantic operator report. Reconstruct each Agent session as a distinct Execution attempt, summarize bounded work windows, explain collaboration and Candidate route changes, and diagnose system-level Swarm degradation from local evidence.
 ---
 
-# SwarmEnv experiment analysis
+# SwarmEnv semantic experiment analysis
 
-Run the deterministic extractor before doing semantic review. From the repository root, use:
+Use this skill when the user gives an experiment directory or ID and asks what the Agents did, what route they explored, whether collaboration worked, why candidates stagnated, or where the Swarm degraded.
 
-```text
-npm run analyze:experiment -- <experiment-directory-or-id> [--mode full|sanitized]
-```
-
-The command writes `<experiment-directory>/analysis/experiment-analysis.md`. An experiment ID is resolved below the repository's `experiments/` directory; pass `--experiments-root` when the evidence is stored elsewhere. Use `--mode full` only for private local evidence. Use `--mode sanitized` for an export that must not read raw traces or private Workspace contents.
-
-Then review the generated report and the cited source records. Do not treat `report.json` as the source of truth: it is a numerical/sanitized summary. The source of truth for this analysis is the union of the experiment's Agent, Bridge, Runtime, Service, Judge, SQLite, Observation, Workspace, and metadata evidence. The extractor is a stable evidence projection; the skill adds the bounded semantic interpretation and operator follow-up.
-
-The deliverable is a readable report at:
+The deliverable is:
 
 ```text
 <experiment-directory>/analysis/experiment-analysis.md
 ```
 
-Create the `analysis/` directory if needed. Keep raw traces, credentials, candidate/proof contents, and unredacted payloads out of the generated report unless the user explicitly requests a private excerpt and it is safe to include. Prefer source references and bounded summaries.
+Start with the deterministic extractor, then run a semantic summary pass. The extractor establishes the evidence boundary and stable references; the summary pass turns the cited records into a readable operator report. Do not stop at the extractor's event tables.
 
-## Deterministic extraction and semantic review
+From the repository root:
 
-1. Resolve the input and run the analyzer. Do not manually create a report before the command has recorded the evidence boundary.
-2. Read [references/evidence-map.md](references/evidence-map.md) when a source is missing, malformed, or a correlation is unclear.
-3. Read [references/report-template.md](references/report-template.md) before changing the report structure.
-4. Review every Execution section and every time-window table. Open only the cited local records needed to support a high-impact conclusion; do not dump full transcripts into the report.
-5. Add semantic conclusions only with explicit labels: `Fact`, `Derived metric`, `Interpretation`, or `Unknown`. Keep the extractor's source references beside the claim.
-6. Read the **Error analysis** and **Optimization recommendations** sections. Check that each error category separates independent occurrences from supporting duplicate records, states a causal interpretation with confidence, and proposes a validation step.
-7. If the report is incomplete, keep the report and state exactly what is missing. Do not silently rerun with a different evidence boundary or turn a missing log into zero operations.
+```text
+npm run analyze:experiment -- <experiment-directory-or-id> [--mode full|sanitized] [--window-minutes 5|10]
+```
 
-The CLI performs deterministic correlation by stable IDs first and timestamp fallback second. Its windows split at lifecycle, Workspace, Material, Candidate, Judge, wait/wake/review, and terminal changes, and at a 15-minute maximum. Long silent gaps are explicit `no observed event` windows. A window's observed intent must come from an explicit tool/service objective or be `unknown`; never use hidden chain-of-thought.
+The default is `--window-minutes 5`. Use 10 minutes for long runs when a coarser narrative is easier to review. Use `--mode full` only for private local evidence and `--mode sanitized` for an export that must not read raw traces or private Workspace contents.
 
-## Input and evidence boundary
+## Execution is one Agent session and one attempt
 
-Accept either:
+An Execution is one complete Agent session responsible for one Task attempt:
 
-- a direct experiment directory; or
-- an experiment ID, resolved using the repository's experiment root and metadata.
+- it starts when the Agent claims or is assigned the Task and receives/opens its Workspace;
+- it owns the Workspace lineage through its work;
+- it ends when the session hands off/submits its result, reaches a terminal state, or is explicitly stopped;
+- a rework request creates a new Execution with a new identity and attempt;
+- the new Execution is a rework successor, not more activity inside the previous Execution.
 
-Before drawing conclusions, inventory the evidence. Read [references/evidence-map.md](references/evidence-map.md) for the expected locations and correlation rules. Also read the repository SOP at `docs/benchmark-analysis-sop.md` and the relevant source/schema files when a format is unclear.
+The report must show predecessor/successor Execution IDs, attempt numbers, session IDs, and Workspace lineage. Never merge rework attempts into one Execution narrative merely because they share a Task or Workspace ancestry.
 
-Record in the report:
+## Two-pass workflow
 
-- resolved experiment path and ID;
-- problem/project IDs;
-- exact evidence paths and database locations;
-- whether evidence is full local evidence or a sanitized/incomplete export;
-- each evidence class as `present`, `missing`, `malformed`, `empty`, or `not applicable`;
-- the reason a missing or malformed source limits a conclusion.
+1. Resolve the directory or ID and run the analyzer. Never manually invent an evidence boundary.
+2. Inspect the completeness matrix and source warnings. A missing source limits a conclusion; it does not mean zero activity.
+3. Review every Execution attempt and its bounded semantic windows.
+4. For each window, act as a summary Agent:
+   - read only the cited Agent-visible objectives/messages, tool arguments/results, Workspace revisions/diffs or manifests, Material metadata, Candidate metadata, Judge diagnostics, and lifecycle records needed for the conclusion;
+   - write a 5- or 10-minute summary of the work being attempted;
+   - identify the mathematical/research route when the visible evidence supports it;
+   - describe research, editing, candidate construction, feedback processing, collaboration, waiting, or recovery;
+   - state the durable result, next state, handoff, blocker, and uncertainty;
+   - cite the source paths, line/sequence/event IDs, and confidence.
+5. Replace generic metadata-only wording with the semantic summary when the cited local evidence supports a more precise account. Keep the generated event counts as supporting audit data.
+6. Review collaboration and Candidate sections as semantic analyses, not ID inventories.
+7. Review System-level Error Analysis. Prioritize Swarm capacity, serialization, handoff, recovery, feedback-loop, and cleanup failures. Keep isolated tool errors as supporting records unless they block a system loop.
+8. Keep raw traces, hidden chain-of-thought, proof/candidate source, credentials, stdout/stderr, and unrestricted private paths out of the report.
 
-Never turn a missing log into "zero calls" or "no activity". If an event references an unknown Task, Execution, Session, or Core, record an integrity warning and retain the event as an unmatched fact.
+A summary Agent may interpret observable behavior. It must never claim access to hidden model reasoning. If the route or intent is not visible, write `unknown` and explain which evidence is missing.
 
-## Evidence reconstruction
+## Semantic work windows
 
-Build a chronological normalized view without changing domain ownership:
+The analyzer defaults to five-minute windows. It may split earlier at a meaningful lifecycle or objective change:
 
-1. Read report/metadata only to discover run identity, projects, paths, versions, and summary values.
-2. Read Task/Execution/Material/CheckResult state from SQLite or the authoritative Service records.
-3. Read Agent RPC/session records for prompts, assistant-visible messages, tool calls, tool results, process diagnostics, and session boundaries.
-4. Read Bridge, Runtime, Service, and Judge records for operation envelopes, results, failures, state transitions, waits, wakes, releases, checks, and recovery.
-5. Read Workspace manifests/revisions to connect file state and lineage to an Execution.
-6. Join records by stable IDs first: `experiment_id`, `task_id`, `execution_id`, `session_id`, `core_id`, operation/correlation ID, Material ID, Candidate ID, and CheckResult ID. Use timestamps only as a documented fallback.
-7. Preserve an audit reference for every important fact: source path, line or sequence/event ID, timestamp, and related IDs.
+- Task claim/assignment or Task state transition;
+- Candidate submission or Judge result;
+- parent review, rework, wake, resume, or terminal state;
+- a concrete change from exploration to candidate construction, feedback processing, handoff, or waiting.
 
-Do not infer that a Material was useful merely because it was published or read. Do not infer Goal progress from a Task acceptance, heartbeat, turn count, Material count, or `made_progress=true`. State only the explicit downstream effect that the traces show; otherwise report `no recorded downstream effect` or `unknown`.
+Do not make heartbeat, turn, read, or Service-call rows the primary narrative. Each window must contain:
 
-## Per-Execution time-window summaries
-
-Every Execution gets a narrative and a time-window table. A window is a bounded period in which the Execution has one coherent operational phase. Use these deterministic boundaries:
-
-- start at the first observed event for the Execution;
-- split at claim/assignment, Session or Core handoff, Task state transition, Workspace revision, Material publication or explicit consumption, Candidate submission, Judge result, wait/wake/resume/rework/review, terminal event, or a material change of operational objective;
-- split long continuous periods at a 15-minute maximum window by default, keeping the original timestamps;
-- preserve silent gaps as explicit `no observed event` intervals rather than attaching them to the preceding action;
-- if only one or two events exist, keep one short window and say that the evidence is sparse.
-
-For each window write:
-
-| Field | Required content |
+| Field | Required question |
 | --- | --- |
-| Time | Actual start/end timestamps and duration; identify an evidence gap if applicable |
-| Operations | Concrete tools, Service calls, reads/writes, publications, submissions, waits, or process events |
-| Observed intent | The external objective visible in the Task/Agent message/tool arguments, e.g. `inspect child feedback` or `submit candidate`; never hidden chain-of-thought |
-| Intent basis/confidence | Evidence references and `high`, `medium`, or `low`; use `unknown` if no objective is visible |
-| Result | State/artifact/feedback/error that actually followed |
-| Next state | Task/Execution/Workspace/Judge state after the window |
-| Handoff/blocker | Explicit consumer, wait condition, error, missing evidence, or `none recorded` |
+| Time | What bounded interval is covered? |
+| Phase | What kind of work was happening? |
+| Semantic summary | What route, question, or operational objective was being pursued? |
+| Route change | Did the approach change relative to the previous window/Candidate? |
+| Durable changes | What Workspace, Material, Candidate, Judge, Task, or lifecycle state changed? |
+| Result | What actually followed? |
+| Next state/handoff | Who or what should act next? |
+| Evidence/confidence | Which visible records support it, and how certain is the interpretation? |
 
-Intent is an evidence-backed interpretation of observable behavior, not a claim about private model reasoning. Prefer labels such as `discover`, `claim`, `inspect`, `decompose`, `research`, `edit workspace`, `publish material`, `submit/check candidate`, `process feedback`, `review/rework`, `wait/coordinate`, `recover`, or `retry`. Quote or copy only short safe metadata; summarize long messages instead of exporting them.
+A silent interval is an explicit evidence gap. Never attach it to the prior action or convert it into “no work”.
 
-A window's result must distinguish:
+## Collaboration review
 
-- no state change;
-- a durable state change;
-- feedback received;
-- an error returned and whether later activity followed;
-- a handoff or wait persisted;
-- an unresolved/no-observed-effect outcome.
+Explain the collaboration loop:
 
-## Report structure
+```text
+decompose → claim → independent work → deliver → consumer reads
+→ review/rework → resume
+```
 
-Use the template in [references/report-template.md](references/report-template.md). At minimum include:
+For every meaningful delivery, answer:
 
-1. **Executive conclusion**: what the run demonstrated, what it did not demonstrate, and the confidence/limitations.
-2. **Evidence boundary**: completeness matrix, provenance, privacy mode, and integrity warnings.
-3. **Run overview**: project outcomes and supporting metrics, with links back to concrete evidence.
-4. **Task/Execution inventory**: Root/Child graph, attempts, owners, Sessions, Cores, Workspace lineage, and terminal states.
-5. **Per-Execution analysis**: metadata, time-window summaries, artifacts, Service interactions, errors, waits, handoffs, and unresolved questions.
-6. **Collaboration review**: only explicit delivery, read/consumption, downstream action, Candidate/Workspace effect, and Judge effect. Separate accepted-but-unused from consumed-without-recorded-effect.
-7. **Scheduling/health review**: Core/session/runtime facts, idle/wait/turn/Judge intervals, ready-work evidence, and any unexplained gaps. Do not call an unexplained gap a scheduler bug.
-8. **Error analysis**: deduplicated Service/Agent failures, causal interpretation, impact, confidence, and source references.
-9. **Optimization recommendations**: prioritized next actions with explicit validation conditions.
-10. **Candidate/Judge review**: ordered candidate/check sequence, diagnostics, Workspace lineage, feedback reads, and whether later behavior changed.
-11. **Conclusions and follow-up**: observed facts, deterministic derivations, interpretations, unknowns, and concrete next investigations.
+- who produced it and who should consume it;
+- what question, route, or result was handed off;
+- whether the expected consumer actually read it;
+- what that consumer did next;
+- whether the handoff changed Task, Workspace, Candidate, Judge, or review state;
+- whether the loop closed, became one-way delivery, remained unused, or is unknown because evidence is missing.
 
-Use tables for inventories and windows; use prose only for conclusions that cite the tables. Every conclusion that matters must have one or more evidence references.
+Publication, acceptance, or a Material count alone is not collaboration success.
 
-## Analysis rules
+## Candidate/Judge semantic review
 
-- Separate **fact**, **derived metric**, **interpretation**, and **unknown** with explicit labels.
-- An Agent's stated task or tool objective is observable intent. Do not claim access to hidden chain-of-thought.
-- A published Material is an artifact, not automatically progress. A completed child is local completion, not automatically Root progress.
-- A Judge FAIL is feedback and a PASS is a verified checker result; neither alone proves the Agent used the feedback or that a route was mathematically useful.
-- Heartbeats prove lease activity only. Turn counts and file reads prove activity only. Count them separately from durable progress.
-- A missing source limits the conclusion; it does not prove the corresponding event did not occur.
-- Treat ordinary Service errors as evidence to analyze, not automatically as protocol invalidity. Preserve the actual error class and subsequent behavior.
-- Do not copy raw transcript, proof/candidate source, credentials, stdout/stderr, or unrestricted private paths into a report intended for sharing.
-- Do not modify the experiment's domain databases or raw evidence. Only write the analysis output and optional derived manifest under `analysis/`.
+For each Candidate, summarize the route at the level supported by evidence:
+
+- the visible proof/solution strategy and major sub-step, without copying source;
+- Workspace or Material changes relative to the previous Candidate;
+- Judge feedback in operator language;
+- whether feedback was explicitly read;
+- whether the next Candidate responds to that feedback;
+- repeated unchanged routes, superficial edits, or meaningful route changes;
+- later review, rework, or Workspace action.
+
+A PASS is a checker result. A FAIL is feedback. Neither proves mathematical usefulness by itself. If candidate source or route evidence is unavailable, say so and retain the Candidate as an unresolved semantic question.
+
+## System-level Error Analysis
+
+Rank failures in the Swarm operating model before isolated call errors. Check for:
+
+- low effective Core occupancy or available capacity left unused;
+- ready work with no owner;
+- serial Execution despite independent work and free Cores;
+- claim contention and quota waste;
+- repeated discovery or duplicate work;
+- child delivery without parent consumption;
+- waiting that does not release capacity or wake the right owner;
+- wake/resume/rework failures;
+- repeated Judge diagnostics without a route change;
+- timebox or cleanup truncation;
+- protocol/lifecycle failures blocking collaboration.
+
+For every finding state:
+
+- observed trace pattern;
+- affected Tasks, Executions, and Cores;
+- operational impact;
+- confidence and competing explanations;
+- a concrete validation condition for the next run.
+
+Do not call a scheduler defect from an unexplained gap. Separate deterministic facts, derived metrics, interpretation, and unknowns.
+
+## Evidence and privacy rules
+
+The source of truth is the union of metadata, Agent, Bridge, Runtime, Service, Judge, SQLite/state, Observation, Workspace, and summary evidence. `report.json` is supporting numerical evidence only.
+
+Join by stable IDs first: experiment, Task, Execution, Session, Core, operation/correlation, Material, Candidate, CheckResult, and Workspace revision IDs. Use timestamp fallback only when no stable ID exists and label the fallback.
+
+Record every evidence class as `present`, `missing`, `malformed`, `empty`, or `not applicable`. Preserve unmatched references as integrity warnings.
+
+Do not modify raw evidence or domain databases. Write only the analysis report and optional derived data under `analysis/`. Reports intended for sharing must not contain raw transcript, hidden chain-of-thought, proof/candidate source, credentials, authorization headers, stdout/stderr, or unrestricted absolute paths.
 
 ## Finish criteria
 
 Before returning:
 
-1. Confirm the deterministic CLI completed and the report is under the supplied experiment directory.
-2. Confirm there is one section for every discovered Execution, including Executions with sparse or missing evidence.
-3. Confirm every high-impact conclusion has source references.
-4. Confirm missing/malformed evidence is visible in the completeness matrix.
-5. Confirm each Execution has at least one time-window summary, with operations, observed intent, result, and next state.
-6. Confirm privacy rules are preserved.
-7. State whether the report is complete enough for semantic conclusions or is diagnostic-only because of evidence gaps.
+- the deterministic CLI completed and the report exists under the supplied experiment;
+- each discovered Execution attempt, including sparse or reworked attempts, has its own section;
+- windows are 5 or 10 minutes by configuration and contain semantic summaries;
+- rework is represented as a new Execution with predecessor/successor links;
+- Collaboration Review explains producers, consumers, handoffs, and loop closure;
+- Candidate/Judge Review explains route changes and feedback response;
+- System-level Error Analysis covers capacity, serialization, handoff, feedback, recovery, and cleanup where evidence supports them;
+- high-impact conclusions have source references and confidence;
+- missing/malformed evidence is visible;
+- privacy rules are preserved;
+- the report states whether it is semantically complete or diagnostic-only because of evidence gaps.
