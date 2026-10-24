@@ -1191,6 +1191,7 @@ async function createProjectState(problem, config, options) {
       timeoutMs: options.checkerTimeoutMs ?? 120_000,
     }),
   });
+  taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
   const router = new ServicesRouter({ taskService, contextService, judgeService, logger: routerLogger });
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });

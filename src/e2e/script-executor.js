@@ -70,6 +70,7 @@ export function createScriptFixtureEnvironment({ database = ':memory:', rootDir,
         }),
       };
   const judgeService = new JudgeService(databaseConnection, { checker: normalizedChecker });
+  taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
   const router = new ServicesRouter({ taskService, contextService });
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const agentAdapter = new ScriptAgentAdapter();

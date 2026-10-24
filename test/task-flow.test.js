@@ -50,6 +50,7 @@ function environment({ checker = null } = {}) {
         }),
       },
   });
+  taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
   const router = new ServicesRouter({ taskService, contextService });
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   return { database, contextService, taskService, judgeService, router, sdk };

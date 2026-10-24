@@ -81,7 +81,7 @@ function requireString(value, field) {
 }
 
 export class TaskService {
-  constructor(database = ':memory:', { contextService = null, logger = null } = {}) {
+  constructor(database = ':memory:', { contextService = null, checkerHealthReader = null, logger = null } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(SCHEMA_SQL);
     // Older MVP databases made execution_id unique in claim_keys. A waiting
@@ -128,11 +128,19 @@ export class TaskService {
     this.db.exec('DROP INDEX IF EXISTS executions_one_active_per_task');
     ensureJudgeSchema(this.db);
     this.contextService = contextService;
+    this.checkerHealthReader = null;
+    this.setCheckerHealthReader(checkerHealthReader);
     this.logger = logger;
   }
 
   close() {
     this.db.close();
+  }
+
+  setCheckerHealthReader(reader) {
+    if (reader !== null && typeof reader !== 'function') throw new TypeError('checkerHealthReader must be a function or null');
+    this.checkerHealthReader = reader;
+    return this;
   }
 
   dispatch(operation, payload = {}, envelope) {
@@ -1092,7 +1100,10 @@ export class TaskService {
       return Boolean(result && ['RECEIVED', 'APPLIED', 'IGNORED'].includes(result.status));
     }
     if (condition.type === 'checker_health') {
-      const health = this.db.prepare('SELECT status, health_fingerprint FROM checker_preflights WHERE preflight_key = ?').get(condition.preflight_key);
+      // Judge owns checker health persistence. Task Service receives a small
+      // read seam from the composition root instead of reaching into the
+      // Judge schema directly.
+      const health = this.checkerHealthReader?.(condition.preflight_key) ?? null;
       if (!health) return false;
       // A checker-health wait is a health gate, not a timer.  The same
       // unavailable fingerprint must not wake the Execution and submit the
