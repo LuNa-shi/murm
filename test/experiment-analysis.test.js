@@ -224,7 +224,7 @@ test('resolves an experiment ID under an explicit experiments root', async () =>
   } finally { await cleanup(root); }
 });
 
-test('models rework as a successor Execution and uses bounded semantic windows', async () => {
+test('keeps durable Execution identity explicit and uses bounded semantic windows', async () => {
   const root = await createFixture();
   const dbPath = join(root, 'state', 'projects', 'demo', 'project.sqlite');
   const db = new DatabaseSync(dbPath);
@@ -240,7 +240,7 @@ test('models rework as a successor Execution and uses bounded semantic windows',
     assert.equal(analysis.windowSizeMinutes, 5);
     assert.equal(first.successor_execution_id, 'execution-2');
     assert.equal(second.predecessor_execution_id, EXECUTION);
-    assert.equal(second.lifecycle_role, 'rework attempt');
+    assert.equal(second.lifecycle_role, 'later Execution for the same Task (rework relation unconfirmed)');
     assert.ok(first.windows.every((window) => !window.operations.some((operation) => operation.includes('[F-'))));
     assert.ok(first.windows.every((window) => 'semantic_summary' in window));
   } finally { await cleanup(root); }

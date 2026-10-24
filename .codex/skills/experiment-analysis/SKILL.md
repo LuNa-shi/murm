@@ -23,17 +23,22 @@ npm run analyze:experiment -- <experiment-directory-or-id> [--mode full|sanitize
 
 The default is `--window-minutes 5`. Use 10 minutes for long runs when a coarser narrative is easier to review. Use `--mode full` only for private local evidence and `--mode sanitized` for an export that must not read raw traces or private Workspace contents.
 
-## Execution is one Agent session and one attempt
+## Execution identity and rework
 
-An Execution is one complete Agent session responsible for one Task attempt:
+Use the authoritative durable `Execution` ID as the report identity. An Agent
+`Session` and a Core assignment are separate segments: wait/resume, Core reuse,
+or a valid in-place parent rework may keep the same Execution ID. A new
+Execution ID is a separate attempt and may be shown as a successor only when a
+durable relation or explicit lifecycle evidence supports that reading. Do not
+infer rework from same-Task creation order alone.
 
-- it starts when the Agent claims or is assigned the Task and receives/opens its Workspace;
-- it owns the Workspace lineage through its work;
-- it ends when the session hands off/submits its result, reaches a terminal state, or is explicitly stopped;
-- a rework request creates a new Execution with a new identity and attempt;
-- the new Execution is a rework successor, not more activity inside the previous Execution.
-
-The report must show predecessor/successor Execution IDs, attempt numbers, session IDs, and Workspace lineage. Never merge rework attempts into one Execution narrative merely because they share a Task or Workspace ancestry.
+This preserves the repository domain model while answering the operator's
+question. Each Execution section explains the complete observable attempt,
+including Session/Core segments, Workspace lineage, checkpoint, feedback,
+handoff, and terminal result. The report must show Execution ID, attempt number,
+Session IDs, segment boundaries, Workspace lineage, and any explicit
+predecessor/successor relation. A rework *event* is reported inside the durable
+Execution when the Task Service updates that Execution in place.
 
 ## Two-pass workflow
 
@@ -112,6 +117,45 @@ For each Candidate, summarize the route at the level supported by evidence:
 
 A PASS is a checker result. A FAIL is feedback. Neither proves mathematical usefulness by itself. If candidate source or route evidence is unavailable, say so and retain the Candidate as an unresolved semantic question.
 
+## Analysis hierarchy: three operational layers plus two cross-cutting lenses
+
+Use this top-down order in every report:
+
+1. **Coordination Layer** — public-service health and collaboration contracts.
+   Check service availability, completion/error rates, state consistency,
+   idempotency, Task supply and claim/lease transitions, ready-but-unassigned
+   work, Context/Material publication and consumption, Workspace/checkpoint
+   lineage, Judge/checker handoff, and the full `decompose → claim → deliver →
+   consume → review/rework → resume` loop. Required inputs are
+   Service/Bridge records, Task/Execution/Material/Workspace tables, stable
+   operation IDs, parent/child links, and consumer/review evidence.
+2. **Execution Layer** — one durable Execution attempt from initial context to
+   result. Check initial prompt and frozen context, Workspace initialization and
+   isolation, Session/Core binding, RUNNING/WAITING/IDLE segments, retries and
+   recovery, checkpoint save/restore, wake/resume/rework, terminal state, and
+   5/10-minute semantic phase progression. Required inputs are prompt/context
+   metadata, Workspace manifests/revisions, Runtime segments, Agent-visible
+   objectives, lifecycle events, Judge feedback, and output/candidate records.
+3. **Tool Layer** — provider, tool, and checker contracts. Measure
+   provider/transport error rate and latency, invalid tool use, response schema
+   completeness, idempotency, and whether errors contain an accurate code,
+   actionable message, and correlation ID. Review Judge/checker diagnostics for
+   classification accuracy and whether the Agent read and acted on feedback.
+   Required inputs are Agent tool records, Bridge/Service results, provider
+   error fields, Judge/checker CheckResults, and feedback-read events.
+
+Add two cross-cutting lenses rather than forcing them into a service layer:
+
+- **System Efficiency & Health** — configured versus effective Core occupancy,
+  concurrency, ready work, claim contention, capacity release, WAITING/IDLE/
+  Judge/scheduler time, wake/resume, cleanup, and serial degradation. Use
+  Runtime RUNNING intervals and ready-queue evidence; label
+  Execution-duration occupancy as a proxy when those sources are absent.
+- **Evidence & Outcome** — completeness, provenance, privacy, and integrity;
+  separate protocol/lifecycle success, collaboration success, and domain or
+  mathematical success. Missing evidence produces an Unknown/limitation rather
+  than a failure claim.
+
 ## System-level Error Analysis
 
 Rank failures in the Swarm operating model before isolated call errors. Check for:
@@ -155,7 +199,9 @@ Before returning:
 - the deterministic CLI completed and the report exists under the supplied experiment;
 - each discovered Execution attempt, including sparse or reworked attempts, has its own section;
 - windows are 5 or 10 minutes by configuration and contain semantic summaries;
-- rework is represented as a new Execution with predecessor/successor links;
+- rework events are represented against the authoritative Execution; a new
+  Execution gets predecessor/successor links only when durable evidence records
+  a distinct successor;
 - Collaboration Review explains producers, consumers, handoffs, and loop closure;
 - Candidate/Judge Review explains route changes and feedback response;
 - System-level Error Analysis covers capacity, serialization, handoff, feedback, recovery, and cleanup where evidence supports them;

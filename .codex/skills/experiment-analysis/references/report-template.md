@@ -26,9 +26,24 @@ Show project outcomes and supporting metrics, then list Tasks and Execution atte
 - terminal state;
 - evidence references.
 
-An Execution is one complete Agent session for one Task attempt. Rework is a new Execution.
+The authoritative durable Execution is distinct from an Agent Session. A
+wait/resume, Core handoff, or valid in-place parent rework remains one
+Execution; a new Execution ID is a separate attempt only when durable evidence
+records it. Do not infer rework from same-Task row order.
 
-## 4. Per-Execution semantic work windows
+## 4. Coordination layer
+
+Report public-service availability, completion/error rates, state consistency,
+idempotency, Task queue supply and claim transitions, ready-but-unassigned work,
+Context/Material publication and consumption, Workspace/checkpoint lineage,
+Judge/checker handoff, and the full collaboration loop:
+
+`decompose → claim → independent work → deliver → consumer reads → review/rework → resume`.
+
+For each service include the observed calls, failed finishes, latency/error
+limits when available, affected entities, and unknowns caused by missing sources.
+
+## 5. Execution layer: semantic work windows
 
 Create one section for every Execution attempt, including sparse, waiting, failed, superseded, and reworked attempts.
 
@@ -47,7 +62,7 @@ Use 5-minute windows by default or 10-minute windows when configured. Split earl
 
 Supporting event counts may appear below the narrative. Millisecond-level call listings are audit evidence, not the main report.
 
-## 5. Collaboration review
+## 6. Collaboration review
 
 Follow:
 
@@ -55,7 +70,7 @@ Follow:
 
 For each delivery explain producer, expected consumer, semantic handoff, actual read, downstream action, state effect, and whether the loop closed. Distinguish closed collaboration, one-way delivery, unused result, consumed-without-effect, and unknown.
 
-## 6. Candidate/Judge semantic review
+## 7. Candidate/Judge semantic review
 
 For every Candidate show:
 
@@ -70,18 +85,39 @@ For every Candidate show:
 
 Never copy proof/candidate source into a shareable report.
 
-## 7. Scheduling and system-level health
+## 8. Tool layer
+
+Measure provider/transport errors, invalid tool use, response-schema quality,
+idempotency, and actionable error fields (code, message, correlation ID).
+Review Judge/checker diagnostic accuracy and whether the Agent read and acted on
+feedback. Keep tool-call volume as supporting evidence rather than a work
+summary.
+
+## 9. System efficiency and health
 
 Separate Core assignment/release, Runtime RUNNING/WAITING/IDLE, Agent turns, Judge time, scheduler polling, and heartbeat lease activity. Report low capacity, serial execution, ready-unassigned work, claim contention, handoff loss, wake/resume failure, and cleanup truncation only when the trace supports them.
 
-## 8. Error analysis
+Keep configured capacity separate from effective work: Core occupancy,
+concurrency, ready-but-unassigned work, claim contention, capacity release,
+WAITING/IDLE/Judge/scheduler time, wake/resume, serial degradation, and cleanup.
+Use Runtime RUNNING and queue intervals where available; call duration-based
+occupancy a proxy otherwise. A missing source is an Unknown/limitation, not a
+scheduler failure.
+
+## 10. Error analysis
 
 Lead with system-level Swarm findings. For each finding include observed pattern, affected Tasks/Executions/Cores, impact, confidence, competing explanations, validation condition, and evidence. List isolated Agent/Service/tool errors afterward as supporting records.
 
-## 9. Optimization recommendations
+## 11. Evidence, outcome, and optimization
+
+Separate evidence completeness/provenance/privacy from outcomes. Report
+protocol/lifecycle validity, collaboration closure, and domain or mathematical
+success as different conclusions.
+
+## 12. Optimization recommendations
 
 Prioritize proposed next actions and state a validation condition for each. Recommendations are not proof of a current code defect.
 
-## 10. Conclusions and follow-up
+## 13. Conclusions and follow-up
 
 Separate facts, derived metrics, interpretations, unknowns, evidence limitations, and concrete operator actions. State whether the report supports semantic conclusions or is diagnostic-only.

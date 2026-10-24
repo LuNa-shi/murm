@@ -9,7 +9,6 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 const DEFAULT_MAX_WINDOW_MS = 5 * 60 * 1000;
 const SILENT_GAP_MS = 5 * 60 * 1000;
 const MAX_SOURCE_ERRORS = 20;
-const MAX_OPERATIONS_PER_WINDOW = 14;
 
 const EVIDENCE_CLASSES = [
   'metadata', 'agent', 'bridge', 'runtime', 'service', 'judge', 'sqlite',
@@ -1254,6 +1253,7 @@ function semanticSummary(facts, previousWindow = null) {
     route_change: 'unknown',
     durable_changes: [],
     event_counts: {},
+    confidence: 'unknown',
   };
   const counts = {};
   for (const fact of facts) counts[fact.kind] = (counts[fact.kind] ?? 0) + 1;
@@ -1268,9 +1268,9 @@ function semanticSummary(facts, previousWindow = null) {
   if (material && phase === 'research and collaboration handoff') summary += ' The observable handoff involved shared Material or a child Task.';
   if (previousWindow?.semantic_phase && previousWindow.semantic_phase !== phase) return {
     phase, summary: `The activity changed from ${previousWindow.semantic_phase} to ${phase}. ${summary}`,
-    route_change: 'objective or lifecycle phase changed', durable_changes: durable, event_counts: counts,
+    route_change: 'objective or lifecycle phase changed', durable_changes: durable, event_counts: counts, confidence: durable.length ? 'high' : 'medium',
   };
-  return { phase, summary, route_change: 'no explicit route change observed', durable_changes: durable, event_counts: counts };
+  return { phase, summary, route_change: 'no explicit route change observed', durable_changes: durable, event_counts: counts, confidence: durable.length ? 'medium' : 'low' };
 }
 
 function makeWindow(facts, startMs, endMs, { gap = false, previousWindow = null } = {}) {
@@ -1286,6 +1286,7 @@ function makeWindow(facts, startMs, endMs, { gap = false, previousWindow = null 
     route_change: semantic.route_change,
     durable_changes: semantic.durable_changes,
     event_counts: semantic.event_counts,
+    semantic_confidence: semantic.confidence,
     observed_intent: intent.label,
     intent_basis: intent.basis,
     intent_confidence: intent.confidence,
@@ -1389,7 +1390,7 @@ function executionInventory(model, facts, experimentEnd, maxWindowMs = DEFAULT_M
       execution,
       facts: executionFacts,
       windows: buildWindows(execution, executionFacts, experimentEnd, maxWindowMs),
-      lifecycle_role: predecessor || successor ? 'rework attempt' : 'initial or only attempt',
+      lifecycle_role: predecessor || successor ? 'later Execution for the same Task (rework relation unconfirmed)' : 'initial or only Execution',
       predecessor_execution_id: predecessor?.execution_id ?? null,
       successor_execution_id: successor?.execution_id ?? null,
       counts: Object.fromEntries([...new Set(executionFacts.map((fact) => fact.kind))].sort().map((kind) => [kind, executionFacts.filter((fact) => fact.kind === kind).length])),
@@ -1523,6 +1524,14 @@ function buildErrorAnalysis(facts) {
 
 function buildSystemFindings(analysis) {
   const findings = [];
+  const scopeForExecutions = (executionIds) => {
+    const rows = analysis.executions.filter((item) => executionIds.includes(item.execution.execution_id));
+    return {
+      affected_tasks: [...new Set(rows.map((item) => item.execution.task_id).filter(Boolean))],
+      affected_executions: [...new Set(executionIds)],
+      affected_cores: [...new Set(rows.flatMap((item) => item.coreIds))],
+    };
+  };
   const configuredCores = Number(analysis.inventory.metadata?.experiment?.protocol?.core_count ?? 0);
   const start = timeMs(analysis.aggregate.started_at);
   const end = timeMs(analysis.aggregate.ended_at);
@@ -1538,10 +1547,11 @@ function buildSystemFindings(analysis) {
     maxOverlap = Math.max(maxOverlap, overlap);
   }
   if (configuredCores > 1 && executionIntervals.length && maxOverlap <= 1) findings.push({
-    severity: 'high', category: 'serialized_swarm', title: 'Available Core capacity was not reflected in overlapping Executions',
+    severity: 'medium', category: 'serial-or-supply-limited', title: 'Configured Core capacity was not reflected in overlapping Executions',
     interpretation: `The authoritative Execution intervals overlap at most ${maxOverlap} at a time while ${configuredCores} Cores were configured. This is a system-level serialization signal; the trace does not by itself identify whether the cause was insufficient ready work, claim policy, or Agent behavior.`,
     validation: 'Run with the same workload and record ready-work, claim, and Core assignment intervals; require at least two independent Tasks to overlap before labeling scheduling defective.',
-    evidence: executionIntervals.map((item) => item.execution.source?.ref).filter(Boolean), confidence: 'medium',
+    ...scopeForExecutions(executionIntervals.map((item) => item.execution.execution_id)),
+    evidence: executionIntervals.map((item) => item.execution.source).filter(Boolean), confidence: 'medium',
   });
   if (configuredCores > 1 && elapsed !== null && executionIntervals.length) {
     const coreMs = executionIntervals.reduce((sum, item) => sum + Math.max(0, item.end - item.start) * Math.max(1, analysis.executions.find((row) => row.execution.execution_id === item.execution.execution_id)?.coreIds.length ?? 1), 0);
@@ -1550,23 +1560,68 @@ function buildSystemFindings(analysis) {
       severity: 'medium', category: 'low_core_occupancy', title: 'Core occupancy proxy stayed below half of configured capacity',
       interpretation: `The derived Execution-duration proxy is ${(proxy * 100).toFixed(1)}% of configured Core capacity. This is a supply/dispatch diagnostic, not proof of wasted Agent time because IDLE, WAITING, Judge, and ready-work intervals are not all represented by Execution duration.`,
       validation: 'Compare Runtime RUNNING intervals, ready-unassigned time, and Task supply before changing scheduler policy.',
+      ...scopeForExecutions(analysis.executions.map((row) => row.execution.execution_id)),
       evidence: analysis.executions.flatMap((row) => row.sources).slice(0, 8), confidence: 'low',
     });
   }
   const noConsumer = analysis.collaboration.filter((row) => row.assessment === 'no recorded consumer');
-  if (noConsumer.length) findings.push({
-    severity: 'high', category: 'delivery_without_consumption', title: 'Child or Material delivery did not close the consumer loop',
+  if (noConsumer.length) {
+    const executionIds = noConsumer.map((row) => row.publisher.execution_id).filter(Boolean);
+    findings.push({
+    severity: 'medium', category: 'delivery_without_consumption', title: 'Child or Material delivery has no recorded consumer',
     interpretation: `${noConsumer.length} Material(s) have no recorded consumer. This is a collaboration-loop failure or an evidence gap; it is not a judgment that the content was mathematically useless.`,
     validation: 'Require an explicit parent read and review/rework decision for each child delivery, then compare root progress after the read.',
+    ...scopeForExecutions(executionIds),
     evidence: noConsumer.map((row) => row.published_evidence).slice(0, 12), confidence: 'medium',
-  });
+    });
+  }
   if (analysis.candidates.repeated_diagnostics.length) findings.push({
     severity: 'high', category: 'feedback_loop_no_route_change', title: 'Repeated Judge diagnostics did not produce a recorded route change',
     interpretation: `The same diagnostic class repeats for ${analysis.candidates.repeated_diagnostics.map((row) => `${row.task_id} (${row.count})`).join(', ')}. Candidate checking continued, but the available metadata does not show a meaningful strategy change.`,
     validation: 'Require each repeated diagnostic to be followed by a changed Workspace route, parent review, or bounded research Task before another submission.',
+    ...scopeForExecutions(analysis.candidates.rows.filter((row) => analysis.candidates.repeated_diagnostics.some((diagnostic) => diagnostic.task_id === row.task_id)).map((row) => row.execution_id).filter(Boolean)),
     evidence: analysis.candidates.repeated_diagnostics.flatMap((row) => row.evidence).slice(0, 12), confidence: 'medium',
   });
   return findings;
+}
+
+function buildServiceAnalysis(facts) {
+  const rows = new Map();
+  for (const fact of facts.filter((item) => ['service_call_started', 'service_call_finished'].includes(item.kind))) {
+    const service = fact.summary?.service ?? 'unknown service';
+    const row = rows.get(service) ?? { service, started: 0, finished: 0, failed: 0, operations: new Set(), evidence: new Set() };
+    if (fact.kind === 'service_call_started') row.started += 1;
+    else {
+      row.finished += 1;
+      if (fact.summary?.ok === false || fact.summary?.error || errorInfo(fact)) row.failed += 1;
+    }
+    if (fact.operation) row.operations.add(fact.operation);
+    for (const source of fact.sources) row.evidence.add(source);
+    rows.set(service, row);
+  }
+  return [...rows.values()].sort((a, b) => a.service.localeCompare(b.service)).map((row) => ({
+    ...row,
+    operations: [...row.operations].sort(),
+    evidence: [...row.evidence].slice(0, 8),
+    observed_failure_rate: row.finished ? row.failed / row.finished : null,
+  }));
+}
+
+function buildToolAnalysis(analysis) {
+  const toolFacts = analysis.facts.filter((fact) => fact.kind === 'tool_call');
+  const toolErrors = toolFacts.filter((fact) => fact.summary?.outcome === 'error' || errorInfo(fact));
+  const checks = analysis.model.checks.length ? analysis.model.checks : analysis.facts.filter((fact) => ['judge_result', 'judge_check', 'judge_check_record'].includes(fact.kind));
+  const diagnostics = checks.filter((check) => (check.diagnostic_class ?? check.evidence?.diagnostic ?? check.verdict) && check.verdict !== 'PASS');
+  const providerErrors = analysis.errors.filter((error) => /provider|transport|timeout|rate|upstream/i.test(`${error.category} ${error.code ?? ''} ${error.operation}`));
+  return {
+    tool_calls: toolFacts.length,
+    tool_errors: toolErrors.length,
+    provider_error_occurrences: providerErrors.reduce((sum, error) => sum + error.occurrence_count, 0),
+    judge_checks: checks.length,
+    judge_non_pass: diagnostics.length,
+    judge_diagnostic_classes: [...new Set(diagnostics.map((check) => check.diagnostic_class ?? 'unknown'))].sort(),
+    evidence: [...new Set([...toolFacts, ...checks].flatMap((fact) => fact.sources))].slice(0, 12),
+  };
 }
 
 function buildCandidateAnalysis(model, facts) {
@@ -1587,7 +1642,7 @@ function buildCandidateAnalysis(model, facts) {
     const visibleRevisions = facts.filter((fact) => fact.executionId === check.execution_id && fact.kind === 'workspace_revision' && timeMs(fact.at) !== null && start !== null && timeMs(fact.at) <= start).slice(-3);
     const changedFiles = [...new Set(visibleRevisions.flatMap((fact) => array(fact.summary?.changed_files)))].slice(0, 8);
     const strategySummary = changedFiles.length
-      ? `The visible Workspace change touched ${changedFiles.join(', ')}; proof semantics are summarized only from observable metadata.`
+      ? `The visible Workspace revision reports ${changedFiles.length} changed file(s); file names and proof contents are omitted from the shareable report.`
       : 'No bounded strategy metadata was recorded; a semantic reviewer must inspect the cited Agent objective and Workspace revision references.';
     const previousCheck = index > 0 ? orderedChecks[index - 1] : null;
     const previous = previousCheck ? {
@@ -1646,16 +1701,16 @@ function buildCandidateAnalysis(model, facts) {
     const key = `${row.task_id}|${row.diagnostic_class}`;
     diagnosticCounts[key] = (diagnosticCounts[key] ?? 0) + 1;
   }
-  const repeated = Object.entries(diagnosticCounts).filter(([, count]) => count >= 2).map(([key, count]) => {
+  const repeated = Object.entries(diagnosticCounts).filter(([key, count]) => !key.endsWith('|unknown') && count >= 2).map(([key, count]) => {
     const [task_id, diagnostic_class] = key.split('|');
     return { task_id, diagnostic_class, count, evidence: rows.filter((row) => row.task_id === task_id && row.diagnostic_class === diagnostic_class).flatMap((row) => row.evidence).slice(0, 12) };
   });
   return {
     rows,
     pass_count: rows.filter((row) => row.verdict === 'PASS').length,
-    fail_count: rows.filter((row) => row.verdict !== 'PASS').length,
+    fail_count: rows.filter((row) => !['PASS', 'unknown', 'no recorded CheckResult'].includes(row.verdict)).length,
     repeated_diagnostics: repeated,
-    all_failed: rows.length > 0 && rows.every((row) => row.verdict !== 'PASS'),
+    all_failed: rows.length > 0 && rows.every((row) => !['PASS', 'unknown', 'no recorded CheckResult'].includes(row.verdict)),
   };
 }
 
@@ -1814,6 +1869,8 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
   analysis.terminal = buildTerminalAnalysis(analysis);
   analysis.optimizations = buildOptimizationRecommendations(analysis);
   analysis.systemFindings = buildSystemFindings(analysis);
+  analysis.serviceAnalysis = buildServiceAnalysis(allFacts);
+  analysis.toolAnalysis = buildToolAnalysis(analysis);
   analysis.conclusions = deriveConclusions(analysis);
   const report = renderMarkdown(analysis);
   const reportPath = resolve(outputPath ?? join(root, 'analysis', 'experiment-analysis.md'));
@@ -1824,6 +1881,13 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
 
 function md(value) {
   return String(value ?? 'unknown').replaceAll('|', '\\|').replaceAll('\n', ' ');
+}
+
+function safeWorkspaceRef(value) {
+  const raw = String(value ?? '');
+  if (!raw) return 'unknown';
+  if (isAbsolute(raw)) return `workspace:${basename(raw)}`;
+  return raw.replaceAll(/(?:^|\/)home\/[^/]+\//g, 'workspace:/');
 }
 
 function refs(ids, factMap) {
@@ -1844,16 +1908,16 @@ function taskTable(model) {
 }
 
 function executionTable(executions) {
-  const rows = executions.map(({ execution: item, counts, sources, coreIds, sessionIds, workspaceRefs, lifecycle_role, predecessor_execution_id, successor_execution_id }) => `| ${md(item.execution_id)} | ${md(item.task_id)} | ${md(lifecycle_role)} | ${md(predecessor_execution_id ?? 'none')} | ${md(successor_execution_id ?? 'none')} | ${md(item.owner_ref)} | ${md(coreIds.join(', ') || 'unknown')} | ${md(sessionIds.join(', ') || 'unknown')} | ${md(item.state)} | ${md(item.attempt_no ?? 'unknown')} | ${md(workspaceRefs.join(', ') || 'unknown')} | ${sources.slice(0, 2).join('<br>') || 'none'} |`);
+  const rows = executions.map(({ execution: item, counts, sources, coreIds, sessionIds, workspaceRefs, lifecycle_role, predecessor_execution_id, successor_execution_id }) => `| ${md(item.execution_id)} | ${md(item.task_id)} | ${md(lifecycle_role)} | ${md(predecessor_execution_id ?? 'none')} | ${md(successor_execution_id ?? 'none')} | ${md(item.owner_ref)} | ${md(coreIds.join(', ') || 'unknown')} | ${md(sessionIds.join(', ') || 'unknown')} | ${md(item.state)} | ${md(item.attempt_no ?? 'unknown')} | ${md(workspaceRefs.map(safeWorkspaceRef).join(', ') || 'unknown')} | ${sources.slice(0, 2).join('<br>') || 'none'} |`);
   return rows.length ? ['| Execution attempt | Task | Lifecycle role | Predecessor | Successor | Owner | Core | Session | State | Attempt | Workspace lineage | Evidence |', '|---|---|---|---|---|---|---|---|---|---:|---|---|', ...rows].join('\n') : '_No Execution was discoverable._';
 }
 
 function windowTable(item) {
   const rows = item.windows.map((window, index) => {
     const counts = Object.entries(window.event_counts ?? {}).filter(([kind]) => !['heartbeat', 'agent_turn', 'agent_event', 'process_event'].includes(kind)).map(([kind, count]) => `${kind}=${count}`).join(', ') || 'no durable event count';
-    return `| ${index + 1} | ${window.time.start}<br>${window.time.end} | ${Math.round(window.time.duration_ms / 1000)} s${window.time.evidence_gap ? ' (evidence gap)' : ''} | ${md(window.semantic_phase)} | ${md(window.semantic_summary)} | ${md(window.route_change)} | ${md(window.durable_changes.join('; ') || 'none recorded')}<br><small>${md(counts)}</small> | ${md(window.result)} | ${md(window.next_state)} | ${md(window.handoff_or_blocker)} | ${window.evidence.slice(0, 4).join('<br>') || 'none'} |`;
+    return `| ${index + 1} | ${window.time.start}<br>${window.time.end} | ${Math.round(window.time.duration_ms / 1000)} s${window.time.evidence_gap ? ' (evidence gap)' : ''} | ${md(window.semantic_phase)} | ${md(window.semantic_summary)} | ${md(window.route_change)} | ${md(window.durable_changes.join('; ') || 'none recorded')}<br><small>${md(counts)}</small> | ${md(window.result)} | ${md(window.next_state)} | ${md(window.handoff_or_blocker)} | ${md(window.semantic_confidence)} | ${window.evidence.slice(0, 4).join('<br>') || 'none'} |`;
   });
-  return ['| # | Time | Duration | Phase | Semantic summary | Route change | Durable changes / supporting counts | Result | Next state | Handoff/blocker | Evidence |', '|---:|---|---:|---|---|---|---|---|---|---|---|', ...rows].join('\n');
+  return ['| # | Time | Duration | Phase | Semantic summary | Route change | Durable changes / supporting counts | Result | Next state | Handoff/blocker | Confidence | Evidence |', '|---:|---|---:|---|---|---|---|---|---|---|---|---|', ...rows].join('\n');
 }
 
 function renderMarkdown(analysis) {
@@ -1863,7 +1927,7 @@ function renderMarkdown(analysis) {
   const executionSections = analysis.executions.map((item) => {
     const counts = Object.entries(item.counts).map(([key, value]) => `${key}=${value}`).join(', ') || 'no normalized facts';
     const artifacts = item.facts.filter((fact) => ['material_published', 'material_consumed', 'candidate_submitted', 'workspace_revision', 'judge_result', 'judge_check'].includes(fact.kind)).slice(0, 40).map((fact) => `- ${compactFact(fact)} — ${fact.sources.join(', ')}`).join('\n') || '- No artifact/check fact was observed for this Execution.';
-    return `### Execution \`${md(item.execution.execution_id)}\` — ${md(item.lifecycle_role)}\n\n- Task: \`${md(item.execution.task_id)}\`\n- Lifecycle role: **${md(item.lifecycle_role)}**\n- Predecessor/rework source: ${md(item.predecessor_execution_id ?? 'none recorded')}\n- Successor/rework target: ${md(item.successor_execution_id ?? 'none recorded')}\n- Owner: ${md(item.execution.owner_ref)}\n- Core(s): ${md(item.coreIds.join(', ') || 'unknown')}\n- Session(s): ${md(item.sessionIds.join(', ') || 'unknown')}\n- Current/terminal state: **${md(item.execution.state)}**\n- Attempt: ${md(item.execution.attempt_no ?? 'unknown')}\n- Workspace lineage: ${md(item.workspaceRefs.join(', ') || 'unknown')}\n- Wait condition: ${md(item.waitCondition?.type ?? 'none recorded')}\n- Normalized evidence counts: ${counts}\n- Evidence mode: ${analysis.inventory.evidenceMode}\n\n#### ${analysis.windowSizeMinutes}-minute semantic work windows\n\nThe table summarizes observable Agent objectives, Workspace/Material/Judge changes, and lifecycle state. Supporting event counts are included for audit; low-level calls are not the narrative.\n\n${windowTable(item)}\n\n#### Artifacts, Service effects, and errors\n\n${artifacts}\n`;
+    return `### Execution \`${md(item.execution.execution_id)}\` — ${md(item.lifecycle_role)}\n\n- Task: \`${md(item.execution.task_id)}\`\n- Lifecycle role: **${md(item.lifecycle_role)}**\n- Predecessor/rework source: ${md(item.predecessor_execution_id ?? 'none recorded')}\n- Successor/rework target: ${md(item.successor_execution_id ?? 'none recorded')}\n- Owner: ${md(item.execution.owner_ref)}\n- Core(s): ${md(item.coreIds.join(', ') || 'unknown')}\n- Session(s): ${md(item.sessionIds.join(', ') || 'unknown')}\n- Current/terminal state: **${md(item.execution.state)}**\n- Attempt: ${md(item.execution.attempt_no ?? 'unknown')}\n- Workspace lineage: ${md(item.workspaceRefs.map(safeWorkspaceRef).join(', ') || 'unknown')}\n- Wait condition: ${md(item.waitCondition?.type ?? 'none recorded')}\n- Normalized evidence counts: ${counts}\n- Evidence mode: ${analysis.inventory.evidenceMode}\n\n#### ${analysis.windowSizeMinutes}-minute semantic work windows\n\nThe table summarizes observable Agent objectives, Workspace/Material/Judge changes, and lifecycle state. Supporting event counts are included for audit; low-level calls are not the narrative.\n\n${windowTable(item)}\n\n#### Artifacts, Service effects, and errors\n\n${artifacts}\n`;
   }).join('\n');
   const collaborationRows = analysis.collaboration.map((row) => {
     const consumerText = row.consumers.map((consumer) => `${consumer.execution_id ?? 'unknown'} (${consumer.evidence})`).join('<br>') || 'none recorded';
@@ -1873,6 +1937,8 @@ function renderMarkdown(analysis) {
   }).join('\n');
   const errorRows = analysis.errors.map((error) => `| ${md(error.severity)} | ${md(error.category)} | ${error.occurrence_count} | ${error.supporting_record_count} | ${md(error.operation)} | ${md(error.interpretation)} | ${error.evidence.slice(0, 6).join('<br>')} |`).join('\n');
   const systemFindingRows = analysis.systemFindings.map((finding) => `| ${md(finding.severity)} | ${md(finding.category)} | ${md(finding.interpretation)} | ${md(finding.confidence)} | ${md(finding.validation)} | ${finding.evidence.slice(0, 6).join('<br>')} |`).join('\n');
+  const serviceRows = analysis.serviceAnalysis.map((row) => `| ${md(row.service)} | ${row.started} | ${row.finished} | ${row.failed} | ${row.observed_failure_rate === null ? 'unknown' : `${(row.observed_failure_rate * 100).toFixed(1)}%`} | ${md(row.operations.join(', ') || 'unknown')} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
+  const tool = analysis.toolAnalysis;
   const optimizationRows = analysis.optimizations.map((item) => `| ${md(item.priority)} | ${md(item.category)} | ${md(item.action)} | ${md(item.rationale)} | ${md(item.validation)} | ${item.evidence.slice(0, 6).join('<br>')} |`).join('\n');
   const candidateRows = analysis.candidates.rows.map((row) => `| ${md(row.candidate_material_id)} | ${md(row.task_id)} | ${md(row.execution_id)} | ${md(row.strategy_summary)} | ${md(row.change_from_previous)} | ${md(row.feedback_response)} | ${md(row.check_result_id ?? 'none')} | ${md(row.verdict)} / ${md(row.status)} | ${md(row.diagnostic_class)} | ${md(row.submitted_at)} | ${row.feedback_reads} | ${row.later_actions.join(', ') || 'none recorded'} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
   const repeatedDiagnosticRows = analysis.candidates.repeated_diagnostics.map((row) => `| ${md(row.task_id)} | ${md(row.diagnostic_class)} | ${row.count} | ${row.evidence.slice(0, 6).join('<br>')} |`).join('\n');
@@ -1935,7 +2001,17 @@ ${analysis.summaries.length ? analysis.summaries.map((summary) => `- ${summary.p
 |---|---|---|---|---|
 ${projectRows || '| _none_ | unknown | unknown | unknown | — |'}
 
-## Task/Execution inventory
+## Coordination layer
+
+This layer evaluates public-service availability, contract use, task supply, handoffs, and whether collaboration loops close. Counts are observed evidence; an absent call is unknown when the corresponding source is missing.
+
+### Public-service health
+
+| Service | Calls started | Calls finished | Failed finishes | Observed failure rate | Operations | Evidence |
+|---|---:|---:|---:|---:|---|---|
+${serviceRows || '| _none_ | 0 | 0 | 0 | unknown | — | — |'}
+
+### Task/Execution inventory
 
 ### Tasks
 
@@ -1945,11 +2021,15 @@ ${taskTable(analysis.model)}
 
 ${executionTable(analysis.executions)}
 
+## Execution layer
+
+The authoritative domain model keeps a durable Execution distinct from an Agent Session. This report presents each Execution attempt and its Session/Core segments; an explicit rework creates a successor Execution. A wait/resume or Core handoff remains the same Execution unless the durable model records a new one.
+
 ## Per-Execution analysis
 
 ${executionSections || '_No Execution section can be rendered from the available evidence._'}
 
-## Collaboration review
+### Collaboration review
 
 This section follows the collaboration loop: decompose → claim → independent work → deliver → consumer reads → review/rework → resume. A Material is treated as a delivery artifact; it is not treated as useful merely because it exists.
 
@@ -1959,7 +2039,7 @@ ${collaborationRows || '| _none_ | — | — | — | — | No Material rows avai
 
 The assessment labels are deliberately narrow: 'accepted-but-unused' means the authoritative Material state says accepted and no explicit read was found; 'consumed-without-recorded-downstream-effect' means a read was recorded but no later Workspace/Candidate/Judge/review operation was linked. Neither label is a semantic judgment of mathematical value.
 
-## Scheduling and health review
+## System efficiency and health
 
 | Core/session lane | Recorded lifecycle facts |
 |---|---|
@@ -1967,15 +2047,29 @@ ${healthRows || '| unknown | No Core/session facts available |'}
 
 Heartbeats are lease activity only. Agent turns, process health, Judge time, IDLE, WAITING, scheduler polling, and effective Agent work are not collapsed into one metric. An unexplained interval is reported as an evidence gap, not a scheduler defect.
 
+The efficiency view must distinguish configured capacity from effective work: Core occupancy, concurrency, ready-but-unassigned work, claim contention, capacity release on WAITING, wake/resume, Judge time, scheduler polling, and cleanup are separate measures. When the trace lacks Runtime RUNNING or ready-queue intervals, occupancy is a proxy and the report says so.
+
+## Tool layer
+
+This layer evaluates provider/transport failures, tool contract use, response schemas, and error fidelity. Judge/checker results are reviewed for diagnostic quality and whether the Agent could act on the feedback.
+
+| Metric | Observed value | Interpretation | Evidence |
+|---|---:|---|---|
+| Agent/tool calls | ${tool.tool_calls} | Low-level call volume is supporting evidence, not productive work. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
+| Agent/tool errors | ${tool.tool_errors} | Check whether failures contain an actionable code, message, and correlation ID. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
+| Provider/transport error occurrences | ${tool.provider_error_occurrences} | Unknown means the source did not classify provider errors separately. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
+| Judge checks | ${tool.judge_checks} | Checker coverage is distinct from mathematical success. | ${tool.evidence.slice(0, 4).join('<br>') || 'none'} |
+| Judge non-PASS checks | ${tool.judge_non_pass} | Diagnostic classes and feedback response require semantic review. | ${tool.judge_diagnostic_classes.join(', ') || 'none recorded'} |
+
 ## Error analysis
 
 Error Analysis prioritizes failures in the Swarm collaboration loop. Low-level Agent, Bridge, and Service errors are supporting evidence; they are not the main conclusion unless they block claim, handoff, feedback, recovery, or cleanup. 'occurrence_count' is the estimated number of independent failures; source references show supporting records and are not additional failures.
 
 ### System-level findings
 
-| Severity | Category | Evidence-backed interpretation | Confidence | Validation condition | Evidence |
-|---|---|---|---|---|---|
-${systemFindingRows || '| — | none recorded | No system-level collaboration finding was derived from the available evidence. | — | — | — |'}
+| Severity | Category | Affected Tasks | Affected Executions | Affected Cores | Evidence-backed interpretation / impact | Confidence | Validation condition | Evidence |
+|---|---|---|---|---|---|---|---|---|
+${analysis.systemFindings.map((finding) => `| ${md(finding.severity)} | ${md(finding.category)} | ${md(finding.affected_tasks?.join(', ') || 'unknown')} | ${md(finding.affected_executions?.join(', ') || 'unknown')} | ${md(finding.affected_cores?.join(', ') || 'unknown')} | ${md(finding.interpretation)} | ${md(finding.confidence)} | ${md(finding.validation)} | ${finding.evidence.slice(0, 6).join('<br>')} |`).join('\n') || '| — | none recorded | unknown | unknown | unknown | No system-level collaboration finding was derived from the available evidence. | — | — | — |'}
 
 ### Supporting operation errors
 
