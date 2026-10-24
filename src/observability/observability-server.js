@@ -142,6 +142,8 @@ const EXECUTION_DETAIL_LIFECYCLE_KINDS = new Set([
 ]);
 const DETAIL_MAX_EVENTS = 10_000;
 const DETAIL_MAX_BYTES = 4_000_000;
+const OVERVIEW_MAX_EVENTS = 50_000;
+const OVERVIEW_MAX_BYTES = 4_000_000;
 
 function parseJson(value) {
   if (typeof value !== 'string' || value.length === 0) return value;
@@ -411,6 +413,20 @@ function compactOverviewEvents(events) {
     if (!Object.keys(result).length) delete compact.payload.result;
     return compact;
   });
+}
+
+function boundOverviewEvents(events) {
+  const bounded = [];
+  let bytes = 0;
+  for (const event of events) {
+    const size = Buffer.byteLength(JSON.stringify(event));
+    if (bounded.length >= OVERVIEW_MAX_EVENTS || bytes + size > OVERVIEW_MAX_BYTES) {
+      return { events: bounded, bytes, truncated: true };
+    }
+    bounded.push(event);
+    bytes += size;
+  }
+  return { events: bounded, bytes, truncated: false };
 }
 
 function reportSummary(report) {
@@ -752,9 +768,12 @@ export class ObservabilityServer {
       this.#toolProjection(experimentId),
     ]);
     const overviewEvents = [...events, ...toolProjection.events].sort((left, right) => left.sequence - right.sequence);
+    const bounded = boundOverviewEvents(compactOverviewEvents(overviewEvents));
     return {
       experiment_id: experimentId,
-      events: compactOverviewEvents(overviewEvents),
+      events: bounded.events,
+      overview_bytes: bounded.bytes,
+      overview_truncated: bounded.truncated,
       timeline: this.#timeline(experimentId, url),
       tool_counts: toolProjection.counts,
     };

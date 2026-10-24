@@ -114,6 +114,8 @@ test('ObservabilityServer keeps imported lifecycle facts and root-array projecti
   const { url } = await server.start();
   try {
     const overview = await fetch(`${url}/api/experiments/run-imported/overview`).then((response) => response.json());
+    assert.equal(overview.overview_truncated, false);
+    assert.ok(overview.overview_bytes > 0);
     assert.ok(overview.events.some((event) => event.kind === 'agent_turn_started'));
     assert.ok(overview.events.some((event) => event.kind === 'workspace_revision_saved'));
     const arrayResult = overview.events.find((event) => event.kind === 'dispatch.complete').payload.result;
