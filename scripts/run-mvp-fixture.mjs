@@ -32,12 +32,29 @@ const [firstCandidate, fixedCandidate] = await Promise.all([
   readFile(resolve('fixtures/putnam-1966-a1/invalid-candidate.lean'), 'utf8'),
   readFile(resolve('fixtures/putnam-1966-a1/valid-candidate.lean'), 'utf8'),
 ]);
+
+function controlledRealAgentFailure(source) {
+  // Keep the first real-Agent submission close to a valid proof so the
+  // acceptance run tests diagnostic consumption and repair, rather than
+  // asking the model to reconstruct the entire fixture from a placeholder.
+  // Replacing the first `ring` with `rfl` is a genuine Lean source failure
+  // whose location and message are returned by submit_candidate.
+  const marker = '    ring';
+  const offset = source.indexOf(marker);
+  if (offset < 0) throw new Error('valid fixture has no controlled ring failure marker');
+  return `${source.slice(0, offset)}    rfl${source.slice(offset + marker.length)}`;
+}
+
 const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-mvp-'));
 let report;
 
 try {
   if (realAgent) {
-    report = await runRealAgentPath({ rootDir, fixtureManifest, firstCandidate });
+    report = await runRealAgentPath({
+      rootDir,
+      fixtureManifest,
+      firstCandidate: controlledRealAgentFailure(fixedCandidate),
+    });
   } else {
     const environment = createScriptFixtureEnvironment({
       rootDir,
