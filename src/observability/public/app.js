@@ -198,6 +198,7 @@ function buildModel() {
   (state.timeline && state.timeline.lanes || []).forEach((lane) => (lane.states || []).forEach((segment) => {
     const execution = ensureExecution(segment.execution_id, { task_id: segment.task_id, core_id: lane.core_id, state: segment.state });
     const duration = segment.ended_at ? new Date(segment.ended_at).getTime() - new Date(segment.started_at).getTime() : 0;
+    if (String(segment.state || '').toUpperCase() !== 'RUNNING') return;
     if (execution) execution.running_ms += Math.max(0, duration);
     if (segment.task_id) ensureTask(segment.task_id).running_ms += Math.max(0, duration);
   }));

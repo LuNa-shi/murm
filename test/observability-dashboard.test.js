@@ -125,6 +125,7 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
     assert.match(await navigate('execution/exec-root'), /SUCCEEDED/);
     assert.match(await navigate('task/task-root'), /TASK FLOW/);
     assert.match(await navigate('task/task-wait'), /parent_review/);
+    assert.match(harness.elements.get('#main-view').innerHTML, /0s/);
     assert.match(await navigate('material/material-1'), /Redacted browser projection/);
     assert.match(harness.elements.get('#main-view').innerHTML, /exec-wait/);
     assert.doesNotMatch(harness.elements.get('#main-view').innerHTML, /private-secret/);
