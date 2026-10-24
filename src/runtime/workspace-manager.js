@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { cp, mkdir, lstat, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, lstat, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative as pathRelative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
@@ -474,7 +474,8 @@ export class WorkspaceManager {
   }
 
   async #writeRevisionMetadata(workspaceRef, metadata) {
-    await writeFile(join(workspaceRef, META_DIR, 'revisions', `${metadata.workspace_revision}.json`), JSON.stringify(metadata, null, 2), 'utf8');
+    const target = join(workspaceRef, META_DIR, 'revisions', `${metadata.workspace_revision}.json`);
+    await this.#atomicWrite(target, JSON.stringify(metadata, null, 2));
   }
 
   async #readMetadata(workspaceRef) {
@@ -497,7 +498,18 @@ export class WorkspaceManager {
   }
 
   async #writeMetadata(workspaceRef, metadata) {
-    await writeFile(join(workspaceRef, META_DIR, META_FILE), JSON.stringify(metadata, null, 2), 'utf8');
+    await this.#atomicWrite(join(workspaceRef, META_DIR, META_FILE), JSON.stringify(metadata, null, 2));
+  }
+
+  async #atomicWrite(target, content) {
+    const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, content, 'utf8');
+      await rename(temporary, target);
+    } catch (error) {
+      await rm(temporary, { force: true }).catch(() => undefined);
+      throw error;
+    }
   }
 
   #publicMetadata(metadata) {

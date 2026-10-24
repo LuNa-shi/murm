@@ -19,7 +19,8 @@ import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
-import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT } from '../agent/agent-prompt.js';
+import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
+import { Scheduler } from '../runtime/scheduler.js';
 import { CoreParallelismTracker } from './parallelism.js';
 
 const execFileAsync = (command, args) => new Promise((resolvePromise, reject) => {
@@ -352,24 +353,6 @@ function scheduleTurn(core, prompt, timeoutMs) {
   return true;
 }
 
-function serialGate() {
-  let tail = Promise.resolve();
-  return {
-    async acquire() {
-      const previous = tail;
-      let release;
-      tail = new Promise((resolve) => { release = resolve; });
-      await previous;
-      let released = false;
-      return () => {
-        if (released) return;
-        released = true;
-        release();
-      };
-    },
-  };
-}
-
 async function startAgentSession(core) {
   core.bridge.actorRef = core.actorRef;
   core.sessionNumber += 1;
@@ -389,17 +372,12 @@ async function startAgentSession(core) {
   const initialSequence = session.rpcRecords.length;
   core.turnInFlight = true;
   core.turnStartedAt = Date.now();
-  const initialPrompt = core.unboundSessionCount === 0 ? GENERIC_AGENT_PROMPT : IDLE_AGENT_PROMPT;
+  // Every demand-driven worker starts with the same unbound prompt. Task
+  // context is supplied only after the worker claims through Task Service;
+  // Scheduler never substitutes a Task-specific or pre-bound prompt.
+  const initialPrompt = GENERIC_AGENT_PROMPT;
   core.unboundSessionCount += 1;
-  const releaseDiscovery = await core.discoveryGate.acquire();
-  core.discoveryRelease = releaseDiscovery;
-  let initialResponse;
-  try {
-    initialResponse = await session.prompt(initialPrompt, { timeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000 });
-  } finally {
-    core.discoveryRelease?.();
-    core.discoveryRelease = null;
-  }
+  const initialResponse = await session.prompt(initialPrompt, { timeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000 });
   core.initialTurnPromise = (async () => {
     try {
       if (initialResponse?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
@@ -421,6 +399,11 @@ async function startAgentSession(core) {
       if (core.session === session) {
         core.turnInFlight = false;
         core.nextTurnAt = Date.now();
+      } else if (!core.taskId && !core.executionId && !core.session) {
+        // The initial generic turn can perform a complete wait handoff before
+        // its transport promise settles. Runtime has released the process;
+        // close the generic turn's occupancy once that promise finishes.
+        core.turnInFlight = false;
       }
       core.stateRef?.requestSchedulerWake?.();
       if (core.session !== session && !session.closed) await Promise.resolve(session.stop()).catch(() => undefined);
@@ -482,17 +465,23 @@ function attachRecoveredSession(core, { execution, session }) {
 }
 
 async function ensureAgentSession(core) {
-  if (core.waitingExecutionId) return;
+  if (core.waitingExecutionId) return false;
   if (core.releasedSession) {
     if (!core.releasedSession.closed) await Promise.resolve(core.releasedSession.stop?.()).catch(() => undefined);
     core.releasedSession = null;
   }
   if (core.session?.closed) core.session = null;
-  if (core.stopping || core.session || core.turnInFlight) return;
+  if (core.stopping || core.turnInFlight) return false;
+  if (core.session) return true;
   try {
     await startAgentSession(core);
+    return Boolean(core.session);
   } catch (error) {
     if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_session_error' });
+    await Promise.resolve(core.session?.stop?.()).catch(() => undefined);
+    core.session = null;
+    core.dispatchReserved = false;
+    return false;
   }
 }
 
@@ -573,6 +562,32 @@ async function wakeWaitingCore(state, core, waitingExecution) {
   })();
   claimRecord.workspace_revision_start = resumed.workspace.workspace_revision;
   return true;
+}
+
+async function wakeEligibleWaiting(state) {
+  if (state.waitWakePromise) return state.waitWakePromise;
+  state.waitWakePromise = (async () => {
+    const resumableWaiting = state.taskService.listResumableExecutions({ rootId: state.rootTaskId });
+    const resumableWaitingIds = new Set(resumableWaiting.map((execution) => execution.execution_id));
+    for (const candidate of state.cores) {
+      if (candidate.waitingExecutionId && !resumableWaitingIds.has(candidate.waitingExecutionId)) {
+        candidate.waitingExecutionId = null;
+      }
+    }
+    for (const waitingExecution of resumableWaiting) {
+      const waitingCore = state.cores.find((candidate) => candidate.waitingExecutionId === waitingExecution.execution_id) ??
+        state.cores.find((candidate) => !candidate.taskId && !candidate.waitingExecutionId && !candidate.turnInFlight);
+      if (waitingCore && !waitingCore.taskId &&
+        (!waitingCore.turnInFlight || !waitingCore.runtime.activeProcesses.has(waitingExecution.execution_id))) {
+        await wakeWaitingCore(state, waitingCore, waitingExecution).catch((error) => {
+          waitingCore.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'wake_error' });
+        });
+      }
+    }
+  })().finally(() => {
+    state.waitWakePromise = null;
+  });
+  return state.waitWakePromise;
 }
 
 async function releaseTerminalExecution(core) {
@@ -840,6 +855,11 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
 
 async function stopCore(state, core) {
   core.stopping = true;
+  // Prevent a transport close racing cleanup from starting Runtime recovery.
+  // The project is already ending; any late process exit must be fenced or
+  // stopped, never relaunched against a database that is about to close.
+  core.runtime.stopping = true;
+  core.runtime.maxRecoveryAttempts = 0;
   if (core.taskId && core.executionId) {
     core.parallelism.transition(core.index, 'STOPPING', {
       task_id: core.taskId,
@@ -849,13 +869,17 @@ async function stopCore(state, core) {
   }
   const execution = core.executionId ? state.taskService.getExecution(core.executionId) : null;
   const active = core.executionId ? core.runtime.activeProcesses.get(core.executionId) : null;
+  const activeExecutionIds = [...core.runtime.activeProcesses.keys()];
+  // Fence the Runtime callback path before stopping transport sessions. Pi's
+  // close event is asynchronous and must not start recovery after cleanup has
+  // begun or after the project database is closed.
+  for (const executionId of activeExecutionIds) core.runtime.activeProcesses.delete(executionId);
   const sessions = new Set([
     ...core.sessionHistory,
     core.session,
     core.releasedSession,
     active?.session,
   ].filter(Boolean));
-  core.runtime.activeProcesses.delete(core.executionId);
   await Promise.all([...sessions].map(async (session) => {
     try {
       await session.stop?.();
@@ -869,6 +893,14 @@ async function stopCore(state, core) {
       core.turnPromise.catch(() => undefined),
       sleep(5_000),
     ]);
+  }
+  await core.runtime.waitForSettled?.();
+  // A claim handoff may clear the Core's local task/execution fields before
+  // the Runtime process-exit callback settles. Stop every process still owned
+  // by this single-worker Runtime before closing the project database so a
+  // late provider exit cannot start recovery against a closed store.
+  for (const executionId of activeExecutionIds) {
+    await core.runtime.stopExecution(executionId, 'FAILED').catch(() => undefined);
   }
   if (execution?.workspace_ref) {
     await core.workspaceManager.releaseWorkspace({
@@ -1098,6 +1130,8 @@ function projectReport(state, startedAt, deadline) {
       tool_protocol_error_count: toolProtocolErrorCount,
       invalid_wait_attempt_count: invalidWaitAttemptCount,
       scheduler_status_count: state.schedulerStatusCount,
+      scheduler: state.scheduler?.snapshot() ?? null,
+      scheduler_events: state.schedulerEvents,
       decomposition_available: decompositionAvailable,
       lifecycle_events: lifecycle,
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
@@ -1235,7 +1269,6 @@ async function createProjectState(problem, config, options) {
   // operations; it does not replace queue claim, Runtime, or dispatch logic.
   await options.prepareProject?.({ owner, root, taskService, contextService, router, fixture, problem });
   const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt });
-  const discoveryGate = serialGate();
   const cores = [];
   try {
     for (let index = 1; index <= 4; index += 1) {
@@ -1318,8 +1351,6 @@ async function createProjectState(problem, config, options) {
       watchdogPromise: null,
       dispatchReserved: false,
       unboundSessionCount: 0,
-      discoveryGate,
-      discoveryRelease: null,
       parallelism,
       versionManifest: null,
       observe(event) {
@@ -1369,8 +1400,13 @@ async function createProjectState(problem, config, options) {
             core.session = session;
             core.sessionHistory.push(session);
             core.versionManifest = session.manifest ?? null;
-            if (core.agentTurnSession && core.runtime.activeProcesses.size === 0) {
-              core.parallelism.endAgentTurn(core.index, Date.now(), 'stale_claim_handoff');
+            if (core.agentTurnSession) {
+              // The unbound discovery turn is still awaiting its transport
+              // settlement when claim handoff starts this bound session. End
+              // that interval before opening the bound Agent interval; the
+              // Runtime process is already registered at this point, so an
+              // active-process count cannot distinguish the two turns.
+              core.parallelism.endAgentTurn(core.index, Date.now(), 'claim_handoff');
               core.agentTurnSession = null;
             }
             core.parallelism.transition(core.index, 'RUNNING', {
@@ -1441,8 +1477,6 @@ async function createProjectState(problem, config, options) {
         if (workerSession !== core.session) await Promise.resolve(workerSession.stop?.()).catch(() => undefined);
       },
       onClaimAccepted: async () => {
-        core.discoveryRelease?.();
-        core.discoveryRelease = null;
       },
       onSubmitCandidate: async ({ payload }) => {
         // Candidate checking is synchronous tool work. Source-level results
@@ -1481,6 +1515,15 @@ async function createProjectState(problem, config, options) {
       onRelease: async ({ taskId, executionId }) => {
         const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
         const releasedState = releasedExecution?.state ?? 'RELEASED';
+        // A claim record is created before Runtime binds its Workspace. If a
+        // very short bound turn fails before the handoff callback records the
+        // starting revision, retain the attempted ownership with the durable
+        // revision that Runtime prepared instead of emitting a null lineage.
+        const latestClaim = core.claimHistory.at(-1);
+        if (latestClaim?.task_id === taskId && latestClaim.execution_id === executionId &&
+          latestClaim.workspace_revision_start === null && Number.isInteger(releasedExecution?.workspace_revision)) {
+          latestClaim.workspace_revision_start = releasedExecution.workspace_revision;
+        }
         core.observe({
           source: 'runtime', kind: 'execution_released', visibility: 'operator',
           taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
@@ -1506,10 +1549,10 @@ async function createProjectState(problem, config, options) {
           core.executionId = null;
           core.claim = null;
           core.session = null;
-          // Keep the current turn marked in-flight until runTurn/wake's
-          // settlement finally block closes its Agent interval. Clearing this
-          // here lets the scheduler start a replacement session while the
-          // previous request_wait handoff is still unwinding.
+          // Runtime has already removed and stopped the active process before
+          // invoking this callback. The transport turn still owns the
+          // dispatch reservation until its promise settles, so the scheduler
+          // cannot start a second worker against this Core during handoff.
         }
         core.stateRef?.requestSchedulerWake?.();
       },
@@ -1657,6 +1700,8 @@ async function createProjectState(problem, config, options) {
     executionTimeoutSweepCount: 0,
     executionTimeoutErrorCount: 0,
     schedulerStatusCount: 0,
+    schedulerEvents: [],
+    waitWakePromise: null,
     resourcesAtStart: resourceSnapshot(),
     repositoryCommit: options.repositoryCommit ?? null,
     repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
@@ -1670,10 +1715,6 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   let resolveSchedulerWake;
   let schedulerWake = new Promise((resolve) => { resolveSchedulerWake = resolve; });
   state.schedulerWakeRequested = false;
-  state.requestSchedulerWake = () => {
-    state.schedulerWakeRequested = true;
-    resolveSchedulerWake();
-  };
   const startedAt = Date.now();
   state.parallelism.start(startedAt);
   const durationMs = options.timeboxMs ?? 60 * 60_000;
@@ -1681,18 +1722,98 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
   const basePrompt = (core) => core.taskId
       ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or waiting.`
-      : IDLE_AGENT_PROMPT;
-  try {
-    // Warm all reusable slots concurrently. The discovery gate serializes only
-    // the unbound list/claim turn, and onClaimAccepted releases it as soon as
-    // Task Service ownership is durable. Bound Agent turns can then overlap.
-    await Promise.all(state.cores.map(async (core) => {
+      : GENERIC_AGENT_PROMPT;
+  state.scheduler = new Scheduler({
+    listReadyTasks: () => state.taskService.listTasks({
+      rootId: state.rootTaskId,
+      // WAITING Tasks are eligible when their persisted condition is
+      // satisfied; Task Service's availableOnly projection excludes waits
+      // whose condition is still pending.
+      states: ['OPEN', 'RUNNING', 'WAITING'],
+      limit: 100,
+      availableOnly: true,
+    }),
+    listCores: () => state.cores,
+    isCoreAvailable: (core) => !core.taskId && !core.waitingExecutionId && !core.turnInFlight &&
+      !core.dispatchReserved && !core.stopping,
+    maxStartupAttempts: options.maxStartupAttempts ?? 3,
+    retryBackoffMs: options.schedulerRetryBackoffMs ?? 1_000,
+    dispatchBackoffMs: options.schedulerDispatchBackoffMs ?? 1_000,
+    startUnboundSession: async ({ core, prompt }) => {
       core.dispatchReserved = true;
-      await ensureAgentSession(core);
-    }));
-    await Promise.all(state.cores.map(async (core) => {
-      core.nextTurnAt = Date.now();
-    }));
+      const hadSession = Boolean(core.session && !core.session.closed);
+      const started = await ensureAgentSession(core);
+      if (!started) {
+        core.dispatchReserved = false;
+        return false;
+      }
+      // A generic session may remain alive after an unsuccessful discovery
+      // turn. Reuse it for a later READY signature without polling an empty
+      // queue or issuing duplicate turns for the same readiness event.
+      if (hadSession && !core.taskId && !core.turnInFlight) {
+        core.turnStartedAt = Date.now();
+        const scheduled = scheduleTurn(core, prompt, turnTimeoutMs);
+        if (!scheduled) core.dispatchReserved = false;
+        return scheduled;
+      }
+      return true;
+    },
+    onEvent: (event) => {
+      state.schedulerEvents.push({
+        kind: event.kind,
+        core_id: event.core_id ?? null,
+        reason: event.reason ?? null,
+        ready_count: event.ready_count ?? null,
+        free_core_count: event.free_core_count ?? null,
+        ready_to_dispatch_ms: event.ready_to_dispatch_ms ?? null,
+        startup_attempt: event.startup_attempt ?? null,
+        retryable: event.retryable ?? null,
+        error_code: event.error_code ?? null,
+        error_class: event.error_class ?? null,
+        timestamp: event.timestamp ?? Date.now(),
+      });
+      if (event.kind === 'scheduler_reconcile') {
+        // Reconciliation is also an auditable readiness observation. Recording
+        // it here keeps short event-driven runs from losing the READY window
+        // before the bounded main-loop poll gets another turn.
+        const readyTasks = state.taskService.listTasks({
+          rootId: state.rootTaskId,
+          states: ['OPEN', 'RUNNING', 'WAITING'],
+          limit: 100,
+          availableOnly: true,
+        });
+        state.parallelism.recordReadyWork({
+          readyCount: readyTasks.length,
+          idleCoreCount: state.cores.filter((core) => !core.taskId && !core.turnInFlight && !core.dispatchReserved).length,
+          eligibleWorkCount: observedEligibleWorkCount(state, readyTasks),
+        });
+      }
+      if (event.kind === 'scheduler_reconcile' || event.kind === 'scheduler_dispatch_started') {
+        state.observationStore.append({
+          experimentId: state.runId,
+          source: 'scheduler',
+          kind: event.kind,
+          taskId: state.rootTaskId,
+          visibility: 'operator',
+          payload: state.schedulerEvents.at(-1),
+        });
+      }
+    },
+  });
+  state.requestSchedulerWake = (reason = 'event') => {
+    state.schedulerWakeRequested = true;
+    resolveSchedulerWake();
+    void wakeEligibleWaiting(state);
+    // Notification is event-driven, while the main loop remains the bounded
+    // reconciliation path for missed events and Runtime restarts.
+    void state.scheduler.notify(reason).catch(() => undefined);
+  };
+  try {
+    // Demand-driven startup observes the queue before touching Pi/provider
+    // capacity. A root-only queue starts one unbound session; an empty queue
+    // starts none.
+    await state.scheduler.reconcile({ reason: 'initial' });
+    for (const core of state.cores) core.nextTurnAt = Date.now();
     const heartbeat = setInterval(() => {
       for (const core of state.cores) {
         const execution = state.taskService.getExecution(core.executionId);
@@ -1757,7 +1878,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         const readyStartedAt = Date.now();
         const readyTasks = state.taskService.listTasks({
           rootId: state.rootTaskId,
-          states: ['OPEN', 'RUNNING'],
+          states: ['OPEN', 'RUNNING', 'WAITING'],
           limit: 100,
           availableOnly: true,
         });
@@ -1773,46 +1894,20 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         // on any available Core. A resumable wait is woken before new work is
         // reserved so the waiting responsibility gets first access to idle
         // capacity.
-        const resumableWaiting = state.taskService.listResumableExecutions({ rootId: state.rootTaskId });
-        const resumableWaitingIds = new Set(resumableWaiting.map((execution) => execution.execution_id));
-        for (const candidate of state.cores) {
-          if (candidate.waitingExecutionId && !resumableWaitingIds.has(candidate.waitingExecutionId)) {
-            candidate.waitingExecutionId = null;
-          }
+        await wakeEligibleWaiting(state);
+        for (const core of state.cores) {
+          if (state.solvedAt === null) await releaseTerminalExecution(core);
         }
-        for (const waitingExecution of resumableWaiting) {
-          const waitingCore = state.cores.find((candidate) => candidate.waitingExecutionId === waitingExecution.execution_id) ??
-            state.cores.find((candidate) => !candidate.taskId && !candidate.waitingExecutionId && !candidate.turnInFlight);
-          if (waitingCore && !waitingCore.taskId &&
-            (!waitingCore.turnInFlight || !waitingCore.runtime.activeProcesses.has(waitingExecution.execution_id))) {
-            await wakeWaitingCore(state, waitingCore, waitingExecution).catch((error) => {
-              waitingCore.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'wake_error' });
-            });
-          }
-        }
-        // Allocate the currently ready work against physical Core ownership
-        // once per scheduler tick. `readyTasks` already excludes Tasks whose
-        // active quota is full. Ready work is queue supply, not the number of
-        // currently bound responsibilities.
-        let readyDispatchSlots = readyTasks.length;
-        const dispatchCandidates = state.cores.filter((core) =>
-          !core.taskId && !core.waitingExecutionId && !core.turnInFlight && !core.dispatchReserved);
-        for (const candidate of dispatchCandidates) {
-          if (readyDispatchSlots <= 0) break;
-          candidate.dispatchReserved = true;
-          readyDispatchSlots -= 1;
-        }
+        // Scheduler owns unbound capacity decisions. It observes the durable
+        // READY queue and starts/reuses only as many generic workers as there
+        // are READY Tasks and genuinely free Cores. It never receives a Task
+        // identity and therefore cannot pre-bind work on an Agent's behalf.
+        await state.scheduler.reconcile({ reason: state.schedulerWakeRequested ? 'event' : 'poll' });
         for (const core of state.cores) {
           if (state.solvedAt !== null) break;
-          const mayDispatch = core.dispatchReserved;
-          if (core.taskId || (!core.waitingExecutionId && (core.session || core.releasedSession || mayDispatch))) await ensureAgentSession(core);
-          if (state.solvedAt === null) await releaseTerminalExecution(core);
           if (!core.turnInFlight && !core.recoveryInFlight && Date.now() < deadline && state.solvedAt === null) {
             const bound = Boolean(core.taskId);
-            if (bound || mayDispatch) {
-              const scheduled = scheduleTurn(core, basePrompt(core), turnTimeoutMs);
-              if (!scheduled && !bound) core.dispatchReserved = false;
-            }
+            if (bound) scheduleTurn(core, basePrompt(core), turnTimeoutMs);
           }
         }
       }
@@ -1825,6 +1920,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     }
   } finally {
     const cleanupStartedAt = Date.now();
+    await state.scheduler?.stop?.();
     for (const core of state.cores) await stopCore(state, core);
     state.cleanupElapsedMs = Date.now() - cleanupStartedAt;
   }

@@ -69,10 +69,18 @@ export class Runtime {
     this.recoveryAttempts = new Map();
     this.handoffPromises = new Map();
     this.reminderPromises = new Map();
+    this.pendingFailurePromises = new Set();
+    this.stopping = false;
   }
 
   getActiveProcessCount() {
     return this.activeProcesses.size;
+  }
+
+  async waitForSettled() {
+    while (this.pendingFailurePromises.size > 0) {
+      await Promise.allSettled([...this.pendingFailurePromises]);
+    }
   }
 
   getSchedulerStatus({ rootId = null, taskId = null, executionId = null, limit = 100 } = {}) {
@@ -195,6 +203,7 @@ export class Runtime {
       const active = this.activeProcesses.get(executionId);
       this.activeProcesses.delete(executionId);
       await Promise.resolve(active?.session.stop?.()).catch(() => undefined);
+      if (this.stopping) throw error;
       const failed = this.#getExecution(executionId);
       if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('start-failed')));
@@ -769,6 +778,7 @@ export class Runtime {
   }
 
   async #handleSessionEvent(executionId, record) {
+    if (this.stopping) return;
     const active = this.activeProcesses.get(executionId);
     if (!active) return;
     active.lastEventAt = this.clock();
@@ -796,23 +806,32 @@ export class Runtime {
   }
 
   async #processExit(executionId) {
+    if (this.stopping) {
+      this.activeProcesses.delete(executionId);
+      return;
+    }
     const active = this.activeProcesses.get(executionId);
-    if (!active) return;
+    if (!active || this.stopping) return;
     const execution = this.#getExecution(executionId);
     if (execution.state === 'RUNNING') await this.#handleSessionFailure(executionId, 'process_exit');
     else this.activeProcesses.delete(executionId);
   }
 
   async #handleSessionFailure(executionId, failureClass) {
+    if (this.stopping) {
+      this.activeProcesses.delete(executionId);
+      return null;
+    }
     const active = this.activeProcesses.get(executionId);
     if (!active) return null;
     if (active.failurePromise) return active.failurePromise;
     active.lastFailureClass = failureClass;
-    active.failurePromise = (async () => {
+    const failurePromise = (async () => {
       this.activeProcesses.delete(executionId);
       const execution = this.#getExecution(executionId);
       if (execution.state !== 'RUNNING') return { execution };
       await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+      if (this.stopping) return { execution, disposition: 'stopping' };
       const recoveryAttempt = (this.recoveryAttempts.get(execution.task_id) ?? 0) + 1;
       this.recoveryAttempts.set(execution.task_id, recoveryAttempt);
       this.logger?.append({ event: 'runtime.session_failure', execution_id: executionId, failure_class: failureClass, recovery_attempt: recoveryAttempt });
@@ -839,6 +858,9 @@ export class Runtime {
       const replacement = await this.startExecution(recovered.execution.execution_id, { sessionReason: 'recovery' });
       return { execution: execution, recovery: replacement.execution, disposition: 'recovered' };
     })();
+    active.failurePromise = failurePromise;
+    this.pendingFailurePromises.add(failurePromise);
+    failurePromise.finally(() => this.pendingFailurePromises.delete(failurePromise)).catch(() => undefined);
     try {
       return await active.failurePromise;
     } finally {

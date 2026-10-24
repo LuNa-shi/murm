@@ -13,6 +13,7 @@ export * from './sdk/service-router.js';
 export * from './sdk/service-catalog.js';
 export * from './runtime/workspace-manager.js';
 export * from './runtime/runtime.js';
+export * from './runtime/scheduler.js';
 export * from './judge/fixture.js';
 export * from './judge/check-result.js';
 export * from './judge/lean-adapter.js';
