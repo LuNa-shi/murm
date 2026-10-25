@@ -32,6 +32,12 @@ function errorClass(error) {
   return 'startup_failure';
 }
 
+function hasTaskOwnership(core) {
+  return core?.taskId !== undefined && core?.taskId !== null
+    || core?.executionId !== undefined && core?.executionId !== null
+    || core?.waitingExecutionId !== undefined && core?.waitingExecutionId !== null;
+}
+
 /**
  * Demand-driven capacity coordinator.
  *
@@ -79,6 +85,7 @@ export class Scheduler {
     this.startupAttemptCount = 0;
     this.startupFailureCount = 0;
     this.boundedStartupExhaustedCount = 0;
+    this.duplicateSuppressionCount = 0;
     this.dispatchLatenciesMs = [];
     this.states = new Map();
   }
@@ -129,6 +136,7 @@ export class Scheduler {
       startup_attempt_count: this.startupAttemptCount,
       startup_failure_count: this.startupFailureCount,
       bounded_startup_exhausted_count: this.boundedStartupExhaustedCount,
+      duplicate_suppression_count: this.duplicateSuppressionCount,
       dispatch_latencies_ms: [...this.dispatchLatenciesMs],
       in_flight_core_ids: [...this.states.entries()].filter(([, state]) => state.inFlight).map(([key]) => key),
       stopped: this.stopped,
@@ -158,7 +166,24 @@ export class Scheduler {
       const core = cores[index];
       const key = coreKey(core, index);
       const state = this.#state(key);
-      if (state.inFlight || !this.isCoreAvailable(core, { key, scheduler: this })) continue;
+      const available = this.isCoreAvailable(core, { key, scheduler: this });
+      if (!available) {
+        // A successful discovery turn can leave a Core physically available
+        // without ever claiming a Task. That is still the same dispatch
+        // opportunity and must not be re-launched on every reconciliation.
+        // Only a real Task/Execution ownership cycle resets that suppression.
+        if (hasTaskOwnership(core)) state.taskBoundObserved = true;
+        continue;
+      }
+      if (state.taskBoundObserved) {
+        state.taskBoundObserved = false;
+        state.successfulSignatures.clear();
+        state.attempts = 0;
+        state.nextRetryAt = 0;
+        state.exhausted = false;
+        state.lastDispatchSignature = null;
+      }
+      if (state.inFlight) continue;
       availableCores.push({ core, key, state });
     }
     this.#emit({
@@ -172,6 +197,10 @@ export class Scheduler {
     const dispatches = [];
     for (const { core, key, state } of availableCores.slice(0, readyTasks.length)) {
       if (state.exhausted || reconciledAt < state.nextRetryAt) continue;
+      if (state.successfulSignatures.has(signature)) {
+        this.duplicateSuppressionCount += 1;
+        continue;
+      }
       if (state.lastDispatchSignature === signature && state.lastDispatchAt !== null &&
         reconciledAt < state.lastDispatchAt + this.dispatchBackoffMs) continue;
       state.inFlight = true;
@@ -209,9 +238,11 @@ export class Scheduler {
         attempts: 0,
         exhausted: false,
         inFlight: false,
+        taskBoundObserved: false,
         nextRetryAt: 0,
         lastDispatchAt: null,
         lastDispatchSignature: null,
+        successfulSignatures: new Set(),
       };
       this.states.set(key, state);
     }
@@ -224,6 +255,7 @@ export class Scheduler {
       if (result === false || (result && result.started === false)) throw new Error('unbound session did not start');
       const completedAt = this.now();
       this.dispatchCount += 1;
+      state.successfulSignatures.add(signature);
       this.dispatchLatenciesMs.push(Math.max(0, completedAt - (this.firstReadyAt ?? completedAt)));
       this.#emit({
         kind: 'scheduler_dispatch_succeeded',

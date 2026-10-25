@@ -56,6 +56,53 @@ test('one READY Task and one free Core dispatch exactly one unbound generic sess
   assert.equal(scheduler.snapshot().dispatch_count, 1);
 });
 
+test('successful dispatch is not relaunched on later polls for the same READY set', async () => {
+  let now = 0;
+  let starts = 0;
+  const { scheduler } = schedulerFixture({
+    now: () => now,
+    readyTasks: [{ task_id: 'task-1' }],
+    startUnboundSession: async () => {
+      starts += 1;
+      return { started: true };
+    },
+  });
+
+  await scheduler.reconcile({ reason: 'ready-created' });
+  now = 5_000;
+  await scheduler.reconcile({ reason: 'bounded-poll' });
+  now = 10_000;
+  await scheduler.reconcile({ reason: 'duplicate-ready-event' });
+
+  assert.equal(starts, 1);
+  assert.equal(scheduler.snapshot().dispatch_count, 1);
+  assert.equal(scheduler.snapshot().duplicate_suppression_count, 2);
+});
+
+test('a bound Task release opens a new dispatch opportunity for the same READY set', async () => {
+  let core = { id: 'core-1', free: true };
+  let starts = 0;
+  const { scheduler, setCores } = schedulerFixture({
+    readyTasks: [{ task_id: 'task-1' }],
+    cores: [core],
+    startUnboundSession: async () => {
+      starts += 1;
+      return { started: true };
+    },
+  });
+
+  await scheduler.reconcile({ reason: 'ready-created' });
+  core = { id: 'core-1', free: false, taskId: 'task-1', executionId: 'execution-1' };
+  setCores([core]);
+  await scheduler.reconcile({ reason: 'claim-succeeded' });
+  core = { id: 'core-1', free: true };
+  setCores([core]);
+  await scheduler.reconcile({ reason: 'execution-released' });
+
+  assert.equal(starts, 2);
+  assert.equal(scheduler.snapshot().dispatch_count, 2);
+});
+
 test('duplicate readiness notifications do not race a pending startup', async () => {
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
