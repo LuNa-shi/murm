@@ -520,6 +520,25 @@ test('Runtime emits one handoff reminder, then times out unfinished work and ret
   }
 });
 
+test('Runtime timeout sweep can target only the execution owned by one Core', async () => {
+  const fixtureData = await fixture({ runtimeOptions: { executionTimeoutMs: 60_000, handoffReminderMs: 55_000 } });
+  const { runtime, taskService, claimed, rootDir } = fixtureData;
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const timeoutAt = new Date(Date.parse(started.execution.started_at) + 60_000);
+    const skipped = await runtime.sweepExecutionTimeouts(timeoutAt, { executionIds: ['execution-owned-by-another-core'] });
+    assert.deepEqual(skipped, []);
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
+    const timeout = await runtime.sweepExecutionTimeouts(timeoutAt, { executionIds: [claimed.execution.execution_id] });
+    assert.equal(timeout.length, 1);
+    assert.equal(timeout[0].kind, 'timeout');
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'EXPIRED');
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('Runtime handoff checkpoints metadata, fences stale writers, and releases the Core before returning the Task to OPEN', async () => {
   const fixtureData = await fixture({ stopDelayMs: 20 });
   const { runtime, taskService, claimed, rootDir, adapter, sdk, task } = fixtureData;

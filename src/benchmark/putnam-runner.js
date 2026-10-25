@@ -1777,20 +1777,24 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     }, options.watchdogIntervalMs ?? 10_000);
     let executionTimeoutSweepPromise = null;
     const executionTimeoutSweep = setInterval(() => {
-      // One scheduler-owned reconciliation covers the durable Task Service.
-      // Runtime's handoff operation is idempotent and fences competing stale
-      // owners, so this remains safe across duplicate readiness/restart polls.
       if (executionTimeoutSweepPromise) return;
-      const ownerRuntime = state.cores[0]?.runtime;
-      if (!ownerRuntime) return;
+      const sweepTargets = state.cores
+        .filter((core) => core.executionId)
+        .map((core) => core.runtime.sweepExecutionTimeouts(undefined, { executionIds: [core.executionId] })
+          .then((events) => ({ core, events }))
+          .catch((error) => ({ core, error })));
+      if (sweepTargets.length === 0) return;
       state.executionTimeoutSweepCount += 1;
-      executionTimeoutSweepPromise = ownerRuntime.sweepExecutionTimeouts()
-        .then((events) => {
-          if (events.length > 0) state.requestSchedulerWake?.();
-        })
-        .catch((error) => {
-          state.executionTimeoutErrorCount += 1;
-          state.cores[0]?.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'execution_timeout_error' });
+      executionTimeoutSweepPromise = Promise.all(sweepTargets)
+        .then((results) => {
+          for (const { core, events, error } of results) {
+            if (error) {
+              state.executionTimeoutErrorCount += 1;
+              core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'execution_timeout_error' });
+            } else if (events.length > 0) {
+              state.requestSchedulerWake?.();
+            }
+          }
         })
         .finally(() => {
           executionTimeoutSweepPromise = null;

@@ -329,11 +329,13 @@ export class Runtime {
    * fenced Task Service transition. Schedulers may call this on every poll or
    * after a Runtime restart without creating another owner.
    */
-  async sweepExecutionTimeouts(at = new Date(this.clock())) {
+  async sweepExecutionTimeouts(at = new Date(this.clock()), { executionIds = null } = {}) {
     const atDate = at instanceof Date ? at : new Date(at);
     if (Number.isNaN(atDate.getTime())) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timeout sweep time must be a valid Date');
+    const executionFilter = executionIds === null ? null : new Set(executionIds);
     const events = [];
     for (const execution of this.taskService.listActiveExecutions()) {
+      if (executionFilter && !executionFilter.has(execution.execution_id)) continue;
       if (!['CREATED', 'RUNNING'].includes(execution.state)) continue;
       const startedMs = Date.parse(execution.started_at ?? '');
       if (Number.isNaN(startedMs)) continue;
@@ -355,8 +357,8 @@ export class Runtime {
     return events;
   }
 
-  sweepTimeouts(at = new Date(this.clock())) {
-    return this.sweepExecutionTimeouts(at);
+  sweepTimeouts(at = new Date(this.clock()), options = {}) {
+    return this.sweepExecutionTimeouts(at, options);
   }
 
   /**
