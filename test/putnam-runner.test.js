@@ -140,6 +140,10 @@ class FakeSession extends EventEmitter {
         });
       }
     }
+    // The discovery transport only claims work. Runtime hands the claim to a
+    // fresh bound session, so the unbound prompt must settle before attempting
+    // any Workspace or candidate operations for the same Execution.
+    if (!this.bound) return { data: { disposition: 'handled' } };
     if (this.hardToolError && !this.hardToolErrorUsed) {
       this.hardToolErrorUsed = true;
       try {
