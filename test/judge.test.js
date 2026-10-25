@@ -9,6 +9,7 @@ import {
   JudgeService,
   LeanChecker,
   SwarmEnvError,
+  agentCheckResult,
   makeEnvelope,
   validateFixtureManifest,
 } from '../src/index.js';
@@ -51,6 +52,67 @@ function checkerWithPreflight(checker) {
     }),
   };
 }
+
+test('Agent CheckResult feedback is bounded, actionable, and excludes private evidence', () => {
+  const feedback = agentCheckResult({
+    check_result_id: 'agent-feedback-result',
+    candidate_material_id: 'candidate-material',
+    target_task_id: 'task-proof',
+    execution_id: 'execution-proof',
+    status: 'RECEIVED',
+    verdict: 'FAIL',
+    judge_operation_status: 'persisted',
+    checker_process_status: 'completed',
+    result_class: 'source_failure',
+    mathematical_outcome: 'FAIL',
+    retryable: false,
+    diagnostic_code: 'source_failure',
+    evidence: {
+      diagnostic: 'Candidate.lean:12:7: error: type mismatch\n' + 'x'.repeat(5000),
+      file: 'Candidate.lean',
+      line: 12,
+      column: 7,
+      exit_code: 1,
+      signal: null,
+      timed_out: false,
+      error_code: null,
+      candidate_hash: 'private-candidate-hash',
+      stdout: 'private stdout',
+      stderr: 'private stderr',
+    },
+  });
+  assert.equal(feedback.check_result_id, 'agent-feedback-result');
+  assert.equal(feedback.result_class, 'source_failure');
+  assert.equal(feedback.mathematical_outcome, 'FAIL');
+  assert.equal(feedback.checker_process_status, 'completed');
+  assert.equal(feedback.retryable, false);
+  assert.equal(feedback.diagnostic_code, 'source_failure');
+  assert.match(feedback.diagnostic_excerpt, /type mismatch/);
+  assert.ok(feedback.diagnostic_excerpt.length <= 4_096);
+  assert.deepEqual(feedback.diagnostic_location, { file: 'Candidate.lean', line: 12, column: 7 });
+  assert.deepEqual(feedback.process_evidence, { exit_code: 1, signal: null, timed_out: false, error_code: null });
+  assert.equal(feedback.evidence, undefined);
+  assert.equal(feedback.candidate_hash, undefined);
+  assert.equal(feedback.stdout, undefined);
+  assert.equal(feedback.stderr, undefined);
+  assert.doesNotMatch(JSON.stringify(feedback), /private-candidate-hash|private stdout|private stderr/);
+});
+
+test('Agent CheckResult feedback redacts credentials from checker diagnostics', () => {
+  const feedback = agentCheckResult({
+    verdict: 'ERROR',
+    result_class: 'infrastructure_failure',
+    checker_process_status: 'crashed',
+    evidence: {
+      diagnostic: 'checker failed at Candidate.lean:12:7: type mismatch',
+      stderr: 'OPENAI_API_KEY=sk-test-secret-value-123456 Bearer eyJsecret-token-value https://user:password@example.test/x',
+      stdout: 'token=another-secret-value',
+    },
+  });
+  assert.match(feedback.diagnostic_excerpt, /type mismatch/);
+  assert.match(feedback.diagnostic_excerpt, /\[REDACTED\]/);
+  assert.doesNotMatch(feedback.diagnostic_excerpt, /sk-test-secret-value-123456|eyJsecret-token-value|another-secret-value|user:password/);
+});
 
 test('fixture manifest locks PutnamBench commit, problem hash, Lean, Mathlib, checker, and environment', async () => {
   validateFixtureManifest(fixtureManifest);
