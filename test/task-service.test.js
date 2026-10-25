@@ -101,6 +101,49 @@ test('a Task can expose multiple parallel Executions up to its quota', () => {
   service.close();
 });
 
+test('readiness reports a non-resumable wait when it fills the parallel quota', () => {
+  const { service, sdk } = rootService();
+  const task = sdk.proposeTask(proofInput({ parallel_quota: 2 }), { operationId: 'propose-waiting-quota' }).task;
+  const first = sdk.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
+    claim_key: 'waiting-quota-first', owner_ref: 'agent:first', workspace_mode: 'clean',
+  }, { operationId: 'waiting-quota-first' });
+  const firstStarted = service.dispatch('start_execution', {}, makeEnvelope({
+    operationId: 'waiting-quota-start-first', actorRef: 'agent:first', taskId: task.task_id,
+    executionId: first.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: first.execution.state_version, fencingVersion: first.execution.fencing_version,
+  }));
+  const second = sdk.withContext({
+    taskId: task.task_id, specVersion: task.spec_version, stateVersion: service.getTask(task.task_id).state_version,
+  }).claim({
+    claim_key: 'waiting-quota-second', owner_ref: 'agent:second', workspace_mode: 'clean',
+  }, { operationId: 'waiting-quota-second' });
+  const secondStarted = service.dispatch('start_execution', {}, makeEnvelope({
+    operationId: 'waiting-quota-start-second', actorRef: 'agent:second', taskId: task.task_id,
+    executionId: second.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: second.execution.state_version, fencingVersion: second.execution.fencing_version,
+  }));
+  const checkpointed = service.dispatch('save_checkpoint', {
+    checkpoint_ref: 'checkpoint:waiting-quota', checkpoint_hash: 'hash:waiting-quota', workspace_revision: null,
+  }, makeEnvelope({
+    operationId: 'waiting-quota-checkpoint', actorRef: 'agent:second', taskId: task.task_id,
+    executionId: second.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: secondStarted.execution.state_version, fencingVersion: secondStarted.execution.fencing_version,
+  }));
+  service.dispatch('request_wait', {
+    wait_key: 'waiting-quota-wait', checkpoint_ref: checkpointed.execution.checkpoint_ref,
+    checkpoint_hash: checkpointed.execution.checkpoint_hash,
+    wait_condition: { type: 'timer', deadline: new Date(Date.now() + 60_000).toISOString() },
+  }, makeEnvelope({
+    operationId: 'waiting-quota-request-wait', actorRef: 'agent:second', taskId: task.task_id,
+    executionId: second.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: checkpointed.execution.state_version, fencingVersion: checkpointed.execution.fencing_version,
+  }));
+
+  assert.equal(sdk.withContext({ actorRef: 'agent:next' }).listTasks({ limit: 10 }).length, 0);
+  assert.equal(sdk.explainTaskReadiness(task.task_id).readiness, 'WAITING');
+  service.close();
+});
+
 test('workers browse prioritized Tasks and explicitly claim the selected Task', () => {
   const { service, sdk } = rootService();
   const root = sdk.proposeTask({

@@ -941,7 +941,15 @@ function structureEvidence(taskService, taskTree, cores, mode) {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
     const keys = ['child_task_id', 'rework_task_id', 'prior_task_id', 'relationship', 'group_id', 'task_id', 'task_ids',
       'dependency_id', 'source_material_count', 'source_material_refs'];
-    return Object.fromEntries(keys.filter((key) => Object.hasOwn(payload, key)).map((key) => [key, payload[key]]));
+    const safe = Object.fromEntries(keys.filter((key) => Object.hasOwn(payload, key)).map((key) => [key, payload[key]]));
+    if (payload.dependency && typeof payload.dependency === 'object' && !Array.isArray(payload.dependency)) {
+      const dependencyKeys = ['dependency_id', 'dependency_kind', 'prerequisite_task_id', 'material_id', 'check_result_id'];
+      const dependency = Object.fromEntries(dependencyKeys
+        .filter((key) => Object.hasOwn(payload.dependency, key))
+        .map((key) => [key, payload.dependency[key]]));
+      if (Object.keys(dependency).length > 0) safe.dependency = dependency;
+    }
+    return safe;
   };
   const events = structures.flatMap((structure) => structure.events.map((event) => ({
     task_id: structure.task.task_id,

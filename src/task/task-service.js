@@ -775,13 +775,18 @@ export class TaskService {
     const blockers = structure.satisfaction.dependencies.filter((dependency) => !dependency.satisfied);
     const active = this.listExecutions(taskId, { includeTerminal: false });
     const activeCount = active.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state)).length;
+    const waiting = active.filter((execution) => execution.state === 'WAITING');
+    const resumableWaiting = waiting.some((execution) => this.#isWaitingResumable(execution));
     if (task.state === 'SATISFIED') return { task_id: taskId, readiness: 'SATISFIED', reasons: ['task_contract_satisfied'], missing: [], structure };
     if (task.state === 'BLOCKED') missing.push(task.block_reason ?? 'task_blocked');
     if (blockers.length > 0) missing.push(...blockers.map((dependency) => `dependency:${dependency.dependency_id}`));
     const executionQuotaBlocked = activeCount >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, Date.now());
     if (executionQuotaBlocked) missing.push('execution_quota');
-    const waiting = active.filter((execution) => execution.state === 'WAITING');
-    if (task.state === 'WAITING' && waiting.length > 0 && !waiting.some((execution) => this.#isWaitingResumable(execution))) {
+    // listTasks treats a non-resumable WAITING Execution as occupying a
+    // parallel slot. Keep readiness claimability aligned when that waiting
+    // slot fills the quota alongside CREATED/RUNNING Executions.
+    const waitingQuotaBlocked = waiting.length > 0 && !resumableWaiting && activeCount + waiting.length >= task.parallel_quota;
+    if (waiting.length > 0 && !resumableWaiting && (task.state === 'WAITING' || waitingQuotaBlocked)) {
       return { task_id: taskId, readiness: 'WAITING', reasons: ['execution_waiting'], missing: [...new Set(missing)], structure };
     }
     const latest = this.#latestExecution(taskId, true);
