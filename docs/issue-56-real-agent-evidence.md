@@ -7,7 +7,7 @@ Agent turn or Task claim.
 
 ## Clean implementation and fixture
 
-- final implementation commit (pending rerun): `95c43cfd3a68f82304da64805e62a0862f300c6a`
+- final implementation commit (pending rerun): `90f7b94f845fef640877031a6e38b64b6036e5f7`
 - diagnostic run implementation commit: `0dd0df353a418b8bc6620599b80f3c078cd5fead`
 - implementation worktree: clean (`git status --porcelain` was empty before each run)
 - fixture problem: `putnam_2025_b1`
@@ -78,7 +78,8 @@ env NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol \
   --observability-host 127.0.0.1 --observability-port 8798
 ```
 
-Report: `experiments/exp-20261025-issue56-semantic-b1-r3/analysis/benchmark/putnam_2025_b1/report.json`
+Report snapshot: `experiments/exp-20261025-issue56-semantic-b1-r3/analysis/benchmark/putnam_2025_b1/report.json`
+Published bundle: [`docs/experiments/exp-20261025-issue56-semantic-b1-r3`](experiments/exp-20261025-issue56-semantic-b1-r3/README.md)
 
 Root-only control:
 
@@ -95,7 +96,8 @@ env NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol \
   --observability-host 127.0.0.1 --observability-port 8799
 ```
 
-Report: `experiments/exp-20261025-issue56-root-b1-r3/analysis/benchmark/putnam_2025_b1/report.json`
+Report snapshot: `experiments/exp-20261025-issue56-root-b1-r3/analysis/benchmark/putnam_2025_b1/report.json`
+Published bundle: [`docs/experiments/exp-20261025-issue56-root-b1-r3`](experiments/exp-20261025-issue56-root-b1-r3/README.md)
 
 The report comparison is:
 
@@ -125,7 +127,7 @@ These runs are environment-blocked before Agent work and are diagnostic-only.
 They provide no evidence about mathematical solving, branch/subtask overlap,
 Task completion, or a semantic-vs-Root-only speedup. Once valid local Provider
 authentication is available, rerun the two exact commands above from
-the final implementation commit recorded above with a clean worktree. The
+`90f7b94f845fef640877031a6e38b64b6036e5f7` with a clean worktree. The
 prompt-name fix is code/harness work, so a fresh acceptance run is required
 after authentication is restored; only a later documentation-only commit that
 records those resulting report paths would avoid another run.
