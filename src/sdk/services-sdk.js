@@ -68,7 +68,7 @@ export class ServicesSDK {
   createChildTask(task, options = {}) {
     return this.#write('create_child_task', task, {
       ...options,
-      stateVersion: options.stateVersion ?? this.context.taskStateVersion,
+      stateVersion: options.stateVersion ?? options.taskStateVersion ?? this.context.stateVersion ?? this.context.taskStateVersion,
     });
   }
 
@@ -80,7 +80,7 @@ export class ServicesSDK {
   createBranchGroup(payload = {}, options = {}) {
     return this.#write('create_branch_group', payload, {
       ...options,
-      stateVersion: options.stateVersion ?? this.context.taskStateVersion,
+      stateVersion: options.stateVersion ?? options.taskStateVersion ?? this.context.stateVersion ?? this.context.taskStateVersion,
     });
   }
 
@@ -88,7 +88,7 @@ export class ServicesSDK {
   addRequiredSubtask(payload = {}, options = {}) {
     return this.#write('add_required_subtask', payload, {
       ...options,
-      stateVersion: options.stateVersion ?? this.context.taskStateVersion,
+      stateVersion: options.stateVersion ?? options.taskStateVersion ?? this.context.stateVersion ?? this.context.taskStateVersion,
     });
   }
 
@@ -101,7 +101,7 @@ export class ServicesSDK {
   proposeStructureChange(payload = {}, options = {}) {
     return this.#write('propose_structure_change', payload, {
       ...options,
-      stateVersion: options.stateVersion ?? this.context.taskStateVersion,
+      stateVersion: options.stateVersion ?? options.taskStateVersion ?? this.context.stateVersion ?? this.context.taskStateVersion,
     });
   }
 
@@ -114,7 +114,7 @@ export class ServicesSDK {
   createReworkTask(payload = {}, options = {}) {
     return this.#write('create_rework_task', payload, {
       ...options,
-      stateVersion: options.stateVersion ?? this.context.taskStateVersion,
+      stateVersion: options.stateVersion ?? options.taskStateVersion ?? this.context.stateVersion ?? this.context.taskStateVersion,
     });
   }
 
