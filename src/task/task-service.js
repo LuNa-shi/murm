@@ -626,6 +626,11 @@ export class TaskService {
     this.#ensureStructureVersion(taskId, createdAt);
     this.#recordCreationProvenance({ taskId, creatorTaskId: parentId, creatorExecutionId: parentExecution.execution_id,
       creatorActorRef: envelope.actor_ref, creationKind: 'CHILD', createdAt });
+    this.#bumpStructure(parentId, {
+      eventType: 'child_task_created',
+      payload: { child_task_id: taskId, relationship: 'PARENT' },
+      envelope,
+    });
     this.db.prepare('UPDATE tasks SET state_version = state_version + 1, updated_at = ? WHERE task_id = ?')
       .run(createdAt, parentId);
     return { task: this.getTask(taskId) };
@@ -1061,6 +1066,13 @@ export class TaskService {
       envelope,
       version: currentStructureVersion + 1,
     });
+    if (parentId !== priorTaskId) {
+      this.#bumpStructure(parentId, {
+        eventType: 'rework_task_created',
+        payload: { rework_task_id: task.task_id, prior_task_id: priorTaskId, relationship: 'PARENT' },
+        envelope,
+      });
+    }
     return { task, prior_task: prior, provenance: this.#taskStructure(task.task_id).provenance, rework_link: { prior_task_id: priorTaskId, rework_task_id: task.task_id, feedback: instruction, source_material_refs: sourceMaterialRefs, workspace_lineage: workspaceLineage }, authority_execution: authorityExecution };
   }
 

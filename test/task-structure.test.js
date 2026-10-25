@@ -143,6 +143,21 @@ test('report rework creates a new evidence-linked Task instead of reopening the 
   service.close();
 });
 
+test('ordinary child creation records the parent structural revision and event', () => {
+  const { service, sdk } = environment();
+  const root = propose(sdk, 'child-structure-audit-root');
+  const rootRun = claim(sdk, root, 'owner:root', 'child-structure-audit-root-claim');
+  const before = service.getTaskStructure(root.task_id);
+  const child = bound(sdk, root, rootRun).createChildTask({
+    child_creation_key: 'child-structure-audit-child', task_type: 'default', goal: 'child', expected_output: 'child result', acceptance_conditions: {}, owner_ref: 'owner:root', completion_contract: {},
+  }, { operationId: 'child-structure-audit-create' }).task;
+  const after = service.getTaskStructure(root.task_id);
+  assert.equal(after.structural_version, before.structural_version + 1);
+  assert.equal(after.events.at(-1).event_type, 'child_task_created');
+  assert.equal(after.events.at(-1).payload.child_task_id, child.task_id);
+  service.close();
+});
+
 test('a later consumer can create rework for a terminal deliverable in the same root', () => {
   const { service, sdk } = environment();
   const root = propose(sdk, 'consumer-rework-root');
@@ -169,6 +184,7 @@ test('a later consumer can create rework for a terminal deliverable in the same 
   assert.equal(result.rework_link.workspace_lineage.source_execution_id, deliverableRun.execution.execution_id);
   assert.equal(service.getTask(deliverable.task_id).state, 'SATISFIED');
   assert.equal(service.getExecution(deliverableRun.execution.execution_id).state, 'SUCCEEDED');
+  assert.equal(service.getTaskStructure(root.task_id).events.at(-1).event_type, 'rework_task_created');
   service.close();
 });
 

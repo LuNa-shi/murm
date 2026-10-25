@@ -22,6 +22,9 @@ execution dependencies as separate relations over ordinary Task IDs.
 - Only explicit Task, Material, or CheckResult dependencies block claimability.
   Task dependencies are cycle-checked and every structural write carries a
   version check plus an append-only event record.
+- Ordinary direct-child creation and rework-child creation also advance the
+  owning Task's structural version and append a relationship event; the
+  legacy parent-child relation remains auditable alongside semantic groups.
 - A revision creates a new rework Task linked to the prior Task, feedback,
   source Materials, and Workspace lineage. The creator may be the prior Task,
   its parent, or another active consumer in the same root, provided the
