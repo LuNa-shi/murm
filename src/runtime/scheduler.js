@@ -166,6 +166,16 @@ export class Scheduler {
       const core = cores[index];
       const key = coreKey(core, index);
       const state = this.#state(key);
+      if (core?.session?.closed && !hasTaskOwnership(core) && state.successfulSignatures.size > 0) {
+        // A generic worker can start successfully and then exit while its
+        // discovery turn is still in flight. Its readiness signature must be
+        // eligible for a bounded replacement attempt; otherwise a closed
+        // session strands the free Core behind duplicate suppression.
+        state.successfulSignatures.clear();
+        state.lastDispatchSignature = null;
+        state.nextRetryAt = 0;
+        state.exhausted = state.attempts >= this.maxStartupAttempts;
+      }
       const available = this.isCoreAvailable(core, { key, scheduler: this });
       if (!available) {
         // A successful discovery turn can leave a Core physically available

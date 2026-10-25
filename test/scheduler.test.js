@@ -103,6 +103,34 @@ test('a bound Task release opens a new dispatch opportunity for the same READY s
   assert.equal(scheduler.snapshot().dispatch_count, 2);
 });
 
+test('a closed unbound session reopens a bounded dispatch opportunity', async () => {
+  const core = { id: 'core-1', free: true, session: { closed: false } };
+  let starts = 0;
+  const { scheduler, setCores } = schedulerFixture({
+    readyTasks: [{ task_id: 'task-1' }],
+    cores: [core],
+    maxStartupAttempts: 2,
+    startUnboundSession: async () => {
+      starts += 1;
+      return { started: true };
+    },
+  });
+
+  await scheduler.reconcile({ reason: 'ready-created' });
+  core.session = { closed: true };
+  setCores([core]);
+  await scheduler.reconcile({ reason: 'worker-exited' });
+  core.session = { closed: true };
+  await scheduler.reconcile({ reason: 'replacement-exited' });
+  core.session = { closed: true };
+  await scheduler.reconcile({ reason: 'bounded-retry' });
+
+  assert.equal(starts, 2);
+  assert.equal(scheduler.snapshot().dispatch_count, 2);
+  assert.equal(scheduler.snapshot().duplicate_suppression_count, 0);
+  assert.equal(scheduler.snapshot().bounded_startup_exhausted_count, 0);
+});
+
 test('duplicate readiness notifications do not race a pending startup', async () => {
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
