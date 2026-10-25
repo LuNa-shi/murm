@@ -251,6 +251,11 @@ export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
     // forwarded. An explicit allowlist makes the benchmark boundary
     // deterministic: only named SwarmEnv extension tools are enabled.
     args.push('--tools', listTools().map((tool) => `swarmenv_${tool.name}`).join(','));
+    // Pi exposes its `parallel` coordinator even when built-in tools are
+    // disabled. It can issue unregistered tool events and invalidate an
+    // otherwise compliant benchmark run, so deny it explicitly at the
+    // benchmark boundary.
+    args.push('--exclude-tools', 'parallel');
     return args;
   }
 }

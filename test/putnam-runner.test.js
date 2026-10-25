@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport } from '../src/benchmark/putnam-runner.js';
+import { BenchmarkAgentCoreAdapter, runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport } from '../src/benchmark/putnam-runner.js';
 import { ObservationStore } from '../src/observability/observation-store.js';
 
 const source = 'import Mathlib\ntheorem benchmark : True := by\n  sorry\n';
@@ -44,6 +44,18 @@ function checkerWithPreflight(checker) {
     }),
   };
 }
+
+test('benchmark Agent sessions explicitly deny Pi parallel coordination', () => {
+  const adapter = new BenchmarkAgentCoreAdapter({
+    provider: 'openai',
+    model: 'gpt-test',
+    sessionDir: '/tmp/swarmenv-benchmark-session',
+  });
+  const args = adapter.buildLaunchArgs({ executionId: 'benchmark-execution' });
+  assert.ok(args.includes('--no-builtin-tools'));
+  assert.ok(args.includes('--tools'));
+  assert.deepEqual(args.slice(args.indexOf('--exclude-tools'), args.indexOf('--exclude-tools') + 2), ['--exclude-tools', 'parallel']);
+});
 
 class FakeSession extends EventEmitter {
   constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, bound = false) {
