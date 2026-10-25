@@ -11,7 +11,7 @@ import {
   validateTaskProposal,
 } from './task-types.js';
 
-const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'expire_execution', 'fence_execution', 'heartbeat', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
+const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'expire_execution', 'fence_execution', 'handoff_execution', 'heartbeat', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
 const CLAIM_OPERATION = 'claim';
 const TASK_MUTATING_OPERATIONS = new Set([
   'accept_task', 'apply_check_result', 'create_branch_group', 'create_child_task',
@@ -63,6 +63,8 @@ function rowToExecution(row) {
     workspace_selection: parse(row.workspace_selection_json) ?? {},
     steer_material_refs: parse(row.steer_material_refs_json),
     wait_condition: parse(row.wait_condition_json),
+    handoff_metadata: parse(row.handoff_metadata_json),
+    terminal_reason: row.terminal_reason ?? null,
   };
 }
 
@@ -133,6 +135,12 @@ export class TaskService {
     }
     if (!executionColumns.has('workspace_selection_json')) this.db.exec("ALTER TABLE executions ADD COLUMN workspace_selection_json TEXT NOT NULL DEFAULT '{}'");
     if (!executionColumns.has('candidate_material_id')) this.db.exec('ALTER TABLE executions ADD COLUMN candidate_material_id TEXT');
+    if (!executionColumns.has('started_at')) this.db.exec('ALTER TABLE executions ADD COLUMN started_at TEXT');
+    if (!executionColumns.has('handoff_deadline')) this.db.exec('ALTER TABLE executions ADD COLUMN handoff_deadline TEXT');
+    if (!executionColumns.has('execution_deadline')) this.db.exec('ALTER TABLE executions ADD COLUMN execution_deadline TEXT');
+    if (!executionColumns.has('handoff_reminder_sent_at')) this.db.exec('ALTER TABLE executions ADD COLUMN handoff_reminder_sent_at TEXT');
+    if (!executionColumns.has('handoff_metadata_json')) this.db.exec("ALTER TABLE executions ADD COLUMN handoff_metadata_json TEXT");
+    if (!executionColumns.has('terminal_reason')) this.db.exec('ALTER TABLE executions ADD COLUMN terminal_reason TEXT');
     this.db.exec('DROP INDEX IF EXISTS executions_one_active_per_task');
     ensureJudgeSchema(this.db);
     this.#backfillStructureRecords();
@@ -220,6 +228,14 @@ export class TaskService {
     return rowToExecution(this.db.prepare('SELECT * FROM executions WHERE execution_id = ?').get(executionId));
   }
 
+  recordHandoffReminder(payload, envelope) {
+    return this.dispatch('record_handoff_reminder', payload, envelope);
+  }
+
+  handoffExecution(payload, envelope) {
+    return this.dispatch('handoff_execution', payload, envelope);
+  }
+
   getCheckResult(checkResultId) {
     return rowToCheckResult(this.db.prepare('SELECT * FROM check_results WHERE check_result_id = ?').get(checkResultId));
   }
@@ -292,6 +308,25 @@ export class TaskService {
     });
   }
 
+  validateWaitCondition(executionId, { waitCondition, waitDeadline = null } = {}) {
+    const execution = this.getExecution(requireString(executionId, 'execution_id'));
+    if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
+    const task = this.getTask(execution.task_id);
+    const normalized = this.#validateWaitCondition(execution, task, waitCondition, waitDeadline);
+    return { execution, task, wait_condition: normalized.waitCondition, wait_deadline: normalized.waitDeadline };
+  }
+
+  isWaitConditionSatisfied(executionId, waitCondition = undefined) {
+    const execution = this.getExecution(requireString(executionId, 'execution_id'));
+    if (!execution) return false;
+    const candidate = waitCondition === undefined ? execution : {
+      ...execution,
+      wait_condition: waitCondition,
+      wait_deadline: waitCondition?.deadline ?? execution.wait_deadline,
+    };
+    return this.#isWaitingResumable(candidate);
+  }
+
   #read(operation, payload, envelope) {
     if (operation === 'get_task') {
       const taskId = payload.task_id ?? envelope.task_id;
@@ -329,6 +364,8 @@ export class TaskService {
       case 'create_rework_task': return this.#createReworkTask(payload, envelope);
       case 'claim': return this.#claim(payload, envelope);
       case 'heartbeat': return this.#heartbeat(payload, envelope);
+      case 'record_handoff_reminder': return this.#recordHandoffReminder(payload, envelope);
+      case 'handoff_execution': return this.#handoffExecution(payload, envelope);
       case 'start_execution': return this.#startExecution(payload, envelope);
       case 'resume_execution': return this.#resumeExecution(payload, envelope);
       case 'request_wait': return this.#requestWait(payload, envelope);
@@ -378,8 +415,7 @@ export class TaskService {
   }
 
   #structureVersion(taskId) {
-    this.#ensureStructureVersion(taskId);
-    return this.db.prepare('SELECT structural_version FROM task_structure_versions WHERE task_id = ?').get(taskId).structural_version;
+    return this.db.prepare('SELECT structural_version FROM task_structure_versions WHERE task_id = ?').get(taskId)?.structural_version ?? 1;
   }
 
   #bumpStructure(taskId, { eventType, payload, envelope, version = null, sourceMaterialRefs = [] } = {}) {
@@ -409,7 +445,12 @@ export class TaskService {
     if (!execution || execution.task_id !== ownerTaskId || !['CREATED', 'RUNNING', 'WAITING'].includes(execution.state) || execution.owner_ref !== envelope.actor_ref) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the current Task Execution owner may change Task structure');
     }
-    if (envelope.execution_id) this.#executionForWrite(envelope);
+    try {
+      this.#executionForWrite(envelope);
+    } catch (error) {
+      if (error.code !== ERROR_CODES.STALE_VERSION || envelope.state_version !== owner.state_version) throw error;
+      this.#executionForWrite({ ...envelope, state_version: execution.state_version });
+    }
     return { task: owner, execution };
   }
 
@@ -564,7 +605,7 @@ export class TaskService {
       }
       return { task: this.getTask(existing.task_id) };
     }
-    if (envelope.spec_version !== parent.spec_version || envelope.state_version !== parent.state_version) {
+    if (envelope.spec_version !== parent.spec_version || (envelope.state_version !== parent.state_version && envelope.state_version !== parentExecution.state_version)) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'parent task version is stale', { expected_state_version: parent.state_version, expected_spec_version: parent.spec_version });
     }
     const childInput = validateTaskProposal({
@@ -651,7 +692,7 @@ export class TaskService {
     const satisfied = group.group_kind === 'BRANCH'
       ? members.some((member) => member.satisfied)
       : members.length > 0 && members.every((member) => member.satisfied);
-    return { ...group, members, satisfaction: group.group_kind === 'BRANCH' ? 'ANY' : 'ALL', satisfied };
+    return { ...group, members, member_task_ids: members.map((member) => member.task_id), satisfaction: group.group_kind === 'BRANCH' ? 'ANY' : 'ALL', satisfied };
   }
 
   #taskDependencyRows(taskId) {
@@ -777,7 +818,7 @@ export class TaskService {
     const activeCount = active.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state)).length;
     const waiting = active.filter((execution) => execution.state === 'WAITING');
     const resumableWaiting = waiting.some((execution) => this.#isWaitingResumable(execution));
-    if (task.state === 'SATISFIED') return { task_id: taskId, readiness: 'SATISFIED', reasons: ['task_contract_satisfied'], missing: [], structure };
+    if (task.state === 'SATISFIED') return { task_id: taskId, readiness: 'SATISFIED', status: 'SATISFIED', ready: true, reasons: ['task_contract_satisfied'], missing: [], structure };
     if (task.state === 'BLOCKED') missing.push(task.block_reason ?? 'task_blocked');
     if (blockers.length > 0) missing.push(...blockers.map((dependency) => `dependency:${dependency.dependency_id}`));
     const executionQuotaBlocked = activeCount >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, Date.now());
@@ -787,7 +828,7 @@ export class TaskService {
     // slot fills the quota alongside CREATED/RUNNING Executions.
     const waitingQuotaBlocked = waiting.length > 0 && !resumableWaiting && activeCount + waiting.length >= task.parallel_quota;
     if (waiting.length > 0 && !resumableWaiting && waitingQuotaBlocked) {
-      return { task_id: taskId, readiness: 'WAITING', reasons: ['execution_waiting'], missing: [...new Set(missing)], structure };
+      return { task_id: taskId, readiness: 'WAITING', status: 'WAITING', ready: false, reasons: ['execution_waiting'], missing: [...new Set(missing)], structure };
     }
     const latest = this.#latestExecution(taskId, true);
     const completion = this.#completion(task, latest);
@@ -796,6 +837,8 @@ export class TaskService {
     return {
       task_id: taskId,
       readiness: blocked ? 'BLOCKED' : 'READY',
+      status: blocked ? 'BLOCKED' : 'READY',
+      ready: !blocked || task.state === 'RUNNING',
       reasons: blocked ? missing : ['no_explicit_dependency_blocker'],
       missing: [...new Set(missing)],
       structure,
@@ -875,12 +918,12 @@ export class TaskService {
     } else {
       if (!payload.subtask || typeof payload.subtask !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'subtask_task_id or subtask proposal is required');
       this.#assertChildLimits(ownerTaskId);
-      task = this.#insertRelatedTask({ input: { ...payload.subtask, owner_ref: payload.subtask.owner_ref ?? envelope.actor_ref, workspace: payload.subtask.workspace ?? owner.workspace }, rootId: owner.root_id, parentId: ownerTaskId, envelope, creationKind: 'REQUIRED_SUBTASK', createdAt: now() });
+      task = this.#insertRelatedTask({ input: { ...payload.subtask, owner_ref: payload.subtask.owner_ref ?? envelope.actor_ref, workspace: payload.subtask.workspace ?? owner.workspace }, taskId: payload.subtask.task_id ?? randomUUID(), rootId: owner.root_id, parentId: ownerTaskId, envelope, creationKind: 'REQUIRED_SUBTASK', createdAt: now() });
     }
     this.#addGroupMember(group.group_id, task.task_id, next, payload.member_order ?? 0);
     this.db.prepare('UPDATE task_structure_groups SET structural_version = ? WHERE group_id = ?').run(next, group.group_id);
     this.#bumpStructure(ownerTaskId, { eventType: 'required_subtask_added', payload: { group_id: group.group_id, task_id: task.task_id }, envelope, version: next, sourceMaterialRefs });
-    return { group: this.#groupView(this.db.prepare('SELECT * FROM task_structure_groups WHERE group_id = ?').get(group.group_id)), task, owner: this.getTask(ownerTaskId), execution };
+    return { group: this.#groupView(this.db.prepare('SELECT * FROM task_structure_groups WHERE group_id = ?').get(group.group_id)), task, subtask: task, owner: this.getTask(ownerTaskId), execution };
   }
 
   #assertDependencyCycle(taskId, prerequisiteTaskId) {
@@ -973,7 +1016,8 @@ export class TaskService {
       return { ...result, structure: this.#taskStructure(taskId), change: { kind: 'add_required_subtask', group_id: result.group.group_id, task_id: result.task.task_id, structural_version: current + 1, source_material_refs: sourceMaterialRefs } };
     }
     if (['add_dependency', 'dependency', 'add_execution_dependency'].includes(kind)) {
-      const dependency = this.#insertDependency(taskId, change.dependency ?? change, envelope);
+      const dependencyTargetId = change.task_id ?? change.dependency?.task_id ?? taskId;
+      const dependency = this.#insertDependency(dependencyTargetId, change.dependency ?? change, envelope);
       const version = this.#bumpStructure(taskId, { eventType: 'dependency_added', payload: { dependency_id: dependency.dependency_id, dependency }, envelope, version: current + 1, sourceMaterialRefs });
       return { structure: this.#taskStructure(taskId), change: { kind: 'add_dependency', dependency_id: dependency.dependency_id, structural_version: version, source_material_refs: sourceMaterialRefs }, task, execution };
     }
@@ -1073,7 +1117,7 @@ export class TaskService {
         envelope,
       });
     }
-    return { task, prior_task: prior, provenance: this.#taskStructure(task.task_id).provenance, rework_link: { prior_task_id: priorTaskId, rework_task_id: task.task_id, feedback: instruction, source_material_refs: sourceMaterialRefs, workspace_lineage: workspaceLineage }, authority_execution: authorityExecution };
+    return { task, rework_task: task, prior_task: prior, provenance: this.#taskStructure(task.task_id).provenance, rework_link: { prior_task_id: priorTaskId, rework_task_id: task.task_id, feedback: instruction, source_material_refs: sourceMaterialRefs, workspace_lineage: workspaceLineage }, authority_execution: authorityExecution };
   }
 
   #claim(payload, envelope) {
@@ -1228,6 +1272,12 @@ export class TaskService {
       workspace_content_hash: null,
       checkpoint_ref: null,
       checkpoint_hash: null,
+      started_at: null,
+      handoff_deadline: null,
+      execution_deadline: null,
+      handoff_reminder_sent_at: null,
+      handoff_metadata: null,
+      terminal_reason: null,
       instruction_version: 1,
       steer_material_refs: [],
       wait_condition: null,
@@ -1240,14 +1290,16 @@ export class TaskService {
       execution_id, task_id, owner_ref, state, state_version, attempt_no, fencing_version, runtime_generation,
       lease_expires_at, heartbeat_at, launch_token, spec_version, spec_hash, agent_prompt, workspace_manifest_ref,
       input_material_refs_json, input_snapshot_hash, workspace_selection_json, candidate_material_id, workspace_ref, workspace_revision, workspace_content_hash, checkpoint_ref, checkpoint_hash,
+      started_at, handoff_deadline, execution_deadline, handoff_reminder_sent_at, handoff_metadata_json, terminal_reason,
       instruction_version, steer_material_refs_json, wait_condition_json, wait_deadline, resume_token, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    ) VALUES (${Array.from({ length: 37 }, () => '?').join(', ')})`)
       .run(execution.execution_id, execution.task_id, execution.owner_ref, execution.state, execution.state_version,
         execution.attempt_no, execution.fencing_version, execution.runtime_generation, execution.lease_expires_at,
         execution.heartbeat_at, execution.launch_token, execution.spec_version, execution.spec_hash, execution.agent_prompt,
         execution.workspace_manifest_ref, json(execution.input_material_refs), execution.input_snapshot_hash, json(execution.workspace_selection), execution.candidate_material_id, execution.workspace_ref,
-        execution.workspace_revision, execution.workspace_content_hash, execution.checkpoint_ref, execution.checkpoint_hash, execution.instruction_version,
-        json(execution.steer_material_refs), json(execution.wait_condition), execution.wait_deadline, execution.resume_token,
+        execution.workspace_revision, execution.workspace_content_hash, execution.checkpoint_ref, execution.checkpoint_hash,
+        execution.started_at, execution.handoff_deadline, execution.execution_deadline, execution.handoff_reminder_sent_at, json(execution.handoff_metadata), execution.terminal_reason,
+        execution.instruction_version, json(execution.steer_material_refs), json(execution.wait_condition), execution.wait_deadline, execution.resume_token,
         execution.created_at, execution.updated_at);
     this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
       .run('RUNNING', createdAt, task.task_id);
@@ -1277,12 +1329,63 @@ export class TaskService {
     return { execution: this.getExecution(execution.execution_id) };
   }
 
+  #recordHandoffReminder(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    if (!['CREATED', 'RUNNING'].includes(execution.state)) return { execution };
+    if (execution.handoff_reminder_sent_at) return { execution };
+    const remindedAt = payload.reminded_at ?? now();
+    if (typeof remindedAt !== 'string' || Number.isNaN(Date.parse(remindedAt))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'reminded_at must be an ISO timestamp');
+    }
+    this.db.prepare(`UPDATE executions SET handoff_reminder_sent_at = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
+      .run(remindedAt, now(), execution.execution_id);
+    return { execution: this.getExecution(execution.execution_id), reminded: true };
+  }
+
+  #handoffExecution(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    if (!['CREATED', 'RUNNING'].includes(execution.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot handoff Execution from ${execution.state}`);
+    }
+    const terminalState = payload.terminal_state ?? 'FENCED';
+    if (!['EXPIRED', 'FENCED'].includes(terminalState)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoff terminal_state must be EXPIRED or FENCED');
+    }
+    const terminalReason = requireString(payload.terminal_reason ?? payload.reason, 'terminal_reason');
+    const handoffMetadata = payload.handoff_metadata ?? payload.handoff ?? {};
+    if (!handoffMetadata || typeof handoffMetadata !== 'object' || Array.isArray(handoffMetadata)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoff_metadata must be an object');
+    }
+    const checkpointRef = payload.checkpoint_ref ?? execution.checkpoint_ref;
+    const checkpointHash = payload.checkpoint_hash ?? execution.checkpoint_hash;
+    if (checkpointRef !== null && checkpointRef !== undefined) requireString(checkpointRef, 'checkpoint_ref');
+    if (checkpointHash !== null && checkpointHash !== undefined) requireString(checkpointHash, 'checkpoint_hash');
+    if ((checkpointRef && !checkpointHash) || (!checkpointRef && checkpointHash)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'checkpoint_ref and checkpoint_hash must be provided together');
+    }
+    const updatedAt = now();
+    this.db.prepare(`UPDATE executions SET state = ?, fencing_version = ?, checkpoint_ref = COALESCE(?, checkpoint_ref), checkpoint_hash = COALESCE(?, checkpoint_hash), workspace_ref = COALESCE(?, workspace_ref), workspace_revision = COALESCE(?, workspace_revision), workspace_content_hash = COALESCE(?, workspace_content_hash), handoff_metadata_json = ?, terminal_reason = ?, wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
+      .run(terminalState, execution.fencing_version + 1, checkpointRef ?? null, checkpointHash ?? null,
+        payload.workspace_ref ?? null, payload.workspace_revision ?? null, payload.workspace_content_hash ?? null,
+        json(handoffMetadata), terminalReason, updatedAt, execution.execution_id);
+    const task = this.getTask(execution.task_id);
+    if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt });
+    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id), handoff: handoffMetadata };
+  }
+
   #startExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot start Execution from ${execution.state}`);
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('RUNNING', updatedAt, execution.execution_id);
+    const startedAt = payload.started_at ?? updatedAt;
+    if (typeof startedAt !== 'string' || Number.isNaN(Date.parse(startedAt))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'started_at must be an ISO timestamp');
+    const handoffDeadline = payload.handoff_deadline ?? null;
+    const executionDeadline = payload.execution_deadline ?? null;
+    for (const [name, value] of [['handoff_deadline', handoffDeadline], ['execution_deadline', executionDeadline]]) {
+      if (value !== null && (typeof value !== 'string' || Number.isNaN(Date.parse(value)))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${name} must be an ISO timestamp`);
+    }
+    this.db.prepare('UPDATE executions SET state = ?, started_at = ?, handoff_deadline = ?, execution_deadline = ?, handoff_reminder_sent_at = NULL, terminal_reason = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run('RUNNING', startedAt, handoffDeadline, executionDeadline, updatedAt, execution.execution_id);
     return { execution: this.getExecution(execution.execution_id) };
   }
 
@@ -1295,6 +1398,43 @@ export class TaskService {
     this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
       .run('RUNNING', updatedAt, execution.task_id);
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
+  }
+
+  #validateWaitCondition(execution, task, rawCondition, rawDeadline = null) {
+    if (!rawCondition || typeof rawCondition !== 'object' || Array.isArray(rawCondition)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
+    const waitCondition = { ...rawCondition };
+    if (waitCondition.type === 'check_result_arrived' && waitCondition.candidate_material_id !== undefined) {
+      requireString(waitCondition.candidate_material_id, 'wait_condition.candidate_material_id');
+      if (waitCondition.candidate_material_id !== execution.candidate_material_id) throw new SwarmEnvError(ERROR_CODES.FENCED, 'wait_condition candidate does not match the current Execution candidate');
+      if (!waitCondition.check_request_key && !waitCondition.request_key) waitCondition.check_request_key = waitCondition.candidate_material_id;
+    }
+    const allowed = new Set(['child_task_terminal', 'children_all_terminal', 'parent_review', 'check_result_arrived', 'checker_health', 'timer']);
+    if (!allowed.has(waitCondition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
+    if (waitCondition.type === 'parent_review' && !task.parent_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent_review requires a child Task');
+    if (waitCondition.type === 'child_task_terminal') {
+      const childTaskId = requireString(waitCondition.child_task_id ?? waitCondition.task_id, 'wait_condition.child_task_id');
+      const child = this.getTask(childTaskId);
+      if (!child || child.parent_id !== task.task_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'child_task_terminal must reference a direct child Task');
+      if (TERMINAL_TASK_STATES.includes(child.state)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'child_task_terminal condition is already satisfied');
+    }
+    if (waitCondition.type === 'children_all_terminal') {
+      if (!Array.isArray(waitCondition.child_task_ids) || waitCondition.child_task_ids.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal requires at least one child_task_id');
+      const childIds = [...new Set(waitCondition.child_task_ids.map((id) => requireString(id, 'wait_condition.child_task_ids')))];
+      const children = childIds.map((id) => this.getTask(id));
+      if (children.some((child) => !child || child.parent_id !== task.task_id)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal must reference direct child Tasks');
+      if (children.every((child) => TERMINAL_TASK_STATES.includes(child.state))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal condition is already satisfied');
+      waitCondition.child_task_ids = childIds;
+    }
+    if (waitCondition.type === 'check_result_arrived') requireString(waitCondition.check_request_key ?? waitCondition.request_key, 'wait_condition.check_request_key');
+    if (waitCondition.type === 'checker_health') {
+      requireString(waitCondition.preflight_key, 'wait_condition.preflight_key');
+      requireString(waitCondition.health_fingerprint, 'wait_condition.health_fingerprint');
+      if (waitCondition.retry_after !== undefined) requireString(waitCondition.retry_after, 'wait_condition.retry_after');
+    }
+    const waitDeadline = rawDeadline ?? waitCondition.deadline ?? null;
+    if (waitCondition.type === 'timer' && !waitDeadline) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timer wait requires a deadline');
+    if (waitDeadline !== null && (typeof waitDeadline !== 'string' || Number.isNaN(Date.parse(waitDeadline)))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_deadline must be an ISO timestamp');
+    return { waitCondition, waitDeadline };
   }
 
   #requestWait(payload, envelope) {
@@ -1315,55 +1455,13 @@ export class TaskService {
     if (execution.checkpoint_ref !== payload.checkpoint_ref || execution.checkpoint_hash !== payload.checkpoint_hash) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'request_wait requires a checkpoint already saved for this Execution');
     }
-    if (!payload.wait_condition || typeof payload.wait_condition !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
-    const waitCondition = { ...payload.wait_condition };
-    if (waitCondition.type === 'check_result_arrived' && waitCondition.candidate_material_id !== undefined) {
-      requireString(waitCondition.candidate_material_id, 'wait_condition.candidate_material_id');
-      if (waitCondition.candidate_material_id !== execution.candidate_material_id) {
-        throw new SwarmEnvError(ERROR_CODES.FENCED, 'wait_condition candidate does not match the current Execution candidate');
-      }
-      if (!waitCondition.check_request_key && !waitCondition.request_key) {
-        waitCondition.check_request_key = waitCondition.candidate_material_id;
-      }
-    }
-    const allowed = new Set(['child_task_terminal', 'children_all_terminal', 'parent_review', 'check_result_arrived', 'checker_health', 'timer']);
-    if (!allowed.has(waitCondition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
     const task = this.getTask(execution.task_id);
-    if (waitCondition.type === 'parent_review' && !task.parent_id) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent_review requires a child Task');
-    }
-    if (waitCondition.type === 'child_task_terminal') {
-      const childTaskId = requireString(waitCondition.child_task_id ?? waitCondition.task_id, 'wait_condition.child_task_id');
-      const child = this.getTask(childTaskId);
-      if (!child || child.parent_id !== task.task_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'child_task_terminal must reference a direct child Task');
-      if (TERMINAL_TASK_STATES.includes(child.state)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'child_task_terminal condition is already satisfied');
-    }
-    if (waitCondition.type === 'children_all_terminal') {
-      if (!Array.isArray(waitCondition.child_task_ids) || waitCondition.child_task_ids.length === 0) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal requires at least one child_task_id');
-      }
-      const childIds = [...new Set(waitCondition.child_task_ids.map((childTaskId) => requireString(childTaskId, 'wait_condition.child_task_ids')))];
-      const children = childIds.map((childTaskId) => this.getTask(childTaskId));
-      if (children.some((child) => !child || child.parent_id !== task.task_id)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal must reference direct child Tasks');
-      }
-      if (children.every((child) => TERMINAL_TASK_STATES.includes(child.state))) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal condition is already satisfied');
-      }
-      waitCondition.child_task_ids = childIds;
-    }
-    if (waitCondition.type === 'check_result_arrived') {
-      requireString(waitCondition.check_request_key ?? waitCondition.request_key, 'wait_condition.check_request_key');
-    }
-    if (waitCondition.type === 'checker_health') {
-      requireString(waitCondition.preflight_key, 'wait_condition.preflight_key');
-      requireString(waitCondition.health_fingerprint, 'wait_condition.health_fingerprint');
-      if (waitCondition.retry_after !== undefined) requireString(waitCondition.retry_after, 'wait_condition.retry_after');
-    }
-    const waitDeadline = payload.wait_deadline ?? waitCondition.deadline ?? null;
-    if (waitCondition.type === 'timer' && !waitDeadline) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timer wait requires a deadline');
-    }
+    const { waitCondition, waitDeadline } = this.#validateWaitCondition(
+      execution,
+      task,
+      payload.wait_condition,
+      payload.wait_deadline ?? payload.wait_condition?.deadline ?? null,
+    );
     const updatedAt = now();
     this.db.prepare(`UPDATE executions SET state = 'WAITING', checkpoint_ref = ?, checkpoint_hash = ?, workspace_ref = COALESCE(?, workspace_ref), workspace_revision = COALESCE(?, workspace_revision), workspace_content_hash = COALESCE(?, workspace_content_hash), wait_condition_json = ?, wait_deadline = ?, resume_token = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
       .run(payload.checkpoint_ref, payload.checkpoint_hash, payload.workspace_ref ?? null, payload.workspace_revision ?? null, payload.workspace_content_hash ?? null,

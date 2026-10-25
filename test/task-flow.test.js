@@ -515,6 +515,40 @@ test('candidate Material ID wakes a waiting proof Execution when Judge uses an i
   close(env);
 });
 
+test('a CheckResult that arrives before wait registration makes the condition immediately resumable and wake remains idempotent', () => {
+  const env = environment();
+  const task = env.sdk.proposeTask(proofInput(), { operationId: 'early-result-propose' }).task;
+  const run = claimTask(env, task, { executionId: 'early-result-execution', actorRef: 'owner:root' });
+  const candidate = run.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'early candidate' } }, { operationId: 'early-result-material' }).material;
+  const submitted = run.sdk.submitCandidate({ candidate_material_id: candidate.material_id }, { operationId: 'early-result-submit' });
+  const timestamp = new Date().toISOString();
+  env.taskService.db.prepare(`INSERT INTO check_results (
+    check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
+    execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict, evidence_json,
+    applied_task_state_version, applied_at, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RECEIVED', 'FAIL', ?, NULL, NULL, ?, ?)`).run(
+    'early-result-check', 'judge:early-result', 'early-hash', candidate.material_id, task.task_id, task.spec_version,
+    submitted.execution.execution_id, submitted.execution.input_snapshot_hash, 'lean', 'mvp-1', 'putnambench-test', '{}', timestamp, timestamp,
+  );
+  const checkpointed = saveCheckpoint(env, submitted.execution, 'early-result-checkpoint');
+  const waited = run.sdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
+    wait_key: 'early-result-wait',
+    checkpoint_ref: checkpointed.checkpoint_ref,
+    checkpoint_hash: checkpointed.checkpoint_hash,
+    wait_condition: { type: 'check_result_arrived', candidate_material_id: candidate.material_id },
+  }, { operationId: 'early-result-wait-op' });
+  assert.equal(env.taskService.isWaitConditionSatisfied(waited.execution.execution_id), true);
+  assert.equal(env.taskService.listResumableExecutions().length, 1);
+  const waitingSdk = run.sdk.withContext({ stateVersion: waited.execution.state_version });
+  const first = waitingSdk.wakeExecution({ wake_key: 'early-result-wake' }, { operationId: 'early-result-wake-op' });
+  const replay = waitingSdk.wakeExecution({ wake_key: 'early-result-wake' }, { operationId: 'early-result-wake-replay-op' });
+  assert.equal(first.execution.state, 'RUNNING');
+  assert.equal(replay.execution.execution_id, first.execution.execution_id);
+  assert.equal(replay.execution.state, 'RUNNING');
+  assert.equal(env.taskService.db.prepare('SELECT COUNT(*) AS count FROM wake_keys').get().count, 1);
+  close(env);
+});
+
 test('resuming a waiting Execution accepts its current Workspace revision without an internal source reference', () => {
   const env = environment();
   const task = env.sdk.proposeTask(proofInput(), { operationId: 'revision-resume-propose' }).task;

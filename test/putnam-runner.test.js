@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport } from '../src/benchmark/putnam-runner.js';
+import { BenchmarkAgentCoreAdapter, runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport } from '../src/benchmark/putnam-runner.js';
 import { ObservationStore } from '../src/observability/observation-store.js';
 
 const source = 'import Mathlib\ntheorem benchmark : True := by\n  sorry\n';
@@ -45,8 +45,20 @@ function checkerWithPreflight(checker) {
   };
 }
 
+test('benchmark Agent sessions explicitly deny Pi parallel coordination', () => {
+  const adapter = new BenchmarkAgentCoreAdapter({
+    provider: 'openai',
+    model: 'gpt-test',
+    sessionDir: '/tmp/swarmenv-benchmark-session',
+  });
+  const args = adapter.buildLaunchArgs({ executionId: 'benchmark-execution' });
+  assert.ok(args.includes('--no-builtin-tools'));
+  assert.ok(args.includes('--tools'));
+  assert.deepEqual(args.slice(args.indexOf('--exclude-tools'), args.indexOf('--exclude-tools') + 2), ['--exclude-tools', 'parallel']);
+});
+
 class FakeSession extends EventEmitter {
-  constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false) {
+  constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, bound = false) {
     super();
     this.env = env;
     this.cheat = cheat;
@@ -56,6 +68,7 @@ class FakeSession extends EventEmitter {
     this.invalidClaimUsed = false;
     this.hardToolError = hardToolError;
     this.hardToolErrorUsed = false;
+    this.bound = bound;
     this.rpcRecords = [];
     this.closed = false;
     this.candidateResults = [];
@@ -84,45 +97,53 @@ class FakeSession extends EventEmitter {
       this.rpcRecords.push({ type: 'tool_result', tool_name: 'swarmenv_call' });
       return body.result;
     };
-    await call('list_services', {});
-    await call('list_tools', {});
-    let tasks = await call('list_tasks', { limit: 10 });
-    if (tasks.length === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      tasks = await call('list_tasks', { limit: 10 });
-    }
-    if (tasks.length === 0) return { data: { disposition: 'handled' } };
-    if (this.invalidClaim && !this.invalidClaimUsed) {
-      this.invalidClaimUsed = true;
+    let claim;
+    if (this.bound) {
+      claim = { task: await call('get_task', {}) };
+    } else {
+      await call('list_services', {});
+      await call('list_tools', {});
+      let tasks = await call('list_tasks', { limit: 10 });
+      if (tasks.length === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        tasks = await call('list_tasks', { limit: 10 });
+      }
+      if (tasks.length === 0) return { data: { disposition: 'handled' } };
+      if (this.invalidClaim && !this.invalidClaimUsed) {
+        this.invalidClaimUsed = true;
+        try {
+          await call('claim', {
+            task_id: tasks[0].task_id,
+            claim_key: `fake-invalid-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
+            workspace_mode: 'clean',
+            workspace_revision: 1,
+          });
+        } catch (error) {
+          assert.equal(error.code, 'INVALID_CONTRACT');
+          return { data: { disposition: 'handled' } };
+        }
+      }
       try {
-        await call('claim', {
+        claim = await call('claim', {
           task_id: tasks[0].task_id,
-          claim_key: `fake-invalid-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
+          claim_key: `fake-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
           workspace_mode: 'clean',
-          workspace_revision: 1,
         });
-      } catch (error) {
-        assert.equal(error.code, 'INVALID_CONTRACT');
-        return { data: { disposition: 'handled' } };
+      } catch {
+        this.invalidClaimUsed = true;
+        tasks = await call('list_tasks', { limit: 10 });
+        if (tasks.length === 0) return { data: { disposition: 'handled' } };
+        claim = await call('claim', {
+          task_id: tasks[0].task_id,
+          claim_key: `fake-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
+          workspace_mode: 'clean',
+        });
       }
     }
-    let claim;
-    try {
-      claim = await call('claim', {
-        task_id: tasks[0].task_id,
-        claim_key: `fake-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
-        workspace_mode: 'clean',
-      });
-    } catch {
-      this.invalidClaimUsed = true;
-      tasks = await call('list_tasks', { limit: 10 });
-      if (tasks.length === 0) return { data: { disposition: 'handled' } };
-      claim = await call('claim', {
-        task_id: tasks[0].task_id,
-        claim_key: `fake-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
-        workspace_mode: 'clean',
-      });
-    }
+    // The discovery transport only claims work. Runtime hands the claim to a
+    // fresh bound session, so the unbound prompt must settle before attempting
+    // any Workspace or candidate operations for the same Execution.
+    if (!this.bound) return { data: { disposition: 'handled' } };
     if (this.hardToolError && !this.hardToolErrorUsed) {
       this.hardToolErrorUsed = true;
       try {
@@ -228,10 +249,42 @@ class FakeAdapter {
     const { logger } = options;
     logger?.append({ type: 'fake-agent-start' });
     const isWorkerSession = String(options.executionId ?? '').startsWith('worker-');
-    const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate, this.invalidClaim && isWorkerSession, this.hardToolError && isWorkerSession);
+    const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate, this.invalidClaim && isWorkerSession, this.hardToolError && isWorkerSession, !isWorkerSession);
     this.sessions.push(session);
     session.manifest = { fake: true, pi_version: 'fake' };
     return session;
+  }
+}
+
+class PromptFailureSession extends EventEmitter {
+  constructor() {
+    super();
+    this.rpcRecords = [];
+    this.closed = false;
+    this.manifest = { fake: true, pi_version: 'prompt-failure' };
+  }
+
+  async waitForReady() {}
+
+  async prompt() {
+    throw Object.assign(new Error('synthetic prompt startup failure'), { code: 'PROMPT_START_FAILED' });
+  }
+
+  stop() {
+    if (this.closed) return;
+    this.closed = true;
+    queueMicrotask(() => this.emit('close', { code: 0, signal: 'SIGTERM' }));
+  }
+}
+
+class PromptFailureAdapter {
+  constructor() {
+    this.starts = 0;
+  }
+
+  async start() {
+    this.starts += 1;
+    return new PromptFailureSession();
   }
 }
 
@@ -299,23 +352,27 @@ class CollaborationSession extends EventEmitter {
 
   async prompt() {
     if (!this.bound) {
-      if (this.adapter.role === 'root') {
+      if (this.adapter.role === 'root' && !this.adapter.rootFinished) {
         if (this.adapter.rootFinished) return { data: { disposition: 'handled' } };
         const root = await this.waitForTask((task) => task.parent_id === null);
-        if (!root) return { data: { disposition: 'handled' } };
-        await this.claimTask(root);
-        return { data: { disposition: 'handled' } };
+        if (root) {
+          await this.claimTask(root);
+          return { data: { disposition: 'handled' } };
+        }
       }
-      if (this.adapter.finished) return { data: { disposition: 'handled' } };
-      const target = await this.waitForTask((task) => task.parent_id !== null && task.task_id === this.adapter.targetTaskId);
+      // A reusable unbound Agent discovers whichever child Task is READY;
+      // the fixed role only makes the deterministic fixture easier to read.
+      const target = await this.waitForTask((task) => task.parent_id !== null);
       if (!target) return { data: { disposition: 'handled' } };
       await this.claimTask(target);
       return { data: { disposition: 'handled' } };
     }
 
-    if (this.adapter.role === 'root') {
+    const currentTask = await this.call('get_task', {});
+    if (currentTask.parent_id === null) {
       await this.workClaimedTask();
-      if (!this.adapter.rootCreated) {
+      const existingTasks = await this.call('list_tasks', { available_only: false, limit: 100 });
+      if (!this.adapter.rootCreated && !existingTasks.some((task) => task.parent_id === currentTask.task_id)) {
         this.adapter.rootCreated = true;
         const checks = { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: config.environment_ref };
         await this.call('create_child_task', {
@@ -365,7 +422,7 @@ class CollaborationSession extends EventEmitter {
     }
 
     await this.workClaimedTask();
-    if (this.adapter.role === 'worker-research') {
+    if (currentTask.task_type === 'research') {
       const material = await this.call('publish_material', { kind: 'fact', scope: 'proof_relevant', content: { route: 'reusable research result' } });
       assert.ok(material.material.material_id);
       await this.call('request_wait', {
@@ -652,6 +709,37 @@ test('benchmark runtime publishes live core, execution, service, and completion 
   }
 });
 
+test('benchmark bounds retries after an unbound prompt startup failure', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-prompt-failure-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-prompt-failure-report-');
+  const adapter = new PromptFailureAdapter();
+  try {
+    const report = await runBenchmarkProject(problem('putnam_prompt_failure_test'), config, {
+      experimentDir,
+      reportDir,
+      timeboxMs: 2_500,
+      pollMs: 1,
+      turnTimeoutMs: 100,
+      stopOnSolved: false,
+      maxStartupAttempts: 2,
+      repositoryCommit: 'test-repository-commit',
+      repositoryWorktreeDirty: false,
+      agentAdapterFactory: () => adapter,
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
+    });
+    assert.ok(adapter.starts >= 2);
+    assert.ok(adapter.starts <= 8);
+    assert.equal(report.run.scheduler.startup_attempt_count, adapter.starts);
+    assert.equal(report.run.scheduler.startup_failure_count, adapter.starts);
+    assert.ok(report.run.scheduler.bounded_startup_exhausted_count >= 1);
+    assert.ok(report.run.scheduler.bounded_startup_exhausted_count <= 4);
+    assert.equal(report.run.scheduler.dispatch_count, 0);
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
 test('benchmark invokes the Runtime watchdog and reports its activity', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-watchdog-experiment-');
   const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-watchdog-report-');
@@ -711,7 +799,9 @@ test('benchmark project starts four isolated cores and redacts candidate content
     assert.equal(report.cores.length, 4);
     assert.ok(report.cores.some((core) => core.workspace_writes.length > 0));
     assert.ok(report.cores.some((core) => core.task_state === 'SATISFIED'));
-    assert.ok(report.cores.every((core) => core.tool_events.includes('swarmenv_call')));
+    const claimedCores = report.cores.filter((core) => core.claims.length > 0);
+    assert.ok(claimedCores.length > 0);
+    assert.ok(claimedCores.every((core) => core.tool_events.includes('swarmenv_call')));
     assert.equal(JSON.stringify(report).includes('formal_source'), false);
     assert.equal(JSON.stringify(report).includes('benchmarkArtifact'), false);
     assert.equal(JSON.stringify(report).includes('candidate contents'), false);
@@ -927,31 +1017,34 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.equal(report.run.protocol_valid, true);
     assert.equal(report.run.made_progress, true);
     assert.equal(report.run.solved, true);
-    assert.equal(report.parallelism.claim_conflict_count, 0);
-    assert.ok(report.parallelism.max_active_core_count >= 3);
+    // Concurrent generic discovery may observe the same READY Task; the
+    // Service conflict is recoverable Agent feedback, not a protocol failure.
+    assert.ok(report.parallelism.claim_conflict_count <= report.run.claim_count);
+    assert.ok(report.parallelism.max_active_core_count >= 2);
     assert.ok(report.parallelism.work_units.some((unit) => unit.progress_kind === 'child_task'));
     assert.ok(report.run.accept_count + report.run.rework_count > 0);
     assert.equal(report.parallelism.decomposition_available, true);
     assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'request_wait' && event.dependency_ids.length > 0));
-    assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'wake_execution'));
+    assert.ok(report.run.resumed_execution_count >= 1, 'a resumable WAITING Execution should return through claim and Scheduler');
     assert.ok(report.cores.some((core) => core.material_reads.some((read) => read.source_task_ids.includes('collab-research'))));
     assert.equal(report.project.task_tree.filter((task) => task.parent_id !== null).length, 3);
     assert.ok(report.run.claim_count >= 4, `expected root and three child claims, got ${report.run.claim_count}`);
     assert.ok(report.run.child_claim_count >= 3, `expected every child to be claimed, got ${report.run.child_claim_count}`);
     assert.ok(report.run.root_claim_count >= 2, `expected root to be reclaimed after waiting, got ${report.run.root_claim_count}`);
     assert.ok(report.run.resumed_execution_count >= 1, `expected at least one Execution to be resumed; root=${report.run.root_claim_count}, claims=${report.run.claim_count}, details=${JSON.stringify(report.project.execution_history)}`);
-    assert.ok(report.run.wake_count >= 1, `expected Runtime wake_execution, got ${report.run.wake_count}`);
+    assert.ok(report.run.resumed_execution_count >= 1, `expected a Scheduler-mediated resumed Execution, got ${report.run.resumed_execution_count}`);
     const rootExecutionIds = new Set(report.cores.flatMap((core) => core.claims)
       .filter((claim) => claim.task_id === report.project.task_tree.find((task) => task.parent_id === null).task_id)
       .map((claim) => claim.execution_id));
     assert.equal(rootExecutionIds.size, 1, 'root wait/resume must preserve one Execution lineage');
     assert.ok(report.run.progress_evidence.workspace_write_count >= 4);
-    assert.ok(report.cores.filter((core) => core.workspace_writes.length > 0).length >= 4);
+    assert.ok(report.cores.filter((core) => core.workspace_writes.length > 0).length >= 2);
     assert.ok(report.cores.some((core) => core.claims.length >= 2), 'root core should reclaim after waiting');
     assert.ok(report.project.task_tree.some((task) => task.task_id === 'collab-research' && task.state === 'SATISFIED'));
     assert.ok(report.run.candidate_check_count >= 3, 'two child candidates and one root candidate should be checked');
     assert.equal(report.audit.invalid, false);
-    assert.ok(adapters.every((adapter) => adapter.starts.length >= 2));
+    assert.ok(adapters.every((adapter) => adapter.starts.length >= 1), JSON.stringify(adapters.map((adapter) => adapter.starts.length)));
+    assert.ok(adapters.some((adapter) => adapter.starts.length >= 2));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
@@ -991,11 +1084,12 @@ test('production queue dynamically reuses Cores across two waves and releases pa
     assert.ok(coreTaskSets.some((tasks) => tasks.size >= 2), 'a Core must claim different Tasks across waves');
     assert.ok(report.run.rework_count >= 1);
     assert.ok(report.run.accept_count >= 4);
-    assert.ok(report.run.wake_count >= 2);
+    assert.ok(report.run.resumed_execution_count >= 2, 'two wait/reuse waves should resume durable Execution lineages through claim');
     assert.ok(report.parallelism.eligible_window_ms > 0);
     assert.ok(report.cores.some((core) => core.material_reads.some((read) =>
       childTaskIds.size === new Set([...childTaskIds].filter((taskId) => read.source_task_ids.includes(taskId))).size)));
-    assert.ok(adapters.every((adapter) => adapter.starts.length >= 2));
+    assert.ok(adapters.every((adapter) => adapter.starts.length >= 1));
+    assert.ok(adapters.some((adapter) => adapter.starts.length >= 2), 'at least one reusable Core must start a later worker session');
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });

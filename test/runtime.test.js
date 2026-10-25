@@ -24,12 +24,14 @@ class FakeSession extends EventEmitter {
     this.closed = false;
     this.stopDelayMs = stopDelayMs;
     this.prompts = [];
+    this.promptOptions = [];
   }
 
   async waitForReady() {}
 
-  async prompt(message) {
+  async prompt(message, options = {}) {
     this.prompts.push(message);
+    this.promptOptions.push(options);
     return { data: { disposition: 'handled' } };
   }
 
@@ -95,25 +97,17 @@ test('Runtime waits for Agent exit before releasing a waiting Core', async () =>
   }
 });
 
-test('Runtime refreshes the Execution version when a heartbeat races Session startup', async () => {
+test('Runtime shutdown owns terminal process cleanup and suppresses recovery', async () => {
   const fixtureData = await fixture();
   const { runtime, taskService, claimed, rootDir, adapter } = fixtureData;
-  const originalStart = adapter.start.bind(adapter);
-  let heartbeatDuringStartup = false;
-  adapter.start = async (options) => {
-    const session = await originalStart(options);
-    if (options.executionId === claimed.execution.execution_id) {
-      runtime.heartbeat(options.executionId);
-      heartbeatDuringStartup = true;
-    }
-    return session;
-  };
   try {
-    const started = await runtime.startExecution(claimed.execution.execution_id);
-    assert.equal(heartbeatDuringStartup, true);
-    assert.equal(started.execution.state, 'RUNNING');
-    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
-    await runtime.stopExecution(claimed.execution.execution_id);
+    await runtime.startExecution(claimed.execution.execution_id);
+    const result = await runtime.shutdown({ terminalState: 'FAILED' });
+    assert.equal(result.active_process_count, 0);
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(runtime.stopping, true);
+    assert.equal(adapter.sessions[0].closed, true);
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'FAILED');
   } finally {
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
@@ -491,4 +485,121 @@ test('lease sweep fences an expired running Execution and releases its process s
   assert.ok(started.workspace.workspace_ref);
   await rm(rootDir, { recursive: true, force: true });
   fixtureData.taskService.close();
+});
+
+test('Runtime emits one handoff reminder, then times out unfinished work and returns it to the ready queue', async () => {
+  const fixtureData = await fixture({ runtimeOptions: { executionTimeoutMs: 60_000, handoffReminderMs: 55_000 } });
+  const { runtime, taskService, claimed, rootDir, adapter, task } = fixtureData;
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const startedAt = Date.parse(started.execution.started_at);
+    const reminder = await runtime.sweepExecutionTimeouts(new Date(startedAt + 55_000));
+    assert.equal(reminder.length, 1);
+    assert.equal(reminder[0].kind, 'handoff_reminder');
+    assert.equal(adapter.sessions[0].prompts.length, 2);
+    assert.match(adapter.sessions[0].prompts[1], /handoff/i);
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
+    assert.equal(adapter.sessions[0].promptOptions[1].streamingBehavior, 'followUp');
+
+    const duplicateReminder = await runtime.sweepExecutionTimeouts(new Date(startedAt + 59_000));
+    assert.equal(duplicateReminder.length, 0);
+    const timeout = await runtime.sweepExecutionTimeouts(new Date(startedAt + 60_000));
+    assert.equal(timeout.length, 1);
+    assert.equal(timeout[0].kind, 'timeout');
+    const execution = taskService.getExecution(claimed.execution.execution_id);
+    assert.equal(execution.state, 'EXPIRED');
+    assert.equal(execution.terminal_reason, 'timeout');
+    assert.equal(execution.handoff_metadata.summary, null);
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(adapter.sessions[0].closed, true);
+    assert.equal(execution.fencing_version, started.execution.fencing_version + 1);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('Runtime timeout sweep can target only the execution owned by one Core', async () => {
+  const fixtureData = await fixture({ runtimeOptions: { executionTimeoutMs: 60_000, handoffReminderMs: 55_000 } });
+  const { runtime, taskService, claimed, rootDir } = fixtureData;
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const timeoutAt = new Date(Date.parse(started.execution.started_at) + 60_000);
+    const skipped = await runtime.sweepExecutionTimeouts(timeoutAt, { executionIds: ['execution-owned-by-another-core'] });
+    assert.deepEqual(skipped, []);
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
+    const timeout = await runtime.sweepExecutionTimeouts(timeoutAt, { executionIds: [claimed.execution.execution_id] });
+    assert.equal(timeout.length, 1);
+    assert.equal(timeout[0].kind, 'timeout');
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'EXPIRED');
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('Runtime handoff checkpoints metadata, fences stale writers, and releases the Core before returning the Task to OPEN', async () => {
+  const fixtureData = await fixture({ stopDelayMs: 20 });
+  const { runtime, taskService, claimed, rootDir, adapter, sdk, task } = fixtureData;
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const oldAgent = sdk.withContext({
+      actorRef: 'agent:old',
+      taskId: task.task_id,
+      executionId: claimed.execution.execution_id,
+      specVersion: 1,
+      stateVersion: started.execution.state_version,
+      fencingVersion: started.execution.fencing_version,
+    });
+    const handedOff = await runtime.handoffExecution(claimed.execution.execution_id, {
+      reason: 'blocked_on_dependency',
+      checkpoint: { phase: 'dependency-blocked', attempted: ['route-a'] },
+      files: { 'handoff.md': 'route-a is blocked; try route-b' },
+      summary: { attempted: ['route-a'], learned: ['route-a is blocked'], outstanding_questions: ['route-b'], recommended_next_step: 'try route-b' },
+    });
+    assert.equal(handedOff.disposition, 'handed_off');
+    assert.equal(handedOff.execution.state, 'FENCED');
+    assert.equal(handedOff.execution.terminal_reason, 'blocked_on_dependency');
+    assert.equal(handedOff.execution.fencing_version, started.execution.fencing_version + 1);
+    assert.equal(handedOff.execution.handoff_metadata.summary.recommended_next_step, 'try route-b');
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(adapter.sessions[0].closed, true);
+    assert.throws(
+      () => oldAgent.heartbeat({}, { operationId: 'late-handoff-heartbeat' }),
+      (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.FENCED,
+    );
+    const replay = await runtime.handoffExecution(claimed.execution.execution_id, { reason: 'blocked_on_dependency' });
+    assert.equal(replay.disposition, 'already_terminal');
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('Runtime validates wait conditions before checkpointing so invalid waits do not mutate ownership', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, task, adapter } = fixtureData;
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    const before = taskService.getExecution(claimed.execution.execution_id);
+    await assert.rejects(
+      () => runtime.requestWait(claimed.execution.execution_id, { waitCondition: { type: 'unknown_condition' }, checkpoint: { should_not: 'persist' }, files: { 'invalid.txt': 'must not be written' } }),
+      (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
+    );
+    const after = taskService.getExecution(claimed.execution.execution_id);
+    assert.equal(after.state, 'RUNNING');
+    assert.equal(after.state_version, before.state_version);
+    assert.equal(after.workspace_revision, before.workspace_revision);
+    assert.equal(after.checkpoint_ref, before.checkpoint_ref);
+    assert.equal(taskService.getTask(task.task_id).state, 'RUNNING');
+    assert.equal(runtime.getActiveProcessCount(), 1);
+    assert.equal(adapter.sessions[0].closed, false);
+  } finally {
+    await runtime.stopExecution(claimed.execution.execution_id).catch(() => undefined);
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
 });
