@@ -7,7 +7,8 @@ Agent turn or Task claim.
 
 ## Clean implementation and fixture
 
-- implementation commit: `0dd0df353a418b8bc6620599b80f3c078cd5fead`
+- final implementation commit (pending rerun): `5edbdf0a01b24594f3578e3cb8254f506d84ef08`
+- diagnostic run implementation commit: `0dd0df353a418b8bc6620599b80f3c078cd5fead`
 - implementation worktree: clean (`git status --porcelain` was empty before each run)
 - fixture problem: `putnam_2025_b1`
 - locked problem file: `lean4/src/putnam_2025_b1.lean`
@@ -29,8 +30,8 @@ The local PutnamBench checkout matched the locked commit. `node`, `nurouter`,
 
 ## Probe
 
-The required probe was run from the clean implementation commit with the
-route selected explicitly:
+The required probe was run from the clean diagnostic implementation commit
+with the route selected explicitly:
 
 ```text
 env NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol \
@@ -50,8 +51,11 @@ complete a real Agent turn until valid local authentication is supplied.
 ## Final semantic and Root-only runs
 
 Both runs used the same problem, checkout, model, Core count, timebox, and
-checker. They were launched concurrently from the exact clean implementation
-commit.
+checker. They were launched concurrently from the exact clean diagnostic
+commit `0dd0df353a418b8bc6620599b80f3c078cd5fead`. The later prompt-name fix
+is `5edbdf0a01b24594f3578e3cb8254f506d84ef08`; because it changed benchmark
+harness code, the runs below cannot serve as acceptance evidence for that
+final commit even after authentication is restored.
 
 Semantic treatment:
 
@@ -89,7 +93,7 @@ The report comparison is:
 
 | sanitized field | semantic | Root-only |
 | --- | ---: | ---: |
-| implementation commit | `0dd0df3...` | `0dd0df3...` |
+| diagnostic run commit | `0dd0df3...` | `0dd0df3...` |
 | worktree dirty | `false` | `false` |
 | elapsed | `3604772 ms` | `3604770 ms` |
 | `protocol_valid` / audit invalid | `true` / `false` | `true` / `false` |
@@ -113,6 +117,7 @@ These runs are environment-blocked before Agent work and are diagnostic-only.
 They provide no evidence about mathematical solving, branch/subtask overlap,
 Task completion, or a semantic-vs-Root-only speedup. Once valid local Provider
 authentication is available, rerun the two exact commands above from
-`0dd0df353a418b8bc6620599b80f3c078cd5fead` with a clean worktree. A later
-documentation-only commit that records the resulting report paths does not
-change the implementation and does not require another run.
+`5edbdf0a01b24594f3578e3cb8254f506d84ef08` with a clean worktree. The
+prompt-name fix is code/harness work, so a fresh acceptance run is required
+after authentication is restored; only a later documentation-only commit that
+records those resulting report paths would avoid another run.
