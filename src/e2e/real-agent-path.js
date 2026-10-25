@@ -440,7 +440,7 @@ export async function runRealAgentPath({
   fixtureManifest,
   firstCandidate = null,
   env = process.env,
-  command = 'nurouter',
+  command = null,
   timeoutMs = 180_000,
 } = {}) {
   const probe = await probeRealAgentConfig({ env });
@@ -524,8 +524,9 @@ export async function runRealAgentPath({
   };
 
   const childEnv = { ...env };
+  const launchCommand = command ?? (env.NUROUTER_PI_PROVIDER === 'openai-codex' ? 'pi' : 'nurouter');
   const adapter = new AgentCoreAdapter({
-    command,
+    command: launchCommand,
     provider: env.NUROUTER_PI_PROVIDER,
     model: env.NUROUTER_PI_MODEL,
     account: env.NUROUTER_PI_ACCOUNT,
