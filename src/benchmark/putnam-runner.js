@@ -501,6 +501,9 @@ async function ensureAgentSession(core) {
     if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_session_error' });
     await Promise.resolve(core.session?.stop?.()).catch(() => undefined);
     core.session = null;
+    core.turnInFlight = false;
+    core.initialTurnPromise = null;
+    core.nextTurnAt = Date.now();
     core.dispatchReserved = false;
     return false;
   }

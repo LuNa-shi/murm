@@ -131,6 +131,26 @@ test('a closed unbound session reopens a bounded dispatch opportunity', async ()
   assert.equal(scheduler.snapshot().bounded_startup_exhausted_count, 0);
 });
 
+test('closed unbound workers do not monopolize the next READY dispatch', async () => {
+  const cores = [1, 2, 3, 4].map((id) => ({ id: `core-${id}`, free: true, session: { closed: false } }));
+  const calls = [];
+  const { scheduler } = schedulerFixture({
+    readyTasks: [{ task_id: 'task-1' }],
+    cores,
+    startUnboundSession: async ({ core }) => {
+      calls.push(core.id);
+      core.session = { closed: true };
+      return { started: true };
+    },
+  });
+
+  for (let attempt = 0; attempt < cores.length; attempt += 1) {
+    await scheduler.reconcile({ reason: `worker-exited-${attempt}` });
+  }
+
+  assert.deepEqual(calls, ['core-1', 'core-2', 'core-3', 'core-4']);
+});
+
 test('duplicate readiness notifications do not race a pending startup', async () => {
   let release;
   const gate = new Promise((resolve) => { release = resolve; });

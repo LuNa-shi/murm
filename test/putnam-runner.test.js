@@ -249,6 +249,38 @@ class FakeAdapter {
   }
 }
 
+class PromptFailureSession extends EventEmitter {
+  constructor() {
+    super();
+    this.rpcRecords = [];
+    this.closed = false;
+    this.manifest = { fake: true, pi_version: 'prompt-failure' };
+  }
+
+  async waitForReady() {}
+
+  async prompt() {
+    throw Object.assign(new Error('synthetic prompt startup failure'), { code: 'PROMPT_START_FAILED' });
+  }
+
+  stop() {
+    if (this.closed) return;
+    this.closed = true;
+    queueMicrotask(() => this.emit('close', { code: 0, signal: 'SIGTERM' }));
+  }
+}
+
+class PromptFailureAdapter {
+  constructor() {
+    this.starts = 0;
+  }
+
+  async start() {
+    this.starts += 1;
+    return new PromptFailureSession();
+  }
+}
+
 class CollaborationSession extends EventEmitter {
   constructor(adapter, options) {
     super();
@@ -670,6 +702,35 @@ test('benchmark runtime publishes live core, execution, service, and completion 
   }
 });
 
+test('benchmark bounds retries after an unbound prompt startup failure', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-prompt-failure-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-prompt-failure-report-');
+  const adapter = new PromptFailureAdapter();
+  try {
+    const report = await runBenchmarkProject(problem('putnam_prompt_failure_test'), config, {
+      experimentDir,
+      reportDir,
+      timeboxMs: 2_500,
+      pollMs: 1,
+      turnTimeoutMs: 100,
+      stopOnSolved: false,
+      maxStartupAttempts: 2,
+      repositoryCommit: 'test-repository-commit',
+      repositoryWorktreeDirty: false,
+      agentAdapterFactory: () => adapter,
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
+    });
+    assert.equal(adapter.starts, 2);
+    assert.equal(report.run.scheduler.startup_attempt_count, 2);
+    assert.equal(report.run.scheduler.startup_failure_count, 2);
+    assert.equal(report.run.scheduler.bounded_startup_exhausted_count, 1);
+    assert.equal(report.run.scheduler.dispatch_count, 0);
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
 test('benchmark invokes the Runtime watchdog and reports its activity', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-watchdog-experiment-');
   const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-watchdog-report-');
@@ -923,7 +984,7 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.ok(report.project.task_tree.some((task) => task.task_id === 'collab-research' && task.state === 'SATISFIED'));
     assert.ok(report.run.candidate_check_count >= 3, 'two child candidates and one root candidate should be checked');
     assert.equal(report.audit.invalid, false);
-    assert.ok(adapters.every((adapter) => adapter.starts.length >= 1));
+    assert.ok(adapters.every((adapter) => adapter.starts.length >= 1), JSON.stringify(adapters.map((adapter) => adapter.starts.length)));
     assert.ok(adapters.some((adapter) => adapter.starts.length >= 2));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });

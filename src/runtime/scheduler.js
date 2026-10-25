@@ -204,6 +204,14 @@ export class Scheduler {
       timestamp: reconciledAt,
     });
     if (readyTasks.length === 0 || availableCores.length === 0) return this.snapshot();
+    availableCores.sort((left, right) => {
+      const attempts = left.state.attempts - right.state.attempts;
+      if (attempts !== 0) return attempts;
+      const leftDispatch = left.state.lastDispatchAt ?? Number.NEGATIVE_INFINITY;
+      const rightDispatch = right.state.lastDispatchAt ?? Number.NEGATIVE_INFINITY;
+      if (leftDispatch !== rightDispatch) return leftDispatch - rightDispatch;
+      return left.key.localeCompare(right.key);
+    });
     const dispatches = [];
     for (const { core, key, state } of availableCores.slice(0, readyTasks.length)) {
       if (state.exhausted || reconciledAt < state.nextRetryAt) continue;
