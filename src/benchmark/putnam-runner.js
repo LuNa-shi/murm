@@ -46,7 +46,7 @@ function parallelMode(options = {}) {
 function modePrompt(mode, prompt) {
   if (mode === 'semantic') {
     return [
-      'This run is the Issue #56 semantic-structure treatment. Before doing proof work on a root Task, use the registered task_create_branch_group tool to create at least two genuinely different ordinary alternative Tasks. When a Branch Task is bound, its Agent must use task_add_required_subtask at least twice to create one jointly required group before finishing either route. Give every Task a concrete goal, expected output, acceptance condition, and real Workspace or Material result. Read task_get_structure and task_explain_readiness after each mutation. Do not replace these relations with generic child creation. Continue useful root and Branch work after the structure is created; the shared queue must keep the resulting Tasks claimable by other Cores.',
+      'This run is the Issue #56 semantic-structure treatment. Before doing proof work on a root Task, use the registered swarmenv_task_create_branch_group tool to create at least two genuinely different ordinary alternative Tasks. When a Branch Task is bound, its Agent must use swarmenv_task_add_required_subtask at least twice to create one jointly required group before finishing either route. Give every Task a concrete goal, expected output, acceptance condition, and real Workspace or Material result. Read swarmenv_task_get_task_structure and swarmenv_task_explain_task_readiness after each mutation. Do not replace these relations with generic child creation. Continue useful root and Branch work after the structure is created; the shared queue must keep the resulting Tasks claimable by other Cores.',
       prompt,
     ].join('\n');
   }
@@ -935,38 +935,74 @@ async function stopCore(state, core) {
 }
 
 function structureEvidence(taskService, taskTree, cores, mode) {
-  const taskIds = taskTree.map((task) => task.task_id);
-  const placeholders = taskIds.map(() => '?').join(', ');
-  const events = taskIds.length === 0 ? [] : taskService.db.prepare(`SELECT task_id, structural_version, event_type, actor_ref, execution_id, created_at
-    FROM task_structure_events WHERE task_id IN (${placeholders}) ORDER BY created_at, event_id`).all(...taskIds).map((row) => ({
-    task_id: row.task_id,
-    structural_version: row.structural_version,
-    event_type: row.event_type,
-    actor_ref: row.actor_ref,
-    execution_id: row.execution_id,
-    created_at: row.created_at,
-  }));
-  const groups = taskIds.length === 0 ? [] : taskService.db.prepare(`SELECT g.group_id, g.owner_task_id, g.group_kind, g.structural_version,
-    g.created_by_task_id, g.created_by_execution_id, g.created_by_actor_ref, g.created_at,
-    COUNT(m.task_id) AS member_count
-    FROM task_structure_groups g LEFT JOIN task_structure_members m ON m.group_id = g.group_id AND m.retired_at IS NULL
-    WHERE g.owner_task_id IN (${placeholders}) AND g.retired_at IS NULL
-    GROUP BY g.group_id ORDER BY g.created_at, g.group_id`).all(...taskIds).map((row) => ({
-    group_id: row.group_id,
-    owner_task_id: row.owner_task_id,
-    group_kind: row.group_kind,
-    structural_version: row.structural_version,
-    member_count: row.member_count,
-    created_by_task_id: row.created_by_task_id,
-    created_by_execution_id: row.created_by_execution_id,
-    created_by_actor_ref: row.created_by_actor_ref,
-    created_at: row.created_at,
-  }));
-  const provenance = taskIds.length === 0 ? [] : taskService.db.prepare(`SELECT creation_kind, COUNT(*) AS count
-    FROM task_creation_provenance WHERE task_id IN (${placeholders}) GROUP BY creation_kind ORDER BY creation_kind`).all(...taskIds);
+  const structures = taskTree.map((task) => taskService.getTaskStructure(task.task_id));
+  const structureByTaskId = new Map(structures.map((structure) => [structure.task.task_id, structure]));
+  const safePayload = (payload) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    const keys = ['child_task_id', 'rework_task_id', 'prior_task_id', 'relationship', 'group_id', 'task_id', 'task_ids',
+      'dependency_id', 'source_material_count', 'source_material_refs'];
+    return Object.fromEntries(keys.filter((key) => Object.hasOwn(payload, key)).map((key) => [key, payload[key]]));
+  };
+  const events = structures.flatMap((structure) => structure.events.map((event) => ({
+    task_id: structure.task.task_id,
+    structural_version: event.structural_version,
+    event_type: event.event_type,
+    actor_ref: event.actor_ref,
+    execution_id: event.execution_id,
+    created_at: event.created_at,
+    payload: safePayload(event.payload),
+  }))).sort((left, right) => left.created_at.localeCompare(right.created_at) || left.task_id.localeCompare(right.task_id) || left.structural_version - right.structural_version);
+  const groups = structures.flatMap((structure) => [...structure.branch_groups, ...structure.required_subtask_groups].map((group) => ({
+    group_id: group.group_id,
+    owner_task_id: group.owner_task_id,
+    group_kind: group.group_kind,
+    structural_version: group.structural_version,
+    member_count: group.members.length,
+    member_task_ids: group.members.map((member) => member.task_id),
+    members: group.members.map((member) => ({
+      task_id: member.task_id,
+      state: member.state,
+      satisfied: member.satisfied,
+      readiness: member.readiness?.status ?? null,
+    })),
+    satisfaction: group.satisfaction,
+    satisfied: group.satisfied,
+    created_by_task_id: group.created_by_task_id,
+    created_by_execution_id: group.created_by_execution_id,
+    created_by_actor_ref: group.created_by_actor_ref,
+    created_at: group.created_at,
+  })));
+  const provenance = [...structures.reduce((counts, structure) => {
+    const kind = structure.provenance?.creation_kind;
+    if (kind) counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    return counts;
+  }, new Map())].sort(([left], [right]) => left.localeCompare(right)).map(([creation_kind, count]) => ({ creation_kind, count }));
   const agentOperations = cores.flatMap((core) => core.structureOperations.map((operation) => ({ core: core.index, ...operation })));
   const operationCounts = Object.fromEntries([...new Set(agentOperations.map((operation) => operation.operation))]
     .map((operation) => [operation, agentOperations.filter((candidate) => candidate.operation === operation).length]));
+  const root = taskTree.find((task) => task.parent_id === null) ?? null;
+  const completion = {
+    task_contracts: taskTree.map((task) => ({
+      task_id: task.task_id,
+      state: task.state,
+      satisfied: task.state === 'SATISFIED',
+      structure_satisfied: structureByTaskId.get(task.task_id)?.satisfaction.satisfied ?? false,
+    })),
+    branch_and_subtask_groups: groups.map((group) => ({
+      group_id: group.group_id,
+      owner_task_id: group.owner_task_id,
+      group_kind: group.group_kind,
+      satisfaction: group.satisfaction,
+      satisfied: group.satisfied,
+      member_task_ids: group.member_task_ids,
+    })),
+    root: root ? {
+      task_id: root.task_id,
+      state: root.state,
+      task_contract_satisfied: root.state === 'SATISFIED',
+      structure_satisfied: structureByTaskId.get(root.task_id)?.satisfaction.satisfied ?? false,
+    } : null,
+  };
   return {
     mode,
     agent_operation_count: agentOperations.length,
@@ -977,8 +1013,63 @@ function structureEvidence(taskService, taskTree, cores, mode) {
     branch_group_count: groups.filter((group) => group.group_kind === 'BRANCH').length,
     required_subtask_group_count: groups.filter((group) => group.group_kind === 'REQUIRED_SUBTASK').length,
     groups,
+    completion,
     creation_provenance_counts: provenance,
   };
+}
+
+function readinessEvidence(samples, endedAt) {
+  const byTask = new Map();
+  for (const sample of samples) {
+    for (const task of sample.tasks) {
+      const entries = byTask.get(task.task_id) ?? [];
+      entries.push({ at_ms: sample.at_ms, readiness: task.readiness, missing: task.missing });
+      byTask.set(task.task_id, entries);
+    }
+  }
+  const intervals = [];
+  for (const [taskId, entries] of byTask.entries()) {
+    let current = null;
+    for (const entry of entries) {
+      const key = stableStringify({ readiness: entry.readiness, missing: entry.missing });
+      if (!current) {
+        current = { task_id: taskId, start_ms: entry.at_ms, end_ms: entry.at_ms, readiness: entry.readiness, missing: entry.missing, key };
+      } else if (current.key === key) {
+        current.end_ms = entry.at_ms;
+      } else {
+        delete current.key;
+        intervals.push(current);
+        current = { task_id: taskId, start_ms: entry.at_ms, end_ms: entry.at_ms, readiness: entry.readiness, missing: entry.missing, key };
+      }
+    }
+    if (current) {
+      current.end_ms = endedAt;
+      delete current.key;
+      intervals.push(current);
+    }
+  }
+  intervals.sort((left, right) => left.start_ms - right.start_ms || left.task_id.localeCompare(right.task_id));
+  return {
+    sample_count: samples.length,
+    task_count: byTask.size,
+    intervals,
+  };
+}
+
+function recordReadinessSnapshot(state, at = Date.now()) {
+  const tasks = state.taskService.listTasks({
+    rootId: state.rootTaskId,
+    states: ['OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
+    limit: 100,
+    availableOnly: false,
+  });
+  state.readinessSamples.push({
+    at_ms: at,
+    tasks: tasks.map((task) => {
+      const explanation = state.taskService.explainTaskReadiness(task.task_id);
+      return { task_id: task.task_id, readiness: explanation.readiness, missing: explanation.missing };
+    }),
+  });
 }
 
 function projectReport(state, startedAt, deadline) {
@@ -1136,6 +1227,7 @@ function projectReport(state, startedAt, deadline) {
         state: task.state,
       })),
       structure,
+      readiness: readinessEvidence(state.readinessSamples, endedAt),
       execution_history: taskTree.flatMap((task) => state.taskService.listExecutions(task.task_id).map((execution) => ({
         execution_id: execution.execution_id,
         task_id: execution.task_id,
@@ -1294,7 +1386,7 @@ async function createProjectState(problem, config, options) {
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const modeInstructions = selectedParallelMode === 'semantic'
-    ? 'This is the semantic-structure treatment. Before proof work, call task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call task_add_required_subtask at least twice for one separable required group before finishing either route. Read task_get_structure and task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes.'
+    ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_task_structure and swarmenv_task_explain_task_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes.'
     : selectedParallelMode === 'root-only'
       ? 'This is the Root-only control. Keep all work on this root Task. Do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks.'
       : 'Use direct child Tasks only when a genuinely separable route emerges.';
@@ -1788,6 +1880,7 @@ async function createProjectState(problem, config, options) {
     repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
     parallelism,
     parallelMode: selectedParallelMode,
+    readinessSamples: [],
   };
 }
 
@@ -1803,6 +1896,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   };
   const startedAt = Date.now();
   state.parallelism.start(startedAt);
+  recordReadinessSnapshot(state, startedAt);
   const durationMs = options.timeboxMs ?? 60 * 60_000;
   const deadline = startedAt + durationMs;
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
@@ -1877,6 +1971,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           idleCoreCount: state.cores.filter((core) => !core.taskId && !core.turnInFlight && !core.dispatchReserved).length,
           eligibleWorkCount: observedEligibleWorkCount(state, readyTasks),
         });
+        recordReadinessSnapshot(state);
         // A waiting Execution keeps its responsibility, but its physical Core
         // is reusable. If the wait condition is not yet satisfied, release the
         // old Core's local association; a later wake can resume the Execution

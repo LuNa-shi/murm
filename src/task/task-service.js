@@ -264,13 +264,7 @@ export class TaskService {
       if (this.#dependencyBlockers(task.task_id).length > 0) return false;
       const executions = this.listExecutions(task.task_id, { includeTerminal: false });
       const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
-      if (active.length >= task.parallel_quota) {
-        const reworkExecution = active.length === 1 && task.parallel_quota === 1 && active[0].state === 'CREATED'
-          ? this.#latestExecution(task.task_id, true)
-          : null;
-        const reworkLeaseExpired = reworkExecution && (!reworkExecution.lease_expires_at || Date.parse(reworkExecution.lease_expires_at) <= nowMs);
-        if (!reworkExecution || reworkExecution.state !== 'CREATED' || reworkExecution.instruction_version <= 1 || !reworkLeaseExpired) return false;
-      }
+      if (active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
       const waiting = executions.filter((execution) => execution.state === 'WAITING');
       if (waiting.length === 0) return true;
       const resumableWaiting = waiting.some((execution) => this.#isWaitingResumable(execution, nowMs));
@@ -784,7 +778,8 @@ export class TaskService {
     if (task.state === 'SATISFIED') return { task_id: taskId, readiness: 'SATISFIED', reasons: ['task_contract_satisfied'], missing: [], structure };
     if (task.state === 'BLOCKED') missing.push(task.block_reason ?? 'task_blocked');
     if (blockers.length > 0) missing.push(...blockers.map((dependency) => `dependency:${dependency.dependency_id}`));
-    if (activeCount >= task.parallel_quota) missing.push('execution_quota');
+    const executionQuotaBlocked = activeCount >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, Date.now());
+    if (executionQuotaBlocked) missing.push('execution_quota');
     const waiting = active.filter((execution) => execution.state === 'WAITING');
     if (task.state === 'WAITING' && waiting.length > 0 && !waiting.some((execution) => this.#isWaitingResumable(execution))) {
       return { task_id: taskId, readiness: 'WAITING', reasons: ['execution_waiting'], missing: [...new Set(missing)], structure };
@@ -792,7 +787,7 @@ export class TaskService {
     const latest = this.#latestExecution(taskId, true);
     const completion = this.#completion(task, latest);
     if (completion.missing.length > 0) missing.push(...completion.missing);
-    const blocked = task.state === 'BLOCKED' || blockers.length > 0 || (activeCount >= task.parallel_quota && active.every((execution) => execution.state !== 'WAITING'));
+    const blocked = task.state === 'BLOCKED' || blockers.length > 0 || (executionQuotaBlocked && active.every((execution) => execution.state !== 'WAITING'));
     return {
       task_id: taskId,
       readiness: blocked ? 'BLOCKED' : 'READY',
@@ -1692,6 +1687,16 @@ export class TaskService {
   #latestExecution(taskId, activeOnly = false) {
     const activeClause = activeOnly ? "AND state IN ('CREATED', 'RUNNING', 'WAITING')" : '';
     return rowToExecution(this.db.prepare(`SELECT * FROM executions WHERE task_id = ? ${activeClause} ORDER BY attempt_no DESC, created_at DESC LIMIT 1`).get(taskId));
+  }
+
+  #expiredReworkCanBeClaimed(task, executions, nowMs = Date.now()) {
+    const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
+    if (active.length !== 1 || task.parallel_quota !== 1) return false;
+    const execution = active[0];
+    if (execution.state !== 'CREATED' || execution.instruction_version <= 1) return false;
+    const latest = this.#latestExecution(task.task_id, true);
+    return latest?.execution_id === execution.execution_id &&
+      (!execution.lease_expires_at || Date.parse(execution.lease_expires_at) <= nowMs);
   }
 
   #isWaitingResumable(execution, nowMs = Date.now()) {
