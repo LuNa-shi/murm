@@ -8,7 +8,10 @@ export const ACTIVE_EXECUTION_STATES = Object.freeze(['CREATED', 'RUNNING', 'WAI
 export const TERMINAL_TASK_STATES = Object.freeze(['SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
 export const TERMINAL_EXECUTION_STATES = Object.freeze(['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED']);
 
-const CONTRACT_KEYS = new Set(['required_children', 'required_materials', 'required_candidate', 'required_check', 'parent_review']);
+const CONTRACT_KEYS = new Set([
+  'required_children', 'required_materials', 'required_candidate', 'required_check', 'parent_review',
+  'required_branch_groups', 'required_subtask_groups',
+]);
 const CHECK_KEYS = new Set(['checker_ref', 'checker_version', 'environment_ref', 'input_snapshot_hash']);
 const MATERIAL_KEYS = new Set(['kind', 'kinds', 'scope', 'min_count']);
 const CANDIDATE_KEYS = new Set(['kind', 'scope']);
@@ -72,6 +75,13 @@ export function validateCompletionContract(contract, { taskType, parentId = null
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'required_children must contain task IDs');
     }
     normalized.required_children = [...new Set(contract.required_children)];
+  }
+  for (const key of ['required_branch_groups', 'required_subtask_groups']) {
+    if (contract[key] === undefined) continue;
+    if (!Array.isArray(contract[key]) || contract[key].some((id) => typeof id !== 'string' || !id)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${key} must contain structure group IDs`);
+    }
+    normalized[key] = [...new Set(contract[key])];
   }
   if (contract.required_materials !== undefined) normalized.required_materials = normalizeMaterials(contract.required_materials);
   if (contract.required_candidate !== undefined) normalized.required_candidate = normalizeCandidate(contract.required_candidate);

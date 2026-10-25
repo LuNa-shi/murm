@@ -32,6 +32,32 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
 
 const FORBIDDEN_PLACEHOLDER = /\b(?:sorry|admit|axiom)\b/i;
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const PARALLEL_MODES = new Set(['legacy', 'semantic', 'root-only']);
+const STRUCTURE_OPERATIONS = new Set([
+  'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task',
+]);
+
+function parallelMode(options = {}) {
+  const mode = options.parallelMode ?? 'legacy';
+  if (!PARALLEL_MODES.has(mode)) throw new TypeError(`parallelMode must be one of ${[...PARALLEL_MODES].join(', ')}`);
+  return mode;
+}
+
+function modePrompt(mode, prompt) {
+  if (mode === 'semantic') {
+    return [
+      'This run is the Issue #56 semantic-structure treatment. Before doing proof work on a root Task, use the registered swarmenv_task_create_branch_group tool to create at least two genuinely different ordinary alternative Tasks. When a Branch Task is bound, its Agent must use swarmenv_task_add_required_subtask at least twice to create one jointly required group before finishing either route. Give every Task a concrete goal, expected output, acceptance condition, and real Workspace or Material result. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each mutation. Do not replace these relations with generic child creation. Continue useful root and Branch work after the structure is created; the shared queue must keep the resulting Tasks claimable by other Cores.',
+      prompt,
+    ].join('\n');
+  }
+  if (mode === 'root-only') {
+    return [
+      'This run is the Root-only control. Work only on the currently bound root Task and do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks. Do not call the semantic structure mutation tools. Keep all proof work and checking on the root responsibility.',
+      prompt,
+    ].join('\n');
+  }
+  return prompt;
+}
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -390,7 +416,10 @@ async function startAgentSession(core) {
   const initialSequence = session.rpcRecords.length;
   core.turnInFlight = true;
   core.turnStartedAt = Date.now();
-  const initialPrompt = core.unboundSessionCount === 0 ? GENERIC_AGENT_PROMPT : IDLE_AGENT_PROMPT;
+  const initialPrompt = modePrompt(
+    core.startConfig.options.parallelMode ?? 'legacy',
+    core.unboundSessionCount === 0 ? GENERIC_AGENT_PROMPT : IDLE_AGENT_PROMPT,
+  );
   core.unboundSessionCount += 1;
   const releaseDiscovery = await core.discoveryGate.acquire();
   core.discoveryRelease = releaseDiscovery;
@@ -905,6 +934,152 @@ async function stopCore(state, core) {
   await core.bridge.stop().catch(() => undefined);
 }
 
+function structureEvidence(taskService, taskTree, cores, mode) {
+  const structures = taskTree.map((task) => taskService.getTaskStructure(task.task_id));
+  const structureByTaskId = new Map(structures.map((structure) => [structure.task.task_id, structure]));
+  const safePayload = (payload) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    const keys = ['child_task_id', 'rework_task_id', 'prior_task_id', 'relationship', 'group_id', 'task_id', 'task_ids',
+      'dependency_id', 'source_material_count', 'source_material_refs'];
+    const safe = Object.fromEntries(keys.filter((key) => Object.hasOwn(payload, key)).map((key) => [key, payload[key]]));
+    if (payload.dependency && typeof payload.dependency === 'object' && !Array.isArray(payload.dependency)) {
+      const dependencyKeys = ['dependency_id', 'dependency_kind', 'prerequisite_task_id', 'material_id', 'check_result_id'];
+      const dependency = Object.fromEntries(dependencyKeys
+        .filter((key) => Object.hasOwn(payload.dependency, key))
+        .map((key) => [key, payload.dependency[key]]));
+      if (Object.keys(dependency).length > 0) safe.dependency = dependency;
+    }
+    return safe;
+  };
+  const events = structures.flatMap((structure) => structure.events.map((event) => ({
+    task_id: structure.task.task_id,
+    structural_version: event.structural_version,
+    event_type: event.event_type,
+    actor_ref: event.actor_ref,
+    execution_id: event.execution_id,
+    created_at: event.created_at,
+    payload: safePayload(event.payload),
+  }))).sort((left, right) => left.created_at.localeCompare(right.created_at) || left.task_id.localeCompare(right.task_id) || left.structural_version - right.structural_version);
+  const groups = structures.flatMap((structure) => [...structure.branch_groups, ...structure.required_subtask_groups].map((group) => ({
+    group_id: group.group_id,
+    owner_task_id: group.owner_task_id,
+    group_kind: group.group_kind,
+    structural_version: group.structural_version,
+    member_count: group.members.length,
+    member_task_ids: group.members.map((member) => member.task_id),
+    members: group.members.map((member) => ({
+      task_id: member.task_id,
+      state: member.state,
+      satisfied: member.satisfied,
+      readiness: member.readiness?.status ?? null,
+    })),
+    satisfaction: group.satisfaction,
+    satisfied: group.satisfied,
+    created_by_task_id: group.created_by_task_id,
+    created_by_execution_id: group.created_by_execution_id,
+    created_by_actor_ref: group.created_by_actor_ref,
+    created_at: group.created_at,
+  })));
+  const provenance = [...structures.reduce((counts, structure) => {
+    const kind = structure.provenance?.creation_kind;
+    if (kind) counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    return counts;
+  }, new Map())].sort(([left], [right]) => left.localeCompare(right)).map(([creation_kind, count]) => ({ creation_kind, count }));
+  const agentOperations = cores.flatMap((core) => core.structureOperations.map((operation) => ({ core: core.index, ...operation })));
+  const operationCounts = Object.fromEntries([...new Set(agentOperations.map((operation) => operation.operation))]
+    .map((operation) => [operation, agentOperations.filter((candidate) => candidate.operation === operation).length]));
+  const root = taskTree.find((task) => task.parent_id === null) ?? null;
+  const completion = {
+    task_contracts: taskTree.map((task) => ({
+      task_id: task.task_id,
+      state: task.state,
+      satisfied: task.state === 'SATISFIED',
+      structure_satisfied: structureByTaskId.get(task.task_id)?.satisfaction.satisfied ?? false,
+    })),
+    branch_and_subtask_groups: groups.map((group) => ({
+      group_id: group.group_id,
+      owner_task_id: group.owner_task_id,
+      group_kind: group.group_kind,
+      satisfaction: group.satisfaction,
+      satisfied: group.satisfied,
+      member_task_ids: group.member_task_ids,
+    })),
+    root: root ? {
+      task_id: root.task_id,
+      state: root.state,
+      task_contract_satisfied: root.state === 'SATISFIED',
+      structure_satisfied: structureByTaskId.get(root.task_id)?.satisfaction.satisfied ?? false,
+    } : null,
+  };
+  return {
+    mode,
+    agent_operation_count: agentOperations.length,
+    agent_operation_counts: operationCounts,
+    agent_operations: agentOperations,
+    event_count: events.length,
+    events,
+    branch_group_count: groups.filter((group) => group.group_kind === 'BRANCH').length,
+    required_subtask_group_count: groups.filter((group) => group.group_kind === 'REQUIRED_SUBTASK').length,
+    groups,
+    completion,
+    creation_provenance_counts: provenance,
+  };
+}
+
+function readinessEvidence(samples, endedAt) {
+  const byTask = new Map();
+  for (const sample of samples) {
+    for (const task of sample.tasks) {
+      const entries = byTask.get(task.task_id) ?? [];
+      entries.push({ at_ms: sample.at_ms, readiness: task.readiness, missing: task.missing });
+      byTask.set(task.task_id, entries);
+    }
+  }
+  const intervals = [];
+  for (const [taskId, entries] of byTask.entries()) {
+    let current = null;
+    for (const entry of entries) {
+      const key = stableStringify({ readiness: entry.readiness, missing: entry.missing });
+      if (!current) {
+        current = { task_id: taskId, start_ms: entry.at_ms, end_ms: entry.at_ms, readiness: entry.readiness, missing: entry.missing, key };
+      } else if (current.key === key) {
+        current.end_ms = entry.at_ms;
+      } else {
+        delete current.key;
+        intervals.push(current);
+        current = { task_id: taskId, start_ms: entry.at_ms, end_ms: entry.at_ms, readiness: entry.readiness, missing: entry.missing, key };
+      }
+    }
+    if (current) {
+      current.end_ms = endedAt;
+      delete current.key;
+      intervals.push(current);
+    }
+  }
+  intervals.sort((left, right) => left.start_ms - right.start_ms || left.task_id.localeCompare(right.task_id));
+  return {
+    sample_count: samples.length,
+    task_count: byTask.size,
+    intervals,
+  };
+}
+
+function recordReadinessSnapshot(state, at = Date.now()) {
+  const tasks = state.taskService.listTasks({
+    rootId: state.rootTaskId,
+    states: ['OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
+    limit: 100,
+    availableOnly: false,
+  });
+  state.readinessSamples.push({
+    at_ms: at,
+    tasks: tasks.map((task) => {
+      const explanation = state.taskService.explainTaskReadiness(task.task_id);
+      return { task_id: task.task_id, readiness: explanation.readiness, missing: explanation.missing };
+    }),
+  });
+}
+
 function projectReport(state, startedAt, deadline) {
   const endedAt = Date.now();
   for (const core of state.cores) {
@@ -924,10 +1099,14 @@ function projectReport(state, startedAt, deadline) {
     !allowedTaskIds.has(material.source_task) || !allowedExecutionIds.has(material.source_execution));
   const rootTask = state.taskService.getTask(state.rootTaskId);
   const inputMaterialViolation = !rootTask?.workspace || rootTask.workspace.source_hash !== state.inputMaterialHash;
+  const allowedInputMaterialIds = new Set(materials
+    .filter((material) => allowedTaskIds.has(material.source_task) && allowedExecutionIds.has(material.source_execution))
+    .map((material) => material.material_id));
   const workspaceViolation = claimHistory.some((claim) => {
     const execution = state.taskService.getExecution(claim.execution_id);
     const task = state.taskService.getTask(claim.task_id);
-    return !execution || !task?.workspace || execution.input_material_refs.length !== 0 ||
+    const inputMaterialRefs = execution?.input_material_refs ?? [];
+    return !execution || !task?.workspace || inputMaterialRefs.some((materialId) => !allowedInputMaterialIds.has(materialId)) ||
       execution.input_snapshot_hash !== inputSnapshotHash(task, execution.input_material_refs);
   });
   const cores = state.cores.map((core) => {
@@ -954,6 +1133,7 @@ function projectReport(state, startedAt, deadline) {
       })),
       tool_events: [...new Set(core.toolEvents)],
       workspace_writes: core.workspaceWrites,
+      structure_operations: core.structureOperations,
       tool_errors: core.toolErrors,
       material_reads: core.materialReads,
       task_state: task?.state ?? null,
@@ -998,6 +1178,7 @@ function projectReport(state, startedAt, deadline) {
   const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
   const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
   const candidateCount = cores.reduce((count, core) => count + core.checks.length, 0);
+  const structure = structureEvidence(state.taskService, taskTree, state.cores, state.parallelMode);
   const madeProgress = childTaskCount > 0 || workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || candidateCount > 0;
   const parallelism = state.parallelism.snapshot({ endedAt });
   const checkerPreflights = state.judgeService.listCheckerPreflights().map((row) => ({
@@ -1028,6 +1209,7 @@ function projectReport(state, startedAt, deadline) {
       core_count: 4,
       repository_commit: state.repositoryCommit,
       repository_worktree_dirty: state.repositoryWorktreeDirty,
+      parallel_mode: state.parallelMode,
       input_policy: 'pinned formalization only; no candidate or solution input',
       tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
       cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
@@ -1052,6 +1234,8 @@ function projectReport(state, startedAt, deadline) {
         priority: task.priority,
         state: task.state,
       })),
+      structure,
+      readiness: readinessEvidence(state.readinessSamples, endedAt),
       execution_history: taskTree.flatMap((task) => state.taskService.listExecutions(task.task_id).map((execution) => ({
         execution_id: execution.execution_id,
         task_id: execution.task_id,
@@ -1153,6 +1337,7 @@ function projectReport(state, startedAt, deadline) {
 }
 
 async function createProjectState(problem, config, options) {
+  const selectedParallelMode = parallelMode(options);
   const runId = options.runId ?? randomUUID();
   const startedAt = options.startedAt ?? Date.now();
   const experimentRoot = resolve(options.experimentDir ?? options.reportDir);
@@ -1208,11 +1393,16 @@ async function createProjectState(problem, config, options) {
   const router = new ServicesRouter({ taskService, contextService, judgeService, logger: routerLogger });
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
+  const modeInstructions = selectedParallelMode === 'semantic'
+    ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes.'
+    : selectedParallelMode === 'root-only'
+      ? 'This is the Root-only control. Keep all work on this root Task. Do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks.'
+      : 'Use direct child Tasks only when a genuinely separable route emerges.';
   const root = owner.proposeTask({
     task_type: 'proof',
     goal: `Prove ${problem.id}`,
     expected_output: 'A verified Lean proof for the locked PutnamBench problem',
-    task_instructions: 'The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. If the route is genuinely separable or needs parallel research, create bounded direct child Tasks with precise goals, expected outputs, acceptance conditions, and task-specific instructions; otherwise continue the proof in the root Workspace. Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge. Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency; later reclaim the root to read child Workspace changes, Materials, and Judge feedback, then accept completed work or request focused rework before integrating it into the proof.',
+    task_instructions: `The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. ${modeInstructions} Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge. Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency; later reclaim the root to read child Workspace changes, Materials, and Judge feedback, then accept completed work or request focused rework before integrating it into the proof.`,
     completion_contract: {
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
       required_check: {
@@ -1239,7 +1429,7 @@ async function createProjectState(problem, config, options) {
     source: 'runtime',
     kind: 'experiment_started',
     taskId: root.task_id,
-    payload: { problem_id: problem.id, core_count: 4, timebox_ms: options.timeboxMs ?? 60 * 60_000 },
+    payload: { problem_id: problem.id, core_count: 4, timebox_ms: options.timeboxMs ?? 60 * 60_000, parallel_mode: selectedParallelMode },
   });
   // Deterministic queue scenarios may seed durable Tasks before reusable Core
   // sessions start. The hook uses the same Task Service boundary as Agent
@@ -1318,6 +1508,7 @@ async function createProjectState(problem, config, options) {
       toolErrors: [],
       errors: [],
       materialReads: [],
+      structureOperations: [],
       checks: [],
       checked: new Set(),
       checkAttempts: new Map(),
@@ -1396,7 +1587,7 @@ async function createProjectState(problem, config, options) {
             core.agentTurnSession = session;
             return session;
           },
-          agentPrompt: BOUND_AGENT_PROMPT,
+          agentPrompt: modePrompt(selectedParallelMode, BOUND_AGENT_PROMPT),
         });
         const boundSession = core.session;
         const boundExecutionId = claim.execution.execution_id;
@@ -1556,7 +1747,34 @@ async function createProjectState(problem, config, options) {
         if (['publish_material', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
           core.stateRef?.requestSchedulerWake?.();
         }
-        if (operation === 'read_materials') {
+        if (STRUCTURE_OPERATIONS.has(operation)) {
+          const structureResult = result && typeof result === 'object' ? result : {};
+          const operationEvidence = {
+            operation,
+            task_id: taskId,
+            execution_id: executionId,
+            group_id: structureResult.group?.group_id ?? payload?.group_id ?? null,
+            task_ids: [
+              ...(Array.isArray(structureResult.tasks) ? structureResult.tasks.map((task) => task?.task_id) : []),
+              structureResult.task?.task_id,
+              structureResult.rework_link?.rework_task_id,
+            ].filter(Boolean),
+            dependency_id: structureResult.change?.dependency_id ?? null,
+          };
+          core.structureOperations.push(operationEvidence);
+          core.observe({
+            source: 'task-service', kind: 'semantic_structure_operation', visibility: 'operator',
+            taskId, executionId, coreId: `core-${core.index}`,
+            payload: operationEvidence,
+          });
+          core.parallelism.recordWorkUnit({
+            task_id: taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'semantic_structure',
+          });
+          core.stateRef?.requestSchedulerWake?.();
+        } else if (operation === 'read_materials') {
           const materialsRead = Array.isArray(result) ? result : [];
           core.materialReads.push({
             reader_task_id: taskId,
@@ -1669,6 +1887,8 @@ async function createProjectState(problem, config, options) {
     repositoryCommit: options.repositoryCommit ?? null,
     repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
     parallelism,
+    parallelMode: selectedParallelMode,
+    readinessSamples: [],
   };
 }
 
@@ -1684,12 +1904,13 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   };
   const startedAt = Date.now();
   state.parallelism.start(startedAt);
+  recordReadinessSnapshot(state, startedAt);
   const durationMs = options.timeboxMs ?? 60 * 60_000;
   const deadline = startedAt + durationMs;
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
-  const basePrompt = (core) => core.taskId
-      ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or waiting.`
-      : IDLE_AGENT_PROMPT;
+  const basePrompt = (core) => modePrompt(state.parallelMode, core.taskId
+      ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, creating rework, or waiting.`
+      : IDLE_AGENT_PROMPT);
   try {
     // Warm all reusable slots concurrently. The discovery gate serializes only
     // the unbound list/claim turn, and onClaimAccepted releases it as soon as
@@ -1704,7 +1925,11 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     const heartbeat = setInterval(() => {
       for (const core of state.cores) {
         const execution = state.taskService.getExecution(core.executionId);
-        if (execution && ['CREATED', 'RUNNING'].includes(execution.state)) {
+        // Heartbeats belong to an active Runtime session. During the
+        // CREATED-to-RUNNING handoff, bindAgentExecution is still performing
+        // Workspace and Session startup; advancing state_version there can
+        // race the startup CAS and invalidate its envelope.
+        if (execution && execution.state === 'RUNNING' && core.runtime.activeProcesses.has(core.executionId)) {
           try {
             core.runtime.heartbeat(core.executionId);
             state.heartbeatCount += 1;
@@ -1754,6 +1979,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           idleCoreCount: state.cores.filter((core) => !core.taskId && !core.turnInFlight && !core.dispatchReserved).length,
           eligibleWorkCount: observedEligibleWorkCount(state, readyTasks),
         });
+        recordReadinessSnapshot(state);
         // A waiting Execution keeps its responsibility, but its physical Core
         // is reusable. If the wait condition is not yet satisfied, release the
         // old Core's local association; a later wake can resume the Execution

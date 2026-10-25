@@ -11,6 +11,7 @@ const AGENT_OPERATIONS = new Set([
   'get_task', 'get_execution', 'read_materials', 'publish_material', 'submit_candidate',
   'heartbeat', 'create_child_task', 'request_wait', 'claim', 'list_tasks', 'list_executions',
   'accept_task', 'request_rework', 'get_check_result',
+  'create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task',
   'list_services', 'get_service_metadata', 'list_tools', 'scheduler_status', 'get_workspace', 'list_workspace_revisions',
   'list_workspace_files', 'read_workspace_file', 'write_workspace_file', 'workspace_diff',
 ]);
@@ -214,7 +215,7 @@ export class ServicesBridge {
         return this.contextService.dispatch(name, body, envelope);
       } };
       const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
-      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_executions', 'scheduler_status'].includes(operation)) {
+      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_executions', 'get_task_structure', 'explain_task_readiness', 'scheduler_status'].includes(operation)) {
         if (operation === 'scheduler_status') {
           const result = await (this.onSchedulerStatus
             ? this.onSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId })
@@ -224,7 +225,9 @@ export class ServicesBridge {
         }
         const discoveryPayload = operation === 'list_tasks' && this.taskId === null && payload.available_only !== false
           ? { ...payload, states: ['OPEN', 'RUNNING'] }
-          : payload;
+          : (['get_task_structure', 'explain_task_readiness'].includes(operation) && payload.task_id === undefined && this.taskId
+            ? { ...payload, task_id: this.taskId }
+            : payload);
         const result = service.dispatch(operation, discoveryPayload, makeEnvelope({
           operationId: bridgeOperationId,
           actorRef: this.actorRef,
@@ -347,6 +350,12 @@ export class ServicesBridge {
           break;
         case 'heartbeat': result = sdk.heartbeat(payload, options); break;
         case 'create_child_task': result = sdk.createChildTask(payload, options); break;
+        case 'create_branch_group': result = sdk.createBranchGroup(payload, options); break;
+        case 'add_required_subtask': result = sdk.addRequiredSubtask(payload, options); break;
+        case 'get_task_structure': result = sdk.getTaskStructure(payload); break;
+        case 'propose_structure_change': result = sdk.proposeStructureChange(payload, options); break;
+        case 'explain_task_readiness': result = sdk.explainTaskReadiness(payload); break;
+        case 'create_rework_task': result = sdk.createReworkTask(payload, options); break;
         case 'get_workspace': result = await this.runtime.getWorkspace(this.executionId); break;
         case 'list_workspace_revisions': result = (await this.runtime.getWorkspace(this.executionId)).revisions; break;
         case 'list_workspace_files': result = await this.runtime.listWorkspaceFiles(this.executionId, { path: payload.path ?? '' }); break;
@@ -369,7 +378,7 @@ export class ServicesBridge {
       if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {
         await this.onWorkspaceWrite({ taskId: boundTaskId, executionId: boundExecutionId, result });
       }
-      if (this.onWorkUnit && ['read_materials', 'publish_material', 'create_child_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+      if (this.onWorkUnit && ['read_materials', 'publish_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
         await this.onWorkUnit({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });

@@ -95,6 +95,31 @@ test('Runtime waits for Agent exit before releasing a waiting Core', async () =>
   }
 });
 
+test('Runtime refreshes the Execution version when a heartbeat races Session startup', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, adapter } = fixtureData;
+  const originalStart = adapter.start.bind(adapter);
+  let heartbeatDuringStartup = false;
+  adapter.start = async (options) => {
+    const session = await originalStart(options);
+    if (options.executionId === claimed.execution.execution_id) {
+      runtime.heartbeat(options.executionId);
+      heartbeatDuringStartup = true;
+    }
+    return session;
+  };
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    assert.equal(heartbeatDuringStartup, true);
+    assert.equal(started.execution.state, 'RUNNING');
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
+    await runtime.stopExecution(claimed.execution.execution_id);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('Runtime creates an isolated workspace before Pi, saves checkpoint before wait, and restores the same lineage', async () => {
   const fixtureData = await fixture();
   const { runtime, taskService, claimed, rootDir } = fixtureData;

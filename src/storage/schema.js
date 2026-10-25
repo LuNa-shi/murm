@@ -86,6 +86,103 @@ CREATE TABLE IF NOT EXISTS task_creation_keys (
   created_at TEXT NOT NULL
 );
 
+-- Task relationships are semantic records over ordinary Task IDs.  The
+-- parent_id column above remains the legacy creation edge; these tables keep
+-- alternative work, jointly-required work, and concrete dependencies
+-- separate from creation provenance.
+CREATE TABLE IF NOT EXISTS task_creation_provenance (
+  task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+  creator_task_id TEXT REFERENCES tasks(task_id),
+  creator_execution_id TEXT REFERENCES executions(execution_id),
+  creator_actor_ref TEXT NOT NULL,
+  creation_kind TEXT NOT NULL CHECK (creation_kind IN ('ROOT', 'CHILD', 'BRANCH', 'REQUIRED_SUBTASK', 'REWORK')),
+  prior_task_id TEXT REFERENCES tasks(task_id),
+  source_material_refs_json TEXT NOT NULL DEFAULT '[]',
+  feedback_json TEXT,
+  workspace_lineage_json TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_structure_versions (
+  task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+  structural_version INTEGER NOT NULL DEFAULT 1 CHECK (structural_version >= 1),
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_structure_events (
+  event_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  structural_version INTEGER NOT NULL,
+  event_type TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  execution_id TEXT REFERENCES executions(execution_id),
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS task_structure_events_task_version
+  ON task_structure_events(task_id, structural_version, created_at);
+
+CREATE TABLE IF NOT EXISTS task_structure_groups (
+  group_id TEXT PRIMARY KEY,
+  owner_task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  group_kind TEXT NOT NULL CHECK (group_kind IN ('BRANCH', 'REQUIRED_SUBTASK')),
+  structural_version INTEGER NOT NULL,
+  created_by_task_id TEXT REFERENCES tasks(task_id),
+  created_by_execution_id TEXT REFERENCES executions(execution_id),
+  created_by_actor_ref TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  retired_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS task_structure_members (
+  group_id TEXT NOT NULL REFERENCES task_structure_groups(group_id),
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  member_order INTEGER NOT NULL DEFAULT 0,
+  added_in_version INTEGER NOT NULL,
+  added_at TEXT NOT NULL,
+  retired_at TEXT,
+  PRIMARY KEY (group_id, task_id)
+);
+
+CREATE INDEX IF NOT EXISTS task_structure_members_task
+  ON task_structure_members(task_id, retired_at);
+
+CREATE TABLE IF NOT EXISTS task_structure_dependencies (
+  dependency_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  dependency_kind TEXT NOT NULL CHECK (dependency_kind IN ('TASK', 'MATERIAL', 'CHECK_RESULT')),
+  prerequisite_task_id TEXT REFERENCES tasks(task_id),
+  material_id TEXT,
+  check_result_id TEXT,
+  requirement_json TEXT NOT NULL DEFAULT '{}',
+  created_by_task_id TEXT REFERENCES tasks(task_id),
+  created_by_execution_id TEXT REFERENCES executions(execution_id),
+  created_by_actor_ref TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  retired_at TEXT,
+  CHECK (
+    (dependency_kind = 'TASK' AND prerequisite_task_id IS NOT NULL AND material_id IS NULL AND check_result_id IS NULL) OR
+    (dependency_kind = 'MATERIAL' AND prerequisite_task_id IS NULL AND material_id IS NOT NULL AND check_result_id IS NULL) OR
+    (dependency_kind = 'CHECK_RESULT' AND prerequisite_task_id IS NULL AND material_id IS NULL AND check_result_id IS NOT NULL)
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS task_structure_dependencies_active
+  ON task_structure_dependencies(task_id, dependency_kind, COALESCE(prerequisite_task_id, material_id, check_result_id))
+  WHERE retired_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS task_rework_links (
+  prior_task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  rework_task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+  feedback_json TEXT NOT NULL,
+  source_material_refs_json TEXT NOT NULL DEFAULT '[]',
+  workspace_lineage_json TEXT,
+  created_by_actor_ref TEXT NOT NULL,
+  created_by_execution_id TEXT REFERENCES executions(execution_id),
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS claim_keys (
   request_key TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),

@@ -442,11 +442,26 @@ export class Runtime {
   }
 
   #saveWorkspaceReference(execution, workspace, saveOperationId = operationId('workspace')) {
-    return this.taskService.dispatch('save_workspace_revision', {
-      workspace_ref: workspace.workspace_ref,
-      workspace_revision: workspace.workspace_revision,
-      workspace_content_hash: workspace.content_hash,
-    }, this.#executionEnvelope(execution, saveOperationId)).execution;
+    // Workspace materialization is asynchronous. A Runtime heartbeat (or a
+    // concurrent lifecycle write) can advance the Execution state version
+    // while the filesystem operation is in flight. Refresh the envelope and
+    // retry the metadata CAS instead of turning that expected race into a
+    // failed startup. The Workspace Manager already committed this exact
+    // revision, so retrying this idempotent reference update is safe.
+    let current = execution;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return this.taskService.dispatch('save_workspace_revision', {
+          workspace_ref: workspace.workspace_ref,
+          workspace_revision: workspace.workspace_revision,
+          workspace_content_hash: workspace.content_hash,
+        }, this.#executionEnvelope(current, saveOperationId)).execution;
+      } catch (error) {
+        if (error?.code !== ERROR_CODES.STALE_VERSION || attempt === 2) throw error;
+        current = this.#getExecution(execution.execution_id);
+      }
+    }
+    throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'could not persist Workspace reference after concurrent updates');
   }
 
   async #launch(execution, workspace, { beforePrompt = null, sessionReason = 'start' } = {}) {

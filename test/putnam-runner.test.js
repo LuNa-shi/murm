@@ -696,6 +696,11 @@ test('benchmark project starts four isolated cores and redacts candidate content
     assert.ok(report.project.task_tree.length >= 2);
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'proof' && task.parent_id === null));
     assert.ok(report.project.task_tree.some((task) => task.task_type === 'research'));
+    assert.ok(Array.isArray(report.project.readiness.intervals));
+    assert.ok(report.project.readiness.sample_count > 0);
+    assert.ok(Array.isArray(report.project.structure.events));
+    assert.ok(Array.isArray(report.project.structure.completion.task_contracts));
+    assert.ok(Array.isArray(report.project.structure.completion.branch_and_subtask_groups));
     assert.ok(adapters.some((adapter) => adapter.starts.some((start) => start.executionId && start.cwd?.includes('/workspaces/projects/putnam_test/') && !start.cwd.includes('/core-'))));
     assert.equal(report.run.solved, true);
     assert.equal(report.run.protocol_valid, true);
