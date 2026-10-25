@@ -27,7 +27,8 @@
   "agent_time_utilization_v0": 0,
   "core_turn_count": 0,
   "core_session_count": 4,
-  "safe_error_class": "provider_auth",
+  "safe_error_class": "rpc_error",
   "acceptance_status": "inconclusive_environment_blocked",
-  "rerun_command": "env NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol node scripts/run-putnambench-benchmark.mjs --problems config/putnambench-12.json --putnambench-root /home/ubuntu/PutnamBench --problem putnam_2025_b1 --cores 4 --project-parallelism 1 --timebox-ms 3600000 --parallel-mode root-only --experiment-root experiments --experiment-dir experiments/exp-20261025-issue56-root-b1-r3 --report-dir experiments/exp-20261025-issue56-root-b1-r3/analysis/benchmark --observability-host 127.0.0.1 --observability-port 8799"
+  "rerun_command": "env NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol node scripts/run-putnambench-benchmark.mjs --problems config/putnambench-12.json --putnambench-root /home/ubuntu/PutnamBench --problem putnam_2025_b1 --cores 4 --project-parallelism 1 --timebox-ms 3600000 --parallel-mode root-only --experiment-root experiments --experiment-dir experiments/exp-20261025-issue56-root-b1-r3 --report-dir experiments/exp-20261025-issue56-root-b1-r3/analysis/benchmark --observability-host 127.0.0.1 --observability-port 8799",
+  "blocker_class": "provider_auth_before_first_turn"
 }
