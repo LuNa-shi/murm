@@ -786,7 +786,7 @@ export class TaskService {
     // parallel slot. Keep readiness claimability aligned when that waiting
     // slot fills the quota alongside CREATED/RUNNING Executions.
     const waitingQuotaBlocked = waiting.length > 0 && !resumableWaiting && activeCount + waiting.length >= task.parallel_quota;
-    if (waiting.length > 0 && !resumableWaiting && (task.state === 'WAITING' || waitingQuotaBlocked)) {
+    if (waiting.length > 0 && !resumableWaiting && waitingQuotaBlocked) {
       return { task_id: taskId, readiness: 'WAITING', reasons: ['execution_waiting'], missing: [...new Set(missing)], structure };
     }
     const latest = this.#latestExecution(taskId, true);

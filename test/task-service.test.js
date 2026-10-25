@@ -141,6 +141,15 @@ test('readiness reports a non-resumable wait when it fills the parallel quota', 
 
   assert.equal(sdk.withContext({ actorRef: 'agent:next' }).listTasks({ limit: 10 }).length, 0);
   assert.equal(sdk.explainTaskReadiness(task.task_id).readiness, 'WAITING');
+
+  const stopped = service.dispatch('stop_execution', { terminal_state: 'FAILED' }, makeEnvelope({
+    operationId: 'waiting-quota-stop-first', actorRef: 'agent:first', taskId: task.task_id,
+    executionId: first.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: firstStarted.execution.state_version, fencingVersion: firstStarted.execution.fencing_version,
+  }));
+  assert.equal(stopped.task.state, 'WAITING');
+  assert.equal(sdk.withContext({ actorRef: 'agent:next' }).listTasks({ limit: 10 })[0].task_id, task.task_id);
+  assert.equal(sdk.explainTaskReadiness(task.task_id).readiness, 'READY');
   service.close();
 });
 
