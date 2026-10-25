@@ -7,7 +7,7 @@ Agent turn or Task claim.
 
 ## Clean implementation and fixture
 
-- final implementation commit (pending rerun): `5edbdf0a01b24594f3578e3cb8254f506d84ef08`
+- final implementation commit (pending rerun): `95c43cfd3a68f82304da64805e62a0862f300c6a`
 - diagnostic run implementation commit: `0dd0df353a418b8bc6620599b80f3c078cd5fead`
 - implementation worktree: clean (`git status --porcelain` was empty before each run)
 - fixture problem: `putnam_2025_b1`
@@ -57,6 +57,12 @@ is `5edbdf0a01b24594f3578e3cb8254f506d84ef08`; because it changed benchmark
 harness code, the runs below cannot serve as acceptance evidence for that
 final commit even after authentication is restored.
 
+The sanitized snapshots use the repository experiment convention: each run
+has an `exp-YYYYMMDD-...` identifier and its report is under that run's
+`analysis/` directory. The commands below are the canonical rerun commands
+for those snapshots after authentication is restored; raw Agent state remains
+local and ignored.
+
 Semantic treatment:
 
 ```text
@@ -66,12 +72,13 @@ env NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol \
   --putnambench-root /home/ubuntu/PutnamBench \
   --problem putnam_2025_b1 --cores 4 --project-parallelism 1 \
   --timebox-ms 3600000 --parallel-mode semantic \
-  --experiment-dir experiments/issue56-semantic-1h-final-20261025-r3 \
-  --report-dir reports/issue56-semantic-1h-final-20261025-r3 \
+  --experiment-root experiments \
+  --experiment-dir experiments/exp-20261025-issue56-semantic-b1-r3 \
+  --report-dir experiments/exp-20261025-issue56-semantic-b1-r3/analysis/benchmark \
   --observability-host 127.0.0.1 --observability-port 8798
 ```
 
-Report: `reports/issue56-semantic-1h-final-20261025-r3/putnam_2025_b1/report.json`
+Report: `experiments/exp-20261025-issue56-semantic-b1-r3/analysis/benchmark/putnam_2025_b1/report.json`
 
 Root-only control:
 
@@ -82,12 +89,13 @@ env NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol \
   --putnambench-root /home/ubuntu/PutnamBench \
   --problem putnam_2025_b1 --cores 4 --project-parallelism 1 \
   --timebox-ms 3600000 --parallel-mode root-only \
-  --experiment-dir experiments/issue56-root-only-1h-final-20261025-r3 \
-  --report-dir reports/issue56-root-only-1h-final-20261025-r3 \
+  --experiment-root experiments \
+  --experiment-dir experiments/exp-20261025-issue56-root-b1-r3 \
+  --report-dir experiments/exp-20261025-issue56-root-b1-r3/analysis/benchmark \
   --observability-host 127.0.0.1 --observability-port 8799
 ```
 
-Report: `reports/issue56-root-only-1h-final-20261025-r3/putnam_2025_b1/report.json`
+Report: `experiments/exp-20261025-issue56-root-b1-r3/analysis/benchmark/putnam_2025_b1/report.json`
 
 The report comparison is:
 
@@ -117,7 +125,7 @@ These runs are environment-blocked before Agent work and are diagnostic-only.
 They provide no evidence about mathematical solving, branch/subtask overlap,
 Task completion, or a semantic-vs-Root-only speedup. Once valid local Provider
 authentication is available, rerun the two exact commands above from
-`5edbdf0a01b24594f3578e3cb8254f506d84ef08` with a clean worktree. The
+the final implementation commit recorded above with a clean worktree. The
 prompt-name fix is code/harness work, so a fresh acceptance run is required
 after authentication is restored; only a later documentation-only commit that
 records those resulting report paths would avoid another run.
