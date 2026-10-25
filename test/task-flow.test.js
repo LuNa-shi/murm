@@ -315,6 +315,7 @@ test('a reworked child is listed until claimed, then its active lease hides it f
   const reworked = parentRun.sdk.requestRework({ target_task_id: child.task_id, instruction: 'Resume the child from its saved Workspace.' }, { operationId: 'queued-rework-request' });
 
   assert.equal(env.sdk.withContext({ actorRef: 'agent:next' }).listTasks({ limit: 10 })[0].task_id, child.task_id);
+  assert.equal(env.sdk.explainTaskReadiness(child.task_id).readiness, 'READY');
   const resumed = env.sdk.withContext({
     actorRef: 'agent:next', taskId: child.task_id, specVersion: child.spec_version, stateVersion: reworked.task.state_version,
   }).claim({

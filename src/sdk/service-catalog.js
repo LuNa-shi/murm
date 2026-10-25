@@ -91,7 +91,7 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'task_accept', service: 'task', operation: 'accept_task', version: '1.0',
-    description: 'Accept a child Task after reviewing its delivered Material or checked candidate. First read the child Task and latest Execution; the child must be WAITING for parent_review and its completion contract must be satisfied.',
+    description: 'Complete a Task whose own completion contract is satisfied. A parent review is required only when the target contract explicitly sets parent_review=true; otherwise the current Task owner may accept its own work after reading the evidence.',
     scope: 'execution-write', side_effect: true,
     parameters: { type: 'object', required: ['target_task_id'], properties: { target_task_id: { type: 'string' }, target_state_version: { type: 'integer', minimum: 0 } }, additionalProperties: false },
   },
