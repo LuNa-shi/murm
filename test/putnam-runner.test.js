@@ -71,6 +71,7 @@ class FakeSession extends EventEmitter {
     this.bound = bound;
     this.rpcRecords = [];
     this.closed = false;
+    this.candidateResults = [];
   }
 
   async waitForReady() {}
@@ -203,7 +204,7 @@ class FakeSession extends EventEmitter {
         scope: 'proof_relevant',
         content: candidateContent,
       });
-      await call('submit_candidate', { candidate_material_id: material.material.material_id });
+      this.candidateResults.push(await call('submit_candidate', { candidate_material_id: material.material.material_id }));
       return { data: { disposition: 'handled' } };
     }
     await call('read_materials', {});
@@ -216,7 +217,7 @@ class FakeSession extends EventEmitter {
         description: 'candidate metadata mentions sorry but the Workspace source is clean',
       } : (this.cheat ? 'by sorry' : 'def benchmarkArtifact : Nat := 0'),
     });
-    await call('submit_candidate', { candidate_material_id: material.material.material_id });
+    this.candidateResults.push(await call('submit_candidate', { candidate_material_id: material.material.material_id }));
     return { data: { disposition: 'handled' } };
   }
 
@@ -236,6 +237,7 @@ class FakeAdapter {
     this.invalidClaim = invalidClaim;
     this.hardToolError = hardToolError;
     this.starts = [];
+    this.sessions = [];
   }
 
   async start(options = {}) {
@@ -244,6 +246,7 @@ class FakeAdapter {
     logger?.append({ type: 'fake-agent-start' });
     const isWorkerSession = String(options.executionId ?? '').startsWith('worker-');
     const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate, this.invalidClaim && isWorkerSession, this.hardToolError && isWorkerSession, !isWorkerSession);
+    this.sessions.push(session);
     session.manifest = { fake: true, pi_version: 'fake' };
     return session;
   }
@@ -928,6 +931,51 @@ test('checker infrastructure errors returned by submit_candidate retain actionab
     assert.ok(report.run.checker_unassessed_count >= 1);
     assert.ok(report.run.lifecycle_events.some((event) => event.wait_condition_type === 'checker_health'));
     assert.ok(report.cores.every((core) => core.execution_state === null || ['FAILED', 'WAITING'].includes(core.execution_state)));
+    assert.equal(report.audit.invalid, false);
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('benchmark submit_candidate returns Agent feedback separately from the redacted report projection', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-agent-feedback-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-agent-feedback-report-');
+  const adapters = [];
+  try {
+    const report = await runFixture({
+      reportDir,
+      experimentDir,
+      id: 'putnam_agent_feedback_test',
+      timeboxMs: 1_000,
+      onAdapter: (adapter) => adapters.push(adapter),
+      checker: {
+        async check() {
+          return {
+            verdict: 'FAIL',
+            evidence: {
+              checker_started: true,
+              exit_code: 1,
+              diagnostic: 'Candidate.lean:7:4: error: type mismatch',
+              stdout: 'private checker stdout',
+              stderr: 'private checker stderr',
+            },
+          };
+        },
+      },
+    });
+    const feedback = adapters.flatMap((adapter) => adapter.sessions).flatMap((session) => session.candidateResults);
+    assert.ok(feedback.length > 0, 'at least one candidate must reach the Agent tool boundary');
+    const check = feedback[0].check_result;
+    assert.equal(check.result_class, 'source_failure');
+    assert.equal(check.status, 'APPLIED');
+    assert.equal(check.mathematical_outcome, 'FAIL');
+    assert.match(check.diagnostic_excerpt, /type mismatch/);
+    assert.deepEqual(check.diagnostic_location, { file: 'Candidate.lean', line: 7, column: 4 });
+    assert.equal(check.evidence, undefined);
+    assert.equal(check.stdout, undefined);
+    assert.equal(check.stderr, undefined);
+    assert.ok(report.cores.flatMap((core) => core.checks).some((row) => row.diagnostic_class === 'lean_proof_error'));
     assert.equal(report.audit.invalid, false);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });

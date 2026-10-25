@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
-import { listServices } from '../sdk/service-catalog.js';
+import { listServices, listTools } from '../sdk/service-catalog.js';
 
 const PUBLIC_ROOT = fileURLToPath(new URL('./public/', import.meta.url));
 
@@ -54,13 +54,161 @@ function contentType(path) {
   }[extension] ?? 'application/octet-stream';
 }
 
-const DASHBOARD_SECRET_KEY = /(?:authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|credential|bearer|cookie|secret|(?:^|[_-])token(?:$|[_-]))/i;
+const DASHBOARD_SECRET_KEY = /(?:authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|credential|bearer|cookie|secret|proof|formal[_-]?source|raw[_-]?transcript|task[_-]?instructions|(?:^|[_-])token(?:$|[_-]))/i;
 const DASHBOARD_MAX_STRING = 8_000;
 const DASHBOARD_MAX_ARRAY = 100;
+const OVERVIEW_EVENT_KINDS = [
+  'dispatch.complete',
+  'execution_assigned',
+  'execution_started',
+  'execution_waiting',
+  'execution_wait',
+  'execution_observed',
+  'execution_execution',
+  'execution_released',
+  'core_state_changed',
+  'session_started',
+  'session_closed',
+  'agent_turn_started',
+  'agent_turn_finished',
+  'agent_settled',
+  'workspace_revision_saved',
+  'task_state_changed',
+  'task_child_created',
+  'judge.start',
+  'judge.complete',
+  'judge_check_finished',
+  'checker.start',
+  'checker.complete',
+  'checker.preflight.start',
+  'checker.preflight.complete',
+  'runtime.session_failure',
+  'runtime.recovery_exhausted',
+  'session_failure',
+  'recovery_exhausted',
+  'process_stderr',
+  'stderr',
+  'experiment_started',
+  'experiment_finished',
+];
+const OVERVIEW_RPC_RECORD_TYPES = new Set(['tool_execution_start', 'tool_execution_end', 'tool_call', 'tool_result']);
+const OVERVIEW_TOOL_NAMES = new Set([
+  'swarmenv_task_get',
+  'swarmenv_task_list',
+  'swarmenv_task_list_executions',
+  'swarmenv_task_create_child',
+  'swarmenv_task_claim',
+  'swarmenv_task_accept',
+  'swarmenv_task_request_rework',
+  'swarmenv_execution_get',
+  'swarmenv_context_publish',
+  'swarmenv_context_read',
+  'swarmenv_judge_submit_candidate',
+  'swarmenv_judge_get_check_result',
+  // Older Agent sessions used this transport wrapper. The projection resolves
+  // its operation to the corresponding named Service tool below.
+  'swarmenv_call',
+]);
+const EXECUTION_DETAIL_LIFECYCLE_KINDS = new Set([
+  'session_started',
+  'session_closed',
+  'execution_assigned',
+  'execution_started',
+  'execution_waiting',
+  'execution_wait',
+  'execution_observed',
+  'execution_execution',
+  'execution_released',
+  'core_state_changed',
+  'agent_settled',
+  'agent_turn_started',
+  'agent_turn_finished',
+  'workspace_revision_saved',
+  'judge_check_finished',
+  'dispatch.start',
+  'dispatch.complete',
+  'route.start',
+  'route.complete',
+  'judge.start',
+  'judge.complete',
+  'checker.start',
+  'checker.complete',
+  'checker.preflight.start',
+  'checker.preflight.complete',
+  'runtime.session_failure',
+  'runtime.recovery_exhausted',
+  'session_failure',
+  'recovery_exhausted',
+]);
+const DETAIL_MAX_EVENTS = 10_000;
+const DETAIL_MAX_BYTES = 4_000_000;
+const OVERVIEW_MAX_EVENTS = 50_000;
+const OVERVIEW_MAX_BYTES = 4_000_000;
 
 function parseJson(value) {
   if (typeof value !== 'string' || value.length === 0) return value;
   try { return JSON.parse(value); } catch { return value; }
+}
+
+const COMPATIBILITY_TOOL_NAMES = new Map(listTools().map((tool) => [tool.operation, `swarmenv_${tool.name}`]));
+
+function rawToolName(record) {
+  return record?.toolName ?? record?.tool_name ?? record?.name ?? null;
+}
+
+function toolArguments(record) {
+  return record?.args ?? record?.arguments ?? record?.params ?? record?.input ?? undefined;
+}
+
+function compatibilityOperation(record) {
+  if (rawToolName(record) !== 'swarmenv_call') return null;
+  const args = toolArguments(record);
+  return args?.operation
+    ?? record?.arguments?.operation
+    ?? record?.params?.operation
+    ?? record?.input?.operation
+    ?? null;
+}
+
+function dashboardToolName(record) {
+  const raw = rawToolName(record);
+  if (raw !== 'swarmenv_call') return raw;
+  const operation = compatibilityOperation(record);
+  return COMPATIBILITY_TOOL_NAMES.get(operation) ?? raw;
+}
+
+function isToolRecord(record, type) {
+  return Boolean(record) && (record.type === type);
+}
+
+function isToolStart(record) {
+  return isToolRecord(record, 'tool_execution_start') || isToolRecord(record, 'tool_call');
+}
+
+function isToolEnd(record) {
+  return isToolRecord(record, 'tool_execution_end') || isToolRecord(record, 'tool_result');
+}
+
+function toolCallId(record, fallback = null) {
+  return record?.toolCallId ?? record?.tool_call_id ?? record?.id ?? fallback;
+}
+
+function compactToolRecord(record) {
+  if (!record || typeof record !== 'object') return null;
+  const raw = rawToolName(record);
+  const compact = {
+    type: record.type,
+    toolCallId: toolCallId(record),
+    toolName: dashboardToolName(record),
+    args: isToolStart(record) ? toolArguments(record) : undefined,
+    result: isToolEnd(record) ? compactOverviewToolResult(record.result) : undefined,
+    isError: record.isError,
+  };
+  if (raw === 'swarmenv_call') {
+    compact.transport_tool = raw;
+    compact.compatibility_operation = compatibilityOperation(record);
+  }
+  return dashboardValue(compact);
 }
 
 function dashboardValue(value, key = '', depth = 0) {
@@ -87,6 +235,10 @@ function nestedValue(value, keys, depth = 0) {
 }
 
 function materialFromPayload(value, materialId, depth = 0) {
+  if (typeof value === 'string') {
+    const parsed = parseJson(value);
+    return parsed === value ? null : materialFromPayload(parsed, materialId, depth + 1);
+  }
   if (!value || typeof value !== 'object' || depth > 7) return null;
   if (value.material_id === materialId) return value;
   if (Array.isArray(value)) {
@@ -105,6 +257,176 @@ function materialFromPayload(value, materialId, depth = 0) {
 
 function toolDetails(record) {
   return record?.result?.details ?? record?.result?.result ?? record?.result ?? null;
+}
+
+function compactTask(value) {
+  if (!value || typeof value !== 'object') return value;
+  return dashboardValue({
+    task_id: value.task_id,
+    root_id: value.root_id,
+    parent_id: value.parent_id,
+    owner_ref: value.owner_ref,
+    task_type: value.task_type,
+    task_type_version: value.task_type_version,
+    goal: value.goal,
+    priority: value.priority,
+    state: value.state,
+    wait_condition: value.wait_condition,
+    block_reason: value.block_reason,
+    material_ids: value.material_ids,
+  });
+}
+
+function compactExecution(value) {
+  if (!value || typeof value !== 'object') return value;
+  return dashboardValue({
+    execution_id: value.execution_id,
+    task_id: value.task_id,
+    state: value.state,
+    owner_ref: value.owner_ref,
+    attempt_no: value.attempt_no,
+    core_id: value.core_id,
+    session_id: value.session_id,
+    wait_condition: value.wait_condition,
+    candidate_material_id: value.candidate_material_id,
+    material_ids: value.material_ids,
+  });
+}
+
+function overviewText(value) {
+  if (typeof value !== 'string') return dashboardValue(value);
+  return value.length <= 1_200 ? value : `${value.slice(0, 1_200)}\n… [display truncated]`;
+}
+
+function compactMaterial(value) {
+  if (!value || typeof value !== 'object') return value;
+  return dashboardValue({
+    material_id: value.material_id,
+    kind: value.kind,
+    scope: value.scope,
+    evidence_state: value.evidence_state,
+    version: value.version,
+    source_task: value.source_task,
+    source_execution: value.source_execution,
+    supersedes: value.supersedes,
+    summary: overviewText(value.summary),
+    description: overviewText(value.description),
+    title: overviewText(value.title),
+    text: overviewText(value.text),
+    path: value.path,
+  });
+}
+
+function compactOverviewResult(value) {
+  if (!value || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.slice(0, DASHBOARD_MAX_ARRAY).map((item) => {
+      if (!item || typeof item !== 'object') return dashboardValue(item);
+      if (item.task_id) return compactTask(item);
+      if (item.execution_id) return compactExecution(item);
+      if (item.material_id) return compactMaterial(item);
+      return dashboardValue(item);
+    });
+  }
+  const result = {};
+  for (const key of ['state', 'status', 'operation', 'wait_condition', 'block_reason', 'candidate_material_id']) {
+    if (value[key] !== undefined && value[key] !== null) result[key] = dashboardValue(value[key], key);
+  }
+  if (value.task) result.task = compactTask(value.task);
+  if (value.execution) result.execution = compactExecution(value.execution);
+  if (value.material) result.material = compactMaterial(value.material);
+  if (!value.task && value.task_id) result.task = compactTask(value);
+  if (!value.execution && value.execution_id) result.execution = compactExecution(value);
+  if (!value.material && value.material_id) result.material = compactMaterial(value);
+  if (Array.isArray(value.tasks)) result.tasks = value.tasks.slice(0, 100).map(compactTask);
+  if (Array.isArray(value.executions)) result.executions = value.executions.slice(0, 100).map(compactExecution);
+  if (Array.isArray(value.materials)) result.materials = value.materials.slice(0, 100).map(compactMaterial);
+  if (value.error) result.error = dashboardValue(value.error, 'error');
+  return result;
+}
+
+function compactOverviewToolResult(value) {
+  if (!value || typeof value !== 'object') return dashboardValue(value);
+  const result = compactOverviewResult(value);
+  const details = value.details ?? value.result;
+  if (details !== undefined) result.details = compactOverviewResult(details);
+  if (Array.isArray(value.content)) {
+    result.content = value.content.slice(0, 8).map((item) => dashboardValue({
+      type: item?.type,
+      text: overviewText(item?.text),
+    }));
+  }
+  return result;
+}
+
+function compactOverviewRecord(record) {
+  if (!record || typeof record !== 'object' || !OVERVIEW_RPC_RECORD_TYPES.has(record.type)) return null;
+  return compactToolRecord(record);
+}
+
+function compactOverviewEvent(event) {
+  const payload = event.payload ?? {};
+  const record = compactOverviewRecord(payload.record);
+  return {
+    event_id: event.event_id,
+    experiment_id: event.experiment_id,
+    sequence: event.sequence,
+    occurred_at: event.occurred_at,
+    source: event.source,
+    kind: event.kind,
+    core_id: event.core_id,
+    session_id: event.session_id,
+    task_id: event.task_id,
+    execution_id: event.execution_id,
+    correlation_id: event.correlation_id,
+    visibility: event.visibility,
+    payload: {
+      event: payload.event,
+      service: payload.service,
+      operation: payload.operation,
+      ok: payload.ok,
+      state: payload.state,
+      task_state: payload.task_state,
+      wait_condition: dashboardValue(payload.wait_condition, 'wait_condition'),
+      wait_reason: dashboardValue(payload.wait_reason, 'wait_reason'),
+      block_reason: dashboardValue(payload.block_reason, 'block_reason'),
+      error: dashboardValue(payload.error, 'error'),
+      result: compactOverviewResult(payload.result),
+      record,
+    },
+  };
+}
+
+function compactOverviewEvents(events) {
+  const snapshots = new Map();
+  return events.map((event) => {
+    const compact = compactOverviewEvent(event);
+    const result = compact.payload?.result;
+    if (!result || typeof result !== 'object') return compact;
+    for (const [kind, id] of [['task', result.task?.task_id], ['execution', result.execution?.execution_id], ['material', result.material?.material_id]]) {
+      if (!id || !result[kind]) continue;
+      const key = `${kind}:${id}`;
+      const snapshot = JSON.stringify(result[kind]);
+      if (snapshots.get(key) === snapshot) delete result[kind];
+      else snapshots.set(key, snapshot);
+    }
+    if (!Object.keys(result).length) delete compact.payload.result;
+    return compact;
+  });
+}
+
+function boundOverviewEvents(events) {
+  const bounded = [];
+  let bytes = 0;
+  for (const event of events) {
+    const size = Buffer.byteLength(JSON.stringify(event));
+    if (bounded.length >= OVERVIEW_MAX_EVENTS || bytes + size > OVERVIEW_MAX_BYTES) {
+      return { events: bounded, bytes, truncated: true };
+    }
+    bounded.push(event);
+    bytes += size;
+  }
+  return { events: bounded, bytes, truncated: false };
 }
 
 function reportSummary(report) {
@@ -276,6 +598,21 @@ export class ObservabilityServer {
         send(response, 200, this.#eventsQuery(experimentId, url));
         return;
       }
+      if (parts[3] === 'tasks' && parts.length >= 5) {
+        const taskId = decodeURIComponent(parts[4]);
+        send(response, 200, await this.#taskDetail(experimentId, taskId));
+        return;
+      }
+      if (parts[3] === 'execution-detail') {
+        const executionId = url.searchParams.get('execution_id');
+        if (!executionId) throw new TypeError('execution_id is required for execution detail queries');
+        send(response, 200, await this.#executionDetail(experimentId, executionId));
+        return;
+      }
+      if (parts[3] === 'overview') {
+        send(response, 200, await this.#overview(experimentId, url));
+        return;
+      }
       if (parts[3] === 'stream') {
         this.#stream(experimentId, response, url);
         return;
@@ -381,7 +718,10 @@ export class ObservabilityServer {
       taskId: url.searchParams.get('task_id') ?? null,
       kinds: parseKinds(url.searchParams.get('kinds')),
       source: url.searchParams.get('source') ?? null,
-      view: url.searchParams.get('view') === 'agent' ? 'agent' : 'operator',
+      // The HTTP observer is also served through a public hostname. Keep the
+      // generic event surface on the bounded Agent projection even when a
+      // caller omits `view` (or tries to request the operator stream).
+      view: 'agent',
       limit: parseLimit(url.searchParams.get('limit')),
     };
   }
@@ -391,20 +731,73 @@ export class ObservabilityServer {
   }
 
   async #allEvents(options, maxPages = 20) {
+    return (await this.#allEventsWithMeta(options, maxPages)).events;
+  }
+
+  async #allEventsWithMeta(options, maxPages = 20, maxEvents = Number.MAX_SAFE_INTEGER) {
     const events = [];
     let afterSequence = 0;
+    let truncated = false;
     for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
       const page = this.observationStore.listEvents({ ...options, afterSequence, limit: 1_000 });
-      events.push(...page.events);
+      const remaining = Math.max(0, maxEvents - events.length);
+      events.push(...page.events.slice(0, remaining));
+      if (page.events.length > remaining) {
+        truncated = true;
+        break;
+      }
       if (!page.has_more || page.next_cursor === null) break;
       if (page.next_cursor <= afterSequence) break;
       afterSequence = page.next_cursor;
+      if (events.length >= maxEvents) {
+        truncated = true;
+        break;
+      }
+      if (pageNumber === maxPages - 1) truncated = true;
     }
-    return events;
+    return { events, truncated };
+  }
+
+  async #overview(experimentId, url) {
+    const [events, toolProjection] = await Promise.all([
+      this.#allEvents({
+        experimentId,
+        kinds: OVERVIEW_EVENT_KINDS,
+        view: 'agent',
+      }, 200),
+      this.#toolProjection(experimentId),
+    ]);
+    const overviewEvents = [...events, ...toolProjection.events].sort((left, right) => left.sequence - right.sequence);
+    const bounded = boundOverviewEvents(compactOverviewEvents(overviewEvents));
+    return {
+      experiment_id: experimentId,
+      events: bounded.events,
+      overview_bytes: bounded.bytes,
+      overview_truncated: bounded.truncated,
+      timeline: this.#timeline(experimentId, url),
+      tool_counts: toolProjection.counts,
+    };
+  }
+
+  async #toolProjection(experimentId) {
+    const events = await this.#allEvents({ experimentId, kinds: ['rpc_record'], view: 'agent' }, 200);
+    const calls = new Map();
+    const overviewEvents = [];
+    for (const event of events) {
+      const record = event.payload?.record;
+      const toolName = dashboardToolName(record);
+      if (!event.execution_id || !record || !OVERVIEW_RPC_RECORD_TYPES.has(record.type)) continue;
+      const key = `${event.execution_id}:${toolCallId(record, event.sequence)}`;
+      calls.set(key, event.execution_id);
+      if (OVERVIEW_TOOL_NAMES.has(toolName) || OVERVIEW_TOOL_NAMES.has(rawToolName(record))) overviewEvents.push(event);
+    }
+    const counts = {};
+    for (const executionId of calls.values()) counts[executionId] = (counts[executionId] ?? 0) + 1;
+    return { counts, events: overviewEvents };
   }
 
   async #executionInsight(experimentId, executionId) {
-    const events = await this.#allEvents({ experimentId, executionId, view: 'operator' });
+    const events = await this.#allEvents({ experimentId, executionId, view: 'agent' });
     const insight = {
       execution_id: executionId,
       initial_prompt: null,
@@ -434,14 +827,15 @@ export class ObservabilityServer {
     };
     for (const event of events) {
       const record = event.kind === 'rpc_record' ? event.payload?.record : null;
-      if (!record?.toolName) continue;
-      if (record.type === 'tool_execution_start' || record.type === 'tool_execution_end') {
-        tools.set(record.toolName, true);
+      const toolName = dashboardToolName(record);
+      if (!toolName) continue;
+      if (isToolStart(record) || isToolEnd(record)) {
+        tools.set(toolName, true);
       }
-      if (record.type !== 'tool_execution_end') continue;
+      if (!isToolEnd(record)) continue;
       const details = toolDetails(record);
       if (!details || typeof details !== 'object') continue;
-      if (record.toolName === 'swarmenv_task_get') {
+      if (toolName === 'swarmenv_task_get') {
         const task = details.task ?? details;
         if (task && typeof task === 'object') {
           insight.task = dashboardValue({
@@ -462,7 +856,7 @@ export class ObservabilityServer {
           });
           insight.task_instructions = dashboardValue(task.task_instructions ?? task.initial_prompt ?? null, 'task_instructions');
         }
-      } else if (record.toolName === 'swarmenv_execution_get') {
+      } else if (toolName === 'swarmenv_execution_get') {
         const execution = details.execution ?? details;
         if (execution && typeof execution === 'object') {
           insight.initial_prompt = dashboardValue(execution.agent_prompt ?? execution.initial_prompt ?? null, 'agent_prompt');
@@ -478,15 +872,15 @@ export class ObservabilityServer {
             parent_workspace_ref: execution.workspace_selection?.source_workspace_ref,
           });
         }
-      } else if (record.toolName === 'swarmenv_catalog_list_tools') {
+      } else if (toolName === 'swarmenv_catalog_list_tools') {
         addCatalogTools(details);
       }
     }
     if (!insight.tool_surface.length) {
-      const catalogEvents = await this.#allEvents({ experimentId, kinds: ['rpc_record'], view: 'operator' }, 2);
+      const catalogEvents = await this.#allEvents({ experimentId, kinds: ['rpc_record'], view: 'agent' }, 2);
       for (const event of catalogEvents) {
         const record = event.payload?.record;
-        if (record?.type === 'tool_execution_end' && record.toolName === 'swarmenv_catalog_list_tools') addCatalogTools(toolDetails(record));
+        if (isToolEnd(record) && dashboardToolName(record) === 'swarmenv_catalog_list_tools') addCatalogTools(toolDetails(record));
       }
     }
     insight.observed_tools = [...tools.keys()].sort();
@@ -496,13 +890,88 @@ export class ObservabilityServer {
     return insight;
   }
 
-  async #materialDetail(experimentId, materialId) {
-    const events = await this.#allEvents({
-      experimentId,
-      source: 'context-service',
-      kinds: ['dispatch.complete'],
-      view: 'operator',
+  async #executionDetail(experimentId, executionId) {
+    const observed = await this.#allEventsWithMeta({ experimentId, executionId, view: 'agent' }, 200, DETAIL_MAX_EVENTS);
+    const selected = observed.events.filter((event) => {
+      if (event.kind === 'rpc_record') {
+        return OVERVIEW_RPC_RECORD_TYPES.has(event.payload?.record?.type);
+      }
+      return EXECUTION_DETAIL_LIFECYCLE_KINDS.has(event.kind);
     });
+    let bytes = 0;
+    const events = [];
+    let truncated = observed.truncated;
+    for (const event of selected) {
+      const payload = event.payload ?? {};
+      const compact = {
+        ...event,
+        payload: payload.record ? { ...dashboardValue(payload), record: compactToolRecord(payload.record) } : dashboardValue(payload),
+      };
+      const size = Buffer.byteLength(JSON.stringify(compact));
+      if (events.length >= DETAIL_MAX_EVENTS || bytes + size > DETAIL_MAX_BYTES) {
+        truncated = true;
+        break;
+      }
+      events.push(compact);
+      bytes += size;
+    }
+    return {
+      experiment_id: experimentId,
+      execution_id: executionId,
+      events,
+      observed_events: observed.events.length,
+      returned_events: events.length,
+      truncated,
+    };
+  }
+
+  async #taskDetail(experimentId, taskId) {
+    const observed = await this.#allEventsWithMeta({ experimentId, taskId, view: 'agent' }, 200, DETAIL_MAX_EVENTS);
+    const events = observed.events;
+    if (!events.length) throw new Error(`unknown task: ${taskId}`);
+    const fields = {};
+    for (const event of events) {
+      const payload = event.payload ?? {};
+      const record = payload.record;
+      const candidates = [payload.task, payload.result?.task];
+      if (isToolEnd(record) && dashboardToolName(record) === 'swarmenv_task_get') {
+        const result = record.result ?? {};
+        const details = result.details ?? result.result ?? result;
+        candidates.unshift(details?.task ?? details);
+      }
+      for (const candidate of candidates) {
+        if (!candidate || typeof candidate !== 'object') continue;
+        if (candidate.task_id && candidate.task_id !== taskId) continue;
+        for (const [key, value] of Object.entries(candidate)) {
+          if (value !== undefined) fields[key] = value;
+        }
+      }
+    }
+    fields.task_id ??= taskId;
+    const safeFields = dashboardValue(fields);
+    const executionIds = [...new Set(events.map((event) => event.execution_id).filter(Boolean))];
+    return {
+      task: { ...safeFields, fields: safeFields },
+      executions: executionIds.map((executionId) => this.#executionFromEvents(experimentId, executionId)),
+      observed_events: events.length,
+      truncated: observed.truncated,
+    };
+  }
+
+  async #materialDetail(experimentId, materialId) {
+    const [contextEvents, agentProjection] = await Promise.all([
+      this.#allEvents({
+        experimentId,
+        source: 'context-service',
+        kinds: ['dispatch.complete'],
+        view: 'operator',
+      }, 20),
+      // Imported experiments may not have Context Service envelopes. Their
+      // durable Material records are still present inside bounded historical
+      // context_publish tool results.
+      this.#allEventsWithMeta({ experimentId, kinds: ['rpc_record'], view: 'operator' }, 100, 50_000),
+    ]);
+    const events = [...contextEvents, ...agentProjection.events].sort((left, right) => left.sequence - right.sequence);
     let material = null;
     let observedAt = null;
     let sourceEventId = null;
@@ -595,8 +1064,19 @@ export class ObservabilityServer {
   }
 
   #summary(experiment) {
+    const metadata = experiment.metadata ?? {};
     return {
       ...experiment,
+      metadata: {
+        problem_id: metadata.problem_id ?? null,
+        report_path: metadata.report_path ? basename(metadata.report_path) : null,
+        repository_commit: metadata.repository_commit ?? null,
+        core_count: metadata.core_count ?? null,
+        elapsed_ms: metadata.elapsed_ms ?? null,
+        solved: metadata.solved ?? null,
+        protocol_valid: metadata.protocol_valid ?? null,
+        made_progress: metadata.made_progress ?? null,
+      },
       event_count: this.observationStore.countEvents(experiment.experiment_id),
       core_ids: this.observationStore.listEvents({ experimentId: experiment.experiment_id, limit: 1_000 }).events
         .map((event) => event.core_id).filter(Boolean).filter((id, index, ids) => ids.indexOf(id) === index),
@@ -690,18 +1170,20 @@ export class ObservabilityServer {
     response.flushHeaders?.();
     response.write(': connected\n\n');
     let cursor = parseCursor(url.searchParams.get('after_sequence'), 0);
-    const view = url.searchParams.get('view') === 'agent' ? 'agent' : 'operator';
+    const view = 'agent';
+    const overview = url.searchParams.get('overview') === '1';
+    const kinds = overview ? OVERVIEW_EVENT_KINDS : null;
     const emit = (event) => {
-      response.write(`event: observation\ndata: ${json(event)}\n\n`);
+      response.write(`event: observation\ndata: ${json(overview ? compactOverviewEvent(event) : event)}\n\n`);
       cursor = Math.max(cursor, event.sequence);
     };
-    for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view, limit: 1_000 }).events) emit(event);
+    for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view, kinds, limit: 1_000 }).events) emit(event);
     // The writer is usually a different process from this long-lived server.
     // Polling the WAL-backed store keeps SSE useful across process boundaries;
     // the in-process EventEmitter alone would miss those events.
     const poll = setInterval(() => {
       try {
-        for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view, limit: 1_000 }).events) emit(event);
+        for (const event of this.observationStore.listEvents({ experimentId, afterSequence: cursor, view, kinds, limit: 1_000 }).events) emit(event);
       } catch {
         // A reconnect will retry the cursor if the backing store is briefly busy.
       }

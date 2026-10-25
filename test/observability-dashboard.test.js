@@ -124,7 +124,7 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
       return harness.elements.get('#main-view').innerHTML;
     };
     assert.match(await navigate('execution/exec-root'), /SUCCEEDED/);
-    await waitFor(() => harness.fetchCalls.some((path) => path.includes('execution_id=exec-root') && path.includes('view=agent')));
+    await waitFor(() => harness.fetchCalls.some((path) => path.includes('/execution-detail?execution_id=exec-root')));
     await waitFor(() => harness.fetchCalls.some((path) => path.includes('/execution-insight?execution_id=exec-root')));
     assert.match(harness.elements.get('#main-view').innerHTML, /STARTING CONTEXT/);
     assert.match(harness.elements.get('#main-view').innerHTML, /Click a row to expand/);

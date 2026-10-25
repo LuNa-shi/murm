@@ -3,6 +3,7 @@ const state = {
   experiments: [],
   events: [],
   timeline: null,
+  toolCounts: {},
   model: null,
   source: null,
   lastUpdated: null,
@@ -10,6 +11,7 @@ const state = {
   timelineTimer: null,
   timelineRequest: 0,
   detailCache: new Map(),
+  taskDetailCache: new Map(),
   executionInsightCache: new Map(),
   materialDetailCache: new Map(),
   reportCache: new Map(),
@@ -99,7 +101,7 @@ function jsonValue(value, maxLength) {
 
 function redactSecrets(value, key, depth) {
   const level = depth || 0;
-  if (/(authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|secret|credential|bearer|cookie|(?:^|[_-])token(?:$|[_-]))/i.test(String(key || ''))) return '[redacted]';
+  if (/(authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|secret|proof|formal[_-]?source|raw[_-]?transcript|task[_-]?instructions|credential|bearer|cookie|(?:^|[_-])token(?:$|[_-]))/i.test(String(key || ''))) return '[redacted]';
   if (typeof value === 'string') return value.length <= 4_000 ? value : value.slice(0, 4_000) + '\n[display truncated]';
   if (level > 6) return '[nested value truncated]';
   if (Array.isArray(value)) {
@@ -233,9 +235,13 @@ function extractToolCalls(events) {
   (events || []).forEach((event) => {
     const record = eventToolRecord(event);
     if (!record) return;
-    if (record.type === 'tool_execution_start') {
-      calls.set(record.toolCallId, {
-        id: record.toolCallId,
+    const isStart = record.type === 'tool_execution_start' || record.type === 'tool_call';
+    const isEnd = record.type === 'tool_execution_end' || record.type === 'tool_result';
+    if (!isStart && !isEnd) return;
+    const id = record.toolCallId || record.tool_call_id || record.id || event.sequence;
+    if (isStart) {
+      calls.set(id, {
+        id,
         toolName: record.toolName || 'unknown tool',
         args: record.args,
         start: event,
@@ -243,9 +249,9 @@ function extractToolCalls(events) {
         result: null,
         isError: false,
       });
-    } else if (record.type === 'tool_execution_end') {
-      const call = calls.get(record.toolCallId) || {
-        id: record.toolCallId,
+    } else if (isEnd) {
+      const call = calls.get(id) || {
+        id,
         toolName: record.toolName || 'unknown tool',
         args: null,
         start: event,
@@ -257,7 +263,7 @@ function extractToolCalls(events) {
       call.result = record.result;
       call.isError = Boolean(record.isError);
       call.end = event;
-      calls.set(record.toolCallId, call);
+      calls.set(id, call);
     }
   });
   return [...calls.values()].sort((a, b) => (a.start.sequence || 0) - (b.start.sequence || 0));
@@ -399,7 +405,10 @@ function buildModel() {
   // inspector. Session-scoped Pi records can sit beside Runtime records in
   // the Agent view; attributing those records by Core time double-counts a
   // durable Execution and makes the list disagree with its detail page.
-  executions.forEach((execution) => { execution.tool_calls = toolCountForExecution(state.events, execution.execution_id); });
+  executions.forEach((execution) => {
+    const serverCount = state.toolCounts && state.toolCounts[execution.execution_id];
+    execution.tool_calls = Number.isFinite(serverCount) ? serverCount : toolCountForExecution(state.events, execution.execution_id);
+  });
 
   // A Pi session can be restarted several times during one durable Execution.
   // Session IDs still appear in the raw event stream, but the dashboard's
@@ -407,7 +416,7 @@ function buildModel() {
   // anchored by a Core interval or an explicit Execution projection.
   const durableExecutionIds = new Set(timelineSegments().map((segment) => segment.execution_id).filter(Boolean));
   state.events.forEach((event) => {
-    if (event.execution_id && ['execution_assigned', 'execution_released', 'core_state_changed', 'execution_started', 'execution_waiting'].includes(event.kind)) durableExecutionIds.add(event.execution_id);
+    if (event.execution_id && ['execution_assigned', 'execution_released', 'core_state_changed', 'execution_started', 'execution_waiting', 'execution_wait', 'execution_observed', 'execution_execution'].includes(event.kind)) durableExecutionIds.add(event.execution_id);
     const nestedExecution = readNested(event.payload || {}, ['execution']);
     if (nestedExecution && nestedExecution.execution_id && event.kind === 'dispatch.complete') durableExecutionIds.add(nestedExecution.execution_id);
   });
@@ -573,10 +582,14 @@ async function loadReport() {
 function renderHome() {
   if (!state.model) return renderNoExperiment();
   const title = state.experiment && state.experiment.metadata && state.experiment.metadata.problem_id || state.experiment && state.experiment.experiment_id || 'Experiment monitor';
+  const recordedEvents = state.experiment && state.experiment.event_count || state.events.length;
+  const observationLabel = recordedEvents > state.events.length
+    ? formatNumber(recordedEvents) + ' recorded events · ' + formatNumber(state.events.length) + ' dashboard facts'
+    : formatNumber(state.events.length) + ' ordered observations';
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><strong>Home</strong>';
   $('#main-view').innerHTML = H(
     '<div class="page-heading"><div><span class="eyebrow">EXPERIMENT MONITOR</span><h1>', escapeHtml(title), '</h1><p>Real observation data across the selected run. The Core timeline is the primary surface; every interval opens the underlying Execution.</p></div><div class="heading-actions">', statusPill(state.experiment && state.experiment.status), '</div></div>',
-    '<section class="card timeline-card"><div class="card-header"><div><span class="eyebrow">RUNTIME TOPOLOGY</span><h2>Core activity</h2><p>', escapeHtml((state.experiment && state.experiment.core_ids || []).length + ' reusable Core lanes · ' + formatNumber(state.events.length) + ' ordered observations'), '</p></div><div class="timeline-tools"><button class="range-button ' + (state.range === 'all' ? 'active' : '') + '" data-range="all">Fit run</button><button class="range-button ' + (state.range === '15m' ? 'active' : '') + '" data-range="15m">15 min</button><button class="range-button ' + (state.range === '1h' ? 'active' : '') + '" data-range="1h">1 hour</button></div></div><div class="timeline-note">Intervals are positioned against the observed run clock. Nothing needs to be dragged; choose a time window, then click the exact Execution interval to inspect its tool calls and returns.</div><div class="timeline-wrap" id="timeline"></div></section>',
+    '<section class="card timeline-card"><div class="card-header"><div><span class="eyebrow">RUNTIME TOPOLOGY</span><h2>Core activity</h2><p>', escapeHtml((state.experiment && state.experiment.core_ids || []).length + ' reusable Core lanes · ' + observationLabel), '</p></div><div class="timeline-tools"><button class="range-button ' + (state.range === 'all' ? 'active' : '') + '" data-range="all">Fit run</button><button class="range-button ' + (state.range === '15m' ? 'active' : '') + '" data-range="15m">15 min</button><button class="range-button ' + (state.range === '1h' ? 'active' : '') + '" data-range="1h">1 hour</button></div></div><div class="timeline-note">Intervals are positioned against the observed run clock. Nothing needs to be dragged; choose a time window, then click the exact Execution interval to inspect its tool calls and returns.</div><div class="timeline-wrap" id="timeline"></div></section>',
     '<div class="summary-strip" id="metrics"></div>',
     state.experiment && state.experiment.metadata && state.experiment.metadata.report_path ? '<section class="card report-card dashboard-lower"><div class="card-header"><div><span class="eyebrow">RUN REPORT</span><h2>Experiment analysis</h2><p>Attached benchmark metrics and any local analysis report for this run.</p></div></div><div class="card-body" id="experiment-report">' + renderReportPanel(state.reportCache.get(state.experiment.experiment_id) || null) + '</div></section>' : '',
     '<div class="content-grid three dashboard-lower"><section class="card"><div class="card-header"><div><span class="eyebrow">HEALTH</span><h2>Signals</h2><p>Derived from append-only observations.</p></div><a class="card-link" href="#diagnostics">Open diagnostics</a></div><div class="card-body"><div class="signal-list" id="signals"></div></div></section>',
@@ -678,11 +691,11 @@ function renderExecutionPage(id) {
   const materials = model.materials.filter((item) => execution.material_ids.includes(item.material_id) || item.source_execution === execution.execution_id);
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><a href="#executions">Executions</a><span class="crumb-separator">/</span><strong>' + escapeHtml(shortId(execution.execution_id)) + '</strong>';
   $('#main-view').innerHTML = H(
-    '<div class="page-heading"><div><span class="eyebrow">EXECUTION INSPECTOR</span><h1>', escapeHtml(shortId(execution.execution_id, 18)), '</h1><p>Complete observed activity for one durable attempt. Tool arguments and returned results are shown below from the bounded operator projection; private fields remain redacted.</p></div><div class="heading-actions"><button class="button" data-route="executions">All executions</button>', statusPill(execution.state), '</div></div>',
+    '<div class="page-heading"><div><span class="eyebrow">EXECUTION INSPECTOR</span><h1>', escapeHtml(shortId(execution.execution_id, 18)), '</h1><p>Complete observed activity for one durable attempt. Tool arguments and returned results are shown below from the bounded redacted Agent projection.</p></div><div class="heading-actions"><button class="button" data-route="executions">All executions</button>', statusPill(execution.state), '</div></div>',
     '<div class="detail-grid"><div class="detail-stack"><section class="detail-hero"><div><span class="eyebrow">CURRENT STATE</span><h2>', escapeHtml(execution.state || 'UNKNOWN'), '</h2><p>', escapeHtml(task && task.goal || 'Task ' + shortId(execution.task_id)), '</p></div><div class="detail-meta"><div class="meta-item"><span>Execution</span><strong>', escapeHtml(execution.execution_id), '</strong></div><div class="meta-item"><span>Task</span><strong>', escapeHtml(shortId(execution.task_id)), '</strong></div><div class="meta-item"><span>Core / Session</span><strong>', escapeHtml(execution.core_id || '—'), ' / ', escapeHtml(shortId(execution.session_id)), '</strong></div><div class="meta-item"><span>Running time</span><strong>', escapeHtml(formatDuration(execution.running_ms)), '</strong></div></div></section>',
     '<section class="detail-metrics"><div class="detail-metric"><strong>', formatNumber(calls.length), '</strong><span>tool calls</span></div><div class="detail-metric"><strong>', formatNumber(calls.filter((call) => call.end).length), '</strong><span>returned</span></div><div class="detail-metric"><strong>', formatNumber((events || []).length), '</strong><span>observations</span></div><div class="detail-metric"><strong>', formatNumber(execution.errors || 0), '</strong><span>error signals</span></div></section>',
     '<section class="card execution-context-card"><div class="card-header"><div><span class="eyebrow">STARTING CONTEXT</span><h2>What this Agent could see</h2><p>The initial prompt, Task instructions, Workspace selection, and visible tool surface are separated from the event transcript.</p></div></div><div class="card-body">', renderExecutionInsight(insight), '</div></section>',
-    '<section class="card"><div class="card-header"><div><span class="eyebrow">AGENT ACTIVITY</span><h2>Tool calls and returns</h2><p>', detail ? 'Click a row to expand full arguments, key return output, and the bounded raw record.' : 'Loading the selected Execution’s bounded event stream…', '</p></div></div><div class="card-body"><div class="tool-list" id="execution-tools">', detail ? renderToolCalls(calls) : emptyState('Loading tool activity…', 'Reading the historical event stream for this Execution.'), '</div></div></section>',
+    '<section class="card"><div class="card-header"><div><span class="eyebrow">AGENT ACTIVITY</span><h2>Tool calls and returns</h2><p>', detail ? 'Click a row to expand full arguments, key return output, and the bounded raw record.' : 'Loading the selected Execution’s bounded event stream…', '</p>', detail && detail.truncated ? '<span class="context-note warning">History is capped at the server projection limit; returned events are complete up to the cap.</span>' : '', '</div></div><div class="card-body"><div class="tool-list" id="execution-tools">', detail ? renderToolCalls(calls) : emptyState('Loading tool activity…', 'Reading the historical event stream for this Execution.'), '</div></div></section>',
     '<section class="card"><div class="card-header"><div><span class="eyebrow">LIFECYCLE</span><h2>Other observed events</h2><p>State, Runtime, Service, Workspace, and Judge boundaries.</p></div></div><div class="card-body">', renderDetailEvents(events), '</div></section></div>',
     '<div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">WORKSPACE</span><h2>Working surface</h2></div></div><div class="card-body" id="execution-workspace">', emptyState('Loading Workspace…', 'Reading the selected Execution Workspace projection.'), '</div></section>',
     '<section class="card"><div class="card-header"><div><span class="eyebrow">CONTEXT</span><h2>Linked Materials</h2></div></div><div class="card-body">', materials.length ? '<div class="relation-list">' + materials.map((material) => relationLink('material', material.material_id, (material.kind || 'material') + ' · ' + shortId(material.material_id, 9))).join('') + '</div>' : emptyState('No linked Materials', 'This Execution has not exposed a Material reference in the current observation stream.'), '</div></section>',
@@ -697,13 +710,25 @@ function renderExecutionPage(id) {
 async function loadExecutionDetail(id) {
   if (!state.experiment || state.detailCache.has(id)) return;
   try {
-    const path = '/api/experiments/' + encodeURIComponent(state.experiment.experiment_id) + '/events?execution_id=' + encodeURIComponent(id) + '&limit=1000&view=agent';
-    const result = await getAllPages(path);
-    state.detailCache.set(id, { events: result.events, truncated: result.truncated });
+    const result = await get('/api/experiments/' + encodeURIComponent(state.experiment.experiment_id) + '/execution-detail?execution_id=' + encodeURIComponent(id));
+    state.detailCache.set(id, { events: result.events || [], observedEvents: result.observed_events, truncated: Boolean(result.truncated) });
     if (location.hash === '#execution/' + id) route();
   } catch (error) {
     state.detailCache.set(id, { events: [], error: error.message });
     if (location.hash === '#execution/' + id) route();
+  }
+}
+
+async function loadTaskDetail(id) {
+  if (!state.experiment || state.taskDetailCache.has(id)) return;
+  try {
+    const result = await get('/api/experiments/' + encodeURIComponent(state.experiment.experiment_id) + '/tasks/' + encodeURIComponent(id));
+    const task = state.model && state.model.tasks.find((item) => item.task_id === id);
+    state.taskDetailCache.set(id, { task: { ...(task || {}), ...(result.task || {}) }, events: result.events || [], observedEvents: result.observed_events });
+    if (location.hash === '#task/' + id) route();
+  } catch (error) {
+    state.taskDetailCache.set(id, { error: error.message });
+    if (location.hash === '#task/' + id) route();
   }
 }
 
@@ -753,11 +778,14 @@ function materialAdvancedFields(selected, detail) {
 function renderTaskPage(id) {
   const model = state.model;
   if (!model || !model.tasks.length) return renderEmptyPage('Tasks', 'No Task facts have been observed for this Experiment yet.');
-  const task = model.tasks.find((item) => item.task_id === id) || model.tasks[0];
+  const selected = model.tasks.find((item) => item.task_id === id) || model.tasks[0];
+  const detail = state.taskDetailCache.get(selected.task_id);
+  const task = detail && detail.task ? detail.task : selected;
   const executions = model.executions.filter((execution) => task.executions.includes(execution.execution_id) || execution.task_id === task.task_id);
   const materials = model.materials.filter((material) => task.material_ids.includes(material.material_id) || material.source_task === task.task_id);
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><a href="#tasks">Tasks</a><span class="crumb-separator">/</span><strong>' + escapeHtml(shortId(task.task_id)) + '</strong>';
-  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">TASK FLOW</span><h1>' + escapeHtml(task.goal || shortId(task.task_id, 18)) + '</h1><p>Complete observed Task specification, state, child relationships, Execution history, and shared Materials.</p></div><div class="heading-actions">' + statusPill(task.state) + '<button class="button" data-route="tasks">All tasks</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">TASK SPECIFICATION</span><h2>Every observed field</h2><p>Values are taken from the Task Service payload recorded in this Experiment.</p></div></div><div class="card-body">' + fieldTable(task.fields, 'Task fields') + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">TASK TREE</span><h2>Children and parent</h2></div></div><div class="card-body"><div class="relation-list">' + (task.parent_id ? relationLink('task', task.parent_id, 'Parent · ' + shortId(task.parent_id, 10)) : '<span class="tag">Root Task</span>') + task.children.map((child) => relationLink('task', child, 'Child · ' + shortId(child, 10))).join('') + '</div></div></section></div><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">STATE</span><h2>Scheduling facts</h2></div></div><div class="card-body"><div class="meta-item"><span>Task ID</span><strong>' + escapeHtml(task.task_id) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Running time</span><strong>' + escapeHtml(formatDuration(task.running_ms)) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Observed events</span><strong>' + escapeHtml(formatNumber(task.event_count)) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Wait / block reason</span><strong>' + escapeHtml(task.block_reason || '—') + '</strong></div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">EXECUTIONS</span><h2>Attempts</h2></div></div><div class="card-body">' + (executions.length ? '<div class="relation-list">' + executions.map((execution) => relationLink('execution', execution.execution_id, execution.state + ' · ' + shortId(execution.execution_id, 9))).join('') + '</div>' : emptyState('No attempts', 'This Task has not been claimed in the observed run.')) + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">CONTEXT</span><h2>Materials</h2></div></div><div class="card-body">' + (materials.length ? '<div class="relation-list">' + materials.map((material) => relationLink('material', material.material_id, (material.kind || 'material') + ' · ' + shortId(material.material_id, 9))).join('') + '</div>' : emptyState('No Materials linked', 'Material provenance has not been observed for this Task.')) + '</div></section></div></div>';
+  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">TASK FLOW</span><h1>' + escapeHtml(task.goal || shortId(task.task_id, 18)) + '</h1><p>Complete observed Task specification, state, child relationships, Execution history, and shared Materials.</p></div><div class="heading-actions">' + statusPill(task.state) + '<button class="button" data-route="tasks">All tasks</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">TASK SPECIFICATION</span><h2>Every observed field</h2><p>' + (detail ? 'Values are taken from the complete Task projection.' : 'Loading the complete Task projection…') + '</p></div></div><div class="card-body">' + fieldTable(task.fields, 'Task fields') + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">TASK TREE</span><h2>Children and parent</h2></div></div><div class="card-body"><div class="relation-list">' + (task.parent_id ? relationLink('task', task.parent_id, 'Parent · ' + shortId(task.parent_id, 10)) : '<span class="tag">Root Task</span>') + task.children.map((child) => relationLink('task', child, 'Child · ' + shortId(child, 10))).join('') + '</div></div></section></div><div class="detail-stack"><section class="card"><div class="card-header"><div><span class="eyebrow">STATE</span><h2>Scheduling facts</h2></div></div><div class="card-body"><div class="meta-item"><span>Task ID</span><strong>' + escapeHtml(task.task_id) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Running time</span><strong>' + escapeHtml(formatDuration(task.running_ms)) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Observed events</span><strong>' + escapeHtml(formatNumber(task.event_count)) + '</strong></div><div class="meta-item" style="margin-top:10px"><span>Wait / block reason</span><strong>' + escapeHtml(task.block_reason || '—') + '</strong></div></div></section><section class="card"><div class="card-header"><div><span class="eyebrow">EXECUTIONS</span><h2>Attempts</h2></div></div><div class="card-body">' + (executions.length ? '<div class="relation-list">' + executions.map((execution) => relationLink('execution', execution.execution_id, execution.state + ' · ' + shortId(execution.execution_id, 9))).join('') + '</div>' : emptyState('No attempts', 'This Task has not been claimed in the observed run.')) + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">CONTEXT</span><h2>Materials</h2></div></div><div class="card-body">' + (materials.length ? '<div class="relation-list">' + materials.map((material) => relationLink('material', material.material_id, (material.kind || 'material') + ' · ' + shortId(material.material_id, 9))).join('') + '</div>' : emptyState('No Materials linked', 'Material provenance has not been observed for this Task.')) + '</div></section></div></div>';
+  if (!detail) void loadTaskDetail(task.task_id);
 }
 
 function renderTaskList() {
@@ -780,9 +808,16 @@ function renderMaterialPage(id) {
     execution ? relationLink('execution', execution.execution_id, 'Execution · ' + shortId(execution.execution_id, 9)) : '',
     selected.supersedes ? relationLink('material', selected.supersedes, 'Supersedes · ' + shortId(selected.supersedes, 9)) : '',
   ].join('');
+  const missingProvenance = [
+    selected.source_task && !task ? 'Source Task ' + shortId(selected.source_task, 10) + ' was recorded but is not in this Experiment projection.' : '',
+    selected.source_execution && !execution ? 'Source Execution ' + shortId(selected.source_execution, 10) + ' was recorded but is not in this Experiment projection.' : '',
+  ].filter(Boolean);
+  const provenanceBody = provenance || missingProvenance.length
+    ? '<div class="relation-list">' + provenance + missingProvenance.map((message) => '<span class="tag relation-missing">' + escapeHtml(message) + '</span>').join('') + '</div>'
+    : emptyState('No provenance observed', 'The current Experiment contains no source Task, source Execution, or supersession link for this Material.');
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><a href="#materials">Materials</a><span class="crumb-separator">/</span><strong>' + escapeHtml(shortId(selected.material_id)) + '</strong>';
   const content = detail ? '<div class="material-content-summary"><strong>' + escapeHtml(materialContentText(detail, selected)) + '</strong><span>' + escapeHtml(detail.available ? 'Readable content projection loaded from the local Material record.' : 'Only the bounded event projection is available.') + '</span></div><details class="advanced-details"><summary>Raw Material payload, hashes, and provenance</summary><div class="advanced-details-body">' + fieldTable(materialAdvancedFields(selected, detail), 'Advanced Material fields') + '<pre class="payload-preview">' + escapeHtml(safeJson(detail.content_preview || selected.content || selected.content_json || { material_id: selected.material_id }, 20_000)) + '</pre></div></details>' : '<div class="material-content-summary loading"><span class="spinner"></span><span>Loading the readable Material content…</span></div>';
-  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">CONTEXT / MATERIAL</span><h1>' + escapeHtml(selected.kind || 'Material') + ' <span class="muted">' + escapeHtml(shortId(selected.material_id, 16)) + '</span></h1><p>Read the useful Material content first; hashes, provenance JSON, and the raw payload stay behind an explicit disclosure.</p></div><div class="heading-actions">' + statusPill(selected.evidence_state) + '<button class="button" data-route="materials">All materials</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card material-content-card"><div class="card-header"><div><span class="eyebrow">MATERIAL CONTENT</span><h2>What was published</h2><p>Redacted browser projection with a readable content summary.</p></div></div><div class="card-body">' + content + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">MATERIAL FIELDS</span><h2>Identity and semantics</h2><p>Stable fields remain visible; technical payload fields are folded below.</p></div></div><div class="card-body">' + fieldTable(materialVisibleFields(selected, detail), 'Material fields') + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">PROVENANCE</span><h2>Source and lineage</h2></div></div><div class="card-body">' + (provenance ? '<div class="relation-list">' + provenance + '</div>' : emptyState('No provenance observed', 'The current Experiment contains no source Task, source Execution, or supersession link for this Material.')) + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">DOWNSTREAM USE</span><h2>Observed consumers</h2><p>Read and action links captured in the event stream.</p></div></div><div class="card-body">' + (selected.consumers.length ? '<div class="relation-list">' + selected.consumers.map((consumer) => relationLink('execution', consumer, 'Execution · ' + shortId(consumer, 10))).join('') + '</div>' : emptyState('No explicit consumers', 'This Material has provenance, but no downstream read or action has been observed yet.')) + '</div></section></div><section class="card"><div class="card-header"><div><span class="eyebrow">TECHNICAL PREVIEW</span><h2>Payload inspection</h2><p>Raw Material content is available behind the disclosure above when the local record contains it.</p></div></div><div class="card-body"><details class="advanced-details"><summary>Open technical payload</summary><pre class="payload-preview">' + escapeHtml(safeJson(materialAdvancedFields(selected, detail), 20_000)) + '</pre></details></div></section></div>';
+  $('#main-view').innerHTML = '<div class="page-heading"><div><span class="eyebrow">CONTEXT / MATERIAL</span><h1>' + escapeHtml(selected.kind || 'Material') + ' <span class="muted">' + escapeHtml(shortId(selected.material_id, 16)) + '</span></h1><p>Read the useful Material content first; hashes, provenance JSON, and the raw payload stay behind an explicit disclosure.</p></div><div class="heading-actions">' + statusPill(selected.evidence_state) + '<button class="button" data-route="materials">All materials</button></div></div><div class="detail-grid"><div class="detail-stack"><section class="card material-content-card"><div class="card-header"><div><span class="eyebrow">MATERIAL CONTENT</span><h2>What was published</h2><p>Redacted browser projection with a readable content summary.</p></div></div><div class="card-body">' + content + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">MATERIAL FIELDS</span><h2>Identity and semantics</h2><p>Stable fields remain visible; technical payload fields are folded below.</p></div></div><div class="card-body">' + fieldTable(materialVisibleFields(selected, detail), 'Material fields') + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">PROVENANCE</span><h2>Source and lineage</h2></div></div><div class="card-body">' + provenanceBody + '</div></section><section class="card"><div class="card-header"><div><span class="eyebrow">DOWNSTREAM USE</span><h2>Observed consumers</h2><p>Read and action links captured in the event stream.</p></div></div><div class="card-body">' + (selected.consumers.length ? '<div class="relation-list">' + selected.consumers.map((consumer) => relationLink('execution', consumer, 'Execution · ' + shortId(consumer, 10))).join('') + '</div>' : emptyState('No explicit consumers', 'This Material has provenance, but no downstream read or action has been observed yet.')) + '</div></section></div><section class="card"><div class="card-header"><div><span class="eyebrow">TECHNICAL PREVIEW</span><h2>Payload inspection</h2><p>Raw Material content is available behind the disclosure above when the local record contains it.</p></div></div><div class="card-body"><details class="advanced-details"><summary>Open technical payload</summary><pre class="payload-preview">' + escapeHtml(safeJson(materialAdvancedFields(selected, detail), 20_000)) + '</pre></details></div></section></div>';
   if (!detail) void loadMaterialDetail(selected.material_id);
 }
 
@@ -867,7 +902,7 @@ function applyTheme(theme, persist) {
 
 function connectStream(id) {
   if (state.source) state.source.close();
-  state.source = new EventSource('/api/experiments/' + encodeURIComponent(id) + '/stream?after_sequence=' + (state.events.at(-1) && state.events.at(-1).sequence || 0) + '&view=agent');
+  state.source = new EventSource('/api/experiments/' + encodeURIComponent(id) + '/stream?after_sequence=' + (state.events.at(-1) && state.events.at(-1).sequence || 0) + '&view=agent&overview=1');
   state.source.onopen = () => setConnection('Live', 'live');
   state.source.onerror = () => setConnection('Reconnecting…', 'error');
   state.source.addEventListener('observation', (message) => {
@@ -923,16 +958,17 @@ async function selectExperiment(id) {
   if (!id) return;
   setConnection('Loading…');
   try {
-    const experiment = await get('/api/experiments/' + encodeURIComponent(id));
-    const results = await Promise.all([
-      getAllPages('/api/experiments/' + encodeURIComponent(id) + '/events?limit=1000&view=agent'),
-      get('/api/experiments/' + encodeURIComponent(id) + '/timeline?limit=1000&view=agent'),
+    const [experiment, overview] = await Promise.all([
+      get('/api/experiments/' + encodeURIComponent(id)),
+      get('/api/experiments/' + encodeURIComponent(id) + '/overview?view=agent'),
     ]);
     state.experiment = experiment;
-    state.events = results[0].events;
-    state.timeline = results[1];
+    state.events = overview.events || [];
+    state.timeline = overview.timeline || { lanes: [] };
+    state.toolCounts = overview.tool_counts || {};
     state.model = buildModel();
     state.detailCache = new Map();
+    state.taskDetailCache = new Map();
     state.executionInsightCache = new Map();
     state.materialDetailCache = new Map();
     state.reportCache = new Map();
