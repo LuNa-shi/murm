@@ -388,15 +388,18 @@ export class TaskService {
     return this.db.prepare('SELECT structural_version FROM task_structure_versions WHERE task_id = ?').get(taskId).structural_version;
   }
 
-  #bumpStructure(taskId, { eventType, payload, envelope, version = null } = {}) {
+  #bumpStructure(taskId, { eventType, payload, envelope, version = null, sourceMaterialRefs = [] } = {}) {
     const current = this.#structureVersion(taskId);
     const next = version ?? current + 1;
     if (next !== current + 1) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'structural version is stale', { expected_structural_version: current });
     const createdAt = now();
     this.db.prepare('UPDATE task_structure_versions SET structural_version = ?, updated_at = ? WHERE task_id = ?').run(next, createdAt, taskId);
+    const eventPayload = sourceMaterialRefs.length > 0
+      ? { ...(payload ?? {}), source_material_refs: sourceMaterialRefs }
+      : payload;
     this.db.prepare(`INSERT INTO task_structure_events
       (event_id, task_id, structural_version, event_type, actor_ref, execution_id, payload_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), taskId, next, eventType, envelope?.actor_ref ?? 'system', envelope?.execution_id ?? null, json(payload), createdAt);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), taskId, next, eventType, envelope?.actor_ref ?? 'system', envelope?.execution_id ?? null, json(eventPayload), createdAt);
     return next;
   }
 
@@ -812,14 +815,14 @@ export class TaskService {
       .run(groupId, taskId, memberOrder, structuralVersion, now());
   }
 
-  #createBranchGroup(payload, envelope) {
+  #createBranchGroup(payload, envelope, { authority = null, currentVersion = null, sourceMaterialRefs = [] } = {}) {
     const ownerTaskId = payload.parent_task_id ?? envelope.task_id;
     if (envelope.task_id !== ownerTaskId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'parent_task_id must match envelope task_id');
     this.#assertCanCreateBranch(ownerTaskId);
-    const { task: owner, execution } = this.#assertStructureAuthority(ownerTaskId, envelope);
+    const { task: owner, execution } = authority ?? this.#assertStructureAuthority(ownerTaskId, envelope);
     if (!Array.isArray(payload.branch_tasks) || payload.branch_tasks.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'branch_tasks must contain at least one Task proposal');
     this.#assertChildLimits(ownerTaskId, payload.branch_tasks.length);
-    const current = this.#assertExpectedStructureVersion(ownerTaskId, payload.expected_structural_version);
+    const current = currentVersion ?? this.#assertExpectedStructureVersion(ownerTaskId, payload.expected_structural_version);
     const next = current + 1;
     const groupId = payload.group_id ?? payload.group_key ?? randomUUID();
     const group = this.#createGroup({ ownerTaskId, groupKind: 'BRANCH', envelope, groupId, structuralVersion: next });
@@ -840,14 +843,14 @@ export class TaskService {
       this.db.prepare('DELETE FROM task_structure_groups WHERE group_id = ?').run(groupId);
       throw error;
     }
-    this.#bumpStructure(ownerTaskId, { eventType: 'branch_group_created', payload: { group_id: groupId, task_ids: tasks.map((task) => task.task_id) }, envelope, version: next });
+    this.#bumpStructure(ownerTaskId, { eventType: 'branch_group_created', payload: { group_id: groupId, task_ids: tasks.map((task) => task.task_id) }, envelope, version: next, sourceMaterialRefs });
     return { group: this.#groupView(this.db.prepare('SELECT * FROM task_structure_groups WHERE group_id = ?').get(groupId)), tasks, parent: this.getTask(ownerTaskId), execution };
   }
 
-  #addRequiredSubtask(payload, envelope) {
+  #addRequiredSubtask(payload, envelope, { authority = null, currentVersion = null, sourceMaterialRefs = [] } = {}) {
     const ownerTaskId = payload.owner_task_id ?? payload.task_id ?? envelope.task_id;
-    const { task: owner, execution } = this.#assertStructureAuthority(ownerTaskId, envelope);
-    const current = this.#assertExpectedStructureVersion(ownerTaskId, payload.expected_structural_version);
+    const { task: owner, execution } = authority ?? this.#assertStructureAuthority(ownerTaskId, envelope);
+    const current = currentVersion ?? this.#assertExpectedStructureVersion(ownerTaskId, payload.expected_structural_version);
     const next = current + 1;
     let group = null;
     if (payload.group_id) {
@@ -871,7 +874,7 @@ export class TaskService {
     }
     this.#addGroupMember(group.group_id, task.task_id, next, payload.member_order ?? 0);
     this.db.prepare('UPDATE task_structure_groups SET structural_version = ? WHERE group_id = ?').run(next, group.group_id);
-    this.#bumpStructure(ownerTaskId, { eventType: 'required_subtask_added', payload: { group_id: group.group_id, task_id: task.task_id }, envelope, version: next });
+    this.#bumpStructure(ownerTaskId, { eventType: 'required_subtask_added', payload: { group_id: group.group_id, task_id: task.task_id }, envelope, version: next, sourceMaterialRefs });
     return { group: this.#groupView(this.db.prepare('SELECT * FROM task_structure_groups WHERE group_id = ?').get(group.group_id)), task, owner: this.getTask(ownerTaskId), execution };
   }
 
@@ -927,6 +930,19 @@ export class TaskService {
     return this.db.prepare('SELECT * FROM task_structure_dependencies WHERE dependency_id = ?').get(dependencyId);
   }
 
+  #sourceMaterialRefs(value, field = 'source_material_refs') {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value) || value.some((ref) => typeof ref !== 'string' || !ref)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} must contain Material IDs`);
+    }
+    if (this.contextService) {
+      for (const materialId of value) {
+        if (!this.contextService.getMaterial(materialId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown structural-change Material: ${materialId}`);
+      }
+    }
+    return [...new Set(value)];
+  }
+
   #proposeStructureChange(payload, envelope) {
     const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
     const { task, execution } = this.#assertStructureAuthority(taskId, envelope);
@@ -934,10 +950,27 @@ export class TaskService {
     const change = payload.change;
     if (!change || typeof change !== 'object' || Array.isArray(change)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'change is required');
     const kind = change.kind ?? change.change_kind;
+    const sourceMaterialRefs = this.#sourceMaterialRefs(change.source_material_refs ?? payload.source_material_refs);
+    if (['create_branch_group', 'add_branch_group', 'branch_group'].includes(kind)) {
+      const result = this.#createBranchGroup({
+        ...change,
+        parent_task_id: taskId,
+        expected_structural_version: current,
+      }, envelope, { authority: { task, execution }, currentVersion: current, sourceMaterialRefs });
+      return { ...result, structure: this.#taskStructure(taskId), change: { kind: 'create_branch_group', group_id: result.group.group_id, task_ids: result.tasks.map((candidate) => candidate.task_id), structural_version: current + 1, source_material_refs: sourceMaterialRefs } };
+    }
+    if (['add_required_subtask', 'required_subtask'].includes(kind)) {
+      const result = this.#addRequiredSubtask({
+        ...change,
+        owner_task_id: taskId,
+        expected_structural_version: current,
+      }, envelope, { authority: { task, execution }, currentVersion: current, sourceMaterialRefs });
+      return { ...result, structure: this.#taskStructure(taskId), change: { kind: 'add_required_subtask', group_id: result.group.group_id, task_id: result.task.task_id, structural_version: current + 1, source_material_refs: sourceMaterialRefs } };
+    }
     if (['add_dependency', 'dependency', 'add_execution_dependency'].includes(kind)) {
       const dependency = this.#insertDependency(taskId, change.dependency ?? change, envelope);
-      const version = this.#bumpStructure(taskId, { eventType: 'dependency_added', payload: { dependency_id: dependency.dependency_id, dependency }, envelope, version: current + 1 });
-      return { structure: this.#taskStructure(taskId), change: { kind: 'add_dependency', dependency_id: dependency.dependency_id, structural_version: version }, task, execution };
+      const version = this.#bumpStructure(taskId, { eventType: 'dependency_added', payload: { dependency_id: dependency.dependency_id, dependency }, envelope, version: current + 1, sourceMaterialRefs });
+      return { structure: this.#taskStructure(taskId), change: { kind: 'add_dependency', dependency_id: dependency.dependency_id, structural_version: version, source_material_refs: sourceMaterialRefs }, task, execution };
     }
     if (['retire_dependency', 'remove_dependency'].includes(kind)) {
       const dependencyId = requireString(change.dependency_id, 'change.dependency_id');
@@ -945,26 +978,36 @@ export class TaskService {
       if (!dependency) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'active dependency was not found');
       const retiredAt = now();
       this.db.prepare('UPDATE task_structure_dependencies SET retired_at = ? WHERE dependency_id = ?').run(retiredAt, dependencyId);
-      const version = this.#bumpStructure(taskId, { eventType: 'dependency_retired', payload: { dependency_id: dependencyId }, envelope, version: current + 1 });
-      return { structure: this.#taskStructure(taskId), change: { kind: 'retire_dependency', dependency_id: dependencyId, structural_version: version }, task, execution };
+      const version = this.#bumpStructure(taskId, { eventType: 'dependency_retired', payload: { dependency_id: dependencyId }, envelope, version: current + 1, sourceMaterialRefs });
+      return { structure: this.#taskStructure(taskId), change: { kind: 'retire_dependency', dependency_id: dependencyId, structural_version: version, source_material_refs: sourceMaterialRefs }, task, execution };
     }
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported structure change: ${kind ?? '<missing>'}`);
   }
 
-  #assertReworkAuthority(prior, envelope) {
-    const authorityTaskId = envelope.task_id === prior.task_id || envelope.task_id === prior.parent_id ? envelope.task_id : null;
-    if (!authorityTaskId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'rework operation must target the prior Task or its owner Task');
+  #assertReworkAuthority(prior, envelope, payload = {}) {
     if (!envelope.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'rework operation requires a bound Task Execution');
     const execution = this.getExecution(envelope.execution_id);
-    if (!execution || execution.task_id !== authorityTaskId || execution.owner_ref !== envelope.actor_ref) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a current Task owner may create rework');
-    if (envelope.execution_id) this.#executionForWrite(envelope);
-    return execution;
+    const consumer = this.getTask(envelope.task_id);
+    if (!execution || !consumer || execution.task_id !== consumer.task_id || execution.owner_ref !== envelope.actor_ref) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'rework operation requires the current consumer Task owner');
+    }
+    if (consumer.root_id !== prior.root_id) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'rework consumer must belong to the prior Task root');
+    }
+    const sourceExecutionId = payload.workspace_source_execution_id ?? payload.workspace_lineage?.source_execution_id;
+    if (sourceExecutionId) {
+      const sourceExecution = this.getExecution(sourceExecutionId);
+      if (!sourceExecution || sourceExecution.task_id !== prior.task_id) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace lineage must reference an Execution of the prior Task');
+      }
+    }
+    return this.#executionForWrite(envelope);
   }
 
   #createReworkTask(payload, envelope) {
     const priorTaskId = requireString(payload.prior_task_id ?? payload.target_task_id, 'prior_task_id');
     const prior = this.#taskRow(priorTaskId);
-    const authorityExecution = this.#assertReworkAuthority(prior, envelope);
+    const authorityExecution = this.#assertReworkAuthority(prior, envelope, payload);
     const currentStructureVersion = this.#assertExpectedStructureVersion(priorTaskId, payload.expected_structural_version);
     const priorExecution = this.#latestExecution(priorTaskId);
     const instruction = payload.instruction ?? payload.feedback;

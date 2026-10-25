@@ -143,6 +143,67 @@ test('report rework creates a new evidence-linked Task instead of reopening the 
   service.close();
 });
 
+test('a later consumer can create rework for a terminal deliverable in the same root', () => {
+  const { service, sdk } = environment();
+  const root = propose(sdk, 'consumer-rework-root');
+  const rootRun = claim(sdk, root, 'owner:root', 'consumer-rework-root-claim');
+  const rootSdk = bound(sdk, root, rootRun);
+  const deliverable = rootSdk.createChildTask({
+    child_creation_key: 'terminal-deliverable', task_type: 'default', goal: 'publish report', expected_output: 'report', acceptance_conditions: {}, owner_ref: 'worker:report', completion_contract: {},
+  }, { operationId: 'terminal-deliverable-create' }).task;
+  const deliverableRun = claim(sdk, deliverable, 'worker:report', 'terminal-deliverable-claim');
+  bound(sdk, deliverable, deliverableRun, 'worker:report').acceptTask({ target_task_id: deliverable.task_id }, { operationId: 'terminal-deliverable-accept' });
+  const currentRoot = service.getTask(root.task_id);
+  const currentRootExecution = service.getExecution(rootRun.execution.execution_id);
+  const consumer = bound(sdk, currentRoot, { execution: currentRootExecution }, 'owner:root').createChildTask({
+    child_creation_key: 'report-consumer', task_type: 'default', goal: 'review report', expected_output: 'review', acceptance_conditions: {}, owner_ref: 'worker:consumer', completion_contract: {},
+  }, { operationId: 'report-consumer-create' }).task;
+  const consumerRun = claim(sdk, consumer, 'worker:consumer', 'report-consumer-claim');
+  const result = bound(sdk, consumer, consumerRun, 'worker:consumer').createReworkTask({
+    prior_task_id: deliverable.task_id,
+    instruction: 'add the missing comparison after consumer review',
+    workspace_lineage: { source_execution_id: deliverableRun.execution.execution_id, workspace_revision: deliverableRun.execution.workspace_revision },
+  }, { operationId: 'consumer-rework-create' });
+  assert.notEqual(result.task.task_id, deliverable.task_id);
+  assert.equal(result.provenance.creation_kind, 'REWORK');
+  assert.equal(result.rework_link.workspace_lineage.source_execution_id, deliverableRun.execution.execution_id);
+  assert.equal(service.getTask(deliverable.task_id).state, 'SATISFIED');
+  assert.equal(service.getExecution(deliverableRun.execution.execution_id).state, 'SUCCEEDED');
+  service.close();
+});
+
+test('proposed structural changes can add membership using audited Material references', () => {
+  const { service, sdk } = environment();
+  const root = propose(sdk, 'material-structure-root');
+  const rootRun = claim(sdk, root, 'owner:root', 'material-structure-root-claim');
+  const rootSdk = bound(sdk, root, rootRun);
+  const alternatives = rootSdk.proposeStructureChange({
+    task_id: root.task_id,
+    expected_structural_version: 1,
+    change: {
+      kind: 'create_branch_group',
+      source_material_refs: ['material:discovery'],
+      branch_tasks: [
+        { task_type: 'default', goal: 'evidence route A', expected_output: 'A', acceptance_conditions: {}, completion_contract: {} },
+        { task_type: 'default', goal: 'evidence route B', expected_output: 'B', acceptance_conditions: {}, completion_contract: {} },
+      ],
+    },
+  }, { operationId: 'material-structure-branches' });
+  assert.equal(alternatives.change.source_material_refs[0], 'material:discovery');
+  const required = rootSdk.proposeStructureChange({
+    task_id: root.task_id,
+    expected_structural_version: 2,
+    change: {
+      kind: 'add_required_subtask',
+      source_material_refs: ['material:discovery'],
+      subtask: { task_type: 'default', goal: 'required synthesis', expected_output: 'synthesis', acceptance_conditions: {}, completion_contract: {} },
+    },
+  }, { operationId: 'material-structure-required' });
+  assert.equal(required.change.kind, 'add_required_subtask');
+  assert.deepEqual(service.getTaskStructure(root.task_id).events.map((event) => event.payload.source_material_refs), [['material:discovery'], ['material:discovery']]);
+  service.close();
+});
+
 test('a child without a parent_review contract can complete from its own execution contract', () => {
   const { service, sdk } = environment();
   const root = propose(sdk, 'owner-completion-root');

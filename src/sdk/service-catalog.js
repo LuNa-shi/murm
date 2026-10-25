@@ -73,9 +73,9 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'task_propose_structure_change', service: 'task', operation: 'propose_structure_change', version: '1.0',
-    description: 'Propose an auditable, version-checked Task structure change based on new evidence. Structural membership, explicit execution dependencies, and creation provenance stay distinct; active work is preserved.',
+    description: 'Propose an auditable, version-checked branch, required-subtask, or explicit dependency change based on new evidence. Optional source_material_refs are validated and retained in the structural event; membership, dependencies, and provenance stay distinct while active work is preserved.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['task_id', 'change'], properties: { task_id: { type: 'string' }, expected_structural_version: { type: 'integer', minimum: 1 }, change: { type: 'object' }, change_key: { type: 'string' } }, additionalProperties: true },
+    parameters: { type: 'object', required: ['task_id', 'change'], properties: { task_id: { type: 'string' }, expected_structural_version: { type: 'integer', minimum: 1 }, source_material_refs: { type: 'array', items: { type: 'string' } }, change: { type: 'object', description: 'Use kind create_branch_group, add_required_subtask, add_dependency, or retire_dependency; membership kinds accept source_material_refs.' }, change_key: { type: 'string' } }, additionalProperties: true },
   },
   {
     name: 'task_explain_readiness', service: 'task', operation: 'explain_task_readiness', version: '1.0',
@@ -85,7 +85,7 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'task_create_rework', service: 'task', operation: 'create_rework_task', version: '1.0',
-    description: 'Create a new rework Task linked to a prior deliverable, feedback, Materials, and Workspace lineage. Rework reuses prior evidence through explicit provenance and does not silently reopen the old Execution.',
+    description: 'Create a new rework Task linked to a prior deliverable, feedback, Materials, and Workspace lineage. The current prior owner, parent, or another active consumer in the same root may create it; rework reuses prior evidence through explicit provenance and does not silently reopen the old Execution.',
     scope: 'execution-write', side_effect: true,
     parameters: { type: 'object', required: ['prior_task_id'], properties: { prior_task_id: { type: 'string' }, instruction: { type: 'string' }, feedback: {}, input_material_refs: { type: 'array', items: { type: 'string' } }, workspace_source_execution_id: { type: 'string' }, workspace_revision: { type: 'integer', minimum: 1 } }, additionalProperties: true },
   },
