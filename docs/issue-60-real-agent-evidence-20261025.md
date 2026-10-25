@@ -28,11 +28,12 @@ followed by `git diff --check`.
 The short run was allowed to reach its own deadline so that it produced a
 complete sanitized report:
 
-- Experiment metadata:
-  `experiments/issue-60-real-short-20261025-r9-root/run/metadata/experiment.json`
-- Aggregate report: `reports/issue-60-real-short-20261025-r9/aggregate-report.json`
+- Sanitized report:
+  `experiments/exp-20261025-issue60-r9/analysis/experiment-analysis.md`
+- Aggregate report:
+  `experiments/exp-20261025-issue60-r9/analysis/aggregate-report.json`
 - Project report:
-  `reports/issue-60-real-short-20261025-r9/putnam_2025_b1/report.json`
+  `experiments/exp-20261025-issue60-r9/analysis/putnam_2025_b1/report.json`
 - Timebox: 120 seconds; observed elapsed time: 120464 ms
 - `protocol_valid=true`, `audit.invalid=false`
 - `solved=false`, `made_progress=false`
@@ -55,8 +56,9 @@ The same clean commit and fixed inputs were used for the two-hour command
 below. After the four Cores each completed three bounded startup attempts, the
 run had no remaining eligible capacity or Agent work, so it was stopped rather
 than leaving an idle process for the rest of the timebox. Its ignored
-experiment directory is retained for local inspection; it is not acceptance
-evidence because it was terminated before the deadline and has no final report.
+experiment directory is retained locally at
+`experiments/exp-20261025-issue60-r8/`; it is not acceptance evidence because
+it was terminated before the deadline and has no final report.
 
 ```bash
 NUROUTER_PI_PROVIDER=openai NUROUTER_PI_MODEL=gpt-6.1-sol \
@@ -66,9 +68,9 @@ timeout 7500s node scripts/run-putnambench-benchmark.mjs \
   --problem putnam_2025_b1 \
   --cores 4 --project-parallelism 1 \
   --timebox-ms 7200000 --turn-timeout-ms 540000 \
-  --experiment-root experiments/issue-60-real-2h-20261025-r8-root \
-  --experiment-dir experiments/issue-60-real-2h-20261025-r8-root/run \
-  --report-dir reports/issue-60-real-2h-20261025-r8 \
+  --experiment-root experiments/exp-20261025-issue60-r8 \
+  --experiment-dir experiments/exp-20261025-issue60-r8/run \
+  --report-dir experiments/exp-20261025-issue60-r8/analysis \
   --observability-host 127.0.0.1 --observability-port 8805
 ```
 ## Exact rerun command
@@ -85,8 +87,8 @@ timeout 7500s node scripts/run-putnambench-benchmark.mjs \
   --problem putnam_2025_b1 \
   --cores 4 --project-parallelism 1 \
   --timebox-ms 7200000 --turn-timeout-ms 540000 \
-  --experiment-root experiments/issue-60-real-2h-<run-id>-root \
-  --experiment-dir experiments/issue-60-real-2h-<run-id>-root/run \
-  --report-dir reports/issue-60-real-2h-<run-id> \
-  --observability-host 127.0.0.1 --observability-port <free-port>
+  --experiment-root experiments/exp-20261025-issue60-r10 \
+  --experiment-dir experiments/exp-20261025-issue60-r10/run \
+  --report-dir experiments/exp-20261025-issue60-r10/analysis \
+  --observability-host 127.0.0.1 --observability-port 8807
 ```

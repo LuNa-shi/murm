@@ -1,0 +1,1057 @@
+{
+  "schema_version": 1,
+  "protocol": {
+    "project_isolation": true,
+    "core_count": 4,
+    "repository_commit": "e7f4e144d447651892da86f3d1f4997af24f520a",
+    "repository_worktree_dirty": false,
+    "input_policy": "pinned formalization only; no candidate or solution input",
+    "tool_policy": "registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only",
+    "cheating_policy": "placeholder or non-SwarmEnv tool event invalidates the project"
+  },
+  "project": {
+    "problem_id": "putnam_2025_b1",
+    "tags": [
+      "geometry",
+      "combinatorics"
+    ],
+    "source_hash": "80d035ae3e86493d3a09f8acc39601e6dba4e380e217c085c491e202b7ced6c7",
+    "fixture_id": "putnam-putnam_2025_b1",
+    "putnambench_commit": "a635813f5edf297d928f9bd5ef8324a26bdde09c",
+    "lean_toolchain": "leanprover/lean4:v4.33.1",
+    "mathlib_version": "0df444a360eaa60ab8c11dca51a86af692955474",
+    "checker_version": "mvp-1",
+    "run_id": "e5ffb210-2ad5-4344-909f-e231d7c5fb93",
+    "database_path": "experiments/exp-20261025-issue60-r9/run/state/projects/putnam_2025_b1/project.sqlite",
+    "input_workspace_hash": "80d035ae3e86493d3a09f8acc39601e6dba4e380e217c085c491e202b7ced6c7",
+    "task_count": 1,
+    "task_tree": [
+      {
+        "task_id": "2f52a701-975a-4c65-a15d-5c6b8da7c375",
+        "parent_id": null,
+        "task_type": "proof",
+        "priority": 0,
+        "state": "OPEN"
+      }
+    ],
+    "execution_history": []
+  },
+  "parallelism": {
+    "core_count": 4,
+    "elapsed_ms": 120464,
+    "total_core_capacity_ms": 481856,
+    "agent_time_ms": 0,
+    "agent_time_utilization_v0": 0,
+    "mean_active_core_count": 0,
+    "max_active_core_count": 0,
+    "concurrency_histogram_ms": {
+      "0": 120464
+    },
+    "eligible_intervals": [],
+    "eligible_window_ms": 0,
+    "eligible_agent_time_ms": 0,
+    "eligible_mean_active_core_count": null,
+    "eligible_concurrency_histogram_ms": {},
+    "ready_work_ms": 120460,
+    "ready_unassigned_ms": 0,
+    "waiting_ms_by_core": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    },
+    "idle_ms_by_core": {
+      "1": 120464,
+      "2": 120464,
+      "3": 120464,
+      "4": 120464
+    },
+    "scheduler_poll_ms": 18,
+    "claim_conflict_count": 0,
+    "judge_time_ms": 0,
+    "turn_occupancy_ms": 0,
+    "turn_occupancy_ratio_v0": 0,
+    "state_time_ms": {
+      "IDLE": 481856
+    },
+    "core_state_intervals": [
+      {
+        "core": 1,
+        "state": "IDLE",
+        "task_id": null,
+        "execution_id": null,
+        "reason": "slot_created",
+        "start_ms": 1792909183386,
+        "end_ms": 1792909303848
+      },
+      {
+        "core": 1,
+        "state": "IDLE",
+        "task_id": null,
+        "execution_id": null,
+        "reason": "benchmark_cleanup_complete",
+        "start_ms": 1792909303848,
+        "end_ms": 1792909303850
+      },
+      {
+        "core": 2,
+        "state": "IDLE",
+        "task_id": null,
+        "execution_id": null,
+        "reason": "slot_created",
+        "start_ms": 1792909183386,
+        "end_ms": 1792909303849
+      },
+      {
+        "core": 2,
+        "state": "IDLE",
+        "task_id": null,
+        "execution_id": null,
+        "reason": "benchmark_cleanup_complete",
+        "start_ms": 1792909303849,
+        "end_ms": 1792909303850
+      },
+      {
+        "core": 3,
+        "state": "IDLE",
+        "task_id": null,
+        "execution_id": null,
+        "reason": "slot_created",
+        "start_ms": 1792909183386,
+        "end_ms": 1792909303849
+      },
+      {
+        "core": 3,
+        "state": "IDLE",
+        "task_id": null,
+        "execution_id": null,
+        "reason": "benchmark_cleanup_complete",
+        "start_ms": 1792909303849,
+        "end_ms": 1792909303850
+      },
+      {
+        "core": 4,
+        "state": "IDLE",
+        "task_id": null,
+        "execution_id": null,
+        "reason": "slot_created",
+        "start_ms": 1792909183386,
+        "end_ms": 1792909303849
+      },
+      {
+        "core": 4,
+        "state": "IDLE",
+        "task_id": null,
+        "execution_id": null,
+        "reason": "benchmark_cleanup_complete",
+        "start_ms": 1792909303849,
+        "end_ms": 1792909303850
+      }
+    ],
+    "agent_turn_intervals": [],
+    "work_units": [],
+    "decomposition_available": false,
+    "decomposition_evidence": {
+      "definition": "true only when an independent child Task was actually created and recorded; false means no independent child work was observed in this run",
+      "observed_child_task_count": 0,
+      "scheduler_status_count": 0,
+      "ready_work_ms": 120460,
+      "ready_unassigned_ms": 0
+    }
+  },
+  "run": {
+    "started_at": "2026-10-25T06:19:43.386Z",
+    "ended_at": "2026-10-25T06:21:43.850Z",
+    "elapsed_ms": 120464,
+    "deadline_ms": 120000,
+    "protocol_valid": true,
+    "made_progress": false,
+    "progress_evidence": {
+      "child_task_count": 0,
+      "workspace_write_count": 0,
+      "meaningful_material_count": 0,
+      "candidate_check_count": 0
+    },
+    "solved": false,
+    "solved_by_core": null,
+    "solved_at_ms": null,
+    "material_count": 0,
+    "project_material_count": 0,
+    "candidate_count": 0,
+    "ended_early": false,
+    "deadline_reached": true,
+    "cleanup_elapsed_ms": 1,
+    "resources_at_start": {
+      "logical_cpus": 250,
+      "total_memory_bytes": 483183820800,
+      "available_memory_bytes": 480733816832
+    },
+    "resources_at_end": {
+      "logical_cpus": 250,
+      "total_memory_bytes": 483183820800,
+      "available_memory_bytes": 480738577408
+    },
+    "heartbeat_count": 0,
+    "heartbeat_error_count": 0,
+    "watchdog_sweep_count": 44,
+    "watchdog_recovery_count": 0,
+    "watchdog_error_count": 0,
+    "execution_timeout_sweep_count": 0,
+    "execution_timeout_error_count": 0,
+    "candidate_check_count": 0,
+    "tool_error_count": 0,
+    "tool_protocol_error_count": 0,
+    "invalid_wait_attempt_count": 0,
+    "scheduler_status_count": 0,
+    "scheduler": {
+      "ready_count": 1,
+      "ready_signature": "2f52a701-975a-4c65-a15d-5c6b8da7c375",
+      "first_ready_at": 1792909183387,
+      "last_ready_at": 1792909303844,
+      "last_reconciled_at": 1792909303844,
+      "dispatch_count": 0,
+      "startup_attempt_count": 12,
+      "startup_failure_count": 12,
+      "bounded_startup_exhausted_count": 4,
+      "duplicate_suppression_count": 0,
+      "dispatch_latencies_ms": [],
+      "in_flight_core_ids": [],
+      "stopped": true
+    },
+    "scheduler_events": [
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "initial",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909183387
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "1",
+        "reason": "initial",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 0,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909183387
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "1",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 1,
+        "retryable": true,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909184715
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909189721
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "2",
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 6334,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909189721
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "2",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 1,
+        "retryable": true,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909190999
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909196002
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "3",
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 12615,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909196002
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "3",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 1,
+        "retryable": true,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909197314
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909202316
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "4",
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 18929,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909202316
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "4",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 1,
+        "retryable": true,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909203595
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909208598
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "1",
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 25211,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909208598
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "1",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 2,
+        "retryable": true,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909209889
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909214890
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "2",
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 31503,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909214890
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "2",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 2,
+        "retryable": true,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909216107
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909221108
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "3",
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 37721,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909221108
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "3",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 2,
+        "retryable": true,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909222365
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909227369
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "4",
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 43982,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909227369
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "4",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 2,
+        "retryable": true,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909228665
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909233667
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "1",
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 50280,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909233667
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "1",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 3,
+        "retryable": false,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909234963
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909239965
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "2",
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 56578,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909239965
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "2",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 3,
+        "retryable": false,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909241242
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909246244
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "3",
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 62857,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909246244
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "3",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 3,
+        "retryable": false,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909247519
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909252519
+      },
+      {
+        "kind": "scheduler_dispatch_started",
+        "core_id": "4",
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": 69132,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909252519
+      },
+      {
+        "kind": "scheduler_dispatch_failed",
+        "core_id": "4",
+        "reason": null,
+        "ready_count": 1,
+        "free_core_count": null,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": 3,
+        "retryable": false,
+        "error_code": "Error",
+        "error_class": "startup_failure",
+        "timestamp": 1792909253774
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909258778
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909263787
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909268795
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909273800
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909278809
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909283817
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909288822
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909293832
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909298839
+      },
+      {
+        "kind": "scheduler_reconcile",
+        "core_id": null,
+        "reason": "poll",
+        "ready_count": 1,
+        "free_core_count": 4,
+        "ready_to_dispatch_ms": null,
+        "startup_attempt": null,
+        "retryable": null,
+        "error_code": null,
+        "error_class": null,
+        "timestamp": 1792909303844
+      }
+    ],
+    "latency_samples": [],
+    "latency_summary": {
+      "ready_to_session_start_ms": [
+        0,
+        6334,
+        12615,
+        18929,
+        25211,
+        31503,
+        37721,
+        43982,
+        50280,
+        56578,
+        62857,
+        69132
+      ],
+      "ready_to_claim_ms": [],
+      "claim_to_first_turn_ms": [],
+      "wait_to_core_release_ms": [],
+      "condition_to_resumed_turn_ms": []
+    },
+    "decomposition_available": false,
+    "lifecycle_events": [],
+    "tool_error_classes": [],
+    "claimed_core_count": 0,
+    "claim_count": 0,
+    "child_claim_count": 0,
+    "root_claim_count": 0,
+    "resumed_execution_count": 0,
+    "wait_count": 0,
+    "wake_count": 0,
+    "accept_count": 0,
+    "rework_count": 0,
+    "resume_count": 0,
+    "checker_preflights": [],
+    "checker_infrastructure_failure_count": 0,
+    "checker_source_failure_count": 0,
+    "checker_unassessed_count": 0
+  },
+  "cores": [
+    {
+      "core": 1,
+      "task_id": null,
+      "execution_id": null,
+      "turns": 0,
+      "turn_durations_ms": [],
+      "turn_timeout_count": 0,
+      "session_count": 3,
+      "session_recovery_count": 0,
+      "checks": [],
+      "errors": [
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        },
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        },
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        }
+      ],
+      "cheating_flags": [],
+      "claims": [],
+      "latency_samples": [],
+      "tool_events": [],
+      "workspace_writes": [],
+      "tool_errors": [],
+      "material_reads": [],
+      "task_state": null,
+      "execution_state": null,
+      "input_snapshot_hash": null,
+      "workspace_ref": null,
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.4.0",
+        "nurouter_version": "0.2.14",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 2,
+      "task_id": null,
+      "execution_id": null,
+      "turns": 0,
+      "turn_durations_ms": [],
+      "turn_timeout_count": 0,
+      "session_count": 3,
+      "session_recovery_count": 0,
+      "checks": [],
+      "errors": [
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        },
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        },
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        }
+      ],
+      "cheating_flags": [],
+      "claims": [],
+      "latency_samples": [],
+      "tool_events": [],
+      "workspace_writes": [],
+      "tool_errors": [],
+      "material_reads": [],
+      "task_state": null,
+      "execution_state": null,
+      "input_snapshot_hash": null,
+      "workspace_ref": null,
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.4.0",
+        "nurouter_version": "0.2.14",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 3,
+      "task_id": null,
+      "execution_id": null,
+      "turns": 0,
+      "turn_durations_ms": [],
+      "turn_timeout_count": 0,
+      "session_count": 3,
+      "session_recovery_count": 0,
+      "checks": [],
+      "errors": [
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        },
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        },
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        }
+      ],
+      "cheating_flags": [],
+      "claims": [],
+      "latency_samples": [],
+      "tool_events": [],
+      "workspace_writes": [],
+      "tool_errors": [],
+      "material_reads": [],
+      "task_state": null,
+      "execution_state": null,
+      "input_snapshot_hash": null,
+      "workspace_ref": null,
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.4.0",
+        "nurouter_version": "0.2.14",
+        "node_version": "24.21.0"
+      }
+    },
+    {
+      "core": 4,
+      "task_id": null,
+      "execution_id": null,
+      "turns": 0,
+      "turn_durations_ms": [],
+      "turn_timeout_count": 0,
+      "session_count": 3,
+      "session_recovery_count": 0,
+      "checks": [],
+      "errors": [
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        },
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        },
+        {
+          "code": "RPC_ERROR",
+          "class": "lean_checker_error"
+        }
+      ],
+      "cheating_flags": [],
+      "claims": [],
+      "latency_samples": [],
+      "tool_events": [],
+      "workspace_writes": [],
+      "tool_errors": [],
+      "material_reads": [],
+      "task_state": null,
+      "execution_state": null,
+      "input_snapshot_hash": null,
+      "workspace_ref": null,
+      "versions": {
+        "pi_package": "@earendil-works/pi-coding-agent",
+        "pi_version": "1.4.0",
+        "nurouter_version": "0.2.14",
+        "node_version": "24.21.0"
+      }
+    }
+  ],
+  "audit": {
+    "input_source_hash": "80d035ae3e86493d3a09f8acc39601e6dba4e380e217c085c491e202b7ced6c7",
+    "prompt_hashes": [
+      {
+        "core": 1,
+        "prompt_hash": "53147c31fc05ff3b27a66255fdeb810c0a2169ba248750cb2194e2605e4b1bff"
+      },
+      {
+        "core": 2,
+        "prompt_hash": "53147c31fc05ff3b27a66255fdeb810c0a2169ba248750cb2194e2605e4b1bff"
+      },
+      {
+        "core": 3,
+        "prompt_hash": "53147c31fc05ff3b27a66255fdeb810c0a2169ba248750cb2194e2605e4b1bff"
+      },
+      {
+        "core": 4,
+        "prompt_hash": "53147c31fc05ff3b27a66255fdeb810c0a2169ba248750cb2194e2605e4b1bff"
+      }
+    ],
+    "all_tool_events": [],
+    "invalid": false,
+    "invalid_reasons": [],
+    "candidate_materials": [],
+    "raw_transcript_exported": false,
+    "proof_contents_exported": false
+  }
+}
