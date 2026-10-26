@@ -155,8 +155,17 @@ export class Runtime {
         return { released: false, execution: current, elapsed_ms: this.clock() - startedAt };
       }
       await new Promise((resolve) => {
-        const timer = setTimeout(resolve, pollMs);
-        signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          signal?.removeEventListener('abort', onAbort);
+          resolve();
+        };
+        const onAbort = () => finish();
+        const timer = setTimeout(finish, pollMs);
+        signal?.addEventListener('abort', onAbort, { once: true });
       });
       current = this.taskService.getExecution(id);
     }

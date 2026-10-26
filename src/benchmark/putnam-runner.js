@@ -1892,7 +1892,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         // Legacy discovery sessions are physical Core occupancy even before
         // Runtime owns an Execution. Keep Controller projections from waking
         // a slot that Scheduler has reserved for selection.
-        state: core.turnInFlight || core.dispatchReserved ? 'SELECTING' : runtimeState.state,
+        state: !core.taskId && !core.executionId && (core.turnInFlight || core.dispatchReserved) ? 'SELECTING' : runtimeState.state,
         healthy: !core.stopping,
       };
     }),

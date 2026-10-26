@@ -189,3 +189,25 @@ test('CoreDaemon run loop waits for wake signals and stops cleanly', async () =>
   daemon.stop();
   assert.equal(daemon.snapshot().state, 'STOPPING');
 });
+
+test('CoreDaemon stop aborts a claimed Runtime handoff and fences the claim', async () => {
+  let fenced = 0;
+  const daemon = new CoreDaemon({
+    coreId: 'core-abort',
+    listClaimableTasks: () => [{ task_id: 'task-abort' }],
+    selectTask: async () => 'task-abort',
+    claimTask: async () => ({ task: { task_id: 'task-abort' }, execution: { execution_id: 'execution-abort', task_id: 'task-abort', state: 'CREATED' } }),
+    runtime: {
+      startClaimedExecution: async (execution) => ({ execution }),
+      waitForExecutionRelease: async (_executionId, { signal }) => new Promise((resolve) => signal.addEventListener('abort', () => resolve({ released: false, aborted: true }), { once: true })),
+      fenceExecution: async () => { fenced += 1; return { execution: { state: 'FENCED' } }; },
+    },
+  });
+  const running = daemon.runOnce({ reason: 'abort-test' });
+  await new Promise((resolve) => setImmediate(resolve));
+  daemon.stop();
+  const result = await running;
+  assert.equal(result.disposition, 'runtime_failed');
+  assert.equal(fenced, 1);
+  assert.equal(daemon.snapshot().state, 'STOPPING');
+});

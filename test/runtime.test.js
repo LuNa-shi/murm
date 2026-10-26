@@ -61,13 +61,13 @@ class FakeAgentAdapter {
   }
 }
 
-async function fixture({ stopDelayMs = 0, runtimeOptions = {} } = {}) {
+async function fixture({ stopDelayMs = 0, runtimeOptions = {}, parallelQuota = 1 } = {}) {
   const database = new DatabaseSync(':memory:');
   const taskService = new TaskService(database);
   const contextService = new ContextService(database, { taskService });
   const router = new ServicesRouter({ taskService, contextService });
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
-  const task = sdk.proposeTask({ task_type: 'proof', goal: 'runtime fixture', expected_output: 'proof', acceptance_conditions: { fixture: true }, owner_ref: 'owner:root' }, { operationId: 'runtime-proposal' }).task;
+  const task = sdk.proposeTask({ task_type: 'proof', goal: 'runtime fixture', expected_output: 'proof', acceptance_conditions: { fixture: true }, owner_ref: 'owner:root', parallel_quota: parallelQuota }, { operationId: 'runtime-proposal' }).task;
   const claimed = sdk.withContext({ taskId: task.task_id, specVersion: 1, stateVersion: 0 }).claim({
     execution_id: 'execution-runtime', claim_key: 'runtime-claim', owner_ref: 'runtime:local', agent_prompt: 'run the fixture', input_material_refs: [],
   }, { operationId: 'runtime-claim-op' });
@@ -371,6 +371,40 @@ test('startup failure preserves the prepared workspace and ends the Execution wi
   assert.equal(runtime.getActiveProcessCount(), 0);
   await rm(rootDir, { recursive: true, force: true });
   fixtureData.taskService.close();
+});
+
+test('blocking one parallel Runtime releases a sibling Runtime and its Core after fencing', async () => {
+  const fixtureData = await fixture({ parallelQuota: 2, stopDelayMs: 10 });
+  const { runtime, taskService, sdk, task, claimed, rootDir } = fixtureData;
+  const secondAdapter = new FakeAgentAdapter({ stopDelayMs: 10 });
+  const secondRuntime = new Runtime({
+    taskService,
+    contextService: fixtureData.contextService,
+    workspaceManager: new WorkspaceManager({ rootDir }),
+    agentAdapter: secondAdapter,
+    actorRef: 'runtime:core-2',
+    coreIds: ['core-2'],
+  });
+  try {
+    const secondTaskView = taskService.getTask(task.task_id);
+    const second = sdk.withContext({ taskId: task.task_id, specVersion: secondTaskView.spec_version, stateVersion: secondTaskView.state_version }).claim({
+      claim_key: 'runtime-sibling-claim', owner_ref: 'runtime:core-2', core_id: 'core-2', agent_prompt: 'sibling', input_material_refs: [],
+    }, { operationId: 'runtime-sibling-claim-op' });
+    await runtime.startExecution(claimed.execution.execution_id);
+    await secondRuntime.startExecution(second.execution.execution_id, { coreId: 'core-2' });
+    const blocked = await runtime.blockExecution(claimed.execution.execution_id, { reason: 'sibling dependency', checkpoint: { step: 'blocked' } });
+    await secondRuntime.waitForSettled();
+    assert.equal(blocked.task.state, 'BLOCKED');
+    assert.equal(taskService.getExecution(second.execution.execution_id).state, 'FENCED');
+    assert.equal(secondRuntime.getActiveProcessCount(), 0);
+    assert.equal(secondRuntime.getCoreStatus('core-2').state, 'IDLE');
+    assert.equal(secondAdapter.sessions[0].closed, true);
+  } finally {
+    await runtime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
+    await secondRuntime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
 });
 
 test('Workspace Manager rejects execution and file paths that escape its root', async () => {
