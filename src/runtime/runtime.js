@@ -272,7 +272,10 @@ export class Runtime {
     // A recovery start restores the already persisted revision. Rewriting that
     // same revision would violate the Workspace Manager's monotonic CAS rule.
     let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
-    const started = this.taskService.dispatch('start_execution', this.#executionTimingPayload(), this.#executionEnvelope(current, operationId('start')));
+    const started = this.taskService.dispatch('start_execution', {
+      ...this.#executionTimingPayload(),
+      ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
+    }, this.#executionEnvelope(current, operationId('start')));
     current = started.execution;
     try {
       return await this.#launch(current, workspace, { sessionReason, coreId: selectedCoreId });
@@ -317,7 +320,10 @@ export class Runtime {
     this.#assertCoreAvailable(selectedCoreId, execution.execution_id);
     const workspace = await this.#prepareWorkspace(execution, workspaceRef);
     let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
-    current = this.taskService.dispatch('start_execution', this.#executionTimingPayload(), this.#executionEnvelope(current, operationId('bind'))).execution;
+    current = this.taskService.dispatch('start_execution', {
+      ...this.#executionTimingPayload(),
+      ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
+    }, this.#executionEnvelope(current, operationId('bind'))).execution;
     let boundSession = session;
     try {
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
@@ -388,9 +394,13 @@ export class Runtime {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only wake WAITING executions, got ${waiting.state}`);
     }
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
-    const resumed = this.taskService.dispatch('wake_execution', { wake_key: key }, this.#executionEnvelope(waiting, operationId('wake'))).execution;
+    const wakeCoreId = this.#resolveCoreId(waiting, null);
+    const resumed = this.taskService.dispatch('wake_execution', {
+      wake_key: key,
+      ...(wakeCoreId ? { core_id: wakeCoreId } : {}),
+    }, this.#executionEnvelope(waiting, operationId('wake'))).execution;
     const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'), executionId, fencingVersion: resumed.fencing_version });
-    const coreId = this.#resolveCoreId(resumed, null);
+    const coreId = this.#resolveCoreId(resumed, wakeCoreId);
     this.#assertCoreAvailable(coreId, executionId);
     return this.#launch(resumed, workspace, { beforePrompt, sessionReason: 'wake', coreId });
   }

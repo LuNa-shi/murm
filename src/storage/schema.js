@@ -228,10 +228,6 @@ CREATE TABLE IF NOT EXISTS turn_admission_counters (
   PRIMARY KEY (execution_id, turn_id)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS tasks_active_responsibility
-  ON tasks(root_id, responsibility_key)
-  WHERE responsibility_key IS NOT NULL AND state NOT IN ('CANCELLED', 'CANCELED', 'REJECTED', 'CLOSED');
-
 CREATE TABLE IF NOT EXISTS wait_keys (
   request_key TEXT PRIMARY KEY,
   execution_id TEXT NOT NULL REFERENCES executions(execution_id),

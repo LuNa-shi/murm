@@ -138,6 +138,12 @@ export class TaskService {
       this.db.exec('UPDATE tasks SET claimable_at = created_at WHERE claimable_at IS NULL AND state = \'OPEN\'');
     }
     if (!taskColumns.has('responsibility_key')) this.db.exec('ALTER TABLE tasks ADD COLUMN responsibility_key TEXT');
+    // Create this partial index only after migrations have added the column;
+    // older databases must be able to run SCHEMA_SQL before the new field
+    // exists.
+    this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS tasks_active_responsibility
+      ON tasks(root_id, responsibility_key)
+      WHERE responsibility_key IS NOT NULL AND state NOT IN ('CANCELLED', 'CANCELED', 'REJECTED', 'CLOSED')");
     const executionColumns = new Set(this.db.prepare('PRAGMA table_info(executions)').all().map((column) => column.name));
     if (!executionColumns.has('core_id')) this.db.exec('ALTER TABLE executions ADD COLUMN core_id TEXT');
     if (!executionColumns.has('session_generation')) this.db.exec('ALTER TABLE executions ADD COLUMN session_generation INTEGER NOT NULL DEFAULT 1');

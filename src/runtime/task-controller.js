@@ -71,7 +71,8 @@ export class TaskController {
     onEvent = null,
   } = {}) {
     const serviceList = taskService?.listTasks?.bind(taskService);
-    if (typeof listClaimableTasks !== 'function' && typeof serviceList !== 'function') {
+    const serviceListClaimable = taskService?.listClaimableTasks?.bind(taskService);
+    if (typeof listClaimableTasks !== 'function' && typeof serviceListClaimable !== 'function' && typeof serviceList !== 'function') {
       throw new TypeError('TaskController requires listClaimableTasks or taskService.listTasks');
     }
     if (typeof listDaemons !== 'function') throw new TypeError('TaskController requires listDaemons');
@@ -81,12 +82,15 @@ export class TaskController {
     }
     if (!Number.isFinite(sweepIntervalMs) || sweepIntervalMs < 0) throw new TypeError('TaskController sweepIntervalMs must be non-negative');
     this.taskService = taskService;
-    this.listClaimableTasks = listClaimableTasks ?? (() => serviceList({
-      states: ['OPEN'], limit: shortlistLimit, availableOnly: true,
-    }));
-    this.listBlockedTasks = listBlockedTasks ?? (() => serviceList({
-      states: ['BLOCKED'], limit: 100, availableOnly: false,
-    }));
+    this.listClaimableTasks = listClaimableTasks
+      ?? (serviceListClaimable
+        ? (() => serviceListClaimable({ limit: shortlistLimit }))
+        : (() => serviceList({ states: ['OPEN'], limit: shortlistLimit, availableOnly: true })));
+    const serviceListBlocked = taskService?.listBlockedTasks?.bind(taskService);
+    this.listBlockedTasks = listBlockedTasks
+      ?? (serviceListBlocked
+        ? (() => serviceListBlocked({ limit: 100 }))
+        : (() => serviceList({ states: ['BLOCKED'], limit: 100, availableOnly: false })));
     this.usesTaskServiceReconcile = reconcileTask === null && typeof taskService?.reconcileTask === 'function';
     this.reconcileTask = reconcileTask
       ?? (this.usesTaskServiceReconcile ? (taskId) => taskService.reconcileTask(taskId) : null);
