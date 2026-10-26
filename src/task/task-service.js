@@ -389,9 +389,12 @@ export class TaskService {
       })
       .sort((left, right) => {
         if (left.fairness_protected !== right.fairness_protected) return left.fairness_protected ? -1 : 1;
-        if (left.priority !== right.priority) return right.priority - left.priority;
         const leftSince = Date.parse(left.claimable_since ?? '') || Number.MAX_SAFE_INTEGER;
         const rightSince = Date.parse(right.claimable_since ?? '') || Number.MAX_SAFE_INTEGER;
+        // Once the fairness floor is active, age is the protected ordering;
+        // priority may decide only among equally old eligible work.
+        if (left.fairness_protected && right.fairness_protected && leftSince !== rightSince) return leftSince - rightSince;
+        if (left.priority !== right.priority) return right.priority - left.priority;
         if (leftSince !== rightSince) return leftSince - rightSince;
         return left.task_id.localeCompare(right.task_id);
       })
@@ -1595,11 +1598,11 @@ export class TaskService {
     // A dependency block releases the whole Task responsibility.  Parallel
     // attempts are durable owners too; leaving one CREATED/RUNNING row behind
     // would make BLOCKED both claimable-in-the-future and currently occupied.
-    const otherExecutionIds = this.db.prepare("SELECT execution_id FROM executions WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING')")
+    const otherExecutionIds = this.db.prepare("SELECT execution_id FROM executions WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')")
       .all(execution.task_id, execution.execution_id).map((row) => row.execution_id);
     const fencedOthers = this.db.prepare(`UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1,
       terminal_reason = ?, state_version = state_version + 1, updated_at = ?
-      WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING')`)
+      WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')`)
       .run(`dependency_blocked:${reason}`, updatedAt, execution.task_id, execution.execution_id).changes;
     this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
       .run(reason, updatedAt, execution.task_id);

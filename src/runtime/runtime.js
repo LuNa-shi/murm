@@ -143,17 +143,21 @@ export class Runtime {
   }
 
   /** Wait until Runtime no longer owns an Execution process. */
-  async waitForExecutionRelease(executionId, { timeoutMs = Number.POSITIVE_INFINITY, pollMs = 25 } = {}) {
+  async waitForExecutionRelease(executionId, { timeoutMs = Number.POSITIVE_INFINITY, pollMs = 25, signal = null } = {}) {
     const id = requireString(executionId, 'execution_id');
     if (timeoutMs !== Number.POSITIVE_INFINITY && (!Number.isFinite(timeoutMs) || timeoutMs < 0)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timeoutMs must be non-negative or Infinity');
     if (!Number.isFinite(pollMs) || pollMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'pollMs must be positive');
     const startedAt = this.clock();
     let current = this.taskService.getExecution(id);
     while (this.activeProcesses.has(id) || ['CREATED', 'RUNNING'].includes(current?.state)) {
+      if (signal?.aborted) return { released: false, aborted: true, execution: current, elapsed_ms: this.clock() - startedAt };
       if (timeoutMs !== Number.POSITIVE_INFINITY && this.clock() - startedAt >= timeoutMs) {
         return { released: false, execution: current, elapsed_ms: this.clock() - startedAt };
       }
-      await new Promise((resolve) => setTimeout(resolve, pollMs));
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, pollMs);
+        signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+      });
       current = this.taskService.getExecution(id);
     }
     return { released: true, execution: current, elapsed_ms: this.clock() - startedAt };
@@ -1098,7 +1102,6 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (!active) return;
     this.activeProcesses.delete(executionId);
-    this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     const execution = this.taskService.getExecution(executionId);
     await Promise.resolve(active.session.stop?.()).catch(() => undefined);
     if (execution?.workspace_ref) {
@@ -1115,6 +1118,10 @@ export class Runtime {
         fencingVersion: execution.fencing_version,
       }).catch(() => undefined);
     }
+    // Keep the Core occupied until the old process has actually stopped and
+    // its fenced Workspace is released. Durable fencing alone must not make a
+    // reusable slot look idle while the sibling Session is still exiting.
+    this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     this.logger?.append({ event: 'runtime.execution_fenced_released', execution_id: executionId });
   }
 

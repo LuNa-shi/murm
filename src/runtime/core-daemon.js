@@ -135,6 +135,7 @@ export class CoreDaemon {
     this.lastError = null;
     this.lastEventAt = this.now();
     this.stateHistory = [{ state: this.state, at: this.lastEventAt }];
+    this.handoffAbortController = null;
   }
 
   snapshot() {
@@ -171,6 +172,7 @@ export class CoreDaemon {
   stop() {
     if (this.stopped) return this.snapshot();
     this.stopped = true;
+    this.handoffAbortController?.abort();
     this.#setState(CORE_DAEMON_STATES.STOPPING, { reason: 'stop' });
     for (const resolve of this.waiters) resolve('stopped');
     this.waiters.clear();
@@ -318,10 +320,13 @@ export class CoreDaemon {
     else if (typeof this.runtime?.startExecution === 'function') result = await this.runtime.startExecution(claim.execution.execution_id, { coreId: this.coreId, sessionReason: 'daemon_claim' });
     else throw new SwarmEnvError(ERROR_CODES.RUNTIME_HANDOFF_REQUIRED, 'CoreDaemon requires a Runtime handoff after claim');
     if (typeof this.runtime?.waitForExecutionRelease === 'function' && claim.execution?.execution_id) {
+      this.handoffAbortController = new AbortController();
       const settled = await this.runtime.waitForExecutionRelease(claim.execution.execution_id, {
         timeoutMs: this.handoffTimeoutMs,
         pollMs: this.handoffPollMs,
+        signal: this.handoffAbortController.signal,
       });
+      this.handoffAbortController = null;
       if (!settled.released) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime did not release the claimed Execution before the handoff deadline', { execution_id: claim.execution.execution_id });
       result = { ...(result ?? {}), execution: settled.execution ?? result?.execution ?? claim.execution, release: settled };
     }
@@ -335,7 +340,7 @@ export class CoreDaemon {
       if (typeof this.releaseExecution === 'function') return await this.releaseExecution(execution, { error: originalError, coreId: this.coreId });
       if (typeof this.runtime?.fenceExecution === 'function') return await this.runtime.fenceExecution(execution.execution_id);
       if (typeof this.taskService?.dispatch === 'function') {
-        return this.taskService.dispatch('fence_execution', { runtime_generation: 1 }, makeEnvelope({
+        return this.taskService.dispatch('fence_execution', { runtime_generation: execution.runtime_generation ?? 1 }, makeEnvelope({
           actorRef: `daemon:${this.coreId}`,
           taskId: execution.task_id,
           executionId: execution.execution_id,

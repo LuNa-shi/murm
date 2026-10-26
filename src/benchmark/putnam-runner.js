@@ -1884,11 +1884,18 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     taskService: state.taskService,
     shortlistLimit: options.controllerShortlistLimit ?? 16,
     sweepIntervalMs: options.controllerSweepIntervalMs ?? 5_000,
-    listDaemons: () => state.cores.map((core) => ({
-      core_id: `core-${core.index}`,
-      ...(core.runtime.getCoreStatus(`core-${core.index}`) ?? { state: core.taskId ? 'RUNNING' : 'IDLE' }),
-      healthy: !core.stopping,
-    })),
+    listDaemons: () => state.cores.map((core) => {
+      const runtimeState = core.runtime.getCoreStatus(`core-${core.index}`) ?? { state: core.taskId ? 'RUNNING' : 'IDLE' };
+      return {
+        core_id: `core-${core.index}`,
+        ...runtimeState,
+        // Legacy discovery sessions are physical Core occupancy even before
+        // Runtime owns an Execution. Keep Controller projections from waking
+        // a slot that Scheduler has reserved for selection.
+        state: core.turnInFlight || core.dispatchReserved ? 'SELECTING' : runtimeState.state,
+        healthy: !core.stopping,
+      };
+    }),
     signalIdleDaemon: (_daemon, payload) => {
       state.requestSchedulerWake?.(payload.reason ?? 'controller_signal');
     },
