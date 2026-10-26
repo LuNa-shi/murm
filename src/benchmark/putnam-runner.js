@@ -104,6 +104,93 @@ function lifecycleEvents(taskService) {
   });
 }
 
+const ADMISSION_OPERATIONS = new Set([
+  'propose_task', 'create_child_task', 'create_branch_group', 'add_required_subtask',
+  'create_rework_task', 'propose_structure_change',
+]);
+
+function taskLifecycleEvents(taskService) {
+  const rows = taskService.db.prepare('SELECT operation_id, operation, result_json, created_at FROM operations ORDER BY created_at, operation_id').all();
+  return rows.map((row) => {
+    let result = null;
+    try { result = JSON.parse(row.result_json); } catch { /* IDs remain null for an unreadable result. */ }
+    const execution = result?.execution ?? result?.authority_execution ?? result?.parent_execution ?? null;
+    const task = result?.task ?? result?.rework_task ?? result?.child ?? result?.subtask ?? result?.parent ?? null;
+    return {
+      operation_id: row.operation_id,
+      operation: row.operation,
+      created_at: row.created_at,
+      task_id: task?.task_id ?? execution?.task_id ?? null,
+      execution_id: execution?.execution_id ?? null,
+      state: task?.state ?? execution?.state ?? null,
+    };
+  });
+}
+
+function safeObservationEvent(event) {
+  return {
+    sequence: event.sequence,
+    occurred_at: event.occurred_at,
+    source: event.source,
+    kind: event.kind,
+    core_id: event.core_id,
+    session_id: event.session_id,
+  };
+}
+
+function executionNarratives(state, taskTree, materials) {
+  return taskTree.flatMap((task) => {
+    const structure = state.taskService.getTaskStructure(task.task_id);
+    return state.taskService.listExecutions(task.task_id).map((execution) => {
+      const events = state.observationStore.listEvents({
+        experimentId: state.runId,
+        executionId: execution.execution_id,
+        limit: 1_000,
+      }).events.map(safeObservationEvent);
+      const outputs = materials
+        .filter((material) => material.source_execution === execution.execution_id)
+        .map((material) => ({
+          material_id: material.material_id,
+          kind: material.kind,
+          scope: material.scope,
+          evidence_state: material.evidence_state,
+          content_hash: material.content_hash,
+          version: material.version,
+        }));
+      const dependencies = structure.dependencies.map((dependency) => ({
+        dependency_id: dependency.dependency_id,
+        dependency_kind: dependency.dependency_kind,
+        prerequisite_task_id: dependency.prerequisite_task_id,
+        material_id: dependency.material_id,
+        check_result_id: dependency.check_result_id,
+        satisfied: dependency.satisfied,
+      }));
+      return {
+        execution_id: execution.execution_id,
+        task_id: execution.task_id,
+        parent_id: task.parent_id,
+        task_type: task.task_type,
+        goal: task.goal,
+        expected_output: task.expected_output,
+        state: execution.state,
+        attempt_no: execution.attempt_no,
+        owner_ref: execution.owner_ref,
+        core_id: execution.core_id,
+        workspace_ref: execution.workspace_ref,
+        workspace_revision: execution.workspace_revision,
+        candidate_material_id: execution.candidate_material_id,
+        terminal_reason: execution.terminal_reason,
+        block_reason: task.state === 'BLOCKED' ? task.block_reason : null,
+        wait_condition_type: execution.wait_condition?.type ?? null,
+        wait_dependency_ids: waitDependencyIds(execution.wait_condition),
+        dependencies,
+        actions: events,
+        outputs,
+      };
+    });
+  });
+}
+
 function inputSnapshotHash(task, inputMaterialRefs) {
   return sha256(stableStringify({
     task_id: task.task_id,
@@ -1144,6 +1231,9 @@ function projectReport(state, startedAt, deadline) {
   const childTaskCount = taskTree.filter((task) => task.parent_id !== null).length;
   const decompositionAvailable = childTaskCount > 0;
   const lifecycle = lifecycleEvents(state.taskService);
+  const taskLifecycle = taskLifecycleEvents(state.taskService);
+  const admissionEvents = taskLifecycle.filter((event) => ADMISSION_OPERATIONS.has(event.operation));
+  const narratives = executionNarratives(state, taskTree, materials);
   const invalidWaitAttemptCount = cores.reduce((count, core) => count + (core.toolErrors ?? []).filter((error) =>
     error.operation === 'request_wait' && ['INVALID_CONTRACT', 'NOT_ALLOWED', 'FENCED'].includes(error.code)).length, 0);
   const taskById = new Map(taskTree.map((task) => [task.task_id, task]));
@@ -1214,17 +1304,11 @@ function projectReport(state, startedAt, deadline) {
       })),
       structure,
       readiness: readinessEvidence(state.readinessSamples, endedAt),
-      execution_history: taskTree.flatMap((task) => state.taskService.listExecutions(task.task_id).map((execution) => ({
-        execution_id: execution.execution_id,
-        task_id: execution.task_id,
-        state: execution.state,
-        attempt_no: execution.attempt_no,
-        owner_ref: execution.owner_ref,
-        workspace_revision: execution.workspace_revision,
-        candidate_material_id: execution.candidate_material_id,
-        wait_condition_type: execution.wait_condition?.type ?? null,
-        wait_dependency_ids: waitDependencyIds(execution.wait_condition),
-      }))),
+      // Keep the historical field name while carrying the same bounded
+      // narrative used by operators: goal, actions, outputs, dependencies,
+      // and terminal/block reasons without proof contents or raw payloads.
+      execution_history: narratives,
+      execution_narratives: narratives,
     },
     parallelism: {
       ...parallelism,
@@ -1297,6 +1381,8 @@ function projectReport(state, startedAt, deadline) {
       },
       decomposition_available: decompositionAvailable,
       lifecycle_events: lifecycle,
+      task_lifecycle_events: taskLifecycle,
+      admission_events: admissionEvents,
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
       claimed_core_count: new Set(state.cores.filter((core) => core.claimHistory.length > 0).map((core) => core.index)).size,
       claim_count: claimHistory.length,
@@ -1774,6 +1860,8 @@ async function createProjectState(problem, config, options) {
         }
         const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
         const releasedState = releasedExecution?.state ?? 'RELEASED';
+        const legacyWaiting = releasedState === 'WAITING' && core.stateRef?.normalFlow !== true;
+        const coreProjection = legacyWaiting ? 'WAITING' : 'IDLE';
         // A claim record is created before Runtime binds its Workspace. If a
         // very short bound turn fails before the handoff callback records the
         // starting revision, retain the attempted ownership with the durable
@@ -1792,18 +1880,18 @@ async function createProjectState(problem, config, options) {
           source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
           taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
           payload: {
-            state: releasedState === 'WAITING' ? 'WAITING' : 'IDLE',
-            reason: releasedState === 'WAITING' ? 'execution_waiting' : 'execution_released',
+            state: coreProjection,
+            reason: legacyWaiting ? 'execution_waiting' : 'execution_released',
           },
         });
-        core.parallelism.transition(core.index, releasedExecution?.state === 'WAITING' ? 'WAITING' : 'IDLE', {
+        core.parallelism.transition(core.index, coreProjection, {
           task_id: taskId,
           execution_id: executionId,
-          reason: releasedExecution?.state === 'WAITING' ? releasedExecution.wait_condition?.type ?? 'request_wait' : releasedExecution?.state?.toLowerCase() ?? 'claim_released',
+          reason: legacyWaiting ? releasedExecution.wait_condition?.type ?? 'request_wait' : releasedExecution?.state?.toLowerCase() ?? 'claim_released',
         });
         if (core.taskId === taskId && core.executionId === executionId) {
           core.releasedSession = core.session;
-          core.waitingExecutionId = releasedExecution?.state === 'WAITING' ? executionId : null;
+          core.waitingExecutionId = legacyWaiting ? executionId : null;
           core.taskId = null;
           core.executionId = null;
           core.claim = null;
@@ -1993,6 +2081,7 @@ async function createProjectState(problem, config, options) {
     daemons: [],
     daemonRuns: [],
     daemonAbortController: null,
+    unsubscribeTaskEvents: null,
     controllerEvents: [],
     controller: null,
     readyObservedAt: new Map(),
@@ -2134,6 +2223,12 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     for (const daemon of state.daemons) daemon.notify(reason);
     void state.controller.notify(reason).catch(() => undefined);
   };
+  state.unsubscribeTaskEvents = state.taskService.subscribeTaskEvents((event) => {
+    // Task Service emits only after its mutation transaction commits. This is
+    // the low-latency path; the Controller's periodic sweep remains the
+    // repair path for missed notifications or a restarted process.
+    state.requestDaemonWake(event?.kind ?? 'task_event');
+  });
   // Compatibility metrics keep the old report field readable while the
   // production composition has no Scheduler instance or Scheduler decision
   // maker. Every value is derived from CoreDaemon lifecycle counters.
@@ -2267,6 +2362,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     }
   } finally {
     const cleanupStartedAt = Date.now();
+    state.unsubscribeTaskEvents?.();
     await state.controller?.stop?.();
     state.daemonAbortController?.abort();
     for (const daemon of state.daemons ?? []) daemon.stop();

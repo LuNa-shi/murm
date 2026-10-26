@@ -132,6 +132,7 @@ export class CoreDaemon {
     this.selectionTurnCount = 0;
     this.discoveryCount = 0;
     this.claimAttemptCount = 0;
+    this.claimKeySequence = 0;
     this.claimCount = 0;
     this.claimConflictCount = 0;
     this.rescanCount = 0;
@@ -274,10 +275,15 @@ export class CoreDaemon {
       let claim;
       try {
         const selectedTaskId = taskId(selected);
+        const claimSequence = this.claimKeySequence;
+        this.claimKeySequence += 1;
         claim = await this.claimTask(selectedTaskId, {
           task_id: selectedTaskId,
           core_id: this.coreId,
-          claim_key: `${this.coreId}:${selectedTaskId}:${rescans}`,
+          // A rescan counter only identifies attempts within one handoff.
+          // Include a daemon-wide sequence so a later reclaim of the same
+          // Task gets a fresh idempotency key and can create a new Execution.
+          claim_key: `${this.coreId}:${selectedTaskId}:${claimSequence}`,
           owner_ref: `daemon:${this.coreId}`,
           task: selected,
           candidates: candidateView,

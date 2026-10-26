@@ -18,6 +18,13 @@ const TASK_MUTATING_OPERATIONS = new Set([
   'add_required_subtask', 'propose_structure_change', 'create_rework_task',
   'propose_task', 'reconcile_task', 'reopen_task', 'request_rework', 'submit_candidate',
 ]);
+const TASK_EVENT_OPERATIONS = new Set([
+  'accept_task', 'apply_check_result', 'abort', 'block_task', 'claim', 'create_branch_group',
+  'create_child_task', 'add_required_subtask', 'create_rework_task', 'fence_execution',
+  'handoff_execution', 'reconcile_task', 'recover_execution', 'reopen_task', 'request_rework',
+  'request_wait', 'resume_execution', 'stop_execution', 'submit_candidate', 'wake_execution',
+  'propose_structure_change', 'propose_task', 'expire_execution',
+]);
 const TASK_READ_OPERATIONS = new Set([
   'get_task', 'get_execution', 'get_task_structure', 'explain_task_readiness',
   'list_children', 'list_tasks', 'list_claimable_tasks', 'list_executions',
@@ -199,6 +206,7 @@ export class TaskService {
     this.setCheckerHealthReader(checkerHealthReader);
     this.logger = logger;
     this.executionStateListeners = new Set();
+    this.taskEventListeners = new Set();
     this.admission = this.#normalizeAdmissionPolicy(admission);
   }
 
@@ -227,6 +235,19 @@ export class TaskService {
     if (typeof listener !== 'function') throw new TypeError('execution state listener must be a function');
     this.executionStateListeners.add(listener);
     return () => this.executionStateListeners.delete(listener);
+  }
+
+  /** Subscribe orchestration loops to committed Task/dependency changes. */
+  subscribeTaskEvents(listener) {
+    if (typeof listener !== 'function') throw new TypeError('task event listener must be a function');
+    this.taskEventListeners.add(listener);
+    return () => this.taskEventListeners.delete(listener);
+  }
+
+  #emitTaskEvent(event) {
+    for (const listener of this.taskEventListeners) {
+      try { listener(event); } catch { /* reconciliation remains authoritative */ }
+    }
   }
 
   #emitExecutionState(event) {
@@ -264,6 +285,7 @@ export class TaskService {
     try {
       validateEnvelope(envelope, { executionWrite: EXECUTION_WRITE_OPERATIONS.has(operation) });
       let result;
+      let replayed = false;
       if (TASK_READ_OPERATIONS.has(operation)) {
         result = this.#read(operation, payload, envelope);
       } else {
@@ -273,10 +295,24 @@ export class TaskService {
         result = this.#transaction(() => {
           const fingerprint = operationPayload(operation, payload, envelope);
           const replay = this.#replay(envelope.operation_id, fingerprint);
-          if (replay) return replay;
+          if (replay) {
+            replayed = true;
+            return replay;
+          }
           const value = this.#mutate(operation, payload, envelope);
           this.#saveOperation(envelope.operation_id, operation, fingerprint, value);
           return value;
+        });
+      }
+      if (TASK_EVENT_OPERATIONS.has(operation) && !replayed && (operation !== 'reconcile_task' || result?.changed === true)) {
+        this.#emitTaskEvent({
+          kind: `task_${operation}`,
+          operation,
+          task_id: result?.task?.task_id ?? result?.execution?.task_id ?? payload?.task_id ?? envelope?.task_id ?? null,
+          execution_id: result?.execution?.execution_id ?? envelope?.execution_id ?? null,
+          state: result?.task?.state ?? result?.execution?.state ?? null,
+          changed: result?.changed ?? null,
+          timestamp: now(),
         });
       }
       this.logger?.append({ event: 'dispatch.complete', service: 'task', operation, ok: true, result });
@@ -1588,12 +1624,16 @@ export class TaskService {
       return { task: this.getTask(taskId), changed: false, blockers };
     }
     if (blockers.length > 0 && task.state !== 'BLOCKED') {
-      const reason = blockers.map((blocker) => blocker.reason ?? blocker.dependency_id ?? 'dependency').join(',');
+      const reason = blockers.map((blocker) => `dependency:${blocker.dependency_id ?? 'unknown'}`).join(',');
       this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
         .run(reason, updatedAt, taskId);
       return { task: this.getTask(taskId), changed: true, blockers };
     }
-    if (blockers.length === 0 && task.state === 'BLOCKED') {
+    // Controller reconciliation may reopen a dependency block after the
+    // prerequisite becomes satisfied.  Other block reasons (checker health,
+    // admission, or an operator decision) require an explicit reopen so a
+    // periodic sweep cannot silently erase that decision.
+    if (blockers.length === 0 && task.state === 'BLOCKED' && String(task.block_reason ?? '').startsWith('dependency:')) {
       try {
         this.#assertOpenAdmission(task);
       } catch (error) {
@@ -1634,6 +1674,16 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `only an active Execution can block a Task, got ${execution.state}`);
     }
     const reason = requireString(payload.block_reason ?? payload.reason, 'block_reason');
+    let dependency = null;
+    if (payload.dependency !== undefined) {
+      dependency = this.#insertDependency(execution.task_id, payload.dependency, envelope);
+      this.#bumpStructure(execution.task_id, {
+        eventType: 'dependency_added',
+        payload: { dependency_id: dependency.dependency_id, dependency },
+        envelope,
+      });
+    }
+    const blockReason = dependency ? `dependency:${dependency.dependency_id}` : reason;
     const terminalState = payload.terminal_state ?? 'FENCED';
     if (!TERMINAL_EXECUTION_STATES.includes(terminalState)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_state must be an Execution terminal state');
@@ -1662,9 +1712,9 @@ export class TaskService {
     const fencedOthers = this.db.prepare(`UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1,
       terminal_reason = ?, state_version = state_version + 1, updated_at = ?
       WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')`)
-      .run(`dependency_blocked:${reason}`, updatedAt, execution.task_id, execution.execution_id).changes;
+      .run(`dependency_blocked:${blockReason}`, updatedAt, execution.task_id, execution.execution_id).changes;
     this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
-      .run(reason, updatedAt, execution.task_id);
+      .run(blockReason, updatedAt, execution.task_id);
     this.#emitExecutionState({
       kind: 'executions_fenced',
       task_id: execution.task_id,
@@ -1672,7 +1722,7 @@ export class TaskService {
       excluded_execution_id: execution.execution_id,
       reason,
     });
-    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id), blocked: true, fenced_execution_count: fencedOthers };
+    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id), blocked: true, dependency, fenced_execution_count: fencedOthers };
   }
 
   #claimTask(task, payload, envelope) {

@@ -36,6 +36,23 @@ test('claimTask binds one Core and rejects a second active owner', () => {
   taskService.close();
 });
 
+test('Task Service emits committed lifecycle events without replay duplicates', () => {
+  const { taskService, sdk } = service();
+  const events = [];
+  const unsubscribe = taskService.subscribeTaskEvents((event) => events.push(event));
+  const task = sdk.proposeTask(rootInput(), { operationId: 'task-events-propose' }).task;
+  const claimEnvelope = makeEnvelope({
+    operationId: 'task-events-claim-op', actorRef: 'daemon:events', taskId: task.task_id,
+    specVersion: task.spec_version, stateVersion: task.state_version,
+  });
+  const claim = taskService.claimTask(task.task_id, { claim_key: 'task-events-claim', owner_ref: 'daemon:events' }, claimEnvelope);
+  taskService.claimTask(task.task_id, { claim_key: 'task-events-claim', owner_ref: 'daemon:events' }, claimEnvelope);
+  assert.deepEqual(events.map((event) => event.operation), ['propose_task', 'claim']);
+  assert.equal(events[1].execution_id, claim.execution.execution_id);
+  unsubscribe();
+  taskService.close();
+});
+
 test('session recovery keeps Execution identity and increments session generation', () => {
   const { taskService, sdk } = service();
   const task = sdk.proposeTask(rootInput(), { operationId: 'recovery-root' }).task;
@@ -88,6 +105,38 @@ test('normal-flow blocking ends the Execution and leaves the Task reusable', () 
   const reopened = taskService.reopenTask(task.task_id);
   assert.equal(reopened.task.state, 'OPEN');
   assert.equal(taskService.reopenTask(task.task_id).changed, false);
+  taskService.close();
+});
+
+test('typed dependency blocking records the condition and reopens only after satisfaction', () => {
+  const { taskService, sdk } = service();
+  const prerequisite = sdk.proposeTask(rootInput({ goal: 'finish prerequisite' }), { operationId: 'typed-block-prerequisite' }).task;
+  const task = sdk.proposeTask(rootInput({ goal: 'resume after prerequisite', normal_flow: true }), { operationId: 'typed-block-task' }).task;
+  const claim = taskService.claimTask(task.task_id, { claim_key: 'typed-block-claim', owner_ref: 'daemon:one', core_id: 'core-typed-block' });
+  const blocked = taskService.blockTask({
+    block_reason: 'prerequisite is incomplete',
+    dependency: { dependency_kind: 'TASK', prerequisite_task_id: prerequisite.task_id },
+  }, makeEnvelope({
+    operationId: 'typed-block-op', actorRef: 'daemon:one', taskId: task.task_id, executionId: claim.execution.execution_id,
+    specVersion: task.spec_version, stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
+  }));
+  assert.equal(blocked.task.state, 'BLOCKED');
+  assert.match(blocked.task.block_reason, /^dependency:/);
+  assert.equal(blocked.dependency.dependency_kind, 'TASK');
+  assert.equal(taskService.reconcileTask(task.task_id).changed, false);
+
+  const prerequisiteClaim = taskService.claimTask(prerequisite.task_id, { claim_key: 'typed-block-prerequisite-claim', owner_ref: 'owner:root' });
+  const prerequisiteTask = taskService.getTask(prerequisite.task_id);
+  const prerequisiteSdk = sdk.withContext({
+    actorRef: 'owner:root', taskId: prerequisite.task_id, executionId: prerequisiteClaim.execution.execution_id,
+    specVersion: prerequisite.spec_version, stateVersion: prerequisiteClaim.execution.state_version,
+    fencingVersion: prerequisiteClaim.execution.fencing_version,
+  });
+  const completed = prerequisiteSdk.acceptTask({ target_task_id: prerequisite.task_id, target_state_version: prerequisiteTask.state_version }, { operationId: 'typed-block-prerequisite-accept' });
+  assert.equal(completed.task.state, 'SATISFIED');
+  const reopened = taskService.reconcileTask(task.task_id);
+  assert.equal(reopened.changed, true);
+  assert.equal(reopened.task.state, 'OPEN');
   taskService.close();
 });
 

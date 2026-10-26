@@ -519,6 +519,7 @@ export class Runtime {
    */
   async blockExecution(executionId, {
     reason,
+    dependency = undefined,
     checkpoint = {},
     files = {},
     terminalState = 'FENCED',
@@ -557,6 +558,7 @@ export class Runtime {
     }
     const result = this.taskService.dispatch('block_task', {
       block_reason: reason,
+      ...(dependency !== undefined ? { dependency } : {}),
       terminal_state: terminalState,
       checkpoint_ref: checkpointResult?.checkpoint_ref ?? current.checkpoint_ref,
       checkpoint_hash: checkpointResult?.checkpoint_hash ?? current.checkpoint_hash,

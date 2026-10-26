@@ -135,7 +135,7 @@ const TOOL_DEFINITIONS = Object.freeze([
     name: 'execution_block', service: 'execution', operation: 'block_execution', version: '1.0',
     description: 'Save a checkpoint, end the current Execution, release its Core, and mark the Task BLOCKED for a concrete external dependency. Use this instead of leaving a live Execution in WAITING.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['reason'], properties: { reason: { type: 'string' }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['reason', 'dependency'], properties: { reason: { type: 'string' }, dependency: { type: 'object', properties: { dependency_kind: { type: 'string', enum: ['TASK', 'MATERIAL', 'CHECK_RESULT'] }, prerequisite_task_id: { type: 'string' }, material_id: { type: 'string' }, check_result_id: { type: 'string' }, requirement: { type: 'object' } }, additionalProperties: false }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } } }, additionalProperties: false },
   },
   {
     name: 'workspace_get', service: 'workspace', operation: 'get_workspace', version: '1.0',

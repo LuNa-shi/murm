@@ -146,6 +146,27 @@ test('CoreDaemon boundedly rescans after a lost claim race without retrying the 
   assert.equal(daemon.snapshot().state, 'IDLE');
 });
 
+test('CoreDaemon uses a fresh claim key when the same Task is reclaimed later', async () => {
+  const claimKeys = [];
+  let executionNumber = 0;
+  const daemon = new CoreDaemon({
+    coreId: 'core-reclaim',
+    listClaimableTasks: () => [{ task_id: 'task-reclaim' }],
+    selectTask: async ({ candidates }) => candidates[0].task_id,
+    claimTask: async (taskId, context) => {
+      claimKeys.push(context.claim_key);
+      executionNumber += 1;
+      return { task: { task_id: taskId }, execution: { execution_id: `execution-${executionNumber}`, task_id: taskId, state: 'CREATED' } };
+    },
+    runExecution: async (claim) => ({ execution: { ...claim.execution, state: 'SUCCEEDED' } }),
+  });
+
+  await daemon.runOnce({ reason: 'first-attempt' });
+  await daemon.runOnce({ reason: 'later-retry' });
+
+  assert.deepEqual(claimKeys, ['core-reclaim:task-reclaim:0', 'core-reclaim:task-reclaim:1']);
+});
+
 test('CoreDaemon does not select or claim when discovery is empty', async () => {
   let selections = 0;
   let claims = 0;
