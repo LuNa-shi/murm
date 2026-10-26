@@ -27,23 +27,27 @@ two-hour Agent run was therefore not launched, and there is no runtime result
 to interpret as acceptance evidence.
 
 Deterministic validation for implementation commit
-`003c5829eac6227e7d0e1b532f169db41caa68b3` completed with `npm test` at
-194/194 passing and `git diff --check` clean. These checks validate the local
-Task Controller, Core Daemon, Runtime, lifecycle, selection, and migration
-paths; they do not substitute for the required real-Agent run.
+`69e8193a9fa8a03b21400751a071f527f7426ee2` completed with `npm test` at
+197/197 passing and `git diff --check` clean. These checks validate the local
+Task Controller, Core Daemon, Runtime, lifecycle, selection, typed dependency,
+report, and migration paths; they do not substitute for the required
+real-Agent run.
 
-A fresh readiness probe against the clean worktree (documentation commit
-`6944146704334ada22e41d6dfc3b5f5374724de5`, with implementation commit
-`4c5bf1f35cd119f83914dffc30e454ea6ab3a39b`) produced the same sanitized
-`BLOCKED` result. Node, NuRouter, Pi, Lean, and Lake were available; only the
-provider/model route variables were missing.
+A fresh readiness probe against the clean implementation commit
+`69e8193a9fa8a03b21400751a071f527f7426ee2` produced the sanitized `BLOCKED`
+result before launch. Node `v24.21.0`, NuRouter `0.2.14`, Pi `1.4.0`, Lean
+`4.33.1`, and Lake `5.0.0` were available; `NUROUTER_PI_PROVIDER` and
+`NUROUTER_PI_MODEL` were missing. The probe recorded no secret values and did
+not create an Agent experiment. Because it stopped before launch, its
+environment report has no implementation commit field; this document binds
+the readiness result to the exact clean commit above.
 
 After the route is configured, the exact rerun command is:
 
 ```sh
 NUROUTER_PI_PROVIDER=openai \
 NUROUTER_PI_MODEL=gpt-6.1-sol \
-SWARMENV_IMPLEMENTATION_COMMIT=003c5829eac6227e7d0e1b532f169db41caa68b3 \
+SWARMENV_IMPLEMENTATION_COMMIT=69e8193a9fa8a03b21400751a071f527f7426ee2 \
 SWARMENV_WORKTREE_DIRTY=false \
 SWARMENV_WORKTREE_STATUS=clean \
 SWARMENV_TIMEBOX_MS=7200000 \
@@ -56,7 +60,7 @@ node scripts/run-putnambench-benchmark.mjs \
 ```
 
 The command is pinned to the current implementation commit
-`003c5829eac6227e7d0e1b532f169db41caa68b3`; a later documentation-only commit
+`69e8193a9fa8a03b21400751a071f527f7426ee2`; a later documentation-only commit
 must not change that value. A successful acceptance report must repeat the
 same implementation commit; the current result remains environment-blocked
 until the route variables are available and the probe is rerun.
