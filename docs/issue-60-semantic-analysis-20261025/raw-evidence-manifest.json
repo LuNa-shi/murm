@@ -1,0 +1,48 @@
+{
+  "experiment": "exp-20261025-issue60-pr68-semantic-2h",
+  "implementation_commit": "a0412fba65a8ab22bd1df2531f901a7c6dbe363a",
+  "raw_evidence_location": "experiments/exp-20261025-issue60-pr68-semantic-2h/run plus .observability/",
+  "raw_evidence_is_complete_in_worktree": true,
+  "raw_evidence_is_intentionally_untracked": true,
+  "public_artifacts": [
+    "aggregate-report.json",
+    "experiment-analysis.md",
+    "optimization-directions.md",
+    "putnam_2025_b1-report.json",
+    "semantic-review.md"
+  ],
+  "roots": {
+    "logs": {
+      "file_count": 17,
+      "bytes": 396580730
+    },
+    "state": {
+      "file_count": 9,
+      "bytes": 15546985
+    },
+    "workspaces": {
+      "file_count": 1505,
+      "bytes": 36593314
+    },
+    "metadata": {
+      "file_count": 2,
+      "bytes": 2125
+    },
+    "observability": {
+      "file_count": 1,
+      "bytes": 588144640
+    }
+  },
+  "selected_sha256": {
+    "run/metadata/experiment.json": "e46db8a39ccfa016c262d6389a939cfb9c127f8164ce3f222b330efbf568714d",
+    "run/metadata/observability.json": "98114d91ee2316952bb07b4a68a17598943ab48818d161aaf6257f172f8c99b9",
+    ".observability/observability.sqlite": "9697c38e687202ccfe142844a02947f480ae1f37a5d2d0bd281df7e91dfebcc2",
+    "run/state/projects/putnam_2025_b1/project.sqlite": "aa1f8af21ba992c96a14243b612a3786c85911906c7c3d983d0de07f61ac1a8a"
+  },
+  "privacy": {
+    "raw_transcripts": "local-only",
+    "proof_and_candidate_sources": "local-only",
+    "credentials_and_tokens": "not published",
+    "public_bundle": "sanitized reports and aggregate metadata only"
+  }
+}

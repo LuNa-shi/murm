@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "protocol": {
+    "problem_count": 1,
+    "core_count": 4,
+    "project_parallelism": 1,
+    "timebox_ms": 7200000,
+    "experiment_dir": "/home/ubuntu/SwarmEnv/.worktrees/issue-60-real-2h/experiments/exp-20261025-issue60-pr68-semantic-2h/run",
+    "report_dir": "/home/ubuntu/SwarmEnv/.worktrees/issue-60-real-2h/experiments/exp-20261025-issue60-pr68-semantic-2h/analysis",
+    "repository_commit": "a0412fba65a8ab22bd1df2531f901a7c6dbe363a",
+    "repository_worktree_dirty": false,
+    "raw_transcript_exported": false,
+    "proof_contents_exported": false
+  },
+  "projects": [
+    {
+      "problem_id": "putnam_2025_b1",
+      "solved": false,
+      "elapsed_ms": 7201371,
+      "candidate_count": 8,
+      "invalid": false,
+      "invalid_reasons": [],
+      "repository_commit": "a0412fba65a8ab22bd1df2531f901a7c6dbe363a",
+      "repository_worktree_dirty": false,
+      "agent_time_utilization_v0": 0.2658467047455269,
+      "ready_work_ms": 1329129,
+      "ready_unassigned_ms": 1070078,
+      "child_task_count": 32,
+      "child_claim_count": 44,
+      "parallel_mode": "semantic",
+      "agent_structure_operation_count": 26,
+      "branch_group_count": 4,
+      "required_subtask_group_count": 10,
+      "mean_active_core_count": 1.0633868189821076,
+      "eligible_mean_active_core_count": 3.550998143869086
+    }
+  ]
+}
