@@ -27,14 +27,14 @@ two-hour Agent run was therefore not launched, and there is no runtime result
 to interpret as acceptance evidence.
 
 Deterministic validation for implementation commit
-`69e8193a9fa8a03b21400751a071f527f7426ee2` completed with `npm test` at
-197/197 passing and `git diff --check` clean. These checks validate the local
+`ed1194f0f94cbcfe4402321e0cd965bb20e0b770` completed with `npm test` at
+198/198 passing and `git diff --check` clean. These checks validate the local
 Task Controller, Core Daemon, Runtime, lifecycle, selection, typed dependency,
 report, and migration paths; they do not substitute for the required
 real-Agent run.
 
 A fresh readiness probe against the clean implementation commit
-`69e8193a9fa8a03b21400751a071f527f7426ee2` produced the sanitized `BLOCKED`
+`ed1194f0f94cbcfe4402321e0cd965bb20e0b770` produced the sanitized `BLOCKED`
 result before launch. Node `v24.21.0`, NuRouter `0.2.14`, Pi `1.4.0`, Lean
 `4.33.1`, and Lake `5.0.0` were available; `NUROUTER_PI_PROVIDER` and
 `NUROUTER_PI_MODEL` were missing. The probe recorded no secret values and did
@@ -47,7 +47,7 @@ After the route is configured, the exact rerun command is:
 ```sh
 NUROUTER_PI_PROVIDER=openai \
 NUROUTER_PI_MODEL=gpt-6.1-sol \
-SWARMENV_IMPLEMENTATION_COMMIT=69e8193a9fa8a03b21400751a071f527f7426ee2 \
+SWARMENV_IMPLEMENTATION_COMMIT=ed1194f0f94cbcfe4402321e0cd965bb20e0b770 \
 SWARMENV_WORKTREE_DIRTY=false \
 SWARMENV_WORKTREE_STATUS=clean \
 SWARMENV_TIMEBOX_MS=7200000 \
@@ -60,7 +60,7 @@ node scripts/run-putnambench-benchmark.mjs \
 ```
 
 The command is pinned to the current implementation commit
-`69e8193a9fa8a03b21400751a071f527f7426ee2`; a later documentation-only commit
+`ed1194f0f94cbcfe4402321e0cd965bb20e0b770`; a later documentation-only commit
 must not change that value. A successful acceptance report must repeat the
 same implementation commit; the current result remains environment-blocked
 until the route variables are available and the probe is rerun.
