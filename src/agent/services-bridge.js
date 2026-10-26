@@ -306,9 +306,12 @@ export class ServicesBridge {
       }
       if (operation === 'claim') {
         if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claim is only available to an unbound worker bridge', { task_id: this.taskId, execution_id: this.executionId });
-        this.selectionClaimAttempted = true;
         const taskId = payload.task_id;
         if (typeof taskId !== 'string' || taskId.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim requires payload.task_id');
+        if (Array.isArray(this.selectionCandidates) && !this.selectionCandidates.some((candidate) => String(candidate.task_id ?? candidate.taskId ?? candidate.id) === taskId)) {
+          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim must target a task_id from the bounded shortlist', { task_id: taskId });
+        }
+        this.selectionClaimAttempted = true;
         const task = this.taskService.getTask(taskId);
         if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`, { task_id: taskId });
         // The bridge is the Agent identity boundary. A model may choose the

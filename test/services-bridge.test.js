@@ -122,6 +122,10 @@ test('ServicesBridge exposes only the bounded selection shortlist and never clai
       () => bridge.call({ operation: 'select_task', payload: { task_id: 'task-outside-shortlist' } }),
       (error) => error.code === 'INVALID_CONTRACT',
     );
+    await assert.rejects(
+      () => bridge.call({ operation: 'claim', payload: { task_id: 'task-outside-shortlist', claim_key: 'outside-shortlist' } }),
+      (error) => error.code === 'INVALID_CONTRACT' && /bounded shortlist/.test(error.message),
+    );
     const bound = new ServicesBridge({ taskService, contextService, runtime: {}, taskId: 'task-shortlist', executionId: 'execution-bound' });
     await assert.rejects(
       () => bound.call({ operation: 'select_task', payload: { task_id: 'task-shortlist' } }),
