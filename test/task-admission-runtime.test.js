@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { ERROR_CODES, makeEnvelope, ServicesSDK, SwarmEnvError, TaskService } from '../src/index.js';
+import { ContextService, ERROR_CODES, makeEnvelope, ServicesSDK, SwarmEnvError, TaskController, TaskService } from '../src/index.js';
 import { SCHEMA_SQL } from '../src/storage/schema.js';
 
 function rootInput(overrides = {}) {
@@ -89,22 +89,16 @@ test('blocking ends the Execution and Controller reopening is idempotent', () =>
   taskService.close();
 });
 
-test('normal-flow blocking ends the Execution and leaves the Task reusable', () => {
+test('normal-flow blocking requires a typed dependency', () => {
   const { taskService, sdk } = service();
   const task = sdk.proposeTask(rootInput({ normal_flow: true }), { operationId: 'normal-block-root' }).task;
   const claim = taskService.claimTask(task.task_id, {
     claim_key: 'normal-block-claim', owner_ref: 'daemon:one', core_id: 'core-normal-block',
   });
-  const blocked = taskService.blockTask({ block_reason: 'external dependency' }, makeEnvelope({
+  assert.throws(() => taskService.blockTask({ block_reason: 'external dependency' }, makeEnvelope({
     operationId: 'normal-block-op', actorRef: 'daemon:one', taskId: task.task_id, executionId: claim.execution.execution_id,
     specVersion: task.spec_version, stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
-  }));
-  assert.equal(blocked.task.state, 'BLOCKED');
-  assert.equal(blocked.execution.state, 'FENCED');
-  assert.equal(taskService.getActiveExecutionForCore('core-normal-block'), null);
-  const reopened = taskService.reopenTask(task.task_id);
-  assert.equal(reopened.task.state, 'OPEN');
-  assert.equal(taskService.reopenTask(task.task_id).changed, false);
+  })), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED && /typed dependency/.test(error.message));
   taskService.close();
 });
 
@@ -137,6 +131,144 @@ test('typed dependency blocking records the condition and reopens only after sat
   const reopened = taskService.reconcileTask(task.task_id);
   assert.equal(reopened.changed, true);
   assert.equal(reopened.task.state, 'OPEN');
+  taskService.close();
+});
+
+test('normal-flow Tasks reject legacy Execution WAITING', () => {
+  const { taskService, sdk } = service();
+  const task = sdk.proposeTask(rootInput({ normal_flow: true }), { operationId: 'normal-wait-reject-task' }).task;
+  const claim = taskService.claimTask(task.task_id, { claim_key: 'normal-wait-reject-claim', owner_ref: 'daemon:one' });
+  assert.throws(
+    () => taskService.validateWaitCondition(claim.execution.execution_id, {
+      waitCondition: { type: 'timer', deadline: new Date(Date.now() + 60_000).toISOString() },
+    }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED && /execution_block/.test(error.message),
+  );
+  taskService.close();
+});
+
+test('a future Material dependency remains blocked until a qualifying Material is published', () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const sdk = new ServicesSDK(taskService, { actorRef: 'owner:root' });
+  const task = sdk.proposeTask(rootInput({ normal_flow: true }), { operationId: 'material-block-task' }).task;
+  const claim = taskService.claimTask(task.task_id, { claim_key: 'material-block-claim', owner_ref: 'daemon:one' });
+  const blocked = taskService.blockTask({
+    block_reason: 'awaiting research material',
+    dependency: { dependency_kind: 'MATERIAL', material_id: 'future-material', requirement: { kind: 'fact', scope: 'proof_relevant' } },
+  }, makeEnvelope({
+    operationId: 'material-block-op', actorRef: 'daemon:one', taskId: task.task_id, executionId: claim.execution.execution_id,
+    specVersion: task.spec_version, stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
+  }));
+  assert.equal(blocked.task.state, 'BLOCKED');
+  assert.equal(taskService.reconcileTask(task.task_id).changed, false);
+  new ServicesSDK(contextService, { actorRef: 'system:material' }).publishMaterial({
+    material_id: 'future-material', kind: 'fact', scope: 'proof_relevant', content: { result: 'ready' },
+  }, { operationId: 'material-block-publish' });
+  const reopened = taskService.reconcileTask(task.task_id);
+  assert.equal(reopened.changed, true);
+  assert.equal(reopened.task.state, 'OPEN');
+  taskService.close();
+});
+
+test('normal-flow root consumes two child results across Cores and Controller reopens a typed block', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const owner = new ServicesSDK(taskService, { actorRef: 'owner:root' });
+  const root = owner.proposeTask(rootInput({ normal_flow: true }), { operationId: 'integrated-root-propose' }).task;
+  const rootClaim = taskService.claimTask(root.task_id, { claim_key: 'integrated-root-claim', owner_ref: 'daemon:root', core_id: 'core-root' });
+
+  const taskSdk = (task, execution, actorRef) => new ServicesSDK(taskService, {
+    actorRef,
+    taskId: task.task_id,
+    executionId: execution.execution_id,
+    specVersion: task.spec_version,
+    stateVersion: execution.state_version,
+    fencingVersion: execution.fencing_version,
+  });
+  const childProposal = (key, goal) => ({
+    child_task_id: key,
+    child_creation_key: key,
+    task_type: 'default',
+    goal,
+    expected_output: 'a child result Material',
+    acceptance_conditions: { route: key },
+    completion_contract: {},
+  });
+  let currentRoot = taskService.getTask(root.task_id);
+  let currentRootExecution = taskService.getExecution(rootClaim.execution.execution_id);
+  const rootAgent = () => taskSdk(currentRoot = taskService.getTask(root.task_id), currentRootExecution = taskService.getExecution(rootClaim.execution.execution_id), 'daemon:root');
+  const childOne = rootAgent().createChildTask(childProposal('integrated-child-one', 'produce first result'), { operationId: 'integrated-child-one-create' }).task;
+  const childTwo = rootAgent().createChildTask(childProposal('integrated-child-two', 'produce second result'), { operationId: 'integrated-child-two-create' }).task;
+  assert.equal(childOne.completion_contract.normal_flow, true);
+  assert.equal(childTwo.completion_contract.normal_flow, true);
+
+  const childOneClaim = taskService.claimTask(childOne.task_id, { claim_key: 'integrated-child-one-claim', owner_ref: 'daemon:one', core_id: 'core-one' });
+  const childTwoClaim = taskService.claimTask(childTwo.task_id, { claim_key: 'integrated-child-two-claim', owner_ref: 'daemon:two', core_id: 'core-two' });
+  const childOneAgent = taskSdk(childOne, childOneClaim.execution, 'daemon:one');
+  const childTwoAgent = taskSdk(childTwo, childTwoClaim.execution, 'daemon:two');
+  const childOneMaterial = new ServicesSDK(contextService, {
+    actorRef: 'daemon:one', taskId: childOne.task_id, executionId: childOneClaim.execution.execution_id,
+    specVersion: childOne.spec_version, stateVersion: childOneClaim.execution.state_version,
+    fencingVersion: childOneClaim.execution.fencing_version,
+  }).publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { route: 'one' } }, { operationId: 'integrated-child-one-material' }).material;
+
+  const blocked = taskService.blockTask({
+    block_reason: 'awaiting second child result',
+    dependency: { dependency_kind: 'MATERIAL', material_id: 'integrated-child-two-material', requirement: { kind: 'fact', scope: 'proof_relevant' } },
+  }, makeEnvelope({
+    operationId: 'integrated-child-two-block', actorRef: 'daemon:two', taskId: childTwo.task_id,
+    executionId: childTwoClaim.execution.execution_id, specVersion: childTwo.spec_version,
+    stateVersion: childTwoClaim.execution.state_version, fencingVersion: childTwoClaim.execution.fencing_version,
+  }));
+  assert.equal(blocked.task.state, 'BLOCKED');
+  assert.equal(blocked.execution.state, 'FENCED');
+  assert.equal(taskService.getActiveExecutionForCore('core-two'), null);
+  new ServicesSDK(contextService, {
+    actorRef: 'daemon:one', taskId: childOne.task_id, executionId: childOneClaim.execution.execution_id,
+    specVersion: childOne.spec_version, stateVersion: childOneClaim.execution.state_version,
+    fencingVersion: childOneClaim.execution.fencing_version,
+  }).publishMaterial({
+    material_id: 'integrated-child-two-material', kind: 'fact', scope: 'proof_relevant', content: { route: 'handoff' },
+  }, { operationId: 'integrated-child-two-material' });
+  const childOneTask = taskService.getTask(childOne.task_id);
+  const childOneFinished = childOneAgent.withContext({ stateVersion: taskService.getExecution(childOneClaim.execution.execution_id).state_version }).acceptTask({
+    target_task_id: childOne.task_id,
+    target_state_version: childOneTask.state_version,
+  }, { operationId: 'integrated-child-one-done' });
+  assert.equal(childOneFinished.task.state, 'DONE');
+  assert.equal(taskService.getActiveExecutionForCore('core-one'), null);
+  const controller = new TaskController({ taskService, listDaemons: () => [] });
+  const reconciliation = await controller.reconcile({ reason: 'material-published' });
+  assert.equal(reconciliation.repaired_task_count, 1);
+  assert.equal(taskService.getTask(childTwo.task_id).state, 'OPEN');
+  const childTwoRetry = taskService.claimTask(childTwo.task_id, { claim_key: 'integrated-child-two-retry', owner_ref: 'daemon:two', core_id: 'core-two' });
+  const childTwoRetryTask = taskService.getTask(childTwo.task_id);
+  const childTwoRetryAgent = taskSdk(childTwoRetryTask, childTwoRetry.execution, 'daemon:two');
+  new ServicesSDK(contextService, {
+    actorRef: 'daemon:two', taskId: childTwoRetryTask.task_id, executionId: childTwoRetry.execution.execution_id,
+    specVersion: childTwoRetryTask.spec_version, stateVersion: childTwoRetry.execution.state_version,
+    fencingVersion: childTwoRetry.execution.fencing_version,
+  }).publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { route: 'two' } }, { operationId: 'integrated-child-two-output' });
+  const childTwoDone = childTwoRetryAgent.acceptTask({ target_task_id: childTwo.task_id, target_state_version: childTwoRetryTask.state_version }, { operationId: 'integrated-child-two-done' });
+  assert.equal(childTwoDone.task.state, 'DONE');
+  const childOneMaterials = new ServicesSDK(contextService, { actorRef: 'owner:root' }).readMaterials({ source_task: childOne.task_id });
+  const childTwoMaterials = new ServicesSDK(contextService, { actorRef: 'owner:root' }).readMaterials({ source_task: childTwo.task_id });
+  assert.equal(childOneMaterials.some((material) => material.material_id === childOneMaterial.material_id), true);
+  assert.equal(childTwoMaterials.some((material) => material.kind === 'fact' && material.scope === 'proof_relevant'), true);
+
+  currentRoot = taskService.getTask(root.task_id);
+  currentRootExecution = taskService.getExecution(rootClaim.execution.execution_id);
+  const rootDone = taskSdk(currentRoot, currentRootExecution, 'daemon:root').acceptTask({
+    target_task_id: root.task_id,
+    target_state_version: currentRoot.state_version,
+  }, { operationId: 'integrated-root-done' });
+  assert.equal(rootDone.task.state, 'DONE');
+  assert.deepEqual(new Set([childOneClaim.execution.core_id, childTwoClaim.execution.core_id]), new Set(['core-one', 'core-two']));
   taskService.close();
 });
 

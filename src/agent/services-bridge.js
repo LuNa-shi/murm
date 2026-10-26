@@ -238,20 +238,22 @@ export class ServicesBridge {
     const deferred = this.deferredLifecycle;
     if (!deferred) return null;
     this.deferredLifecycle = null;
-    const waited = await this.runtime.requestWait(deferred.executionId, deferred.wait);
+    const settled = deferred.kind === 'block'
+      ? await this.runtime.blockExecution(deferred.executionId, deferred.block)
+      : await this.runtime.requestWait(deferred.executionId, deferred.wait);
     if (this.taskId === deferred.taskId && this.executionId === deferred.executionId) {
       await this.releaseClaim({
         result: {
           ...deferred.result,
           applied: {
             ...(deferred.result?.applied ?? {}),
-            execution: waited?.execution ?? deferred.result?.applied?.execution,
-            task: waited?.task ?? deferred.result?.applied?.task,
+            execution: settled?.execution ?? deferred.result?.applied?.execution,
+            task: settled?.task ?? deferred.result?.applied?.task,
           },
         },
       });
     }
-    return waited;
+    return settled;
   }
 
   async call({ operation, payload = {}, operation_id: operationId = null } = {}) {
@@ -435,14 +437,17 @@ export class ServicesBridge {
           result = sdk.submitCandidate(payload, options);
           if (this.onSubmitCandidate) {
             const callbackResult = await this.onSubmitCandidate({ taskId: boundTaskId, executionId: boundExecutionId, payload, result });
-            const { deferred_wait: deferredWait = null, ...visibleCallbackResult } = callbackResult ?? {};
+            const { deferred_wait: deferredWait = null, deferred_block: deferredBlock = null, ...visibleCallbackResult } = callbackResult ?? {};
+            if (deferredWait && deferredBlock) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'a candidate lifecycle cannot defer both wait and block');
             result = { ...result, ...visibleCallbackResult };
-            if (deferredWait) {
+            if (deferredWait || deferredBlock) {
               if (this.deferredLifecycle) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'a deferred candidate lifecycle is already pending');
               this.deferredLifecycle = {
+                kind: deferredBlock ? 'block' : 'wait',
                 taskId: boundTaskId,
                 executionId: boundExecutionId,
                 wait: deferredWait,
+                block: deferredBlock,
                 result,
               };
             }

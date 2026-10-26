@@ -146,6 +146,35 @@ test('CoreDaemon boundedly rescans after a lost claim race without retrying the 
   assert.equal(daemon.snapshot().state, 'IDLE');
 });
 
+test('CoreDaemon re-arms a selection failure after its bounded cooldown', async () => {
+  let now = 1_000;
+  let selectionAttempts = 0;
+  const daemon = new CoreDaemon({
+    coreId: 'core-rearm',
+    maxSelectionAttempts: 1,
+    selectionRetryCooldownMs: 100,
+    now: () => now,
+    listClaimableTasks: () => [{ task_id: 'task-rearm' }],
+    selectTask: async () => {
+      selectionAttempts += 1;
+      if (selectionAttempts === 1) throw new Error('transient selection provider failure');
+      return 'task-rearm';
+    },
+    claimTask: async () => ({ task: { task_id: 'task-rearm' }, execution: { execution_id: 'execution-rearm', task_id: 'task-rearm', state: 'CREATED' } }),
+    runExecution: async (claim) => ({ execution: { ...claim.execution, state: 'SUCCEEDED' } }),
+  });
+
+  assert.equal((await daemon.runOnce({ reason: 'initial' })).disposition, 'selection_failed');
+  assert.equal(daemon.snapshot().selection_exhausted, true);
+  daemon.notify('before-cooldown');
+  assert.equal(daemon.snapshot().selection_exhausted, true);
+  now += 100;
+  daemon.notify('provider-recovered');
+  assert.equal(daemon.snapshot().selection_exhausted, false);
+  assert.equal((await daemon.runOnce({ reason: 'rearmed' })).disposition, 'completed');
+  assert.equal(selectionAttempts, 2);
+});
+
 test('CoreDaemon uses a fresh claim key when the same Task is reclaimed later', async () => {
   const claimKeys = [];
   let executionNumber = 0;

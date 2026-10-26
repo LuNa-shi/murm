@@ -76,6 +76,7 @@ export class CoreDaemon {
     releaseExecution = null,
     maxClaimRescans = 1,
     maxSelectionAttempts = 3,
+    selectionRetryCooldownMs = 30_000,
     handoffTimeoutMs = Number.POSITIVE_INFINITY,
     handoffPollMs = 25,
     idleBackoffMs = 100,
@@ -97,6 +98,7 @@ export class CoreDaemon {
     if (!Number.isInteger(shortlistLimit) || shortlistLimit < 1 || shortlistLimit > 100) throw new TypeError('shortlistLimit must be an integer between 1 and 100');
     if (!Number.isInteger(maxClaimRescans) || maxClaimRescans < 0 || maxClaimRescans > 10) throw new TypeError('maxClaimRescans must be an integer between 0 and 10');
     if (!Number.isInteger(maxSelectionAttempts) || maxSelectionAttempts < 1 || maxSelectionAttempts > 10) throw new TypeError('maxSelectionAttempts must be an integer between 1 and 10');
+    if (!Number.isFinite(selectionRetryCooldownMs) || selectionRetryCooldownMs < 0) throw new TypeError('selectionRetryCooldownMs must be non-negative');
     if (!Number.isFinite(idleBackoffMs) || idleBackoffMs < 0) throw new TypeError('idleBackoffMs must be non-negative');
     if (handoffTimeoutMs !== Number.POSITIVE_INFINITY && (!Number.isFinite(handoffTimeoutMs) || handoffTimeoutMs < 0)) throw new TypeError('handoffTimeoutMs must be non-negative or Infinity');
     if (!Number.isFinite(handoffPollMs) || handoffPollMs <= 0) throw new TypeError('handoffPollMs must be positive');
@@ -116,6 +118,7 @@ export class CoreDaemon {
     this.releaseExecution = releaseExecution;
     this.maxClaimRescans = maxClaimRescans;
     this.maxSelectionAttempts = maxSelectionAttempts;
+    this.selectionRetryCooldownMs = selectionRetryCooldownMs;
     this.handoffTimeoutMs = handoffTimeoutMs;
     this.handoffPollMs = handoffPollMs;
     this.idleBackoffMs = idleBackoffMs;
@@ -132,12 +135,13 @@ export class CoreDaemon {
     this.selectionTurnCount = 0;
     this.discoveryCount = 0;
     this.claimAttemptCount = 0;
-    this.claimKeySequence = 0;
+    this.claimKeySequence = this.#initialClaimKeySequence();
     this.claimCount = 0;
     this.claimConflictCount = 0;
     this.rescanCount = 0;
     this.selectionFailureCount = 0;
     this.selectionExhausted = false;
+    this.selectionRetryAt = null;
     this.lastError = null;
     this.lastEventAt = this.now();
     this.stateHistory = [{ state: this.state, at: this.lastEventAt }];
@@ -158,6 +162,7 @@ export class CoreDaemon {
       rescan_count: this.rescanCount,
       selection_failure_count: this.selectionFailureCount,
       selection_exhausted: this.selectionExhausted,
+      selection_retry_at: this.selectionRetryAt,
       last_error: this.lastError,
       last_event_at: this.lastEventAt,
       state_history: this.stateHistory.map((entry) => ({ ...entry })),
@@ -167,14 +172,42 @@ export class CoreDaemon {
 
   /** Wake an idle Daemon after Task Controller observes new claimable work. */
   notify(reason = 'event') {
+    this.#rearmSelectionIfDue(reason);
     this.#emit({ kind: 'daemon_wake_requested', core_id: this.coreId, reason, timestamp: this.now() });
     for (const resolve of this.waiters) resolve(reason);
     this.waiters.clear();
     return this.snapshot();
   }
 
+  #rearmSelectionIfDue(reason) {
+    if (this.selectionExhausted && (this.selectionRetryAt === null || this.now() >= this.selectionRetryAt)) {
+      this.selectionExhausted = false;
+      this.selectionFailureCount = 0;
+      this.lastError = null;
+      this.selectionRetryAt = null;
+      this.#emit({ kind: 'daemon_selection_rearmed', core_id: this.coreId, reason, timestamp: this.now() });
+    }
+  }
+
   wake(reason = 'event') {
     return this.notify(reason);
+  }
+
+  #initialClaimKeySequence() {
+    const database = this.taskService?.db;
+    if (!database || typeof database.prepare !== 'function') return 0;
+    try {
+      const rows = database.prepare("SELECT request_key FROM claim_keys WHERE request_key LIKE ?").all(`${this.coreId}:%`);
+      return rows.reduce((next, row) => {
+        const match = String(row.request_key ?? '').match(/:(\d+)$/);
+        return match ? Math.max(next, Number(match[1]) + 1) : next;
+      }, 0);
+    } catch {
+      // Older stores may not have the claim-key table during composition.
+      // A fresh sequence still works because the first persisted claim will
+      // be visible to a later daemon instance.
+      return 0;
+    }
   }
 
   stop() {
@@ -220,6 +253,7 @@ export class CoreDaemon {
   }
 
   async #runOnce(reason) {
+    this.#rearmSelectionIfDue(reason);
     if (this.selectionExhausted) {
       this.#setIdle({ reason: 'selection_attempts_exhausted' });
       return { disposition: 'selection_exhausted', snapshot: this.snapshot() };
@@ -252,7 +286,10 @@ export class CoreDaemon {
         this.lastError = errorView(error);
         this.#emit({ kind: 'daemon_selection_failed', core_id: this.coreId, reason, error: this.lastError, timestamp: this.now() });
         this.#setIdle({ reason: 'selection_failed' });
-        if (this.selectionFailureCount >= this.maxSelectionAttempts) this.selectionExhausted = true;
+        if (this.selectionFailureCount >= this.maxSelectionAttempts) {
+          this.selectionExhausted = true;
+          this.selectionRetryAt = this.now() + this.selectionRetryCooldownMs;
+        }
         return { disposition: 'selection_failed', error: this.lastError, snapshot: this.snapshot() };
       }
       const selectedId = normalizeSelection(selection);
@@ -267,7 +304,10 @@ export class CoreDaemon {
         this.lastError = errorView(error);
         this.#emit({ kind: 'daemon_selection_invalid', core_id: this.coreId, reason, error: this.lastError, timestamp: this.now() });
         this.#setIdle({ reason: 'selection_invalid' });
-        if (this.selectionFailureCount >= this.maxSelectionAttempts) this.selectionExhausted = true;
+        if (this.selectionFailureCount >= this.maxSelectionAttempts) {
+          this.selectionExhausted = true;
+          this.selectionRetryAt = this.now() + this.selectionRetryCooldownMs;
+        }
         return { disposition: 'selection_invalid', error: this.lastError, snapshot: this.snapshot() };
       }
       this.claimAttemptCount += 1;
@@ -318,6 +358,7 @@ export class CoreDaemon {
       this.claimCount += 1;
       this.selectionFailureCount = 0;
       this.selectionExhausted = false;
+      this.selectionRetryAt = null;
       this.taskId = taskId(selected);
       this.executionId = execution.execution_id;
       this.#setState(CORE_DAEMON_STATES.RUNNING, { task_id: this.taskId, execution_id: this.executionId, reason });

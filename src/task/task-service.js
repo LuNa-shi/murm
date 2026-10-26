@@ -1121,10 +1121,27 @@ export class TaskService {
 
   #dependencySatisfied(dependency) {
     if (dependency.dependency_kind === 'TASK') return isCompletedTaskState(this.getTask(dependency.prerequisite_task_id)?.state);
-    if (dependency.dependency_kind === 'MATERIAL') return Boolean(this.contextService?.getMaterial(dependency.material_id));
+    const requirement = dependency.requirement ?? parse(dependency.requirement_json) ?? {};
+    if (dependency.dependency_kind === 'MATERIAL') {
+      const material = this.contextService?.getMaterial(dependency.material_id);
+      if (!material) return false;
+      for (const field of ['kind', 'scope', 'evidence_state', 'content_hash', 'source_task', 'source_execution']) {
+        if (requirement[field] !== undefined && material[field] !== requirement[field]) return false;
+      }
+      return true;
+    }
     if (dependency.dependency_kind === 'CHECK_RESULT') {
       const result = this.getCheckResult(dependency.check_result_id);
-      return Boolean(result && result.status === 'APPLIED' && result.verdict === 'PASS');
+      const checkerHealth = requirement.checker_health;
+      if (checkerHealth && typeof checkerHealth === 'object') {
+        const health = this.checkerHealthReader?.(checkerHealth.preflight_key) ?? null;
+        return Boolean(health?.status === 'healthy' || (health?.health_fingerprint && health.health_fingerprint !== checkerHealth.health_fingerprint));
+      }
+      if (!result || result.status !== 'APPLIED' || result.verdict !== 'PASS') return false;
+      for (const field of ['status', 'verdict', 'target_task_id', 'candidate_material_id']) {
+        if (requirement[field] !== undefined && result[field] !== requirement[field]) return false;
+      }
+      return true;
     }
     return false;
   }
@@ -1321,8 +1338,11 @@ export class TaskService {
     try {
       for (const [index, proposal] of payload.branch_tasks.entries()) {
         const responsibilityKey = proposal.responsibility_key ?? proposal.responsibilityKey ?? null;
+        const inheritedNormalFlow = owner.completion_contract?.normal_flow === true && proposal.normal_flow === undefined
+          ? { normal_flow: true }
+          : {};
         const task = this.#insertRelatedTask({
-          input: { ...proposal, owner_ref: proposal.owner_ref ?? envelope.actor_ref, workspace: proposal.workspace ?? owner.workspace },
+          input: { ...proposal, ...inheritedNormalFlow, owner_ref: proposal.owner_ref ?? envelope.actor_ref, workspace: proposal.workspace ?? owner.workspace },
           taskId: proposal.task_id ?? randomUUID(), rootId: owner.root_id, parentId: ownerTaskId, envelope,
           creationKind: 'BRANCH', createdAt: now(),
         });
@@ -1382,7 +1402,10 @@ export class TaskService {
       }
       this.#assertChildAdmission(owner, payload.subtask, envelope);
       this.#assertChildLimits(ownerTaskId);
-      task = this.#insertRelatedTask({ input: { ...payload.subtask, owner_ref: payload.subtask.owner_ref ?? envelope.actor_ref, workspace: payload.subtask.workspace ?? owner.workspace }, taskId: payload.subtask.task_id ?? randomUUID(), rootId: owner.root_id, parentId: ownerTaskId, envelope, creationKind: 'REQUIRED_SUBTASK', createdAt: now() });
+      const inheritedNormalFlow = owner.completion_contract?.normal_flow === true && payload.subtask.normal_flow === undefined
+        ? { normal_flow: true }
+        : {};
+      task = this.#insertRelatedTask({ input: { ...payload.subtask, ...inheritedNormalFlow, owner_ref: payload.subtask.owner_ref ?? envelope.actor_ref, workspace: payload.subtask.workspace ?? owner.workspace }, taskId: payload.subtask.task_id ?? randomUUID(), rootId: owner.root_id, parentId: ownerTaskId, envelope, creationKind: 'REQUIRED_SUBTASK', createdAt: now() });
       if (responsibilityKey !== null) this.db.prepare('UPDATE tasks SET responsibility_key = ? WHERE task_id = ?').run(responsibilityKey, task.task_id);
       task = this.getTask(task.task_id);
       this.#recordExecutionChildMutation(execution.execution_id);
@@ -1421,12 +1444,9 @@ export class TaskService {
     }
     if (dependencyKind === 'MATERIAL') {
       requireString(materialId, 'dependency.material_id');
-      if (!this.contextService) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Context Service is required to validate a Material dependency');
-      if (!this.contextService.getMaterial(materialId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown dependency Material: ${materialId}`);
     }
     if (dependencyKind === 'CHECK_RESULT') {
       requireString(checkResultId, 'dependency.check_result_id');
-      if (!this.getCheckResult(checkResultId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown dependency CheckResult: ${checkResultId}`);
     }
     const dependencyId = dependency.dependency_id ?? randomUUID();
     const duplicate = this.db.prepare(`SELECT dependency_id FROM task_structure_dependencies
@@ -1651,7 +1671,9 @@ export class TaskService {
         this.#assertOpenAdmission(task);
       } catch (error) {
         if (error?.code !== ERROR_CODES.BACKPRESSURE_ROOT_OPEN_LIMIT) throw error;
-        this.db.prepare('UPDATE tasks SET block_reason = ?, updated_at = ? WHERE task_id = ?').run(error.code, updatedAt, taskId);
+        // Preserve the dependency marker so a later capacity sweep can retry
+        // the same automatic reopen. Admission backpressure is transient and
+        // must not erase the durable blocker identity.
         return { task: this.getTask(taskId), changed: false, blockers: [], admission: { ok: false, code: error.code, details: error.details } };
       }
       this.db.prepare("UPDATE tasks SET state = 'OPEN', block_reason = NULL, claimable_at = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
@@ -1695,6 +1717,10 @@ export class TaskService {
         payload: { dependency_id: dependency.dependency_id, dependency },
         envelope,
       });
+    }
+    const task = this.getTask(execution.task_id);
+    if (task?.completion_contract?.normal_flow === true && !dependency) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'normal_flow Tasks require execution_block with a typed dependency');
     }
     const blockReason = dependency ? `dependency:${dependency.dependency_id}` : reason;
     const terminalState = payload.terminal_state ?? 'FENCED';
@@ -2057,6 +2083,9 @@ export class TaskService {
 
   #validateWaitCondition(execution, task, rawCondition, rawDeadline = null) {
     if (!rawCondition || typeof rawCondition !== 'object' || Array.isArray(rawCondition)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
+    if (task?.completion_contract?.normal_flow === true) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'normal_flow Tasks use execution_block with a typed dependency instead of request_wait');
+    }
     const waitCondition = { ...rawCondition };
     if (waitCondition.type === 'check_result_arrived' && waitCondition.candidate_material_id !== undefined) {
       requireString(waitCondition.candidate_material_id, 'wait_condition.candidate_material_id');
@@ -2349,12 +2378,26 @@ export class TaskService {
     this.db.prepare("UPDATE check_results SET status = 'APPLIED', applied_task_state_version = ?, applied_at = ?, updated_at = ? WHERE check_result_id = ?")
       .run(task.state_version + 1, updatedAt, updatedAt, checkResultId);
     if (result.result_class === 'infrastructure_failure') {
-      if (!result.retryable || result.evidence?.retry_exhausted) {
+      const deferInfrastructureBlock = payload.defer_execution_block === true;
+      if (task.completion_contract?.normal_flow === true && !deferInfrastructureBlock) {
         const blockReason = `checker_unavailable:${result.diagnostic_code ?? 'unknown'}`;
-        this.db.prepare("UPDATE executions SET state = 'FAILED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
-          .run(updatedAt, execution.execution_id);
-        this.db.prepare("UPDATE tasks SET state = 'BLOCKED', state_version = state_version + 1, block_reason = ?, updated_at = ? WHERE task_id = ?")
-          .run(blockReason, updatedAt, task.task_id);
+        const dependency = {
+          dependency_kind: 'CHECK_RESULT',
+          check_result_id: checkResultId,
+          requirement: result.evidence?.preflight_key && result.evidence?.health_fingerprint
+            ? { checker_health: { preflight_key: result.evidence.preflight_key, health_fingerprint: result.evidence.health_fingerprint } }
+            : {},
+        };
+        const blocked = this.#blockTask({ block_reason: blockReason, dependency, terminal_state: 'FAILED' }, envelope);
+        return { task: blocked.task, execution: blocked.execution, check_result: this.getCheckResult(checkResultId), dependency: blocked.dependency };
+      }
+      if (!result.retryable || result.evidence?.retry_exhausted) {
+        if (deferInfrastructureBlock) {
+          return { task: this.getTask(task.task_id), execution: this.getExecution(execution.execution_id), check_result: this.getCheckResult(checkResultId) };
+        }
+        const blockReason = `checker_unavailable:${result.diagnostic_code ?? 'unknown'}`;
+        const blocked = this.#blockTask({ block_reason: blockReason, terminal_state: 'FAILED' }, envelope);
+        return { task: blocked.task, execution: blocked.execution, check_result: this.getCheckResult(checkResultId) };
       } else if (execution.state === 'WAITING') {
         // A retryable infrastructure result is not mathematical feedback. Keep
         // the checkpointed responsibility resumable while allowing the next

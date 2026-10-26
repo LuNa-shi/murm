@@ -86,20 +86,25 @@ function waitDependencyIds(condition) {
 }
 
 function lifecycleEvents(taskService) {
-  const rows = taskService.db.prepare("SELECT operation_id, operation, result_json, created_at FROM operations WHERE operation IN ('request_wait', 'wake_execution', 'resume_execution') ORDER BY created_at, operation_id").all();
+  const rows = taskService.db.prepare("SELECT operation_id, operation, result_json, created_at FROM operations WHERE operation IN ('request_wait', 'wake_execution', 'resume_execution', 'block_task') ORDER BY created_at, operation_id").all();
   return rows.map((row) => {
     let result = null;
     try { result = JSON.parse(row.result_json); } catch { /* sanitized event remains available without result details */ }
     const execution = result?.execution ?? null;
     const condition = execution?.wait_condition ?? null;
+    let dependencyRequirement = result?.dependency?.requirement ?? null;
+    if (!dependencyRequirement && typeof result?.dependency?.requirement_json === 'string') {
+      try { dependencyRequirement = JSON.parse(result.dependency.requirement_json); } catch { dependencyRequirement = null; }
+    }
+    const dependencyCondition = dependencyRequirement?.checker_health ? { type: 'checker_health' } : null;
     return {
       operation_id: row.operation_id,
       operation: row.operation,
       created_at: row.created_at,
       task_id: execution?.task_id ?? null,
       execution_id: execution?.execution_id ?? null,
-      wait_condition_type: condition?.type ?? null,
-      dependency_ids: waitDependencyIds(condition),
+      wait_condition_type: condition?.type ?? dependencyCondition?.type ?? null,
+      dependency_ids: waitDependencyIds(condition).concat(result?.dependency?.dependency_id ?? []),
     };
   });
 }
@@ -179,8 +184,8 @@ function executionNarratives(state, taskTree, materials) {
         workspace_ref: execution.workspace_ref,
         workspace_revision: execution.workspace_revision,
         candidate_material_id: execution.candidate_material_id,
-        terminal_reason: execution.terminal_reason,
-        block_reason: task.state === 'BLOCKED' ? task.block_reason : null,
+        terminal_reason: safeLifecycleReason(execution.terminal_reason),
+        block_reason: task.state === 'BLOCKED' ? safeLifecycleReason(task.block_reason) : null,
         wait_condition_type: execution.wait_condition?.type ?? null,
         wait_dependency_ids: waitDependencyIds(execution.wait_condition),
         dependencies,
@@ -243,6 +248,22 @@ function safeDiagnostic(value) {
   if (/timed out|timeout/i.test(text)) return 'checker_timeout';
   if (/unknown identifier|type mismatch|unsolved goals|application type mismatch/i.test(text)) return 'lean_proof_error';
   return 'lean_checker_error';
+}
+
+// Agent-supplied block/terminal reasons are useful for a narrative only as a
+// bounded lifecycle class. Keep arbitrary text, proof fragments, and secret
+// material out of the sanitized report while retaining the operator signal.
+function safeLifecycleReason(value) {
+  const text = String(value ?? '').toLowerCase();
+  if (!text) return null;
+  if (text.includes('dependency') || text.includes('blocked')) return 'dependency_blocked';
+  if (text.includes('checker') || text.includes('preflight')) return 'checker_health';
+  if (text.includes('timeout') || text.includes('timed out')) return 'timeout';
+  if (text.includes('cancel')) return 'canceled';
+  if (text.includes('fenc') || text.includes('lease') || text.includes('handoff')) return 'fenced';
+  if (text.includes('provider') || text.includes('process') || text.includes('session') || text.includes('startup')) return 'runtime_failure';
+  if (text.includes('accept') || text.includes('complete') || text.includes('success') || text === 'done') return 'completed';
+  return 'other';
 }
 
 async function resolveCandidateSource(runtime, material, execution) {
@@ -895,11 +916,13 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
   const fresh = state.taskService.getExecution(pending.executionId);
   let applied = executionContext(state.router, fresh, 'judge:controller').applyCheckResult({
     check_result_id: result.check_result_id,
+    ...(state.normalFlow === true ? { defer_execution_block: true } : {}),
   }, {
     operationId: `benchmark:apply:${state.runId}:${core.index}:${candidateId}:${checkAttempt}`,
   });
   const persistedResult = state.taskService.getCheckResult(result.check_result_id);
   const retryableInfrastructure = persistedResult.result_class === 'infrastructure_failure' && persistedResult.retryable && !persistedResult.evidence?.retry_exhausted;
+  const normalFlow = state.normalFlow === true;
   // A transient checker failure must leave the candidate eligible for a later
   // retry. Source-level results and exhausted infrastructure failures are
   // terminal for this candidate.
@@ -913,6 +936,7 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
   });
   await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
   let deferredWait = null;
+  let deferredBlock = null;
   if (retryableInfrastructure) {
     const preflightKey = result.evidence?.preflight_key;
     const preflight = preflightKey ? state.judgeService.getCheckerPreflight(preflightKey) : null;
@@ -920,10 +944,10 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
       throw new Error('retryable checker failure has no durable preflight health fingerprint');
     }
     // The checker result is synchronous from the Agent's perspective. Stage
-    // the health wait for ServicesBridge to flush after its HTTP response has
-    // been written, so Runtime cannot stop the Session before the Agent sees
-    // the typed infrastructure result.
-    deferredWait = {
+    // the legacy health wait, or the normal-flow typed dependency block, for
+    // ServicesBridge to flush after its HTTP response has been written, so
+    // Runtime cannot stop the Session before the Agent sees the result.
+    const lifecycle = {
       waitCondition: {
         type: 'checker_health',
         preflight_key: preflightKey,
@@ -939,6 +963,71 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
         diagnostic_code: persistedResult.diagnostic_code,
       },
     };
+    if (normalFlow) {
+      deferredWait = null;
+      deferredBlock = {
+        reason: 'checker health unavailable',
+        dependency: {
+          dependency_kind: 'CHECK_RESULT',
+          check_result_id: persistedResult.check_result_id,
+          requirement: {
+            checker_health: {
+              preflight_key: preflightKey,
+              health_fingerprint: preflight.health_fingerprint,
+            },
+          },
+        },
+        checkpoint: lifecycle.checkpoint,
+        terminal_state: 'FAILED',
+      };
+    } else {
+      deferredWait = lifecycle;
+    }
+  } else if (normalFlow && persistedResult.result_class === 'infrastructure_failure') {
+    const preflightKey = persistedResult.evidence?.preflight_key;
+    const preflight = preflightKey ? state.judgeService.getCheckerPreflight(preflightKey) : null;
+    if (preflightKey && preflight?.health_fingerprint) {
+      deferredBlock = {
+        reason: 'checker health unavailable',
+        dependency: {
+          dependency_kind: 'CHECK_RESULT',
+          check_result_id: persistedResult.check_result_id,
+          requirement: {
+            checker_health: {
+              preflight_key: preflightKey,
+              health_fingerprint: preflight.health_fingerprint,
+            },
+          },
+        },
+        checkpoint: {
+          phase: 'checker_unavailable',
+          candidate_material_id: candidateId,
+          check_result_id: persistedResult.check_result_id,
+          preflight_key: preflightKey,
+          diagnostic_code: persistedResult.diagnostic_code,
+        },
+        terminal_state: 'FAILED',
+      };
+    } else {
+      // The Judge normally records a health fingerprint for every checker
+      // infrastructure result. Keep a typed CheckResult dependency even when
+      // an unusual adapter omits it; the Controller will leave the Task
+      // blocked until an operator supplies a new accepted CheckResult.
+      deferredBlock = {
+        reason: 'checker health unavailable',
+        dependency: {
+          dependency_kind: 'CHECK_RESULT',
+          check_result_id: persistedResult.check_result_id,
+        },
+        checkpoint: {
+          phase: 'checker_unavailable',
+          candidate_material_id: candidateId,
+          check_result_id: persistedResult.check_result_id,
+          diagnostic_code: persistedResult.diagnostic_code,
+        },
+        terminal_state: 'FAILED',
+      };
+    }
   }
   if (result.verdict === 'PASS' && completedTaskState(applied.task.state) && pending.taskId === state.rootTaskId) {
     state.solvedAt = Date.now();
@@ -953,6 +1042,7 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
     check_result: agentCheckResult(persistedResult),
     applied,
     ...(deferredWait ? { deferred_wait: deferredWait } : {}),
+    ...(deferredBlock ? { deferred_block: deferredBlock } : {}),
   };
 }
 
@@ -1479,6 +1569,7 @@ async function createProjectState(problem, config, options) {
     }),
   });
   taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
+  judgeService.setDependencyEventSink((event) => taskService.notifyDependencyEvent(event));
   const router = new ServicesRouter({ taskService, contextService, judgeService, logger: routerLogger });
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
@@ -1487,11 +1578,14 @@ async function createProjectState(problem, config, options) {
     : selectedParallelMode === 'root-only'
       ? 'This is the Root-only control. Keep all work on this root Task. Do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks.'
       : 'Use direct child Tasks only when a genuinely separable route emerges.';
+  const dependencyInstruction = normalFlow
+    ? 'When a real external dependency blocks progress, preserve useful Workspace and Materials and call execution_block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.'
+    : 'Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency.';
   const root = owner.proposeTask({
     task_type: 'proof',
     goal: `Prove ${problem.id}`,
     expected_output: 'A verified Lean proof for the locked PutnamBench problem',
-    task_instructions: `The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. ${modeInstructions} Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge. Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency; later reclaim the root to read child Workspace changes, Materials, and Judge feedback, then accept completed work or request focused rework before integrating it into the proof.`,
+    task_instructions: `The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. ${modeInstructions} Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge. ${dependencyInstruction} Later reclaim the root to read child Workspace changes, Materials, and Judge feedback, then accept completed work or request focused rework before integrating it into the proof.`,
     completion_contract: {
       ...(normalFlow ? { normal_flow: true } : {}),
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },

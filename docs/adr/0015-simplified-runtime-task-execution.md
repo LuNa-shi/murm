@@ -1,9 +1,10 @@
 # ADR 0015: Simplify normal runtime orchestration around Task Controller and Core Daemons
 
-Status: accepted for Issue #70. This ADR supersedes the normal-flow portions
-of ADR 0009 and the older Execution `WAITING`/parent-review assumptions. Legacy
-Task records and contracts remain readable and continue to use their explicit
-compatibility paths.
+Status: accepted for Issue #70. This ADR supersedes ADR 0009's waiting-Core
+reassignment rule and the older normal-flow `WAITING`/parent-review
+assumptions. Legacy Task records and contracts remain readable; a legacy
+waiting Execution can resume only on its stored Core binding (or without a
+prior Core binding) through the compatibility path.
 
 ## Context
 

@@ -503,10 +503,10 @@ export class Runtime {
       wait_condition: waitCondition,
       wait_deadline: deadline ?? waitCondition?.deadline ?? null,
     }, this.#executionEnvelope(current, operationId('wait')));
-    this.activeProcesses.delete(executionId);
-    this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     await Promise.resolve(active.session.stop()).catch(() => undefined);
     await this.workspaceManager.releaseWorkspace({ workspaceRef: workspace.workspace_ref, executionId, fencingVersion: execution.fencing_version });
+    this.activeProcesses.delete(executionId);
+    this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     return waited;
   }
 
@@ -530,6 +530,10 @@ export class Runtime {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime Execution can be blocked');
     }
     requireString(reason, 'block_reason');
+    const task = this.taskService.getTask(execution.task_id);
+    if (task?.completion_contract?.normal_flow === true && dependency === undefined) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'normal_flow Tasks require execution_block with a typed dependency');
+    }
     const normalizedFiles = normalizeWaitFiles(files);
     let current = execution;
     let workspace = null;
@@ -566,8 +570,6 @@ export class Runtime {
       workspace_revision: workspace?.workspace_revision ?? current.workspace_revision,
       workspace_content_hash: workspace?.content_hash ?? current.workspace_content_hash,
     }, this.#executionEnvelope(current, operationId('block')));
-    this.activeProcesses.delete(executionId);
-    this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     await Promise.resolve(active.session.stop?.()).catch(() => undefined);
     if (result.execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({
@@ -576,6 +578,8 @@ export class Runtime {
         fencingVersion: result.execution.fencing_version,
       }).catch(() => undefined);
     }
+    this.activeProcesses.delete(executionId);
+    this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     this.logger?.append({ event: 'runtime.execution_blocked', execution_id: executionId, block_reason: reason });
     return { ...result, checkpoint: checkpointResult, workspace };
   }

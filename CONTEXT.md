@@ -114,7 +114,9 @@ Execution, a waiting interval, and later another Execution.
 
 **Agent Session** is one Pi process session. It is distinct from an Execution:
 the worker session can claim an Execution and hand off to a new bound session,
-and a later Core can resume the same Execution after a durable wait.
+and a legacy waiting Execution can resume only on its stored Core binding (or
+without a prior Core binding). Normal-flow dependency release creates a new
+Execution for the later attempt.
 
 **Execution segment** is the continuous assignment of one Execution attempt to
 one Core lane. A later retry of the same Task has a new Execution ID, even when
