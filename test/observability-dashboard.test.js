@@ -89,6 +89,10 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
     result: { task: { task_id: 'task-wait', parent_id: 'task-root', goal: 'Wait for parent review', state: 'WAITING' }, execution: { execution_id: 'exec-wait', task_id: 'task-wait', state: 'WAITING', wait_condition: { type: 'parent_review' } } },
   } });
   append({ source: 'context-service', kind: 'dispatch.complete', taskId: 'task-wait', executionId: 'exec-wait', payload: { ok: false, error: { code: 'CONTEXT_UNAVAILABLE', message: 'synthetic fixture failure' } } });
+  append({ source: 'agent', kind: 'agent_turn_started', coreId: 'core-1', taskId: 'task-root', executionId: 'exec-root', payload: { state: 'RUNNING' } });
+  append({ source: 'agent', kind: 'rpc_record', coreId: 'core-1', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'swarmenv_task_list', args: { available_only: true } } } });
+  append({ source: 'agent', kind: 'rpc_record', coreId: 'core-1', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'swarmenv_task_list', result: { tasks: [] }, isError: false } } });
+  append({ source: 'agent', kind: 'agent_turn_finished', coreId: 'core-1', taskId: 'task-root', executionId: 'exec-root', payload: { state: 'RUNNING' } });
   store.close();
   const writer = new ObservationStore(database);
   const child = spawn(process.execPath, ['scripts/serve-observability.mjs', '--root', root, '--host', '127.0.0.1', '--port', '0'], { cwd: process.cwd() });
@@ -109,6 +113,11 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
     harness.start();
     await waitFor(() => harness.elements.get('#main-view')?.innerHTML.includes('Core activity'));
     assert.match(harness.elements.get('#timeline').innerHTML, /exec-root/);
+    assert.match(harness.elements.get('#timeline').innerHTML, /waterfall-row state-row/);
+    assert.match(harness.elements.get('#timeline').innerHTML, /waterfall-span turn-span/);
+    assert.match(harness.elements.get('#timeline').innerHTML, /waterfall-span tool-span/);
+    assert.match(harness.elements.get('#timeline').innerHTML, /Task task-root/);
+    assert.match(harness.elements.get('#timeline').innerHTML, /Session session-1/);
     assert.match(harness.eventSource.url, /view=agent/);
     const timelineSegment = harness.elements.get('#timeline').querySelectorAll('.timeline-segment')[0];
     assert.ok(timelineSegment, 'timeline segment should be queryable');
@@ -138,6 +147,12 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
     assert.doesNotMatch(harness.elements.get('#main-view').innerHTML, /private-secret/);
     assert.match(harness.elements.get('#main-view').innerHTML, /exec-wait/);
     assert.doesNotMatch(harness.elements.get('#main-view').innerHTML, /private-secret/);
+    await navigate('execution/exec-root');
+    const executionViewBeforeLiveEvent = harness.elements.get('#main-view').innerHTML;
+    const liveDetailEvent = writer.append({ experimentId, source: 'runtime', kind: 'core_state_changed', coreId: 'core-2', taskId: 'task-root', executionId: 'exec-root', payload: { state: 'RUNNING' } });
+    harness.eventSource.listeners.get('observation')({ data: JSON.stringify(liveDetailEvent) });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.equal(harness.elements.get('#main-view').innerHTML, executionViewBeforeLiveEvent, 'live events should not rebuild an open detail route');
     assert.match(await navigate('diagnostics'), /wait boundaries/);
     assert.match(harness.elements.get('#main-view').innerHTML, /error signals/);
 

@@ -470,34 +470,206 @@ function timelineBounds() {
 
 function positionOf(start, end, bounds) {
   const span = Math.max(1, bounds.max - bounds.min);
-  const left = Math.max(0, Math.min(100, (new Date(start).getTime() - bounds.min) / span * 100));
-  const right = end ? Math.max(left + .7, Math.min(100, (new Date(end).getTime() - bounds.min) / span * 100)) : 100;
+  const startAt = typeof start === 'number' ? start : new Date(start).getTime();
+  const endAt = typeof end === 'number' ? end : end ? new Date(end).getTime() : null;
+  if (!Number.isFinite(startAt)) return { left: 0, width: .7 };
+  const left = Math.max(0, Math.min(100, (startAt - bounds.min) / span * 100));
+  const right = endAt ? Math.max(left + .7, Math.min(100, (endAt - bounds.min) / span * 100)) : 100;
   return { left, width: Math.max(.7, right - left) };
+}
+
+function traceCoreIds() {
+  const ids = new Set((state.timeline && state.timeline.lanes || []).map((lane) => lane.core_id).filter(Boolean));
+  state.events.forEach((event) => { if (event.core_id) ids.add(event.core_id); });
+  return [...ids].sort((left, right) => String(left).localeCompare(String(right), undefined, { numeric: true }));
+}
+
+function makeTraceSpan(kind, event, patch) {
+  return {
+    kind,
+    id: event && (event.event_id || event.sequence) || kind,
+    start: event && event.occurred_at,
+    end: event && event.occurred_at,
+    execution_id: event && event.execution_id || null,
+    task_id: event && event.task_id || null,
+    session_id: event && event.session_id || null,
+    core_id: event && event.core_id || null,
+    label: eventLabel(event),
+    state: null,
+    ...patch,
+  };
+}
+
+function coreTraceData() {
+  const laneByCore = new Map((state.timeline && state.timeline.lanes || []).map((lane) => [lane.core_id, lane]));
+  const traces = new Map(traceCoreIds().map((coreId) => [coreId, {
+    core_id: coreId,
+    states: [],
+    executions: [],
+    turns: [],
+    session_turns: [],
+    tools: [],
+    checks: [],
+    markers: [],
+    last_state: 'IDLE',
+    active_execution: null,
+  }]));
+  const ensureTrace = (coreId) => {
+    if (!coreId) return null;
+    if (!traces.has(coreId)) traces.set(coreId, { core_id: coreId, states: [], executions: [], turns: [], session_turns: [], tools: [], checks: [], markers: [], last_state: 'IDLE', active_execution: null });
+    return traces.get(coreId);
+  };
+  const executionSegments = new Map();
+  const laneFor = (coreId) => ensureTrace(coreId);
+  for (const [coreId, lane] of laneByCore) {
+    const trace = laneFor(coreId);
+    const states = lane.states && lane.states.length ? lane.states : [];
+    trace.states = states.map((segment) => ({
+      ...segment,
+      kind: 'state',
+      start: segment.started_at,
+      end: segment.ended_at,
+      core_id: coreId,
+    }));
+    trace.executions = (lane.segments || []).map((segment) => ({
+      ...segment,
+      kind: 'execution',
+      start: segment.started_at,
+      end: segment.ended_at,
+      core_id: coreId,
+    }));
+    trace.executions.forEach((segment) => {
+      if (!segment.execution_id) return;
+      const segments = executionSegments.get(segment.execution_id) || [];
+      segments.push(segment);
+      executionSegments.set(segment.execution_id, segments);
+    });
+    trace.last_state = trace.states.at(-1)?.state || trace.executions.at(-1)?.state || 'IDLE';
+    trace.active_execution = trace.executions.find((segment) => !segment.end)?.execution_id || null;
+  }
+  for (const segments of executionSegments.values()) segments.sort((left, right) => new Date(left.start) - new Date(right.start));
+
+  const coreForExecution = (executionId, occurredAt) => {
+    if (!executionId) return null;
+    const segments = executionSegments.get(executionId) || [];
+    const at = new Date(occurredAt).getTime();
+    const matching = segments.find((segment) => {
+      const start = new Date(segment.start).getTime();
+      const end = segment.end ? new Date(segment.end).getTime() : Infinity;
+      return Number.isFinite(at) && Number.isFinite(start) && at >= start && at < end;
+    });
+    return matching?.core_id || null;
+  };
+
+  const openTurns = new Map();
+  const openSessions = new Map();
+  const openTools = new Map();
+  for (const event of state.events) {
+    const coreId = event.core_id || coreForExecution(event.execution_id, event.occurred_at);
+    const trace = laneFor(coreId);
+    if (!trace) continue;
+    if (event.kind === 'session_started') {
+      const key = event.session_id || event.execution_id || `${coreId}:session`;
+      const span = makeTraceSpan('session', event, { label: 'Agent session', state: 'RUNNING', end: null, execution_id: null });
+      openSessions.set(key, span);
+      trace.session_turns.push(span);
+    } else if (event.kind === 'session_closed') {
+      const key = event.session_id || event.execution_id || `${coreId}:session`;
+      const span = openSessions.get(key);
+      if (span) span.end = event.occurred_at;
+    } else if (event.kind === 'agent_turn_started') {
+      const key = event.execution_id || `${coreId}:turn`;
+      const span = makeTraceSpan('turn', event, { label: 'Agent turn', state: 'RUNNING', end: null });
+      openTurns.set(key, span);
+      trace.turns.push(span);
+    } else if (event.kind === 'agent_turn_finished') {
+      const key = event.execution_id || `${coreId}:turn`;
+      const span = openTurns.get(key) || trace.turns.at(-1);
+      if (span && !span.end) span.end = event.occurred_at;
+      if (span) span.state = event.payload && event.payload.state || 'settled';
+    }
+    const record = eventToolRecord(event);
+    if (record && (record.type === 'tool_execution_start' || record.type === 'tool_call' || record.type === 'tool_execution_end' || record.type === 'tool_result')) {
+      const id = record.toolCallId || record.tool_call_id || record.id || event.sequence;
+      if (record.type === 'tool_execution_start' || record.type === 'tool_call') {
+        const span = makeTraceSpan('tool', event, { label: record.toolName || 'Tool call', tool_name: record.toolName || 'Tool call', state: 'RUNNING', end: null, tool_call_id: id });
+        openTools.set(`${coreId}:${id}`, span);
+        trace.tools.push(span);
+      } else {
+        const span = openTools.get(`${coreId}:${id}`) || trace.tools.at(-1);
+        if (span && !span.end) span.end = event.occurred_at;
+        if (span) { span.state = record.isError ? 'failed' : 'returned'; span.is_error = Boolean(record.isError); }
+      }
+    }
+    if (/^(judge|checker)\.|^judge_check_finished$/.test(event.kind || '')) {
+      const label = event.kind === 'judge_check_finished' ? 'Judge check' : event.kind.startsWith('checker') ? 'Checker' : 'Judge';
+      const span = makeTraceSpan('check', event, { label, state: /complete|finished/.test(event.kind) ? 'returned' : 'running', end: /complete|finished/.test(event.kind) ? event.occurred_at : null });
+      trace.checks.push(span);
+    }
+    if (event.kind === 'workspace_revision_saved' || event.kind === 'execution_wait' || event.kind === 'execution_execution') {
+      trace.markers.push(makeTraceSpan(event.kind === 'workspace_revision_saved' ? 'workspace' : 'lifecycle', event, {
+        label: event.kind === 'workspace_revision_saved' ? 'Workspace saved' : event.kind === 'execution_wait' ? 'Waiting' : 'Woken',
+        state: event.kind === 'execution_wait' ? 'waiting' : 'saved',
+      }));
+    }
+    if (/error|failed|timeout|failure|stderr/i.test(event.kind || '') || event.payload && event.payload.ok === false) {
+      trace.markers.push(makeTraceSpan('error', event, { label: 'Error signal', state: 'error' }));
+    }
+  }
+  const durableExecutionIds = new Set((state.model && state.model.executions || []).map((execution) => execution.execution_id));
+  for (const trace of traces.values()) {
+    [...trace.turns, ...trace.tools, ...trace.checks, ...trace.markers].forEach((span) => {
+      if (span.execution_id && !durableExecutionIds.has(span.execution_id)) span.execution_id = null;
+    });
+    trace.turns = trace.turns.filter((span) => span.start).sort((left, right) => new Date(left.start) - new Date(right.start));
+    trace.tools = trace.tools.filter((span) => span.start).sort((left, right) => new Date(left.start) - new Date(right.start));
+    trace.checks = trace.checks.filter((span) => span.start).sort((left, right) => new Date(left.start) - new Date(right.start));
+    trace.markers = trace.markers.filter((span) => span.start).sort((left, right) => new Date(left.start) - new Date(right.start));
+  }
+  return [...traces.values()].sort((left, right) => String(left.core_id).localeCompare(String(right.core_id), undefined, { numeric: true }));
+}
+
+function traceSpanMarkup(span, bounds, className, label) {
+  const position = positionOf(span.start, span.end, bounds);
+  const executionId = span.execution_id || '';
+  const selected = executionId && executionId === state.selectedExecution ? ' selected' : '';
+  const details = [
+    executionId ? 'Execution ' + executionId : 'Core event',
+    span.task_id ? 'Task ' + shortId(span.task_id, 14) : null,
+    span.session_id ? 'Session ' + shortId(span.session_id, 14) : null,
+    span.state ? String(span.state).replaceAll('_', ' ') : null,
+  ].filter(Boolean).join(' · ');
+  const title = `${span.label || label || span.kind} · ${details} · ${formatTime(span.start, true)} → ${formatTime(span.end, true)}`;
+  const tag = executionId ? 'button' : 'span';
+  const close = executionId ? 'button' : 'span';
+  const attributes = executionId ? ' data-execution-id="' + escapeHtml(executionId) + '" type="button"' : '';
+  return '<' + tag + ' class="waterfall-span ' + className + selected + '" style="left:' + position.left + '%;width:' + position.width + '%" title="' + escapeHtml(title) + '" aria-label="' + escapeHtml(title) + '"' + attributes + '>' + (executionId ? '<strong>' + escapeHtml(label || span.label || span.kind) + '</strong>' : '<i aria-hidden="true"></i>') + '</' + close + '>';
 }
 
 function renderTimeline() {
   const host = $('#timeline');
   if (!host) return;
-  const lanes = state.timeline && state.timeline.lanes || [];
-  if (!lanes.length) { host.innerHTML = emptyState('No Core activity yet', 'Start an Experiment to see reusable Core lanes here.'); return; }
+  const traces = coreTraceData();
+  if (!traces.length) { host.innerHTML = emptyState('No Core activity yet', 'Start an Experiment to see reusable Core lanes here.'); return; }
   const bounds = timelineBounds();
   const ticks = [0, 20, 40, 60, 80, 100].map((percentage) => {
     const value = bounds.min + (bounds.max - bounds.min) * percentage / 100;
     return '<span style="left:' + percentage + '%">' + escapeHtml(formatTime(value)) + '</span>';
   }).join('');
-  const laneHtml = lanes.map((lane) => {
-    const segments = lane.states && lane.states.length ? lane.states : lane.segments || [];
-    const content = segments.length ? segments.map((segment) => {
-      const position = positionOf(segment.started_at, segment.ended_at, bounds);
-      const stateName = normalizeState(segment.state);
-      const executionId = segment.execution_id || '';
-      const selected = executionId && executionId === state.selectedExecution ? ' selected' : '';
-      const title = (segment.state || 'unknown') + ' · ' + (executionId || 'idle') + ' · ' + formatTime(segment.started_at, true) + ' → ' + formatTime(segment.ended_at, true);
-      return '<button class="timeline-segment state-' + escapeHtml(stateName) + selected + '" style="left:' + position.left + '%;width:' + position.width + '%" data-execution-id="' + escapeHtml(executionId) + '" title="' + escapeHtml(title) + '"><strong>' + escapeHtml(executionId ? shortId(executionId, 9) : stateName) + '</strong><small>' + escapeHtml(segment.state || '') + '</small></button>';
-    }).join('') : '<span class="lane-event">No recorded interval</span>';
-    return '<div class="lane"><div class="lane-label" title="' + escapeHtml(lane.core_id) + '">' + escapeHtml(lane.core_id) + '</div><div class="lane-track">' + content + '</div></div>';
+  const laneHtml = traces.map((trace) => {
+    const stateSegments = trace.states.length ? trace.states.map((span) => '<span class="waterfall-state state-' + escapeHtml(normalizeState(span.state)) + '" style="left:' + positionOf(span.start, span.end, bounds).left + '%;width:' + positionOf(span.start, span.end, bounds).width + '%" title="' + escapeHtml((span.state || 'unknown') + ' · ' + (span.reason || '')) + '"></span>').join('') : '<span class="lane-event">No recorded interval</span>';
+    const executionSpans = trace.executions.length ? trace.executions.map((span) => traceSpanMarkup(span, bounds, 'timeline-segment execution-span state-' + escapeHtml(normalizeState(span.state)), shortId(span.execution_id, 9))).join('') : '';
+    const activitySpans = [...trace.session_turns, ...trace.turns].sort((left, right) => new Date(left.start) - new Date(right.start));
+    const turnSpans = activitySpans.map((span) => traceSpanMarkup(span, bounds, span.kind === 'session' ? 'session-span state-running' : 'turn-span state-running', span.kind === 'session' ? 'Agent session' : 'Agent turn')).join('');
+    const toolSpans = trace.tools.map((span) => traceSpanMarkup(span, bounds, 'tool-span state-tool', span.tool_name || 'Tool')).join('');
+    const checkSpans = trace.checks.map((span) => traceSpanMarkup(span, bounds, 'check-span state-check', span.label || 'Judge')).join('');
+    const markerSpans = trace.markers.map((span) => traceSpanMarkup(span, bounds, 'marker-span ' + (span.state === 'waiting' ? 'marker-waiting' : span.state === 'error' ? 'marker-error' : 'marker-workspace'), span.label)).join('');
+    const activeLabel = trace.active_execution ? 'Execution ' + shortId(trace.active_execution, 11) : 'capacity available';
+    const stateLabel = String(trace.last_state || 'IDLE').replaceAll('_', ' ');
+    return '<section class="core-trace" data-core-id="' + escapeHtml(trace.core_id) + '"><div class="core-trace-header"><div class="core-identity"><span class="core-glyph">' + escapeHtml(String(trace.core_id).replace(/^core-?/i, '')) + '</span><div><strong>' + escapeHtml(trace.core_id) + '</strong><span>' + escapeHtml(activeLabel) + '</span></div></div>' + statusPill(stateLabel) + '</div><div class="core-trace-body"><div class="core-track-labels"><span>STATE</span><span>EXECUTION</span><span>AGENT</span><span>TOOLS</span></div><div class="core-track"><div class="waterfall-row state-row">' + stateSegments + '</div><div class="waterfall-row execution-row">' + executionSpans + '</div><div class="waterfall-row agent-row">' + turnSpans + '</div><div class="waterfall-row tool-row">' + toolSpans + checkSpans + markerSpans + '</div></div></div></section>';
   }).join('');
-  host.innerHTML = '<div class="timeline-axis">' + ticks + '</div><div class="lanes">' + laneHtml + '</div><div class="timeline-legend"><span class="legend-item"><i class="legend-dot running"></i>Running</span><span class="legend-item"><i class="legend-dot waiting"></i>Waiting</span><span class="legend-item"><i class="legend-dot idle"></i>Idle</span><span class="legend-item"><i class="legend-dot error"></i>Failure</span><span class="legend-item selected-execution-note">Click an Execution interval to inspect its complete activity</span></div>';
+  const activeCount = traces.filter((trace) => /running|assigned/i.test(trace.last_state)).length;
+  host.innerHTML = '<div class="waterfall-summary"><div><span class="eyebrow">LIVE TRACE</span><strong>' + escapeHtml(activeCount + ' of ' + traces.length + ' Cores active') + '</strong><span>Each Core is read top to bottom: state, Execution, Agent work, then tools and checks.</span></div><div class="waterfall-summary-hint"><span class="live-pulse"></span><span>Streaming updates</span></div></div><div class="timeline-axis waterfall-axis">' + ticks + '</div><div class="core-traces">' + laneHtml + '</div><div class="timeline-legend"><span class="legend-item"><i class="legend-dot running"></i>Agent / running</span><span class="legend-item"><i class="legend-dot waiting"></i>Waiting</span><span class="legend-item"><i class="legend-dot idle"></i>Idle</span><span class="legend-item"><i class="legend-dot tool"></i>Tool / check</span><span class="legend-item selected-execution-note">Select a bar to open its Execution trace</span></div>';
   $$('.timeline-segment', host).forEach((node) => node.addEventListener('click', () => { if (node.dataset.executionId) { state.selectedExecution = node.dataset.executionId; navigate('execution/' + node.dataset.executionId); } }));
 }
 
@@ -589,7 +761,7 @@ function renderHome() {
   $('#breadcrumbs').innerHTML = '<span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><strong>Home</strong>';
   $('#main-view').innerHTML = H(
     '<div class="page-heading"><div><span class="eyebrow">EXPERIMENT MONITOR</span><h1>', escapeHtml(title), '</h1><p>Real observation data across the selected run. The Core timeline is the primary surface; every interval opens the underlying Execution.</p></div><div class="heading-actions">', statusPill(state.experiment && state.experiment.status), '</div></div>',
-    '<section class="card timeline-card"><div class="card-header"><div><span class="eyebrow">RUNTIME TOPOLOGY</span><h2>Core activity</h2><p>', escapeHtml((state.experiment && state.experiment.core_ids || []).length + ' reusable Core lanes · ' + observationLabel), '</p></div><div class="timeline-tools"><button class="range-button ' + (state.range === 'all' ? 'active' : '') + '" data-range="all">Fit run</button><button class="range-button ' + (state.range === '15m' ? 'active' : '') + '" data-range="15m">15 min</button><button class="range-button ' + (state.range === '1h' ? 'active' : '') + '" data-range="1h">1 hour</button></div></div><div class="timeline-note">Intervals are positioned against the observed run clock. Nothing needs to be dragged; choose a time window, then click the exact Execution interval to inspect its tool calls and returns.</div><div class="timeline-wrap" id="timeline"></div></section>',
+    '<section class="card timeline-card"><div class="card-header"><div><span class="eyebrow">RUNTIME TOPOLOGY</span><h2>Core activity · trace waterfall</h2><p>', escapeHtml((state.experiment && state.experiment.core_ids || []).length + ' reusable Core lanes · ' + observationLabel), '</p></div><div class="timeline-tools"><button class="range-button ' + (state.range === 'all' ? 'active' : '') + '" data-range="all">Fit run</button><button class="range-button ' + (state.range === '15m' ? 'active' : '') + '" data-range="15m">15 min</button><button class="range-button ' + (state.range === '1h' ? 'active' : '') + '" data-range="1h">1 hour</button></div></div><div class="timeline-note">Read each Core from top to bottom: state, Execution, Agent turn, then tools and checks. Click a bar to open the full Execution trace.</div><div class="timeline-wrap" id="timeline"></div></section>',
     '<div class="summary-strip" id="metrics"></div>',
     state.experiment && state.experiment.metadata && state.experiment.metadata.report_path ? '<section class="card report-card dashboard-lower"><div class="card-header"><div><span class="eyebrow">RUN REPORT</span><h2>Experiment analysis</h2><p>Attached benchmark metrics and any local analysis report for this run.</p></div></div><div class="card-body" id="experiment-report">' + renderReportPanel(state.reportCache.get(state.experiment.experiment_id) || null) + '</div></section>' : '',
     '<div class="content-grid three dashboard-lower"><section class="card"><div class="card-header"><div><span class="eyebrow">HEALTH</span><h2>Signals</h2><p>Derived from append-only observations.</p></div><a class="card-link" href="#diagnostics">Open diagnostics</a></div><div class="card-body"><div class="signal-list" id="signals"></div></div></section>',
@@ -933,8 +1105,12 @@ async function refreshTimeline(id) {
   } catch { /* A later event or manual refresh retries the timeline query. */ }
 }
 
-function renderCurrent() {
-  route();
+function renderCurrent(force) {
+  const view = location.hash.replace(/^#/, '') || 'home';
+  if (force) route();
+  else if (view === 'home') {
+    if (!updateHomeProjection()) route();
+  }
   $('#last-refresh').textContent = state.lastUpdated ? 'updated ' + formatTime(state.lastUpdated) : '—';
 }
 
@@ -952,6 +1128,21 @@ function updateExperimentMeta() {
   if (!experiment) { host.textContent = state.experiments.length + ' experiments registered'; return; }
   const problem = experiment.metadata && experiment.metadata.problem_id;
   host.textContent = (problem ? problem + ' · ' : '') + formatDate(experiment.started_at) + ' · ' + formatNumber(experiment.event_count || 0) + ' events';
+}
+
+function updateHomeProjection() {
+  const mainView = $('#main-view');
+  if (!state.model || !mainView || !mainView.innerHTML.includes('id="timeline"') || (location.hash.replace(/^#/, '') || 'home') !== 'home') return false;
+  const metrics = $('#metrics');
+  if (metrics) metrics.innerHTML = renderMetrics(state.model);
+  renderTimeline();
+  const signals = $('#signals');
+  if (signals) signals.innerHTML = signalMarkup(state.model);
+  const alert = $('#nav-alert');
+  if (alert) alert.classList.toggle('alert', state.model.errors.length > 0);
+  renderTopLists(state.model);
+  renderRecentEvents();
+  return true;
 }
 
 async function selectExperiment(id) {
@@ -978,7 +1169,7 @@ async function selectExperiment(id) {
     updateExperimentMeta();
     connectStream(id);
     setConnection('Live', 'live');
-    renderCurrent();
+    renderCurrent(true);
   } catch (error) {
     setConnection('Unavailable', 'error');
     $('#main-view').innerHTML = '<section class="card"><div class="card-body">' + emptyState('Observation server unavailable', error.message) + '</div></section>';
