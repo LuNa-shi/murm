@@ -234,6 +234,18 @@ test('an expired waiting Execution is visible and explicit claim hands it to the
     operationId: 'wait-takeover-wait', actorRef: 'agent:first', taskId: task.task_id, executionId: claimed.execution.execution_id,
     specVersion: 1, stateVersion: checkpointed.execution.state_version, fencingVersion: 1,
   }));
+  // A recovery attempt can be fenced while the original waiting Execution is
+  // still the resumable handoff. Queue browsing must expose that active wait,
+  // rather than hiding it behind the newer terminal attempt.
+  const fencedRecovery = service.db.prepare('SELECT * FROM executions WHERE execution_id = ?').get(waited.execution.execution_id);
+  fencedRecovery.execution_id = 'wait-takeover-fenced-recovery';
+  fencedRecovery.state = 'FENCED';
+  fencedRecovery.attempt_no = 2;
+  fencedRecovery.fencing_version = 2;
+  fencedRecovery.launch_token = 'wait-takeover-fenced-recovery-launch';
+  fencedRecovery.updated_at = new Date().toISOString();
+  const recoveryColumns = Object.keys(fencedRecovery);
+  service.db.prepare(`INSERT INTO executions (${recoveryColumns.join(', ')}) VALUES (${recoveryColumns.map(() => '?').join(', ')})`).run(...recoveryColumns.map((column) => fencedRecovery[column]));
   const listed = sdk.withContext({ actorRef: 'agent:second' }).listTasks({ limit: 10 });
   assert.equal(listed[0].task_id, task.task_id);
   assert.equal(listed[0].latest_execution.state, 'WAITING');

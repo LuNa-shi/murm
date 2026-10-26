@@ -272,7 +272,11 @@ export class TaskService {
     const tasks = this.db.prepare(`SELECT t.* FROM tasks t WHERE ${conditions.join(' AND ')}
       ORDER BY t.priority DESC, t.created_at ASC, t.task_id ASC LIMIT ?`).all(...params).map((row) => ({
       ...rowToTask(row),
-      latest_execution: this.#latestExecution(row.task_id),
+      // A fenced or superseded recovery attempt must not hide a still-active
+      // resumable Execution from an Agent browsing the queue. The response is
+      // the Agent's handoff boundary, so prefer the latest active Execution;
+      // fall back to the terminal history only when no active owner remains.
+      latest_execution: this.#latestExecution(row.task_id, true) ?? this.#latestExecution(row.task_id),
     }));
     if (!availableOnly) return tasks;
     const nowMs = Date.now();
