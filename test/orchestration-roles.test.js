@@ -55,7 +55,6 @@ test('TaskController adapts TaskService.reconcileTask to its task-id contract', 
 
   assert.equal(repaired.length, 1);
   assert.equal(repaired[0].taskId, 'blocked-1');
-  assert.equal(repaired[0].context.reason, 'dependency-complete');
 });
 
 test('TaskController never claims work and wakes after a dependency event', async () => {

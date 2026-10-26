@@ -89,7 +89,7 @@ export class TaskController {
     }));
     this.usesTaskServiceReconcile = reconcileTask === null && typeof taskService?.reconcileTask === 'function';
     this.reconcileTask = reconcileTask
-      ?? (this.usesTaskServiceReconcile ? taskService.reconcileTask.bind(taskService) : null);
+      ?? (this.usesTaskServiceReconcile ? (taskId) => taskService.reconcileTask(taskId) : null);
     this.listDaemons = listDaemons;
     this.signalIdleDaemon = signalIdleDaemon;
     this.requestDaemonRecovery = requestDaemonRecovery;
