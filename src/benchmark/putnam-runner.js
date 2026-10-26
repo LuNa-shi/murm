@@ -1387,6 +1387,7 @@ async function createProjectState(problem, config, options) {
       workspaceManager,
       agentAdapter: adapter,
       maxWorkers: 1,
+      coreIds: [`core-${index}`],
       actorRef: `runtime:core-${index}`,
       watchdogTimeoutMs: options.watchdogTimeoutMs,
       executionTimeoutMs: options.executionTimeoutMs,

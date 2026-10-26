@@ -80,8 +80,13 @@ test('bounded admission returns typed backpressure and duplicate responsibility'
     specVersion: root.spec_version, stateVersion: claim.task.state_version, fencingVersion: claim.execution.fencing_version,
   });
   const childInput = { task_type: 'research', goal: 'independent route', expected_output: 'a material', acceptance_conditions: {}, responsibility_key: 'route-a' };
+  assert.throws(
+    () => owner.createChildTask({ ...childInput, responsibility_key: undefined, child_creation_key: 'admission-child-missing-key' }, { operationId: 'admission-child-missing-key' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_TASK_CONTRACT,
+  );
   const first = owner.createChildTask({ ...childInput, child_creation_key: 'admission-child-a' }, { operationId: 'admission-child-a' });
   assert.equal(first.task.responsibility_key, 'route-a');
+  assert.equal(taskService.db.prepare('SELECT child_count FROM execution_admission_counters WHERE execution_id = ?').get(claim.execution.execution_id).child_count, 1);
   const duplicate = owner.withContext({ stateVersion: taskService.getTask(root.task_id).state_version }).createChildTask({ ...childInput, child_creation_key: 'admission-child-a-retry' }, { operationId: 'admission-child-a-retry' });
   assert.equal(duplicate.admission.code, ERROR_CODES.DUPLICATE_RESPONSIBILITY);
   const second = owner.withContext({ stateVersion: taskService.getTask(root.task_id).state_version }).createChildTask({ ...childInput, responsibility_key: 'route-b', child_creation_key: 'admission-child-b' }, { operationId: 'admission-child-b' });

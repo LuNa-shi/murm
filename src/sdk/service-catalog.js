@@ -51,7 +51,7 @@ const TOOL_DEFINITIONS = Object.freeze([
     name: 'task_claim', service: 'task', operation: 'claim', version: '1.0',
     description: 'Claim one explicitly selected Task and create its Execution.',
     scope: 'task-claim', side_effect: true,
-    parameters: { type: 'object', required: ['task_id', 'claim_key'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, owner_ref: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['task_id', 'claim_key'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, core_id: { type: 'string' }, owner_ref: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'task_create_child', service: 'task', operation: 'create_child_task', version: '1.0',

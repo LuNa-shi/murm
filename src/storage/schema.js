@@ -210,6 +210,7 @@ CREATE TABLE IF NOT EXISTS task_admission_policies (
   max_children_per_execution INTEGER NOT NULL,
   max_turn_mutations INTEGER NOT NULL,
   aging_threshold_ms INTEGER NOT NULL,
+  require_responsibility_key INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

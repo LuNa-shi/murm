@@ -72,6 +72,7 @@ export class TaskController {
   } = {}) {
     const serviceList = taskService?.listTasks?.bind(taskService);
     const serviceListClaimable = taskService?.listClaimableTasks?.bind(taskService);
+    const serviceListBlocked = taskService?.listBlockedTasks?.bind(taskService);
     if (typeof listClaimableTasks !== 'function' && typeof serviceListClaimable !== 'function' && typeof serviceList !== 'function') {
       throw new TypeError('TaskController requires listClaimableTasks or taskService.listTasks');
     }
@@ -86,12 +87,16 @@ export class TaskController {
       ?? (serviceListClaimable
         ? (() => serviceListClaimable({ limit: shortlistLimit }))
         : (() => serviceList({ states: ['OPEN'], limit: shortlistLimit, availableOnly: true })));
-    this.listBlockedTasks = listBlockedTasks ?? (() => serviceList({
-      // Include OPEN Tasks here so reconciliation can persist an explicit
-      // dependency blocker instead of leaving a hidden OPEN-but-unclaimable
-      // row in the queue.
-      states: ['OPEN', 'BLOCKED'], limit: 100, availableOnly: false,
-    }));
+    this.listBlockedTasks = listBlockedTasks ?? (serviceListBlocked
+      ? (() => serviceListBlocked({ limit: 100, includeOpen: true }))
+      : serviceList
+        ? (() => serviceList({
+          // Include OPEN Tasks here so reconciliation can persist an explicit
+          // dependency blocker instead of leaving a hidden OPEN-but-unclaimable
+          // row in the queue.
+          states: ['OPEN', 'BLOCKED'], limit: 100, availableOnly: false,
+        }))
+        : (() => []));
     this.usesTaskServiceReconcile = reconcileTask === null && typeof taskService?.reconcileTask === 'function';
     this.reconcileTask = reconcileTask
       ?? (this.usesTaskServiceReconcile ? (taskId) => taskService.reconcileTask(taskId) : null);
