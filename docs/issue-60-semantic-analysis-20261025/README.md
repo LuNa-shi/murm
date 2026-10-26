@@ -5,6 +5,7 @@ This bundle records the sanitized analysis of the 2-hour semantic run for `putna
 Public files in this directory:
 
 - `experiment-analysis.md`: deterministic evidence-first analysis with 10-minute windows.
+- `experiment-explainer.pdf`: reader-facing walkthrough of the 2-hour run, Core state ledger, timeline, and all 35 Execution attempts.
 - `semantic-review.md`: independent semantic review and rubric score.
 - `optimization-directions.md`: prioritized follow-up work and validation gates.
 - `aggregate-report.json`: sanitized aggregate metrics.
