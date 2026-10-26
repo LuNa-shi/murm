@@ -31,7 +31,7 @@ function asArray(value, keys = []) {
 }
 
 function isConflict(error) {
-  return error?.code === CONFLICT_CODE || error?.code === 'CONFLICT' || error?.code === 'CLAIM_CONFLICT';
+  return error?.code === CONFLICT_CODE || error?.code === 'CONFLICT' || error?.code === 'CLAIM_CONFLICT' || error?.code === 'FAIRNESS_REQUIRED';
 }
 
 function normalizeSelection(value) {
