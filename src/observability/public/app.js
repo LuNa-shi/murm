@@ -625,6 +625,18 @@ function coreTraceData() {
     trace.tools = trace.tools.filter((span) => span.start).sort((left, right) => new Date(left.start) - new Date(right.start));
     trace.checks = trace.checks.filter((span) => span.start).sort((left, right) => new Date(left.start) - new Date(right.start));
     trace.markers = trace.markers.filter((span) => span.start).sort((left, right) => new Date(left.start) - new Date(right.start));
+    trace.executions.forEach((execution) => {
+      const executionStart = new Date(execution.start).getTime();
+      const executionEnd = execution.end ? new Date(execution.end).getTime() : Infinity;
+      const inExecution = (span) => {
+        const at = new Date(span.start).getTime();
+        return Number.isFinite(at) && at >= executionStart && at <= executionEnd;
+      };
+      execution.agent_turn_count = trace.turns.filter((span) => span.execution_id === execution.execution_id && inExecution(span)).length;
+      execution.agent_session_count = trace.session_turns.filter((span) => inExecution(span)).length;
+    });
+    trace.agent_turn_count = trace.turns.length;
+    trace.agent_session_count = trace.session_turns.length;
   }
   return [...traces.values()].sort((left, right) => String(left.core_id).localeCompare(String(right.core_id), undefined, { numeric: true }));
 }
@@ -637,6 +649,8 @@ function traceSpanMarkup(span, bounds, className, label) {
     executionId ? 'Execution ' + executionId : 'Core event',
     span.task_id ? 'Task ' + shortId(span.task_id, 14) : null,
     span.session_id ? 'Session ' + shortId(span.session_id, 14) : null,
+    span.agent_session_count ? span.agent_session_count + ' Agent session' + (span.agent_session_count === 1 ? '' : 's') : null,
+    span.agent_turn_count ? span.agent_turn_count + ' Agent turn' + (span.agent_turn_count === 1 ? '' : 's') : null,
     span.state ? String(span.state).replaceAll('_', ' ') : null,
   ].filter(Boolean).join(' · ');
   const title = `${span.label || label || span.kind} · ${details} · ${formatTime(span.start, true)} → ${formatTime(span.end, true)}`;
@@ -659,19 +673,22 @@ function renderTimeline() {
   const laneHtml = traces.map((trace) => {
     const stateSegments = trace.states.length ? trace.states.map((span) => '<span class="waterfall-state state-' + escapeHtml(normalizeState(span.state)) + '" style="left:' + positionOf(span.start, span.end, bounds).left + '%;width:' + positionOf(span.start, span.end, bounds).width + '%" title="' + escapeHtml((span.state || 'unknown') + ' · ' + (span.reason || '')) + '"></span>').join('') : '<span class="lane-event">No recorded interval</span>';
     const executionSpans = trace.executions.length ? trace.executions.map((span) => traceSpanMarkup(span, bounds, 'timeline-segment execution-span state-' + escapeHtml(normalizeState(span.state)), shortId(span.execution_id, 9))).join('') : '';
+    const activitySpans = [...trace.session_turns, ...trace.turns].sort((left, right) => new Date(left.start) - new Date(right.start));
+    const agentOverlaySpans = activitySpans.map((span) => traceSpanMarkup(span, bounds, span.kind === 'session' ? 'session-span agent-overlay-span state-running' : 'turn-span agent-overlay-span state-running', span.kind === 'session' ? 'Agent session' : 'Agent turn')).join('');
     const toolSpans = trace.tools.map((span) => traceSpanMarkup(span, bounds, 'tool-span state-tool', span.tool_name || 'Tool')).join('');
     const checkSpans = trace.checks.map((span) => traceSpanMarkup(span, bounds, 'check-span state-check', span.label || 'Judge')).join('');
     const markerSpans = trace.markers.map((span) => traceSpanMarkup(span, bounds, 'marker-span ' + (span.state === 'waiting' ? 'marker-waiting' : span.state === 'error' ? 'marker-error' : 'marker-workspace'), span.label)).join('');
     const activeLabel = trace.active_execution ? 'Execution ' + shortId(trace.active_execution, 11) : 'capacity available';
     const stateLabel = String(trace.last_state || 'IDLE').replaceAll('_', ' ');
-    return '<section class="core-trace" data-core-id="' + escapeHtml(trace.core_id) + '"><div class="core-trace-header"><div class="core-identity"><span class="core-glyph">' + escapeHtml(String(trace.core_id).replace(/^core-?/i, '')) + '</span><div><strong>' + escapeHtml(trace.core_id) + '</strong><span>' + escapeHtml(activeLabel) + '</span></div></div>' + statusPill(stateLabel) + '</div><div class="core-trace-body"><div class="core-track-labels"><span>STATE</span><span>EXECUTION</span><span>TOOLS / CHECKS</span></div><div class="core-track"><div class="waterfall-row state-row">' + stateSegments + '</div><div class="waterfall-row execution-row">' + executionSpans + '</div><div class="waterfall-row tool-row">' + toolSpans + checkSpans + markerSpans + '</div></div></div></section>';
+    const agentSummary = trace.agent_session_count || trace.agent_turn_count ? trace.agent_session_count + ' session' + (trace.agent_session_count === 1 ? '' : 's') + ' · ' + trace.agent_turn_count + ' turn' + (trace.agent_turn_count === 1 ? '' : 's') : 'No session / turn intervals';
+    return '<section class="core-trace" data-core-id="' + escapeHtml(trace.core_id) + '"><div class="core-trace-header"><div class="core-identity"><span class="core-glyph">' + escapeHtml(String(trace.core_id).replace(/^core-?/i, '')) + '</span><div><strong>' + escapeHtml(trace.core_id) + '</strong><span>' + escapeHtml(activeLabel) + '</span><small class="core-agent-summary" title="Agent session and turn intervals are shown as a fine line inside the Execution row">' + escapeHtml(agentSummary) + '</small></div></div>' + statusPill(stateLabel) + '</div><div class="core-trace-body"><div class="core-track-labels"><span>STATE</span><span>EXECUTION</span><span>TOOLS / CHECKS</span></div><div class="core-track"><div class="waterfall-row state-row">' + stateSegments + '</div><div class="waterfall-row execution-row">' + executionSpans + agentOverlaySpans + '</div><div class="waterfall-row tool-row">' + toolSpans + checkSpans + markerSpans + '</div></div></div></section>';
   }).join('');
   const activeCount = traces.filter((trace) => /running|assigned/i.test(trace.last_state)).length;
   const executionCount = traces.reduce((total, trace) => total + trace.executions.length, 0);
   const toolCount = traces.reduce((total, trace) => total + trace.tools.length, 0);
   const checkCount = traces.reduce((total, trace) => total + trace.checks.length, 0);
   const errorCount = traces.reduce((total, trace) => total + trace.markers.filter((span) => span.state === 'error').length, 0);
-  host.innerHTML = '<div class="waterfall-summary"><div class="waterfall-summary-copy"><span class="eyebrow">LIVE TRACE</span><strong>' + escapeHtml(activeCount + ' of ' + traces.length + ' Cores active') + '</strong><span>Read each lane top to bottom: state, Execution, then observed tools and checks.</span></div><div class="waterfall-summary-stats"><span><strong>' + formatNumber(executionCount) + '</strong><small>executions</small></span><span><strong>' + formatNumber(toolCount) + '</strong><small>tools</small></span><span><strong>' + formatNumber(checkCount) + '</strong><small>checks</small></span><span><strong>' + formatNumber(errorCount) + '</strong><small>errors</small></span></div><div class="waterfall-summary-hint"><span class="live-pulse"></span><span>Streaming updates</span></div></div><div class="timeline-axis waterfall-axis">' + ticks + '</div><div class="core-traces">' + laneHtml + '</div><div class="timeline-legend"><span class="legend-item"><i class="legend-dot running"></i>Running</span><span class="legend-item"><i class="legend-dot waiting"></i>Waiting</span><span class="legend-item"><i class="legend-dot idle"></i>Idle</span><span class="legend-item"><i class="legend-dot tool"></i>Tool / check</span><span class="legend-item selected-execution-note">Select a bar to open its Execution trace · hover a bar for the full name</span></div>';
+  host.innerHTML = '<div class="waterfall-summary"><div class="waterfall-summary-copy"><span class="eyebrow">LIVE TRACE</span><strong>' + escapeHtml(activeCount + ' of ' + traces.length + ' Cores active') + '</strong><span>Read each lane top to bottom: state, Execution, then observed tools and checks. Agent session / turn intervals are folded into the Execution row.</span></div><div class="waterfall-summary-stats"><span><strong>' + formatNumber(executionCount) + '</strong><small>executions</small></span><span><strong>' + formatNumber(toolCount) + '</strong><small>tools</small></span><span><strong>' + formatNumber(checkCount) + '</strong><small>checks</small></span><span><strong>' + formatNumber(errorCount) + '</strong><small>errors</small></span></div><div class="waterfall-summary-hint"><span class="live-pulse"></span><span>Streaming updates</span></div></div><div class="timeline-axis waterfall-axis">' + ticks + '</div><div class="core-traces">' + laneHtml + '</div><div class="timeline-legend"><span class="legend-item"><i class="legend-dot running"></i>Running</span><span class="legend-item"><i class="legend-dot waiting"></i>Waiting</span><span class="legend-item"><i class="legend-dot idle"></i>Idle</span><span class="legend-item"><i class="legend-dot tool"></i>Tool / check</span><span class="legend-item"><i class="legend-agent-line"></i>Agent session / turn</span><span class="legend-item selected-execution-note">Select a bar to open its Execution trace · hover a bar for the full name</span></div>';
   $$('.timeline-segment', host).forEach((node) => node.addEventListener('click', () => { if (node.dataset.executionId) { state.selectedExecution = node.dataset.executionId; navigate('execution/' + node.dataset.executionId); } }));
 }
 

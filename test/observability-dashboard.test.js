@@ -115,7 +115,9 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
     assert.match(harness.elements.get('#timeline').innerHTML, /exec-root/);
     assert.match(harness.elements.get('#timeline').innerHTML, /waterfall-row state-row/);
     assert.match(harness.elements.get('#timeline').innerHTML, /waterfall-span tool-span/);
-    assert.doesNotMatch(harness.elements.get('#timeline').innerHTML, /agent-row|turn-span|Agent turn/);
+    assert.doesNotMatch(harness.elements.get('#timeline').innerHTML, /agent-row/);
+    assert.match(harness.elements.get('#timeline').innerHTML, /agent-overlay-span/);
+    assert.match(harness.elements.get('#timeline').innerHTML, /Agent session \/ turn/);
     assert.match(harness.elements.get('#timeline').innerHTML, /TOOLS \/ CHECKS/);
     assert.match(harness.elements.get('#timeline').innerHTML, /Task task-root/);
     assert.match(harness.eventSource.url, /view=agent/);
