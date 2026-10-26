@@ -86,11 +86,12 @@ export class TaskController {
       ?? (serviceListClaimable
         ? (() => serviceListClaimable({ limit: shortlistLimit }))
         : (() => serviceList({ states: ['OPEN'], limit: shortlistLimit, availableOnly: true })));
-    const serviceListBlocked = taskService?.listBlockedTasks?.bind(taskService);
-    this.listBlockedTasks = listBlockedTasks
-      ?? (serviceListBlocked
-        ? (() => serviceListBlocked({ limit: 100 }))
-        : (() => serviceList({ states: ['BLOCKED'], limit: 100, availableOnly: false })));
+    this.listBlockedTasks = listBlockedTasks ?? (() => serviceList({
+      // Include OPEN Tasks here so reconciliation can persist an explicit
+      // dependency blocker instead of leaving a hidden OPEN-but-unclaimable
+      // row in the queue.
+      states: ['OPEN', 'BLOCKED'], limit: 100, availableOnly: false,
+    }));
     this.usesTaskServiceReconcile = reconcileTask === null && typeof taskService?.reconcileTask === 'function';
     this.reconcileTask = reconcileTask
       ?? (this.usesTaskServiceReconcile ? (taskId) => taskService.reconcileTask(taskId) : null);
@@ -182,9 +183,9 @@ export class TaskController {
 
   async #runReconcile(reason) {
     const reconciledAt = this.now();
-    const blocked = asArray(await this.listBlockedTasks(), ['blocked_tasks', 'tasks']);
+    const reconciliationTasks = asArray(await this.listBlockedTasks(), ['blocked_tasks', 'tasks']);
     const repairs = [];
-    for (const task of blocked) {
+    for (const task of reconciliationTasks) {
       const id = taskId(task);
       if (!id || typeof this.reconcileTask !== 'function') continue;
       try {
@@ -195,6 +196,8 @@ export class TaskController {
         this.#emit({ kind: 'controller_task_reconcile_failed', task_id: id, reason, error: this.#error(error), timestamp: this.now() });
       }
     }
+    const blocked = asArray(await this.listBlockedTasks(), ['blocked_tasks', 'tasks'])
+      .filter((task) => task?.state === undefined || task.state === 'BLOCKED');
     const claimable = asArray(await this.listClaimableTasks(), ['claimable_tasks', 'ready_tasks', 'tasks']).slice(0, this.shortlistLimit);
     const daemons = asArray(await this.listDaemons(), ['daemons', 'cores']);
     const idle = [];
