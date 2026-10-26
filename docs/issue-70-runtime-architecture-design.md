@@ -412,4 +412,3 @@ The implementation must preserve the exact commit and clean-worktree
 evidence used by the two-hour experiment. The issue is ready for an
 implementation PR only after deterministic tests pass and the sanitized
 real-Agent acceptance run is attached to the PR.
-
