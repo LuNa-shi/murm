@@ -26,12 +26,18 @@ Pi, Lean, and Lake were available; no secret values were recorded. The
 two-hour Agent run was therefore not launched, and there is no runtime result
 to interpret as acceptance evidence.
 
+Deterministic validation for implementation commit
+`4c5bf1f35cd119f83914dffc30e454ea6ab3a39b` completed with `npm test` at
+194/194 passing and `git diff --check` clean. These checks validate the local
+Task Controller, Core Daemon, Runtime, lifecycle, selection, and migration
+paths; they do not substitute for the required real-Agent run.
+
 After the route is configured, the exact rerun command is:
 
 ```sh
 NUROUTER_PI_PROVIDER=openai \
 NUROUTER_PI_MODEL=gpt-6.1-sol \
-SWARMENV_IMPLEMENTATION_COMMIT=6fcf8f2415d03da172d3f258c00f79cf4ebeb6ce \
+SWARMENV_IMPLEMENTATION_COMMIT=4c5bf1f35cd119f83914dffc30e454ea6ab3a39b \
 SWARMENV_WORKTREE_DIRTY=false \
 SWARMENV_WORKTREE_STATUS=clean \
 SWARMENV_TIMEBOX_MS=7200000 \
@@ -44,7 +50,7 @@ node scripts/run-putnambench-benchmark.mjs \
 ```
 
 The command is pinned to the current implementation commit
-`6fcf8f2415d03da172d3f258c00f79cf4ebeb6ce`; a later documentation-only commit
+`4c5bf1f35cd119f83914dffc30e454ea6ab3a39b`; a later documentation-only commit
 must not change that value. A successful acceptance report must repeat the
 same implementation commit; the current result remains environment-blocked
 until the route variables are available and the probe is rerun.
