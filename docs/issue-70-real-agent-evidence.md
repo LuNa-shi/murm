@@ -31,7 +31,7 @@ After the route is configured, the exact rerun command is:
 ```sh
 NUROUTER_PI_PROVIDER=openai \
 NUROUTER_PI_MODEL=gpt-6.1-sol \
-SWARMENV_IMPLEMENTATION_COMMIT=6ab27c709cd1129e00e3474ff9c8bb4545d25b1d \
+SWARMENV_IMPLEMENTATION_COMMIT=466c50a4d3b9795e7bdd55c19f78be07c4a8ec61 \
 SWARMENV_WORKTREE_DIRTY=false \
 SWARMENV_WORKTREE_STATUS=clean \
 SWARMENV_TIMEBOX_MS=7200000 \
@@ -43,8 +43,8 @@ node scripts/run-putnambench-benchmark.mjs \
   --parallel-mode semantic
 ```
 
-For the current clean implementation commit, replace the value of
-`SWARMENV_IMPLEMENTATION_COMMIT` with the exact `git rev-parse HEAD` recorded
-for that checkout. A successful acceptance report must repeat that same
-commit; the current result remains environment-blocked until the route
-variables are available and the probe is rerun.
+The command is pinned to the current implementation commit
+`466c50a4d3b9795e7bdd55c19f78be07c4a8ec61`; a later documentation-only commit
+must not change that value. A successful acceptance report must repeat the
+same implementation commit; the current result remains environment-blocked
+until the route variables are available and the probe is rerun.
