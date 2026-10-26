@@ -51,6 +51,20 @@ test('Context Service keeps shared Materials immutable after later publication',
   context.close();
 });
 
+test('Context Service wakes Task reconciliation after a committed Material dependency fact', () => {
+  const events = [];
+  const taskService = { notifyDependencyEvent: (event) => events.push(event) };
+  const context = new ContextService(new DatabaseSync(':memory:'), { taskService });
+  const sdk = new ServicesSDK(context, { actorRef: 'agent:one' });
+  const input = { kind: 'fact', scope: 'proof_relevant', content: { observation: 'ready' } };
+  sdk.publishMaterial(input, { operationId: 'material-event-1' });
+  sdk.publishMaterial(input, { operationId: 'material-event-1' });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'material_published');
+  assert.equal(events[0].operation, 'publish_material');
+  context.close();
+});
+
 test('secret-bearing data is rejected and Context Service has no Task or Workspace authority', () => {
   const { context, sdk } = fixture();
   assert.throws(

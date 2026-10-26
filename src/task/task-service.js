@@ -244,6 +244,19 @@ export class TaskService {
     return () => this.taskEventListeners.delete(listener);
   }
 
+  /** Wake reconciliation when a dependency-owned service commits a fact. */
+  notifyDependencyEvent(event = {}) {
+    this.#emitTaskEvent({
+      kind: event.kind ?? 'dependency_changed',
+      operation: event.operation ?? 'dependency_event',
+      task_id: event.task_id ?? null,
+      execution_id: event.execution_id ?? null,
+      state: event.state ?? null,
+      changed: true,
+      timestamp: now(),
+    });
+  }
+
   #emitTaskEvent(event) {
     for (const listener of this.taskEventListeners) {
       try { listener(event); } catch { /* reconciliation remains authoritative */ }

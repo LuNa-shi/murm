@@ -68,16 +68,28 @@ export class ContextService {
     try {
       const executionWrite = operation === 'publish_material' && envelope?.execution_id !== null;
       validateEnvelope(envelope, { executionWrite });
+      let replayed = false;
       const result = operation === 'read_materials' ? this.#readMaterials(payload) : this.#transaction(() => {
         const fingerprint = operationPayload(operation, payload, envelope);
         const replay = this.#replay(envelope.operation_id, fingerprint);
-        if (replay) return replay;
+        if (replay) {
+          replayed = true;
+          return replay;
+        }
         let value;
         if (operation === 'publish_material') value = this.#publishMaterial(payload, envelope);
         else throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Context Service operation: ${operation}`);
         this.#saveOperation(envelope.operation_id, operation, fingerprint, value);
         return value;
       });
+      if (operation === 'publish_material' && !replayed) {
+        this.taskService?.notifyDependencyEvent?.({
+          kind: 'material_published',
+          operation: 'publish_material',
+          task_id: result?.material?.source_task ?? null,
+          execution_id: result?.material?.source_execution ?? null,
+        });
+      }
       this.logger?.append({ event: 'dispatch.complete', service: 'context', operation, ok: true, result });
       return result;
     } catch (error) {
