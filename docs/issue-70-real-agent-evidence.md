@@ -49,10 +49,13 @@ tool versions, and:
 A separate sanitized protocol diagnostic in the same ignored analysis
 directory shows that `get_state`, auto-compaction, and auto-retry succeeded,
 while the first `prompt` RPC was rejected with an `auth_or_credential`
-classification. No response text, credentials, transcript, or proof content
-was retained. This identifies the remaining blocker as the active provider
-authentication/credential route after local readiness, rather than a missing
-binary or a Task Controller lifecycle result.
+classification. The read-only command
+`pi auth check --provider openai --model gpt-6.1-sol --json --no-refresh`
+returned `not_ready` with `credentials_not_configured`. No response text,
+credentials, transcript, or proof content was retained. This identifies the
+remaining blocker as the active provider authentication/credential route after
+local readiness, rather than a missing binary or a Task Controller lifecycle
+result.
 
 After the provider route is authenticated, the exact acceptance command is:
 
