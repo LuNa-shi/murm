@@ -114,10 +114,10 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
     await waitFor(() => harness.elements.get('#main-view')?.innerHTML.includes('Core activity'));
     assert.match(harness.elements.get('#timeline').innerHTML, /exec-root/);
     assert.match(harness.elements.get('#timeline').innerHTML, /waterfall-row state-row/);
-    assert.match(harness.elements.get('#timeline').innerHTML, /waterfall-span turn-span/);
     assert.match(harness.elements.get('#timeline').innerHTML, /waterfall-span tool-span/);
+    assert.doesNotMatch(harness.elements.get('#timeline').innerHTML, /agent-row|turn-span|Agent turn/);
+    assert.match(harness.elements.get('#timeline').innerHTML, /TOOLS \/ CHECKS/);
     assert.match(harness.elements.get('#timeline').innerHTML, /Task task-root/);
-    assert.match(harness.elements.get('#timeline').innerHTML, /Session session-1/);
     assert.match(harness.eventSource.url, /view=agent/);
     const timelineSegment = harness.elements.get('#timeline').querySelectorAll('.timeline-segment')[0];
     assert.ok(timelineSegment, 'timeline segment should be queryable');
@@ -136,6 +136,7 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
     await waitFor(() => harness.fetchCalls.some((path) => path.includes('/execution-detail?execution_id=exec-root')));
     await waitFor(() => harness.fetchCalls.some((path) => path.includes('/execution-insight?execution_id=exec-root')));
     assert.match(harness.elements.get('#main-view').innerHTML, /STARTING CONTEXT/);
+    assert.match(harness.elements.get('#main-view').innerHTML, /OBSERVED TOOL USE/);
     assert.match(harness.elements.get('#main-view').innerHTML, /Click a row to expand/);
     assert.match(await navigate('task/task-root'), /TASK FLOW/);
     assert.match(await navigate('task/task-wait'), /parent_review/);
