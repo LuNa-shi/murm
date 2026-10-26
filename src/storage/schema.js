@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   retry_policy_json TEXT NOT NULL,
   root_deadline TEXT,
   cancelled_at TEXT,
+  claimable_at TEXT,
+  responsibility_key TEXT,
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -43,6 +45,10 @@ CREATE TABLE IF NOT EXISTS executions (
   state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED')),
   state_version INTEGER NOT NULL DEFAULT 0,
   attempt_no INTEGER NOT NULL,
+  -- A Core binding is immutable for the lifetime of an Execution.  Legacy
+  -- records may be unbound and are migrated with NULL for read compatibility.
+  core_id TEXT,
+  session_generation INTEGER NOT NULL DEFAULT 1,
   fencing_version INTEGER NOT NULL,
   runtime_generation INTEGER NOT NULL,
   lease_expires_at TEXT NOT NULL,
@@ -196,6 +202,35 @@ CREATE TABLE IF NOT EXISTS claim_keys (
   execution_id TEXT NOT NULL REFERENCES executions(execution_id),
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS task_admission_policies (
+  root_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+  max_unfinished_tasks INTEGER NOT NULL,
+  max_open_tasks INTEGER NOT NULL,
+  max_children_per_execution INTEGER NOT NULL,
+  max_turn_mutations INTEGER NOT NULL,
+  aging_threshold_ms INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS execution_admission_counters (
+  execution_id TEXT PRIMARY KEY REFERENCES executions(execution_id),
+  child_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS turn_admission_counters (
+  execution_id TEXT NOT NULL REFERENCES executions(execution_id),
+  turn_id TEXT NOT NULL,
+  mutation_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (execution_id, turn_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS tasks_active_responsibility
+  ON tasks(root_id, responsibility_key)
+  WHERE responsibility_key IS NOT NULL AND state NOT IN ('CANCELLED', 'CANCELED', 'REJECTED', 'CLOSED');
 
 CREATE TABLE IF NOT EXISTS wait_keys (
   request_key TEXT PRIMARY KEY,
