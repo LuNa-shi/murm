@@ -76,7 +76,11 @@ export class Runtime {
     this.handoffPromises = new Map();
     this.reminderPromises = new Map();
     this.pendingFailurePromises = new Set();
+    this.pendingReleasePromises = new Set();
     this.stopping = false;
+    this.executionStateUnsubscribe = typeof this.taskService?.subscribeExecutionState === 'function'
+      ? this.taskService.subscribeExecutionState((event) => this.#onExecutionState(event))
+      : null;
   }
 
   getActiveProcessCount() {
@@ -133,6 +137,9 @@ export class Runtime {
     while (this.pendingFailurePromises.size > 0) {
       await Promise.allSettled([...this.pendingFailurePromises]);
     }
+    while (this.pendingReleasePromises.size > 0) {
+      await Promise.allSettled([...this.pendingReleasePromises]);
+    }
   }
 
   /** Wait until Runtime no longer owns an Execution process. */
@@ -159,6 +166,8 @@ export class Runtime {
    */
   async shutdown({ terminalState = 'FAILED' } = {}) {
     this.stopping = true;
+    this.executionStateUnsubscribe?.();
+    this.executionStateUnsubscribe = null;
     const executionIds = [...this.activeProcesses.keys()];
     for (const executionId of executionIds) {
       const execution = this.taskService.getExecution(executionId);
@@ -1074,6 +1083,39 @@ export class Runtime {
         error_class: error?.code ?? error?.name ?? 'session_observer_error',
       });
     }
+  }
+
+  #onExecutionState(event) {
+    if (event?.kind !== 'executions_fenced' || !Array.isArray(event.execution_ids)) return;
+    for (const executionId of event.execution_ids) {
+      if (!executionId || executionId === event.excluded_execution_id || !this.activeProcesses.has(executionId)) continue;
+      const promise = this.#releaseFencedProcess(executionId).finally(() => this.pendingReleasePromises.delete(promise));
+      this.pendingReleasePromises.add(promise);
+    }
+  }
+
+  async #releaseFencedProcess(executionId) {
+    const active = this.activeProcesses.get(executionId);
+    if (!active) return;
+    this.activeProcesses.delete(executionId);
+    this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+    const execution = this.taskService.getExecution(executionId);
+    await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+    if (execution?.workspace_ref) {
+      const oldFence = Math.max(0, execution.fencing_version - 1);
+      await this.workspaceManager.fenceWorkspace({
+        workspaceRef: execution.workspace_ref,
+        executionId,
+        fencingVersion: oldFence,
+        newFencingVersion: execution.fencing_version,
+      }).catch(() => undefined);
+      await this.workspaceManager.releaseWorkspace({
+        workspaceRef: execution.workspace_ref,
+        executionId,
+        fencingVersion: execution.fencing_version,
+      }).catch(() => undefined);
+    }
+    this.logger?.append({ event: 'runtime.execution_fenced_released', execution_id: executionId });
   }
 
   async #handleSessionEvent(executionId, record) {

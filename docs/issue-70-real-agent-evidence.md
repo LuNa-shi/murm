@@ -1,8 +1,11 @@
 # Issue #70 real-Agent acceptance evidence
 
-The deterministic implementation is pinned to commit
-`6ab27c709cd1129e00e3474ff9c8bb4545d25b1d`. At the time of the probe,
-`git status --porcelain` was empty.
+The readiness probe below was run against implementation commit
+`6ab27c709cd1129e00e3474ff9c8bb4545d25b1d`. At the time of that probe,
+`git status --porcelain` was empty. The current branch contains additional
+lifecycle and Controller changes after that probe; those changes have not had
+the two-hour run, so this document does not present the old probe as current
+acceptance evidence.
 
 The locked benchmark fixture is `putnam-1966-a1`, using PutnamBench commit
 `a635813f5edf297d928f9bd5ef8324a26bdde09c` and Lean project root
@@ -39,3 +42,9 @@ node scripts/run-putnambench-benchmark.mjs \
   --timebox-ms 7200000 \
   --parallel-mode semantic
 ```
+
+For the current clean implementation commit, replace the value of
+`SWARMENV_IMPLEMENTATION_COMMIT` with the exact `git rev-parse HEAD` recorded
+for that checkout. A successful acceptance report must repeat that same
+commit; the current result remains environment-blocked until the route
+variables are available and the probe is rerun.

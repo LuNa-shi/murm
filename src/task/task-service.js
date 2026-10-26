@@ -175,11 +175,25 @@ export class TaskService {
     this.checkerHealthReader = null;
     this.setCheckerHealthReader(checkerHealthReader);
     this.logger = logger;
+    this.executionStateListeners = new Set();
     this.admission = this.#normalizeAdmissionPolicy(admission);
   }
 
   close() {
     this.db.close();
+  }
+
+  /** Subscribe Runtime instances to durable fencing/release facts. */
+  subscribeExecutionState(listener) {
+    if (typeof listener !== 'function') throw new TypeError('execution state listener must be a function');
+    this.executionStateListeners.add(listener);
+    return () => this.executionStateListeners.delete(listener);
+  }
+
+  #emitExecutionState(event) {
+    for (const listener of this.executionStateListeners) {
+      try { listener(event); } catch { /* Runtime cleanup must not break the durable transition. */ }
+    }
   }
 
   setCheckerHealthReader(reader) {
@@ -1581,12 +1595,21 @@ export class TaskService {
     // A dependency block releases the whole Task responsibility.  Parallel
     // attempts are durable owners too; leaving one CREATED/RUNNING row behind
     // would make BLOCKED both claimable-in-the-future and currently occupied.
+    const otherExecutionIds = this.db.prepare("SELECT execution_id FROM executions WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING')")
+      .all(execution.task_id, execution.execution_id).map((row) => row.execution_id);
     const fencedOthers = this.db.prepare(`UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1,
       terminal_reason = ?, state_version = state_version + 1, updated_at = ?
       WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING')`)
       .run(`dependency_blocked:${reason}`, updatedAt, execution.task_id, execution.execution_id).changes;
     this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
       .run(reason, updatedAt, execution.task_id);
+    this.#emitExecutionState({
+      kind: 'executions_fenced',
+      task_id: execution.task_id,
+      execution_ids: otherExecutionIds,
+      excluded_execution_id: execution.execution_id,
+      reason,
+    });
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id), blocked: true, fenced_execution_count: fencedOthers };
   }
 
