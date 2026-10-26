@@ -459,10 +459,24 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     const execution = this.#getExecution(executionId);
     if (!active || execution.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime process can request wait');
-    const validatedWait = this.taskService.validateWaitCondition?.(executionId, {
-      waitCondition,
-      waitDeadline: deadline ?? waitCondition?.deadline ?? null,
-    });
+    let validatedWait;
+    try {
+      validatedWait = this.taskService.validateWaitCondition?.(executionId, {
+        waitCondition,
+        waitDeadline: deadline ?? waitCondition?.deadline ?? null,
+      });
+    } catch (error) {
+      // A dependency can become satisfied between the Agent's read and its
+      // request_wait call. Keep the active Execution alive and let the
+      // Session continue on its next turn; a stale wait request must not turn
+      // into a failed claim or strand Core capacity.
+      if (error?.code === ERROR_CODES.INVALID_CONTRACT && /condition is already satisfied/.test(error.message ?? '') &&
+        this.taskService.isWaitConditionSatisfied?.(executionId, waitCondition)) {
+        this.logger?.append({ event: 'runtime.wait_already_satisfied', execution_id: executionId, wait_condition: waitCondition });
+        return { execution, task: this.taskService.getTask(execution.task_id), disposition: 'already_satisfied' };
+      }
+      throw error;
+    }
     if (!validatedWait && (!waitCondition || typeof waitCondition !== 'object')) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
     }

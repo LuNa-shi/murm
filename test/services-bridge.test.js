@@ -89,6 +89,51 @@ test('ServicesBridge returns structured tool errors and exposes them to audit ho
   }
 });
 
+test('ServicesBridge exposes only the bounded selection shortlist and never claims from select_task', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const selected = [];
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router: new ServicesRouter({ taskService, contextService }),
+    onSelectTask: async (candidate) => selected.push(candidate),
+  });
+  try {
+    bridge.setSelectionCandidates([{
+      task_id: 'task-shortlist',
+      goal: 'bounded selection',
+      expected_output: 'one task',
+      workspace: { secret: 'must not cross selection boundary' },
+      completion_contract: { normal_flow: true },
+      selection_rank: 1,
+    }]);
+    const listed = await bridge.call({ operation: 'list_tasks', payload: { limit: 100 } });
+    assert.deepEqual(listed.map((task) => task.task_id), ['task-shortlist']);
+    assert.equal(listed[0].workspace, undefined);
+    const result = await bridge.call({ operation: 'select_task', payload: { task_id: 'task-shortlist' } });
+    assert.deepEqual(result, { selected_task_id: 'task-shortlist' });
+    assert.equal(selected.length, 1);
+    assert.equal(selected[0].task_id, 'task-shortlist');
+    await assert.rejects(
+      () => bridge.call({ operation: 'select_task', payload: { task_id: 'task-outside-shortlist' } }),
+      (error) => error.code === 'INVALID_CONTRACT',
+    );
+    const bound = new ServicesBridge({ taskService, contextService, runtime: {}, taskId: 'task-shortlist', executionId: 'execution-bound' });
+    await assert.rejects(
+      () => bound.call({ operation: 'select_task', payload: { task_id: 'task-shortlist' } }),
+      (error) => error.code === 'NOT_ALLOWED',
+    );
+    await bound.stop();
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
 test('ServicesBridge exposes controlled Workspace file operations with snake_case payloads', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);

@@ -1,9 +1,7 @@
-export const SCHEMA_SQL = `
-PRAGMA foreign_keys = ON;
-PRAGMA busy_timeout = 5000;
-PRAGMA journal_mode = WAL;
-
-CREATE TABLE IF NOT EXISTS tasks (
+// Kept as a reusable definition so a persistent MVP database can be rebuilt
+// when the simplified Task lifecycle adds DONE/CLOSED/CANCELED to its state
+// CHECK constraint. SQLite cannot alter a CHECK constraint in place.
+export const TASKS_TABLE_DEFINITION = `(
   task_id TEXT PRIMARY KEY,
   root_id TEXT NOT NULL,
   parent_id TEXT REFERENCES tasks(task_id),
@@ -22,7 +20,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   completion_contract_json TEXT NOT NULL,
   parallel_quota INTEGER NOT NULL DEFAULT 1 CHECK (parallel_quota >= 1),
   state_version INTEGER NOT NULL DEFAULT 0,
-  state TEXT NOT NULL CHECK (state IN ('OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED')),
+  state TEXT NOT NULL CHECK (state IN ('OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED')),
   block_reason TEXT,
   max_depth INTEGER NOT NULL,
   max_children INTEGER NOT NULL,
@@ -36,7 +34,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   CHECK ((state = 'BLOCKED' AND block_reason IS NOT NULL) OR (state <> 'BLOCKED' AND block_reason IS NULL))
-);
+)`;
+
+export const SCHEMA_SQL = `
+PRAGMA foreign_keys = ON;
+PRAGMA busy_timeout = 5000;
+PRAGMA journal_mode = WAL;
+
+CREATE TABLE IF NOT EXISTS tasks ${TASKS_TABLE_DEFINITION};
 
 CREATE TABLE IF NOT EXISTS executions (
   execution_id TEXT PRIMARY KEY,

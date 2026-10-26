@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { storedCheckerProcessStatus, storedResultClass } from '../judge/check-result.js';
 import { makeEnvelope, operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
-import { SCHEMA_SQL } from '../storage/schema.js';
+import { SCHEMA_SQL, TASKS_TABLE_DEFINITION } from '../storage/schema.js';
 import { ensureJudgeSchema } from '../storage/judge-schema.js';
 import {
   TERMINAL_EXECUTION_STATES,
@@ -23,6 +23,14 @@ const TASK_READ_OPERATIONS = new Set([
   'list_children', 'list_tasks', 'list_claimable_tasks', 'list_executions',
 ]);
 
+const TASK_TABLE_COLUMNS = Object.freeze([
+  'task_id', 'root_id', 'parent_id', 'owner_ref', 'task_type', 'task_type_version', 'goal', 'expected_output',
+  'priority', 'task_instructions', 'workspace_json', 'acceptance_conditions_json', 'input_material_refs_json',
+  'spec_version', 'spec_hash', 'completion_contract_json', 'parallel_quota', 'state_version', 'state', 'block_reason',
+  'max_depth', 'max_children', 'max_attempts', 'retry_policy_json', 'root_deadline', 'cancelled_at', 'claimable_at',
+  'responsibility_key', 'created_by', 'created_at', 'updated_at',
+]);
+
 function json(value) {
   return JSON.stringify(value ?? null);
 }
@@ -33,6 +41,18 @@ function parse(value) {
 
 function now() {
   return new Date().toISOString();
+}
+
+function isCompletedTaskState(state) {
+  return state === 'DONE' || state === 'SATISFIED';
+}
+
+function taskCompletionState(task) {
+  return task?.completion_contract?.normal_flow === true ? 'DONE' : 'SATISFIED';
+}
+
+function taskCancellationState(task) {
+  return task?.completion_contract?.normal_flow === true ? 'CANCELED' : 'CANCELLED';
 }
 
 function hash(value) {
@@ -103,6 +123,8 @@ export class TaskService {
   constructor(database = ':memory:', { contextService = null, checkerHealthReader = null, logger = null, admission = {} } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(SCHEMA_SQL);
+    const taskTableSql = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get()?.sql ?? '';
+    const needsTaskStateMigration = !taskTableSql.includes("'DONE'") || !taskTableSql.includes("'CLOSED'") || !taskTableSql.includes("'CANCELED'");
     // Older MVP databases made execution_id unique in claim_keys. A waiting
     // Execution can now be claimed again by a later Agent, so idempotency is
     // keyed by claim request rather than by the reusable Execution identity.
@@ -138,6 +160,7 @@ export class TaskService {
       this.db.exec('UPDATE tasks SET claimable_at = created_at WHERE claimable_at IS NULL AND state = \'OPEN\'');
     }
     if (!taskColumns.has('responsibility_key')) this.db.exec('ALTER TABLE tasks ADD COLUMN responsibility_key TEXT');
+    if (needsTaskStateMigration) this.#migrateTaskStateConstraint();
     // Create this partial index only after migrations have added the column;
     // older databases must be able to run SCHEMA_SQL before the new field
     // exists.
@@ -181,6 +204,22 @@ export class TaskService {
 
   close() {
     this.db.close();
+  }
+
+  #migrateTaskStateConstraint() {
+    const columns = TASK_TABLE_COLUMNS.join(', ');
+    this.db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      this.db.exec(`
+        DROP TABLE IF EXISTS tasks_migrated;
+        CREATE TABLE tasks_migrated ${TASKS_TABLE_DEFINITION};
+        INSERT INTO tasks_migrated (${columns}) SELECT ${columns} FROM tasks;
+        DROP TABLE tasks;
+        ALTER TABLE tasks_migrated RENAME TO tasks;
+      `);
+    } finally {
+      this.db.exec('PRAGMA foreign_keys = ON');
+    }
   }
 
   /** Subscribe Runtime instances to durable fencing/release facts. */
@@ -370,7 +409,23 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'aging_threshold_ms must be non-negative');
     }
     if (!Number.isFinite(nowMs)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'now_ms must be finite');
-    const tasks = this.listTasks({ rootId, states: ['OPEN'], limit: 100, availableOnly: true, scanAll: true });
+    // A resumable WAITING execution is claimable again once its typed
+    // dependency is satisfied. A parent review also turns the existing
+    // Execution back into CREATED; that rework responsibility is represented
+    // by a RUNNING Task, so admission must include that one bounded case.
+    // Unresolved waits and ordinary active executions remain filtered here.
+    const tasks = this.listTasks({ rootId, states: ['OPEN', 'RUNNING', 'WAITING'], limit: 100, availableOnly: false, scanAll: true })
+      .filter((task) => {
+        if (this.#dependencyBlockers(task.task_id).length > 0) return false;
+        const executions = this.listExecutions(task.task_id, { includeTerminal: false });
+        const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
+        const waiting = executions.filter((execution) => execution.state === 'WAITING');
+        const rework = active.length === 1 && active[0].state === 'CREATED' && active[0].instruction_version > 1 && task.parallel_quota === 1;
+        if (rework) return true;
+        if (active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
+        if (waiting.length === 0) return active.length < task.parallel_quota;
+        return waiting.some((execution) => this.#isWaitingResumable(execution, nowMs)) || active.length + waiting.length < task.parallel_quota;
+      });
     return tasks
       .map((task) => {
         const configuredThreshold = agingThresholdMs ?? this.#admissionPolicy(task.root_id).aging_threshold_ms;
@@ -920,6 +975,9 @@ export class TaskService {
       ...payload,
       owner_ref: payload.owner_ref ?? envelope.actor_ref,
       workspace: payload.workspace ?? parent.workspace,
+      ...(parent.completion_contract?.normal_flow === true && payload.normal_flow === undefined
+        ? { normal_flow: true }
+        : {}),
     }, { parentId });
     const childCount = this.db.prepare('SELECT COUNT(*) AS count FROM tasks WHERE parent_id = ?').get(parentId).count;
     if (childCount >= parent.max_children) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent max_children exceeded');
@@ -998,7 +1056,7 @@ export class TaskService {
       state_version: row.state_version,
       spec_version: row.spec_version,
       membership: { added_in_version: row.added_in_version, added_at: row.added_at },
-      satisfied: row.state === 'SATISFIED',
+      satisfied: isCompletedTaskState(row.state),
       readiness: this.#taskReadiness(row.task_id),
     }));
     const satisfied = group.group_kind === 'BRANCH'
@@ -1013,7 +1071,7 @@ export class TaskService {
   }
 
   #dependencySatisfied(dependency) {
-    if (dependency.dependency_kind === 'TASK') return this.getTask(dependency.prerequisite_task_id)?.state === 'SATISFIED';
+    if (dependency.dependency_kind === 'TASK') return isCompletedTaskState(this.getTask(dependency.prerequisite_task_id)?.state);
     if (dependency.dependency_kind === 'MATERIAL') return Boolean(this.contextService?.getMaterial(dependency.material_id));
     if (dependency.dependency_kind === 'CHECK_RESULT') {
       const result = this.getCheckResult(dependency.check_result_id);
@@ -1131,6 +1189,7 @@ export class TaskService {
     const waiting = active.filter((execution) => execution.state === 'WAITING');
     const resumableWaiting = waiting.some((execution) => this.#isWaitingResumable(execution));
     if (task.state === 'SATISFIED') return { task_id: taskId, readiness: 'SATISFIED', status: 'SATISFIED', ready: true, reasons: ['task_contract_satisfied'], missing: [], structure };
+    if (task.state === 'DONE') return { task_id: taskId, readiness: 'DONE', status: 'DONE', ready: true, reasons: ['task_contract_satisfied'], missing: [], structure };
     if (task.state === 'BLOCKED') missing.push(task.block_reason ?? 'task_blocked');
     if (blockers.length > 0) missing.push(...blockers.map((dependency) => `dependency:${dependency.dependency_id}`));
     const executionQuotaBlocked = activeCount >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, Date.now());
@@ -1944,6 +2003,9 @@ export class TaskService {
     const allowed = new Set(['child_task_terminal', 'children_all_terminal', 'parent_review', 'check_result_arrived', 'checker_health', 'timer']);
     if (!allowed.has(waitCondition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
     if (waitCondition.type === 'parent_review' && !task.parent_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent_review requires a child Task');
+    if (waitCondition.type === 'parent_review' && task.completion_contract?.normal_flow === true) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'normal_flow Tasks do not enter parent_review');
+    }
     if (waitCondition.type === 'child_task_terminal') {
       const childTaskId = requireString(waitCondition.child_task_id ?? waitCondition.task_id, 'wait_condition.child_task_id');
       const child = this.getTask(childTaskId);
@@ -2121,7 +2183,7 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'target Task state_version is stale', { expected_state_version: target.state_version });
     }
     if (TERMINAL_TASK_STATES.includes(target.state)) {
-      if (target.state === 'SATISFIED') return { task: target, execution: this.#latestExecution(target.task_id), authority_execution: authorityExecution };
+      if (isCompletedTaskState(target.state)) return { task: target, execution: this.#latestExecution(target.task_id), authority_execution: authorityExecution };
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be accepted');
     }
     const execution = this.#latestExecution(target.task_id, true);
@@ -2134,8 +2196,8 @@ export class TaskService {
     const updatedAt = now();
     this.db.prepare("UPDATE executions SET state = 'SUCCEEDED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
       .run(updatedAt, execution.execution_id);
-    this.db.prepare("UPDATE tasks SET state = 'SATISFIED', state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?")
-      .run(updatedAt, target.task_id);
+    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
+      .run(taskCompletionState(target), updatedAt, target.task_id);
     return { task: this.getTask(target.task_id), execution: this.getExecution(execution.execution_id), authority_execution: authorityExecution };
   }
 
@@ -2254,8 +2316,8 @@ export class TaskService {
       if (completion.satisfied) {
         this.db.prepare("UPDATE executions SET state = 'SUCCEEDED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
           .run(updatedAt, execution.execution_id);
-        this.db.prepare("UPDATE tasks SET state = 'SATISFIED', state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?")
-          .run(updatedAt, task.task_id);
+        this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
+          .run(taskCompletionState(task), updatedAt, task.task_id);
       }
     } else if (execution.state === 'WAITING') {
       // A failed check wakes the responsibility for another Agent. Keep the
@@ -2317,13 +2379,13 @@ export class TaskService {
     if (!task || TERMINAL_TASK_STATES.includes(task.state)) return task;
     const active = this.db.prepare("SELECT state FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'WAITING')").all(taskId);
     const nextState = active.length === 0
-      ? (cancelIfIdle ? 'CANCELLED' : 'OPEN')
+      ? (cancelIfIdle ? taskCancellationState(task) : 'OPEN')
       : (active.some((execution) => execution.state === 'RUNNING')
         ? 'RUNNING'
         : (active.some((execution) => execution.state === 'WAITING') ? 'WAITING' : 'OPEN'));
     if (task.state === nextState) return task;
-    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, claimable_at = CASE WHEN ? = \'OPEN\' THEN COALESCE(claimable_at, ?) ELSE NULL END, cancelled_at = CASE WHEN ? = \'CANCELLED\' THEN ? ELSE cancelled_at END, updated_at = ? WHERE task_id = ?')
-      .run(nextState, nextState, updatedAt, nextState, nextState === 'CANCELLED' ? updatedAt : null, updatedAt, taskId);
+    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, claimable_at = CASE WHEN ? = \'OPEN\' THEN COALESCE(claimable_at, ?) ELSE NULL END, cancelled_at = CASE WHEN ? IN (\'CANCELLED\', \'CANCELED\') THEN ? ELSE cancelled_at END, updated_at = ? WHERE task_id = ?')
+      .run(nextState, nextState, updatedAt, nextState, ['CANCELLED', 'CANCELED'].includes(nextState) ? updatedAt : null, updatedAt, taskId);
     return this.getTask(taskId);
   }
 
@@ -2464,7 +2526,7 @@ export class TaskService {
     const missing = [];
     if (contract.required_children) {
       for (const childId of contract.required_children) {
-        if (this.getTask(childId)?.state !== 'SATISFIED') missing.push(`child:${childId}`);
+        if (!isCompletedTaskState(this.getTask(childId)?.state)) missing.push(`child:${childId}`);
       }
     }
     if (contract.required_branch_groups) {

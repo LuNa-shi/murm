@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, makeEnvelope, ServicesSDK, SwarmEnvError, TaskService } from '../src/index.js';
+import { SCHEMA_SQL } from '../src/storage/schema.js';
 
 function rootInput(overrides = {}) {
   return {
@@ -68,6 +69,48 @@ test('blocking ends the Execution and Controller reopening is idempotent', () =>
   assert.equal(reopened.task.state, 'OPEN');
   const replay = taskService.reopenTask(task.task_id);
   assert.equal(replay.changed, false);
+  taskService.close();
+});
+
+test('normal-flow blocking ends the Execution and leaves the Task reusable', () => {
+  const { taskService, sdk } = service();
+  const task = sdk.proposeTask(rootInput({ normal_flow: true }), { operationId: 'normal-block-root' }).task;
+  const claim = taskService.claimTask(task.task_id, {
+    claim_key: 'normal-block-claim', owner_ref: 'daemon:one', core_id: 'core-normal-block',
+  });
+  const blocked = taskService.blockTask({ block_reason: 'external dependency' }, makeEnvelope({
+    operationId: 'normal-block-op', actorRef: 'daemon:one', taskId: task.task_id, executionId: claim.execution.execution_id,
+    specVersion: task.spec_version, stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
+  }));
+  assert.equal(blocked.task.state, 'BLOCKED');
+  assert.equal(blocked.execution.state, 'FENCED');
+  assert.equal(taskService.getActiveExecutionForCore('core-normal-block'), null);
+  const reopened = taskService.reopenTask(task.task_id);
+  assert.equal(reopened.task.state, 'OPEN');
+  assert.equal(taskService.reopenTask(task.task_id).changed, false);
+  taskService.close();
+});
+
+test('persistent MVP databases migrate the Task lifecycle CHECK before DONE writes', () => {
+  const database = new DatabaseSync(':memory:');
+  database.exec(SCHEMA_SQL.replace("'DONE', 'CLOSED', 'CANCELED', ", ''));
+  const taskService = new TaskService(database);
+  const sdk = new ServicesSDK(taskService, { actorRef: 'owner:root' });
+  const task = sdk.proposeTask({
+    task_type: 'default', goal: 'migrate lifecycle state', expected_output: 'DONE', acceptance_conditions: {},
+    owner_ref: 'owner:root', normal_flow: true,
+  }, { operationId: 'migrate-lifecycle-propose' }).task;
+  const claim = taskService.claimTask(task.task_id, { claim_key: 'migrate-lifecycle-claim', owner_ref: 'owner:root' });
+  const completed = sdk.withContext({
+    taskId: task.task_id,
+    executionId: claim.execution.execution_id,
+    specVersion: claim.execution.spec_version,
+    stateVersion: claim.execution.state_version,
+    taskStateVersion: taskService.getTask(task.task_id).state_version,
+    fencingVersion: claim.execution.fencing_version,
+  }).acceptTask({ target_task_id: task.task_id, target_state_version: taskService.getTask(task.task_id).state_version }, { operationId: 'migrate-lifecycle-accept' });
+  assert.equal(completed.task.state, 'DONE');
+  assert.deepEqual(taskService.db.prepare('PRAGMA foreign_key_check').all(), []);
   taskService.close();
 });
 

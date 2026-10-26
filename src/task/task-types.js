@@ -2,14 +2,17 @@ import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 export const REGISTERED_TASK_TYPES = Object.freeze(['default', 'research', 'proof', 'implementation']);
 export const TASK_TYPE_VERSION = '1.0';
-export const TASK_STATES = Object.freeze(['OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
+// DONE/CLOSED/CANCELED are the simplified lifecycle states. The older
+// SATISFIED/CANCELLED spellings and WAITING/FAILED/REJECTED remain readable
+// for migrated evidence and compatibility adapters.
+export const TASK_STATES = Object.freeze(['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
 export const EXECUTION_STATES = Object.freeze(['CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED']);
 export const ACTIVE_EXECUTION_STATES = Object.freeze(['CREATED', 'RUNNING', 'WAITING']);
-export const TERMINAL_TASK_STATES = Object.freeze(['SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
+export const TERMINAL_TASK_STATES = Object.freeze(['DONE', 'CLOSED', 'CANCELED', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
 export const TERMINAL_EXECUTION_STATES = Object.freeze(['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED']);
 
 const CONTRACT_KEYS = new Set([
-  'required_children', 'required_materials', 'required_candidate', 'required_check', 'parent_review',
+  'required_children', 'required_materials', 'required_candidate', 'required_check', 'parent_review', 'normal_flow',
   'required_branch_groups', 'required_subtask_groups',
 ]);
 const CHECK_KEYS = new Set(['checker_ref', 'checker_version', 'environment_ref', 'input_snapshot_hash']);
@@ -95,6 +98,15 @@ export function validateCompletionContract(contract, { taskType, parentId = null
     }
     normalized.parent_review = contract.parent_review;
   }
+  if (contract.normal_flow !== undefined) {
+    if (typeof contract.normal_flow !== 'boolean') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'normal_flow must be boolean');
+    }
+    normalized.normal_flow = contract.normal_flow;
+  }
+  if (normalized.normal_flow === true && normalized.parent_review === true) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'normal_flow Tasks cannot require parent_review');
+  }
   if (taskType === 'proof' && !normalized.required_check) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'proof tasks require required_check');
   }
@@ -104,38 +116,44 @@ export function validateCompletionContract(contract, { taskType, parentId = null
   return normalized;
 }
 
-export function defaultCompletionContract(taskType, { parentId = null, requiredCheck = undefined } = {}) {
+export function defaultCompletionContract(taskType, { parentId = null, requiredCheck = undefined, normalFlow = false } = {}) {
+  const parentReview = parentId && !normalFlow ? { parent_review: true } : {};
+  const normal = normalFlow ? { normal_flow: true } : {};
   switch (taskType) {
     case 'default':
-      return parentId ? { parent_review: true } : {};
+      return { ...normal, ...parentReview };
     case 'research':
       return {
+        ...normal,
         required_materials: [{ kinds: ['fact', 'experience', 'conjecture', 'artifact'], min_count: 1 }],
-        ...(parentId ? { parent_review: true } : {}),
+        ...parentReview,
       };
     case 'proof':
       return {
+        ...normal,
         required_candidate: { kind: 'artifact' },
         required_check: requiredCheck ?? { checker_ref: 'lean', checker_version: 'mvp-1' },
       };
     case 'implementation':
       return requiredCheck
-        ? { required_candidate: { kind: 'artifact' }, required_check: requiredCheck }
-        : (parentId ? { parent_review: true } : {});
+        ? { ...normal, required_candidate: { kind: 'artifact' }, required_check: requiredCheck }
+        : { ...normal, ...parentReview };
     default:
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task_type: ${taskType}`);
   }
 }
 
-export function prepareTaskContract({ taskType, taskTypeVersion = TASK_TYPE_VERSION, completionContract, parentId = null, requiredCheck } = {}) {
+export function prepareTaskContract({ taskType, taskTypeVersion = TASK_TYPE_VERSION, completionContract, parentId = null, requiredCheck, normalFlow = false } = {}) {
   if (!REGISTERED_TASK_TYPES.includes(taskType)) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `task_type must be one of ${REGISTERED_TASK_TYPES.join(', ')}`);
   }
   if (taskTypeVersion !== TASK_TYPE_VERSION) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported task_type_version: ${taskTypeVersion}`);
   }
-  const defaults = defaultCompletionContract(taskType, { parentId, requiredCheck });
-  const selected = completionContract === undefined ? defaults : completionContract;
+  const defaults = defaultCompletionContract(taskType, { parentId, requiredCheck, normalFlow });
+  const selected = completionContract === undefined
+    ? defaults
+    : (normalFlow && completionContract.normal_flow === undefined ? { ...completionContract, normal_flow: true } : completionContract);
   return validateCompletionContract(selected, { taskType, parentId });
 }
 
@@ -160,6 +178,7 @@ export function validateTaskProposal(input, { parentId = null } = {}) {
     completionContract: input.completion_contract,
     parentId,
     requiredCheck: input.required_check,
+    normalFlow: input.normal_flow === true || input.completion_contract?.normal_flow === true,
   });
   if (input.parallel_quota !== undefined && (!Number.isInteger(input.parallel_quota) || input.parallel_quota < 1 || input.parallel_quota > 64)) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parallel_quota must be an integer between 1 and 64');

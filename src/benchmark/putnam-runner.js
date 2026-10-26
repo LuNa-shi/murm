@@ -21,7 +21,7 @@ import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
 import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
-import { Scheduler } from '../runtime/scheduler.js';
+import { CoreDaemon, SELECTION_AGENT_PROMPT } from '../runtime/core-daemon.js';
 import { TaskController } from '../runtime/task-controller.js';
 import { CoreParallelismTracker } from './parallelism.js';
 
@@ -38,6 +38,10 @@ const PARALLEL_MODES = new Set(['legacy', 'semantic', 'root-only']);
 const STRUCTURE_OPERATIONS = new Set([
   'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task',
 ]);
+
+function completedTaskState(state) {
+  return state === 'DONE' || state === 'SATISFIED';
+}
 
 function parallelMode(options = {}) {
   const mode = options.parallelMode ?? 'legacy';
@@ -387,8 +391,19 @@ async function runTurn(core, prompt, timeoutMs) {
     // A discovery turn can synchronously claim a Task and hand off to a new
     // bound session. Do not let the discovery transport's finally block clear
     // the bound session's in-flight flag or start an overlapping follow-up.
-    const handedOff = core.session !== session && Boolean(core.taskId && core.executionId);
+    const handedOff = core.session !== session && Boolean(
+      core.taskId && core.executionId && core.runtime.hasActiveExecution(core.executionId),
+    );
     if (!handedOff) {
+      // A legacy claim may enter onClaim before Runtime rejects the permanent
+      // Core binding (for example, two selectors race for a resumable wait).
+      // Clear that provisional local ownership or the selection transport
+      // would keep this Core permanently marked turn-in-flight.
+      if (core.session !== session && !core.runtime.hasActiveExecution(core.executionId ?? '')) {
+        core.taskId = null;
+        core.executionId = null;
+        core.claim = null;
+      }
       core.turnInFlight = false;
       core.nextTurnAt = core.taskId ? Date.now() + core.turnIntervalMs : Date.now();
     }
@@ -397,7 +412,10 @@ async function runTurn(core, prompt, timeoutMs) {
 }
 
 function scheduleTurn(core, prompt, timeoutMs) {
-  if (core.turnInFlight || Date.now() < core.nextTurnAt) return false;
+  // A bound Execution owns its Session continuation. The periodic repair
+  // loop must not open a second prompt during the short interval between two
+  // continuation turns.
+  if (core.turnInFlight || core.boundTurnPromise || Date.now() < core.nextTurnAt) return false;
   core.turnStartedAt = Date.now();
   core.turnPromise = runTurn(core, prompt, timeoutMs);
   return true;
@@ -419,46 +437,11 @@ async function startAgentSession(core) {
   core.sessionHistory.push(session);
   core.versionManifest = session.manifest ?? null;
   await session.waitForReady({ timeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000 });
-  const initialSequence = session.rpcRecords.length;
-  core.turnInFlight = true;
-  core.turnStartedAt = Date.now();
-  // Every demand-driven worker starts with the same unbound prompt. Task
-  // context is supplied only after the worker claims through Task Service;
-  // Scheduler never substitutes a Task-specific or pre-bound prompt.
-  const initialPrompt = GENERIC_AGENT_PROMPT;
+  // Selection is now a separate CoreDaemon turn. Starting the process must
+  // not itself ask the Agent to inspect or claim work; the Daemon supplies a
+  // bounded shortlist and owns the subsequent durable claim.
   core.unboundSessionCount += 1;
-  const initialResponse = await session.prompt(initialPrompt, { timeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000 });
-  core.initialTurnPromise = (async () => {
-    try {
-      if (initialResponse?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
-        await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: initialSequence });
-      }
-      core.lastTurn = { status: 'settled', elapsed_ms: Date.now() - core.turnStartedAt };
-    } catch (error) {
-      const expectedHandoff = session.expectedStop || core.session !== session;
-      if (!core.stopping && !expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
-      core.lastTurn = { status: 'error', code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' };
-      if (/timeout|timed out/i.test(`${error.code ?? ''} ${error.message ?? ''}`)) core.turnTimeoutCount += 1;
-    } finally {
-      collectToolEvents(core, session.rpcRecords.slice(initialSequence));
-      core.turns += 1;
-      const turnDuration = core.lastTurn.elapsed_ms ?? Date.now() - core.turnStartedAt;
-      core.turnDurationsMs.push(turnDuration);
-      core.parallelism.recordTurnTime(turnDuration);
-      if (!core.taskId) core.dispatchReserved = false;
-      if (core.session === session) {
-        core.turnInFlight = false;
-        core.nextTurnAt = Date.now();
-      } else if (!core.taskId && !core.executionId && !core.session) {
-        // The initial generic turn can perform a complete wait handoff before
-        // its transport promise settles. Runtime has released the process;
-        // close the generic turn's occupancy once that promise finishes.
-        core.turnInFlight = false;
-      }
-      core.stateRef?.requestSchedulerWake?.();
-      if (core.session !== session && !session.closed) await Promise.resolve(session.stop()).catch(() => undefined);
-    }
-  })();
+  core.initialTurnPromise = null;
 }
 
 function attachRecoveredSession(core, { execution, session }) {
@@ -509,7 +492,7 @@ function attachRecoveredSession(core, { execution, session }) {
           core.turnInFlight = false;
         }
       }
-      core.stateRef?.requestSchedulerWake?.();
+      core.stateRef?.requestDaemonWake?.();
     }
   })();
 }
@@ -520,12 +503,20 @@ async function ensureAgentSession(core) {
     core.releasedSession = null;
   }
   if (core.session?.closed) core.session = null;
+  // A failed legacy claim can clear the bridge binding after the transport
+  // Session has already been replaced. Repair the stale local occupancy when
+  // no Session, Task, Execution, recovery, or handoff promise remains.
+  if (core.turnInFlight && !core.session && !core.taskId && !core.executionId && !core.boundTurnPromise && !core.recoveryInFlight) {
+    core.turnInFlight = false;
+  }
   if (core.stopping || core.turnInFlight) return false;
-  if (core.session) return true;
+  if (core.session) return core.session;
+  core.sessionStartAttempts = (core.sessionStartAttempts ?? 0) + 1;
   try {
     await startAgentSession(core);
-    return Boolean(core.session);
+    return core.session ?? null;
   } catch (error) {
+    core.sessionStartFailures = (core.sessionStartFailures ?? 0) + 1;
     if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_session_error' });
     await Promise.resolve(core.session?.stop?.()).catch(() => undefined);
     core.session = null;
@@ -534,6 +525,85 @@ async function ensureAgentSession(core) {
     core.nextTurnAt = Date.now();
     core.dispatchReserved = false;
     return false;
+  }
+}
+
+function selectionView(candidates) {
+  return candidates.map((candidate) => ({
+    task_id: candidate.task_id,
+    task_type: candidate.task_type,
+    parent_id: candidate.parent_id,
+    goal: candidate.goal,
+    expected_output: candidate.expected_output,
+    task_instructions: candidate.task_instructions,
+    acceptance_conditions: candidate.acceptance_conditions,
+    completion_contract: candidate.completion_contract,
+    priority: candidate.priority,
+    state: candidate.state,
+    age_ms: candidate.age_ms,
+    fairness_protected: candidate.fairness_protected,
+    selection_rank: candidate.selection_rank,
+  }));
+}
+
+/**
+ * Run one stateless selection turn. The Agent can only return a task_id via
+ * the selection Service operation; the CoreDaemon performs the durable claim
+ * after this function settles. A temporary legacy claim observation keeps old
+ * deterministic adapters readable during the migration, but the normal
+ * production prompt uses select_task and never claims from this Session.
+ */
+async function selectTaskWithAgent(core, candidates, prompt) {
+  const session = await ensureAgentSession(core);
+  if (!session) return core.turnInFlight ? { selection_deferred: true } : null;
+  const sequence = session.rpcRecords?.length ?? 0;
+  core.selectionResult = null;
+  core.legacySelectionClaim = null;
+  core.selectionActive = true;
+  core.dispatchReserved = true;
+  core.turnInFlight = true;
+  core.turnStartedAt = Date.now();
+  core.selectionTurnCount = (core.selectionTurnCount ?? 0) + 1;
+  core.bridge.setSelectionCandidates(candidates);
+  const message = `${prompt}\n\nBounded shortlist (choose exactly one with select_task):\n${JSON.stringify(selectionView(candidates))}`;
+  try {
+    const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });
+    if (response?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
+      await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: sequence });
+    }
+    if (core.selectionResult?.task_id) return core.selectionResult.task_id;
+    if (core.legacySelectionClaim?.task?.task_id) return core.legacySelectionClaim.task.task_id;
+    // Pre-Daemon deterministic adapters may still try the old claim path.
+    // Losing that race means this selection turn made no choice; it is a
+    // benign retry condition, not an invalid Agent selection.
+    if (core.bridge.selectionClaimAttempted || Object.hasOwn(session, 'bound')) return { selection_deferred: true };
+    return null;
+  } catch (error) {
+    if (core.bridge.selectionClaimAttempted || Object.hasOwn(session, 'bound')) return { selection_deferred: true };
+    core.sessionStartFailures = (core.sessionStartFailures ?? 0) + 1;
+    if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'selection_turn_error' });
+    return null;
+  } finally {
+    collectToolEvents(core, session.rpcRecords?.slice(sequence) ?? []);
+    core.bridge.setSelectionCandidates(null);
+    core.selectionActive = false;
+    core.turns += 1;
+    const duration = Date.now() - core.turnStartedAt;
+    core.turnDurationsMs.push(duration);
+    core.parallelism.recordTurnTime(duration);
+    const handedOff = core.session !== session && Boolean(core.taskId && core.executionId);
+    if (!handedOff) {
+      core.turnInFlight = false;
+      core.dispatchReserved = false;
+      core.nextTurnAt = Date.now();
+    }
+    // A selection turn that did not produce a claim is abandoned. It must not
+    // become a long-lived Task Session or hold a Core slot.
+    if (!handedOff && !core.taskId && core.session === session) {
+      core.session = null;
+      await Promise.resolve(session.stop?.()).catch(() => undefined);
+    }
+    core.stateRef?.requestDaemonWake?.();
   }
 }
 
@@ -783,7 +853,7 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
       },
     };
   }
-  if (result.verdict === 'PASS' && applied.task.state === 'SATISFIED' && pending.taskId === state.rootTaskId) {
+  if (result.verdict === 'PASS' && completedTaskState(applied.task.state) && pending.taskId === state.rootTaskId) {
     state.solvedAt = Date.now();
     state.solvedBy = core.index;
   }
@@ -830,6 +900,7 @@ async function stopCore(state, core) {
       sleep(5_000),
     ]);
   }
+  if (core.boundTurnPromise) await core.boundTurnPromise.catch(() => undefined);
   const current = core.executionId ? state.taskService.getExecution(core.executionId) : null;
   if (core.parallelism) core.parallelism.transition(core.index, 'IDLE', {
     task_id: current?.task_id ?? null,
@@ -898,7 +969,7 @@ function structureEvidence(taskService, taskTree, cores, mode) {
     task_contracts: taskTree.map((task) => ({
       task_id: task.task_id,
       state: task.state,
-      satisfied: task.state === 'SATISFIED',
+      satisfied: completedTaskState(task.state),
       structure_satisfied: structureByTaskId.get(task.task_id)?.satisfaction.satisfied ?? false,
     })),
     branch_and_subtask_groups: groups.map((group) => ({
@@ -912,7 +983,7 @@ function structureEvidence(taskService, taskTree, cores, mode) {
     root: root ? {
       task_id: root.task_id,
       state: root.state,
-      task_contract_satisfied: root.state === 'SATISFIED',
+      task_contract_satisfied: completedTaskState(root.state),
       structure_satisfied: structureByTaskId.get(root.task_id)?.satisfaction.satisfied ?? false,
     } : null,
   };
@@ -972,7 +1043,7 @@ function readinessEvidence(samples, endedAt) {
 function recordReadinessSnapshot(state, at = Date.now()) {
   const tasks = state.taskService.listTasks({
     rootId: state.rootTaskId,
-    states: ['OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
+    states: ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
     limit: 100,
     availableOnly: false,
   });
@@ -993,7 +1064,7 @@ function projectReport(state, startedAt, deadline) {
   const materials = state.contextService.readMaterials({});
   const taskTree = state.taskService.listTasks({
     rootId: state.rootTaskId,
-    states: ['OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
+    states: ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
     limit: 100,
     availableOnly: false,
   });
@@ -1116,6 +1187,7 @@ function projectReport(state, startedAt, deadline) {
       repository_commit: state.repositoryCommit,
       repository_worktree_dirty: state.repositoryWorktreeDirty,
       parallel_mode: state.parallelMode,
+      normal_flow: state.normalFlow,
       input_policy: 'pinned formalization only; no candidate or solution input',
       tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
       cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
@@ -1201,6 +1273,10 @@ function projectReport(state, startedAt, deadline) {
       tool_protocol_error_count: toolProtocolErrorCount,
       invalid_wait_attempt_count: invalidWaitAttemptCount,
       scheduler_status_count: state.schedulerStatusCount,
+      core_daemons: state.daemons?.map((daemon) => daemon.snapshot()) ?? [],
+      daemon_events: state.daemonEvents ?? [],
+      // Kept as a compatibility projection for existing report consumers;
+      // production decisions are owned by Controller and CoreDaemon above.
       scheduler: state.scheduler?.snapshot() ?? null,
       scheduler_events: state.schedulerEvents,
       controller: state.controller?.snapshot() ?? null,
@@ -1264,6 +1340,7 @@ function projectReport(state, startedAt, deadline) {
 
 async function createProjectState(problem, config, options) {
   const selectedParallelMode = parallelMode(options);
+  const normalFlow = options.normalFlow ?? selectedParallelMode === 'semantic';
   const runId = options.runId ?? randomUUID();
   const startedAt = options.startedAt ?? Date.now();
   const experimentRoot = resolve(options.experimentDir ?? options.reportDir);
@@ -1330,6 +1407,7 @@ async function createProjectState(problem, config, options) {
     expected_output: 'A verified Lean proof for the locked PutnamBench problem',
     task_instructions: `The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. Do not submit sorry, admit, axiom, or placeholder code. ${modeInstructions} Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge. Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency; later reclaim the root to read child Workspace changes, Materials, and Judge feedback, then accept completed work or request focused rework before integrating it into the proof.`,
     completion_contract: {
+      ...(normalFlow ? { normal_flow: true } : {}),
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
       required_check: {
         checker_ref: fixture.checker_ref,
@@ -1355,7 +1433,7 @@ async function createProjectState(problem, config, options) {
     source: 'runtime',
     kind: 'experiment_started',
     taskId: root.task_id,
-    payload: { problem_id: problem.id, core_count: 4, timebox_ms: options.timeboxMs ?? 60 * 60_000, parallel_mode: selectedParallelMode },
+    payload: { problem_id: problem.id, core_count: 4, timebox_ms: options.timeboxMs ?? 60 * 60_000, parallel_mode: selectedParallelMode, normal_flow: normalFlow },
   });
   // Deterministic queue scenarios may seed durable Tasks before reusable Core
   // sessions start. The hook uses the same Task Service boundary as Agent
@@ -1429,6 +1507,7 @@ async function createProjectState(problem, config, options) {
       agentTurnSession: null,
       turnPromise: null,
       initialTurnPromise: null,
+      boundTurnPromise: null,
       turnStartedAt: 0,
       nextTurnAt: 0,
       turnIntervalMs: options.turnIntervalMs ?? 1_000,
@@ -1448,6 +1527,13 @@ async function createProjectState(problem, config, options) {
       turnTimeoutCount: 0,
       watchdogPromise: null,
       dispatchReserved: false,
+      sessionStartAttempts: 0,
+      sessionStartFailures: 0,
+      selectionActive: false,
+      selectionResult: null,
+      legacySelectionClaim: null,
+      selectionTurnCount: 0,
+      daemon: null,
       unboundSessionCount: 0,
       parallelism,
       versionManifest: null,
@@ -1466,11 +1552,15 @@ async function createProjectState(problem, config, options) {
       runtime,
       router,
       actorRef: `agent:core-${index}`,
+      onSelectTask: ({ task_id: selectedTaskId }) => {
+        core.selectionResult = { task_id: selectedTaskId };
+      },
       onClaim: async (claim) => {
+        if (core.selectionActive) core.legacySelectionClaim = claim;
         core.dispatchReserved = false;
         // A resumable WAITING Execution is selected through the normal claim
         // path. The claim itself clears the logical wait association; the
-        // Scheduler remains the only component that reserved this Core.
+        // Core Daemon remains the only component that reserved this Core.
         const claimedAt = Date.now();
         const priorWaitingExecutionId = core.waitingExecutionId;
         core.waitingExecutionId = null;
@@ -1511,6 +1601,13 @@ async function createProjectState(problem, config, options) {
               observation: core.observe,
               observationContext: { coreId: `core-${core.index}`, taskId: execution.task_id, executionId: execution.execution_id },
             });
+            // Deterministic compatibility adapters may attach a one-shot
+            // fault policy to the reusable worker Session. Preserve that
+            // policy when the Daemon hands the claim to the fresh bound
+            // Session; real Pi sessions do not expose these fields.
+            for (const field of ['hardToolError', 'invalidClaim']) {
+              if (field in workerSession && field in session) session[field] = workerSession[field];
+            }
             core.session = session;
             core.sessionHistory.push(session);
             core.versionManifest = session.manifest ?? null;
@@ -1554,9 +1651,25 @@ async function createProjectState(problem, config, options) {
         const boundExecutionId = claim.execution.execution_id;
         if (boundSession && core.runtime.hasActiveExecution(claim.execution.execution_id)) {
           core.turnInFlight = true;
-          void (async () => {
+          let boundTurnPromise;
+          boundTurnPromise = (async () => {
             try {
               if (typeof boundSession.waitForSettled === 'function') await boundSession.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
+              // A settled Agent turn does not necessarily release its
+              // Execution: source-level checker feedback, incremental edits,
+              // and ordinary progress may leave the Task RUNNING. Continue
+              // that same bound Session until Runtime observes a wait or a
+              // terminal Task state; CoreDaemon must not wait forever for a
+              // release that only a later turn can produce.
+              while (!core.stopping && core.session === boundSession && core.executionId === boundExecutionId) {
+                const current = taskService.getExecution(boundExecutionId);
+                if (!current || current.state !== 'RUNNING') break;
+                await new Promise((resolve) => setTimeout(resolve, Math.min(core.turnIntervalMs ?? 1_000, 100)));
+                if (core.stopping || core.session !== boundSession || core.executionId !== boundExecutionId) break;
+                core.turnStartedAt = Date.now();
+                core.turnInFlight = false;
+                await runTurn(core, modePrompt(selectedParallelMode, BOUND_AGENT_PROMPT), core.startConfig.options.turnTimeoutMs ?? 30_000);
+              }
             } catch (error) {
               const expectedHandoff = boundSession.expectedStop || core.session !== boundSession || core.stopping;
               if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
@@ -1571,9 +1684,21 @@ async function createProjectState(problem, config, options) {
                 core.turnInFlight = false;
                 core.nextTurnAt = Date.now();
               }
-              core.stateRef?.requestSchedulerWake?.();
+              // CoreDaemon waits for the Runtime release boundary. Terminal
+              // Task transitions must therefore release the bridge binding
+              // here, rather than relying on the benchmark's periodic repair
+              // sweep to break a handoff wait.
+              if (core.executionId === boundExecutionId) {
+                const settled = taskService.getExecution(boundExecutionId);
+                if (settled && ['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(settled.state)) {
+                  await releaseTerminalExecution(core);
+                }
+              }
+              core.stateRef?.requestDaemonWake?.();
+              if (core.boundTurnPromise === boundTurnPromise) core.boundTurnPromise = null;
             }
           })();
+          core.boundTurnPromise = boundTurnPromise;
         }
         claimRecord.workspace_revision_start = bound.workspace.workspace_revision;
         core.observe({
@@ -1685,10 +1810,10 @@ async function createProjectState(problem, config, options) {
           core.session = null;
           // Runtime has already removed and stopped the active process before
           // invoking this callback. The transport turn still owns the
-          // dispatch reservation until its promise settles, so the scheduler
+          // dispatch reservation until its promise settles, so another Daemon
           // cannot start a second worker against this Core during handoff.
         }
-        core.stateRef?.requestSchedulerWake?.();
+        core.stateRef?.requestDaemonWake?.();
       },
       onWorkspaceWrite: async ({ taskId, executionId, result }) => {
         core.observe({
@@ -1721,7 +1846,7 @@ async function createProjectState(problem, config, options) {
       },
       onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
         if (['publish_material', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
-          core.stateRef?.requestSchedulerWake?.();
+          core.stateRef?.requestDaemonWake?.();
         }
         if (STRUCTURE_OPERATIONS.has(operation)) {
           const structureResult = result && typeof result === 'object' ? result : {};
@@ -1749,7 +1874,7 @@ async function createProjectState(problem, config, options) {
             core: core.index,
             progress_kind: 'semantic_structure',
           });
-          core.stateRef?.requestSchedulerWake?.();
+          core.stateRef?.requestDaemonWake?.();
         } else if (operation === 'read_materials') {
           const materialsRead = Array.isArray(result) ? result : [];
           core.materialReads.push({
@@ -1766,7 +1891,7 @@ async function createProjectState(problem, config, options) {
             core: core.index,
             progress_kind: 'child_task',
           });
-          core.stateRef?.requestSchedulerWake?.();
+          core.stateRef?.requestDaemonWake?.();
         } else if (operation === 'publish_material') {
           core.parallelism.recordWorkUnit({
             task_id: taskId,
@@ -1864,6 +1989,10 @@ async function createProjectState(problem, config, options) {
     executionTimeoutErrorCount: 0,
     schedulerStatusCount: 0,
     schedulerEvents: [],
+    daemonEvents: [],
+    daemons: [],
+    daemonRuns: [],
+    daemonAbortController: null,
     controllerEvents: [],
     controller: null,
     readyObservedAt: new Map(),
@@ -1873,6 +2002,7 @@ async function createProjectState(problem, config, options) {
     repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
     parallelism,
     parallelMode: selectedParallelMode,
+    normalFlow,
     readinessSamples: [],
   };
 }
@@ -1884,20 +2014,13 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     taskService: state.taskService,
     shortlistLimit: options.controllerShortlistLimit ?? 16,
     sweepIntervalMs: options.controllerSweepIntervalMs ?? 5_000,
-    listDaemons: () => state.cores.map((core) => {
-      const runtimeState = core.runtime.getCoreStatus(`core-${core.index}`) ?? { state: core.taskId ? 'RUNNING' : 'IDLE' };
-      return {
-        core_id: `core-${core.index}`,
-        ...runtimeState,
-        // Legacy discovery sessions are physical Core occupancy even before
-        // Runtime owns an Execution. Keep Controller projections from waking
-        // a slot that Scheduler has reserved for selection.
-        state: !core.taskId && !core.executionId && (core.turnInFlight || core.dispatchReserved) ? 'SELECTING' : runtimeState.state,
-        healthy: !core.stopping,
-      };
+    listDaemons: () => state.cores.map((core) => core.daemon?.snapshot?.() ?? {
+      core_id: `core-${core.index}`,
+      state: core.taskId ? 'RUNNING' : (core.turnInFlight || core.dispatchReserved ? 'SELECTING' : 'IDLE'),
+      healthy: !core.stopping,
     }),
     signalIdleDaemon: (_daemon, payload) => {
-      state.requestSchedulerWake?.(payload.reason ?? 'controller_signal');
+      state.requestDaemonWake?.(payload.reason ?? 'controller_signal');
     },
     requestDaemonRecovery: async (daemon, payload) => {
       const core = state.cores.find((candidate) => `core-${candidate.index}` === payload.core_id);
@@ -1919,9 +2042,9 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     },
   });
   state.controller.start();
-  let resolveSchedulerWake;
-  let schedulerWake = new Promise((resolve) => { resolveSchedulerWake = resolve; });
-  state.schedulerWakeRequested = false;
+  let resolveDaemonWake;
+  let daemonWake = new Promise((resolve) => { resolveDaemonWake = resolve; });
+  state.daemonWakeRequested = false;
   const startedAt = Date.now();
   state.parallelism.start(startedAt);
   recordReadinessSnapshot(state, startedAt);
@@ -1931,98 +2054,110 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   const basePrompt = (core) => core.taskId
       ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or waiting.`
       : GENERIC_AGENT_PROMPT;
-  state.scheduler = new Scheduler({
-    listReadyTasks: () => state.taskService.listTasks({
-      rootId: state.rootTaskId,
-      // WAITING Tasks are eligible when their persisted condition is
-      // satisfied; Task Service's availableOnly projection excludes waits
-      // whose condition is still pending.
-      states: ['OPEN', 'RUNNING', 'WAITING'],
-      limit: 100,
-      availableOnly: true,
-    }),
-    listCores: () => state.cores,
-    isCoreAvailable: (core) => !core.taskId && !core.turnInFlight &&
-      !core.dispatchReserved && !core.stopping,
-    maxStartupAttempts: options.maxStartupAttempts ?? 3,
-    retryBackoffMs: options.schedulerRetryBackoffMs ?? 1_000,
-    dispatchBackoffMs: options.schedulerDispatchBackoffMs ?? 1_000,
-    startUnboundSession: async ({ core, prompt }) => {
-      core.dispatchReserved = true;
-      const hadSession = Boolean(core.session && !core.session.closed);
-      const started = await ensureAgentSession(core);
-      if (!started) {
-        core.dispatchReserved = false;
-        return false;
-      }
-      // A generic session may remain alive after an unsuccessful discovery
-      // turn. Reuse it for a later READY signature without polling an empty
-      // queue or issuing duplicate turns for the same readiness event.
-      if (hadSession && !core.taskId && !core.turnInFlight) {
-        core.turnStartedAt = Date.now();
-        const scheduled = scheduleTurn(core, prompt, turnTimeoutMs);
-        if (!scheduled) core.dispatchReserved = false;
-        return scheduled;
-      }
-      return true;
-    },
-    onEvent: (event) => {
-      state.schedulerEvents.push({
-        kind: event.kind,
-        core_id: event.core_id ?? null,
-        reason: event.reason ?? null,
-        ready_count: event.ready_count ?? null,
-        free_core_count: event.free_core_count ?? null,
-        ready_to_dispatch_ms: event.ready_to_dispatch_ms ?? null,
-        startup_attempt: event.startup_attempt ?? null,
-        retryable: event.retryable ?? null,
-        error_code: event.error_code ?? null,
-        error_class: event.error_class ?? null,
-        timestamp: event.timestamp ?? Date.now(),
-      });
-      if (event.kind === 'scheduler_reconcile') {
-        // Reconciliation is also an auditable readiness observation. Recording
-        // it here keeps short event-driven runs from losing the READY window
-        // before the bounded main-loop poll gets another turn.
-        const readyTasks = state.taskService.listTasks({
-          rootId: state.rootTaskId,
-          states: ['OPEN', 'RUNNING', 'WAITING'],
-          limit: 100,
-          availableOnly: true,
+  state.daemonEvents = state.daemonEvents ?? [];
+  state.daemons = state.cores.map((core) => {
+    const daemon = new CoreDaemon({
+      coreId: `core-${core.index}`,
+      shortlistLimit: options.controllerShortlistLimit ?? 16,
+      maxSelectionAttempts: options.maxStartupAttempts ?? 3,
+      maxClaimRescans: options.maxClaimRescans ?? 1,
+      idleBackoffMs: options.daemonIdleBackoffMs ?? 100,
+      taskService: state.taskService,
+      listClaimableTasks: () => state.taskService.listClaimableTasks({
+        rootId: state.rootTaskId,
+        limit: options.controllerShortlistLimit ?? 16,
+      }),
+      selectTask: ({ candidates, prompt }) => selectTaskWithAgent(core, candidates, prompt),
+      claimTask: async (selectedTaskId, context) => {
+        // Deterministic adapters from the pre-Daemon protocol may still issue
+        // claim from their selection transport. Reuse that single durable
+        // result rather than creating a second claim; real selection Sessions
+        // use select_task and arrive here with no legacy result.
+        if (core.legacySelectionClaim?.task?.task_id === selectedTaskId) {
+          return core.legacySelectionClaim;
+        }
+        const selectedTask = state.taskService.getTask(selectedTaskId);
+        if (!selectedTask) throw new Error(`selected Task disappeared: ${selectedTaskId}`);
+        return state.taskService.claimTask(selectedTaskId, {
+          ...context,
+          owner_ref: core.actorRef,
+          core_id: `core-${core.index}`,
+          agent_prompt: selectedTask.task_instructions ?? BOUND_AGENT_PROMPT,
+          workspace_mode: 'resume',
         });
-        observeReadyTasks(state, readyTasks, event.timestamp ?? Date.now());
-        state.parallelism.recordReadyWork({
-          readyCount: readyTasks.length,
-          idleCoreCount: state.cores.filter(isPhysicallyAvailableCore).length,
-          eligibleWorkCount: observedEligibleWorkCount(state, readyTasks),
-        });
-      }
-      if (event.kind === 'scheduler_reconcile' || event.kind === 'scheduler_dispatch_started') {
+      },
+      runtime: core.runtime,
+      runExecution: async (claim) => {
+        if (core.legacySelectionClaim?.execution?.execution_id === claim.execution.execution_id) {
+          return { execution: state.taskService.getExecution(claim.execution.execution_id) };
+        }
+        await core.bridge.bindClaim(claim);
+        return { execution: state.taskService.getExecution(claim.execution.execution_id) };
+      },
+      handoffTimeoutMs: options.handoffTimeoutMs ?? Math.max(1_000, (options.turnTimeoutMs ?? 30_000) * 2),
+      releaseExecution: async (execution) => {
+        const result = await core.runtime.fenceExecution(execution.execution_id);
+        if (core.executionId === execution.execution_id) await core.bridge.releaseClaim({ result });
+        return result;
+      },
+      onEvent: (event) => {
+        const sanitized = {
+          kind: event.kind,
+          core_id: event.core_id ?? `core-${core.index}`,
+          task_id: event.task_id ?? null,
+          execution_id: event.execution_id ?? null,
+          state: event.state ?? null,
+          reason: event.reason ?? null,
+          candidate_count: event.candidate_count ?? null,
+          task_ids: event.task_ids ?? null,
+          timestamp: event.timestamp ?? Date.now(),
+        };
+        state.daemonEvents.push(sanitized);
         state.observationStore.append({
           experimentId: state.runId,
-          source: 'scheduler',
-          kind: event.kind,
-          taskId: state.rootTaskId,
+          source: 'core-daemon',
+          kind: sanitized.kind,
+          taskId: sanitized.task_id,
+          executionId: sanitized.execution_id,
+          coreId: sanitized.core_id,
           visibility: 'operator',
-          payload: state.schedulerEvents.at(-1),
+          payload: sanitized,
         });
-      }
-    },
+      },
+    });
+    core.daemon = daemon;
+    return daemon;
   });
-  state.requestSchedulerWake = (reason = 'event') => {
-    state.schedulerWakeRequested = true;
-    resolveSchedulerWake();
-    // Notification is event-driven, while the main loop remains the bounded
-    // reconciliation path for missed events and Runtime restarts.
-    void state.scheduler.notify(reason).catch(() => undefined);
+  state.requestDaemonWake = (reason = 'event') => {
+    state.daemonWakeRequested = true;
+    resolveDaemonWake();
+    for (const daemon of state.daemons) daemon.notify(reason);
     void state.controller.notify(reason).catch(() => undefined);
   };
+  // Compatibility metrics keep the old report field readable while the
+  // production composition has no Scheduler instance or Scheduler decision
+  // maker. Every value is derived from CoreDaemon lifecycle counters.
+  state.scheduler = { snapshot: () => ({
+    ready_count: state.taskService.listClaimableTasks({ rootId: state.rootTaskId, limit: 100 }).length,
+    dispatch_count: state.daemons.reduce((count, daemon) => count + daemon.snapshot().claim_count, 0),
+    startup_attempt_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartAttempts ?? 0), 0),
+    startup_failure_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartFailures ?? 0), 0),
+    bounded_startup_exhausted_count: state.daemons.filter((daemon) => daemon.snapshot().selection_exhausted).length,
+    duplicate_suppression_count: 0,
+    dispatch_latencies_ms: [],
+    in_flight_core_ids: state.daemons.filter((daemon) => daemon.snapshot().state !== 'IDLE').map((daemon) => daemon.coreId),
+    stopped: state.daemons.every((daemon) => daemon.snapshot().stopped),
+  }) };
   try {
     // Demand-driven startup observes the queue before touching Pi/provider
     // capacity. A root-only queue starts one unbound session; an empty queue
     // starts none.
     await state.controller.reconcile({ reason: 'initial' });
-    await state.scheduler.reconcile({ reason: 'initial' });
+    // Each physical Core owns one long-lived Daemon supervisor. The
+    // Controller only reconciles durable readiness and wakes these loops; it
+    // never performs a selection or claim itself.
+    state.daemonAbortController = new AbortController();
+    state.daemonRuns = state.daemons.map((daemon) => daemon.run({ signal: state.daemonAbortController.signal }));
     for (const core of state.cores) core.nextTurnAt = Date.now();
     const heartbeat = setInterval(() => {
       for (const core of state.cores) {
@@ -2049,7 +2184,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         const sweep = core.runtime.sweepWatchdog()
           .then((recovered) => {
             state.watchdogRecoveryCount += recovered.length;
-            if (recovered.length > 0) state.requestSchedulerWake?.();
+            if (recovered.length > 0) state.requestDaemonWake?.();
           })
           .catch((error) => {
             state.watchdogErrorCount += 1;
@@ -2078,7 +2213,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
               state.executionTimeoutErrorCount += 1;
               core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'execution_timeout_error' });
             } else if (events.length > 0) {
-              state.requestSchedulerWake?.();
+              state.requestDaemonWake?.();
             }
           }
         })
@@ -2088,11 +2223,11 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     }, options.executionTimeoutSweepMs ?? 10_000);
     try {
       while (Date.now() < deadline && (!state.stopOnSolved || state.solvedAt === null)) {
-        if (!state.schedulerWakeRequested) {
-          await Promise.race([sleep(options.pollMs ?? 5_000), schedulerWake]);
+        if (!state.daemonWakeRequested) {
+          await Promise.race([sleep(options.pollMs ?? 5_000), daemonWake]);
         }
-        state.schedulerWakeRequested = false;
-        schedulerWake = new Promise((resolve) => { resolveSchedulerWake = resolve; });
+        state.daemonWakeRequested = false;
+        daemonWake = new Promise((resolve) => { resolveDaemonWake = resolve; });
         const readyStartedAt = Date.now();
         const readyTasks = state.taskService.listTasks({
           rootId: state.rootTaskId,
@@ -2110,12 +2245,11 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         for (const core of state.cores) {
           if (state.solvedAt === null) await releaseTerminalExecution(core);
         }
-        // Scheduler owns unbound capacity decisions. It observes the durable
-        // READY queue and starts/reuses only as many generic workers as there
-        // are READY Tasks and genuinely free Cores. It never receives a Task
-        // identity and therefore cannot pre-bind work on an Agent's behalf.
-        await state.controller.reconcile({ reason: state.schedulerWakeRequested ? 'event' : 'poll' });
-        await state.scheduler.reconcile({ reason: state.schedulerWakeRequested ? 'event' : 'poll' });
+        // The Controller owns reconciliation and signals each idle Daemon;
+        // each long-lived Daemon owns its bounded selection/claim loop. The
+        // main loop is only the periodic repair and observability sweep.
+        await state.controller.reconcile({ reason: state.daemonWakeRequested ? 'event' : 'poll' });
+        for (const daemon of state.daemons) daemon.notify(state.daemonWakeRequested ? 'event' : 'poll');
         for (const core of state.cores) {
           if (state.solvedAt !== null) break;
           if (!core.turnInFlight && !core.recoveryInFlight && Date.now() < deadline && state.solvedAt === null) {
@@ -2134,7 +2268,9 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   } finally {
     const cleanupStartedAt = Date.now();
     await state.controller?.stop?.();
-    await state.scheduler?.stop?.();
+    state.daemonAbortController?.abort();
+    for (const daemon of state.daemons ?? []) daemon.stop();
+    await Promise.all(state.daemonRuns ?? []);
     for (const core of state.cores) await stopCore(state, core);
     state.cleanupElapsedMs = Date.now() - cleanupStartedAt;
   }

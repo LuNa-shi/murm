@@ -75,6 +75,7 @@ export class CoreDaemon {
     runExecution = null,
     releaseExecution = null,
     maxClaimRescans = 1,
+    maxSelectionAttempts = 3,
     handoffTimeoutMs = Number.POSITIVE_INFINITY,
     handoffPollMs = 25,
     idleBackoffMs = 100,
@@ -95,6 +96,7 @@ export class CoreDaemon {
     }
     if (!Number.isInteger(shortlistLimit) || shortlistLimit < 1 || shortlistLimit > 100) throw new TypeError('shortlistLimit must be an integer between 1 and 100');
     if (!Number.isInteger(maxClaimRescans) || maxClaimRescans < 0 || maxClaimRescans > 10) throw new TypeError('maxClaimRescans must be an integer between 0 and 10');
+    if (!Number.isInteger(maxSelectionAttempts) || maxSelectionAttempts < 1 || maxSelectionAttempts > 10) throw new TypeError('maxSelectionAttempts must be an integer between 1 and 10');
     if (!Number.isFinite(idleBackoffMs) || idleBackoffMs < 0) throw new TypeError('idleBackoffMs must be non-negative');
     if (handoffTimeoutMs !== Number.POSITIVE_INFINITY && (!Number.isFinite(handoffTimeoutMs) || handoffTimeoutMs < 0)) throw new TypeError('handoffTimeoutMs must be non-negative or Infinity');
     if (!Number.isFinite(handoffPollMs) || handoffPollMs <= 0) throw new TypeError('handoffPollMs must be positive');
@@ -113,6 +115,7 @@ export class CoreDaemon {
     this.runExecution = runExecution;
     this.releaseExecution = releaseExecution;
     this.maxClaimRescans = maxClaimRescans;
+    this.maxSelectionAttempts = maxSelectionAttempts;
     this.handoffTimeoutMs = handoffTimeoutMs;
     this.handoffPollMs = handoffPollMs;
     this.idleBackoffMs = idleBackoffMs;
@@ -132,6 +135,8 @@ export class CoreDaemon {
     this.claimCount = 0;
     this.claimConflictCount = 0;
     this.rescanCount = 0;
+    this.selectionFailureCount = 0;
+    this.selectionExhausted = false;
     this.lastError = null;
     this.lastEventAt = this.now();
     this.stateHistory = [{ state: this.state, at: this.lastEventAt }];
@@ -150,6 +155,8 @@ export class CoreDaemon {
       claim_count: this.claimCount,
       claim_conflict_count: this.claimConflictCount,
       rescan_count: this.rescanCount,
+      selection_failure_count: this.selectionFailureCount,
+      selection_exhausted: this.selectionExhausted,
       last_error: this.lastError,
       last_event_at: this.lastEventAt,
       state_history: this.stateHistory.map((entry) => ({ ...entry })),
@@ -198,7 +205,11 @@ export class CoreDaemon {
         last = await this.runOnce({ reason: turns === 0 ? 'initial' : 'wake' });
         turns += 1;
         if (this.stopped || signal?.aborted || turns >= maxTurns) break;
-        if (last.disposition === 'completed') continue;
+        // A completed handoff still needs a bounded idle interval. The Task
+        // Controller will wake this supervisor when a dependency, child
+        // result, or newly opened Task changes the durable queue; spinning
+        // immediately here lets one Core monopolize a burst of work and
+        // races the parent-review wake path.
         await this.#wait(signal);
       }
       if (!this.stopped && signal?.aborted) this.#emit({ kind: 'daemon_run_aborted', core_id: this.coreId, timestamp: this.now() });
@@ -208,6 +219,10 @@ export class CoreDaemon {
   }
 
   async #runOnce(reason) {
+    if (this.selectionExhausted) {
+      this.#setIdle({ reason: 'selection_attempts_exhausted' });
+      return { disposition: 'selection_exhausted', snapshot: this.snapshot() };
+    }
     let rescans = 0;
     while (!this.stopped) {
       this.#setState(CORE_DAEMON_STATES.DISCOVERING, { reason });
@@ -232,18 +247,26 @@ export class CoreDaemon {
           rescan: rescans,
         });
       } catch (error) {
+        this.selectionFailureCount += 1;
         this.lastError = errorView(error);
         this.#emit({ kind: 'daemon_selection_failed', core_id: this.coreId, reason, error: this.lastError, timestamp: this.now() });
         this.#setIdle({ reason: 'selection_failed' });
+        if (this.selectionFailureCount >= this.maxSelectionAttempts) this.selectionExhausted = true;
         return { disposition: 'selection_failed', error: this.lastError, snapshot: this.snapshot() };
       }
       const selectedId = normalizeSelection(selection);
+      if (selection && typeof selection === 'object' && selection.selection_deferred === true) {
+        this.#setIdle({ reason: 'selection_deferred' });
+        return { disposition: 'selection_deferred', snapshot: this.snapshot() };
+      }
       const selected = candidates.find((candidate) => String(taskId(candidate)) === String(selectedId));
       if (!selected) {
+        this.selectionFailureCount += 1;
         const error = new SwarmEnvError('SELECTION_INVALID', 'selection must choose one task_id from the bounded shortlist', { task_id: selectedId, candidate_task_ids: candidates.map(taskId) });
         this.lastError = errorView(error);
         this.#emit({ kind: 'daemon_selection_invalid', core_id: this.coreId, reason, error: this.lastError, timestamp: this.now() });
         this.#setIdle({ reason: 'selection_invalid' });
+        if (this.selectionFailureCount >= this.maxSelectionAttempts) this.selectionExhausted = true;
         return { disposition: 'selection_invalid', error: this.lastError, snapshot: this.snapshot() };
       }
       this.claimAttemptCount += 1;
@@ -287,6 +310,8 @@ export class CoreDaemon {
         return { disposition: 'claim_invalid', task_id: taskId(selected), error: this.lastError, snapshot: this.snapshot() };
       }
       this.claimCount += 1;
+      this.selectionFailureCount = 0;
+      this.selectionExhausted = false;
       this.taskId = taskId(selected);
       this.executionId = execution.execution_id;
       this.#setState(CORE_DAEMON_STATES.RUNNING, { task_id: this.taskId, execution_id: this.executionId, reason });

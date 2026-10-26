@@ -97,6 +97,69 @@ test('Runtime waits for Agent exit before releasing a waiting Core', async () =>
   }
 });
 
+test('Runtime keeps an active Execution when a dependency wait is already satisfied', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, sdk, task, claimed, rootDir } = fixtureData;
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const parent = taskService.getTask(task.task_id);
+    const parentOwner = sdk.withContext({
+      actorRef: 'runtime:local',
+      taskId: task.task_id,
+      executionId: claimed.execution.execution_id,
+      specVersion: parent.spec_version,
+      stateVersion: parent.state_version,
+      fencingVersion: started.execution.fencing_version,
+    });
+    const child = parentOwner.createChildTask({
+      child_creation_key: 'already-satisfied-child',
+      task_type: 'default',
+      goal: 'complete before the parent wait request',
+      expected_output: 'a completed child Task',
+      acceptance_conditions: {},
+      normal_flow: true,
+      owner_ref: 'runtime:child',
+    }, { operationId: 'already-satisfied-child-create' }).task;
+    const childClaim = sdk.withContext({
+      actorRef: 'runtime:child',
+      taskId: child.task_id,
+      specVersion: child.spec_version,
+      stateVersion: taskService.getTask(child.task_id).state_version,
+    }).claim({
+      claim_key: 'already-satisfied-child-claim',
+      owner_ref: 'runtime:child',
+      core_id: 'core-child',
+      agent_prompt: 'complete the child',
+    }, { operationId: 'already-satisfied-child-claim' });
+    const childCurrent = taskService.getTask(child.task_id);
+    const completed = sdk.withContext({
+      actorRef: 'runtime:child',
+      taskId: child.task_id,
+      executionId: childClaim.execution.execution_id,
+      specVersion: childCurrent.spec_version,
+      stateVersion: childClaim.execution.state_version,
+      taskStateVersion: childCurrent.state_version,
+      fencingVersion: childClaim.execution.fencing_version,
+    }).acceptTask({
+      target_task_id: child.task_id,
+      target_state_version: childCurrent.state_version,
+    }, { operationId: 'already-satisfied-child-accept' });
+    assert.equal(completed.task.state, 'DONE');
+
+    const result = await runtime.requestWait(claimed.execution.execution_id, {
+      waitCondition: { type: 'child_task_terminal', child_task_id: child.task_id },
+      checkpoint: { step: 'stale-read-race' },
+    });
+    assert.equal(result.disposition, 'already_satisfied');
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
+    assert.equal(runtime.getActiveProcessCount(), 1);
+    await runtime.stopExecution(claimed.execution.execution_id);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('Runtime shutdown owns terminal process cleanup and suppresses recovery', async () => {
   const fixtureData = await fixture();
   const { runtime, taskService, claimed, rootDir, adapter } = fixtureData;

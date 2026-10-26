@@ -54,6 +54,12 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', required: ['task_id', 'claim_key'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, core_id: { type: 'string' }, owner_ref: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' } }, additionalProperties: false },
   },
   {
+    name: 'task_select', service: 'task', operation: 'select_task', version: '1.0',
+    description: 'Return one task_id from the bounded shortlist supplied to this stateless Core Daemon selection turn. The Daemon performs the durable claim.',
+    scope: 'task-selection', side_effect: false,
+    parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
     name: 'task_create_child', service: 'task', operation: 'create_child_task', version: '1.0',
     description: 'Create a bounded direct child Task for a genuinely separate responsibility.',
     scope: 'execution-write', side_effect: true,
