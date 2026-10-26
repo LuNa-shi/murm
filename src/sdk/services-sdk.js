@@ -37,6 +37,10 @@ export class ServicesSDK {
     return this.#read('list_tasks', filters);
   }
 
+  listClaimableTasks(filters = {}) {
+    return this.#read('list_claimable_tasks', filters);
+  }
+
   listExecutions(taskId = this.context.taskId, { includeTerminal = true } = {}) {
     return this.#read('list_executions', { task_id: taskId, include_terminal: includeTerminal });
   }

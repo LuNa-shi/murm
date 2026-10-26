@@ -24,6 +24,12 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', properties: { root_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, task_type: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, available_only: { type: 'boolean' } }, additionalProperties: false },
   },
   {
+    name: 'task_list_claimable', service: 'task', operation: 'list_claimable_tasks', version: '1.0',
+    description: 'Return a bounded claimable shortlist with aging and fairness metadata for the Core Daemon selection turn.',
+    scope: 'public-read', side_effect: false,
+    parameters: { type: 'object', properties: { root_id: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, aging_threshold_ms: { type: 'integer', minimum: 0 }, now_ms: { type: 'integer', minimum: 0 } }, additionalProperties: false },
+  },
+  {
     name: 'task_get', service: 'task', operation: 'get_task', version: '1.0',
     description: 'Read the current Task specification and state.',
     scope: 'task-read', side_effect: false,
