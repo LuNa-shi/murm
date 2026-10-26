@@ -9,7 +9,7 @@ import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const AGENT_OPERATIONS = new Set([
   'get_task', 'get_execution', 'read_materials', 'publish_material', 'submit_candidate',
-  'heartbeat', 'create_child_task', 'request_wait', 'claim', 'list_tasks', 'list_claimable_tasks', 'list_executions',
+  'heartbeat', 'create_child_task', 'request_wait', 'block_execution', 'claim', 'list_tasks', 'list_claimable_tasks', 'list_executions',
   'accept_task', 'request_rework', 'get_check_result',
   'create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task',
   'list_services', 'get_service_metadata', 'list_tools', 'scheduler_status', 'get_workspace', 'list_workspace_revisions',
@@ -216,6 +216,9 @@ export class ServicesBridge {
       } };
       const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
       if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_claimable_tasks', 'list_executions', 'get_task_structure', 'explain_task_readiness', 'scheduler_status'].includes(operation)) {
+        if (operation === 'list_claimable_tasks' && this.taskId !== null) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claimable discovery is only available to an unbound selection Session');
+        }
         if (operation === 'scheduler_status') {
           const result = await (this.onSchedulerStatus
             ? this.onSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId })
@@ -314,6 +317,22 @@ export class ServicesBridge {
         this.taskId = null;
         this.executionId = null;
         if (this.onRelease) await this.onRelease(released);
+        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+        return result;
+      }
+      if (operation === 'block_execution') {
+        const result = await this.runtime.blockExecution(this.executionId, {
+          ...payload,
+          reason: payload.reason ?? payload.block_reason,
+          checkpoint: payload.checkpoint ?? {},
+          files: payload.files ?? {},
+          terminalState: payload.terminal_state ?? 'FENCED',
+        });
+        const released = { taskId: this.taskId, executionId: this.executionId, result };
+        await this.onWorkUnit?.({ operation, taskId: released.taskId, executionId: released.executionId, payload, result });
+        this.taskId = null;
+        this.executionId = null;
+        await this.onRelease?.(released);
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }

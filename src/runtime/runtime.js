@@ -135,6 +135,23 @@ export class Runtime {
     }
   }
 
+  /** Wait until Runtime no longer owns an Execution process. */
+  async waitForExecutionRelease(executionId, { timeoutMs = Number.POSITIVE_INFINITY, pollMs = 25 } = {}) {
+    const id = requireString(executionId, 'execution_id');
+    if (timeoutMs !== Number.POSITIVE_INFINITY && (!Number.isFinite(timeoutMs) || timeoutMs < 0)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timeoutMs must be non-negative or Infinity');
+    if (!Number.isFinite(pollMs) || pollMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'pollMs must be positive');
+    const startedAt = this.clock();
+    let current = this.taskService.getExecution(id);
+    while (this.activeProcesses.has(id) || ['CREATED', 'RUNNING'].includes(current?.state)) {
+      if (timeoutMs !== Number.POSITIVE_INFINITY && this.clock() - startedAt >= timeoutMs) {
+        return { released: false, execution: current, elapsed_ms: this.clock() - startedAt };
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+      current = this.taskService.getExecution(id);
+    }
+    return { released: true, execution: current, elapsed_ms: this.clock() - startedAt };
+  }
+
   /**
    * Stop every live process owned by this Runtime before its store is closed.
    * The benchmark uses this seam for terminal cleanup so it never has to
@@ -282,6 +299,7 @@ export class Runtime {
     } catch (error) {
       const active = this.activeProcesses.get(executionId);
       this.activeProcesses.delete(executionId);
+      this.#setCoreState(active?.coreId ?? selectedCoreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       await Promise.resolve(active?.session.stop?.()).catch(() => undefined);
       if (this.stopping) throw error;
       const failed = this.#getExecution(executionId);
@@ -333,6 +351,7 @@ export class Runtime {
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
       this.activeProcesses.delete(executionId);
+      this.#setCoreState(selectedCoreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       await Promise.resolve(boundSession?.stop?.()).catch(() => undefined);
       const failed = this.#getExecution(executionId);
       if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
@@ -399,10 +418,18 @@ export class Runtime {
       wake_key: key,
       ...(wakeCoreId ? { core_id: wakeCoreId } : {}),
     }, this.#executionEnvelope(waiting, operationId('wake'))).execution;
-    const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'), executionId, fencingVersion: resumed.fencing_version });
-    const coreId = this.#resolveCoreId(resumed, wakeCoreId);
-    this.#assertCoreAvailable(coreId, executionId);
-    return this.#launch(resumed, workspace, { beforePrompt, sessionReason: 'wake', coreId });
+    try {
+      const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'), executionId, fencingVersion: resumed.fencing_version });
+      const coreId = this.#resolveCoreId(resumed, wakeCoreId);
+      this.#assertCoreAvailable(coreId, executionId);
+      return await this.#launch(resumed, workspace, { beforePrompt, sessionReason: 'wake', coreId });
+    } catch (error) {
+      const current = this.taskService.getExecution(executionId);
+      if (current && ['CREATED', 'RUNNING'].includes(current.state)) {
+        await this.fenceExecution(executionId).catch(() => undefined);
+      }
+      throw error;
+    }
   }
 
   async requestWait(executionId, { waitCondition, checkpoint = {}, files = {}, deadline = null, waitKey = null }) {
@@ -667,6 +694,7 @@ export class Runtime {
         this.logger?.append({ event: 'runtime.handoff_stop_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'session_stop_error' });
       });
       this.activeProcesses.delete(executionId);
+      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
     if (result.execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({

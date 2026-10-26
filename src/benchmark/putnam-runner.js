@@ -22,6 +22,7 @@ import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
 import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
 import { Scheduler } from '../runtime/scheduler.js';
+import { TaskController } from '../runtime/task-controller.js';
 import { CoreParallelismTracker } from './parallelism.js';
 
 const execFileAsync = (command, args) => new Promise((resolvePromise, reject) => {
@@ -1202,6 +1203,8 @@ function projectReport(state, startedAt, deadline) {
       scheduler_status_count: state.schedulerStatusCount,
       scheduler: state.scheduler?.snapshot() ?? null,
       scheduler_events: state.schedulerEvents,
+      controller: state.controller?.snapshot() ?? null,
+      controller_events: state.controllerEvents,
       latency_samples: cores.flatMap((core) => core.latency_samples ?? []),
       latency_summary: {
         ready_to_session_start_ms: state.schedulerEvents
@@ -1861,6 +1864,8 @@ async function createProjectState(problem, config, options) {
     executionTimeoutErrorCount: 0,
     schedulerStatusCount: 0,
     schedulerEvents: [],
+    controllerEvents: [],
+    controller: null,
     readyObservedAt: new Map(),
     waitEligibilityAt: new Map(),
     resourcesAtStart: resourceSnapshot(),
@@ -1875,6 +1880,38 @@ async function createProjectState(problem, config, options) {
 export async function runBenchmarkProject(problem, config, options = {}) {
   const state = await createProjectState(problem, config, options);
   for (const core of state.cores) core.stateRef = state;
+  state.controller = new TaskController({
+    taskService: state.taskService,
+    shortlistLimit: options.controllerShortlistLimit ?? 16,
+    sweepIntervalMs: options.controllerSweepIntervalMs ?? 5_000,
+    listDaemons: () => state.cores.map((core) => ({
+      core_id: `core-${core.index}`,
+      ...(core.runtime.getCoreStatus(`core-${core.index}`) ?? { state: core.taskId ? 'RUNNING' : 'IDLE' }),
+      healthy: !core.stopping,
+    })),
+    signalIdleDaemon: (_daemon, payload) => {
+      state.requestSchedulerWake?.(payload.reason ?? 'controller_signal');
+    },
+    requestDaemonRecovery: async (daemon, payload) => {
+      const core = state.cores.find((candidate) => `core-${candidate.index}` === payload.core_id);
+      if (core && !core.stopping) await core.runtime.restart().catch(() => undefined);
+      state.controllerEvents.push({ kind: 'controller_daemon_recovery_requested', core_id: payload.core_id, reason: payload.reason ?? null, timestamp: Date.now() });
+    },
+    onEvent: (event) => {
+      const sanitized = {
+        kind: event.kind,
+        core_id: event.core_id ?? null,
+        task_id: event.task_id ?? null,
+        reason: event.reason ?? null,
+        claimable_count: event.claimable_count ?? null,
+        blocked_count: event.blocked_count ?? null,
+        timestamp: event.timestamp ?? Date.now(),
+      };
+      state.controllerEvents.push(sanitized);
+      state.observationStore.append({ experimentId: state.runId, source: 'task-controller', kind: sanitized.kind, taskId: sanitized.task_id, coreId: sanitized.core_id, visibility: 'operator', payload: sanitized });
+    },
+  });
+  state.controller.start();
   let resolveSchedulerWake;
   let schedulerWake = new Promise((resolve) => { resolveSchedulerWake = resolve; });
   state.schedulerWakeRequested = false;
@@ -1971,11 +2008,13 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     // Notification is event-driven, while the main loop remains the bounded
     // reconciliation path for missed events and Runtime restarts.
     void state.scheduler.notify(reason).catch(() => undefined);
+    void state.controller.notify(reason).catch(() => undefined);
   };
   try {
     // Demand-driven startup observes the queue before touching Pi/provider
     // capacity. A root-only queue starts one unbound session; an empty queue
     // starts none.
+    await state.controller.reconcile({ reason: 'initial' });
     await state.scheduler.reconcile({ reason: 'initial' });
     for (const core of state.cores) core.nextTurnAt = Date.now();
     const heartbeat = setInterval(() => {
@@ -2068,6 +2107,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         // READY queue and starts/reuses only as many generic workers as there
         // are READY Tasks and genuinely free Cores. It never receives a Task
         // identity and therefore cannot pre-bind work on an Agent's behalf.
+        await state.controller.reconcile({ reason: state.schedulerWakeRequested ? 'event' : 'poll' });
         await state.scheduler.reconcile({ reason: state.schedulerWakeRequested ? 'event' : 'poll' });
         for (const core of state.cores) {
           if (state.solvedAt !== null) break;
@@ -2086,6 +2126,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     }
   } finally {
     const cleanupStartedAt = Date.now();
+    await state.controller?.stop?.();
     await state.scheduler?.stop?.();
     for (const core of state.cores) await stopCore(state, core);
     state.cleanupElapsedMs = Date.now() - cleanupStartedAt;

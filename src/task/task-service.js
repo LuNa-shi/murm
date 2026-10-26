@@ -290,7 +290,7 @@ export class TaskService {
     return this.db.prepare('SELECT * FROM tasks WHERE parent_id = ? ORDER BY created_at, task_id').all(parentTaskId).map(rowToTask);
   }
 
-  listTasks({ rootId = null, states = ['OPEN', 'RUNNING', 'WAITING'], taskType = null, limit = 10, availableOnly = true } = {}) {
+  listTasks({ rootId = null, states = ['OPEN', 'RUNNING', 'WAITING'], taskType = null, limit = 10, availableOnly = true, scanAll = false } = {}) {
     if (rootId !== null && (typeof rootId !== 'string' || rootId.length === 0)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'root_id must be a non-empty string or null');
     }
@@ -314,7 +314,10 @@ export class TaskService {
       conditions.push('t.task_type = ?');
       params.push(taskType);
     }
-    params.push(availableOnly ? 100 : limit);
+    // Claimability needs to inspect the complete OPEN set before applying the
+    // fairness floor.  The public list remains bounded; scanAll is an
+    // internal read used only by listClaimableTasks.
+    params.push(scanAll ? -1 : (availableOnly ? 100 : limit));
     const tasks = this.db.prepare(`SELECT t.* FROM tasks t WHERE ${conditions.join(' AND ')}
       ORDER BY t.priority DESC, t.created_at ASC, t.task_id ASC LIMIT ?`).all(...params).map((row) => ({
       ...rowToTask(row),
@@ -353,7 +356,7 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'aging_threshold_ms must be non-negative');
     }
     if (!Number.isFinite(nowMs)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'now_ms must be finite');
-    const tasks = this.listTasks({ rootId, states: ['OPEN'], limit: 100, availableOnly: true });
+    const tasks = this.listTasks({ rootId, states: ['OPEN'], limit: 100, availableOnly: true, scanAll: true });
     return tasks
       .map((task) => {
         const configuredThreshold = agingThresholdMs ?? this.#admissionPolicy(task.root_id).aging_threshold_ms;
@@ -683,11 +686,11 @@ export class TaskService {
   #assertTurnMutationLimit(rootId, envelope, turnId = null, additional = 1) {
     const executionId = envelope.execution_id;
     if (!executionId) return;
-    if (turnId === null) return;
+    const effectiveTurnId = turnId ?? `execution:${executionId}`;
     const policy = this.#admissionPolicy(rootId);
-    const mutations = this.db.prepare('SELECT mutation_count FROM turn_admission_counters WHERE execution_id = ? AND turn_id = ?').get(executionId, turnId)?.mutation_count ?? 0;
+    const mutations = this.db.prepare('SELECT mutation_count FROM turn_admission_counters WHERE execution_id = ? AND turn_id = ?').get(executionId, effectiveTurnId)?.mutation_count ?? 0;
     if (mutations + additional > policy.max_turn_mutations) {
-      throw this.#admissionFailure(ERROR_CODES.BACKPRESSURE_TURN_MUTATION_LIMIT, 'turn_mutations', mutations + additional, policy.max_turn_mutations, rootId, { execution_id: executionId, turn_id: turnId });
+      throw this.#admissionFailure(ERROR_CODES.BACKPRESSURE_TURN_MUTATION_LIMIT, 'turn_mutations', mutations + additional, policy.max_turn_mutations, rootId, { execution_id: executionId, turn_id: effectiveTurnId });
     }
   }
 
@@ -709,22 +712,21 @@ export class TaskService {
       if (children + additional > policy.max_children_per_execution) {
         throw this.#admissionFailure(ERROR_CODES.BACKPRESSURE_EXECUTION_CHILD_LIMIT, 'execution_children', children + additional, policy.max_children_per_execution, parent.root_id, { execution_id: executionId });
       }
-      const turnId = payload.turn_id ?? payload.turnId ?? null;
-      if (turnId !== null) {
-        const mutations = this.db.prepare('SELECT mutation_count FROM turn_admission_counters WHERE execution_id = ? AND turn_id = ?').get(executionId, turnId)?.mutation_count ?? 0;
-        if (mutations + additional > policy.max_turn_mutations) {
-          throw this.#admissionFailure(ERROR_CODES.BACKPRESSURE_TURN_MUTATION_LIMIT, 'turn_mutations', mutations + additional, policy.max_turn_mutations, parent.root_id, { execution_id: executionId, turn_id: turnId });
-        }
+      const turnId = payload.turn_id ?? payload.turnId ?? `execution:${executionId}`;
+      const mutations = this.db.prepare('SELECT mutation_count FROM turn_admission_counters WHERE execution_id = ? AND turn_id = ?').get(executionId, turnId)?.mutation_count ?? 0;
+      if (mutations + additional > policy.max_turn_mutations) {
+        throw this.#admissionFailure(ERROR_CODES.BACKPRESSURE_TURN_MUTATION_LIMIT, 'turn_mutations', mutations + additional, policy.max_turn_mutations, parent.root_id, { execution_id: executionId, turn_id: turnId });
       }
     }
     return policy;
   }
 
   #recordTurnMutation(executionId, turnId, updatedAt = now(), additional = 1) {
-    if (!executionId || !turnId) return;
+    if (!executionId) return;
+    const effectiveTurnId = turnId ?? `execution:${executionId}`;
     this.db.prepare(`INSERT INTO turn_admission_counters (execution_id, turn_id, mutation_count, updated_at)
       VALUES (?, ?, ?, ?)
-      ON CONFLICT(execution_id, turn_id) DO UPDATE SET mutation_count = mutation_count + excluded.mutation_count, updated_at = excluded.updated_at`).run(executionId, turnId, additional, updatedAt);
+      ON CONFLICT(execution_id, turn_id) DO UPDATE SET mutation_count = mutation_count + excluded.mutation_count, updated_at = excluded.updated_at`).run(executionId, effectiveTurnId, additional, updatedAt);
   }
 
   #enforceFairness(task) {
@@ -878,13 +880,8 @@ export class TaskService {
     if (envelope.spec_version !== parent.spec_version || (envelope.state_version !== parent.state_version && envelope.state_version !== parentExecution.state_version)) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'parent task version is stale', { expected_state_version: parent.state_version, expected_spec_version: parent.spec_version });
     }
-    const admissionPolicy = this.#assertChildAdmission(parent, payload, envelope);
-    const childInput = validateTaskProposal({
-      ...payload,
-      owner_ref: payload.owner_ref ?? envelope.actor_ref,
-      workspace: payload.workspace ?? parent.workspace,
-    }, { parentId });
     const responsibilityKey = payload.responsibility_key ?? payload.responsibilityKey ?? null;
+    const admissionPolicy = this.#admissionPolicy(parent.root_id);
     if (admissionPolicy.require_responsibility_key && (!responsibilityKey || typeof responsibilityKey !== 'string')) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key is required for admitted child Tasks');
     }
@@ -901,6 +898,12 @@ export class TaskService {
         };
       }
     }
+    this.#assertChildAdmission(parent, payload, envelope);
+    const childInput = validateTaskProposal({
+      ...payload,
+      owner_ref: payload.owner_ref ?? envelope.actor_ref,
+      workspace: payload.workspace ?? parent.workspace,
+    }, { parentId });
     const childCount = this.db.prepare('SELECT COUNT(*) AS count FROM tasks WHERE parent_id = ?').get(parentId).count;
     if (childCount >= parent.max_children) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent max_children exceeded');
     const depth = this.db.prepare(`SELECT COUNT(*) AS count FROM tasks WHERE task_id = ? OR task_id IN (
@@ -1161,8 +1164,7 @@ export class TaskService {
     this.#assertCanCreateBranch(ownerTaskId);
     const { task: owner, execution } = authority ?? this.#assertStructureAuthority(ownerTaskId, envelope);
     if (!Array.isArray(payload.branch_tasks) || payload.branch_tasks.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'branch_tasks must contain at least one Task proposal');
-    const admissionPolicy = this.#assertChildAdmission(owner, payload, envelope, payload.branch_tasks.length);
-    this.#assertChildLimits(ownerTaskId, payload.branch_tasks.length);
+    const admissionPolicy = this.#admissionPolicy(owner.root_id);
     const responsibilityKeys = new Set();
     for (const [index, proposal] of payload.branch_tasks.entries()) {
       if (!proposal || typeof proposal !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `branch_tasks[${index}] must be an object`);
@@ -1184,6 +1186,8 @@ export class TaskService {
       }
       responsibilityKeys.add(responsibilityKey);
     }
+    this.#assertChildAdmission(owner, payload, envelope, payload.branch_tasks.length);
+    this.#assertChildLimits(ownerTaskId, payload.branch_tasks.length);
     const current = currentVersion ?? this.#assertExpectedStructureVersion(ownerTaskId, payload.expected_structural_version);
     const next = current + 1;
     const groupId = payload.group_id ?? payload.group_key ?? randomUUID();
@@ -1236,8 +1240,8 @@ export class TaskService {
       if (task.root_id !== owner.root_id || task.task_id === ownerTaskId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'subtask must belong to the same root and differ from its owner');
     } else {
       if (!payload.subtask || typeof payload.subtask !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'subtask_task_id or subtask proposal is required');
-      const admissionPolicy = this.#assertChildAdmission(owner, payload.subtask, envelope);
       const responsibilityKey = payload.subtask.responsibility_key ?? payload.subtask.responsibilityKey ?? null;
+      const admissionPolicy = this.#admissionPolicy(owner.root_id);
       if (admissionPolicy.require_responsibility_key && (!responsibilityKey || typeof responsibilityKey !== 'string')) {
         throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key is required for admitted child Tasks');
       }
@@ -1251,6 +1255,7 @@ export class TaskService {
           throw new SwarmEnvError(ERROR_CODES.DUPLICATE_RESPONSIBILITY, 'responsibility_key already exists in this Root', { responsibility_key: responsibilityKey, existing_task_id: duplicate.task_id });
         }
       }
+      this.#assertChildAdmission(owner, payload.subtask, envelope);
       this.#assertChildLimits(ownerTaskId);
       task = this.#insertRelatedTask({ input: { ...payload.subtask, owner_ref: payload.subtask.owner_ref ?? envelope.actor_ref, workspace: payload.subtask.workspace ?? owner.workspace }, taskId: payload.subtask.task_id ?? randomUUID(), rootId: owner.root_id, parentId: ownerTaskId, envelope, creationKind: 'REQUIRED_SUBTASK', createdAt: now() });
       if (responsibilityKey !== null) this.db.prepare('UPDATE tasks SET responsibility_key = ? WHERE task_id = ?').run(responsibilityKey, task.task_id);
@@ -1419,6 +1424,25 @@ export class TaskService {
     };
     const parentId = payload.parent_task_id ?? (prior.parent_id ?? prior.task_id);
     const parent = this.#taskRow(parentId);
+    // Duplicate responsibility is checked before capacity admission so a
+    // repeated rework proposal cannot consume budget or mutation counters.
+    const responsibilityKey = payload.responsibility_key ?? payload.responsibilityKey
+      ?? payload.task?.responsibility_key ?? payload.task?.responsibilityKey ?? null;
+    const admissionPolicy = this.#admissionPolicy(parent.root_id);
+    if (admissionPolicy.require_responsibility_key && (!responsibilityKey || typeof responsibilityKey !== 'string')) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key is required for admitted rework Tasks');
+    }
+    if (responsibilityKey !== null && (typeof responsibilityKey !== 'string' || responsibilityKey.length === 0 || responsibilityKey.length > 256)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key must be a non-empty string of at most 256 characters');
+    }
+    if (responsibilityKey !== null) {
+      const duplicate = this.db.prepare("SELECT task_id FROM tasks WHERE root_id = ? AND responsibility_key = ? AND state NOT IN ('CANCELLED', 'CANCELED', 'REJECTED', 'CLOSED', 'DONE') LIMIT 1")
+        .get(parent.root_id, responsibilityKey);
+      if (duplicate) {
+        throw new SwarmEnvError(ERROR_CODES.DUPLICATE_RESPONSIBILITY, 'responsibility_key already exists in this Root', { responsibility_key: responsibilityKey, existing_task_id: duplicate.task_id });
+      }
+    }
+    this.#assertChildAdmission(parent, { ...payload, ...(responsibilityKey !== null ? { responsibility_key: responsibilityKey } : {}) }, envelope);
     this.#assertChildLimits(parentId);
     const proposal = {
       ...prior,
@@ -1432,6 +1456,7 @@ export class TaskService {
       owner_ref: payload.owner_ref ?? envelope.actor_ref,
       workspace: payload.task?.workspace ?? prior.workspace,
       input_material_refs: sourceMaterialRefs,
+      responsibility_key: responsibilityKey,
     };
     delete proposal.task_id;
     delete proposal.root_id;
@@ -1444,7 +1469,10 @@ export class TaskService {
     delete proposal.created_at;
     delete proposal.updated_at;
     const task = this.#insertRelatedTask({ input: proposal, rootId: prior.root_id, parentId, envelope, creationKind: 'REWORK', priorTaskId, sourceMaterialRefs, feedback: instruction, workspaceLineage, createdAt: now() });
+    if (responsibilityKey !== null) this.db.prepare('UPDATE tasks SET responsibility_key = ? WHERE task_id = ?').run(responsibilityKey, task.task_id);
     const createdAt = now();
+    this.#recordExecutionChildMutation(authorityExecution.execution_id, 1, createdAt);
+    this.#recordTurnMutation(envelope.execution_id, payload.turn_id ?? payload.turnId, createdAt);
     this.db.prepare(`INSERT INTO task_rework_links
       (prior_task_id, rework_task_id, feedback_json, source_material_refs_json, workspace_lineage_json, created_by_actor_ref, created_by_execution_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(priorTaskId, task.task_id, json(instruction), json(sourceMaterialRefs), json(workspaceLineage), envelope.actor_ref, authorityExecution.execution_id, createdAt);
@@ -1480,23 +1508,15 @@ export class TaskService {
     const blockers = this.#dependencyBlockers(taskId);
     const active = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')").get(taskId).count;
     const updatedAt = now();
-    if (TERMINAL_TASK_STATES.includes(task.state)) {
+    if (TERMINAL_TASK_STATES.includes(task.state) || active > 0) {
       return { task: this.getTask(taskId), changed: false, blockers };
     }
-    if (blockers.length > 0) {
+    if (blockers.length > 0 && task.state !== 'BLOCKED') {
       const reason = blockers.map((blocker) => blocker.reason ?? blocker.dependency_id ?? 'dependency').join(',');
-      if (active > 0) {
-        this.db.prepare("UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1, terminal_reason = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')")
-          .run(`dependency_blocked:${reason}`, updatedAt, taskId);
-      }
-      if (task.state !== 'BLOCKED' || active > 0) {
-        this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
-          .run(reason, updatedAt, taskId);
-        return { task: this.getTask(taskId), changed: true, blockers, fenced_execution_count: active };
-      }
-      return { task: this.getTask(taskId), changed: false, blockers, fenced_execution_count: 0 };
+      this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+        .run(reason, updatedAt, taskId);
+      return { task: this.getTask(taskId), changed: true, blockers };
     }
-    if (active > 0) return { task: this.getTask(taskId), changed: false, blockers };
     if (blockers.length === 0 && task.state === 'BLOCKED') {
       try {
         this.#assertOpenAdmission(task);
@@ -1558,9 +1578,16 @@ export class TaskService {
       updatedAt,
       execution.execution_id,
     );
+    // A dependency block releases the whole Task responsibility.  Parallel
+    // attempts are durable owners too; leaving one CREATED/RUNNING row behind
+    // would make BLOCKED both claimable-in-the-future and currently occupied.
+    const fencedOthers = this.db.prepare(`UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1,
+      terminal_reason = ?, state_version = state_version + 1, updated_at = ?
+      WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING')`)
+      .run(`dependency_blocked:${reason}`, updatedAt, execution.task_id, execution.execution_id).changes;
     this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
       .run(reason, updatedAt, execution.task_id);
-    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id), blocked: true };
+    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id), blocked: true, fenced_execution_count: fencedOthers };
   }
 
   #claimTask(task, payload, envelope) {

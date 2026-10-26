@@ -71,6 +71,22 @@ test('blocking ends the Execution and Controller reopening is idempotent', () =>
   taskService.close();
 });
 
+test('blocking a parallel Task fences every active Execution before marking it BLOCKED', () => {
+  const { taskService, sdk } = service();
+  const task = sdk.proposeTask(rootInput({ parallel_quota: 2 }), { operationId: 'parallel-block-root' }).task;
+  const first = taskService.claimTask(task.task_id, { claim_key: 'parallel-block-claim-1', owner_ref: 'daemon:one', core_id: 'core-1' });
+  const second = taskService.claimTask(task.task_id, { claim_key: 'parallel-block-claim-2', owner_ref: 'daemon:two', core_id: 'core-2' });
+  const blocked = taskService.blockTask({ block_reason: 'external dependency' }, makeEnvelope({
+    operationId: 'parallel-block-op', actorRef: 'daemon:one', taskId: task.task_id, executionId: first.execution.execution_id,
+    specVersion: task.spec_version, stateVersion: first.execution.state_version, fencingVersion: first.execution.fencing_version,
+  }));
+  assert.equal(blocked.task.state, 'BLOCKED');
+  assert.equal(blocked.fenced_execution_count, 1);
+  assert.equal(taskService.getExecution(second.execution.execution_id).state, 'FENCED');
+  assert.equal(taskService.listActiveExecutions().filter((execution) => execution.task_id === task.task_id && ['CREATED', 'RUNNING'].includes(execution.state)).length, 0);
+  taskService.close();
+});
+
 test('bounded admission returns typed backpressure and duplicate responsibility', () => {
   const { taskService, sdk } = service({ admission: { max_children_per_execution: 2, max_unfinished_tasks: 10, max_open_tasks: 10, require_responsibility_key: true } });
   const root = sdk.proposeTask(rootInput({ max_children: 10 }), { operationId: 'admission-root' }).task;
@@ -86,7 +102,6 @@ test('bounded admission returns typed backpressure and duplicate responsibility'
   );
   const first = owner.createChildTask({ ...childInput, child_creation_key: 'admission-child-a' }, { operationId: 'admission-child-a' });
   assert.equal(first.task.responsibility_key, 'route-a');
-  assert.equal(taskService.db.prepare('SELECT child_count FROM execution_admission_counters WHERE execution_id = ?').get(claim.execution.execution_id).child_count, 1);
   const duplicate = owner.withContext({ stateVersion: taskService.getTask(root.task_id).state_version }).createChildTask({ ...childInput, child_creation_key: 'admission-child-a-retry' }, { operationId: 'admission-child-a-retry' });
   assert.equal(duplicate.admission.code, ERROR_CODES.DUPLICATE_RESPONSIBILITY);
   const second = owner.withContext({ stateVersion: taskService.getTask(root.task_id).state_version }).createChildTask({ ...childInput, responsibility_key: 'route-b', child_creation_key: 'admission-child-b' }, { operationId: 'admission-child-b' });

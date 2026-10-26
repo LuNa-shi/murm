@@ -126,6 +126,12 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', required: ['wait_condition'], properties: { wait_condition: { type: 'object', properties: { type: { type: 'string' }, child_task_id: { type: 'string' }, check_request_key: { type: 'string' }, candidate_material_id: { type: 'string' }, deadline: { type: 'string' } }, additionalProperties: true }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } }, wait_deadline: { type: 'string' } }, additionalProperties: false },
   },
   {
+    name: 'execution_block', service: 'execution', operation: 'block_execution', version: '1.0',
+    description: 'Save a checkpoint, end the current Execution, release its Core, and mark the Task BLOCKED for a concrete external dependency. Use this instead of leaving a live Execution in WAITING.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['reason'], properties: { reason: { type: 'string' }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } } }, additionalProperties: false },
+  },
+  {
     name: 'workspace_get', service: 'workspace', operation: 'get_workspace', version: '1.0',
     description: 'Read the current Workspace materialization and revision.',
     scope: 'execution-read', side_effect: false,

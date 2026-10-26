@@ -1,4 +1,5 @@
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { makeEnvelope } from '../protocol/envelope.js';
 
 export const CORE_DAEMON_STATES = Object.freeze({
   IDLE: 'IDLE',
@@ -12,8 +13,8 @@ export const CORE_DAEMON_STATES = Object.freeze({
 export const SELECTION_AGENT_PROMPT = [
   'You are a stateless Task selection turn for one reusable Core.',
   'Use the bounded list_tasks result as your complete candidate set.',
-  'select exactly one task_id from that result, then call claim(task_id) once.',
-  'Never guess an ID, issue concurrent claims, or read claimed-only state before claim succeeds.',
+  'select exactly one task_id from that result and return it to the Core Daemon; the Daemon calls claim(task_id) once.',
+  'Never guess an ID, issue concurrent claims, or read claimed-only state during this selection turn.',
   'A claim conflict means another Core won; end this turn so the Daemon can rescan once.',
 ].join('\n');
 
@@ -72,7 +73,10 @@ export class CoreDaemon {
     claimTask = null,
     runtime = null,
     runExecution = null,
+    releaseExecution = null,
     maxClaimRescans = 1,
+    handoffTimeoutMs = Number.POSITIVE_INFINITY,
+    handoffPollMs = 25,
     idleBackoffMs = 100,
     waitForSignal = null,
     now = () => Date.now(),
@@ -92,6 +96,8 @@ export class CoreDaemon {
     if (!Number.isInteger(shortlistLimit) || shortlistLimit < 1 || shortlistLimit > 100) throw new TypeError('shortlistLimit must be an integer between 1 and 100');
     if (!Number.isInteger(maxClaimRescans) || maxClaimRescans < 0 || maxClaimRescans > 10) throw new TypeError('maxClaimRescans must be an integer between 0 and 10');
     if (!Number.isFinite(idleBackoffMs) || idleBackoffMs < 0) throw new TypeError('idleBackoffMs must be non-negative');
+    if (handoffTimeoutMs !== Number.POSITIVE_INFINITY && (!Number.isFinite(handoffTimeoutMs) || handoffTimeoutMs < 0)) throw new TypeError('handoffTimeoutMs must be non-negative or Infinity');
+    if (!Number.isFinite(handoffPollMs) || handoffPollMs <= 0) throw new TypeError('handoffPollMs must be positive');
     if (typeof now !== 'function') throw new TypeError('CoreDaemon requires now');
     this.coreId = coreId;
     this.taskService = taskService;
@@ -105,7 +111,10 @@ export class CoreDaemon {
     this.claimTask = claimTask ?? ((selectedTaskId, context) => serviceClaim(selectedTaskId, context));
     this.runtime = runtime;
     this.runExecution = runExecution;
+    this.releaseExecution = releaseExecution;
     this.maxClaimRescans = maxClaimRescans;
+    this.handoffTimeoutMs = handoffTimeoutMs;
+    this.handoffPollMs = handoffPollMs;
     this.idleBackoffMs = idleBackoffMs;
     this.waitForSignal = waitForSignal;
     this.now = now;
@@ -284,10 +293,12 @@ export class CoreDaemon {
       try {
         runtimeResult = await this.#handoff(claim, { task: selected, reason });
       } catch (error) {
+        const release = await this.#releaseFailedClaim(claim, error);
         this.lastError = errorView(error);
-        this.#emit({ kind: 'daemon_runtime_failed', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, error: this.lastError, timestamp: this.now() });
+        const releaseView = release instanceof Error ? errorView(release) : release?.error ? errorView(release.error) : release ? { disposition: release.disposition ?? null, execution_id: release.execution?.execution_id ?? claim.execution.execution_id } : null;
+        this.#emit({ kind: 'daemon_runtime_failed', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, error: this.lastError, release: releaseView, timestamp: this.now() });
         this.#setIdle({ reason: 'runtime_failed' });
-        return { disposition: 'runtime_failed', claim, error: this.lastError, snapshot: this.snapshot() };
+        return { disposition: 'runtime_failed', claim, error: this.lastError, release, snapshot: this.snapshot() };
       }
       this.#emit({ kind: 'daemon_execution_released', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, execution_state: runtimeResult?.execution?.state ?? execution.state ?? null, timestamp: this.now() });
       const result = { disposition: 'completed', claim, runtime: runtimeResult, rescans, snapshot: null };
@@ -300,11 +311,44 @@ export class CoreDaemon {
   }
 
   async #handoff(claim, context) {
-    if (typeof this.runExecution === 'function') return this.runExecution(claim, { ...context, core_id: this.coreId });
-    if (typeof this.runtime?.runClaimedExecution === 'function') return this.runtime.runClaimedExecution(claim.execution, { ...context, coreId: this.coreId });
-    if (typeof this.runtime?.startClaimedExecution === 'function') return this.runtime.startClaimedExecution(claim.execution, { ...context, coreId: this.coreId });
-    if (typeof this.runtime?.startExecution === 'function') return this.runtime.startExecution(claim.execution.execution_id, { coreId: this.coreId, sessionReason: 'daemon_claim' });
-    return { execution: claim.execution };
+    let result;
+    if (typeof this.runExecution === 'function') result = await this.runExecution(claim, { ...context, core_id: this.coreId });
+    else if (typeof this.runtime?.runClaimedExecution === 'function') result = await this.runtime.runClaimedExecution(claim.execution, { ...context, coreId: this.coreId });
+    else if (typeof this.runtime?.startClaimedExecution === 'function') result = await this.runtime.startClaimedExecution(claim.execution, { ...context, coreId: this.coreId });
+    else if (typeof this.runtime?.startExecution === 'function') result = await this.runtime.startExecution(claim.execution.execution_id, { coreId: this.coreId, sessionReason: 'daemon_claim' });
+    else throw new SwarmEnvError(ERROR_CODES.RUNTIME_HANDOFF_REQUIRED, 'CoreDaemon requires a Runtime handoff after claim');
+    if (typeof this.runtime?.waitForExecutionRelease === 'function' && claim.execution?.execution_id) {
+      const settled = await this.runtime.waitForExecutionRelease(claim.execution.execution_id, {
+        timeoutMs: this.handoffTimeoutMs,
+        pollMs: this.handoffPollMs,
+      });
+      if (!settled.released) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime did not release the claimed Execution before the handoff deadline', { execution_id: claim.execution.execution_id });
+      result = { ...(result ?? {}), execution: settled.execution ?? result?.execution ?? claim.execution, release: settled };
+    }
+    return result;
+  }
+
+  async #releaseFailedClaim(claim, originalError) {
+    const execution = claim?.execution;
+    if (!execution?.execution_id) return null;
+    try {
+      if (typeof this.releaseExecution === 'function') return await this.releaseExecution(execution, { error: originalError, coreId: this.coreId });
+      if (typeof this.runtime?.fenceExecution === 'function') return await this.runtime.fenceExecution(execution.execution_id);
+      if (typeof this.taskService?.dispatch === 'function') {
+        return this.taskService.dispatch('fence_execution', { runtime_generation: 1 }, makeEnvelope({
+          actorRef: `daemon:${this.coreId}`,
+          taskId: execution.task_id,
+          executionId: execution.execution_id,
+          specVersion: execution.spec_version,
+          stateVersion: execution.state_version,
+          fencingVersion: execution.fencing_version,
+        }));
+      }
+      return null;
+    } catch (error) {
+      this.#emit({ kind: 'daemon_claim_release_failed', core_id: this.coreId, execution_id: execution.execution_id, error: errorView(error), timestamp: this.now() });
+      return error;
+    }
   }
 
   async #wait(signal) {
