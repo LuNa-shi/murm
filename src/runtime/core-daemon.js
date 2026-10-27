@@ -50,10 +50,6 @@ function errorView(error) {
   };
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
  * Long-lived supervisor for one reusable Core slot.
  *
@@ -164,6 +160,7 @@ export class CoreDaemon {
       selection_failure_count: this.selectionFailureCount,
       selection_exhausted: this.selectionExhausted,
       selection_retry_at: this.selectionRetryAt,
+      idle_backoff_ms: this.idleBackoffMs,
       last_error: this.lastError,
       last_event_at: this.lastEventAt,
       state_history: this.stateHistory.map((entry) => ({ ...entry })),

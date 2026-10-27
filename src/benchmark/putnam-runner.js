@@ -2253,8 +2253,15 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         core_id: event.core_id ?? null,
         task_id: event.task_id ?? null,
         reason: event.reason ?? null,
+        block_reason: event.block_reason ?? null,
         claimable_count: event.claimable_count ?? null,
         blocked_count: event.blocked_count ?? null,
+        healthy_daemon_count: event.healthy_daemon_count ?? null,
+        idle_daemon_count: event.idle_daemon_count ?? null,
+        signaled_daemon_count: event.signaled_daemon_count ?? null,
+        recovery_requested_count: event.recovery_requested_count ?? null,
+        repaired_task_count: event.repaired_task_count ?? null,
+        claim_count: event.claim_count ?? null,
         timestamp: event.timestamp ?? Date.now(),
       };
       state.controllerEvents.push(sanitized);
