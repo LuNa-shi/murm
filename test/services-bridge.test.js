@@ -65,6 +65,34 @@ test('ServicesBridge exposes public SDK calls over a loopback token and keeps Ru
   }
 });
 
+test('ServicesBridge releases the original binding when bindClaim handoff fails', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const released = [];
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router: new ServicesRouter({ taskService, contextService }),
+    onClaim: async () => { throw new Error('handoff failed'); },
+    onRelease: async (value) => released.push(value),
+  });
+  try {
+    await assert.rejects(
+      () => bridge.bindClaim({ task: { task_id: 'bind-failure-task' }, execution: { execution_id: 'bind-failure-execution' } }),
+      /handoff failed/,
+    );
+    assert.equal(bridge.taskId, null);
+    assert.equal(bridge.executionId, null);
+    assert.deepEqual(released, [{ taskId: 'bind-failure-task', executionId: 'bind-failure-execution', result: null }]);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
 test('ServicesBridge returns structured tool errors and exposes them to audit hooks', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);

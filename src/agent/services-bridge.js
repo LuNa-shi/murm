@@ -163,8 +163,13 @@ export class ServicesBridge {
       await this.onClaimAccepted?.(result);
       await this.onClaim?.(result);
     } catch (error) {
+      const released = { taskId: this.taskId, executionId: this.executionId, result: null };
       this.taskId = null;
       this.executionId = null;
+      // A failed handoff still owns a durable claim until the caller fences it.
+      // Deliver the original binding to the release hook before surfacing the
+      // handoff error, so a Core cannot retain a stale Execution identity.
+      try { await this.onRelease?.(released); } catch { /* preserve handoff failure */ }
       throw error;
     }
     return result;
