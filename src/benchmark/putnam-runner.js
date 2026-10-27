@@ -700,17 +700,39 @@ async function selectTaskWithAgent(core, candidates, prompt) {
     core.turnDurationsMs.push(duration);
     core.parallelism.recordTurnTime(duration);
     const handedOff = core.session !== session && Boolean(core.taskId && core.executionId);
-    if (!handedOff) {
+    // A normal `select_task` turn settles before CoreDaemon claims the
+    // selected Task. Keep the Core reserved across that short gap so the
+    // benchmark repair loop cannot start a second Agent turn while Runtime is
+    // materializing the claimed Execution. Invalid or empty selections do not
+    // reserve the Core.
+    const selectedTaskId = core.selectionResult?.task_id ?? null;
+    const handoffPending = !handedOff && typeof selectedTaskId === 'string' &&
+      candidates.some((candidate) => String(candidate.task_id ?? candidate.taskId ?? candidate.id) === selectedTaskId);
+    if (!handedOff && !handoffPending) {
       core.turnInFlight = false;
       core.dispatchReserved = false;
       core.nextTurnAt = Date.now();
     }
-    // A selection turn that did not produce a claim is abandoned. It must not
-    // become a long-lived Task Session or hold a Core slot.
-    if (!handedOff && !core.taskId && core.session === session) {
+    if (handoffPending) {
+      core.turnInFlight = true;
+      core.dispatchReserved = true;
+      core.nextTurnAt = Date.now();
+    }
+    if (!handedOff && !handoffPending && !core.taskId && core.session === session) {
+      // Empty, invalid, or failed selection turns have no claim to hand off;
+      // release their transport so bounded startup retry accounting remains
+      // meaningful. A valid `select_task` choice takes the path above and is
+      // retained until CoreDaemon finishes the claim/bind boundary.
       core.session = null;
       await Promise.resolve(session.stop?.()).catch(() => undefined);
     }
+    // Keep the unbound selection Session alive through the Daemon's durable
+    // claim and Runtime bind. The Agent's `select_task` response settles
+    // before the Daemon calls `bindClaim`; stopping this Session here leaves
+    // onClaim without the worker transport and fences every CREATED
+    // Execution before Runtime can materialize its Workspace. A failed claim
+    // may safely reuse the same stateless Session on the next bounded turn;
+    // normal project cleanup stops all sessions through stopCore.
     core.stateRef?.requestDaemonWake?.();
   }
 }
@@ -2203,7 +2225,16 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       healthy: !core.stopping,
     }),
     signalIdleDaemon: (_daemon, payload) => {
-      state.requestDaemonWake?.(payload.reason ?? 'controller_signal');
+      // This callback runs inside a Controller reconciliation pass.  The
+      // general wake helper also asks the Controller to reconcile, which would
+      // queue another pass from this callback and self-trigger on an OPEN
+      // Task. Wake the selected Daemon directly; durable Task events and the
+      // periodic sweep remain the Controller re-entry paths.
+      const reason = payload.reason ?? 'controller_signal';
+      state.daemonWakeRequested = true;
+      resolveDaemonWake?.();
+      const target = state.daemons?.find((daemon) => daemon.coreId === payload.core_id);
+      target?.notify?.(reason);
     },
     requestDaemonRecovery: async (daemon, payload) => {
       const core = state.cores.find((candidate) => `core-${candidate.index}` === payload.core_id);
@@ -2260,22 +2291,47 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           return core.legacySelectionClaim;
         }
         const selectedTask = state.taskService.getTask(selectedTaskId);
-        if (!selectedTask) throw new Error(`selected Task disappeared: ${selectedTaskId}`);
-        return state.taskService.claimTask(selectedTaskId, {
-          ...context,
-          owner_ref: core.actorRef,
-          core_id: `core-${core.index}`,
-          agent_prompt: selectedTask.task_instructions ?? BOUND_AGENT_PROMPT,
-          workspace_mode: 'resume',
-        });
+        if (!selectedTask) {
+          core.turnInFlight = false;
+          core.dispatchReserved = false;
+          core.nextTurnAt = Date.now();
+          throw new Error(`selected Task disappeared: ${selectedTaskId}`);
+        }
+        try {
+          return state.taskService.claimTask(selectedTaskId, {
+            ...context,
+            owner_ref: core.actorRef,
+            core_id: `core-${core.index}`,
+            agent_prompt: selectedTask.task_instructions ?? BOUND_AGENT_PROMPT,
+            workspace_mode: 'resume',
+          });
+        } catch (error) {
+          // `select_task` reserves the Core until this durable claim starts.
+          // A lost race or admission rejection must release that provisional
+          // reservation before the Daemon returns to its bounded idle loop.
+          core.turnInFlight = false;
+          core.dispatchReserved = false;
+          core.nextTurnAt = Date.now();
+          throw error;
+        }
       },
       runtime: core.runtime,
       runExecution: async (claim) => {
         if (core.legacySelectionClaim?.execution?.execution_id === claim.execution.execution_id) {
           return { execution: state.taskService.getExecution(claim.execution.execution_id) };
         }
-        await core.bridge.bindClaim(claim);
-        return { execution: state.taskService.getExecution(claim.execution.execution_id) };
+        try {
+          await core.bridge.bindClaim(claim);
+          return { execution: state.taskService.getExecution(claim.execution.execution_id) };
+        } catch (error) {
+          // ServicesBridge invokes its release hook for a failed bind, but the
+          // Core's provisional selection reservation still belongs to this
+          // failed handoff. Clear it before CoreDaemon rescan/backoff.
+          core.turnInFlight = false;
+          core.dispatchReserved = false;
+          core.nextTurnAt = Date.now();
+          throw error;
+        }
       },
       handoffTimeoutMs: options.handoffTimeoutMs ?? Math.max(1_000, (options.turnTimeoutMs ?? 30_000) * 2),
       releaseExecution: async (execution) => {

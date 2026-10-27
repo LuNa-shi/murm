@@ -58,7 +58,7 @@ test('benchmark Agent sessions explicitly deny Pi parallel coordination', () => 
 });
 
 class FakeSession extends EventEmitter {
-  constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, bound = false) {
+  constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, bound = false, selectionOnly = false) {
     super();
     this.env = env;
     this.cheat = cheat;
@@ -69,6 +69,7 @@ class FakeSession extends EventEmitter {
     this.hardToolError = hardToolError;
     this.hardToolErrorUsed = false;
     this.bound = bound;
+    this.selectionOnly = selectionOnly;
     this.rpcRecords = [];
     this.closed = false;
     this.candidateResults = [];
@@ -109,6 +110,10 @@ class FakeSession extends EventEmitter {
         tasks = await call('list_tasks', { limit: 10 });
       }
       if (tasks.length === 0) return { data: { disposition: 'handled' } };
+      if (this.selectionOnly) {
+        await call('select_task', { task_id: tasks[0].task_id });
+        return { data: { disposition: 'handled' } };
+      }
       if (this.invalidClaim && !this.invalidClaimUsed) {
         this.invalidClaimUsed = true;
         try {
@@ -233,13 +238,14 @@ class FakeSession extends EventEmitter {
 }
 
 class FakeAdapter {
-  constructor({ env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false }) {
+  constructor({ env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false }) {
     this.env = env;
     this.cheat = cheat;
     this.noWork = noWork;
     this.fileCandidate = fileCandidate;
     this.invalidClaim = invalidClaim;
     this.hardToolError = hardToolError;
+    this.selectionOnly = selectionOnly;
     this.starts = [];
     this.sessions = [];
   }
@@ -249,7 +255,7 @@ class FakeAdapter {
     const { logger } = options;
     logger?.append({ type: 'fake-agent-start' });
     const isWorkerSession = String(options.executionId ?? '').startsWith('worker-');
-    const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate, this.invalidClaim && isWorkerSession, this.hardToolError && isWorkerSession, !isWorkerSession);
+    const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate, this.invalidClaim && isWorkerSession, this.hardToolError && isWorkerSession, !isWorkerSession, this.selectionOnly);
     this.sessions.push(session);
     session.manifest = { fake: true, pi_version: 'fake' };
     return session;
@@ -660,7 +666,7 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -677,7 +683,7 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     repositoryWorktreeDirty: false,
     observationStore,
     agentAdapterFactory: ({ env, index }) => {
-      const adapter = new FakeAdapter({ env, cheat, noWork: noWork || (invalidClaim && index !== 1), fileCandidate, invalidClaim: invalidClaim && index === 1, hardToolError: hardToolError && index === 1 });
+      const adapter = new FakeAdapter({ env, cheat, noWork: noWork || (invalidClaim && index !== 1), fileCandidate, invalidClaim: invalidClaim && index === 1, hardToolError: hardToolError && index === 1, selectionOnly });
       onAdapter?.(adapter);
       return adapter;
     },
@@ -705,6 +711,30 @@ test('benchmark runtime publishes live core, execution, service, and completion 
     assert.ok(events.some((event) => event.kind === 'experiment_finished'));
   } finally {
     observationStore.close();
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('select_task keeps the selection Session through claim and Runtime bind', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-selection-bind-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-selection-bind-report-');
+  try {
+    const report = await runFixture({
+      reportDir,
+      experimentDir,
+      id: 'putnam_selection_bind_test',
+      selectionOnly: true,
+      timeboxMs: 2_000,
+    });
+    assert.equal(report.run.protocol_valid, true);
+    assert.equal(report.run.solved, true);
+    assert.ok(report.run.claim_count > 0);
+    assert.ok(report.run.progress_evidence.workspace_write_count > 0);
+    assert.ok(report.run.candidate_check_count > 0);
+    assert.ok(report.cores.some((core) => core.claims.some((claim) => claim.workspace_revision_start !== null)));
+    assert.equal(report.audit.invalid, false);
+  } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
   }
