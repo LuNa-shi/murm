@@ -1201,6 +1201,7 @@ test('production queue consumes pre-existing independent Tasks without Root synt
     // acceptance is that every queued responsibility is consumed, not that
     // recovery is indistinguishable from a first attempt.
     assert.ok(childClaims.length >= 8);
+    assert.ok(childClaims.length <= childTasks.length * 2, 'claim recovery must remain bounded per queued Task');
     assert.equal(new Set(childClaims.map((claim) => claim.task_id)).size, 8);
     assert.ok(coreTaskSets.some((tasks) => tasks.size >= 2), 'a Core must claim different pre-existing Tasks across waves');
     assert.ok(report.run.candidate_check_count >= 8);

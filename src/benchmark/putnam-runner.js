@@ -2221,7 +2221,10 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   state.controller = new TaskController({
     taskService: state.taskService,
     shortlistLimit: options.controllerShortlistLimit ?? 16,
-    sweepIntervalMs: options.controllerSweepIntervalMs ?? 5_000,
+    // The benchmark loop is already the bounded repair sweep. Keeping a
+    // second five-second Controller timer would duplicate reconciliations and
+    // wake attempts while the durable Task event path is quiet.
+    sweepIntervalMs: options.controllerSweepIntervalMs ?? 0,
     listDaemons: () => state.cores.map((core) => core.daemon?.snapshot?.() ?? {
       core_id: `core-${core.index}`,
       state: core.taskId ? 'RUNNING' : (core.turnInFlight || core.dispatchReserved ? 'SELECTING' : 'IDLE'),
@@ -2373,10 +2376,14 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         if (sanitized.kind === 'daemon_state_changed' && sanitized.changed === true && sanitized.state === 'IDLE' &&
           ['execution_released', 'runtime_failed', 'claim_conflict', 'claim_failed', 'claim_invalid'].includes(sanitized.reason)) {
           // The release event can arrive while CoreDaemon is still inside its
-          // handoff. Reconcile once the Daemon has actually returned to IDLE;
-          // this is the event-driven replacement for waking every Core on
-          // each repair poll.
-          queueMicrotask(() => { void state.controller?.notify('daemon_idle').catch(() => undefined); });
+          // handoff. Wake this Daemon once it has actually returned to IDLE,
+          // then reconcile for durable projections. The direct wake avoids a
+          // same-signature Controller signal being incorrectly deduplicated
+          // after a fast handoff that the Controller never observed as RUNNING.
+          queueMicrotask(() => {
+            daemon.notify('daemon_idle');
+            void state.controller?.notify('daemon_idle').catch(() => undefined);
+          });
         }
       },
     });
@@ -2486,6 +2493,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         if (!state.daemonWakeRequested) {
           await Promise.race([sleep(options.pollMs ?? 5_000), daemonWake]);
         }
+        const reconcileReason = state.daemonWakeRequested ? 'event' : 'poll';
         state.daemonWakeRequested = false;
         daemonWake = new Promise((resolve) => { resolveDaemonWake = resolve; });
         const readyStartedAt = Date.now();
@@ -2508,7 +2516,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         // The Controller owns reconciliation and signals each idle Daemon;
         // each long-lived Daemon owns its bounded selection/claim loop. The
         // main loop is only the periodic repair and observability sweep.
-        await state.controller.reconcile({ reason: state.daemonWakeRequested ? 'event' : 'poll' });
+        await state.controller.reconcile({ reason: reconcileReason });
         for (const core of state.cores) {
           if (state.solvedAt !== null) break;
           if (!core.turnInFlight && !core.recoveryInFlight && Date.now() < deadline && state.solvedAt === null) {

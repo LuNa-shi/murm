@@ -453,7 +453,19 @@ export class CoreDaemon {
       return;
     }
     if (typeof this.waitForSignal === 'function') {
-      await Promise.race([Promise.resolve(this.waitForSignal({ core_id: this.coreId, signal })), this.#abortPromise(signal)]);
+      let resolveWake;
+      const wake = new Promise((resolve) => {
+        resolveWake = resolve;
+        this.waiters.add(resolve);
+      });
+      const external = Promise.resolve().then(() => this.waitForSignal({ core_id: this.coreId, signal }));
+      const aborted = this.#abortPromise(signal);
+      try {
+        const result = await Promise.race([external, wake.then(() => 'notified'), aborted]);
+        if (result === 'notified') this.pendingWake = false;
+      } finally {
+        this.waiters.delete(resolveWake);
+      }
       return;
     }
     // Prefer an explicit wake over polling while retaining a bounded repair

@@ -62,6 +62,25 @@ test('TaskController re-arms a daemon signal after a running handoff returns idl
   assert.deepEqual(signals, ['initial', 'released']);
 });
 
+test('TaskController does not wake a daemon while it is discovering', async () => {
+  const signals = [];
+  const daemon = { core_id: 'core-discovering', state: 'DISCOVERING', healthy: true };
+  const controller = new TaskController({
+    taskService: {
+      listTasks: ({ states, availableOnly }) => states.includes('OPEN') && availableOnly
+        ? [{ task_id: 'task-1', state: 'OPEN' }]
+        : [],
+    },
+    listDaemons: () => [daemon],
+    signalIdleDaemon: (_target, payload) => signals.push(payload.reason),
+  });
+
+  const result = await controller.reconcile({ reason: 'discovery-in-flight' });
+
+  assert.equal(result.idle_daemon_count, 0);
+  assert.deepEqual(signals, []);
+});
+
 test('TaskController projects a stable blocked Task only once', async () => {
   const events = [];
   const daemon = { core_id: 'core-1', state: 'IDLE', healthy: true };
@@ -281,6 +300,30 @@ test('CoreDaemon run loop waits for wake signals and stops cleanly', async () =>
   assert.equal(daemon.snapshot().state, 'IDLE');
   daemon.stop();
   assert.equal(daemon.snapshot().state, 'STOPPING');
+});
+
+test('CoreDaemon notify wakes a custom waitForSignal path', async () => {
+  let discoveries = 0;
+  const daemon = new CoreDaemon({
+    coreId: 'core-custom-wake',
+    listClaimableTasks: () => {
+      discoveries += 1;
+      return discoveries === 1 ? [] : [{ task_id: 'task-custom-wake' }];
+    },
+    selectTask: async () => 'task-custom-wake',
+    claimTask: async () => ({ execution: { execution_id: 'execution-custom-wake', task_id: 'task-custom-wake', state: 'CREATED' } }),
+    runExecution: async () => ({ execution: { state: 'SUCCEEDED' } }),
+    waitForSignal: () => new Promise(() => {}),
+  });
+
+  const running = daemon.run({ maxTurns: 2 });
+  await new Promise((resolve) => setImmediate(resolve));
+  daemon.notify('task-created');
+  const result = await running;
+
+  assert.equal(result.turns, 2);
+  assert.equal(discoveries, 2);
+  daemon.stop();
 });
 
 test('CoreDaemon default idle wait is interruptible by notify', async () => {

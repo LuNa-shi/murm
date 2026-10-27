@@ -36,7 +36,7 @@ function daemonState(daemon) {
 
 function isIdle(daemon) {
   const state = String(daemon?.state ?? '').toUpperCase();
-  return daemon?.idle === true || state === 'IDLE' || state === 'DISCOVERING';
+  return daemon?.idle === true || state === 'IDLE';
 }
 
 function isHealthy(daemon) {
