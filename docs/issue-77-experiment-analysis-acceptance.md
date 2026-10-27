@@ -4,8 +4,8 @@
 
 - Issue: #77
 - Worktree: `codex/issue-77-experiment-analysis`
-- Implementation commits: `0256f77`, `db9fbd5`, and final skill-contract commit
-  `9e8d3b817bca6a14222cff78d8d6a70c5ae8cfe0`.
+- Implementation commits: `0256f77`, `db9fbd5`, `9e8d3b8`, and final skill-contract
+  commit `c840f2b0f0b01f0e2f05dc0c7bce88a4938d5339`.
 - Scope: Codex skill instructions, evidence map, report template, testing guidance,
   and a documentation contract test. Runtime, Controller, Core Daemon, Task,
   Material, Workspace, and Judge implementations were not changed.
