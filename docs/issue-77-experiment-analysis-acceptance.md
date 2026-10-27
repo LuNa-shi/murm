@@ -77,4 +77,3 @@ experiments/exp-20261027-issue70-b1-2h-c96a92d/
 ```
 
 The reviewer reports and raw experiment copies remain outside the repository.
-

@@ -245,7 +245,9 @@ Join in this order:
 Keep unmatched records visible as evidence warnings. Use relative source paths
 and line, sequence, event, or database row references in the report. Do not
 modify raw evidence or domain databases; write only derived analysis under
-`analysis/`.
+`analysis/`. For evidence outside the experiment directory, render the source
+as `<external>/<basename>` plus its commit or database identity; never emit an
+absolute checkout or machine path.
 
 ## Report shape
 

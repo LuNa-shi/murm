@@ -72,6 +72,10 @@ Use relative references such as:
 - `state/projects/demo/project.sqlite#executions.execution_id=<id>`;
 - `workspaces/projects/demo/<execution>/.swarm/revisions/3.json`.
 
+For a configured database or checked-out source outside the experiment
+directory, use `<external>/<basename>` plus the relevant commit, table, or
+identity. Never emit its absolute machine path.
+
 Do not modify raw evidence or domain databases. Reports may contain bounded
 metadata and references, but never raw transcripts, hidden reasoning,
 proof/candidate source, credentials, authorization headers, stdout/stderr, or

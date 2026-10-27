@@ -144,6 +144,7 @@ progress, and mathematical or domain outcome. State the strongest evidence,
 uncertainties, and the next validation condition. Do not introduce a new
 count-only diagnosis here.
 
-The report must use relative evidence references and must not contain raw
+The report must use relative evidence references (external sources use
+`<external>/<basename>`) and must not contain raw
 transcripts, hidden reasoning, proof/candidate source, credentials,
 authorization headers, stdout/stderr, or unrestricted private paths.

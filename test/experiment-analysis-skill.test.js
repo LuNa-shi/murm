@@ -37,6 +37,7 @@ test('experiment-analysis skill uses the four-question workflow', async () => {
   assert.match(skill, /stable .*ID|stable IDs/i);
   assert.match(skill, /unknown/);
   assert.match(template, /relative evidence references/);
+  assert.match(evidenceMap, /<external>\/<basename>/);
   assert.match(template, /stdout\/stderr/);
   assert.match(template, /credentials/);
 

@@ -24,4 +24,3 @@ removed and did not run the old analyzer.
 
 Full local reviewer artifacts were kept outside the repository at the time of
 acceptance. This file is the committed, sanitized reviewer result.
-
