@@ -4,7 +4,8 @@
 
 - Issue: #77
 - Worktree: `codex/issue-77-experiment-analysis`
-- Implementation commits: `0256f77`, `62b4c18`
+- Implementation commits: `0256f77`, `db9fbd5`, and final skill-contract commit
+  `9e8d3b817bca6a14222cff78d8d6a70c5ae8cfe0`.
 - Scope: Codex skill instructions, evidence map, report template, testing guidance,
   and a documentation contract test. Runtime, Controller, Core Daemon, Task,
   Material, Workspace, and Judge implementations were not changed.
@@ -50,6 +51,16 @@ Both reviewers independently reached the following result:
 
 The reports are therefore useful diagnostic analyses, not complete control-plane
 acceptance evidence.
+
+The committed, sanitized reviewer results are:
+
+- [Reviewer A result](issue-77-experiment-analysis-review-a.md), generated from
+  isolated local artifact `issue77-final-a-20261027`;
+- [Reviewer B result](issue-77-experiment-analysis-review-b.md), generated from
+  isolated local artifact `issue77-final-b-20261027`.
+
+The full local reports were retained outside the repository during acceptance;
+the committed files preserve their conclusions without raw evidence.
 
 ## Validation
 
