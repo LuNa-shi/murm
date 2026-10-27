@@ -113,6 +113,7 @@ export class TaskController {
     this.reconcileRequested = false;
     this.nextReason = null;
     this.daemonSignals = new Map();
+    this.blockedSignals = new Map();
     this.lastSnapshot = {
       reason: null,
       claimable_count: 0,
@@ -196,7 +197,13 @@ export class TaskController {
       try {
         const result = await this.reconcileTask(this.usesTaskServiceReconcile ? id : task, { reason, at: reconciledAt });
         if (result !== undefined && result !== null) repairs.push({ task_id: id, result });
-        this.#emit({ kind: 'controller_task_reconciled', task_id: id, reason, result: result ?? null, timestamp: this.now() });
+        // A periodic sweep commonly returns changed:false for a stable
+        // terminal or dependency state. Persisted Task events and the
+        // controller snapshot already describe that no-op; emitting one
+        // projection per sweep made a quiet queue look like active work.
+        if (result === undefined || result === null || result.changed !== false) {
+          this.#emit({ kind: 'controller_task_reconciled', task_id: id, reason, result: result ?? null, timestamp: this.now() });
+        }
       } catch (error) {
         this.#emit({ kind: 'controller_task_reconcile_failed', task_id: id, reason, error: this.#error(error), timestamp: this.now() });
       }
@@ -214,6 +221,7 @@ export class TaskController {
       const id = daemonId(view, index);
       if (isHealthy(view)) healthy.push(id);
       else {
+        this.daemonSignals.delete(id);
         recovery.push(id);
         if (typeof this.requestDaemonRecovery === 'function') {
           await this.requestDaemonRecovery(daemon, { core_id: id, reason, at: reconciledAt });
@@ -223,6 +231,7 @@ export class TaskController {
         continue;
       }
       if (isIdle(view)) idle.push({ daemon, view, id });
+      else this.daemonSignals.delete(id);
     }
     const signature = taskSignature(claimable);
     let signaled = 0;
@@ -254,7 +263,17 @@ export class TaskController {
     this.lastSnapshot = snapshot;
     this.#emit({ kind: 'controller_reconcile', ...snapshot, timestamp: this.now() });
     for (const task of claimable) this.#emit({ kind: 'controller_task_claimable', task_id: taskId(task), timestamp: this.now() });
-    for (const task of blocked) this.#emit({ kind: 'controller_task_blocked', task_id: taskId(task), block_reason: task.block_reason ?? null, timestamp: this.now() });
+    const blockedIds = new Set();
+    for (const task of blocked) {
+      const id = taskId(task);
+      if (!id) continue;
+      blockedIds.add(id);
+      const signal = `${String(task.state ?? 'BLOCKED')}:${String(task.block_reason ?? '')}`;
+      if (this.blockedSignals.get(id) === signal) continue;
+      this.blockedSignals.set(id, signal);
+      this.#emit({ kind: 'controller_task_blocked', task_id: id, block_reason: task.block_reason ?? null, timestamp: this.now() });
+    }
+    for (const id of this.blockedSignals.keys()) if (!blockedIds.has(id)) this.blockedSignals.delete(id);
     return this.snapshot();
   }
 

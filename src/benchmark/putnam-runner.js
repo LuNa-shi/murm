@@ -244,7 +244,6 @@ function safeDiagnostic(value) {
   if (!text) return null;
   if (/spawn .*ENOENT|command not found|checker unavailable|executable/i.test(text)) return 'checker_unavailable';
   if (/unknown module prefix 'Mathlib'/.test(text)) return 'missing_mathlib_build';
-  if (/sorry|admit|axiom/i.test(text)) return 'forbidden_placeholder';
   if (/timed out|timeout/i.test(text)) return 'checker_timeout';
   if (/unknown identifier|type mismatch|unsolved goals|application type mismatch/i.test(text)) return 'lean_proof_error';
   return 'lean_checker_error';
@@ -787,7 +786,9 @@ function sanitizedCheck(result, material) {
       error_code: evidence.error_code ?? null,
     },
     check_result_id: result.check_result_id,
-    diagnostic_class: safeDiagnostic(evidence.diagnostic),
+    diagnostic_class: evidence.forbidden_placeholder === true
+      ? 'forbidden_placeholder'
+      : safeDiagnostic(evidence.diagnostic),
   };
 }
 
@@ -869,7 +870,9 @@ async function publishFeedback(state, core, material, result, { taskId = core.ta
         error_code: result.evidence?.error_code ?? null,
       },
       check_result_id: result.check_result_id,
-      diagnostic_class: safeDiagnostic(result.evidence?.diagnostic),
+      diagnostic_class: result.evidence?.forbidden_placeholder === true
+        ? 'forbidden_placeholder'
+        : safeDiagnostic(result.evidence?.diagnostic),
     },
     provenance: { actor_ref: 'judge:lean', project: state.problem.id, target_task_id: taskId },
   }, makeEnvelope({
@@ -2346,6 +2349,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           task_id: event.task_id ?? null,
           execution_id: event.execution_id ?? null,
           state: event.state ?? null,
+          execution_state: event.execution_state ?? null,
           reason: event.reason ?? null,
           candidate_count: event.candidate_count ?? null,
           task_ids: event.task_ids ?? null,
@@ -2370,7 +2374,6 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   state.requestDaemonWake = (reason = 'event') => {
     state.daemonWakeRequested = true;
     resolveDaemonWake();
-    for (const daemon of state.daemons) daemon.notify(reason);
     void state.controller.notify(reason).catch(() => undefined);
   };
   state.unsubscribeTaskEvents = state.taskService.subscribeTaskEvents((event) => {
@@ -2494,7 +2497,6 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         // each long-lived Daemon owns its bounded selection/claim loop. The
         // main loop is only the periodic repair and observability sweep.
         await state.controller.reconcile({ reason: state.daemonWakeRequested ? 'event' : 'poll' });
-        for (const daemon of state.daemons) daemon.notify(state.daemonWakeRequested ? 'event' : 'poll');
         for (const core of state.cores) {
           if (state.solvedAt !== null) break;
           if (!core.turnInFlight && !core.recoveryInFlight && Date.now() < deadline && state.solvedAt === null) {

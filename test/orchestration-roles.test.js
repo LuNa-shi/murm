@@ -38,6 +38,49 @@ test('TaskController reconciles claimability and signals each idle daemon once p
   assert.equal(events.some((event) => event.kind === 'controller_task_claimable'), true);
 });
 
+test('TaskController re-arms a daemon signal after a running handoff returns idle', async () => {
+  const signals = [];
+  const daemon = { core_id: 'core-1', state: 'IDLE', healthy: true };
+  const taskService = {
+    listTasks: ({ states, availableOnly }) => states.includes('OPEN') && availableOnly
+      ? [{ task_id: 'task-1', state: 'OPEN' }]
+      : [],
+  };
+  const controller = new TaskController({
+    taskService,
+    listDaemons: () => [daemon],
+    signalIdleDaemon: (_target, payload) => signals.push(payload.reason),
+  });
+
+  await controller.reconcile({ reason: 'initial' });
+  await controller.reconcile({ reason: 'duplicate' });
+  daemon.state = 'RUNNING';
+  await controller.reconcile({ reason: 'claimed' });
+  daemon.state = 'IDLE';
+  await controller.reconcile({ reason: 'released' });
+
+  assert.deepEqual(signals, ['initial', 'released']);
+});
+
+test('TaskController projects a stable blocked Task only once', async () => {
+  const events = [];
+  const daemon = { core_id: 'core-1', state: 'IDLE', healthy: true };
+  const controller = new TaskController({
+    taskService: {
+      listTasks: ({ availableOnly }) => availableOnly
+        ? []
+        : [{ task_id: 'blocked-1', state: 'BLOCKED', block_reason: 'dependency:dep-1' }],
+    },
+    listDaemons: () => [daemon],
+    onEvent: (event) => events.push(event),
+  });
+
+  await controller.reconcile({ reason: 'first' });
+  await controller.reconcile({ reason: 'periodic' });
+
+  assert.equal(events.filter((event) => event.kind === 'controller_task_blocked').length, 1);
+});
+
 
 test('TaskController adapts TaskService.reconcileTask to its task-id contract', async () => {
   const repaired = [];
@@ -240,8 +283,38 @@ test('CoreDaemon run loop waits for wake signals and stops cleanly', async () =>
   assert.equal(daemon.snapshot().state, 'STOPPING');
 });
 
+test('CoreDaemon default idle wait is interruptible by notify', async () => {
+  const calls = [];
+  let discoveries = 0;
+  const daemon = new CoreDaemon({
+    coreId: 'core-default-wake',
+    idleBackoffMs: 10_000,
+    listClaimableTasks: () => {
+      discoveries += 1;
+      return discoveries === 1 ? [] : [{ task_id: 'task-woken' }];
+    },
+    selectTask: async () => 'task-woken',
+    claimTask: async () => ({ execution: { execution_id: 'execution-woken', task_id: 'task-woken', state: 'CREATED' } }),
+    runExecution: async () => {
+      calls.push('run');
+      return { execution: { state: 'SUCCEEDED' } };
+    },
+  });
+
+  const running = daemon.run({ maxTurns: 2 });
+  await new Promise((resolve) => setImmediate(resolve));
+  daemon.notify('task-created');
+  const result = await running;
+
+  assert.equal(result.turns, 2);
+  assert.equal(calls.length, 1);
+  assert.equal(daemon.snapshot().state, CORE_DAEMON_STATES.IDLE);
+  daemon.stop();
+});
+
 test('CoreDaemon stop aborts a claimed Runtime handoff and fences the claim', async () => {
   let fenced = 0;
+  const events = [];
   const daemon = new CoreDaemon({
     coreId: 'core-abort',
     listClaimableTasks: () => [{ task_id: 'task-abort' }],
@@ -252,6 +325,7 @@ test('CoreDaemon stop aborts a claimed Runtime handoff and fences the claim', as
       waitForExecutionRelease: async (_executionId, { signal }) => new Promise((resolve) => signal.addEventListener('abort', () => resolve({ released: false, aborted: true }), { once: true })),
       fenceExecution: async () => { fenced += 1; return { execution: { state: 'FENCED' } }; },
     },
+    onEvent: (event) => events.push(event),
   });
   const running = daemon.runOnce({ reason: 'abort-test' });
   await new Promise((resolve) => setImmediate(resolve));
@@ -259,5 +333,7 @@ test('CoreDaemon stop aborts a claimed Runtime handoff and fences the claim', as
   const result = await running;
   assert.equal(result.disposition, 'runtime_failed');
   assert.equal(fenced, 1);
+  assert.equal(events.filter((event) => event.kind === 'daemon_execution_released').length, 1);
+  assert.equal(events.find((event) => event.kind === 'daemon_execution_released').execution_state, 'FENCED');
   assert.equal(daemon.snapshot().state, 'STOPPING');
 });

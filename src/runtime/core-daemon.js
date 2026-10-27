@@ -371,6 +371,16 @@ export class CoreDaemon {
         this.lastError = errorView(error);
         const releaseView = release instanceof Error ? errorView(release) : release?.error ? errorView(release.error) : release ? { disposition: release.disposition ?? null, execution_id: release.execution?.execution_id ?? claim.execution.execution_id } : null;
         this.#emit({ kind: 'daemon_runtime_failed', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, error: this.lastError, release: releaseView, timestamp: this.now() });
+        const releasedExecution = release?.execution ?? release?.result?.execution ?? release;
+        this.#emit({
+          kind: 'daemon_execution_released',
+          core_id: this.coreId,
+          task_id: this.taskId,
+          execution_id: this.executionId,
+          execution_state: releasedExecution?.state ?? null,
+          reason: 'runtime_failed',
+          timestamp: this.now(),
+        });
         this.#setIdle({ reason: 'runtime_failed' });
         return { disposition: 'runtime_failed', claim, error: this.lastError, release, snapshot: this.snapshot() };
       }
@@ -434,7 +444,24 @@ export class CoreDaemon {
       await Promise.race([Promise.resolve(this.waitForSignal({ core_id: this.coreId, signal })), this.#abortPromise(signal)]);
       return;
     }
-    await Promise.race([sleep(this.idleBackoffMs), this.#abortPromise(signal)]);
+    // Prefer an explicit wake over polling while retaining a bounded repair
+    // interval for callers that do not have an event source.  The previous
+    // sleep-only path meant notify() could not wake an idle Daemon until the
+    // backoff elapsed, while the runner also notified every Daemon on each
+    // poll.  Registering the waiter here makes the Controller signal the
+    // single low-latency path without allowing an empty queue to spin.
+    let resolveWake;
+    const wake = new Promise((resolve) => {
+      resolveWake = resolve;
+      this.waiters.add(resolve);
+    });
+    const timeout = sleep(this.idleBackoffMs).then(() => 'backoff');
+    const aborted = this.#abortPromise(signal).then(() => 'aborted');
+    try {
+      await Promise.race([wake.then(() => 'notified'), timeout, aborted]);
+    } finally {
+      this.waiters.delete(resolveWake);
+    }
   }
 
   #abortPromise(signal) {
