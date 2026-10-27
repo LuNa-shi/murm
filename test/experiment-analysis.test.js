@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { analyzeExperiment, resolveExperiment } from '../src/analysis/experiment-analysis.js';
+import { ObservationStore } from '../src/observability/observation-store.js';
 
 const START = '2026-01-01T00:00:00.000Z';
 const T1 = '2026-01-01T00:00:01.000Z';
@@ -216,6 +217,43 @@ test('sanitized mode keeps structural evidence but does not parse raw Agent oper
     assert.equal(analysis.inventory.evidence.find((entry) => entry.class === 'service').status, 'present');
     assert.match(analysis.report, /sanitized/);
   } finally { await cleanup(root); }
+});
+
+test('sanitized analysis joins bounded Material consumer and downstream observations', async () => {
+  const root = await createFixture();
+  const observation = new ObservationStore(join(root, 'observability.sqlite'));
+  observation.registerExperiment({ experimentId: 'fixture-run', rootTaskId: TASK, status: 'RUNNING' });
+  observation.append({
+    experimentId: 'fixture-run', source: 'context-service', kind: 'material_published',
+    taskId: TASK, executionId: EXECUTION, payload: {
+      material_id: MATERIAL, kind: 'artifact', scope: 'proof_relevant',
+      source_task: TASK, source_execution: EXECUTION,
+    },
+  });
+  observation.append({
+    experimentId: 'fixture-run', source: 'context-service', kind: 'material_consumed',
+    taskId: TASK, executionId: EXECUTION, payload: {
+      material_ids: [MATERIAL], source_task_ids: [TASK], count: 1,
+      content: 'must never be copied into a sanitized report',
+    },
+  });
+  observation.append({
+    experimentId: 'fixture-run', source: 'workspace', kind: 'workspace_revision_saved',
+    taskId: TASK, executionId: EXECUTION, payload: { workspace_revision: 3 },
+  });
+  observation.finishExperiment('fixture-run');
+  observation.close();
+  try {
+    const analysis = await analyzeExperiment(root, { mode: 'sanitized', outputPath: join(root, 'analysis', 'sanitized.md') });
+    const row = analysis.collaboration.find((candidate) => candidate.material_id === MATERIAL);
+    assert.ok(row);
+    assert.equal(row.consumers.length, 1);
+    assert.equal(row.consumers[0].execution_id, EXECUTION);
+    assert.ok(row.downstream_effects.some((effect) => effect.kind === 'workspace_revision'));
+    assert.doesNotMatch(analysis.report, /must never be copied/);
+  } finally {
+    await cleanup(root);
+  }
 });
 
 test('resolves an experiment ID under an explicit experiments root', async () => {

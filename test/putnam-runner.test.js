@@ -1060,6 +1060,12 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'request_wait' && event.dependency_ids.length > 0));
     assert.ok(report.run.resumed_execution_count >= 1, 'a resumable WAITING Execution should return through claim and Scheduler');
     assert.ok(report.cores.some((core) => core.material_reads.some((read) => read.source_task_ids.includes('collab-research'))));
+    const rootTaskId = report.project.task_tree.find((task) => task.parent_id === null).task_id;
+    const rootNarratives = report.project.execution_narratives.filter((item) => item.task_id === rootTaskId);
+    assert.ok(rootNarratives.some((item) => item.actions.some((event) => event.kind === 'material_consumed')),
+      'Root Material reads must be durable operator observations');
+    assert.ok(rootNarratives.some((item) => item.actions.some((event) => event.kind === 'material_published')),
+      'Root downstream integration must be durable operator evidence');
     assert.equal(report.project.task_tree.filter((task) => task.parent_id !== null).length, 3);
     assert.ok(report.run.claim_count >= 4, `expected root and three child claims, got ${report.run.claim_count}`);
     assert.ok(report.run.child_claim_count >= 3, `expected every child to be claimed, got ${report.run.child_claim_count}`);
@@ -1067,7 +1073,7 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.ok(report.run.resumed_execution_count >= 1, `expected at least one Execution to be resumed; root=${report.run.root_claim_count}, claims=${report.run.claim_count}, details=${JSON.stringify(report.project.execution_history)}`);
     assert.ok(report.run.resumed_execution_count >= 1, `expected a Scheduler-mediated resumed Execution, got ${report.run.resumed_execution_count}`);
     const rootExecutionIds = new Set(report.cores.flatMap((core) => core.claims)
-      .filter((claim) => claim.task_id === report.project.task_tree.find((task) => task.parent_id === null).task_id)
+      .filter((claim) => claim.task_id === rootTaskId)
       .map((claim) => claim.execution_id));
     assert.equal(rootExecutionIds.size, 1, 'root wait/resume must preserve one Execution lineage');
     assert.ok(report.run.progress_evidence.workspace_write_count >= 4);

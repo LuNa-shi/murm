@@ -53,6 +53,7 @@ function modePrompt(mode, prompt) {
   if (mode === 'semantic') {
     return [
       'This run is the Issue #56 semantic-structure treatment. Before doing proof work on a root Task, use the registered swarmenv_task_create_branch_group tool to create at least two genuinely different ordinary alternative Tasks. When a Branch Task is bound, its Agent must use swarmenv_task_add_required_subtask at least twice to create one jointly required group before finishing either route. Give every Task a concrete goal, expected output, acceptance condition, and real Workspace or Material result. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each mutation. Do not replace these relations with generic child creation. Continue useful root and Branch work after the structure is created; the shared queue must keep the resulting Tasks claimable by other Cores.',
+      'The semantic run also requires an observable delivery loop: after child or branch Materials exist, the Root must read them through swarmenv_context_read, write a bounded integration note in its own Workspace, and publish one root-owned Material with scope root_integration that names the consumed Material IDs. A proof failure does not excuse skipping this integration step; preserve the integration evidence and then block on the typed proof/check dependency if needed.',
       prompt,
     ].join('\n');
   }
@@ -1599,7 +1600,7 @@ async function createProjectState(problem, config, options) {
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const modeInstructions = selectedParallelMode === 'semantic'
-    ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes.'
+    ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes. After child or branch Materials exist, the Root must read them with swarmenv_context_read, make a bounded Workspace integration note, and publish one root-owned Material with scope root_integration naming the consumed Material IDs before blocking or claiming the collaboration loop complete.'
     : selectedParallelMode === 'root-only'
       ? 'This is the Root-only control. Keep all work on this root Task. Do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks.'
       : 'Use direct child Tasks only when a genuinely separable route emerges.';
@@ -1613,6 +1614,9 @@ async function createProjectState(problem, config, options) {
     task_instructions: `The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. If no honest candidate is ready, preserve useful evidence and block on a concrete dependency instead of submitting the input file. ${modeInstructions} Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge. ${dependencyInstruction} Later reclaim the root to read child Workspace changes, Materials, and Judge feedback, then accept completed work or request focused rework before integrating it into the proof.`,
     completion_contract: {
       ...(normalFlow ? { normal_flow: true } : {}),
+      ...(selectedParallelMode === 'semantic' ? {
+        required_materials: [{ kinds: ['artifact', 'fact', 'experience', 'failure'], scope: 'root_integration', min_count: 1 }],
+      } : {}),
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
       required_check: {
         checker_ref: fixture.checker_ref,
@@ -2084,11 +2088,26 @@ async function createProjectState(problem, config, options) {
           core.stateRef?.requestDaemonWake?.();
         } else if (operation === 'read_materials') {
           const materialsRead = Array.isArray(result) ? result : [];
-          core.materialReads.push({
+          const materialRead = {
+            read_at: new Date().toISOString(),
             reader_task_id: taskId,
             reader_execution_id: executionId,
             material_ids: materialsRead.map((material) => material.material_id).filter(Boolean),
             source_task_ids: [...new Set(materialsRead.map((material) => material.source_task).filter(Boolean))],
+          };
+          core.materialReads.push(materialRead);
+          // The Context Service read path intentionally has no durable write,
+          // so keep a bounded operator fact that links the reader to the
+          // published Material IDs.  Only identifiers and source Task IDs are
+          // recorded; Material contents never enter the observation payload.
+          core.observe({
+            source: 'context-service', kind: 'material_consumed', visibility: 'operator',
+            taskId, executionId, coreId: `core-${core.index}`,
+            payload: {
+              material_ids: materialRead.material_ids,
+              source_task_ids: materialRead.source_task_ids,
+              count: materialRead.material_ids.length,
+            },
           });
         } else if (operation === 'create_child_task') {
           const child = result?.task ?? result;
@@ -2100,6 +2119,18 @@ async function createProjectState(problem, config, options) {
           });
           core.stateRef?.requestDaemonWake?.();
         } else if (operation === 'publish_material') {
+          const published = result?.material ?? result ?? {};
+          core.observe({
+            source: 'context-service', kind: 'material_published', visibility: 'operator',
+            taskId, executionId, coreId: `core-${core.index}`,
+            payload: {
+              material_id: published.material_id ?? null,
+              kind: published.kind ?? payload?.kind ?? null,
+              scope: published.scope ?? payload?.scope ?? null,
+              source_task: published.source_task ?? taskId,
+              source_execution: published.source_execution ?? executionId,
+            },
+          });
           core.parallelism.recordWorkUnit({
             task_id: taskId,
             execution_id: executionId,
@@ -2107,6 +2138,15 @@ async function createProjectState(problem, config, options) {
             progress_kind: 'material',
           });
         } else if (operation === 'accept_task' || operation === 'request_rework') {
+          const reviewed = result?.task ?? result?.target_task ?? result ?? {};
+          core.observe({
+            source: 'task-service', kind: 'task_review', visibility: 'operator',
+            taskId, executionId, coreId: `core-${core.index}`,
+            payload: {
+              decision: operation === 'accept_task' ? 'accept' : 'request_rework',
+              target_task_id: payload?.target_task_id ?? reviewed.task_id ?? null,
+            },
+          });
           core.parallelism.recordWorkUnit({
             task_id: payload?.target_task_id ?? taskId,
             execution_id: executionId,
@@ -2114,6 +2154,16 @@ async function createProjectState(problem, config, options) {
             progress_kind: 'parent_review',
           });
         } else if (operation === 'submit_candidate') {
+          const check = result?.check_result ?? result?.checkResult ?? {};
+          core.observe({
+            source: 'judge-service', kind: 'candidate_submitted', visibility: 'operator',
+            taskId, executionId, coreId: `core-${core.index}`,
+            payload: {
+              candidate_material_id: payload?.candidate_material_id ?? result?.candidate_material_id ?? null,
+              check_result_id: check.check_result_id ?? result?.check_result_id ?? null,
+              verdict: check.verdict ?? result?.verdict ?? null,
+            },
+          });
           core.parallelism.recordWorkUnit({
             task_id: taskId,
             execution_id: executionId,

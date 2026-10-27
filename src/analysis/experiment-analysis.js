@@ -478,6 +478,52 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     sessionId: ids.sessionId, coreId: ids.coreId, correlationId: ids.correlationId,
     operation: extra.operation ?? operation, summary, priority: 1,
   });
+  // These operator events are emitted by the benchmark runner with only
+  // stable IDs and bounded classifications.  Keep them usable in sanitized
+  // mode so a Material handoff can be joined to its reader and later action
+  // without opening raw Agent or Context payloads.
+  if (row.kind === 'material_consumed') {
+    facts.push(base('material_consumed', {
+      material_ids: array(payload?.material_ids).filter((id) => typeof id === 'string').slice(0, 100),
+      source_task_ids: array(payload?.source_task_ids).filter((id) => typeof id === 'string').slice(0, 100),
+      count: Number.isInteger(payload?.count) ? payload.count : array(payload?.material_ids).length,
+    }, { operation: 'read_materials' }));
+    return facts;
+  }
+  if (row.kind === 'material_published') {
+    facts.push(base('material_published', {
+      material: {
+        material_id: typeof payload?.material_id === 'string' ? payload.material_id : null,
+        kind: typeof payload?.kind === 'string' ? payload.kind : null,
+        scope: typeof payload?.scope === 'string' ? payload.scope : null,
+        source_task: typeof payload?.source_task === 'string' ? payload.source_task : ids.taskId,
+        source_execution: typeof payload?.source_execution === 'string' ? payload.source_execution : ids.executionId,
+      },
+    }, { operation: 'publish_material' }));
+    return facts;
+  }
+  if (row.kind === 'task_review') {
+    const decision = payload?.decision === 'request_rework' ? 'request_rework' : payload?.decision === 'accept' ? 'accept' : null;
+    facts.push(base(decision === 'request_rework' ? 'rework' : 'review', {
+      decision,
+      target_task_id: typeof payload?.target_task_id === 'string' ? payload.target_task_id : null,
+    }, { operation: decision === 'request_rework' ? 'request_rework' : 'accept_task' }));
+    return facts;
+  }
+  if (row.kind === 'workspace_revision_saved') {
+    facts.push(base('workspace_revision', {
+      workspace_revision: Number.isInteger(payload?.workspace_revision) ? payload.workspace_revision : null,
+    }, { operation: 'save_workspace_revision' }));
+    return facts;
+  }
+  if (row.kind === 'candidate_submitted') {
+    facts.push(base('candidate_submitted', {
+      candidate_material_id: typeof payload?.candidate_material_id === 'string' ? payload.candidate_material_id : null,
+      check_result_id: typeof payload?.check_result_id === 'string' ? payload.check_result_id : null,
+      verdict: typeof payload?.verdict === 'string' ? payload.verdict : null,
+    }, { operation: 'submit_candidate' }));
+    return facts;
+  }
   if (row.source === 'agent') {
     const record = payload?.record ?? payload;
     const recordType = record?.type;
@@ -943,6 +989,45 @@ async function readObservationFacts(root, observationPath, experimentIds, mode, 
       if (mode === 'full') {
         try { payload = JSON.parse(row.payload_json ?? '{}'); }
         catch (error) { errors.push({ path: sourcePath(root, observationPath), sequence: row.sequence, error: text(error.message, 180) }); continue; }
+      } else if (['material_consumed', 'material_published', 'task_review', 'workspace_revision_saved', 'candidate_submitted'].includes(row.kind)) {
+        // Read only the runner's bounded operator events in sanitized mode.
+        // Other observation payloads may contain Agent or checker material and
+        // remain intentionally opaque.
+        try {
+          const raw = db.prepare('SELECT payload_json FROM observation_events WHERE event_id = ?').get(row.event_id)?.payload_json;
+          const decoded = JSON.parse(raw ?? '{}');
+          if (row.kind === 'material_consumed') {
+            payload = {
+              material_ids: array(decoded.material_ids).filter((id) => typeof id === 'string').slice(0, 100),
+              source_task_ids: array(decoded.source_task_ids).filter((id) => typeof id === 'string').slice(0, 100),
+              count: Number.isInteger(decoded.count) ? decoded.count : null,
+            };
+          } else if (row.kind === 'material_published') {
+            payload = {
+              material_id: typeof decoded.material_id === 'string' ? decoded.material_id : null,
+              kind: typeof decoded.kind === 'string' ? decoded.kind : null,
+              scope: typeof decoded.scope === 'string' ? decoded.scope : null,
+              source_task: typeof decoded.source_task === 'string' ? decoded.source_task : null,
+              source_execution: typeof decoded.source_execution === 'string' ? decoded.source_execution : null,
+            };
+          } else if (row.kind === 'task_review') {
+            payload = {
+              decision: decoded.decision === 'accept' || decoded.decision === 'request_rework' ? decoded.decision : null,
+              target_task_id: typeof decoded.target_task_id === 'string' ? decoded.target_task_id : null,
+            };
+          } else if (row.kind === 'workspace_revision_saved') {
+            payload = { workspace_revision: Number.isInteger(decoded.workspace_revision) ? decoded.workspace_revision : null };
+          } else {
+            payload = {
+              candidate_material_id: typeof decoded.candidate_material_id === 'string' ? decoded.candidate_material_id : null,
+              check_result_id: typeof decoded.check_result_id === 'string' ? decoded.check_result_id : null,
+              verdict: typeof decoded.verdict === 'string' ? decoded.verdict : null,
+            };
+          }
+        } catch (error) {
+          errors.push({ path: sourcePath(root, observationPath), sequence: row.sequence, error: 'bounded operator observation payload is malformed' });
+          continue;
+        }
       }
       facts.push(...factsForObservationRow(root, observationPath, row, payload, mode));
     }
