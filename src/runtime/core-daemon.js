@@ -79,7 +79,7 @@ export class CoreDaemon {
     selectionRetryCooldownMs = 30_000,
     handoffTimeoutMs = Number.POSITIVE_INFINITY,
     handoffPollMs = 25,
-    idleBackoffMs = 100,
+    idleBackoffMs = 5_000,
     waitForSignal = null,
     now = () => Date.now(),
     onEvent = null,
@@ -129,6 +129,7 @@ export class CoreDaemon {
     this.loopPromise = null;
     this.turnPromise = null;
     this.waiters = new Set();
+    this.pendingWake = false;
     this.state = CORE_DAEMON_STATES.IDLE;
     this.executionId = null;
     this.taskId = null;
@@ -173,6 +174,10 @@ export class CoreDaemon {
   /** Wake an idle Daemon after Task Controller observes new claimable work. */
   notify(reason = 'event') {
     this.#rearmSelectionIfDue(reason);
+    // A wake received while a selection or handoff is already in flight is
+    // already covered by that turn. Remember it only for an idle Daemon,
+    // where the signal can otherwise land just before #wait registers.
+    if (this.state === CORE_DAEMON_STATES.IDLE) this.pendingWake = true;
     this.#emit({ kind: 'daemon_wake_requested', core_id: this.coreId, reason, timestamp: this.now() });
     for (const resolve of this.waiters) resolve(reason);
     this.waiters.clear();
@@ -440,6 +445,13 @@ export class CoreDaemon {
 
   async #wait(signal) {
     if (this.stopped || signal?.aborted) return;
+    // A Controller signal can arrive in the small handoff window after the
+    // Daemon returned IDLE but before this loop registered its waiter. Keep a
+    // one-shot pending bit so that wake is not lost in that race.
+    if (this.pendingWake) {
+      this.pendingWake = false;
+      return;
+    }
     if (typeof this.waitForSignal === 'function') {
       await Promise.race([Promise.resolve(this.waitForSignal({ core_id: this.coreId, signal })), this.#abortPromise(signal)]);
       return;
@@ -451,15 +463,27 @@ export class CoreDaemon {
     // poll.  Registering the waiter here makes the Controller signal the
     // single low-latency path without allowing an empty queue to spin.
     let resolveWake;
+    let timeoutId;
+    let abortHandler;
     const wake = new Promise((resolve) => {
       resolveWake = resolve;
       this.waiters.add(resolve);
     });
-    const timeout = sleep(this.idleBackoffMs).then(() => 'backoff');
-    const aborted = this.#abortPromise(signal).then(() => 'aborted');
+    const timeout = new Promise((resolve) => {
+      timeoutId = setTimeout(() => resolve('backoff'), this.idleBackoffMs);
+    });
+    const aborted = signal
+      ? new Promise((resolve) => {
+        abortHandler = () => resolve('aborted');
+        signal.addEventListener('abort', abortHandler, { once: true });
+      })
+      : new Promise(() => {});
     try {
-      await Promise.race([wake.then(() => 'notified'), timeout, aborted]);
+      const result = await Promise.race([wake.then(() => 'notified'), timeout, aborted]);
+      if (result === 'notified') this.pendingWake = false;
     } finally {
+      clearTimeout(timeoutId);
+      if (abortHandler) signal.removeEventListener('abort', abortHandler);
       this.waiters.delete(resolveWake);
     }
   }
@@ -477,12 +501,13 @@ export class CoreDaemon {
   }
 
   #setState(state, payload = {}) {
-    if (this.state !== state) {
+    const changed = this.state !== state;
+    if (changed) {
       this.state = state;
       this.lastEventAt = this.now();
       this.stateHistory.push({ state, at: this.lastEventAt });
     }
-    this.#emit({ kind: 'daemon_state_changed', core_id: this.coreId, state, ...payload, timestamp: this.now() });
+    this.#emit({ kind: 'daemon_state_changed', core_id: this.coreId, state, changed, ...payload, timestamp: this.now() });
   }
 
   #emit(event) {

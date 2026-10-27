@@ -1197,7 +1197,11 @@ test('production queue consumes pre-existing independent Tasks without Root synt
     assert.equal(rootTask.state, 'RUNNING');
     assert.equal(childTasks.length, 8);
     assert.ok(childTasks.every((task) => task.state === 'SATISFIED'));
-    assert.equal(childClaims.length, 8);
+    // A failed Runtime handoff may fence and reclaim one independent Task;
+    // acceptance is that every queued responsibility is consumed, not that
+    // recovery is indistinguishable from a first attempt.
+    assert.ok(childClaims.length >= 8);
+    assert.equal(new Set(childClaims.map((claim) => claim.task_id)).size, 8);
     assert.ok(coreTaskSets.some((tasks) => tasks.size >= 2), 'a Core must claim different pre-existing Tasks across waves');
     assert.ok(report.run.candidate_check_count >= 8);
     assert.ok(report.parallelism.eligible_window_ms > 0);

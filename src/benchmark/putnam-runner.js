@@ -2278,7 +2278,10 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       shortlistLimit: options.controllerShortlistLimit ?? 16,
       maxSelectionAttempts: options.maxStartupAttempts ?? 3,
       maxClaimRescans: options.maxClaimRescans ?? 1,
-      idleBackoffMs: options.daemonIdleBackoffMs ?? 100,
+      // Controller/task events wake an idle Daemon immediately.  Keep the
+      // fallback long enough to be a repair path rather than a 10Hz empty
+      // queue poll when an event source is quiet or unavailable.
+      idleBackoffMs: options.daemonIdleBackoffMs ?? 1_000,
       taskService: state.taskService,
       listClaimableTasks: () => state.taskService.listClaimableTasks({
         rootId: state.rootTaskId,
@@ -2350,6 +2353,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           execution_id: event.execution_id ?? null,
           state: event.state ?? null,
           execution_state: event.execution_state ?? null,
+          changed: event.changed ?? null,
           reason: event.reason ?? null,
           candidate_count: event.candidate_count ?? null,
           task_ids: event.task_ids ?? null,
@@ -2366,6 +2370,14 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           visibility: 'operator',
           payload: sanitized,
         });
+        if (sanitized.kind === 'daemon_state_changed' && sanitized.changed === true && sanitized.state === 'IDLE' &&
+          ['execution_released', 'runtime_failed', 'claim_conflict', 'claim_failed', 'claim_invalid'].includes(sanitized.reason)) {
+          // The release event can arrive while CoreDaemon is still inside its
+          // handoff. Reconcile once the Daemon has actually returned to IDLE;
+          // this is the event-driven replacement for waking every Core on
+          // each repair poll.
+          queueMicrotask(() => { void state.controller?.notify('daemon_idle').catch(() => undefined); });
+        }
       },
     });
     core.daemon = daemon;
