@@ -113,7 +113,9 @@ Execution still needs a compact row and lifecycle breaks remain separate.
 > Did each tool call return the information its contract promised, and did the
 > Agent use that information correctly?
 
-For each material mismatch record:
+Compare every recorded request/response pair. A missing response is a contract
+result. Summarize normal pairs in a bounded table and record every mismatch or
+missing pair:
 
 | Field | Content |
 | --- | --- |
@@ -141,3 +143,7 @@ Separate protocol/lifecycle validity, collaboration closure, Execution
 progress, and mathematical or domain outcome. State the strongest evidence,
 uncertainties, and the next validation condition. Do not introduce a new
 count-only diagnosis here.
+
+The report must use relative evidence references and must not contain raw
+transcripts, hidden reasoning, proof/candidate source, credentials,
+authorization headers, stdout/stderr, or unrestricted private paths.

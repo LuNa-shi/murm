@@ -71,7 +71,7 @@ If a fallback exists in source but the experiment did not exercise it, label it
 > **Did the control plane move the right Task to the right Core and continue
 > after claim, release, blocking, or dependency changes?**
 
-Reconstruct the current Issue #70 control chain:
+Reconstruct the experiment's control chain:
 
 ```text
 Controller reconcile
@@ -175,7 +175,7 @@ times.
 > **Did each tool call return the information its contract promised, and did the
 > Agent use that information correctly?**
 
-For each call that matters to a conclusion, follow:
+For every recorded request/response pair in the relevant evidence, follow:
 
 ```text
 request
@@ -184,8 +184,11 @@ request
 → Agent reaction
 ```
 
-Compare the request with the current public tool schema or Service
-implementation and compare the actual response with the expected contract.
+Compare every request with the current public tool schema or Service
+implementation and every response with the expected contract. A missing
+response is itself a contract result. Summarize normal pairs in a bounded
+table and list every mismatch or missing pair individually; do not silently
+skip a call because it did not change the final conclusion.
 Check four things: request validity, response existence, response shape and
 meaning, and downstream use. `ok=true` proves neither complete data nor correct
 semantics. Flag missing or contradictory IDs, ownership, state, provenance,

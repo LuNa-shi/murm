@@ -12,7 +12,7 @@ skill where to look; it does not turn an absent source into a zero count.
 | Agent | `logs/projects/<project>/agents/*.ndjson` and session metadata | Agent messages, tool requests/results, session and process facts |
 | Bridge | `logs/projects/<project>/bridge/*.ndjson` | Agent-to-Service request and response envelopes |
 | Runtime | `logs/projects/<project>/runtime/*.ndjson` | Core binding, heartbeat, wait, stop, release, fencing, and session facts |
-| Controller/Daemon | report fields or observation records with `task-controller`/`core-daemon` source | reconcile, signal, discovery, selection, claim, conflict, release, and recovery |
+| Controller/Daemon | observation records with `task-controller`/`core-daemon` source | reconcile, signal, discovery, selection, claim, conflict, release, and recovery; summary fields only locate records |
 | Service | `logs/projects/<project>/services/*.ndjson` | Task, Context, Workspace, router, admission, and Judge operations |
 | Judge/checker | `logs/projects/<project>/judge/*.ndjson` and Judge service records | preflight, checker process, verdict, CheckResult, and bounded diagnostics |
 | State | `state/projects/<project>/project.sqlite` | authoritative Task, Execution, Material, CheckResult, and operation rows |
