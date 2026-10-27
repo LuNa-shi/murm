@@ -23,3 +23,12 @@ test('each Agent prompt teaches the Task structure semantics and rework path', (
     assert.match(prompt, /alternative|jointly|required|dependency/i, `${name} prompt should explain relationship semantics`);
   }
 });
+
+test('proof prompts keep the locked formalization separate from candidate artifacts', () => {
+  const prompt = `${GENERIC_AGENT_PROMPT}\n${BOUND_AGENT_PROMPT}`;
+  assert.match(prompt, /locked formalization.*read-only input/i);
+  assert.match(prompt, /never publish or submit that input file as a candidate/i);
+  assert.match(prompt, /separate candidate file/i);
+  assert.match(prompt, /read it back/i);
+  assert.match(prompt, /execution_block.*concrete typed dependency/i);
+});
