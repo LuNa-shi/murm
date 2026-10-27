@@ -233,7 +233,7 @@ test('sanitized analysis joins bounded Material consumer and downstream observat
   observation.append({
     experimentId: 'fixture-run', source: 'context-service', kind: 'material_consumed',
     taskId: TASK, executionId: EXECUTION, payload: {
-      material_ids: [MATERIAL], source_task_ids: [TASK], count: 1,
+      material_ids: [MATERIAL], source_task_ids: [TASK], count: 1, action: 'task', durable: true,
       content: 'must never be copied into a sanitized report',
     },
   });
@@ -250,6 +250,45 @@ test('sanitized analysis joins bounded Material consumer and downstream observat
     assert.equal(row.consumers.length, 1);
     assert.equal(row.consumers[0].execution_id, EXECUTION);
     assert.ok(row.downstream_effects.some((effect) => effect.kind === 'workspace_revision'));
+    assert.doesNotMatch(analysis.report, /must never be copied/);
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('sanitized analysis preserves bounded operator IDs beyond the generic summary cap', async () => {
+  const root = await createFixture();
+  const observation = new ObservationStore(join(root, 'observability.sqlite'));
+  observation.registerExperiment({ experimentId: 'fixture-run', rootTaskId: TASK, status: 'RUNNING' });
+  observation.append({
+    experimentId: 'fixture-run', source: 'context-service', kind: 'material_published',
+    taskId: TASK, executionId: EXECUTION, payload: {
+      material_id: MATERIAL, kind: 'artifact', scope: 'proof_relevant',
+      source_task: TASK, source_execution: EXECUTION,
+    },
+  });
+  const materialIds = [...Array.from({ length: 21 }, (_, index) => `noise-material-${index}`), MATERIAL];
+  const taskIds = [...Array.from({ length: 21 }, (_, index) => `noise-task-${index}`), TASK];
+  observation.append({
+    experimentId: 'fixture-run', source: 'context-service', kind: 'material_consumed',
+    taskId: TASK, executionId: EXECUTION, payload: {
+      material_ids: materialIds, source_task_ids: taskIds, count: materialIds.length, action: 'task', durable: true,
+      content: 'must never be copied into a sanitized report',
+    },
+  });
+  observation.append({
+    experimentId: 'fixture-run', source: 'workspace', kind: 'workspace_revision_saved',
+    taskId: TASK, executionId: EXECUTION, payload: { workspace_revision: 3 },
+  });
+  observation.finishExperiment('fixture-run');
+  observation.close();
+  try {
+    const analysis = await analyzeExperiment(root, { mode: 'sanitized', outputPath: join(root, 'analysis', 'bounded-ids.md') });
+    const row = analysis.collaboration.find((candidate) => candidate.material_id === MATERIAL);
+    assert.ok(row);
+    assert.equal(row.consumers.length, 1);
+    assert.equal(row.consumers[0].execution_id, EXECUTION);
+    assert.match(analysis.report, /consume 22 Material\(s\)/);
     assert.doesNotMatch(analysis.report, /must never be copied/);
   } finally {
     await cleanup(root);

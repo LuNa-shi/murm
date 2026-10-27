@@ -2650,9 +2650,27 @@ export class TaskService {
     if (contract.required_materials) {
       if (!this.contextService) missing.push('required_materials');
       else for (const requirement of contract.required_materials) {
-        const count = this.contextService.readMaterials({ source_task: task.task_id }).filter((material) =>
-          requirement.kinds.includes(material.kind) && (!requirement.scope || requirement.scope === material.scope)).length;
-        if (count < requirement.min_count) missing.push(`materials:${requirement.kinds.join('|')}`);
+        const consumptionAction = requirement.action ?? requirement.consumption_action;
+        const materials = this.contextService.readMaterials({ source_task: task.task_id }).filter((material) =>
+          requirement.kinds.includes(material.kind) && (!requirement.scope || requirement.scope === material.scope));
+        let count = materials.length;
+        if (requirement.requires_consumption) {
+          const consumptionRows = typeof this.contextService.listMaterialConsumptions === 'function'
+            ? this.contextService.listMaterialConsumptions({ reader_task: task.task_id, action: consumptionAction })
+            : [];
+          const consumedIds = new Set(consumptionRows.map((row) => row.material_id));
+          count = materials.filter((material) => {
+            const consumedMaterialIds = material.provenance?.consumed_material_ids;
+            if (Array.isArray(consumedMaterialIds) && consumedMaterialIds.length > 0) {
+              return consumedMaterialIds.every((materialId) => consumedIds.has(materialId));
+            }
+            return consumedIds.has(material.material_id);
+          }).length;
+        }
+        if (count < requirement.min_count) {
+          const suffix = requirement.requires_consumption ? `:${consumptionAction}` : '';
+          missing.push(`materials${suffix}:${requirement.kinds.join('|')}`);
+        }
       }
     }
     if (contract.required_candidate) {

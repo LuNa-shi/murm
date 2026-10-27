@@ -61,6 +61,15 @@ export class ServicesSDK {
     return this.#read('read_materials', filters);
   }
 
+  /** Record the bounded Material IDs this Execution actually used. */
+  consumeMaterials(payload = {}, options = {}) {
+    return this.#write('consume_materials', payload, options);
+  }
+
+  listMaterialConsumptions(filters = {}) {
+    return this.#read('list_material_consumptions', filters);
+  }
+
   getCheckResult(checkResultId) {
     return this.#read('get_check_result', { check_result_id: checkResultId });
   }

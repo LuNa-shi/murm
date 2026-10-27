@@ -58,6 +58,7 @@ const INTENT_BY_OPERATION = new Map([
   ['write_workspace_file', 'edit the Workspace'],
   ['publish_material', 'publish a Material'],
   ['read_materials', 'read Materials'],
+  ['consume_materials', 'record Material use'],
   ['submit_candidate', 'submit a Candidate'],
   ['get_check_result', 'inspect Judge feedback'],
   ['apply_check_result', 'process Judge feedback'],
@@ -73,7 +74,7 @@ const INTENT_BY_OPERATION = new Map([
 const BOUNDARY_KINDS = new Set([
   'task_created', 'task_claimed', 'task_state_changed', 'execution_assigned',
   'execution_state_changed', 'workspace_revision', 'material_published',
-  'material_consumed', 'candidate_submitted', 'judge_result', 'judge_check',
+  'material_read', 'material_consumed', 'candidate_submitted', 'judge_result', 'judge_check',
   'wait_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
 ]);
 
@@ -92,6 +93,14 @@ function isObject(value) {
 
 function array(value) {
   return Array.isArray(value) ? value : [];
+}
+
+const BOUNDED_OPERATOR_ID_KEYS = ['material_ids', 'source_task_ids'];
+
+function boundedOperatorIds(value) {
+  return Array.isArray(value)
+    ? value.filter((item) => typeof item === 'string').slice(0, 100)
+    : null;
 }
 
 function first(value) {
@@ -288,7 +297,8 @@ function intentFor(operation, kind = null) {
   if (kind === 'judge_result' || kind === 'judge_check') return 'process Judge feedback';
   if (kind === 'workspace_revision') return 'edit the Workspace';
   if (kind === 'material_published') return 'publish a Material';
-  if (kind === 'material_consumed') return 'read Materials';
+  if (kind === 'material_read') return 'read Materials';
+  if (kind === 'material_consumed') return 'record Material use';
   if (kind === 'execution_assigned') return 'claim or resume a Task';
   if (kind === 'wait_requested') return 'wait for a concrete condition';
   if (kind === 'review' || kind === 'rework') return 'review a child result';
@@ -302,9 +312,19 @@ function factIdentity(kind, source, discriminator = '') {
 function makeFact(root, {
   kind, at = null, source, taskId = null, executionId = null, sessionId = null,
   coreId = null, correlationId = null, operation = null, summary = {}, priority = 4,
+  preserveBoundedOperatorIds = false,
 }) {
   const sourceValue = source.ref ?? source.path ?? String(source);
   const discriminator = [taskId, executionId, sessionId, coreId, correlationId, operation, JSON.stringify(summary)].join('|');
+  const safeSummary = safeResult(summary) ?? {};
+  if (preserveBoundedOperatorIds && isObject(summary) && isObject(safeSummary)) {
+    for (const key of BOUNDED_OPERATOR_ID_KEYS) {
+      const ids = boundedOperatorIds(summary[key]);
+      if (!ids) continue;
+      safeSummary[key] = ids;
+      if (summary[key].length > ids.length) safeSummary[`${key}_truncated`] = true;
+    }
+  }
   return {
     id: factIdentity(kind, sourceValue, discriminator),
     kind,
@@ -315,7 +335,7 @@ function makeFact(root, {
     coreId: coreId ?? null,
     correlationId: correlationId ?? null,
     operation: operation ?? null,
-    summary: safeResult(summary) ?? {},
+    summary: safeSummary,
     sources: [sourceValue],
     priority,
   };
@@ -425,7 +445,17 @@ function domainFactsForService(root, row, source, payload, result = null) {
   }
   if (operation === 'read_materials') {
     const materials = array(result).map((item) => safeEntity(item, 'material') ?? { material_id: item?.material_id ?? item }).filter((item) => item.material_id);
-    facts.push(base('material_consumed', { material_ids: materials.map((item) => item.material_id), count: materials.length }, {}));
+    facts.push(base('material_read', { material_ids: materials.map((item) => item.material_id), count: materials.length }, {}));
+  }
+  if (operation === 'consume_materials') {
+    const materialIds = array(result?.material_ids ?? result?.consumptions?.map((row) => row.material_id))
+      .filter((id) => typeof id === 'string').slice(0, 100);
+    facts.push(base('material_consumed', {
+      material_ids: materialIds,
+      action: typeof result?.action === 'string' ? result.action : null,
+      action_ref: typeof result?.action_ref === 'string' ? result.action_ref : null,
+      count: materialIds.length,
+    }, {}));
   }
   if (operation === 'submit_candidate') {
     const candidateId = execution?.candidate_material_id ?? result?.candidate_material_id ?? null;
@@ -477,17 +507,38 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     taskId: extra.taskId ?? ids.taskId, executionId: extra.executionId ?? ids.executionId,
     sessionId: ids.sessionId, coreId: ids.coreId, correlationId: ids.correlationId,
     operation: extra.operation ?? operation, summary, priority: 1,
+    preserveBoundedOperatorIds: true,
   });
   // These operator events are emitted by the benchmark runner with only
   // stable IDs and bounded classifications.  Keep them usable in sanitized
   // mode so a Material handoff can be joined to its reader and later action
   // without opening raw Agent or Context payloads.
-  if (row.kind === 'material_consumed') {
-    facts.push(base('material_consumed', {
+  if (row.kind === 'material_read') {
+    facts.push(base('material_read', {
       material_ids: array(payload?.material_ids).filter((id) => typeof id === 'string').slice(0, 100),
       source_task_ids: array(payload?.source_task_ids).filter((id) => typeof id === 'string').slice(0, 100),
       count: Number.isInteger(payload?.count) ? payload.count : array(payload?.material_ids).length,
     }, { operation: 'read_materials' }));
+    return facts;
+  }
+  if (row.kind === 'material_consumed') {
+    // Older runner versions used this event name for a read-only query. Keep
+    // those historical observations read-only unless the bounded payload
+    // explicitly marks a durable consume action.
+    if (payload?.durable !== true && typeof payload?.action !== 'string') {
+      facts.push(base('material_read', {
+        material_ids: array(payload?.material_ids).filter((id) => typeof id === 'string').slice(0, 100),
+        source_task_ids: array(payload?.source_task_ids).filter((id) => typeof id === 'string').slice(0, 100),
+        count: Number.isInteger(payload?.count) ? payload.count : array(payload?.material_ids).length,
+      }, { operation: 'read_materials' }));
+      return facts;
+    }
+    facts.push(base('material_consumed', {
+      material_ids: array(payload?.material_ids).filter((id) => typeof id === 'string').slice(0, 100),
+      action: typeof payload?.action === 'string' ? payload.action : null,
+      action_ref: typeof payload?.action_ref === 'string' ? payload.action_ref : null,
+      count: Number.isInteger(payload?.count) ? payload.count : array(payload?.material_ids).length,
+    }, { operation: 'consume_materials' }));
     return facts;
   }
   if (row.kind === 'material_published') {
@@ -989,17 +1040,25 @@ async function readObservationFacts(root, observationPath, experimentIds, mode, 
       if (mode === 'full') {
         try { payload = JSON.parse(row.payload_json ?? '{}'); }
         catch (error) { errors.push({ path: sourcePath(root, observationPath), sequence: row.sequence, error: text(error.message, 180) }); continue; }
-      } else if (['material_consumed', 'material_published', 'task_review', 'workspace_revision_saved', 'candidate_submitted'].includes(row.kind)) {
+      } else if (['material_read', 'material_consumed', 'material_published', 'task_review', 'workspace_revision_saved', 'candidate_submitted'].includes(row.kind)) {
         // Read only the runner's bounded operator events in sanitized mode.
         // Other observation payloads may contain Agent or checker material and
         // remain intentionally opaque.
         try {
           const raw = db.prepare('SELECT payload_json FROM observation_events WHERE event_id = ?').get(row.event_id)?.payload_json;
           const decoded = JSON.parse(raw ?? '{}');
-          if (row.kind === 'material_consumed') {
+          if (row.kind === 'material_read') {
             payload = {
               material_ids: array(decoded.material_ids).filter((id) => typeof id === 'string').slice(0, 100),
               source_task_ids: array(decoded.source_task_ids).filter((id) => typeof id === 'string').slice(0, 100),
+              count: Number.isInteger(decoded.count) ? decoded.count : null,
+            };
+          } else if (row.kind === 'material_consumed') {
+            payload = {
+              material_ids: array(decoded.material_ids).filter((id) => typeof id === 'string').slice(0, 100),
+              action: typeof decoded.action === 'string' ? decoded.action : null,
+              action_ref: typeof decoded.action_ref === 'string' ? decoded.action_ref : null,
+              durable: decoded.durable === true,
               count: Number.isInteger(decoded.count) ? decoded.count : null,
             };
           } else if (row.kind === 'material_published') {
@@ -1293,7 +1352,7 @@ function factOperation(fact) {
 function isBoundary(fact) {
   if (BOUNDARY_KINDS.has(fact.kind)) return true;
   const operation = factOperation(fact);
-  return ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'submit_candidate', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
+  return ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'submit_candidate', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
 }
 
 function isSemanticBoundary(fact) {
@@ -1314,7 +1373,8 @@ function compactFact(fact) {
   if (fact.kind === 'tool_call') return `${operation ?? 'tool'} (${summary.outcome ?? 'observed'}) [${fact.id}]`;
   if (fact.kind === 'service_call_started' || fact.kind === 'service_call_finished') return `${summary.service ?? 'service'}:${operation ?? 'call'} ${summary.phase ?? ''}${summary.ok === false ? ' error' : ''} [${fact.id}]`.trim();
   if (fact.kind === 'material_published') return `publish Material ${summary.material?.material_id ?? summary.material_id ?? 'unknown'} [${fact.id}]`;
-  if (fact.kind === 'material_consumed') return `read ${array(summary.material_ids).length} Material(s) [${fact.id}]`;
+  if (fact.kind === 'material_read') return `read ${array(summary.material_ids).length} Material(s) [${fact.id}]`;
+  if (fact.kind === 'material_consumed') return `consume ${array(summary.material_ids).length} Material(s)${summary.action ? ` for ${summary.action}` : ''} [${fact.id}]`;
   if (fact.kind === 'candidate_submitted') return `submit Candidate ${summary.candidate_material_id ?? 'unknown'} [${fact.id}]`;
   if (fact.kind === 'checker_preflight') return `Checker preflight ${summary.status ?? 'unknown'}${summary.diagnostic_code ? `/${summary.diagnostic_code}` : ''} [${fact.id}]`;
   if (fact.kind === 'judge_result' || fact.kind === 'judge_check' || fact.kind === 'judge_check_record') return `Judge ${summary.verdict ?? summary.check_result?.verdict ?? 'result'}${summary.result_class ? `/${summary.result_class}` : ''}${summary.checker_process_status ? ` (${summary.checker_process_status})` : ''} [${fact.id}]`;
@@ -1336,9 +1396,9 @@ function latestState(facts, execution) {
 }
 
 function resultForWindow(facts) {
-  const meaningful = [...facts].reverse().find((fact) => ['judge_result', 'judge_check', 'judge_check_record', 'candidate_submitted', 'wait_requested', 'review', 'rework', 'material_consumed', 'material_published', 'workspace_revision', 'execution_terminal', 'task_state_changed', 'execution_state_changed'].includes(fact.kind));
+  const meaningful = [...facts].reverse().find((fact) => ['judge_result', 'judge_check', 'judge_check_record', 'candidate_submitted', 'wait_requested', 'review', 'rework', 'material_read', 'material_consumed', 'material_published', 'workspace_revision', 'execution_terminal', 'task_state_changed', 'execution_state_changed'].includes(fact.kind));
   const impactful = meaningful ?? [...facts].reverse().find((fact) => {
-    const durableOperations = ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'submit_candidate', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'];
+    const durableOperations = ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'submit_candidate', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'];
     if (['heartbeat', 'agent_turn', 'agent_settled', 'process_event', 'agent_event', 'agent_rpc_request'].includes(fact.kind)) return false;
     if (durableOperations.includes(fact.operation)) return true;
     if (fact.kind === 'service_call_started' || fact.kind === 'service_call_finished') return Boolean(fact.summary?.ok === false || fact.summary?.error);
@@ -1349,7 +1409,8 @@ function resultForWindow(facts) {
   if (impactful.kind === 'judge_result' || impactful.kind === 'judge_check' || impactful.kind === 'judge_check_record') return `Judge returned ${summary.verdict ?? summary.check_result?.verdict ?? 'an observed result'}.`;
   if (impactful.kind === 'wait_requested') return `A concrete wait condition was recorded: ${summary.wait_condition?.type ?? 'condition not visible'}.`;
   if (impactful.kind === 'material_published') return `Material publication was recorded; semantic usefulness is not inferred.`;
-  if (impactful.kind === 'material_consumed') return `Explicit Material read was recorded; downstream effect is checked separately.`;
+  if (impactful.kind === 'material_read') return `Material read was recorded; durable consumption is checked separately.`;
+  if (impactful.kind === 'material_consumed') return `Durable Material consumption was recorded for ${summary.action ?? 'an action'}; downstream effect is checked separately.`;
   if (impactful.kind === 'candidate_submitted') return 'Candidate submission was recorded.';
   if (impactful.kind === 'workspace_revision' || impactful.kind === 'workspace_manifest') return `Workspace revision ${summary.workspace_revision ?? 'unknown'} was recorded.`;
   if (summary.ok === false || summary.error) return `An error was returned by ${summary.service ?? 'a service'}; later activity is checked separately.`;
@@ -1369,7 +1430,7 @@ function handoffForWindow(facts) {
 }
 
 function windowIntent(facts) {
-  const explicit = facts.find((fact) => fact.operation || ['material_published', 'material_consumed', 'candidate_submitted', 'judge_result', 'wait_requested', 'review', 'rework', 'workspace_revision'].includes(fact.kind));
+  const explicit = facts.find((fact) => fact.operation || ['material_published', 'material_read', 'material_consumed', 'candidate_submitted', 'judge_result', 'wait_requested', 'review', 'rework', 'workspace_revision'].includes(fact.kind));
   if (!explicit) return { label: 'unknown', confidence: 'unknown', basis: [] };
   return { label: intentFor(factOperation(explicit), explicit.kind), confidence: explicit.operation ? 'high' : 'medium', basis: [explicit.id] };
 }
@@ -1381,7 +1442,7 @@ function semanticPhase(facts) {
   if (kinds.has('candidate_submitted') || operations.has('submit_candidate')) return 'candidate construction and submission';
   if (kinds.has('review') || kinds.has('rework')) return 'parent review and rework';
   if (kinds.has('wait_requested')) return 'coordination and waiting';
-  if (kinds.has('material_published') || kinds.has('material_consumed') || operations.has('create_child_task')) return 'research and collaboration handoff';
+  if (kinds.has('material_published') || kinds.has('material_read') || kinds.has('material_consumed') || operations.has('create_child_task')) return 'research and collaboration handoff';
   if (kinds.has('workspace_revision') || operations.has('write_workspace_file') || operations.has('save_workspace_revision')) return 'Workspace editing';
   if (operations.has('claim') || kinds.has('execution_assigned')) return 'Task discovery and claim';
   if (facts.some((fact) => ['agent_turn', 'agent_event', 'agent_rpc_request'].includes(fact.kind))) return 'Agent reasoning activity';
@@ -1400,10 +1461,10 @@ function semanticSummary(facts, previousWindow = null) {
   const counts = {};
   for (const fact of facts) counts[fact.kind] = (counts[fact.kind] ?? 0) + 1;
   const phase = semanticPhase(facts);
-  const durable = [...new Set(facts.filter((fact) => ['task_created', 'task_claimed', 'task_state_changed', 'execution_assigned', 'workspace_revision', 'material_published', 'material_consumed', 'candidate_submitted', 'judge_result', 'judge_check', 'judge_check_record', 'review', 'rework', 'wait_requested', 'wake', 'resume', 'execution_terminal'].includes(fact.kind)).map((fact) => compactFact(fact).replace(/ \[F-[A-Za-z0-9_-]+\]$/, '')))].slice(0, 8);
+  const durable = [...new Set(facts.filter((fact) => ['task_created', 'task_claimed', 'task_state_changed', 'execution_assigned', 'workspace_revision', 'material_published', 'material_read', 'material_consumed', 'candidate_submitted', 'judge_result', 'judge_check', 'judge_check_record', 'review', 'rework', 'wait_requested', 'wake', 'resume', 'execution_terminal'].includes(fact.kind)).map((fact) => compactFact(fact).replace(/ \[F-[A-Za-z0-9_-]+\]$/, '')))].slice(0, 8);
   const candidate = facts.find((fact) => fact.kind === 'candidate_submitted');
   const judge = facts.find((fact) => ['judge_result', 'judge_check', 'judge_check_record'].includes(fact.kind));
-  const material = facts.find((fact) => fact.kind === 'material_published' || fact.kind === 'material_consumed');
+  const material = facts.find((fact) => ['material_published', 'material_read', 'material_consumed'].includes(fact.kind));
   let summary = `The Agent was primarily engaged in ${phase.toLowerCase()}.`;
   if (candidate) summary += ' A candidate was handed to the Judge path.';
   if (judge) summary += ` Judge feedback was recorded (${judge.summary?.verdict ?? judge.summary?.check_result?.verdict ?? 'result unavailable'}).`;
@@ -2126,7 +2187,7 @@ function renderMarkdown(analysis) {
   const conclusionLines = analysis.conclusions.map((item) => `- **${item.type}:** ${item.text} _(evidence: ${item.evidence.join(', ') || 'none recorded'})_`).join('\n');
   const executionSections = analysis.executions.map((item) => {
     const counts = Object.entries(item.counts).map(([key, value]) => `${key}=${value}`).join(', ') || 'no normalized facts';
-    const artifacts = item.facts.filter((fact) => ['material_published', 'material_consumed', 'candidate_submitted', 'workspace_revision', 'judge_result', 'judge_check'].includes(fact.kind)).slice(0, 40).map((fact) => `- ${compactFact(fact)} — ${fact.sources.join(', ')}`).join('\n') || '- No artifact/check fact was observed for this Execution.';
+    const artifacts = item.facts.filter((fact) => ['material_published', 'material_read', 'material_consumed', 'candidate_submitted', 'workspace_revision', 'judge_result', 'judge_check'].includes(fact.kind)).slice(0, 40).map((fact) => `- ${compactFact(fact)} — ${fact.sources.join(', ')}`).join('\n') || '- No artifact/check fact was observed for this Execution.';
     return `### Execution \`${md(item.execution.execution_id)}\` — ${md(item.lifecycle_role)}\n\n- Task: \`${md(item.execution.task_id)}\`\n- Lifecycle role: **${md(item.lifecycle_role)}**\n- Predecessor/rework source: ${md(item.predecessor_execution_id ?? 'none recorded')}\n- Successor/rework target: ${md(item.successor_execution_id ?? 'none recorded')}\n- Owner: ${md(item.execution.owner_ref)}\n- Core(s): ${md(item.coreIds.join(', ') || 'unknown')}\n- Session(s): ${md(item.sessionIds.join(', ') || 'unknown')}\n- Current/terminal state: **${md(item.execution.state)}**\n- Attempt: ${md(item.execution.attempt_no ?? 'unknown')}\n- Workspace lineage: ${md(item.workspaceRefs.map(safeWorkspaceRef).join(', ') || 'unknown')}\n- Wait condition: ${md(item.waitCondition?.type ?? 'none recorded')}\n- Normalized evidence counts: ${counts}\n- Evidence mode: ${analysis.inventory.evidenceMode}\n\n#### ${analysis.windowSizeMinutes}-minute semantic work windows\n\nThe table summarizes observable Agent objectives, Workspace/Material/Judge changes, and lifecycle state. Supporting event counts are included for audit; low-level calls are not the narrative.\n\n${windowTable(item)}\n\n#### Artifacts, Service effects, and errors\n\n${artifacts}\n`;
   }).join('\n');
   const collaborationRows = analysis.collaboration.map((row) => {

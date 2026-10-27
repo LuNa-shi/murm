@@ -180,6 +180,21 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', additionalProperties: true },
   },
   {
+    name: 'context_consume', service: 'context', operation: 'consume_materials', version: '1.0',
+    description: 'Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.',
+    scope: 'execution-write', side_effect: true,
+    parameters: {
+      type: 'object',
+      required: ['material_ids', 'action'],
+      properties: {
+        material_ids: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', minLength: 1 } },
+        action: { type: 'string', enum: ['route', 'task', 'candidate', 'integration'] },
+        action_ref: { type: ['string', 'null'] },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'context_publish', service: 'context', operation: 'publish_material', version: '1.0',
     description: 'Publish a versioned shared Material for other Executions.',
     scope: 'execution-write', side_effect: true,

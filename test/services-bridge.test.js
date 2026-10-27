@@ -52,6 +52,10 @@ test('ServicesBridge exposes public SDK calls over a loopback token and keeps Ru
     const publishedBody = await published.json();
     assert.equal(published.status, 200);
     assert.equal(publishedBody.result.material.kind, 'artifact');
+    const consumed = await fetch(`${environment.SWARMENV_BRIDGE_URL}/call`, { method: 'POST', headers: { authorization: `Bearer ${environment.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'consume_materials', payload: { material_ids: [publishedBody.result.material.material_id], action: 'task', action_ref: 'bridge-test' } }) });
+    const consumedBody = await consumed.json();
+    assert.equal(consumed.status, 200);
+    assert.deepEqual(consumedBody.result.material_ids, [publishedBody.result.material.material_id]);
     const waited = await fetch(`${environment.SWARMENV_BRIDGE_URL}/call`, { method: 'POST', headers: { authorization: `Bearer ${environment.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'request_wait', payload: { waitCondition: { type: 'timer', deadline: new Date(Date.now() + 1_000).toISOString() }, checkpoint: { phase: 'bridge' }, files: {} } }) });
     const waitedBody = await waited.json();
     assert.equal(waited.status, 200);

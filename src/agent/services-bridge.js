@@ -8,7 +8,7 @@ import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const AGENT_OPERATIONS = new Set([
-  'get_task', 'get_execution', 'read_materials', 'publish_material', 'submit_candidate',
+  'get_task', 'get_execution', 'read_materials', 'consume_materials', 'publish_material', 'submit_candidate',
   'heartbeat', 'create_child_task', 'request_wait', 'block_execution', 'claim', 'list_tasks', 'list_claimable_tasks', 'list_executions',
   'select_task',
   'accept_task', 'request_rework', 'get_check_result',
@@ -437,6 +437,7 @@ export class ServicesBridge {
         case 'get_task': result = sdk.getTask(payload.task_id ?? this.taskId); break;
         case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
         case 'read_materials': result = sdk.readMaterials(payload); break;
+        case 'consume_materials': result = sdk.consumeMaterials(payload, options); break;
         case 'publish_material': result = sdk.publishMaterial(payload, options); break;
         case 'submit_candidate':
           result = sdk.submitCandidate(payload, options);
@@ -488,7 +489,7 @@ export class ServicesBridge {
       if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {
         await this.onWorkspaceWrite({ taskId: boundTaskId, executionId: boundExecutionId, result });
       }
-      if (this.onWorkUnit && ['read_materials', 'publish_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+      if (this.onWorkUnit && ['read_materials', 'consume_materials', 'publish_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
         await this.onWorkUnit({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });

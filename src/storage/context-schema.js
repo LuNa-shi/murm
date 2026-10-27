@@ -26,4 +26,20 @@ CREATE TABLE IF NOT EXISTS materials (
 CREATE INDEX IF NOT EXISTS materials_kind_scope ON materials(kind, scope);
 CREATE INDEX IF NOT EXISTS materials_source ON materials(source_task, source_execution);
 
+CREATE TABLE IF NOT EXISTS material_consumptions (
+  operation_id TEXT NOT NULL,
+  material_id TEXT NOT NULL REFERENCES materials(material_id),
+  reader_task TEXT NOT NULL,
+  reader_execution TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('route', 'task', 'candidate', 'integration')),
+  action_ref TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (operation_id, material_id)
+);
+
+CREATE INDEX IF NOT EXISTS material_consumptions_reader
+  ON material_consumptions(reader_task, reader_execution, action);
+CREATE INDEX IF NOT EXISTS material_consumptions_material
+  ON material_consumptions(material_id, action);
+
 `;

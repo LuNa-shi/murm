@@ -6,7 +6,7 @@ const TASK_OPERATIONS = new Set([
   'accept_task', 'request_rework', 'apply_check_result', 'wake_execution',
   'create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task',
 ]);
-const CONTEXT_OPERATIONS = new Set(['publish_material', 'read_materials']);
+const CONTEXT_OPERATIONS = new Set(['publish_material', 'read_materials', 'consume_materials', 'list_material_consumptions']);
 const JUDGE_OPERATIONS = new Set(['get_check_result']);
 
 export class ServicesRouter {

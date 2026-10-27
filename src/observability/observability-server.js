@@ -66,6 +66,7 @@ const OVERVIEW_EVENT_KINDS = [
   'execution_observed',
   'execution_execution',
   'execution_released',
+  'core_capacity_released',
   'core_state_changed',
   'session_started',
   'session_closed',
@@ -103,6 +104,7 @@ const OVERVIEW_TOOL_NAMES = new Set([
   'swarmenv_execution_get',
   'swarmenv_context_publish',
   'swarmenv_context_read',
+  'swarmenv_context_consume',
   'swarmenv_judge_submit_candidate',
   'swarmenv_judge_get_check_result',
   // Older Agent sessions used this transport wrapper. The projection resolves

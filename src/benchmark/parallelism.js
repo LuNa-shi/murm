@@ -139,6 +139,7 @@ export class CoreParallelismTracker {
     this.readySamples = [];
     this.schedulerPollMs = 0;
     this.claimConflictCount = 0;
+    this.claimConflictKeys = new Set();
     this.judgeTimeMs = 0;
     this.turnOccupancyMs = 0;
     this.workUnits = [];
@@ -212,8 +213,13 @@ export class CoreParallelismTracker {
     this.schedulerPollMs += durationMs;
   }
 
-  recordClaimConflict() {
+  recordClaimConflict(key = null) {
+    if (key !== null) {
+      if (this.claimConflictKeys.has(key)) return false;
+      this.claimConflictKeys.add(key);
+    }
     this.claimConflictCount += 1;
+    return true;
   }
 
   recordJudgeTime(durationMs) {

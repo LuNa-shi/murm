@@ -133,6 +133,31 @@ test('research child review accepts delivered Material and never invokes Judge',
   close(env);
 });
 
+test('Task completion can require a durable Material consumption edge', () => {
+  const env = environment();
+  const task = env.sdk.proposeTask({
+    task_type: 'default',
+    goal: 'integrate a fact',
+    expected_output: 'integration note',
+    acceptance_conditions: {},
+    owner_ref: 'owner:root',
+    completion_contract: {
+      required_materials: [{ kind: 'fact', scope: 'proof_relevant', min_count: 1, requires_consumption: true, action: 'task' }],
+    },
+  }, { operationId: 'consumption-contract-propose' }).task;
+  const run = claimTask(env, task, { executionId: 'consumption-contract-execution', actorRef: 'owner:root' });
+  const source = run.sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { fact: 'durable input' } }, { operationId: 'consumption-contract-material' }).material;
+  assert.throws(
+    () => run.sdk.acceptTask({}, { operationId: 'consumption-contract-accept-before' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT && error.details?.missing?.some((item) => item.startsWith('materials:task')),
+  );
+  run.sdk.consumeMaterials({ material_ids: [source.material_id], action: 'task', action_ref: 'integration-note' }, { operationId: 'consumption-contract-consume' });
+  const accepted = run.sdk.acceptTask({}, { operationId: 'consumption-contract-accept-after' });
+  assert.equal(accepted.task.state, 'SATISFIED');
+  assert.equal(accepted.execution.state, 'SUCCEEDED');
+  close(env);
+});
+
 test('normal-flow child validates its own contract and reaches DONE without parent review', () => {
   const env = environment();
   const parent = env.sdk.proposeTask({

@@ -16,7 +16,8 @@ const CONTRACT_KEYS = new Set([
   'required_branch_groups', 'required_subtask_groups',
 ]);
 const CHECK_KEYS = new Set(['checker_ref', 'checker_version', 'environment_ref', 'input_snapshot_hash']);
-const MATERIAL_KEYS = new Set(['kind', 'kinds', 'scope', 'min_count']);
+const MATERIAL_KEYS = new Set(['kind', 'kinds', 'scope', 'min_count', 'requires_consumption', 'action', 'consumption_action']);
+const MATERIAL_CONSUMPTION_ACTIONS = new Set(['route', 'task', 'candidate', 'integration']);
 const CANDIDATE_KEYS = new Set(['kind', 'scope']);
 
 function assertPlainObject(value, field) {
@@ -44,7 +45,29 @@ function normalizeMaterials(value) {
     if (!Number.isInteger(minCount) || minCount < 1) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].min_count must be positive`);
     }
-    return { kinds: [...kinds], ...(item.scope ? { scope: item.scope } : {}), min_count: minCount };
+    if (item.requires_consumption !== undefined && typeof item.requires_consumption !== 'boolean') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].requires_consumption must be boolean`);
+    }
+    if (item.action !== undefined && !MATERIAL_CONSUMPTION_ACTIONS.has(item.action)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].action must be route, task, candidate, or integration`);
+    }
+    if (item.consumption_action !== undefined && !MATERIAL_CONSUMPTION_ACTIONS.has(item.consumption_action)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].consumption_action must be route, task, candidate, or integration`);
+    }
+    if (item.action !== undefined && item.consumption_action !== undefined && item.action !== item.consumption_action) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].action and consumption_action must match`);
+    }
+    const consumptionAction = item.action ?? item.consumption_action;
+    if (item.requires_consumption === true && consumptionAction === undefined) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].action is required when requires_consumption is true`);
+    }
+    return {
+      kinds: [...kinds],
+      ...(item.scope ? { scope: item.scope } : {}),
+      min_count: minCount,
+      ...(item.requires_consumption !== undefined ? { requires_consumption: item.requires_consumption } : {}),
+      ...(consumptionAction !== undefined ? { action: consumptionAction } : {}),
+    };
   });
 }
 

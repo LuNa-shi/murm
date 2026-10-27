@@ -51,6 +51,30 @@ test('Context Service keeps shared Materials immutable after later publication',
   context.close();
 });
 
+test('Context Service records durable Material consumption and requires it for root integration provenance', () => {
+  const { context, sdk } = fixture();
+  const source = sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { fact: 'bounded handoff' } }, { operationId: 'consume-source' }).material;
+  assert.throws(
+    () => sdk.publishMaterial({
+      kind: 'experience', scope: 'root_integration', content: { summary: 'before consume' },
+      provenance: { consumed_material_ids: [source.material_id] },
+    }, { operationId: 'integration-before-consume' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
+  );
+  const consumed = sdk.consumeMaterials({ material_ids: [source.material_id], action: 'integration', action_ref: 'root-integration' }, { operationId: 'consume-source-edge' });
+  assert.deepEqual(consumed.material_ids, [source.material_id]);
+  assert.equal(consumed.consumptions.length, 1);
+  assert.deepEqual(context.listMaterialConsumptions({ reader_task: 'task-1', action: 'integration' }).map((row) => row.material_id), [source.material_id]);
+  const integration = sdk.publishMaterial({
+    kind: 'experience', scope: 'root_integration', content: { summary: 'bounded handoff' },
+    provenance: { consumed_material_ids: [source.material_id] },
+  }, { operationId: 'integration-after-consume' }).material;
+  assert.deepEqual(integration.provenance.consumed_material_ids, [source.material_id]);
+  const replay = sdk.consumeMaterials({ material_ids: [source.material_id], action: 'integration', action_ref: 'root-integration' }, { operationId: 'consume-source-edge' });
+  assert.deepEqual(replay, consumed);
+  context.close();
+});
+
 test('Context Service wakes Task reconciliation after a committed Material dependency fact', () => {
   const events = [];
   const taskService = { notifyDependencyEvent: (event) => events.push(event) };

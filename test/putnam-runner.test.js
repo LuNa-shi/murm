@@ -417,11 +417,27 @@ class CollaborationSession extends EventEmitter {
         return { data: { disposition: 'handled' } };
       }
       const research = tasks.find((task) => task.task_id === 'collab-research');
-      await this.call('read_materials', {});
+      const materialsRead = await this.call('read_materials', {});
+      const consumedMaterialIds = materialsRead.map((material) => material.material_id).filter(Boolean);
+      await this.call('consume_materials', {
+        material_ids: consumedMaterialIds,
+        action: 'integration',
+        action_ref: 'collaboration-root',
+      });
       if (research?.state === 'WAITING') {
         await this.call('accept_task', { target_task_id: research.task_id, target_state_version: research.state_version });
       }
-      const material = await this.call('publish_material', { kind: 'artifact', scope: 'proof_relevant', content: 'def collaborationRoot : Nat := 0' });
+      await this.call('publish_material', {
+        kind: 'artifact',
+        scope: 'root_integration',
+        content: 'def collaborationRoot : Nat := 0',
+        provenance: { consumed_material_ids: consumedMaterialIds },
+      });
+      const material = await this.call('publish_material', {
+        kind: 'artifact',
+        scope: 'proof_relevant',
+        content: 'def collaborationRoot : Nat := 0',
+      });
       await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
       this.adapter.rootFinished = true;
       return { data: { disposition: 'handled' } };
@@ -706,6 +722,8 @@ test('benchmark runtime publishes live core, execution, service, and completion 
     assert.equal(experiment.status, 'SUCCEEDED');
     assert.ok(events.some((event) => event.kind === 'experiment_started'));
     assert.ok(events.some((event) => event.kind === 'execution_assigned' && event.execution_id));
+    assert.ok(events.filter((event) => event.kind === 'execution_released').every((event) => event.task_id && event.execution_id));
+    assert.ok(events.filter((event) => event.kind === 'core_capacity_released').every((event) => !event.task_id && !event.execution_id));
     assert.ok(events.some((event) => event.kind === 'workspace_revision_saved'));
     assert.ok(events.some((event) => event.source === 'task-service' && event.kind === 'dispatch.start'));
     assert.ok(events.some((event) => event.kind === 'experiment_finished'));
@@ -1062,8 +1080,8 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.ok(report.cores.some((core) => core.material_reads.some((read) => read.source_task_ids.includes('collab-research'))));
     const rootTaskId = report.project.task_tree.find((task) => task.parent_id === null).task_id;
     const rootNarratives = report.project.execution_narratives.filter((item) => item.task_id === rootTaskId);
-    assert.ok(rootNarratives.some((item) => item.actions.some((event) => event.kind === 'material_consumed')),
-      'Root Material reads must be durable operator observations');
+    assert.ok(rootNarratives.some((item) => item.actions.some((event) => event.kind === 'material_read')),
+      'Root Material reads must be bounded operator observations');
     assert.ok(rootNarratives.some((item) => item.actions.some((event) => event.kind === 'material_published')),
       'Root downstream integration must be durable operator evidence');
     assert.equal(report.project.task_tree.filter((task) => task.parent_id !== null).length, 3);

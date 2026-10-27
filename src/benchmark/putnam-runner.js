@@ -53,7 +53,7 @@ function modePrompt(mode, prompt) {
   if (mode === 'semantic') {
     return [
       'This run is the Issue #56 semantic-structure treatment. Before doing proof work on a root Task, use the registered swarmenv_task_create_branch_group tool to create at least two genuinely different ordinary alternative Tasks. When a Branch Task is bound, its Agent must use swarmenv_task_add_required_subtask at least twice to create one jointly required group before finishing either route. Give every Task a concrete goal, expected output, acceptance condition, and real Workspace or Material result. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each mutation. Do not replace these relations with generic child creation. Continue useful root and Branch work after the structure is created; the shared queue must keep the resulting Tasks claimable by other Cores.',
-      'The semantic run also requires an observable delivery loop: after child or branch Materials exist, the Root must read them through swarmenv_context_read, write a bounded integration note in its own Workspace, and publish one root-owned Material with scope root_integration that names the consumed Material IDs. A proof failure does not excuse skipping this integration step; preserve the integration evidence and then block on the typed proof/check dependency if needed.',
+      'The semantic run also requires an observable delivery loop: after child or branch Materials exist, the Root must read them through swarmenv_context_read, call swarmenv_context_consume with the bounded Material IDs and action integration, write a bounded integration note in its own Workspace, and publish one root-owned Material with scope root_integration whose provenance names exactly those consumed Material IDs. A proof failure does not excuse skipping this integration step; preserve the integration evidence and then block on the typed proof/check dependency if needed.',
       prompt,
     ].join('\n');
   }
@@ -840,7 +840,7 @@ function resourceSnapshot() {
 async function publishFeedback(state, core, material, result, { taskId = core.taskId, executionId = core.executionId } = {}) {
   const execution = state.taskService.getExecution(executionId);
   if (!execution || !['CREATED', 'RUNNING', 'WAITING'].includes(execution.state)) return;
-  state.contextService.dispatch('publish_material', {
+  const published = state.contextService.dispatch('publish_material', {
     kind: 'experience',
     scope: 'judge_feedback',
     evidence_state: 'checked',
@@ -885,6 +885,20 @@ async function publishFeedback(state, core, material, result, { taskId = core.ta
     stateVersion: execution.state_version,
     fencingVersion: execution.fencing_version,
   }));
+  const feedback = published?.material ?? published ?? {};
+  core.observe({
+    source: 'context-service', kind: 'material_published', visibility: 'operator',
+    taskId, executionId, coreId: `core-${core.index}`,
+    payload: {
+      material_id: feedback.material_id ?? null,
+      kind: feedback.kind ?? 'experience',
+      scope: feedback.scope ?? 'judge_feedback',
+      source_task: feedback.source_task ?? taskId,
+      source_execution: feedback.source_execution ?? executionId,
+      publish_reason: 'judge_feedback',
+    },
+  });
+  return feedback;
 }
 
 async function judgeCandidate(state, core, candidateMaterialId = null) {
@@ -1265,6 +1279,7 @@ function projectReport(state, startedAt, deadline) {
     for (const session of core.sessionHistory) collectToolEvents(core, session.rpcRecords);
   }
   const materials = state.contextService.readMaterials({});
+  const materialConsumptions = state.contextService.listMaterialConsumptions({});
   const taskTree = state.taskService.listTasks({
     rootId: state.rootTaskId,
     states: ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
@@ -1316,6 +1331,7 @@ function projectReport(state, startedAt, deadline) {
       structure_operations: core.structureOperations,
       tool_errors: core.toolErrors,
       material_reads: core.materialReads,
+      material_consumptions: core.materialConsumptions,
       task_state: task?.state ?? null,
       execution_state: execution?.state ?? null,
       input_snapshot_hash: execution?.input_snapshot_hash ?? null,
@@ -1454,6 +1470,16 @@ function projectReport(state, startedAt, deadline) {
       solved_by_core: invalid || !madeProgress ? null : state.solvedBy,
       solved_at_ms: state.solvedAt === null ? null : state.solvedAt - startedAt,
       material_count: materials.length,
+      material_consumption_count: materialConsumptions.length,
+      material_consumptions: materialConsumptions.map((row) => ({
+        operation_id: row.operation_id,
+        material_id: row.material_id,
+        reader_task: row.reader_task,
+        reader_execution: row.reader_execution,
+        action: row.action,
+        action_ref: row.action_ref,
+        created_at: row.created_at,
+      })),
       project_material_count: materials.filter((material) => material.source_task === state.rootTaskId).length,
       candidate_count: cores.reduce((count, core) => count + core.checks.length, 0),
       ended_early: state.stopOnSolved && state.solvedAt !== null,
@@ -1600,7 +1626,7 @@ async function createProjectState(problem, config, options) {
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const modeInstructions = selectedParallelMode === 'semantic'
-    ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes. After child or branch Materials exist, the Root must read them with swarmenv_context_read, make a bounded Workspace integration note, and publish one root-owned Material with scope root_integration naming the consumed Material IDs before blocking or claiming the collaboration loop complete.'
+    ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes. After child or branch Materials exist, the Root must read them with swarmenv_context_read, durably record the bounded handoff with swarmenv_context_consume using action integration, make a bounded Workspace integration note, and publish one root-owned Material with scope root_integration whose provenance names the consumed Material IDs before blocking or claiming the collaboration loop complete.'
     : selectedParallelMode === 'root-only'
       ? 'This is the Root-only control. Keep all work on this root Task. Do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks.'
       : 'Use direct child Tasks only when a genuinely separable route emerges.';
@@ -1615,7 +1641,7 @@ async function createProjectState(problem, config, options) {
     completion_contract: {
       ...(normalFlow ? { normal_flow: true } : {}),
       ...(selectedParallelMode === 'semantic' ? {
-        required_materials: [{ kinds: ['artifact', 'fact', 'experience', 'failure'], scope: 'root_integration', min_count: 1 }],
+        required_materials: [{ kinds: ['artifact', 'fact', 'experience', 'failure'], scope: 'root_integration', min_count: 1, requires_consumption: true, action: 'integration' }],
       } : {}),
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
       required_check: {
@@ -1731,6 +1757,7 @@ async function createProjectState(problem, config, options) {
       checked: new Set(),
       checkAttempts: new Map(),
       cheatingFlags: [],
+      materialConsumptions: [],
       stopping: false,
       turnDurationsMs: [],
       turnTimeoutCount: 0,
@@ -1974,6 +2001,21 @@ async function createProjectState(problem, config, options) {
       },
       onRelease: async ({ taskId, executionId }) => {
         const releasedAt = Date.now();
+        const hasTaskLineage = typeof taskId === 'string' && taskId.length > 0;
+        const hasExecutionLineage = typeof executionId === 'string' && executionId.length > 0;
+        if (!hasTaskLineage || !hasExecutionLineage) {
+          // A duplicate release can race bound-turn cleanup with the
+          // periodic terminal sweep. It releases physical capacity, but it
+          // does not identify an owned Execution and must not masquerade as
+          // an Execution lifecycle boundary.
+          core.observe({
+            source: 'runtime', kind: 'core_capacity_released', visibility: 'operator',
+            taskId: null, executionId: null, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+            payload: { state: 'IDLE', reason: 'unbound_or_duplicate_release' },
+          });
+          core.stateRef?.requestDaemonWake?.();
+          return;
+        }
         const releaseLatency = core.latencyByExecution.get(executionId);
         if (releaseLatency) {
           releaseLatency.core_released_at = new Date(releasedAt).toISOString();
@@ -2092,22 +2134,53 @@ async function createProjectState(problem, config, options) {
             read_at: new Date().toISOString(),
             reader_task_id: taskId,
             reader_execution_id: executionId,
-            material_ids: materialsRead.map((material) => material.material_id).filter(Boolean),
-            source_task_ids: [...new Set(materialsRead.map((material) => material.source_task).filter(Boolean))],
+            material_ids: materialsRead.map((material) => material.material_id).filter(Boolean).slice(0, 100),
+            source_task_ids: [...new Set(materialsRead.map((material) => material.source_task).filter(Boolean))].slice(0, 100),
           };
           core.materialReads.push(materialRead);
-          // The Context Service read path intentionally has no durable write,
-          // so keep a bounded operator fact that links the reader to the
-          // published Material IDs.  Only identifiers and source Task IDs are
-          // recorded; Material contents never enter the observation payload.
+          // Reading is intentionally separate from durable consumption. Only
+          // identifiers and source Task IDs are recorded; Material contents
+          // never enter the observation payload.
           core.observe({
-            source: 'context-service', kind: 'material_consumed', visibility: 'operator',
+            source: 'context-service', kind: 'material_read', visibility: 'operator',
             taskId, executionId, coreId: `core-${core.index}`,
             payload: {
               material_ids: materialRead.material_ids,
               source_task_ids: materialRead.source_task_ids,
               count: materialRead.material_ids.length,
             },
+          });
+        } else if (operation === 'consume_materials') {
+          const consumedIds = Array.isArray(result?.material_ids)
+            ? result.material_ids.filter((id) => typeof id === 'string').slice(0, 100)
+            : Array.isArray(payload?.material_ids)
+              ? payload.material_ids.filter((id) => typeof id === 'string').slice(0, 100)
+              : [];
+          const consumption = {
+            consumed_at: new Date().toISOString(),
+            reader_task_id: taskId,
+            reader_execution_id: executionId,
+            material_ids: consumedIds,
+            action: typeof result?.action === 'string' ? result.action : payload?.action ?? null,
+            action_ref: typeof result?.action_ref === 'string' ? result.action_ref : payload?.action_ref ?? null,
+          };
+          core.materialConsumptions.push(consumption);
+          core.observe({
+            source: 'context-service', kind: 'material_consumed', visibility: 'operator',
+            taskId, executionId, coreId: `core-${core.index}`,
+            payload: {
+              material_ids: consumedIds,
+              action: consumption.action,
+              action_ref: consumption.action_ref,
+              count: consumedIds.length,
+              durable: true,
+            },
+          });
+          core.parallelism.recordWorkUnit({
+            task_id: taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'material_consumption',
           });
         } else if (operation === 'create_child_task') {
           const child = result?.task ?? result;
@@ -2129,6 +2202,10 @@ async function createProjectState(problem, config, options) {
               scope: published.scope ?? payload?.scope ?? null,
               source_task: published.source_task ?? taskId,
               source_execution: published.source_execution ?? executionId,
+              consumed_material_ids: Array.isArray(published.provenance?.consumed_material_ids)
+                ? published.provenance.consumed_material_ids.filter((id) => typeof id === 'string').slice(0, 100)
+                : [],
+              publish_reason: payload?.scope === 'judge_feedback' ? 'judge_feedback' : null,
             },
           });
           core.parallelism.recordWorkUnit({
@@ -2183,7 +2260,7 @@ async function createProjectState(problem, config, options) {
           });
         }
       },
-      onError: async ({ operation, error }) => {
+      onError: async ({ operation, operationId, error }) => {
         core.toolErrors.push({
           operation,
           code: error.code ?? error.name,
@@ -2195,7 +2272,9 @@ async function createProjectState(problem, config, options) {
           recoverable: error.code === 'INVALID_CONTRACT' || (error.code === 'CONFLICT' && operation === 'claim'),
           protocol: false,
         });
-        if (error.code === 'CONFLICT' && operation === 'claim') core.parallelism.recordClaimConflict();
+        if (error.code === 'CONFLICT' && operation === 'claim') {
+          core.parallelism.recordClaimConflict(operationId ? `bridge:${operationId}` : null);
+        }
       },
       logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),
     });
@@ -2415,6 +2494,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           core_id: event.core_id ?? `core-${core.index}`,
           task_id: event.task_id ?? null,
           execution_id: event.execution_id ?? null,
+          rescan: event.rescan ?? null,
           state: event.state ?? null,
           execution_state: event.execution_state ?? null,
           changed: event.changed ?? null,
@@ -2424,6 +2504,16 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           timestamp: event.timestamp ?? Date.now(),
         };
         state.daemonEvents.push(sanitized);
+        if (sanitized.kind === 'daemon_claim_conflict') {
+          const conflictKey = [
+            sanitized.core_id,
+            sanitized.task_id,
+            sanitized.reason,
+            sanitized.rescan,
+            sanitized.timestamp,
+          ].join(':');
+          state.parallelism.recordClaimConflict(`daemon:${conflictKey}`);
+        }
         state.observationStore.append({
           experimentId: state.runId,
           source: 'core-daemon',
