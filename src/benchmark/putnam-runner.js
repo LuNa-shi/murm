@@ -2291,7 +2291,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       // Controller/task events wake an idle Daemon immediately.  Keep the
       // fallback long enough to be a repair path rather than a 10Hz empty
       // queue poll when an event source is quiet or unavailable.
-      idleBackoffMs: options.daemonIdleBackoffMs ?? 1_000,
+      idleBackoffMs: options.daemonIdleBackoffMs ?? 5_000,
       taskService: state.taskService,
       listClaimableTasks: () => state.taskService.listClaimableTasks({
         rootId: state.rootTaskId,
