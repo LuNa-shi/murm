@@ -2085,7 +2085,14 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
   if (observationCandidates.length) {
     for (const path of observationCandidates) {
       const facts = await readObservationFacts(root, path, observationIds, mode, observationErrors);
-      if (facts.length) { observationFacts.push(...facts); observationMatched = true; break; }
+      // Observation stores can contain hundreds of thousands of bounded
+      // heartbeat/tool rows. Avoid spreading the whole array into push(),
+      // which overflows the JavaScript argument stack on a long run.
+      if (facts.length) {
+        for (const fact of facts) observationFacts.push(fact);
+        observationMatched = true;
+        break;
+      }
     }
     if (!observationMatched) observationErrors.push({ path: sourcePath(root, observationCandidates[0]), kind: 'correlation', error: 'no observation events matched the resolved experiment/project run IDs' });
   }

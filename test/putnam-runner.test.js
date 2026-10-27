@@ -52,7 +52,8 @@ test('benchmark Agent sessions explicitly deny Pi parallel coordination', () => 
     sessionDir: '/tmp/swarmenv-benchmark-session',
   });
   const args = adapter.buildLaunchArgs({ executionId: 'benchmark-execution' });
-  assert.ok(args.includes('--no-builtin-tools'));
+  assert.ok(args.includes('--no-tools'));
+  assert.ok(!args.includes('--no-builtin-tools'));
   assert.ok(args.includes('--tools'));
   assert.deepEqual(args.slice(args.indexOf('--exclude-tools'), args.indexOf('--exclude-tools') + 2), ['--exclude-tools', 'parallel']);
 });

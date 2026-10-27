@@ -386,7 +386,12 @@ function observationLogger(observationStore, experimentId, source) {
 
 export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
   buildLaunchArgs(options) {
-    const args = restrictedArgs(super.buildLaunchArgs(options));
+    // Pi keeps its coordinator tools enabled when only built-ins are disabled.
+    // Start from a completely empty tool set, then add the explicit
+    // SwarmEnv allowlist below. This keeps the benchmark boundary closed even
+    // when a Pi version treats coordinator tools as non-built-ins.
+    const args = restrictedArgs(super.buildLaunchArgs(options)).map((arg) =>
+      arg === '--no-builtin-tools' ? '--no-tools' : arg);
     // NuRouter/Pi versions have differed in how --no-builtin-tools is
     // forwarded. An explicit allowlist makes the benchmark boundary
     // deterministic: only named SwarmEnv extension tools are enabled.
