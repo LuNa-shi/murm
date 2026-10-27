@@ -48,6 +48,12 @@ implementation commit above, `repository_worktree_dirty: false`, and
 `ended_at: 2026-10-27T10:16:27.085Z`. The project elapsed time was
 7,203,058 ms against the 7,200,000 ms deadline, with 131 ms cleanup.
 
+A repository-local sanitized operator summary and semantic review are kept at
+`experiments/exp-20261027-issue70-b1-2h-b05d432/analysis/`. That directory is
+ignored; raw state remains local and is not committed. The `/tmp` paths above
+are the exact paths used by the completed run and are retained for local
+reruns and report verification.
+
 The run is protocol-valid and made progress: `protocol_valid=true`,
 `audit.invalid=false`, `solved=false`, and `deadline_reached=true`. The
 unsolved result is a mathematical outcome; it does not invalidate the
