@@ -22,6 +22,23 @@ Record:
 
 State whether the report is complete or diagnostic-only.
 
+Use these rules when deciding that status:
+
+- Missing Controller/Daemon events or the ordered Observation store makes the
+  control-plane result diagnostic-only, but does not erase Runtime/Task/Agent
+  facts that are independently joined.
+- Missing Agent JSONL makes that Execution's behavior unknown.
+- Missing authoritative Task/Execution state makes lifecycle and ownership
+  conclusions diagnostic-only.
+- Missing Material, Workspace, or Judge evidence makes the affected handoff or
+  check unknown.
+
+When comparing a tool response with a contract, use serialized Service metadata
+first, then the checked-out implementation at the exact implementation commit
+recorded in metadata. If neither is available, write `schema unavailable`.
+If the source contains a fallback that the run did not exercise, label it
+`source-verified only`.
+
 ## 2. Orchestration question
 
 > Did the control plane move the right Task to the right Core and continue after
@@ -60,6 +77,9 @@ publication → intended consumer/read → downstream decision or state change
 
 Classify each important chain as `closed`, `one-way`, `unused`, or
 `unknown`. Do not call publication or read alone successful collaboration.
+Mark a child chain `closed at child scope` only when the child satisfied its own
+Task contract. Mark parent integration closed only after the parent records a
+decision or durable state change from that child result.
 
 ## 4. Execution question
 
@@ -82,6 +102,12 @@ Read raw Agent JSONL and cite the associated Runtime, Workspace, Material,
 Candidate, Judge, and lifecycle records needed to support the interpretation.
 Keep Selection Session and bound Task Session distinct when visible.
 
+Assign Agent lines by explicit Execution/Session ID first. If reusable-Core
+sessions overlap and the line cannot be assigned safely, mark it unmatched or
+shared with uncertainty. For many Executions, repeated windows may be grouped
+by an explicit Execution ID list and shared references, but each durable
+Execution still needs a compact row and lifecycle breaks remain separate.
+
 ## 5. Tool contract question
 
 > Did each tool call return the information its contract promised, and did the
@@ -99,6 +125,9 @@ For each material mismatch record:
 
 Separate request rejection, transport failure, contract mismatch, checker launch
 failure, checker result, and mathematical source failure.
+For diagnostics containing stdout/stderr or private payload, retain only the
+sanitized diagnostic class/code, process status, checker or service identity,
+and affected entity.
 
 ## 6. Final causal conclusion
 

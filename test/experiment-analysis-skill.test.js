@@ -25,6 +25,11 @@ test('experiment-analysis skill uses the four-question workflow', async () => {
   assert.match(skill, /expected.*actual|actual.*expected/i);
   assert.match(skill, /Task window/);
   assert.match(skill, /Material window/);
+  assert.match(skill, /schema unavailable/);
+  assert.match(skill, /reusable-Core/);
+  assert.match(skill, /closed at child scope/);
+  assert.match(skill, /diagnostic-only/);
+  assert.match(skill, /source-verified only/);
   assert.doesNotMatch(skill, /npm run analyze:experiment/);
   assert.doesNotMatch(skill, /semantic-review/i);
   assert.doesNotMatch(template, /semantic-review/i);

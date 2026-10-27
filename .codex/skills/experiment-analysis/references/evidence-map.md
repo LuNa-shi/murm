@@ -24,6 +24,13 @@ For each class record `present`, `missing`, `malformed`, `empty`, or
 `not applicable`. Missing Agent or service evidence limits a conclusion; it
 does not prove that the activity never occurred.
 
+If the metadata-declared Observation database or Controller/Daemon stream is
+missing, keep Runtime/Task/Agent joins but mark exact reconcile→signal ordering
+as unknown and the orchestration result as diagnostic-only. If authoritative
+Task/Execution state is missing, do not present lifecycle or ownership facts as
+durable. If a required Material, Workspace, or Judge source is missing, mark
+that handoff or check unknown.
+
 ## Question-specific sources
 
 - **Orchestration:** Controller/Daemon events, Runtime binding/release,
@@ -37,6 +44,11 @@ does not prove that the activity never occurred.
 - **Tool contract:** Agent request/result records, Bridge, Service Router and
   Service results, current public tool schema/implementation, and Judge/checker
   records.
+
+For the tool schema/implementation, prefer serialized metadata in the
+experiment. Otherwise read the checked-out source at the exact implementation
+commit recorded in metadata and cite it. Never silently use an unrelated
+working tree; if neither source is available, record `schema unavailable`.
 
 ## Correlation precedence
 

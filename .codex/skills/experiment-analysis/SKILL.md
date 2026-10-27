@@ -46,6 +46,26 @@ Core count, timebox, start/end/status, and every evidence class as `present`,
 conclusion; it is never evidence that no work happened. Mark the report
 diagnostic-only when the run or evidence boundary is incomplete.
 
+Use this boundary rule:
+
+| Missing evidence | Allowed conclusion |
+| --- | --- |
+| Controller/Daemon events or ordered Observation store | Runtime/Task/Agent chains may be reported, but exact reconcile→signal→claim ordering is `unknown`; the orchestration result is diagnostic-only. |
+| Agent JSONL for an Execution | That Execution's behavior is `unknown`; do not infer idle, success, or failure from state counts. |
+| Authoritative Task/Execution state | Lifecycle and ownership conclusions are diagnostic-only and must not be presented as durable facts. |
+| Material/Workspace/Judge evidence needed for a claimed handoff or check | The handoff or mathematical result is `unknown`; retain only the observable request/result envelope. |
+
+The complete experiment evidence is the metadata-declared implementation
+commit plus the experiment directory. For a tool contract, first use the
+serialized schema or Service metadata in the evidence. If it is absent, the
+skill may read the checked-out source at the exact implementation commit named
+by metadata and must cite that path and commit. It must not silently compare a
+run with the current working tree or an unrelated branch. If neither source is
+available, report `schema unavailable` rather than guessing.
+
+If a fallback exists in source but the experiment did not exercise it, label it
+`source-verified only`; do not present it as a runtime-observed behavior.
+
 ### 1. Orchestration question
 
 > **Did the control plane move the right Task to the right Core and continue
@@ -102,6 +122,11 @@ collaboration. Classify the chain as `closed`, `one-way`, `unused`, or
 `unknown`, and cite the producer, consumer, Task, Execution, Material, and
 downstream records that support the classification.
 
+`closed at child scope` means the child satisfied its own Task contract. It does
+not mean the parent integrated the result. Use `closed at parent scope` only
+when the parent records a decision or durable state change after consuming the
+child result; otherwise classify the parent edge as `one-way` or `unknown`.
+
 ### 3. Execution question
 
 > **Did each Execution's bounded work windows pursue its Task goal and produce
@@ -117,6 +142,12 @@ needed to explain what the Agent did. Split a window at a meaningful objective,
 claim, feedback, state, handoff, or terminal change; use bounded time windows
 when no such change exists.
 
+Assign raw Agent lines to an Execution by explicit `execution_id` or
+`session_id` first, then by the Runtime bind interval and Task/Core identity.
+When reusable-Core sessions overlap and no stable identity resolves the line,
+keep it unmatched or shared with an uncertainty label; never silently attach it
+to the newest Execution.
+
 Every window has exactly four required statements:
 
 ```text
@@ -131,6 +162,13 @@ feedback response, collaboration, waiting, recovery, and acceptance work. A
 window with no usable Agent evidence is an evidence gap, not an assertion of
 idle or no progress. Do not copy transcripts, hidden reasoning, proof source,
 or candidate source into the report.
+
+For a run with many Executions, keep one compact row or subsection per durable
+Execution. Identical repeated windows may be grouped by an explicit list of
+Execution IDs and shared evidence references, but fences, retries, feedback,
+handoffs, and terminal changes must remain separate. The four statements are
+the minimum required content, not a reason to repeat identical prose dozens of
+times.
 
 ### 4. Tool contract question
 
@@ -168,6 +206,10 @@ Keep transport failure, request rejection, contract mismatch, checker launch
 failure, checker result, and mathematical source failure separate. A Judge
 request that persisted successfully is not proof that a checker ran or that a
 candidate was mathematically useful.
+
+When a checker or service diagnostic contains stdout/stderr or private payload,
+retain only the sanitized diagnostic class/code, process status, checker or
+service identity, and the affected entity. Never quote the diagnostic body.
 
 ## Final causal conclusion
 
