@@ -295,6 +295,29 @@ test('fencing and Runtime restart prevent old workspace writes and leave an audi
   fixtureData.taskService.close();
 });
 
+test('Runtime fences the durable Execution when physical Workspace fencing fails', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, adapter, task } = fixtureData;
+  const originalFenceWorkspace = runtime.workspaceManager.fenceWorkspace;
+  runtime.workspaceManager.fenceWorkspace = async () => {
+    throw new SwarmEnvError(ERROR_CODES.FENCED, 'injected workspace fence failure');
+  };
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    const fenced = await runtime.fenceExecution(claimed.execution.execution_id);
+    assert.equal(fenced.execution.state, 'FENCED');
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'FENCED');
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+    assert.equal(adapter.sessions[0].closed, true);
+  } finally {
+    runtime.workspaceManager.fenceWorkspace = originalFenceWorkspace;
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('Runtime restart fences CREATED/RUNNING owners but preserves WAITING responsibility', async () => {
   const fixtureData = await fixture();
   const { runtime, taskService, claimed, rootDir } = fixtureData;
@@ -584,6 +607,31 @@ test('lease sweep fences an expired running Execution and releases its process s
   fixtureData.taskService.close();
 });
 
+test('lease sweep expires the durable Execution when physical Workspace fencing fails', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, adapter, task } = fixtureData;
+  const originalFenceWorkspace = runtime.workspaceManager.fenceWorkspace;
+  runtime.workspaceManager.fenceWorkspace = async () => {
+    throw new SwarmEnvError(ERROR_CODES.FENCED, 'injected workspace fence failure');
+  };
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    taskService.db.prepare('UPDATE executions SET lease_expires_at = ? WHERE execution_id = ?').run(new Date(0).toISOString(), claimed.execution.execution_id);
+    const expired = await runtime.sweepExpired(new Date());
+    assert.equal(expired.length, 1);
+    assert.equal(expired[0].execution.state, 'EXPIRED');
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'EXPIRED');
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+    assert.equal(adapter.sessions[0].closed, true);
+  } finally {
+    runtime.workspaceManager.fenceWorkspace = originalFenceWorkspace;
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('Runtime emits one handoff reminder, then times out unfinished work and returns it to the ready queue', async () => {
   const fixtureData = await fixture({ runtimeOptions: { executionTimeoutMs: 60_000, handoffReminderMs: 55_000 } });
   const { runtime, taskService, claimed, rootDir, adapter, task } = fixtureData;
@@ -671,6 +719,32 @@ test('Runtime handoff checkpoints metadata, fences stale writers, and releases t
     assert.equal(replay.disposition, 'already_terminal');
     assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
   } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('Runtime completes a handoff when physical Workspace fencing fails', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, adapter, task } = fixtureData;
+  const originalFenceWorkspace = runtime.workspaceManager.fenceWorkspace;
+  runtime.workspaceManager.fenceWorkspace = async () => {
+    throw new SwarmEnvError(ERROR_CODES.FENCED, 'injected workspace fence failure');
+  };
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    const handedOff = await runtime.handoffExecution(claimed.execution.execution_id, {
+      reason: 'injected_workspace_failure',
+      checkpoint: { phase: 'handoff' },
+    });
+    assert.equal(handedOff.disposition, 'handed_off');
+    assert.equal(handedOff.execution.state, 'FENCED');
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+    assert.equal(adapter.sessions[0].closed, true);
+  } finally {
+    runtime.workspaceManager.fenceWorkspace = originalFenceWorkspace;
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
   }

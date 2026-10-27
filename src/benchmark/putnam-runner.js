@@ -2278,6 +2278,10 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   const durationMs = options.timeboxMs ?? 60 * 60_000;
   const deadline = startedAt + durationMs;
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
+  // CoreDaemon waits for the whole Runtime Execution to release after a
+  // successful claim. Keep that ownership deadline at least as long as the
+  // durable Runtime deadline; a turn timeout is only the per-prompt bound.
+  const executionTimeoutMs = options.executionTimeoutMs ?? 60 * 60_000;
   const basePrompt = (core) => core.taskId
       ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or waiting.`
       : GENERIC_AGENT_PROMPT;
@@ -2349,7 +2353,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           throw error;
         }
       },
-      handoffTimeoutMs: options.handoffTimeoutMs ?? Math.max(1_000, (options.turnTimeoutMs ?? 30_000) * 2),
+      handoffTimeoutMs: options.handoffTimeoutMs ?? Math.max(executionTimeoutMs, turnTimeoutMs * 2),
       releaseExecution: async (execution) => {
         const result = await core.runtime.fenceExecution(execution.execution_id);
         if (core.executionId === execution.execution_id) await core.bridge.releaseClaim({ result });

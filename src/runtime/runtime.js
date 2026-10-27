@@ -711,14 +711,6 @@ export class Runtime {
     }
     const handoffOperationId = `runtime:handoff:${executionId}:${handoffKey ?? `${reason}:${current.state_version}`}`;
     const oldFence = current.fencing_version;
-    if (current.workspace_ref) {
-      await this.workspaceManager.fenceWorkspace({
-        workspaceRef: current.workspace_ref,
-        executionId,
-        fencingVersion: oldFence,
-        newFencingVersion: oldFence + 1,
-      });
-    }
     const result = this.taskService.dispatch('handoff_execution', {
       terminal_state: terminalState,
       terminal_reason: reason,
@@ -729,6 +721,13 @@ export class Runtime {
       workspace_content_hash: workspace?.content_hash ?? current.workspace_content_hash,
       handoff_metadata: metadata,
     }, this.#executionEnvelope(current, handoffOperationId));
+    // Durable ownership ends before physical cleanup. A transient or stale
+    // Workspace metadata error must not strand the Execution in RUNNING.
+    const workspaceFenced = await this.#fenceWorkspaceBestEffort({
+      ...current,
+      workspace_ref: result.execution.workspace_ref ?? current.workspace_ref,
+      fencing_version: oldFence,
+    }, { newFencingVersion: result.execution.fencing_version, event: 'runtime.handoff_workspace_fence_error' });
     const active = this.activeProcesses.get(executionId);
     if (active) {
       active.closing = true;
@@ -738,7 +737,7 @@ export class Runtime {
       this.activeProcesses.delete(executionId);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
-    if (result.execution.workspace_ref) {
+    if (workspaceFenced && result.execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({
         workspaceRef: result.execution.workspace_ref,
         executionId,
@@ -868,16 +867,25 @@ export class Runtime {
   async fenceExecution(executionId) {
     this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId });
     const execution = this.#getExecution(executionId);
-    const newFencingVersion = execution.fencing_version + 1;
-    if (execution.workspace_ref) {
-      await this.workspaceManager.fenceWorkspace({ workspaceRef: execution.workspace_ref, executionId, fencingVersion: execution.fencing_version, newFencingVersion });
-    }
     const result = this.taskService.dispatch('fence_execution', { runtime_generation: this.runtimeGeneration }, this.#executionEnvelope(execution, operationId('fence')));
+    const workspaceFenced = await this.#fenceWorkspaceBestEffort(execution, {
+      newFencingVersion: result.execution.fencing_version,
+      event: 'runtime.fence_workspace_error',
+    });
     const active = this.activeProcesses.get(executionId);
     if (active) {
       this.activeProcesses.delete(executionId);
       await Promise.resolve(active.session.stop()).catch(() => undefined);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+    }
+    if (workspaceFenced && result.execution.workspace_ref) {
+      await this.workspaceManager.releaseWorkspace({
+        workspaceRef: result.execution.workspace_ref,
+        executionId,
+        fencingVersion: result.execution.fencing_version,
+      }).catch((error) => {
+        this.logger?.append({ event: 'runtime.fence_workspace_release_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'workspace_release_error' });
+      });
     }
     return result;
   }
@@ -887,15 +895,25 @@ export class Runtime {
     const expired = [];
     for (const execution of this.taskService.listActiveExecutions()) {
       if (!['CREATED', 'RUNNING'].includes(execution.state) || Date.parse(execution.lease_expires_at) > at.getTime()) continue;
-      if (execution.workspace_ref) {
-        await this.workspaceManager.fenceWorkspace({ workspaceRef: execution.workspace_ref, executionId: execution.execution_id, fencingVersion: execution.fencing_version, newFencingVersion: execution.fencing_version + 1 });
-      }
       const result = this.taskService.dispatch('expire_execution', { runtime_generation: this.runtimeGeneration }, this.#executionEnvelope(execution, operationId('expire')));
+      const workspaceFenced = await this.#fenceWorkspaceBestEffort(execution, {
+        newFencingVersion: result.execution.fencing_version,
+        event: 'runtime.expire_workspace_fence_error',
+      });
       const active = this.activeProcesses.get(execution.execution_id);
       if (active) {
         this.activeProcesses.delete(execution.execution_id);
         await Promise.resolve(active.session.stop()).catch(() => undefined);
         this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+      }
+      if (workspaceFenced && result.execution.workspace_ref) {
+        await this.workspaceManager.releaseWorkspace({
+          workspaceRef: result.execution.workspace_ref,
+          executionId: execution.execution_id,
+          fencingVersion: result.execution.fencing_version,
+        }).catch((error) => {
+          this.logger?.append({ event: 'runtime.expire_workspace_release_error', execution_id: execution.execution_id, error_class: error?.code ?? error?.name ?? 'workspace_release_error' });
+        });
       }
       expired.push(result);
     }
@@ -918,6 +936,26 @@ export class Runtime {
     const execution = this.taskService.getExecution(requireString(executionId, 'execution_id'));
     if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
     return execution;
+  }
+
+  async #fenceWorkspaceBestEffort(execution, { newFencingVersion = execution?.fencing_version + 1, event = 'runtime.workspace_fence_error' } = {}) {
+    if (!execution?.workspace_ref) return true;
+    try {
+      await this.workspaceManager.fenceWorkspace({
+        workspaceRef: execution.workspace_ref,
+        executionId: execution.execution_id,
+        fencingVersion: execution.fencing_version,
+        newFencingVersion,
+      });
+      return true;
+    } catch (error) {
+      this.logger?.append({
+        event,
+        execution_id: execution.execution_id,
+        error_class: error?.code ?? error?.name ?? 'workspace_fence_error',
+      });
+      return false;
+    }
   }
 
   async #prepareWorkspace(execution, workspaceRef = null) {
