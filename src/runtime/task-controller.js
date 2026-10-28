@@ -45,6 +45,20 @@ function isHealthy(daemon) {
   return !['FAILED', 'STOPPING', 'STOPPED'].includes(state);
 }
 
+function selectionRetryDeferred(daemon, at) {
+  if (daemon?.selection_exhausted !== true && daemon?.selectionExhausted !== true) return false;
+  const retryAt = daemon?.selection_retry_at ?? daemon?.selectionRetryAt;
+  return retryAt !== null && retryAt !== undefined && Number(retryAt) > at;
+}
+
+function idleGeneration(daemon) {
+  if (daemon?.idle_generation !== undefined) return daemon.idle_generation;
+  if (daemon?.idleGeneration !== undefined) return daemon.idleGeneration;
+  if (daemon?.last_event_at !== undefined) return daemon.last_event_at;
+  if (Array.isArray(daemon?.state_history)) return daemon.state_history.length;
+  return null;
+}
+
 function taskId(task) {
   return task?.task_id ?? task?.taskId ?? task?.id ?? null;
 }
@@ -230,14 +244,18 @@ export class TaskController {
         this.#emit({ kind: 'controller_daemon_unhealthy', core_id: id, reason, timestamp: this.now() });
         continue;
       }
-      if (isIdle(view)) idle.push({ daemon, view, id });
+      if (isIdle(view) && !selectionRetryDeferred(view, reconciledAt)) idle.push({ daemon, view, id });
       else this.daemonSignals.delete(id);
     }
     const signature = taskSignature(claimable);
     let signaled = 0;
     if (claimable.length > 0 && typeof this.signalIdleDaemon === 'function') {
       for (const { daemon, view, id } of idle) {
-        const signalKey = `${signature}:${String(view.state ?? 'IDLE')}`;
+        // Include the Daemon's idle epoch so a completed failed/invalid
+        // selection can be woken again even when the Controller never saw a
+        // non-IDLE snapshot between attempts.  The task signature and state
+        // still suppress duplicate signals for an untouched idle view.
+        const signalKey = `${signature}:${String(view.state ?? 'IDLE')}:${String(idleGeneration(view))}`;
         if (this.daemonSignals.get(id) === signalKey) continue;
         await this.signalIdleDaemon(daemon, { core_id: id, reason, claimable_tasks: claimable, at: reconciledAt });
         this.daemonSignals.set(id, signalKey);
