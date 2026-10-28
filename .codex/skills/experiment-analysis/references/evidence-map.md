@@ -1,75 +1,82 @@
-# Evidence map
+# Experiment evidence map
 
-Use this map after resolving the input. The paths are relative to the experiment directory unless an external path is explicitly marked in metadata. The analyzer records a class as `present`, `missing`, `malformed`, `empty`, or `not applicable`; a missing class is not a zero count.
+Use the supplied experiment directory as the evidence boundary. Read metadata
+first, then discover the project IDs and evidence stores. This map tells the
+skill where to look; it does not turn an absent source into a zero count.
 
 ## Evidence classes
 
-| Class | Expected location | What it can establish | Do not infer from absence |
-|---|---|---|---|
-| Metadata | `metadata/experiment.json`, `metadata/observability.json` | Experiment ID, problem IDs, commits, model/provider, timebox, status, configured observation DB | That the run had no work if metadata is absent |
-| Agent | `logs/projects/<problem>/agents/*.ndjson` and private Workspace Pi session files | RPC requests/records, tool calls/results, turn/session/process facts | That an unlogged tool call never happened |
-| Bridge | `logs/projects/<problem>/bridge/*.ndjson` | Agent-to-Service bridge operation and result envelopes | That a Service was never reached if the bridge log is missing |
-| Runtime | `logs/projects/<problem>/runtime/*.ndjson` | Bind, heartbeat, wait, stop, release and Core-lane facts | Effective work from heartbeat count alone |
-| Service | `logs/projects/<problem>/services/*.ndjson` | Task, Context, Workspace, router and Judge Service operations/results | Semantic usefulness from publication or acceptance |
-| Judge | `logs/projects/<problem>/judge/*.ndjson` and `services/judge-service.ndjson` | Checker requests, verdicts, check IDs and bounded diagnostic categories | Feedback use by the Agent unless a later read/action is recorded |
-| SQLite/state | `state/projects/<problem>/project.sqlite` | Authoritative Task, Execution, Material, CheckResult and operation rows | State transitions that are not persisted or whose DB is malformed |
-| Observation | `observability.sqlite`, or the DB configured by `metadata/observability.json` | Ordered event IDs, sequence, stable correlation fields, session/Core/Execution joins | Raw payload privacy permission; payloads still require redaction |
-| Workspace | `workspaces/projects/<problem>/<execution>/` | Workspace manifest, revision/checkpoint lineage and file inventory | Proof/candidate contents in a shareable report |
-| Summary | `report.json`, `aggregate-report.json`, or metadata-configured report path | Supporting counts, hashes, audit flags and numerical timing projections | The semantic account of an Execution |
+| Class | Typical location | What it can establish |
+| --- | --- | --- |
+| Metadata | `metadata/experiment.json`, `metadata/observability.json` | Run identity, commit, route, timebox, status, project/report paths |
+| Agent | `logs/projects/<project>/agents/*.ndjson` and session metadata | Agent messages, tool requests/results, session and process facts |
+| Bridge | `logs/projects/<project>/bridge/*.ndjson` | Agent-to-Service request and response envelopes |
+| Runtime | `logs/projects/<project>/runtime/*.ndjson` | Core binding, heartbeat, wait, stop, release, fencing, and session facts |
+| Controller/Daemon | observation records with `task-controller`/`core-daemon` source | reconcile, signal, discovery, selection, claim, conflict, release, and recovery; summary fields only locate records |
+| Service | `logs/projects/<project>/services/*.ndjson` | Task, Context, Workspace, router, admission, and Judge operations |
+| Judge/checker | `logs/projects/<project>/judge/*.ndjson` and Judge service records | preflight, checker process, verdict, CheckResult, and bounded diagnostics |
+| State | `state/projects/<project>/project.sqlite` | authoritative Task, Execution, Material, CheckResult, and operation rows |
+| Observation | configured `observability.sqlite` | ordered event IDs and cross-source correlation fields |
+| Workspace | `workspaces/projects/<project>/<execution>/` | manifests, revisions, checkpoints, and file inventory |
+| Summary | `report.json`, `aggregate-report.json` | supporting counts, hashes, and projections; not semantic proof |
 
-The authoritative owner remains the relevant domain Service and its state database. Observation and log records are evidence references and projections, not a replacement Task or Execution state machine.
+For each class record `present`, `missing`, `malformed`, `empty`, or
+`not applicable`. Missing Agent or service evidence limits a conclusion; it
+does not prove that the activity never occurred.
 
-## Resolver rules
+If the metadata-declared Observation database or Controller/Daemon stream is
+missing, keep Runtime/Task/Agent joins but mark exact reconcile→signal ordering
+as unknown and the orchestration result as diagnostic-only. If authoritative
+Task/Execution state is missing, do not present lifecycle or ownership facts as
+durable. If a required Material, Workspace, or Judge source is missing, mark
+that handoff or check unknown.
 
-1. A directory input is used directly.
-2. An ID input is resolved under `--experiments-root` (default `./experiments`).
-3. Metadata is read first. It supplies the experiment ID, project/report paths, and external observation DB location.
-4. The analyzer discovers project IDs from `logs/projects`, `state/projects`, and `workspaces/projects`, then adds IDs listed in metadata.
-5. A summary is optional. If present, it is retained as supporting evidence and never replaces local traces.
+## Question-specific sources
+
+- **Orchestration:** Controller/Daemon events, Runtime binding/release,
+  Task Service admission and lifecycle, Core state, and the related Agent
+  selection/claim response.
+- **Coordination:** Task and Execution state, Material publish/read records,
+  child and dependency relations, Workspace revisions, Candidate/CheckResult,
+  review/rework, and the Agent actions that consume results.
+- **Execution:** raw Agent JSONL first, then Runtime, Workspace, Material,
+  Candidate, Judge, and lifecycle records needed to explain each window.
+- **Tool contract:** Agent request/result records, Bridge, Service Router and
+  Service results, current public tool schema/implementation, and Judge/checker
+  records.
+
+For the tool schema/implementation, prefer serialized metadata in the
+experiment. Otherwise read the checked-out source at the exact implementation
+commit recorded in metadata and cite it. Never silently use an unrelated
+working tree; if neither source is available, record `schema unavailable`.
 
 ## Correlation precedence
 
-Use the strongest available key in this order:
+Use the strongest key available:
 
-1. `experiment_id` and Observation `sequence`/`event_id`;
-2. `task_id`, `execution_id`, `session_id`, `core_id`, and operation/correlation ID;
-3. Material, Candidate, CheckResult, Workspace revision, and request key;
-4. timestamp and Core lane, only when no stable ID exists.
+1. observation `event_id` or `sequence` plus experiment ID;
+2. `task_id`, `execution_id`, `session_id`, `core_id`, and
+   operation/correlation ID;
+3. `material_id`, Candidate, CheckResult, and Workspace revision IDs;
+4. timestamp and Core lane only when no stable ID exists.
 
-Timestamp fallback must be stated in the fact or report. A timestamp can associate a raw Agent event with a Runtime bind interval, but it cannot prove ownership when two Executions overlap. Keep the event unmatched in that case.
+State when timestamp fallback was used. Keep an event unmatched when two
+possible owners overlap.
 
-## Source reference format
+## References and privacy
 
-Every normalized fact carries one or more stable references:
+Use relative references such as:
 
-- NDJSON: `logs/projects/demo/services/task-service.ndjson:42`;
-- observation store: `observability.sqlite#observation_events.sequence=123`;
-- domain state: `state/projects/demo/project.sqlite#executions.execution_id=<id>`;
-- Workspace metadata: `workspaces/projects/demo/<execution>/.swarm/revisions/3.json`.
+- `logs/projects/demo/agents/core-1.ndjson:42`;
+- `observability.sqlite#sequence=123`;
+- `state/projects/demo/project.sqlite#executions.execution_id=<id>`;
+- `workspaces/projects/demo/<execution>/.swarm/revisions/3.json`.
 
-Use relative paths in generated reports. External configured databases are labeled `<external>/<basename>` so the report does not leak unrestricted machine paths. The local analyzer may still read them in private mode.
+For a configured database or checked-out source outside the experiment
+directory, use `<external>/<basename>` plus the relevant commit, table, or
+identity. Never emit its absolute machine path.
 
-## Normalized facts
-
-The first implementation recognizes these high-value facts:
-
-- Agent tool call/result, turn, session, process, and RPC events;
-- Service call start/finish, Task creation/claim/state change/review/rework;
-- Execution assignment/state/terminal/wait/wake/resume and heartbeat;
-- Workspace manifest/revision;
-- Material publication and explicit Material reads;
-- Candidate submission and Judge/checker result;
-- authoritative Task/Execution/Material/CheckResult snapshots and operation rows.
-
-A fact may have multiple source references after de-duplication. The preferred source is an Observation event when it exists, followed by raw logs, Workspace metadata, and database snapshots. De-duplication never deletes an unmatched event reference from the evidence set.
-
-## Privacy boundary
-
-Full local mode may read private traces for analysis, but reports contain only bounded metadata and source references by default. Sanitized mode avoids raw logs and Workspace contents. Never copy these into the report or Git:
-
-- raw transcript or hidden chain-of-thought;
-- candidate/proof source or unrestricted Workspace file content;
-- credentials, tokens, authorization headers;
-- stdout/stderr, unrestricted error payloads, or private absolute paths.
-
-If a needed field is only present in a redacted or missing source, write `unknown` or an explicit evidence limitation.
+Do not modify raw evidence or domain databases. Reports may contain bounded
+metadata and references, but never raw transcripts, hidden reasoning,
+proof/candidate source, credentials, authorization headers, stdout/stderr, or
+unrestricted private paths.

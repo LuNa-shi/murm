@@ -17,8 +17,9 @@ experiments/exp-20261024-issue50-b1-1h-2fc0c87/
 The suffix should identify the issue, fixture, and run variant without
 including credentials or prompt contents. Keep raw state local and ignored;
 the report is written to
-`experiments/<id>/analysis/experiment-analysis.md`, with the independent
-semantic review at `experiments/<id>/analysis/semantic-review.md`.
+`experiments/<id>/analysis/experiment-analysis.md`. The report is produced by
+the direct experiment-analysis skill and answers the Orchestration,
+Coordination, Execution, and Tool contract questions from local evidence.
 
 Before a PR:
 

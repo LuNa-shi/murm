@@ -1,141 +1,150 @@
-# Report template
+# Experiment analysis report
 
-The generated file is `<experiment-directory>/analysis/experiment-analysis.md`. Keep the section order stable so reports can be compared across runs.
+Write the report to:
 
-## 1. Executive conclusion
+```text
+<experiment-directory>/analysis/experiment-analysis.md
+```
 
-State what the run demonstrated, what it did not demonstrate, and the largest evidence limitation. Label non-trivial statements as:
+Keep this order. Every conclusion is labelled **Fact**, **Derived metric**,
+**Interpretation**, or **Unknown** and cites relative evidence references.
 
-- **Fact** — directly recorded;
-- **Derived metric** — deterministic arithmetic/count;
-- **Interpretation** — evidence-backed semantic reading;
-- **Unknown** — unsupported by the available sources.
+## 1. Evidence gate
 
-## 2. Evidence boundary
+Record:
 
-Include the experiment identity, provenance, privacy mode, exact relative evidence paths, completeness status for every evidence class, malformed lines, and unmatched Task/Execution/Session/Core references.
+- experiment and project IDs;
+- implementation commit, provider/model, Core count, timebox, start/end/status;
+- privacy mode and analysis date;
+- evidence classes as `present`, `missing`, `malformed`, `empty`, or
+  `not applicable`;
+- unmatched IDs, malformed records, and the resulting completeness status.
 
-## 3. Run overview and attempt graph
+State whether the report is complete or diagnostic-only.
 
-Show project outcomes and supporting metrics, then list Tasks and Execution attempts. Each Execution row must include:
+Use these rules when deciding that status:
 
-- Task and attempt number;
-- owner, Core, Session;
-- Workspace lineage;
-- predecessor/successor Execution for rework;
-- terminal state;
-- evidence references.
+- Missing Controller/Daemon events or the ordered Observation store makes the
+  control-plane result diagnostic-only, but does not erase Runtime/Task/Agent
+  facts that are independently joined.
+- Missing Agent JSONL makes that Execution's behavior unknown.
+- Missing authoritative Task/Execution state makes lifecycle and ownership
+  conclusions diagnostic-only.
+- Missing Material, Workspace, or Judge evidence makes the affected handoff or
+  check unknown.
 
-The authoritative durable Execution is distinct from an Agent Session. A
-wait/resume, Core handoff, or valid in-place parent rework remains one
-Execution; a new Execution ID is a separate attempt only when durable evidence
-records it. Do not infer rework from same-Task row order.
+When comparing a tool response with a contract, use serialized Service metadata
+first, then the checked-out implementation at the exact implementation commit
+recorded in metadata. If neither is available, write `schema unavailable`.
+If the source contains a fallback that the run did not exercise, label it
+`source-verified only`.
 
-## 4. Coordination layer
+## 2. Orchestration question
 
-Report public-service availability, completion/error rates, state consistency,
-idempotency, Task queue supply and claim transitions, ready-but-unassigned work,
-Context/Material publication and consumption, Workspace/checkpoint lineage,
-Judge/checker handoff, and the full collaboration loop:
+> Did the control plane move the right Task to the right Core and continue after
+> claim, release, blocking, or dependency changes?
 
-`decompose → claim → independent work → deliver → consumer reads → review/rework → resume`.
+Show the relevant chains:
 
-For each service include the observed calls, failed finishes, latency/error
-limits when available, affected entities, and unknowns caused by missing sources.
+```text
+Controller → Daemon → selection → claim → Runtime → Task Session
+Execution release/block → Controller → next admission or reopen
+dependency change → Controller → Daemon → new Execution
+```
 
-## 5. Execution layer: semantic work windows
+For each broken chain, record the missing transition, affected entities,
+operational impact, confidence, and competing explanation.
 
-Create one section for every Execution attempt, including sparse, waiting, failed, superseded, and reworked attempts.
+## 3. Coordination question
 
-Use 5-minute windows by default or 10-minute windows when configured. Split earlier for a clear objective/lifecycle change. Each row must include:
+> Were Task and Material results consumed by the next responsible Agent and did
+> that consumption change later work?
 
-| Field | Required content |
-|---|---|
-| Time/duration | bounded interval and evidence gap marker |
-| Phase | research, editing, candidate construction, feedback, collaboration, waiting, recovery, or unknown |
-| Semantic summary | route/question/objective visible in the cited records |
-| Route change | comparison with the prior window or Candidate |
-| Durable changes | Workspace, Material, Candidate, Judge, Task, review, or lifecycle change |
-| Result | actual state/artifact/feedback/error |
-| Next state/handoff | expected owner, wait condition, consumer, or blocker |
-| Evidence/confidence | source references and confidence |
+Use bounded Task and Material windows.
 
-Supporting event counts may appear below the narrative. Millisecond-level call listings are audit evidence, not the main report.
+For a Task window record:
 
-## 6. Collaboration review
+```text
+creation/admission → claim/Execution → result/dependency changes
+→ terminal, blocked, or reopened state
+```
 
-Follow:
+For a Material window record:
 
-`decompose → claim → independent work → deliver → consumer reads → review/rework → resume`.
+```text
+publication → intended consumer/read → downstream decision or state change
+```
 
-For each delivery explain producer, expected consumer, semantic handoff, actual read, downstream action, state effect, and whether the loop closed. Distinguish closed collaboration, one-way delivery, unused result, consumed-without-effect, and unknown.
+Classify each important chain as `closed`, `one-way`, `unused`, or
+`unknown`. Do not call publication or read alone successful collaboration.
+Mark a child chain `closed at child scope` only when the child satisfied its own
+Task contract. Mark parent integration closed only after the parent records a
+decision or durable state change from that child result.
 
-## 7. Candidate/Judge semantic review
+## 4. Execution question
 
-For every Candidate show:
+> Did each Execution's bounded work windows pursue its Task goal and produce
+> auditable progress?
 
-- bounded strategy summary;
-- visible Workspace/Material changes;
-- change from the previous Candidate;
-- Judge diagnostic in operator language;
-- explicit feedback reads;
-- whether the next route changed;
-- later review, rework, Workspace, or Candidate action;
-- evidence and unknowns.
+Create one subsection per durable Execution. Include its Task, attempt,
+Core/Session segments, Workspace lineage, lifecycle result, and evidence gaps.
 
-Never copy proof/candidate source into a shareable report.
+For every work window use this compact format:
 
-Before interpreting a Candidate verdict, classify the checker lifecycle:
+| Field | Content |
+| --- | --- |
+| Target | What the Agent was trying to accomplish |
+| Action | Visible Agent, tool, Workspace, or research behavior |
+| Immediate result | What the action produced |
+| Next effect | Durable state, handoff, route, or owner change |
 
-`request rejected → checker not started → checker started/no result →
-source-level FAIL/PASS → timeout/crash`.
+Read raw Agent JSONL and cite the associated Runtime, Workspace, Material,
+Candidate, Judge, and lifecycle records needed to support the interpretation.
+Keep Selection Session and bound Task Session distinct when visible.
 
-Keep Judge request persistence (`ok=true`) separate from checker process success.
-If the checker never starts, report the mathematical result as **unassessed**
-and analyze the infrastructure failure and retry policy first.
+Assign Agent lines by explicit Execution/Session ID first. If reusable-Core
+sessions overlap and the line cannot be assigned safely, mark it unmatched or
+shared with uncertainty. For many Executions, repeated windows may be grouped
+by an explicit Execution ID list and shared references, but each durable
+Execution still needs a compact row and lifecycle breaks remain separate.
 
-## 8. Tool layer
+## 5. Tool contract question
 
-Measure provider/transport errors, invalid tool use, response-schema quality,
-idempotency, and actionable error fields (code, message, correlation ID).
-Review Judge/checker diagnostic accuracy and whether the Agent read and acted on
-feedback. Keep tool-call volume as supporting evidence rather than a work
-summary.
+> Did each tool call return the information its contract promised, and did the
+> Agent use that information correctly?
 
-The tool section must state whether each error came from request validation,
-provider/transport, checker launch, checker execution, or source-level
-diagnostics. A repeated pre-checker error is one environment failure with
-supporting retry records, not a series of independent mathematical failures.
+Compare every recorded request/response pair. A missing response is a contract
+result. Summarize normal pairs in a bounded table and record every mismatch or
+missing pair:
 
-## 9. System efficiency and health
+| Field | Content |
+| --- | --- |
+| Call | Tool, operation, and related entity |
+| Expected | Contractually expected response |
+| Actual | Returned response and status |
+| Use | How the Agent used or failed to use it |
+| Effect | Operational consequence and evidence |
 
-Separate Core assignment/release, Runtime RUNNING/WAITING/IDLE, Agent turns, Judge time, scheduler polling, and heartbeat lease activity. Report low capacity, serial execution, ready-unassigned work, claim contention, handoff loss, wake/resume failure, and cleanup truncation only when the trace supports them.
+Separate request rejection, transport failure, contract mismatch, checker launch
+failure, checker result, and mathematical source failure.
+For diagnostics containing stdout/stderr or private payload, retain only the
+sanitized diagnostic class/code, process status, checker or service identity,
+and affected entity.
 
-Keep configured capacity separate from effective work: Core occupancy,
-concurrency, ready-but-unassigned work, claim contention, capacity release,
-WAITING/IDLE/Judge/scheduler time, wake/resume, serial degradation, and cleanup.
-Use Runtime RUNNING and queue intervals where available; call duration-based
-occupancy a proxy otherwise. A missing source is an Unknown/limitation, not a
-scheduler failure.
+## 6. Final causal conclusion
 
-## 10. Error analysis
+Answer:
 
-Lead with system-level Swarm findings. For each finding include observed pattern, affected Tasks/Executions/Cores, impact, confidence, competing explanations, validation condition, and evidence. List isolated Agent/Service/tool errors afterward as supporting records.
+> If the experiment did not reach its goal, is the strongest supported cause an
+> orchestration break, an unclosed Task/Material handoff, ineffective Agent
+> work, or a tool-contract failure?
 
-## 11. Evidence, outcome, and optimization
+Separate protocol/lifecycle validity, collaboration closure, Execution
+progress, and mathematical or domain outcome. State the strongest evidence,
+uncertainties, and the next validation condition. Do not introduce a new
+count-only diagnosis here.
 
-Separate evidence completeness/provenance/privacy from outcomes. Report
-protocol/lifecycle validity, collaboration closure, and domain or mathematical
-success as different conclusions.
-
-## 12. Optimization recommendations
-
-Prioritize proposed next actions and state a validation condition for each. Recommendations are not proof of a current code defect.
-
-## 13. Conclusions and follow-up
-
-Separate facts, derived metrics, interpretations, unknowns, evidence limitations, and concrete operator actions. State whether the report supports semantic conclusions or is diagnostic-only.
-
-The analysis directory must also contain `semantic-review.md`, the independent
-summary-agent review and rubric score. The final report should state whether
-that review was merged completely, partially, or not at all.
+The report must use relative evidence references (external sources use
+`<external>/<basename>`) and must not contain raw
+transcripts, hidden reasoning, proof/candidate source, credentials,
+authorization headers, stdout/stderr, or unrestricted private paths.
