@@ -281,6 +281,7 @@ test('fencing and Runtime restart prevent old workspace writes and leave an audi
   const fenced = await runtime.fenceExecution(claimed.execution.execution_id);
   assert.equal(fenced.execution.state, 'FENCED');
   assert.equal(fenced.execution.fencing_version, 2);
+  assert.equal(fenced.execution.terminal_reason, 'fenced');
   assert.throws(
     () => oldAgent.publishMaterial({ kind: 'failure', scope: 'operational', content: { message: 'late' } }, { operationId: 'late-material' }),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.FENCED,
@@ -493,6 +494,51 @@ test('blocking one parallel Runtime releases a sibling Runtime and its Core afte
   }
 });
 
+test('rejected execution_block does not fence the Workspace before the Task transition commits', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir } = fixtureData;
+  const originalDispatch = taskService.dispatch.bind(taskService);
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    taskService.dispatch = (operation, payload, envelope) => {
+      if (operation === 'block_task') {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'controlled block rejection');
+      }
+      return originalDispatch(operation, payload, envelope);
+    };
+
+    await assert.rejects(
+      () => runtime.blockExecution(claimed.execution.execution_id, {
+        reason: 'controlled dependency rejection',
+        dependency: { dependency_kind: 'TASK', prerequisite_task_id: 'missing' },
+        checkpoint: { phase: 'rejected-block' },
+      }),
+      (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
+    );
+
+    const execution = taskService.getExecution(claimed.execution.execution_id);
+    assert.equal(execution.state, 'RUNNING');
+    assert.equal(execution.fencing_version, started.execution.fencing_version);
+    const restored = await runtime.workspaceManager.restoreWorkspace({
+      workspaceRef: execution.workspace_ref,
+      executionId: execution.execution_id,
+      fencingVersion: execution.fencing_version,
+    });
+    const writable = await runtime.workspaceManager.saveWorkspaceRevision({
+      workspaceRef: restored.workspace_ref,
+      executionId: execution.execution_id,
+      fencingVersion: execution.fencing_version,
+      files: { 'after-rejection.txt': 'the original owner is still writable' },
+    });
+    assert.equal(writable.workspace_revision, restored.workspace_revision + 1);
+  } finally {
+    taskService.dispatch = originalDispatch;
+    await runtime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('Workspace Manager rejects execution and file paths that escape its root', async () => {
   const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-path-'));
   const manager = new WorkspaceManager({ rootDir });
@@ -600,6 +646,7 @@ test('lease sweep fences an expired running Execution and releases its process s
   const expired = await runtime.sweepExpired(new Date());
   assert.equal(expired.length, 1);
   assert.equal(expired[0].execution.state, 'EXPIRED');
+  assert.equal(expired[0].execution.terminal_reason, 'lease_expired');
   assert.equal(taskService.getExecution(claimed.execution.execution_id).fencing_version, 2);
   assert.equal(runtime.getActiveProcessCount(), 0);
   assert.ok(started.workspace.workspace_ref);

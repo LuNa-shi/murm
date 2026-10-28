@@ -420,11 +420,20 @@ export class CoreDaemon {
   async #releaseFailedClaim(claim, originalError) {
     const execution = claim?.execution;
     if (!execution?.execution_id) return null;
+    const errorText = `${originalError?.code ?? ''} ${originalError?.message ?? ''}`;
+    const terminalReason = /handoff deadline|did not release/i.test(errorText)
+      ? 'handoff_timeout'
+      : 'runtime_handoff_failed';
     try {
       if (typeof this.releaseExecution === 'function') return await this.releaseExecution(execution, { error: originalError, coreId: this.coreId });
-      if (typeof this.runtime?.fenceExecution === 'function') return await this.runtime.fenceExecution(execution.execution_id);
+      if (typeof this.runtime?.fenceExecution === 'function') {
+        return await this.runtime.fenceExecution(execution.execution_id, { reason: terminalReason });
+      }
       if (typeof this.taskService?.dispatch === 'function') {
-        return this.taskService.dispatch('fence_execution', { runtime_generation: execution.runtime_generation ?? 1 }, makeEnvelope({
+        return this.taskService.dispatch('fence_execution', {
+          runtime_generation: execution.runtime_generation ?? 1,
+          terminal_reason: terminalReason,
+        }, makeEnvelope({
           actorRef: `daemon:${this.coreId}`,
           taskId: execution.task_id,
           executionId: execution.execution_id,

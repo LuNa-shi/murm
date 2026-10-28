@@ -1107,7 +1107,7 @@ async function stopCore(state, core) {
   ].filter(Boolean));
   // Runtime owns process termination, capacity release, fencing, and recovery
   // suppression. Keep those effects behind its public shutdown seam.
-  await core.runtime.shutdown({ terminalState: 'FAILED' });
+  await core.runtime.shutdown({ terminalState: 'FAILED', terminalReason: 'benchmark_deadline_cleanup' });
   await Promise.all([...sessions].map(async (session) => {
     try {
       await session.stop?.();
@@ -2488,8 +2488,15 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         }
       },
       handoffTimeoutMs: options.handoffTimeoutMs ?? Math.max(executionTimeoutMs, turnTimeoutMs * 2),
-      releaseExecution: async (execution) => {
-        const result = await core.runtime.fenceExecution(execution.execution_id);
+      releaseExecution: async (execution, { error } = {}) => {
+        const errorText = `${error?.code ?? ''} ${error?.message ?? ''}`;
+        const result = await core.runtime.fenceExecution(execution.execution_id, {
+          reason: core.stopping
+            ? 'benchmark_deadline_cleanup'
+            : /handoff deadline|did not release/i.test(errorText)
+            ? 'handoff_timeout'
+            : 'runtime_handoff_failed',
+        });
         if (core.executionId === execution.execution_id) await core.bridge.releaseClaim({ result });
         return result;
       },

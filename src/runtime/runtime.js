@@ -177,7 +177,7 @@ export class Runtime {
    * The benchmark uses this seam for terminal cleanup so it never has to
    * mutate Runtime ownership maps or recovery flags directly.
    */
-  async shutdown({ terminalState = 'FAILED' } = {}) {
+  async shutdown({ terminalState = 'FAILED', terminalReason = 'runtime_shutdown' } = {}) {
     this.stopping = true;
     this.executionStateUnsubscribe?.();
     this.executionStateUnsubscribe = null;
@@ -185,7 +185,7 @@ export class Runtime {
     for (const executionId of executionIds) {
       const execution = this.taskService.getExecution(executionId);
       if (execution && ['CREATED', 'RUNNING'].includes(execution.state)) {
-        await this.stopExecution(executionId, terminalState).catch(() => undefined);
+        await this.stopExecution(executionId, terminalState, terminalReason).catch(() => undefined);
       } else {
         const active = this.activeProcesses.get(executionId);
         this.activeProcesses.delete(executionId);
@@ -326,7 +326,10 @@ export class Runtime {
       if (this.stopping) throw error;
       const failed = this.#getExecution(executionId);
       if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
-        this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('start-failed')));
+        this.taskService.dispatch('stop_execution', {
+          terminal_state: 'FAILED',
+          terminal_reason: 'startup_failed',
+        }, this.#executionEnvelope(failed, operationId('start-failed')));
       }
       throw error;
     }
@@ -377,7 +380,10 @@ export class Runtime {
       await Promise.resolve(boundSession?.stop?.()).catch(() => undefined);
       const failed = this.#getExecution(executionId);
       if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
-        this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('bind-failed')));
+        this.taskService.dispatch('stop_execution', {
+          terminal_state: 'FAILED',
+          terminal_reason: 'bind_failed',
+        }, this.#executionEnvelope(failed, operationId('bind-failed')));
       }
       throw error;
     }
@@ -448,7 +454,7 @@ export class Runtime {
     } catch (error) {
       const current = this.taskService.getExecution(executionId);
       if (current && ['CREATED', 'RUNNING'].includes(current.state)) {
-        await this.fenceExecution(executionId).catch(() => undefined);
+        await this.fenceExecution(executionId, { reason: 'wake_failed' }).catch(() => undefined);
       }
       throw error;
     }
@@ -553,12 +559,6 @@ export class Runtime {
         checkpoint,
       });
       current = this.taskService.dispatch('save_checkpoint', checkpointResult, this.#executionEnvelope(current, operationId('block-checkpoint'))).execution;
-      await this.workspaceManager.fenceWorkspace({
-        workspaceRef: current.workspace_ref,
-        executionId,
-        fencingVersion: current.fencing_version,
-        newFencingVersion: current.fencing_version + 1,
-      });
     }
     const result = this.taskService.dispatch('block_task', {
       block_reason: reason,
@@ -570,8 +570,20 @@ export class Runtime {
       workspace_revision: workspace?.workspace_revision ?? current.workspace_revision,
       workspace_content_hash: workspace?.content_hash ?? current.workspace_content_hash,
     }, this.#executionEnvelope(current, operationId('block')));
+    // The Task Service transition is the logical ownership boundary. Fence the
+    // physical Workspace only after block_task commits; otherwise a rejected
+    // dependency contract leaves a RUNNING Execution with an unwritable
+    // Workspace and traps the Agent in a repeated FENCED retry loop.
+    const workspaceFenced = await this.#fenceWorkspaceBestEffort({
+      ...current,
+      workspace_ref: result.execution.workspace_ref ?? current.workspace_ref,
+      fencing_version: current.fencing_version,
+    }, {
+      newFencingVersion: result.execution.fencing_version,
+      event: 'runtime.block_workspace_fence_error',
+    });
     await Promise.resolve(active.session.stop?.()).catch(() => undefined);
-    if (result.execution.workspace_ref) {
+    if (workspaceFenced && result.execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({
         workspaceRef: result.execution.workspace_ref,
         executionId,
@@ -825,8 +837,9 @@ export class Runtime {
     return result;
   }
 
-  async stopExecution(executionId, terminalState = 'CANCELLED') {
-    this.logger?.append({ event: 'runtime.stop_execution', execution_id: executionId, terminal_state: terminalState });
+  async stopExecution(executionId, terminalState = 'CANCELLED', terminalReason = null) {
+    const reason = terminalReason ?? terminalState.toLowerCase();
+    this.logger?.append({ event: 'runtime.stop_execution', execution_id: executionId, terminal_state: terminalState, terminal_reason: reason });
     const execution = this.#getExecution(executionId);
     const active = this.activeProcesses.get(executionId);
     if (active) {
@@ -834,7 +847,10 @@ export class Runtime {
       await Promise.resolve(active.session.stop()).catch(() => undefined);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
-    const result = this.taskService.dispatch('stop_execution', { terminal_state: terminalState }, this.#executionEnvelope(execution, operationId('stop')));
+    const result = this.taskService.dispatch('stop_execution', {
+      terminal_state: terminalState,
+      terminal_reason: reason,
+    }, this.#executionEnvelope(execution, operationId('stop')));
     if (execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({ workspaceRef: execution.workspace_ref, executionId, fencingVersion: execution.fencing_version });
     }
@@ -864,10 +880,13 @@ export class Runtime {
     return { execution };
   }
 
-  async fenceExecution(executionId) {
-    this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId });
+  async fenceExecution(executionId, { reason = 'fenced' } = {}) {
+    this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId, terminal_reason: reason });
     const execution = this.#getExecution(executionId);
-    const result = this.taskService.dispatch('fence_execution', { runtime_generation: this.runtimeGeneration }, this.#executionEnvelope(execution, operationId('fence')));
+    const result = this.taskService.dispatch('fence_execution', {
+      runtime_generation: this.runtimeGeneration,
+      terminal_reason: reason,
+    }, this.#executionEnvelope(execution, operationId('fence')));
     const workspaceFenced = await this.#fenceWorkspaceBestEffort(execution, {
       newFencingVersion: result.execution.fencing_version,
       event: 'runtime.fence_workspace_error',
@@ -895,7 +914,10 @@ export class Runtime {
     const expired = [];
     for (const execution of this.taskService.listActiveExecutions()) {
       if (!['CREATED', 'RUNNING'].includes(execution.state) || Date.parse(execution.lease_expires_at) > at.getTime()) continue;
-      const result = this.taskService.dispatch('expire_execution', { runtime_generation: this.runtimeGeneration }, this.#executionEnvelope(execution, operationId('expire')));
+      const result = this.taskService.dispatch('expire_execution', {
+        runtime_generation: this.runtimeGeneration,
+        terminal_reason: 'lease_expired',
+      }, this.#executionEnvelope(execution, operationId('expire')));
       const workspaceFenced = await this.#fenceWorkspaceBestEffort(execution, {
         newFencingVersion: result.execution.fencing_version,
         event: 'runtime.expire_workspace_fence_error',
@@ -924,7 +946,7 @@ export class Runtime {
     this.runtimeGeneration += 1;
     for (const execution of this.taskService.listActiveExecutions()) {
       if (execution.state === 'RUNNING' || execution.state === 'CREATED') {
-        await this.fenceExecution(execution.execution_id);
+        await this.fenceExecution(execution.execution_id, { reason: 'runtime_restart' });
       }
     }
     await Promise.all([...this.activeProcesses.values()].map((active) => Promise.resolve(active.session.stop()).catch(() => undefined)));
@@ -1256,7 +1278,7 @@ export class Runtime {
       this.recoveryAttempts.set(execution.task_id, recoveryAttempt);
       this.logger?.append({ event: 'runtime.session_failure', execution_id: executionId, failure_class: failureClass, recovery_attempt: recoveryAttempt });
       if (recoveryAttempt > this.maxRecoveryAttempts) {
-        const fenced = await this.fenceExecution(executionId);
+        const fenced = await this.fenceExecution(executionId, { reason: 'recovery_exhausted' });
         this.logger?.append({ event: 'runtime.recovery_exhausted', execution_id: executionId, failure_class: failureClass, recovery_attempt: recoveryAttempt });
         return { execution: fenced.execution, recovery: null, disposition: 'exhausted' };
       }

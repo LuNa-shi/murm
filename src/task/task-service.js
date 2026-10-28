@@ -2199,9 +2199,13 @@ export class TaskService {
     const execution = this.#executionForWrite(envelope);
     const terminalState = payload.terminal_state ?? 'FAILED';
     if (!TERMINAL_EXECUTION_STATES.includes(terminalState)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_state must be an Execution terminal state');
+    const terminalReason = payload.terminal_reason ?? payload.reason ?? terminalState.toLowerCase();
+    if (typeof terminalReason !== 'string' || terminalReason.length === 0) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_reason must be a non-empty string');
+    }
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run(terminalState, updatedAt, execution.execution_id);
+    this.db.prepare('UPDATE executions SET state = ?, terminal_reason = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run(terminalState, terminalReason, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt, cancelIfIdle: terminalState === 'CANCELLED' });
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
@@ -2210,8 +2214,12 @@ export class TaskService {
   #expireExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('EXPIRED', payload.runtime_generation ?? null, updatedAt, execution.execution_id);
+    const terminalReason = payload.terminal_reason ?? payload.reason ?? 'lease_expired';
+    if (typeof terminalReason !== 'string' || terminalReason.length === 0) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_reason must be a non-empty string');
+    }
+    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), terminal_reason = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run('EXPIRED', payload.runtime_generation ?? null, terminalReason, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt });
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
@@ -2220,8 +2228,12 @@ export class TaskService {
   #fenceExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('FENCED', payload.runtime_generation ?? null, updatedAt, execution.execution_id);
+    const terminalReason = payload.terminal_reason ?? payload.reason ?? 'fenced';
+    if (typeof terminalReason !== 'string' || terminalReason.length === 0) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_reason must be a non-empty string');
+    }
+    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), terminal_reason = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run('FENCED', payload.runtime_generation ?? null, terminalReason, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt });
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
