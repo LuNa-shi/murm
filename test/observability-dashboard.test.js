@@ -9,10 +9,17 @@ import { ObservationStore } from '../src/observability/observation-store.js';
 
 const dashboardSource = await readFile(new URL('../src/observability/public/app.js', import.meta.url), 'utf8');
 
+test('dashboard receives registry changes over SSE instead of browser polling', () => {
+  assert.match(dashboardSource, /api\/experiments\/stream/);
+  assert.match(dashboardSource, /api\/experiments\/changes\?since=/);
+  assert.doesNotMatch(dashboardSource, /setInterval\(/);
+});
+
 function browserHarness(baseUrl) {
   const elements = new Map();
   const windowListeners = new Map();
   const fetchCalls = [];
+  const eventSources = [];
   let latestEventSource = null;
   function element(selector) {
     if (!elements.has(selector)) {
@@ -36,7 +43,7 @@ function browserHarness(baseUrl) {
   const document = { querySelector: element, querySelectorAll: () => [], addEventListener() {} };
   const window = { addEventListener(name, listener) { windowListeners.set(name, listener); } };
   class FakeEventSource {
-    constructor(url) { this.url = url; this.listeners = new Map(); latestEventSource = this; }
+    constructor(url) { this.url = url; this.listeners = new Map(); latestEventSource = this; eventSources.push(this); }
     addEventListener(name, listener) { this.listeners.set(name, listener); }
     close() {}
   }
@@ -51,7 +58,9 @@ function browserHarness(baseUrl) {
   vm.createContext(context);
   return {
     elements, windowListeners, fetchCalls, location, context,
+    eventSources,
     get eventSource() { return latestEventSource; },
+    get observationSource() { return eventSources.find((source) => source.url.includes('view=agent')) || null; },
     start() { vm.runInContext(dashboardSource, context, { filename: 'observability-dashboard.js' }); },
   };
 }
@@ -112,6 +121,14 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
     const harness = browserHarness(startup.url);
     harness.start();
     await waitFor(() => harness.elements.get('#main-view')?.innerHTML.includes('Core activity'));
+    const registrySource = harness.eventSources.find((source) => source.url.endsWith('/api/experiments/stream'));
+    assert.ok(registrySource, 'dashboard should open a registry EventSource');
+    registrySource.listeners.get('experiments')({ data: JSON.stringify({ experiments: [
+      { experiment_id: experimentId, started_at: '2026-10-20T00:00:00.000Z', status: 'RUNNING', metadata: { problem_id: 'fixture' }, event_count: 7, core_ids: ['core-1'] },
+      { experiment_id: 'dashboard-new-run', started_at: '2026-10-21T00:00:00.000Z', status: 'RUNNING', metadata: { problem_id: 'new-fixture' }, event_count: 0, core_ids: [] },
+    ] }) });
+    assert.match(harness.elements.get('#experiments').innerHTML, /dashboard-new-run/);
+    assert.equal(harness.elements.get('#experiments').value, experimentId);
     assert.match(harness.elements.get('#timeline').innerHTML, /exec-root/);
     assert.match(harness.elements.get('#timeline').innerHTML, /waterfall-row state-row/);
     assert.match(harness.elements.get('#timeline').innerHTML, /waterfall-span tool-span/);
@@ -120,7 +137,7 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
     assert.match(harness.elements.get('#timeline').innerHTML, /Agent session \/ turn/);
     assert.match(harness.elements.get('#timeline').innerHTML, /TOOLS \/ CHECKS/);
     assert.match(harness.elements.get('#timeline').innerHTML, /Task task-root/);
-    assert.match(harness.eventSource.url, /view=agent/);
+    assert.match(harness.observationSource.url, /view=agent/);
     const timelineSegment = harness.elements.get('#timeline').querySelectorAll('.timeline-segment')[0];
     assert.ok(timelineSegment, 'timeline segment should be queryable');
     assert.equal(typeof timelineSegment.click, 'function', 'timeline segment should be wired to navigation');
@@ -161,7 +178,7 @@ test('dashboard renders fixture routes, nested service state, redacted payloads,
 
     await navigate('home');
     const liveEvent = writer.append({ experimentId, source: 'runtime', kind: 'core_state_changed', coreId: 'core-2', taskId: 'task-root', executionId: 'exec-root', payload: { state: 'RUNNING' } });
-    harness.eventSource.listeners.get('observation')({ data: JSON.stringify(liveEvent) });
+    harness.observationSource.listeners.get('observation')({ data: JSON.stringify(liveEvent) });
     await waitFor(() => harness.elements.get('#timeline').innerHTML.includes('core-2'));
   } finally {
     writer?.close();

@@ -51,9 +51,21 @@ function isWithin(root, child) {
 async function ensureObservabilityServer(options) {
   const experimentRoot = resolve(options.experimentRoot);
   const databasePath = join(experimentRoot, '.observability', 'observability.sqlite');
-  const metadataPath = join(experimentRoot, '.observability', 'server.json');
-  const existing = await readServerMetadata(metadataPath);
-  if (existing && resolve(existing.database_path ?? '') === databasePath && await healthCheck(existing)) return existing;
+  const configuredMetadataPath = options.observabilityMetadataPath ?? process.env.SWARMENV_OBSERVABILITY_METADATA ?? null;
+  const metadataPaths = configuredMetadataPath
+    ? [resolve(configuredMetadataPath)]
+    : [
+      join(experimentRoot, '.observability', 'public-server.json'),
+      join(experimentRoot, '.observability', 'server.json'),
+    ];
+  const metadataPath = metadataPaths[0];
+  for (const candidatePath of metadataPaths) {
+    const existing = await readServerMetadata(candidatePath);
+    if (existing && (configuredMetadataPath || resolve(existing.database_path ?? '') === databasePath) && await healthCheck(existing)) return existing;
+  }
+  if (configuredMetadataPath) {
+    throw new Error(`configured persistent observability service is unavailable; inspect ${metadataPath}`);
+  }
 
   const advertiseHost = options.observabilityAdvertiseHost ?? await detectTailscaleIPv4();
   const scriptPath = fileURLToPath(new URL('./serve-observability.mjs', import.meta.url));
@@ -61,6 +73,7 @@ async function ensureObservabilityServer(options) {
     scriptPath,
     '--root', experimentRoot,
     '--db', databasePath,
+    '--metadata', metadataPath,
     '--host', options.observabilityHost,
     '--port', String(options.observabilityPort),
   ];
@@ -110,6 +123,7 @@ function optionsFromArgs(argv) {
     observabilityPort: 8787,
     observabilityHost: '0.0.0.0',
     observabilityAdvertiseHost: null,
+    observabilityMetadataPath: process.env.SWARMENV_OBSERVABILITY_METADATA ?? null,
     model: process.env.NUROUTER_PI_MODEL,
     provider: process.env.NUROUTER_PI_PROVIDER,
     parallelMode: 'legacy',
@@ -136,6 +150,7 @@ function optionsFromArgs(argv) {
       '--observability-port': 'observabilityPort',
       '--observability-host': 'observabilityHost',
       '--observability-advertise-host': 'observabilityAdvertiseHost',
+      '--observability-metadata': 'observabilityMetadataPath',
       '--model': 'model',
       '--provider': 'provider',
       '--parallel-mode': 'parallelMode',
@@ -163,6 +178,7 @@ function usage() {
     '    --report-dir reports/putnambench-runs/run-<id>',
     '    --observability-host 0.0.0.0',
     '    --observability-port 8787',
+    '    --observability-metadata /path/to/experiments/.observability/public-server.json',
     '',
     'Use --problem <id> to run one configured project as a pilot.',
     '',
@@ -238,13 +254,14 @@ await mkdir(resolve(options.experimentDir, 'metadata'), { recursive: true });
 await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
 
 const observationAddress = await ensureObservabilityServer(options);
-const observationDatabasePath = join(options.experimentRoot, '.observability', 'observability.sqlite');
+const observationDatabasePath = resolve(observationAddress.database_path ?? join(options.experimentRoot, '.observability', 'observability.sqlite'));
 const observationStore = new ObservationStore(observationDatabasePath);
 options.observationStore = observationStore;
 await writeFile(resolve(options.experimentDir, 'metadata', 'observability.json'), JSON.stringify({
   experiment_dir: options.experimentDir,
   experiment_root: options.experimentRoot,
   database_path: observationDatabasePath,
+  server_metadata_path: resolve(observationAddress.metadata_path ?? options.observabilityMetadataPath ?? resolve(options.experimentRoot, '.observability', 'public-server.json')),
   persistent: true,
   url: observationAddress.url,
   host: observationAddress.host,

@@ -57,12 +57,16 @@ node scripts/run-putnambench-benchmark.mjs \
   --report-dir reports/putnambench-4core-YYYY-MM-DD-run
 ```
 
-Every `--experiment-dir` must be below `experiments/`. The runner starts or
-reuses the persistent observation server backed by
+Every `--experiment-dir` must be below `experiments/`. The runner reuses the
+persistent observation server backed by
 `experiments/.observability/observability.sqlite`; it does not stop that
 server when the benchmark ends. To expose the UI to a workstation in the same
 Tailscale network, use `--observability-host 0.0.0.0` and advertise the server
-Tailscale address with `--observability-advertise-host`.
+Tailscale address with `--observability-advertise-host`. When the runner is
+started from another checkout, set
+`SWARMENV_OBSERVABILITY_METADATA=/absolute/path/to/experiments/.observability/public-server.json`
+to force reuse of the single long-lived service rather than starting another
+port.
 
 Every experiment directory should contain, at minimum:
 
