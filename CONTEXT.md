@@ -2,10 +2,19 @@
 
 SwarmEnv is a local first runtime for durable, checkable Agent work. The
 system has one Task model, one Workspace model, shared Materials, and named
-Services. This file is the domain vocabulary for the MVP.
+Services. This file is the domain vocabulary for the MVP. The simplified
+Task/Execution model is defined in
+`docs/issue-70-runtime-architecture-design.md`; legacy ADRs that retain
+Execution `WAITING` or `parent_review` remain applicable only to legacy
+contracts.
 
 **Task** is a durable responsibility with a goal, expected output, acceptance
 conditions, a completion contract, a priority, and a Workspace description.
+
+Normal Task states are `OPEN`, `RUNNING`, `BLOCKED`, `DONE`, `CLOSED`, and
+`CANCELED`. `DONE` means the Task's own completion contract is satisfied;
+`CLOSED` is administrative cleanup; and `CANCELED` is an explicit terminal
+decision. Legacy `SATISFIED` and `CANCELLED` records remain readable.
 
 **Root Task** is the single Task created for one problem. For a PutnamBench
 project its goal is to prove that problem. The root does not describe the
@@ -40,11 +49,17 @@ currently running Execution.
 creation time, and ID. Agents browse the list and explicitly claim the Task
 they choose. The Task Service never chooses a Task on an Agent's behalf.
 
-**Execution** is one leased attempt to carry out a Task. Claiming a Task
-creates an Execution, and a Task may have multiple active Executions up to its
-`parallel_quota`. Later attempts may continue a prior Workspace revision or
-materialize a clean Workspace. Execution owns the lease, fencing version,
-checkpoint, candidate binding, and revision reference.
+**Task Controller** is the deterministic reconciliation loop. It observes
+committed Task Service changes, checks dependency and admission conditions,
+reopens eligible blocked Tasks, and signals idle Core daemons. It never ranks
+or claims Tasks.
+
+**Execution** is one leased attempt to carry out one Task. Claiming a Task
+creates an Execution. An Execution ends when its Task is completed, canceled,
+failed, or released because the Task is blocked. A later retry creates a new
+Execution and may continue the prior Workspace lineage. Execution owns the
+lease, fencing version, candidate binding, and revision reference for that
+attempt.
 
 **Workspace** is the single versioned working surface for a Task and its
 Executions. The initial codebase contains the problem formalization and task
@@ -60,8 +75,12 @@ proof requirements, constraints, and completion rules are read from the
 claimed Task.
 
 **Core slot** is reusable worker capacity. A slot can browse the root Task
-list, claim one Task, work on its Execution, wait or finish, and then be used
-again.
+list, claim one Task, work on its Execution, finish or release it, and then be
+used again. A Core has no semantic `WAITING` state.
+
+**Core daemon** is the long-lived supervisor for one Core slot. It maintains
+the discovery and claim loop, starts a Task Session for a claimed Execution,
+releases that Session when the Execution ends, and returns to discovery.
 
 **Material** is immutable shared work, evidence, feedback, or an artifact
 published through Context Service. Materials carry source Task and Execution
@@ -76,9 +95,11 @@ Workspace, Context, Judge, and Service Catalog are separate public capability
 groups. Runtime keeps process capacity, fencing, and filesystem enforcement
 behind the bridge.
 
-**Waiting** means an active Execution has saved its checkpoint and released
-physical process capacity. **Blocked** means the Task cannot currently be
-claimed. These states are distinct projections of the same lifecycle.
+**Blocked** means a Task cannot currently be claimed because it has declared an
+unfinished dependency. The Task has no active Execution while blocked. The
+Task Controller reopens it when its dependency expression is satisfied. The
+legacy MVP uses Execution `Waiting`; the simplified model removes that state
+from the normal Task flow.
 
 ## Observability and diagnosis
 
@@ -93,11 +114,13 @@ Execution, a waiting interval, and later another Execution.
 
 **Agent Session** is one Pi process session. It is distinct from an Execution:
 the worker session can claim an Execution and hand off to a new bound session,
-and a later Core can resume the same Execution after a durable wait.
+and a legacy waiting Execution can resume only on its stored Core binding (or
+without a prior Core binding). Normal-flow dependency release creates a new
+Execution for the later attempt.
 
-**Execution segment** is the continuous assignment of an Execution to one Core
-lane. A timeline segment refers to the same durable Execution ID and also
-records the Agent Session that carried it during that interval.
+**Execution segment** is the continuous assignment of one Execution attempt to
+one Core lane. A later retry of the same Task has a new Execution ID, even when
+it continues the prior Workspace lineage.
 
 **Interaction** is the ordered Agent-facing conversation and runtime exchange
 within an Agent Session, including assistant messages, Service tool calls,

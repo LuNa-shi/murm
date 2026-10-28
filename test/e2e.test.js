@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import {
   createScriptFixtureEnvironment,
   ScriptExecutor,
+  candidateMaterialSource,
   probeRealAgentConfig,
   summarizeFeedbackTrace,
   validateRealAgentReport,
@@ -73,6 +74,13 @@ test('real-agent probe rejects conflicting OpenAI route selectors before launch'
   assert.equal(probe.status, 'BLOCKED');
   assert.ok(probe.blockers.some((reason) => reason.includes('both account and group')));
   assert.equal(probe.secret_values_recorded, false);
+});
+
+test('real-agent candidate source accepts plain text and source-wrapped Materials', () => {
+  assert.equal(candidateMaterialSource({ content: 'import Mathlib\n' }), 'import Mathlib\n');
+  assert.equal(candidateMaterialSource({ content: { source: 'import Mathlib\n' } }), 'import Mathlib\n');
+  assert.equal(candidateMaterialSource({ content: { text: 'import Mathlib\n' } }), null);
+  assert.equal(candidateMaterialSource({ content: null }), null);
 });
 
 test('real-agent feedback trace proves the revision submission follows the delivered source failure', () => {

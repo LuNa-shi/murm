@@ -24,6 +24,12 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', properties: { root_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, task_type: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, available_only: { type: 'boolean' } }, additionalProperties: false },
   },
   {
+    name: 'task_list_claimable', service: 'task', operation: 'list_claimable_tasks', version: '1.0',
+    description: 'Return a bounded claimable shortlist with aging and fairness metadata for the Core Daemon selection turn.',
+    scope: 'public-read', side_effect: false,
+    parameters: { type: 'object', properties: { root_id: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, aging_threshold_ms: { type: 'integer', minimum: 0 }, now_ms: { type: 'integer', minimum: 0 } }, additionalProperties: false },
+  },
+  {
     name: 'task_get', service: 'task', operation: 'get_task', version: '1.0',
     description: 'Read the current Task specification and state.',
     scope: 'task-read', side_effect: false,
@@ -45,7 +51,13 @@ const TOOL_DEFINITIONS = Object.freeze([
     name: 'task_claim', service: 'task', operation: 'claim', version: '1.0',
     description: 'Claim one explicitly selected Task and create its Execution.',
     scope: 'task-claim', side_effect: true,
-    parameters: { type: 'object', required: ['task_id', 'claim_key'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, owner_ref: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['task_id', 'claim_key'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, core_id: { type: 'string' }, owner_ref: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_select', service: 'task', operation: 'select_task', version: '1.0',
+    description: 'Return one task_id from the bounded shortlist supplied to this stateless Core Daemon selection turn. The Daemon performs the durable claim.',
+    scope: 'task-selection', side_effect: false,
+    parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'task_create_child', service: 'task', operation: 'create_child_task', version: '1.0',
@@ -120,6 +132,12 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', required: ['wait_condition'], properties: { wait_condition: { type: 'object', properties: { type: { type: 'string' }, child_task_id: { type: 'string' }, check_request_key: { type: 'string' }, candidate_material_id: { type: 'string' }, deadline: { type: 'string' } }, additionalProperties: true }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } }, wait_deadline: { type: 'string' } }, additionalProperties: false },
   },
   {
+    name: 'execution_block', service: 'execution', operation: 'block_execution', version: '1.0',
+    description: 'Save a checkpoint, end the current Execution, release its Core, and mark the Task BLOCKED for a concrete external dependency. Use this instead of leaving a live Execution in WAITING.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['reason', 'dependency'], properties: { reason: { type: 'string' }, dependency: { type: 'object', properties: { dependency_kind: { type: 'string', enum: ['TASK', 'MATERIAL', 'CHECK_RESULT'] }, prerequisite_task_id: { type: 'string' }, material_id: { type: 'string' }, check_result_id: { type: 'string' }, requirement: { type: 'object' } }, additionalProperties: false }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } } }, additionalProperties: false },
+  },
+  {
     name: 'workspace_get', service: 'workspace', operation: 'get_workspace', version: '1.0',
     description: 'Read the current Workspace materialization and revision.',
     scope: 'execution-read', side_effect: false,
@@ -160,6 +178,21 @@ const TOOL_DEFINITIONS = Object.freeze([
     description: 'Read immutable shared Materials published by other Executions.',
     scope: 'public-read', side_effect: false,
     parameters: { type: 'object', additionalProperties: true },
+  },
+  {
+    name: 'context_consume', service: 'context', operation: 'consume_materials', version: '1.0',
+    description: 'Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.',
+    scope: 'execution-write', side_effect: true,
+    parameters: {
+      type: 'object',
+      required: ['material_ids', 'action'],
+      properties: {
+        material_ids: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', minLength: 1 } },
+        action: { type: 'string', enum: ['route', 'task', 'candidate', 'integration'] },
+        action_ref: { type: ['string', 'null'] },
+      },
+      additionalProperties: false,
+    },
   },
   {
     name: 'context_publish', service: 'context', operation: 'publish_material', version: '1.0',

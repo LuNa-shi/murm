@@ -87,7 +87,7 @@ function promptForCandidates({ firstCandidate }) {
     'You are running one continuous SwarmEnv proof Execution.',
     'Use the named SwarmEnv Service tools for every Task, Execution, Material, Workspace, and candidate operation.',
     'First call get_task and get_execution so you work against the current versions.',
-    'Publish the first source below as one artifact Material with kind=artifact and scope=proof_relevant, then call submit_candidate with its material_id.',
+    'Publish the first source below as one artifact Material with kind=artifact and scope=proof_relevant, with content set to the complete Lean source as a plain text string (do not wrap it in an object such as {source: ...}), then call submit_candidate with its material_id.',
     'The first candidate is intentionally invalid. The submit_candidate result is synchronous and authoritative. Read the returned CheckResult, including its diagnostic, before doing anything else.',
     'When the result is a source_failure, use its diagnostic to make a repaired candidate in this same Agent turn. Publish the revised source as a second artifact Material with kind=artifact and scope=proof_relevant, set supersedes to the first material_id, and call submit_candidate again.',
     'Do not call request_wait. Do not stop after the first source failure. Finish only after the revised candidate submission.',
@@ -333,6 +333,18 @@ function checkResultFromRecord(record) {
   return null;
 }
 
+// Agents can represent an artifact as `{ source: "..." }` even though the
+// Judge consumes the artifact as plain Lean text. Keep the immutable Material
+// unchanged and normalize only at the checker boundary.
+export function candidateMaterialSource(material) {
+  if (!material || typeof material !== 'object') return null;
+  if (typeof material.content === 'string') return material.content;
+  if (material.content && typeof material.content === 'object' && typeof material.content.source === 'string') {
+    return material.content.source;
+  }
+  return null;
+}
+
 export function summarizeFeedbackTrace(records, { sessionId = null } = {}) {
   const events = records
     .filter((record) => ['tool_call', 'tool_result', 'tool_execution_start', 'tool_execution_end'].includes(record?.type))
@@ -427,7 +439,7 @@ function checkRequest({ task, execution, workspace, fixtureManifest, material, r
     environment_ref: fixtureManifest.environment_ref,
     execution_id: execution.execution_id,
     state_version: execution.state_version,
-    candidate: { material_id: material.material_id, content: material.content },
+    candidate: { material_id: material.material_id, content: candidateMaterialSource(material) },
     target_task: task,
     workspace,
     fixture_manifest: fixtureManifest,
@@ -492,6 +504,7 @@ export async function runRealAgentPath({
   contextService.taskService = taskService;
   const judgeService = new JudgeService(databaseConnection, { checker: new LeanChecker({ workRoot: rootDir }) });
   taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
+  judgeService.setDependencyEventSink((event) => taskService.notifyDependencyEvent(event));
   const router = new ServicesRouter({ taskService, contextService, judgeService });
   const ownerSdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const task = ownerSdk.proposeTask({
@@ -563,7 +576,8 @@ export async function runRealAgentPath({
     const currentTask = taskService.getTask(taskId);
     const currentExecution = taskService.getExecution(submittedExecutionId);
     const material = contextService.getMaterial(payload.candidate_material_id);
-    if (!currentTask || !currentExecution || !material || typeof material.content !== 'string') {
+    const candidateSource = candidateMaterialSource(material);
+    if (!currentTask || !currentExecution || !material || candidateSource === null) {
       throw new Error('real-agent candidate submission has no checkable Material or Execution');
     }
     const workspaceMetadata = await runtime.getWorkspace(submittedExecutionId);
@@ -682,8 +696,8 @@ export async function runRealAgentPath({
     }
     const feedbackTrace = report.agent_flow.feedback_trace;
     const firstDiagnosticLocation = feedbackTrace.first_failure_diagnostic_location ?? reportCheckResult(firstResult)?.diagnostic_location;
-    const firstDiagnosticLine = lineAt(firstMaterial.content, firstDiagnosticLocation?.line);
-    const revisedDiagnosticLine = lineAt(secondMaterial.content, firstDiagnosticLocation?.line);
+    const firstDiagnosticLine = lineAt(candidateMaterialSource(firstMaterial), firstDiagnosticLocation?.line);
+    const revisedDiagnosticLine = lineAt(candidateMaterialSource(secondMaterial), firstDiagnosticLocation?.line);
     const revisionMaterialChangedDiagnosticLocation = firstDiagnosticLine !== null
       && revisedDiagnosticLine !== null
       && firstDiagnosticLine !== revisedDiagnosticLine;

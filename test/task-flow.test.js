@@ -133,6 +133,57 @@ test('research child review accepts delivered Material and never invokes Judge',
   close(env);
 });
 
+test('Task completion can require a durable Material consumption edge', () => {
+  const env = environment();
+  const task = env.sdk.proposeTask({
+    task_type: 'default',
+    goal: 'integrate a fact',
+    expected_output: 'integration note',
+    acceptance_conditions: {},
+    owner_ref: 'owner:root',
+    completion_contract: {
+      required_materials: [{ kind: 'fact', scope: 'proof_relevant', min_count: 1, requires_consumption: true, action: 'task' }],
+    },
+  }, { operationId: 'consumption-contract-propose' }).task;
+  const run = claimTask(env, task, { executionId: 'consumption-contract-execution', actorRef: 'owner:root' });
+  const source = run.sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { fact: 'durable input' } }, { operationId: 'consumption-contract-material' }).material;
+  assert.throws(
+    () => run.sdk.acceptTask({}, { operationId: 'consumption-contract-accept-before' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT && error.details?.missing?.some((item) => item.startsWith('materials:task')),
+  );
+  run.sdk.consumeMaterials({ material_ids: [source.material_id], action: 'task', action_ref: 'integration-note' }, { operationId: 'consumption-contract-consume' });
+  const accepted = run.sdk.acceptTask({}, { operationId: 'consumption-contract-accept-after' });
+  assert.equal(accepted.task.state, 'SATISFIED');
+  assert.equal(accepted.execution.state, 'SUCCEEDED');
+  close(env);
+});
+
+test('normal-flow child validates its own contract and reaches DONE without parent review', () => {
+  const env = environment();
+  const parent = env.sdk.proposeTask({
+    task_type: 'default', goal: 'coordinate independent work', expected_output: 'child result',
+    acceptance_conditions: {}, owner_ref: 'owner:root', normal_flow: true,
+  }, { operationId: 'normal-flow-parent-propose' }).task;
+  const parentRun = claimTask(env, parent, { executionId: 'normal-flow-parent-execution', actorRef: 'owner:root' });
+  const child = parentRun.sdk.withContext({ stateVersion: parentRun.claim.task.state_version }).createChildTask({
+    child_creation_key: 'normal-flow-child', ...researchInput(), owner_ref: 'researcher:one',
+  }, { operationId: 'normal-flow-child-create' }).task;
+  assert.equal(child.completion_contract.normal_flow, true);
+  assert.equal(child.completion_contract.parent_review, undefined);
+  const childRun = claimTask(env, child, { executionId: 'normal-flow-child-execution', actorRef: 'researcher:one' });
+  childRun.sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { lemma: 'independent result' } }, { operationId: 'normal-flow-child-material' });
+  const currentExecution = env.taskService.getExecution(childRun.claim.execution.execution_id);
+  const currentTask = env.taskService.getTask(child.task_id);
+  const completed = childRun.sdk.withContext({ stateVersion: currentExecution.state_version }).acceptTask({
+    target_task_id: child.task_id,
+    target_state_version: currentTask.state_version,
+  }, { operationId: 'normal-flow-child-accept' });
+  assert.equal(completed.task.state, 'DONE');
+  assert.equal(completed.execution.state, 'SUCCEEDED');
+  assert.equal(env.taskService.getTask(parent.task_id).state, 'RUNNING');
+  close(env);
+});
+
 test('parent child-task wait becomes claimable when a child delivers a result for review', () => {
   const env = environment();
   const parent = env.sdk.proposeTask({ task_type: 'default', goal: 'coordinate child delivery', expected_output: 'reviewed child result', acceptance_conditions: {}, owner_ref: 'owner:root' }, { operationId: 'wake-parent-propose' }).task;

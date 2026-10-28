@@ -61,13 +61,13 @@ class FakeAgentAdapter {
   }
 }
 
-async function fixture({ stopDelayMs = 0, runtimeOptions = {} } = {}) {
+async function fixture({ stopDelayMs = 0, runtimeOptions = {}, parallelQuota = 1 } = {}) {
   const database = new DatabaseSync(':memory:');
   const taskService = new TaskService(database);
   const contextService = new ContextService(database, { taskService });
   const router = new ServicesRouter({ taskService, contextService });
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
-  const task = sdk.proposeTask({ task_type: 'proof', goal: 'runtime fixture', expected_output: 'proof', acceptance_conditions: { fixture: true }, owner_ref: 'owner:root' }, { operationId: 'runtime-proposal' }).task;
+  const task = sdk.proposeTask({ task_type: 'proof', goal: 'runtime fixture', expected_output: 'proof', acceptance_conditions: { fixture: true }, owner_ref: 'owner:root', parallel_quota: parallelQuota }, { operationId: 'runtime-proposal' }).task;
   const claimed = sdk.withContext({ taskId: task.task_id, specVersion: 1, stateVersion: 0 }).claim({
     execution_id: 'execution-runtime', claim_key: 'runtime-claim', owner_ref: 'runtime:local', agent_prompt: 'run the fixture', input_material_refs: [],
   }, { operationId: 'runtime-claim-op' });
@@ -91,6 +91,69 @@ test('Runtime waits for Agent exit before releasing a waiting Core', async () =>
     assert.equal(adapter.sessions[0].closed, true);
     assert.equal(runtime.getActiveProcessCount(), 0);
     assert.equal(waited.execution.workspace_ref, started.execution.workspace_ref);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('Runtime keeps an active Execution when a dependency wait is already satisfied', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, sdk, task, claimed, rootDir } = fixtureData;
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const parent = taskService.getTask(task.task_id);
+    const parentOwner = sdk.withContext({
+      actorRef: 'runtime:local',
+      taskId: task.task_id,
+      executionId: claimed.execution.execution_id,
+      specVersion: parent.spec_version,
+      stateVersion: parent.state_version,
+      fencingVersion: started.execution.fencing_version,
+    });
+    const child = parentOwner.createChildTask({
+      child_creation_key: 'already-satisfied-child',
+      task_type: 'default',
+      goal: 'complete before the parent wait request',
+      expected_output: 'a completed child Task',
+      acceptance_conditions: {},
+      normal_flow: true,
+      owner_ref: 'runtime:child',
+    }, { operationId: 'already-satisfied-child-create' }).task;
+    const childClaim = sdk.withContext({
+      actorRef: 'runtime:child',
+      taskId: child.task_id,
+      specVersion: child.spec_version,
+      stateVersion: taskService.getTask(child.task_id).state_version,
+    }).claim({
+      claim_key: 'already-satisfied-child-claim',
+      owner_ref: 'runtime:child',
+      core_id: 'core-child',
+      agent_prompt: 'complete the child',
+    }, { operationId: 'already-satisfied-child-claim' });
+    const childCurrent = taskService.getTask(child.task_id);
+    const completed = sdk.withContext({
+      actorRef: 'runtime:child',
+      taskId: child.task_id,
+      executionId: childClaim.execution.execution_id,
+      specVersion: childCurrent.spec_version,
+      stateVersion: childClaim.execution.state_version,
+      taskStateVersion: childCurrent.state_version,
+      fencingVersion: childClaim.execution.fencing_version,
+    }).acceptTask({
+      target_task_id: child.task_id,
+      target_state_version: childCurrent.state_version,
+    }, { operationId: 'already-satisfied-child-accept' });
+    assert.equal(completed.task.state, 'DONE');
+
+    const result = await runtime.requestWait(claimed.execution.execution_id, {
+      waitCondition: { type: 'child_task_terminal', child_task_id: child.task_id },
+      checkpoint: { step: 'stale-read-race' },
+    });
+    assert.equal(result.disposition, 'already_satisfied');
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
+    assert.equal(runtime.getActiveProcessCount(), 1);
+    await runtime.stopExecution(claimed.execution.execution_id);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
@@ -218,6 +281,7 @@ test('fencing and Runtime restart prevent old workspace writes and leave an audi
   const fenced = await runtime.fenceExecution(claimed.execution.execution_id);
   assert.equal(fenced.execution.state, 'FENCED');
   assert.equal(fenced.execution.fencing_version, 2);
+  assert.equal(fenced.execution.terminal_reason, 'fenced');
   assert.throws(
     () => oldAgent.publishMaterial({ kind: 'failure', scope: 'operational', content: { message: 'late' } }, { operationId: 'late-material' }),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.FENCED,
@@ -230,6 +294,29 @@ test('fencing and Runtime restart prevent old workspace writes and leave an audi
   assert.equal(runtime.getActiveProcessCount(), 0);
   await rm(rootDir, { recursive: true, force: true });
   fixtureData.taskService.close();
+});
+
+test('Runtime fences the durable Execution when physical Workspace fencing fails', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, adapter, task } = fixtureData;
+  const originalFenceWorkspace = runtime.workspaceManager.fenceWorkspace;
+  runtime.workspaceManager.fenceWorkspace = async () => {
+    throw new SwarmEnvError(ERROR_CODES.FENCED, 'injected workspace fence failure');
+  };
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    const fenced = await runtime.fenceExecution(claimed.execution.execution_id);
+    assert.equal(fenced.execution.state, 'FENCED');
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'FENCED');
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+    assert.equal(adapter.sessions[0].closed, true);
+  } finally {
+    runtime.workspaceManager.fenceWorkspace = originalFenceWorkspace;
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
 });
 
 test('Runtime restart fences CREATED/RUNNING owners but preserves WAITING responsibility', async () => {
@@ -373,6 +460,85 @@ test('startup failure preserves the prepared workspace and ends the Execution wi
   fixtureData.taskService.close();
 });
 
+test('blocking one parallel Runtime releases a sibling Runtime and its Core after fencing', async () => {
+  const fixtureData = await fixture({ parallelQuota: 2, stopDelayMs: 10 });
+  const { runtime, taskService, sdk, task, claimed, rootDir } = fixtureData;
+  const secondAdapter = new FakeAgentAdapter({ stopDelayMs: 10 });
+  const secondRuntime = new Runtime({
+    taskService,
+    contextService: fixtureData.contextService,
+    workspaceManager: new WorkspaceManager({ rootDir }),
+    agentAdapter: secondAdapter,
+    actorRef: 'runtime:core-2',
+    coreIds: ['core-2'],
+  });
+  try {
+    const secondTaskView = taskService.getTask(task.task_id);
+    const second = sdk.withContext({ taskId: task.task_id, specVersion: secondTaskView.spec_version, stateVersion: secondTaskView.state_version }).claim({
+      claim_key: 'runtime-sibling-claim', owner_ref: 'runtime:core-2', core_id: 'core-2', agent_prompt: 'sibling', input_material_refs: [],
+    }, { operationId: 'runtime-sibling-claim-op' });
+    await runtime.startExecution(claimed.execution.execution_id);
+    await secondRuntime.startExecution(second.execution.execution_id, { coreId: 'core-2' });
+    const blocked = await runtime.blockExecution(claimed.execution.execution_id, { reason: 'sibling dependency', checkpoint: { step: 'blocked' } });
+    await secondRuntime.waitForSettled();
+    assert.equal(blocked.task.state, 'BLOCKED');
+    assert.equal(taskService.getExecution(second.execution.execution_id).state, 'FENCED');
+    assert.equal(secondRuntime.getActiveProcessCount(), 0);
+    assert.equal(secondRuntime.getCoreStatus('core-2').state, 'IDLE');
+    assert.equal(secondAdapter.sessions[0].closed, true);
+  } finally {
+    await runtime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
+    await secondRuntime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('rejected execution_block does not fence the Workspace before the Task transition commits', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir } = fixtureData;
+  const originalDispatch = taskService.dispatch.bind(taskService);
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    taskService.dispatch = (operation, payload, envelope) => {
+      if (operation === 'block_task') {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'controlled block rejection');
+      }
+      return originalDispatch(operation, payload, envelope);
+    };
+
+    await assert.rejects(
+      () => runtime.blockExecution(claimed.execution.execution_id, {
+        reason: 'controlled dependency rejection',
+        dependency: { dependency_kind: 'TASK', prerequisite_task_id: 'missing' },
+        checkpoint: { phase: 'rejected-block' },
+      }),
+      (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
+    );
+
+    const execution = taskService.getExecution(claimed.execution.execution_id);
+    assert.equal(execution.state, 'RUNNING');
+    assert.equal(execution.fencing_version, started.execution.fencing_version);
+    const restored = await runtime.workspaceManager.restoreWorkspace({
+      workspaceRef: execution.workspace_ref,
+      executionId: execution.execution_id,
+      fencingVersion: execution.fencing_version,
+    });
+    const writable = await runtime.workspaceManager.saveWorkspaceRevision({
+      workspaceRef: restored.workspace_ref,
+      executionId: execution.execution_id,
+      fencingVersion: execution.fencing_version,
+      files: { 'after-rejection.txt': 'the original owner is still writable' },
+    });
+    assert.equal(writable.workspace_revision, restored.workspace_revision + 1);
+  } finally {
+    taskService.dispatch = originalDispatch;
+    await runtime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('Workspace Manager rejects execution and file paths that escape its root', async () => {
   const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-path-'));
   const manager = new WorkspaceManager({ rootDir });
@@ -480,11 +646,37 @@ test('lease sweep fences an expired running Execution and releases its process s
   const expired = await runtime.sweepExpired(new Date());
   assert.equal(expired.length, 1);
   assert.equal(expired[0].execution.state, 'EXPIRED');
+  assert.equal(expired[0].execution.terminal_reason, 'lease_expired');
   assert.equal(taskService.getExecution(claimed.execution.execution_id).fencing_version, 2);
   assert.equal(runtime.getActiveProcessCount(), 0);
   assert.ok(started.workspace.workspace_ref);
   await rm(rootDir, { recursive: true, force: true });
   fixtureData.taskService.close();
+});
+
+test('lease sweep expires the durable Execution when physical Workspace fencing fails', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, adapter, task } = fixtureData;
+  const originalFenceWorkspace = runtime.workspaceManager.fenceWorkspace;
+  runtime.workspaceManager.fenceWorkspace = async () => {
+    throw new SwarmEnvError(ERROR_CODES.FENCED, 'injected workspace fence failure');
+  };
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    taskService.db.prepare('UPDATE executions SET lease_expires_at = ? WHERE execution_id = ?').run(new Date(0).toISOString(), claimed.execution.execution_id);
+    const expired = await runtime.sweepExpired(new Date());
+    assert.equal(expired.length, 1);
+    assert.equal(expired[0].execution.state, 'EXPIRED');
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'EXPIRED');
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+    assert.equal(adapter.sessions[0].closed, true);
+  } finally {
+    runtime.workspaceManager.fenceWorkspace = originalFenceWorkspace;
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
 });
 
 test('Runtime emits one handoff reminder, then times out unfinished work and returns it to the ready queue', async () => {
@@ -574,6 +766,32 @@ test('Runtime handoff checkpoints metadata, fences stale writers, and releases t
     assert.equal(replay.disposition, 'already_terminal');
     assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
   } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('Runtime completes a handoff when physical Workspace fencing fails', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, adapter, task } = fixtureData;
+  const originalFenceWorkspace = runtime.workspaceManager.fenceWorkspace;
+  runtime.workspaceManager.fenceWorkspace = async () => {
+    throw new SwarmEnvError(ERROR_CODES.FENCED, 'injected workspace fence failure');
+  };
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    const handedOff = await runtime.handoffExecution(claimed.execution.execution_id, {
+      reason: 'injected_workspace_failure',
+      checkpoint: { phase: 'handoff' },
+    });
+    assert.equal(handedOff.disposition, 'handed_off');
+    assert.equal(handedOff.execution.state, 'FENCED');
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+    assert.equal(runtime.getActiveProcessCount(), 0);
+    assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+    assert.equal(adapter.sessions[0].closed, true);
+  } finally {
+    runtime.workspaceManager.fenceWorkspace = originalFenceWorkspace;
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
   }

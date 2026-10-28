@@ -5,6 +5,7 @@ import { operationPayload, stableStringify, validateEnvelope } from '../protocol
 import { CONTEXT_SCHEMA_SQL } from '../storage/context-schema.js';
 
 const EVIDENCE_STATES = new Set(['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale']);
+const CONSUMPTION_ACTIONS = new Set(['route', 'task', 'candidate', 'integration']);
 const TRUSTED_ACTOR_PREFIXES = ['judge:', 'system:'];
 const SECRET_KEY = /(secret|password|token|api[_-]?key|credential|private[_-]?key)/i;
 
@@ -66,18 +67,35 @@ export class ContextService {
   dispatch(operation, payload = {}, envelope) {
     this.logger?.append({ event: 'dispatch.start', service: 'context', operation, envelope });
     try {
-      const executionWrite = operation === 'publish_material' && envelope?.execution_id !== null;
+      const executionWrite = ['publish_material', 'consume_materials'].includes(operation) && envelope?.execution_id !== null;
       validateEnvelope(envelope, { executionWrite });
-      const result = operation === 'read_materials' ? this.#readMaterials(payload) : this.#transaction(() => {
+      let replayed = false;
+      const result = operation === 'read_materials'
+        ? this.#readMaterials(payload)
+        : operation === 'list_material_consumptions'
+          ? this.listMaterialConsumptions(payload)
+          : this.#transaction(() => {
         const fingerprint = operationPayload(operation, payload, envelope);
         const replay = this.#replay(envelope.operation_id, fingerprint);
-        if (replay) return replay;
+        if (replay) {
+          replayed = true;
+          return replay;
+        }
         let value;
         if (operation === 'publish_material') value = this.#publishMaterial(payload, envelope);
+        else if (operation === 'consume_materials') value = this.#consumeMaterials(payload, envelope);
         else throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Context Service operation: ${operation}`);
         this.#saveOperation(envelope.operation_id, operation, fingerprint, value);
         return value;
       });
+      if (operation === 'publish_material' && !replayed) {
+        this.taskService?.notifyDependencyEvent?.({
+          kind: 'material_published',
+          operation: 'publish_material',
+          task_id: result?.material?.source_task ?? null,
+          execution_id: result?.material?.source_execution ?? null,
+        });
+      }
       this.logger?.append({ event: 'dispatch.complete', service: 'context', operation, ok: true, result });
       return result;
     } catch (error) {
@@ -94,11 +112,41 @@ export class ContextService {
     return this.#readMaterials(filters);
   }
 
+  /** Return durable Material consumption edges for Task completion and reports. */
+  listMaterialConsumptions(filters = {}) {
+    const materialId = filters.material_id ?? filters.materialId ?? null;
+    const readerTask = filters.reader_task ?? filters.readerTask ?? null;
+    const readerExecution = filters.reader_execution ?? filters.readerExecution ?? null;
+    const action = filters.action ?? null;
+    return this.db.prepare(`SELECT operation_id, material_id, reader_task, reader_execution, action, action_ref, created_at
+      FROM material_consumptions
+      WHERE (? IS NULL OR material_id = ?)
+        AND (? IS NULL OR reader_task = ?)
+        AND (? IS NULL OR reader_execution = ?)
+        AND (? IS NULL OR action = ?)
+      ORDER BY created_at, operation_id, material_id`)
+      .all(materialId, materialId, readerTask, readerTask, readerExecution, readerExecution, action, action)
+      .map((row) => ({
+        operation_id: row.operation_id,
+        material_id: row.material_id,
+        reader_task: row.reader_task,
+        reader_execution: row.reader_execution,
+        action: row.action,
+        action_ref: row.action_ref,
+        created_at: row.created_at,
+      }));
+  }
+
   // Task Flow uses this while its SQLite transaction is open so a steer
   // Material and the corresponding Execution update commit together.
   publishMaterialForTask(payload, envelope) {
     validateEnvelope(envelope, { executionWrite: true });
     return this.#publishMaterial(payload, envelope);
+  }
+
+  consumeMaterialsForTask(payload, envelope) {
+    validateEnvelope(envelope, { executionWrite: true });
+    return this.#consumeMaterials(payload, envelope);
   }
 
   #readMaterials(filters = {}) {
@@ -118,6 +166,46 @@ export class ContextService {
       .map(cloneMaterial);
   }
 
+  #consumeMaterials(payload, envelope) {
+    this.#assertExecutionFence(envelope);
+    if (!envelope.task_id || !envelope.execution_id) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'consume_materials requires a bound Task and Execution');
+    }
+    const materialIds = payload.material_ids ?? payload.materialIds;
+    if (!Array.isArray(materialIds) || materialIds.length === 0 || materialIds.length > 100 || materialIds.some((id) => typeof id !== 'string' || id.length === 0)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must contain between 1 and 100 Material IDs');
+    }
+    const uniqueMaterialIds = [...new Set(materialIds)];
+    if (uniqueMaterialIds.length !== materialIds.length) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must not contain duplicates');
+    }
+    const action = payload.action;
+    if (!CONSUMPTION_ACTIONS.has(action)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action must be route, task, candidate, or integration');
+    }
+    if (payload.action_ref !== undefined && payload.action_ref !== null && (typeof payload.action_ref !== 'string' || payload.action_ref.length === 0)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action_ref must be a non-empty string or null');
+    }
+    const missing = uniqueMaterialIds.filter((materialId) => !this.getMaterial(materialId));
+    if (missing.length > 0) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Material IDs: ${missing.join(',')}`);
+    }
+    const createdAt = now();
+    const statement = this.db.prepare(`INSERT OR IGNORE INTO material_consumptions
+      (operation_id, material_id, reader_task, reader_execution, action, action_ref, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    for (const materialId of uniqueMaterialIds) {
+      statement.run(envelope.operation_id, materialId, envelope.task_id, envelope.execution_id, action, payload.action_ref ?? null, createdAt);
+    }
+    return {
+      consumptions: this.listMaterialConsumptions({ reader_execution: envelope.execution_id, action })
+        .filter((row) => row.operation_id === envelope.operation_id && uniqueMaterialIds.includes(row.material_id)),
+      material_ids: uniqueMaterialIds,
+      action,
+      action_ref: payload.action_ref ?? null,
+    };
+  }
+
   #publishMaterial(payload, envelope) {
     this.#assertExecutionFence(envelope);
     rejectSecrets(payload);
@@ -126,6 +214,23 @@ export class ContextService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported evidence_state');
     }
     if (payload.content === undefined) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material content is required');
+    const provenance = payload.provenance ? { ...payload.provenance } : { actor_ref: envelope.actor_ref };
+    if (payload.scope === 'root_integration') {
+      const consumedIds = provenance?.consumed_material_ids;
+      if (!Array.isArray(consumedIds) || consumedIds.length === 0 || consumedIds.length > 100 || consumedIds.some((id) => typeof id !== 'string' || id.length === 0)) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'root_integration provenance must include 1 to 100 consumed_material_ids');
+      }
+      const uniqueConsumedIds = [...new Set(consumedIds)];
+      if (uniqueConsumedIds.length !== consumedIds.length) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'root_integration consumed_material_ids must not contain duplicates');
+      }
+      const consumed = new Set(this.listMaterialConsumptions({ reader_task: envelope.task_id, reader_execution: envelope.execution_id, action: 'integration' }).map((row) => row.material_id));
+      const missingConsumed = uniqueConsumedIds.filter((materialId) => !consumed.has(materialId));
+      if (missingConsumed.length > 0) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `root_integration Material IDs were not durably consumed: ${missingConsumed.join(',')}`);
+      }
+      provenance.consumed_material_ids = uniqueConsumedIds;
+    }
     if (payload.source_task !== undefined && payload.source_task !== envelope.task_id) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'source_task must match the operation envelope');
     }
@@ -158,7 +263,7 @@ export class ContextService {
       version,
       source_task: envelope.task_id,
       source_execution: envelope.execution_id,
-      provenance: payload.provenance ?? { actor_ref: envelope.actor_ref },
+      provenance,
       supersedes,
       created_at: now(),
     };

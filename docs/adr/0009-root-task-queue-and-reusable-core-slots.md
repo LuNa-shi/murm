@@ -1,9 +1,12 @@
 # ADR 0009: One root task with reusable core slots
 
-- Status: Accepted
+- Status: Superseded for normal-flow orchestration by ADR 0015; retained for
+  legacy WAITING evidence and the root queue model
 - Date: 2026-10-18
 - Supersedes: the static four-child execution shape described in the first
   version of the PutnamBench walkthrough
+- Superseded by: ADR 0015 for normal-flow Task Controller and Core Daemon
+  lifecycle rules
 
 ## Decision
 
@@ -26,11 +29,12 @@ positive default unless their contract explicitly proves that no child is
 needed.
 
 A core slot is released when its Execution waits, succeeds, fails, or is
-fenced after lease expiry. Waiting preserves the Task, Workspace, checkpoint,
-and responsibility lineage. A later explicit claim either hands a ready
-waiting Execution to the next Agent or creates a new Execution according to
-the retry policy after fencing/expiry. An Execution is therefore a lease over
-a Task, not a permanent identity for a core.
+fenced after lease expiry. Legacy waiting preserves the Task, Workspace,
+checkpoint, and responsibility lineage and can resume only on its stored Core
+binding (or without a prior Core binding). Normal-flow dependency blocking
+ends the Execution and lets the Controller reopen the Task for a new attempt;
+it does not hand a waiting Execution to another Core. An Execution is
+therefore a lease over a Task, not a permanent identity for a core.
 
 Raw experiment evidence is stored below the experiment directory, including
 service logs, agent logs, Runtime state, SQLite, Workspaces, and checker

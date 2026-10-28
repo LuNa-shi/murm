@@ -1,9 +1,7 @@
-export const SCHEMA_SQL = `
-PRAGMA foreign_keys = ON;
-PRAGMA busy_timeout = 5000;
-PRAGMA journal_mode = WAL;
-
-CREATE TABLE IF NOT EXISTS tasks (
+// Kept as a reusable definition so a persistent MVP database can be rebuilt
+// when the simplified Task lifecycle adds DONE/CLOSED/CANCELED to its state
+// CHECK constraint. SQLite cannot alter a CHECK constraint in place.
+export const TASKS_TABLE_DEFINITION = `(
   task_id TEXT PRIMARY KEY,
   root_id TEXT NOT NULL,
   parent_id TEXT REFERENCES tasks(task_id),
@@ -22,7 +20,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   completion_contract_json TEXT NOT NULL,
   parallel_quota INTEGER NOT NULL DEFAULT 1 CHECK (parallel_quota >= 1),
   state_version INTEGER NOT NULL DEFAULT 0,
-  state TEXT NOT NULL CHECK (state IN ('OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED')),
+  state TEXT NOT NULL CHECK (state IN ('OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED')),
   block_reason TEXT,
   max_depth INTEGER NOT NULL,
   max_children INTEGER NOT NULL,
@@ -30,11 +28,20 @@ CREATE TABLE IF NOT EXISTS tasks (
   retry_policy_json TEXT NOT NULL,
   root_deadline TEXT,
   cancelled_at TEXT,
+  claimable_at TEXT,
+  responsibility_key TEXT,
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   CHECK ((state = 'BLOCKED' AND block_reason IS NOT NULL) OR (state <> 'BLOCKED' AND block_reason IS NULL))
-);
+)`;
+
+export const SCHEMA_SQL = `
+PRAGMA foreign_keys = ON;
+PRAGMA busy_timeout = 5000;
+PRAGMA journal_mode = WAL;
+
+CREATE TABLE IF NOT EXISTS tasks ${TASKS_TABLE_DEFINITION};
 
 CREATE TABLE IF NOT EXISTS executions (
   execution_id TEXT PRIMARY KEY,
@@ -43,6 +50,10 @@ CREATE TABLE IF NOT EXISTS executions (
   state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED')),
   state_version INTEGER NOT NULL DEFAULT 0,
   attempt_no INTEGER NOT NULL,
+  -- A Core binding is immutable for the lifetime of an Execution.  Legacy
+  -- records may be unbound and are migrated with NULL for read compatibility.
+  core_id TEXT,
+  session_generation INTEGER NOT NULL DEFAULT 1,
   fencing_version INTEGER NOT NULL,
   runtime_generation INTEGER NOT NULL,
   lease_expires_at TEXT NOT NULL,
@@ -195,6 +206,32 @@ CREATE TABLE IF NOT EXISTS claim_keys (
   fingerprint TEXT NOT NULL,
   execution_id TEXT NOT NULL REFERENCES executions(execution_id),
   created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_admission_policies (
+  root_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+  max_unfinished_tasks INTEGER NOT NULL,
+  max_open_tasks INTEGER NOT NULL,
+  max_children_per_execution INTEGER NOT NULL,
+  max_turn_mutations INTEGER NOT NULL,
+  aging_threshold_ms INTEGER NOT NULL,
+  require_responsibility_key INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS execution_admission_counters (
+  execution_id TEXT PRIMARY KEY REFERENCES executions(execution_id),
+  child_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS turn_admission_counters (
+  execution_id TEXT NOT NULL REFERENCES executions(execution_id),
+  turn_id TEXT NOT NULL,
+  mutation_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (execution_id, turn_id)
 );
 
 CREATE TABLE IF NOT EXISTS wait_keys (

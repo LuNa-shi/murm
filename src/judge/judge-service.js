@@ -33,15 +33,21 @@ function resultFromRow(row) {
 }
 
 export class JudgeService {
-  constructor(database = ':memory:', { checker, logger = null, maxInfrastructureRetries = 2 } = {}) {
+  constructor(database = ':memory:', { checker, logger = null, maxInfrastructureRetries = 2, dependencyEventSink = null } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     ensureJudgeSchema(this.db);
     this.checker = checker ?? new LeanChecker();
     this.logger = logger;
     this.maxInfrastructureRetries = Number.isInteger(maxInfrastructureRetries) && maxInfrastructureRetries >= 0 ? maxInfrastructureRetries : 2;
+    this.dependencyEventSink = dependencyEventSink;
   }
 
   close() { this.db.close(); }
+
+  setDependencyEventSink(listener) {
+    if (listener !== null && typeof listener !== 'function') throw new TypeError('dependencyEventSink must be a function or null');
+    this.dependencyEventSink = listener;
+  }
 
   getCheckResult(checkResultId) {
     return resultFromRow(this.db.prepare('SELECT * FROM check_results WHERE check_result_id = ?').get(checkResultId));
@@ -363,6 +369,11 @@ export class JudgeService {
           result.status, result.checker_process_status, result.diagnostic_code, retryable ? 1 : 0, attemptCount, fingerprint, json(evidence), timestamp, timestamp);
     }
     const persisted = this.getCheckerPreflight(preflightKey);
+    if (!sameHealth) {
+      try {
+        this.dependencyEventSink?.({ kind: 'checker_health_changed', operation: 'checker_preflight', preflight_key: preflightKey, health_fingerprint: fingerprint });
+      } catch { /* health notification is advisory; the persisted preflight remains authoritative */ }
+    }
     return {
       ...result,
       ...persisted,
@@ -380,6 +391,9 @@ export class JudgeService {
     const evidence = { ...(existing.evidence ?? {}), retry_exhausted: false, infrastructure_attempt_count: 0, preflight_status: 'healthy' };
     this.db.prepare(`UPDATE checker_preflights SET status = 'healthy', checker_process_status = 'completed', diagnostic_code = NULL, retryable = 0, attempt_count = 0, evidence_json = ?, last_seen_at = ? WHERE preflight_key = ?`)
       .run(json(evidence), now(), key);
+    try {
+      this.dependencyEventSink?.({ kind: 'checker_health_changed', operation: 'checker_preflight', preflight_key: key, health_fingerprint: existing.health_fingerprint });
+    } catch { /* health notification is advisory; the persisted preflight remains authoritative */ }
   }
 
   #replay(operationId, fingerprint) {

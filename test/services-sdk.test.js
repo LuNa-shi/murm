@@ -55,6 +55,17 @@ test('SDK maps stale state and fencing errors to stable protocol codes', () => {
   );
 });
 
+test('Local service double preserves durable consumption edges and root integration provenance', () => {
+  const { service, sdk } = fixture();
+  const source = sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { fact: 'source' } }, { operationId: 'local-source' });
+  const consumed = sdk.consumeMaterials({ material_ids: [source.material_id], action: 'integration', action_ref: 'root' }, { operationId: 'local-consume' });
+  assert.equal(consumed.consumptions.length, 1);
+  assert.equal(service.consumptions.length, 1);
+  const integration = sdk.publishMaterial({ kind: 'experience', scope: 'root_integration', content: { summary: 'integrated' }, provenance: { consumed_material_ids: [source.material_id] } }, { operationId: 'local-integration' });
+  assert.deepEqual(integration.provenance.consumed_material_ids, [source.material_id]);
+  assert.deepEqual(sdk.listMaterialConsumptions({ action: 'integration' }).map((row) => row.material_id), [source.material_id]);
+});
+
 test('Agent SDK has no Workspace Manager methods', () => {
   const { sdk } = fixture();
   for (const method of ['createWorkspace', 'saveWorkspaceRevision', 'restoreWorkspace', 'saveCheckpoint', 'fenceWorkspace']) {

@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { storedCheckerProcessStatus, storedResultClass } from '../judge/check-result.js';
 import { makeEnvelope, operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
-import { SCHEMA_SQL } from '../storage/schema.js';
+import { SCHEMA_SQL, TASKS_TABLE_DEFINITION } from '../storage/schema.js';
 import { ensureJudgeSchema } from '../storage/judge-schema.js';
 import {
   TERMINAL_EXECUTION_STATES,
@@ -11,16 +11,31 @@ import {
   validateTaskProposal,
 } from './task-types.js';
 
-const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'expire_execution', 'fence_execution', 'handoff_execution', 'heartbeat', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
+const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'block_task', 'expire_execution', 'fence_execution', 'handoff_execution', 'heartbeat', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
 const CLAIM_OPERATION = 'claim';
 const TASK_MUTATING_OPERATIONS = new Set([
   'accept_task', 'apply_check_result', 'create_branch_group', 'create_child_task',
   'add_required_subtask', 'propose_structure_change', 'create_rework_task',
-  'propose_task', 'request_rework', 'submit_candidate',
+  'propose_task', 'reconcile_task', 'reopen_task', 'request_rework', 'submit_candidate',
+]);
+const TASK_EVENT_OPERATIONS = new Set([
+  'accept_task', 'apply_check_result', 'abort', 'block_task', 'claim', 'create_branch_group',
+  'create_child_task', 'add_required_subtask', 'create_rework_task', 'fence_execution',
+  'handoff_execution', 'reconcile_task', 'recover_execution', 'reopen_task', 'request_rework',
+  'request_wait', 'resume_execution', 'stop_execution', 'submit_candidate', 'wake_execution',
+  'propose_structure_change', 'propose_task', 'expire_execution',
 ]);
 const TASK_READ_OPERATIONS = new Set([
   'get_task', 'get_execution', 'get_task_structure', 'explain_task_readiness',
-  'list_children', 'list_tasks', 'list_executions',
+  'list_children', 'list_tasks', 'list_claimable_tasks', 'list_executions',
+]);
+
+const TASK_TABLE_COLUMNS = Object.freeze([
+  'task_id', 'root_id', 'parent_id', 'owner_ref', 'task_type', 'task_type_version', 'goal', 'expected_output',
+  'priority', 'task_instructions', 'workspace_json', 'acceptance_conditions_json', 'input_material_refs_json',
+  'spec_version', 'spec_hash', 'completion_contract_json', 'parallel_quota', 'state_version', 'state', 'block_reason',
+  'max_depth', 'max_children', 'max_attempts', 'retry_policy_json', 'root_deadline', 'cancelled_at', 'claimable_at',
+  'responsibility_key', 'created_by', 'created_at', 'updated_at',
 ]);
 
 function json(value) {
@@ -33,6 +48,18 @@ function parse(value) {
 
 function now() {
   return new Date().toISOString();
+}
+
+function isCompletedTaskState(state) {
+  return state === 'DONE' || state === 'SATISFIED';
+}
+
+function taskCompletionState(task) {
+  return task?.completion_contract?.normal_flow === true ? 'DONE' : 'SATISFIED';
+}
+
+function taskCancellationState(task) {
+  return task?.completion_contract?.normal_flow === true ? 'CANCELED' : 'CANCELLED';
 }
 
 function hash(value) {
@@ -49,6 +76,7 @@ function rowToTask(row) {
     workspace: parse(row.workspace_json),
     retry_policy: parse(row.retry_policy_json),
     task_instructions: row.task_instructions ?? '',
+    claimable_at: row.claimable_at ?? row.created_at ?? null,
   };
 }
 
@@ -65,6 +93,8 @@ function rowToExecution(row) {
     wait_condition: parse(row.wait_condition_json),
     handoff_metadata: parse(row.handoff_metadata_json),
     terminal_reason: row.terminal_reason ?? null,
+    core_id: row.core_id ?? null,
+    session_generation: row.session_generation ?? 1,
   };
 }
 
@@ -90,10 +120,18 @@ function requireString(value, field) {
   return value;
 }
 
+function positiveLimit(value, fallback) {
+  if (value === undefined || value === null) return fallback;
+  if (!Number.isInteger(value) || value < 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'admission limits must be positive integers');
+  return value;
+}
+
 export class TaskService {
-  constructor(database = ':memory:', { contextService = null, checkerHealthReader = null, logger = null } = {}) {
+  constructor(database = ':memory:', { contextService = null, checkerHealthReader = null, logger = null, admission = {} } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(SCHEMA_SQL);
+    const taskTableSql = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get()?.sql ?? '';
+    const needsTaskStateMigration = !taskTableSql.includes("'DONE'") || !taskTableSql.includes("'CLOSED'") || !taskTableSql.includes("'CANCELED'");
     // Older MVP databases made execution_id unique in claim_keys. A waiting
     // Execution can now be claimed again by a later Agent, so idempotency is
     // keyed by claim request rather than by the reusable Execution identity.
@@ -124,7 +162,21 @@ export class TaskService {
       else this.db.exec("ALTER TABLE tasks ADD COLUMN task_instructions TEXT NOT NULL DEFAULT ''");
     }
     if (!taskColumns.has('workspace_json')) this.db.exec("ALTER TABLE tasks ADD COLUMN workspace_json TEXT NOT NULL DEFAULT '{}'");
+    if (!taskColumns.has('claimable_at')) {
+      this.db.exec('ALTER TABLE tasks ADD COLUMN claimable_at TEXT');
+      this.db.exec('UPDATE tasks SET claimable_at = created_at WHERE claimable_at IS NULL AND state = \'OPEN\'');
+    }
+    if (!taskColumns.has('responsibility_key')) this.db.exec('ALTER TABLE tasks ADD COLUMN responsibility_key TEXT');
+    if (needsTaskStateMigration) this.#migrateTaskStateConstraint();
+    // Create this partial index only after migrations have added the column;
+    // older databases must be able to run SCHEMA_SQL before the new field
+    // exists.
+    this.db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS tasks_active_responsibility
+      ON tasks(root_id, responsibility_key)
+      WHERE responsibility_key IS NOT NULL AND state NOT IN ('CANCELLED', 'CANCELED', 'REJECTED', 'CLOSED', 'DONE')`);
     const executionColumns = new Set(this.db.prepare('PRAGMA table_info(executions)').all().map((column) => column.name));
+    if (!executionColumns.has('core_id')) this.db.exec('ALTER TABLE executions ADD COLUMN core_id TEXT');
+    if (!executionColumns.has('session_generation')) this.db.exec('ALTER TABLE executions ADD COLUMN session_generation INTEGER NOT NULL DEFAULT 1');
     if (!executionColumns.has('agent_prompt')) {
       if (executionColumns.has('initial_prompt')) this.db.exec('ALTER TABLE executions RENAME COLUMN initial_prompt TO agent_prompt');
       else this.db.exec("ALTER TABLE executions ADD COLUMN agent_prompt TEXT NOT NULL DEFAULT ''");
@@ -141,6 +193,11 @@ export class TaskService {
     if (!executionColumns.has('handoff_reminder_sent_at')) this.db.exec('ALTER TABLE executions ADD COLUMN handoff_reminder_sent_at TEXT');
     if (!executionColumns.has('handoff_metadata_json')) this.db.exec("ALTER TABLE executions ADD COLUMN handoff_metadata_json TEXT");
     if (!executionColumns.has('terminal_reason')) this.db.exec('ALTER TABLE executions ADD COLUMN terminal_reason TEXT');
+    this.db.exec("CREATE INDEX IF NOT EXISTS executions_active_core ON executions(core_id, state) WHERE core_id IS NOT NULL AND state IN ('CREATED', 'RUNNING')");
+    const admissionPolicyColumns = new Set(this.db.prepare('PRAGMA table_info(task_admission_policies)').all().map((column) => column.name));
+    if (!admissionPolicyColumns.has('require_responsibility_key')) {
+      this.db.exec('ALTER TABLE task_admission_policies ADD COLUMN require_responsibility_key INTEGER NOT NULL DEFAULT 0');
+    }
     this.db.exec('DROP INDEX IF EXISTS executions_one_active_per_task');
     ensureJudgeSchema(this.db);
     this.#backfillStructureRecords();
@@ -148,10 +205,68 @@ export class TaskService {
     this.checkerHealthReader = null;
     this.setCheckerHealthReader(checkerHealthReader);
     this.logger = logger;
+    this.executionStateListeners = new Set();
+    this.taskEventListeners = new Set();
+    this.admission = this.#normalizeAdmissionPolicy(admission);
   }
 
   close() {
     this.db.close();
+  }
+
+  #migrateTaskStateConstraint() {
+    const columns = TASK_TABLE_COLUMNS.join(', ');
+    this.db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      this.db.exec(`
+        DROP TABLE IF EXISTS tasks_migrated;
+        CREATE TABLE tasks_migrated ${TASKS_TABLE_DEFINITION};
+        INSERT INTO tasks_migrated (${columns}) SELECT ${columns} FROM tasks;
+        DROP TABLE tasks;
+        ALTER TABLE tasks_migrated RENAME TO tasks;
+      `);
+    } finally {
+      this.db.exec('PRAGMA foreign_keys = ON');
+    }
+  }
+
+  /** Subscribe Runtime instances to durable fencing/release facts. */
+  subscribeExecutionState(listener) {
+    if (typeof listener !== 'function') throw new TypeError('execution state listener must be a function');
+    this.executionStateListeners.add(listener);
+    return () => this.executionStateListeners.delete(listener);
+  }
+
+  /** Subscribe orchestration loops to committed Task/dependency changes. */
+  subscribeTaskEvents(listener) {
+    if (typeof listener !== 'function') throw new TypeError('task event listener must be a function');
+    this.taskEventListeners.add(listener);
+    return () => this.taskEventListeners.delete(listener);
+  }
+
+  /** Wake reconciliation when a dependency-owned service commits a fact. */
+  notifyDependencyEvent(event = {}) {
+    this.#emitTaskEvent({
+      kind: event.kind ?? 'dependency_changed',
+      operation: event.operation ?? 'dependency_event',
+      task_id: event.task_id ?? null,
+      execution_id: event.execution_id ?? null,
+      state: event.state ?? null,
+      changed: true,
+      timestamp: now(),
+    });
+  }
+
+  #emitTaskEvent(event) {
+    for (const listener of this.taskEventListeners) {
+      try { listener(event); } catch { /* reconciliation remains authoritative */ }
+    }
+  }
+
+  #emitExecutionState(event) {
+    for (const listener of this.executionStateListeners) {
+      try { listener(event); } catch { /* Runtime cleanup must not break the durable transition. */ }
+    }
   }
 
   setCheckerHealthReader(reader) {
@@ -160,11 +275,30 @@ export class TaskService {
     return this;
   }
 
+  #normalizeAdmissionPolicy(policy = {}) {
+    if (!policy || typeof policy !== 'object' || Array.isArray(policy)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'admission policy must be an object');
+    }
+    const agingThresholdMs = policy.aging_threshold_ms ?? policy.agingThresholdMs ?? 5 * 60 * 1000;
+    if (!Number.isFinite(agingThresholdMs) || agingThresholdMs < 0) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'aging_threshold_ms must be a non-negative finite number');
+    }
+    return {
+      max_unfinished_tasks: positiveLimit(policy.max_unfinished_tasks ?? policy.maxUnfinishedTasks, Number.MAX_SAFE_INTEGER),
+      max_open_tasks: positiveLimit(policy.max_open_tasks ?? policy.maxOpenTasks, Number.MAX_SAFE_INTEGER),
+      max_children_per_execution: positiveLimit(policy.max_children_per_execution ?? policy.maxChildrenPerExecution, Number.MAX_SAFE_INTEGER),
+      max_turn_mutations: positiveLimit(policy.max_turn_mutations ?? policy.maxTurnMutations, Number.MAX_SAFE_INTEGER),
+      aging_threshold_ms: agingThresholdMs,
+      require_responsibility_key: Boolean(policy.require_responsibility_key ?? policy.requireResponsibilityKey ?? false),
+    };
+  }
+
   dispatch(operation, payload = {}, envelope) {
     this.logger?.append({ event: 'dispatch.start', service: 'task', operation, envelope });
     try {
       validateEnvelope(envelope, { executionWrite: EXECUTION_WRITE_OPERATIONS.has(operation) });
       let result;
+      let replayed = false;
       if (TASK_READ_OPERATIONS.has(operation)) {
         result = this.#read(operation, payload, envelope);
       } else {
@@ -174,10 +308,24 @@ export class TaskService {
         result = this.#transaction(() => {
           const fingerprint = operationPayload(operation, payload, envelope);
           const replay = this.#replay(envelope.operation_id, fingerprint);
-          if (replay) return replay;
+          if (replay) {
+            replayed = true;
+            return replay;
+          }
           const value = this.#mutate(operation, payload, envelope);
           this.#saveOperation(envelope.operation_id, operation, fingerprint, value);
           return value;
+        });
+      }
+      if (TASK_EVENT_OPERATIONS.has(operation) && !replayed && (operation !== 'reconcile_task' || result?.changed === true)) {
+        this.#emitTaskEvent({
+          kind: `task_${operation}`,
+          operation,
+          task_id: result?.task?.task_id ?? result?.execution?.task_id ?? payload?.task_id ?? envelope?.task_id ?? null,
+          execution_id: result?.execution?.execution_id ?? envelope?.execution_id ?? null,
+          state: result?.task?.state ?? result?.execution?.state ?? null,
+          changed: result?.changed ?? null,
+          timestamp: now(),
         });
       }
       this.logger?.append({ event: 'dispatch.complete', service: 'task', operation, ok: true, result });
@@ -244,7 +392,7 @@ export class TaskService {
     return this.db.prepare('SELECT * FROM tasks WHERE parent_id = ? ORDER BY created_at, task_id').all(parentTaskId).map(rowToTask);
   }
 
-  listTasks({ rootId = null, states = ['OPEN', 'RUNNING', 'WAITING'], taskType = null, limit = 10, availableOnly = true } = {}) {
+  listTasks({ rootId = null, states = ['OPEN', 'RUNNING', 'WAITING'], taskType = null, limit = 10, availableOnly = true, scanAll = false } = {}) {
     if (rootId !== null && (typeof rootId !== 'string' || rootId.length === 0)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'root_id must be a non-empty string or null');
     }
@@ -268,7 +416,10 @@ export class TaskService {
       conditions.push('t.task_type = ?');
       params.push(taskType);
     }
-    params.push(availableOnly ? 100 : limit);
+    // Claimability needs to inspect the complete OPEN set before applying the
+    // fairness floor.  The public list remains bounded; scanAll is an
+    // internal read used only by listClaimableTasks.
+    params.push(scanAll ? -1 : (availableOnly ? 100 : limit));
     const tasks = this.db.prepare(`SELECT t.* FROM tasks t WHERE ${conditions.join(' AND ')}
       ORDER BY t.priority DESC, t.created_at ASC, t.task_id ASC LIMIT ?`).all(...params).map((row) => ({
       ...rowToTask(row),
@@ -290,6 +441,107 @@ export class TaskService {
       const resumableWaiting = waiting.some((execution) => this.#isWaitingResumable(execution, nowMs));
       return resumableWaiting || active.length + waiting.length < task.parallel_quota;
     }).slice(0, limit);
+  }
+
+  /**
+   * Return the bounded value-selection view used by a Core Daemon.  This is a
+   * read-only projection: it never ranks with an LLM and never claims a Task.
+   * Protected older work is placed ahead of younger work once it crosses the
+   * configured aging threshold, while priority remains the tie-breaker inside
+   * each fairness band.
+   */
+  listClaimableTasks({ rootId = null, limit = 10, agingThresholdMs = null, nowMs = Date.now() } = {}) {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'limit must be an integer between 1 and 100');
+    }
+    if (agingThresholdMs !== null && (!Number.isFinite(agingThresholdMs) || agingThresholdMs < 0)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'aging_threshold_ms must be non-negative');
+    }
+    if (!Number.isFinite(nowMs)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'now_ms must be finite');
+    // A resumable WAITING execution is claimable again once its typed
+    // dependency is satisfied. A parent review also turns the existing
+    // Execution back into CREATED; that rework responsibility is represented
+    // by a RUNNING Task, so admission must include that one bounded case.
+    // Unresolved waits and ordinary active executions remain filtered here.
+    const tasks = this.listTasks({ rootId, states: ['OPEN', 'RUNNING', 'WAITING'], limit: 100, availableOnly: false, scanAll: true })
+      .filter((task) => {
+        if (this.#dependencyBlockers(task.task_id).length > 0) return false;
+        const executions = this.listExecutions(task.task_id, { includeTerminal: false });
+        const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
+        const waiting = executions.filter((execution) => execution.state === 'WAITING');
+        const rework = active.length === 1 && active[0].state === 'CREATED' && active[0].instruction_version > 1 && task.parallel_quota === 1;
+        if (rework) return true;
+        if (active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
+        if (waiting.length === 0) return active.length < task.parallel_quota;
+        return waiting.some((execution) => this.#isWaitingResumable(execution, nowMs)) || active.length + waiting.length < task.parallel_quota;
+      });
+    return tasks
+      .map((task) => {
+        const configuredThreshold = agingThresholdMs ?? this.#admissionPolicy(task.root_id).aging_threshold_ms;
+        if (!Number.isFinite(configuredThreshold) || configuredThreshold < 0) {
+          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'aging_threshold_ms must be non-negative');
+        }
+        const claimableSince = task.claimable_at ?? task.created_at;
+        const claimableMs = Date.parse(claimableSince ?? '');
+        const ageMs = Number.isNaN(claimableMs) ? 0 : Math.max(0, nowMs - claimableMs);
+        return {
+          ...task,
+          claimable_since: claimableSince,
+          age_ms: ageMs,
+          fairness_protected: ageMs >= configuredThreshold,
+        };
+      })
+      .sort((left, right) => {
+        if (left.fairness_protected !== right.fairness_protected) return left.fairness_protected ? -1 : 1;
+        const leftSince = Date.parse(left.claimable_since ?? '') || Number.MAX_SAFE_INTEGER;
+        const rightSince = Date.parse(right.claimable_since ?? '') || Number.MAX_SAFE_INTEGER;
+        // Once the fairness floor is active, age is the protected ordering;
+        // priority may decide only among equally old eligible work.
+        if (left.fairness_protected && right.fairness_protected && leftSince !== rightSince) return leftSince - rightSince;
+        if (left.priority !== right.priority) return right.priority - left.priority;
+        if (leftSince !== rightSince) return leftSince - rightSince;
+        return left.task_id.localeCompare(right.task_id);
+      })
+      .slice(0, limit)
+      .map((task, index) => ({ ...task, selection_rank: index + 1 }));
+  }
+
+  /** Return blocked Tasks for Controller repair sweeps without exposing SQL. */
+  listBlockedTasks({ rootId = null, limit = 100, includeOpen = false } = {}) {
+    return this.listTasks({ rootId, states: includeOpen ? ['OPEN', 'BLOCKED'] : ['BLOCKED'], limit, availableOnly: false });
+  }
+
+  getActiveExecutionForCore(coreId) {
+    requireString(coreId, 'core_id');
+    return rowToExecution(this.db.prepare("SELECT * FROM executions WHERE core_id = ? AND state IN ('CREATED', 'RUNNING') ORDER BY created_at, execution_id LIMIT 1").get(coreId));
+  }
+
+  reconcileTask(taskId, envelope = makeEnvelope({ actorRef: 'controller', taskId })) {
+    return this.dispatch('reconcile_task', { task_id: requireString(taskId, 'task_id') }, envelope);
+  }
+
+  reopenTask(taskId, envelope = makeEnvelope({ actorRef: 'controller', taskId })) {
+    return this.dispatch('reopen_task', { task_id: requireString(taskId, 'task_id') }, envelope);
+  }
+
+  blockTask(payload, envelope) {
+    return this.dispatch('block_task', payload, envelope);
+  }
+
+  /** Claim the selected Task without making callers hand-build an envelope. */
+  claimTask(taskId, payload = {}, envelope = null) {
+    const id = requireString(taskId, 'task_id');
+    const task = this.getTask(id);
+    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${id}`);
+    const claimEnvelope = envelope ?? makeEnvelope({
+      actorRef: payload.owner_ref ?? 'daemon',
+      taskId: id,
+      specVersion: task.spec_version,
+      stateVersion: task.state_version,
+    });
+    return this.dispatch('claim', payload, { ...claimEnvelope, task_id: id, execution_id: null,
+      spec_version: claimEnvelope.spec_version ?? task.spec_version,
+      state_version: claimEnvelope.state_version ?? task.state_version });
   }
 
   listExecutions(taskId, { includeTerminal = true } = {}) {
@@ -349,6 +601,14 @@ export class TaskService {
         availableOnly: payload.available_only ?? true,
       });
     }
+    if (operation === 'list_claimable_tasks') {
+      return this.listClaimableTasks({
+        rootId: payload.root_id ?? null,
+        limit: payload.limit ?? 10,
+        agingThresholdMs: payload.aging_threshold_ms ?? null,
+        nowMs: payload.now_ms ?? Date.now(),
+      });
+    }
     if (operation === 'list_executions') {
       return this.listExecutions(payload.task_id ?? envelope.task_id, { includeTerminal: payload.include_terminal ?? true });
     }
@@ -366,6 +626,8 @@ export class TaskService {
       case 'add_required_subtask': return this.#addRequiredSubtask(payload, envelope);
       case 'propose_structure_change': return this.#proposeStructureChange(payload, envelope);
       case 'create_rework_task': return this.#createReworkTask(payload, envelope);
+      case 'reconcile_task': return this.#reconcileTask(payload, envelope);
+      case 'reopen_task': return this.#reopenTask(payload, envelope);
       case 'claim': return this.#claim(payload, envelope);
       case 'heartbeat': return this.#heartbeat(payload, envelope);
       case 'record_handoff_reminder': return this.#recordHandoffReminder(payload, envelope);
@@ -373,6 +635,7 @@ export class TaskService {
       case 'start_execution': return this.#startExecution(payload, envelope);
       case 'resume_execution': return this.#resumeExecution(payload, envelope);
       case 'request_wait': return this.#requestWait(payload, envelope);
+      case 'block_task': return this.#blockTask(payload, envelope);
       case 'save_workspace_revision': return this.#saveWorkspaceRevision(payload, envelope);
       case 'save_checkpoint': return this.#saveCheckpoint(payload, envelope);
       case 'stop_execution': return this.#stopExecution(payload, envelope);
@@ -496,6 +759,124 @@ export class TaskService {
     return parent;
   }
 
+  #admissionPolicy(rootId) {
+    const row = this.db.prepare('SELECT * FROM task_admission_policies WHERE root_id = ?').get(rootId);
+    if (row) return { ...row, require_responsibility_key: Boolean(row.require_responsibility_key) };
+    const policy = this.admission;
+    const createdAt = now();
+    this.db.prepare(`INSERT OR IGNORE INTO task_admission_policies
+      (root_id, max_unfinished_tasks, max_open_tasks, max_children_per_execution, max_turn_mutations, aging_threshold_ms, require_responsibility_key, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      rootId, policy.max_unfinished_tasks, policy.max_open_tasks, policy.max_children_per_execution,
+      policy.max_turn_mutations, policy.aging_threshold_ms, policy.require_responsibility_key ? 1 : 0, createdAt, createdAt,
+    );
+    const stored = this.db.prepare('SELECT * FROM task_admission_policies WHERE root_id = ?').get(rootId);
+    return { ...stored, require_responsibility_key: Boolean(stored.require_responsibility_key) };
+  }
+
+  #storeAdmissionPolicy(rootId, override = {}) {
+    const policy = this.#normalizeAdmissionPolicy({ ...this.admission, ...(override ?? {}) });
+    const createdAt = now();
+    this.db.prepare(`INSERT OR REPLACE INTO task_admission_policies
+      (root_id, max_unfinished_tasks, max_open_tasks, max_children_per_execution, max_turn_mutations, aging_threshold_ms, require_responsibility_key, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM task_admission_policies WHERE root_id = ?), ?), ?)`).run(
+      rootId, policy.max_unfinished_tasks, policy.max_open_tasks, policy.max_children_per_execution,
+      policy.max_turn_mutations, policy.aging_threshold_ms, policy.require_responsibility_key ? 1 : 0, rootId, createdAt, createdAt,
+    );
+    return { ...policy, require_responsibility_key: Boolean(policy.require_responsibility_key) };
+  }
+
+  #recordExecutionChildMutation(executionId, additional = 1, updatedAt = now()) {
+    if (!executionId || !Number.isInteger(additional) || additional < 1) return;
+    this.db.prepare(`INSERT INTO execution_admission_counters (execution_id, child_count, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(execution_id) DO UPDATE SET child_count = child_count + excluded.child_count, updated_at = excluded.updated_at`)
+      .run(executionId, additional, updatedAt);
+  }
+
+  #admissionFailure(code, dimension, observed, limit, rootId, extra = {}) {
+    return new SwarmEnvError(code, `${dimension} admission limit reached`, {
+      dimension,
+      observed,
+      limit,
+      retry_when: { event: 'task_terminal_or_open_slot', scope: 'root', root_task_id: rootId },
+      ...extra,
+    }, { retryable: true });
+  }
+
+  #assertTurnMutationLimit(rootId, envelope, turnId = null, additional = 1) {
+    const executionId = envelope.execution_id;
+    if (!executionId) return;
+    const effectiveTurnId = turnId ?? `execution:${executionId}`;
+    const policy = this.#admissionPolicy(rootId);
+    const mutations = this.db.prepare('SELECT mutation_count FROM turn_admission_counters WHERE execution_id = ? AND turn_id = ?').get(executionId, effectiveTurnId)?.mutation_count ?? 0;
+    if (mutations + additional > policy.max_turn_mutations) {
+      throw this.#admissionFailure(ERROR_CODES.BACKPRESSURE_TURN_MUTATION_LIMIT, 'turn_mutations', mutations + additional, policy.max_turn_mutations, rootId, { execution_id: executionId, turn_id: effectiveTurnId });
+    }
+  }
+
+  #assertChildAdmission(parent, payload, envelope, additional = 1) {
+    const policy = this.#admissionPolicy(parent.root_id);
+    const unfinished = this.db.prepare("SELECT COUNT(*) AS count FROM tasks WHERE root_id = ? AND state IN ('OPEN', 'RUNNING', 'BLOCKED', 'WAITING')").get(parent.root_id).count;
+    if (unfinished + additional > policy.max_unfinished_tasks) {
+      throw this.#admissionFailure(ERROR_CODES.BACKPRESSURE_ROOT_UNFINISHED_LIMIT, 'root_unfinished', unfinished + additional, policy.max_unfinished_tasks, parent.root_id);
+    }
+    const open = this.db.prepare("SELECT COUNT(*) AS count FROM tasks WHERE root_id = ? AND state = 'OPEN'").get(parent.root_id).count;
+    if (open + additional > policy.max_open_tasks) {
+      throw this.#admissionFailure(ERROR_CODES.BACKPRESSURE_ROOT_OPEN_LIMIT, 'root_open', open + additional, policy.max_open_tasks, parent.root_id);
+    }
+    const executionId = envelope.execution_id;
+    if (executionId) {
+      const recordedChildren = this.db.prepare('SELECT child_count FROM execution_admission_counters WHERE execution_id = ?').get(executionId)?.child_count ?? 0;
+      const provenanceChildren = this.db.prepare('SELECT COUNT(*) AS count FROM task_creation_provenance WHERE creator_execution_id = ? AND creation_kind IN (\'CHILD\', \'BRANCH\', \'REQUIRED_SUBTASK\')').get(executionId).count;
+      const children = Math.max(recordedChildren, provenanceChildren);
+      if (children + additional > policy.max_children_per_execution) {
+        throw this.#admissionFailure(ERROR_CODES.BACKPRESSURE_EXECUTION_CHILD_LIMIT, 'execution_children', children + additional, policy.max_children_per_execution, parent.root_id, { execution_id: executionId });
+      }
+      const turnId = payload.turn_id ?? payload.turnId ?? `execution:${executionId}`;
+      const mutations = this.db.prepare('SELECT mutation_count FROM turn_admission_counters WHERE execution_id = ? AND turn_id = ?').get(executionId, turnId)?.mutation_count ?? 0;
+      if (mutations + additional > policy.max_turn_mutations) {
+        throw this.#admissionFailure(ERROR_CODES.BACKPRESSURE_TURN_MUTATION_LIMIT, 'turn_mutations', mutations + additional, policy.max_turn_mutations, parent.root_id, { execution_id: executionId, turn_id: turnId });
+      }
+    }
+    return policy;
+  }
+
+  #recordTurnMutation(executionId, turnId, updatedAt = now(), additional = 1) {
+    if (!executionId) return;
+    const effectiveTurnId = turnId ?? `execution:${executionId}`;
+    this.db.prepare(`INSERT INTO turn_admission_counters (execution_id, turn_id, mutation_count, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(execution_id, turn_id) DO UPDATE SET mutation_count = mutation_count + excluded.mutation_count, updated_at = excluded.updated_at`).run(executionId, effectiveTurnId, additional, updatedAt);
+  }
+
+  #enforceFairness(task) {
+    const policy = this.#admissionPolicy(task.root_id);
+    const protectedTasks = this.listClaimableTasks({
+      rootId: task.root_id,
+      limit: 100,
+      agingThresholdMs: policy.aging_threshold_ms,
+      nowMs: Date.now(),
+    }).filter((candidate) => candidate.fairness_protected);
+    if (protectedTasks.length === 0) return;
+    const oldest = protectedTasks[0];
+    if (oldest.task_id !== task.task_id) {
+      throw new SwarmEnvError(ERROR_CODES.FAIRNESS_REQUIRED, 'an older eligible Task must receive a claim opportunity first', {
+        protected_task_id: oldest.task_id,
+        selected_task_id: task.task_id,
+        root_task_id: task.root_id,
+      }, { retryable: true });
+    }
+  }
+
+  #assertOpenAdmission(task) {
+    const policy = this.#admissionPolicy(task.root_id);
+    const open = this.db.prepare("SELECT COUNT(*) AS count FROM tasks WHERE root_id = ? AND state = 'OPEN'").get(task.root_id).count;
+    if (open + 1 > policy.max_open_tasks) {
+      throw this.#admissionFailure(ERROR_CODES.BACKPRESSURE_ROOT_OPEN_LIMIT, 'root_open', open + 1, policy.max_open_tasks, task.root_id);
+    }
+  }
+
   #taskRow(taskId) {
     const row = this.db.prepare('SELECT * FROM tasks WHERE task_id = ?').get(taskId);
     if (!row) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
@@ -530,13 +911,13 @@ export class TaskService {
     this.db.prepare(`INSERT INTO tasks (
       task_id, root_id, parent_id, owner_ref, task_type, task_type_version, goal, expected_output, priority, task_instructions, workspace_json,
       acceptance_conditions_json, input_material_refs_json, spec_version, spec_hash, completion_contract_json, parallel_quota,
-      state_version, state, block_reason, max_depth, max_children, max_attempts, retry_policy_json, root_deadline, created_by, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      state_version, state, block_reason, max_depth, max_children, max_attempts, retry_policy_json, root_deadline, cancelled_at, claimable_at, created_by, created_at, updated_at
+    ) VALUES (${Array.from({ length: 30 }, () => '?').join(', ')})`)
       .run(taskId, rootId, parentId, normalized.owner_ref, normalized.task_type, normalized.task_type_version, normalized.goal,
         normalized.expected_output, normalized.priority, normalized.task_instructions, json(normalized.workspace), json(normalized.acceptance_conditions),
         json(normalized.input_material_refs), 1, hash(spec), json(normalized.completion_contract), normalized.parallel_quota, 0, 'OPEN', null,
         normalized.max_depth, normalized.max_children, normalized.max_attempts, json(normalized.retry_policy), normalized.root_deadline,
-        envelope.actor_ref, createdAt, createdAt);
+        null, createdAt, envelope.actor_ref, createdAt, createdAt);
     this.#ensureStructureVersion(taskId, createdAt);
     this.#recordCreationProvenance({ taskId, creatorTaskId: envelope.task_id ?? null, creatorExecutionId: envelope.execution_id ?? null,
       creatorActorRef: envelope.actor_ref, creationKind, priorTaskId, sourceMaterialRefs, feedback, workspaceLineage, createdAt });
@@ -577,12 +958,20 @@ export class TaskService {
       task_id, root_id, parent_id, owner_ref, task_type, task_type_version, goal, expected_output, priority, task_instructions, workspace_json,
       acceptance_conditions_json, input_material_refs_json, spec_version, spec_hash,
       completion_contract_json, parallel_quota, state_version, state, block_reason,
-      max_depth, max_children, max_attempts, retry_policy_json, root_deadline, created_by, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      max_depth, max_children, max_attempts, retry_policy_json, root_deadline, cancelled_at, claimable_at, created_by, created_at, updated_at
+    ) VALUES (${Array.from({ length: 30 }, () => '?').join(', ')})`)
       .run(taskId, taskId, null, input.owner_ref, input.task_type, input.task_type_version, input.goal, input.expected_output, input.priority,
         input.task_instructions, json(input.workspace), json(input.acceptance_conditions), json(input.input_material_refs), 1, hash(spec),
         json(input.completion_contract), input.parallel_quota, 0, 'OPEN', null, input.max_depth, input.max_children, input.max_attempts,
-        json(input.retry_policy), input.root_deadline, envelope.actor_ref, createdAt, createdAt);
+        json(input.retry_policy), input.root_deadline, null, createdAt, envelope.actor_ref, createdAt, createdAt);
+    const rootResponsibilityKey = payload.responsibility_key ?? payload.responsibilityKey ?? null;
+    if (rootResponsibilityKey !== null) {
+      if (typeof rootResponsibilityKey !== 'string' || rootResponsibilityKey.length === 0 || rootResponsibilityKey.length > 256) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key must be a non-empty string of at most 256 characters');
+      }
+      this.db.prepare('UPDATE tasks SET responsibility_key = ? WHERE task_id = ?').run(rootResponsibilityKey, taskId);
+    }
+    this.#storeAdmissionPolicy(taskId, payload.admission_policy ?? payload.admissionPolicy ?? {});
     this.#ensureStructureVersion(taskId, createdAt);
     this.#recordCreationProvenance({ taskId, creatorActorRef: envelope.actor_ref, creationKind: 'ROOT', createdAt });
     return { task: this.getTask(taskId) };
@@ -612,10 +1001,32 @@ export class TaskService {
     if (envelope.spec_version !== parent.spec_version || (envelope.state_version !== parent.state_version && envelope.state_version !== parentExecution.state_version)) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'parent task version is stale', { expected_state_version: parent.state_version, expected_spec_version: parent.spec_version });
     }
+    const responsibilityKey = payload.responsibility_key ?? payload.responsibilityKey ?? null;
+    const admissionPolicy = this.#admissionPolicy(parent.root_id);
+    if (admissionPolicy.require_responsibility_key && (!responsibilityKey || typeof responsibilityKey !== 'string')) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key is required for admitted child Tasks');
+    }
+    if (responsibilityKey !== null && (typeof responsibilityKey !== 'string' || responsibilityKey.length === 0 || responsibilityKey.length > 256)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key must be a non-empty string of at most 256 characters');
+    }
+    if (responsibilityKey !== null) {
+      const duplicate = this.db.prepare("SELECT task_id FROM tasks WHERE root_id = ? AND responsibility_key = ? AND state NOT IN ('CANCELLED', 'CANCELED', 'REJECTED', 'CLOSED') LIMIT 1")
+        .get(parent.root_id, responsibilityKey);
+      if (duplicate) {
+        return {
+          task: this.getTask(duplicate.task_id),
+          admission: { ok: false, code: ERROR_CODES.DUPLICATE_RESPONSIBILITY, responsibility_key: responsibilityKey, existing_task_id: duplicate.task_id },
+        };
+      }
+    }
+    this.#assertChildAdmission(parent, payload, envelope);
     const childInput = validateTaskProposal({
       ...payload,
       owner_ref: payload.owner_ref ?? envelope.actor_ref,
       workspace: payload.workspace ?? parent.workspace,
+      ...(parent.completion_contract?.normal_flow === true && payload.normal_flow === undefined
+        ? { normal_flow: true }
+        : {}),
     }, { parentId });
     const childCount = this.db.prepare('SELECT COUNT(*) AS count FROM tasks WHERE parent_id = ?').get(parentId).count;
     if (childCount >= parent.max_children) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent max_children exceeded');
@@ -649,6 +1060,7 @@ export class TaskService {
       max_attempts: childInput.max_attempts,
       retry_policy: childInput.retry_policy,
       root_deadline: childInput.root_deadline,
+      responsibility_key: responsibilityKey,
     };
     this.db.prepare(`INSERT INTO tasks (
       task_id, root_id, parent_id, owner_ref, task_type, task_type_version, goal, expected_output, priority, task_instructions, workspace_json,
@@ -662,6 +1074,9 @@ export class TaskService {
         childInput.max_attempts, json(childInput.retry_policy), childInput.root_deadline, envelope.actor_ref, createdAt, createdAt);
     this.db.prepare('INSERT INTO task_creation_keys (request_key, parent_task_id, fingerprint, task_id, created_at) VALUES (?, ?, ?, ?, ?)')
       .run(key, parentId, fingerprint, taskId, createdAt);
+    this.db.prepare('UPDATE tasks SET responsibility_key = ? WHERE task_id = ?').run(responsibilityKey, taskId);
+    this.#recordExecutionChildMutation(parentExecution.execution_id, 1, createdAt);
+    this.#recordTurnMutation(envelope.execution_id, payload.turn_id ?? payload.turnId, createdAt);
     this.#ensureStructureVersion(taskId, createdAt);
     this.#recordCreationProvenance({ taskId, creatorTaskId: parentId, creatorExecutionId: parentExecution.execution_id,
       creatorActorRef: envelope.actor_ref, creationKind: 'CHILD', createdAt });
@@ -690,7 +1105,7 @@ export class TaskService {
       state_version: row.state_version,
       spec_version: row.spec_version,
       membership: { added_in_version: row.added_in_version, added_at: row.added_at },
-      satisfied: row.state === 'SATISFIED',
+      satisfied: isCompletedTaskState(row.state),
       readiness: this.#taskReadiness(row.task_id),
     }));
     const satisfied = group.group_kind === 'BRANCH'
@@ -705,11 +1120,28 @@ export class TaskService {
   }
 
   #dependencySatisfied(dependency) {
-    if (dependency.dependency_kind === 'TASK') return this.getTask(dependency.prerequisite_task_id)?.state === 'SATISFIED';
-    if (dependency.dependency_kind === 'MATERIAL') return Boolean(this.contextService?.getMaterial(dependency.material_id));
+    if (dependency.dependency_kind === 'TASK') return isCompletedTaskState(this.getTask(dependency.prerequisite_task_id)?.state);
+    const requirement = dependency.requirement ?? parse(dependency.requirement_json) ?? {};
+    if (dependency.dependency_kind === 'MATERIAL') {
+      const material = this.contextService?.getMaterial(dependency.material_id);
+      if (!material) return false;
+      for (const field of ['kind', 'scope', 'evidence_state', 'content_hash', 'source_task', 'source_execution']) {
+        if (requirement[field] !== undefined && material[field] !== requirement[field]) return false;
+      }
+      return true;
+    }
     if (dependency.dependency_kind === 'CHECK_RESULT') {
       const result = this.getCheckResult(dependency.check_result_id);
-      return Boolean(result && result.status === 'APPLIED' && result.verdict === 'PASS');
+      const checkerHealth = requirement.checker_health;
+      if (checkerHealth && typeof checkerHealth === 'object') {
+        const health = this.checkerHealthReader?.(checkerHealth.preflight_key) ?? null;
+        return Boolean(health?.status === 'healthy' || (health?.health_fingerprint && health.health_fingerprint !== checkerHealth.health_fingerprint));
+      }
+      if (!result || result.status !== 'APPLIED' || result.verdict !== 'PASS') return false;
+      for (const field of ['status', 'verdict', 'target_task_id', 'candidate_material_id']) {
+        if (requirement[field] !== undefined && result[field] !== requirement[field]) return false;
+      }
+      return true;
     }
     return false;
   }
@@ -823,6 +1255,7 @@ export class TaskService {
     const waiting = active.filter((execution) => execution.state === 'WAITING');
     const resumableWaiting = waiting.some((execution) => this.#isWaitingResumable(execution));
     if (task.state === 'SATISFIED') return { task_id: taskId, readiness: 'SATISFIED', status: 'SATISFIED', ready: true, reasons: ['task_contract_satisfied'], missing: [], structure };
+    if (task.state === 'DONE') return { task_id: taskId, readiness: 'DONE', status: 'DONE', ready: true, reasons: ['task_contract_satisfied'], missing: [], structure };
     if (task.state === 'BLOCKED') missing.push(task.block_reason ?? 'task_blocked');
     if (blockers.length > 0) missing.push(...blockers.map((dependency) => `dependency:${dependency.dependency_id}`));
     const executionQuotaBlocked = activeCount >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, Date.now());
@@ -873,6 +1306,29 @@ export class TaskService {
     this.#assertCanCreateBranch(ownerTaskId);
     const { task: owner, execution } = authority ?? this.#assertStructureAuthority(ownerTaskId, envelope);
     if (!Array.isArray(payload.branch_tasks) || payload.branch_tasks.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'branch_tasks must contain at least one Task proposal');
+    const admissionPolicy = this.#admissionPolicy(owner.root_id);
+    const responsibilityKeys = new Set();
+    for (const [index, proposal] of payload.branch_tasks.entries()) {
+      if (!proposal || typeof proposal !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `branch_tasks[${index}] must be an object`);
+      const responsibilityKey = proposal.responsibility_key ?? proposal.responsibilityKey ?? null;
+      if (admissionPolicy.require_responsibility_key && (!responsibilityKey || typeof responsibilityKey !== 'string')) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key is required for admitted child Tasks');
+      }
+      if (responsibilityKey !== null && (typeof responsibilityKey !== 'string' || responsibilityKey.length === 0 || responsibilityKey.length > 256)) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key must be a non-empty string of at most 256 characters');
+      }
+      if (responsibilityKey === null) continue;
+      if (responsibilityKeys.has(responsibilityKey)) {
+        throw new SwarmEnvError(ERROR_CODES.DUPLICATE_RESPONSIBILITY, 'responsibility_key is duplicated in one branch group', { responsibility_key: responsibilityKey });
+      }
+      const duplicate = this.db.prepare("SELECT task_id FROM tasks WHERE root_id = ? AND responsibility_key = ? AND state NOT IN ('CANCELLED', 'CANCELED', 'REJECTED', 'CLOSED', 'DONE') LIMIT 1")
+        .get(owner.root_id, responsibilityKey);
+      if (duplicate) {
+        throw new SwarmEnvError(ERROR_CODES.DUPLICATE_RESPONSIBILITY, 'responsibility_key already exists in this Root', { responsibility_key: responsibilityKey, existing_task_id: duplicate.task_id });
+      }
+      responsibilityKeys.add(responsibilityKey);
+    }
+    this.#assertChildAdmission(owner, payload, envelope, payload.branch_tasks.length);
     this.#assertChildLimits(ownerTaskId, payload.branch_tasks.length);
     const current = currentVersion ?? this.#assertExpectedStructureVersion(ownerTaskId, payload.expected_structural_version);
     const next = current + 1;
@@ -881,14 +1337,18 @@ export class TaskService {
     const tasks = [];
     try {
       for (const [index, proposal] of payload.branch_tasks.entries()) {
-        if (!proposal || typeof proposal !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `branch_tasks[${index}] must be an object`);
+        const responsibilityKey = proposal.responsibility_key ?? proposal.responsibilityKey ?? null;
+        const inheritedNormalFlow = owner.completion_contract?.normal_flow === true && proposal.normal_flow === undefined
+          ? { normal_flow: true }
+          : {};
         const task = this.#insertRelatedTask({
-          input: { ...proposal, owner_ref: proposal.owner_ref ?? envelope.actor_ref, workspace: proposal.workspace ?? owner.workspace },
+          input: { ...proposal, ...inheritedNormalFlow, owner_ref: proposal.owner_ref ?? envelope.actor_ref, workspace: proposal.workspace ?? owner.workspace },
           taskId: proposal.task_id ?? randomUUID(), rootId: owner.root_id, parentId: ownerTaskId, envelope,
           creationKind: 'BRANCH', createdAt: now(),
         });
+        if (responsibilityKey !== null) this.db.prepare('UPDATE tasks SET responsibility_key = ? WHERE task_id = ?').run(responsibilityKey, task.task_id);
         this.#addGroupMember(groupId, task.task_id, next, index);
-        tasks.push(task);
+        tasks.push(this.getTask(task.task_id));
       }
     } catch (error) {
       this.db.prepare('DELETE FROM task_structure_members WHERE group_id = ?').run(groupId);
@@ -896,12 +1356,16 @@ export class TaskService {
       throw error;
     }
     this.#bumpStructure(ownerTaskId, { eventType: 'branch_group_created', payload: { group_id: groupId, task_ids: tasks.map((task) => task.task_id) }, envelope, version: next, sourceMaterialRefs });
+    this.#recordExecutionChildMutation(execution.execution_id, tasks.length);
+    this.#recordTurnMutation(envelope.execution_id, payload.turn_id ?? payload.turnId, now(), tasks.length);
     return { group: this.#groupView(this.db.prepare('SELECT * FROM task_structure_groups WHERE group_id = ?').get(groupId)), tasks, parent: this.getTask(ownerTaskId), execution };
   }
 
   #addRequiredSubtask(payload, envelope, { authority = null, currentVersion = null, sourceMaterialRefs = [] } = {}) {
     const ownerTaskId = payload.owner_task_id ?? payload.task_id ?? envelope.task_id;
     const { task: owner, execution } = authority ?? this.#assertStructureAuthority(ownerTaskId, envelope);
+    const turnId = payload.turn_id ?? payload.turnId ?? null;
+    if (payload.subtask_task_id) this.#assertTurnMutationLimit(owner.root_id, envelope, turnId);
     const current = currentVersion ?? this.#assertExpectedStructureVersion(ownerTaskId, payload.expected_structural_version);
     const next = current + 1;
     let group = null;
@@ -921,12 +1385,35 @@ export class TaskService {
       if (task.root_id !== owner.root_id || task.task_id === ownerTaskId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'subtask must belong to the same root and differ from its owner');
     } else {
       if (!payload.subtask || typeof payload.subtask !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'subtask_task_id or subtask proposal is required');
+      const responsibilityKey = payload.subtask.responsibility_key ?? payload.subtask.responsibilityKey ?? null;
+      const admissionPolicy = this.#admissionPolicy(owner.root_id);
+      if (admissionPolicy.require_responsibility_key && (!responsibilityKey || typeof responsibilityKey !== 'string')) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key is required for admitted child Tasks');
+      }
+      if (responsibilityKey !== null && (typeof responsibilityKey !== 'string' || responsibilityKey.length === 0 || responsibilityKey.length > 256)) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key must be a non-empty string of at most 256 characters');
+      }
+      if (responsibilityKey !== null) {
+        const duplicate = this.db.prepare("SELECT task_id FROM tasks WHERE root_id = ? AND responsibility_key = ? AND state NOT IN ('CANCELLED', 'CANCELED', 'REJECTED', 'CLOSED', 'DONE') LIMIT 1")
+          .get(owner.root_id, responsibilityKey);
+        if (duplicate) {
+          throw new SwarmEnvError(ERROR_CODES.DUPLICATE_RESPONSIBILITY, 'responsibility_key already exists in this Root', { responsibility_key: responsibilityKey, existing_task_id: duplicate.task_id });
+        }
+      }
+      this.#assertChildAdmission(owner, payload.subtask, envelope);
       this.#assertChildLimits(ownerTaskId);
-      task = this.#insertRelatedTask({ input: { ...payload.subtask, owner_ref: payload.subtask.owner_ref ?? envelope.actor_ref, workspace: payload.subtask.workspace ?? owner.workspace }, taskId: payload.subtask.task_id ?? randomUUID(), rootId: owner.root_id, parentId: ownerTaskId, envelope, creationKind: 'REQUIRED_SUBTASK', createdAt: now() });
+      const inheritedNormalFlow = owner.completion_contract?.normal_flow === true && payload.subtask.normal_flow === undefined
+        ? { normal_flow: true }
+        : {};
+      task = this.#insertRelatedTask({ input: { ...payload.subtask, ...inheritedNormalFlow, owner_ref: payload.subtask.owner_ref ?? envelope.actor_ref, workspace: payload.subtask.workspace ?? owner.workspace }, taskId: payload.subtask.task_id ?? randomUUID(), rootId: owner.root_id, parentId: ownerTaskId, envelope, creationKind: 'REQUIRED_SUBTASK', createdAt: now() });
+      if (responsibilityKey !== null) this.db.prepare('UPDATE tasks SET responsibility_key = ? WHERE task_id = ?').run(responsibilityKey, task.task_id);
+      task = this.getTask(task.task_id);
+      this.#recordExecutionChildMutation(execution.execution_id);
     }
     this.#addGroupMember(group.group_id, task.task_id, next, payload.member_order ?? 0);
     this.db.prepare('UPDATE task_structure_groups SET structural_version = ? WHERE group_id = ?').run(next, group.group_id);
     this.#bumpStructure(ownerTaskId, { eventType: 'required_subtask_added', payload: { group_id: group.group_id, task_id: task.task_id }, envelope, version: next, sourceMaterialRefs });
+    this.#recordTurnMutation(envelope.execution_id, payload.turn_id ?? payload.turnId, now());
     return { group: this.#groupView(this.db.prepare('SELECT * FROM task_structure_groups WHERE group_id = ?').get(group.group_id)), task, subtask: task, owner: this.getTask(ownerTaskId), execution };
   }
 
@@ -957,12 +1444,9 @@ export class TaskService {
     }
     if (dependencyKind === 'MATERIAL') {
       requireString(materialId, 'dependency.material_id');
-      if (!this.contextService) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Context Service is required to validate a Material dependency');
-      if (!this.contextService.getMaterial(materialId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown dependency Material: ${materialId}`);
     }
     if (dependencyKind === 'CHECK_RESULT') {
       requireString(checkResultId, 'dependency.check_result_id');
-      if (!this.getCheckResult(checkResultId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown dependency CheckResult: ${checkResultId}`);
     }
     const dependencyId = dependency.dependency_id ?? randomUUID();
     const duplicate = this.db.prepare(`SELECT dependency_id FROM task_structure_dependencies
@@ -1008,6 +1492,7 @@ export class TaskService {
         ...change,
         parent_task_id: taskId,
         expected_structural_version: current,
+        ...(payload.turn_id ?? payload.turnId ? { turn_id: payload.turn_id ?? payload.turnId } : {}),
       }, envelope, { authority: { task, execution }, currentVersion: current, sourceMaterialRefs });
       return { ...result, structure: this.#taskStructure(taskId), change: { kind: 'create_branch_group', group_id: result.group.group_id, task_ids: result.tasks.map((candidate) => candidate.task_id), structural_version: current + 1, source_material_refs: sourceMaterialRefs } };
     }
@@ -1016,22 +1501,27 @@ export class TaskService {
         ...change,
         owner_task_id: taskId,
         expected_structural_version: current,
+        ...(payload.turn_id ?? payload.turnId ? { turn_id: payload.turn_id ?? payload.turnId } : {}),
       }, envelope, { authority: { task, execution }, currentVersion: current, sourceMaterialRefs });
       return { ...result, structure: this.#taskStructure(taskId), change: { kind: 'add_required_subtask', group_id: result.group.group_id, task_id: result.task.task_id, structural_version: current + 1, source_material_refs: sourceMaterialRefs } };
     }
     if (['add_dependency', 'dependency', 'add_execution_dependency'].includes(kind)) {
+      this.#assertTurnMutationLimit(task.root_id, envelope, payload.turn_id ?? payload.turnId);
       const dependencyTargetId = change.task_id ?? change.dependency?.task_id ?? taskId;
       const dependency = this.#insertDependency(dependencyTargetId, change.dependency ?? change, envelope);
       const version = this.#bumpStructure(taskId, { eventType: 'dependency_added', payload: { dependency_id: dependency.dependency_id, dependency }, envelope, version: current + 1, sourceMaterialRefs });
+      this.#recordTurnMutation(envelope.execution_id, payload.turn_id ?? payload.turnId, now());
       return { structure: this.#taskStructure(taskId), change: { kind: 'add_dependency', dependency_id: dependency.dependency_id, structural_version: version, source_material_refs: sourceMaterialRefs }, task, execution };
     }
     if (['retire_dependency', 'remove_dependency'].includes(kind)) {
+      this.#assertTurnMutationLimit(task.root_id, envelope, payload.turn_id ?? payload.turnId);
       const dependencyId = requireString(change.dependency_id, 'change.dependency_id');
       const dependency = this.db.prepare('SELECT * FROM task_structure_dependencies WHERE dependency_id = ? AND task_id = ? AND retired_at IS NULL').get(dependencyId, taskId);
       if (!dependency) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'active dependency was not found');
       const retiredAt = now();
       this.db.prepare('UPDATE task_structure_dependencies SET retired_at = ? WHERE dependency_id = ?').run(retiredAt, dependencyId);
       const version = this.#bumpStructure(taskId, { eventType: 'dependency_retired', payload: { dependency_id: dependencyId }, envelope, version: current + 1, sourceMaterialRefs });
+      this.#recordTurnMutation(envelope.execution_id, payload.turn_id ?? payload.turnId, now());
       return { structure: this.#taskStructure(taskId), change: { kind: 'retire_dependency', dependency_id: dependencyId, structural_version: version, source_material_refs: sourceMaterialRefs }, task, execution };
     }
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported structure change: ${kind ?? '<missing>'}`);
@@ -1079,6 +1569,25 @@ export class TaskService {
     };
     const parentId = payload.parent_task_id ?? (prior.parent_id ?? prior.task_id);
     const parent = this.#taskRow(parentId);
+    // Duplicate responsibility is checked before capacity admission so a
+    // repeated rework proposal cannot consume budget or mutation counters.
+    const responsibilityKey = payload.responsibility_key ?? payload.responsibilityKey
+      ?? payload.task?.responsibility_key ?? payload.task?.responsibilityKey ?? null;
+    const admissionPolicy = this.#admissionPolicy(parent.root_id);
+    if (admissionPolicy.require_responsibility_key && (!responsibilityKey || typeof responsibilityKey !== 'string')) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key is required for admitted rework Tasks');
+    }
+    if (responsibilityKey !== null && (typeof responsibilityKey !== 'string' || responsibilityKey.length === 0 || responsibilityKey.length > 256)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key must be a non-empty string of at most 256 characters');
+    }
+    if (responsibilityKey !== null) {
+      const duplicate = this.db.prepare("SELECT task_id FROM tasks WHERE root_id = ? AND responsibility_key = ? AND state NOT IN ('CANCELLED', 'CANCELED', 'REJECTED', 'CLOSED', 'DONE') LIMIT 1")
+        .get(parent.root_id, responsibilityKey);
+      if (duplicate) {
+        throw new SwarmEnvError(ERROR_CODES.DUPLICATE_RESPONSIBILITY, 'responsibility_key already exists in this Root', { responsibility_key: responsibilityKey, existing_task_id: duplicate.task_id });
+      }
+    }
+    this.#assertChildAdmission(parent, { ...payload, ...(responsibilityKey !== null ? { responsibility_key: responsibilityKey } : {}) }, envelope);
     this.#assertChildLimits(parentId);
     const proposal = {
       ...prior,
@@ -1092,6 +1601,7 @@ export class TaskService {
       owner_ref: payload.owner_ref ?? envelope.actor_ref,
       workspace: payload.task?.workspace ?? prior.workspace,
       input_material_refs: sourceMaterialRefs,
+      responsibility_key: responsibilityKey,
     };
     delete proposal.task_id;
     delete proposal.root_id;
@@ -1104,7 +1614,10 @@ export class TaskService {
     delete proposal.created_at;
     delete proposal.updated_at;
     const task = this.#insertRelatedTask({ input: proposal, rootId: prior.root_id, parentId, envelope, creationKind: 'REWORK', priorTaskId, sourceMaterialRefs, feedback: instruction, workspaceLineage, createdAt: now() });
+    if (responsibilityKey !== null) this.db.prepare('UPDATE tasks SET responsibility_key = ? WHERE task_id = ?').run(responsibilityKey, task.task_id);
     const createdAt = now();
+    this.#recordExecutionChildMutation(authorityExecution.execution_id, 1, createdAt);
+    this.#recordTurnMutation(envelope.execution_id, payload.turn_id ?? payload.turnId, createdAt);
     this.db.prepare(`INSERT INTO task_rework_links
       (prior_task_id, rework_task_id, feedback_json, source_material_refs_json, workspace_lineage_json, created_by_actor_ref, created_by_execution_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(priorTaskId, task.task_id, json(instruction), json(sourceMaterialRefs), json(workspaceLineage), envelope.actor_ref, authorityExecution.execution_id, createdAt);
@@ -1132,6 +1645,125 @@ export class TaskService {
     return this.#claimTask(task, payload, envelope);
   }
 
+  #reconcileTask(payload, envelope) {
+    const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
+    if (envelope.execution_id !== null) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Controller reconciliation cannot target an Execution');
+    const task = this.getTask(taskId);
+    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`);
+    const blockers = this.#dependencyBlockers(taskId);
+    const active = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')").get(taskId).count;
+    const updatedAt = now();
+    if (TERMINAL_TASK_STATES.includes(task.state) || active > 0) {
+      return { task: this.getTask(taskId), changed: false, blockers };
+    }
+    if (blockers.length > 0 && task.state !== 'BLOCKED') {
+      const reason = blockers.map((blocker) => `dependency:${blocker.dependency_id ?? 'unknown'}`).join(',');
+      this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+        .run(reason, updatedAt, taskId);
+      return { task: this.getTask(taskId), changed: true, blockers };
+    }
+    // Controller reconciliation may reopen a dependency block after the
+    // prerequisite becomes satisfied.  Other block reasons (checker health,
+    // admission, or an operator decision) require an explicit reopen so a
+    // periodic sweep cannot silently erase that decision.
+    if (blockers.length === 0 && task.state === 'BLOCKED' && String(task.block_reason ?? '').startsWith('dependency:')) {
+      try {
+        this.#assertOpenAdmission(task);
+      } catch (error) {
+        if (error?.code !== ERROR_CODES.BACKPRESSURE_ROOT_OPEN_LIMIT) throw error;
+        // Preserve the dependency marker so a later capacity sweep can retry
+        // the same automatic reopen. Admission backpressure is transient and
+        // must not erase the durable blocker identity.
+        return { task: this.getTask(taskId), changed: false, blockers: [], admission: { ok: false, code: error.code, details: error.details } };
+      }
+      this.db.prepare("UPDATE tasks SET state = 'OPEN', block_reason = NULL, claimable_at = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+        .run(updatedAt, updatedAt, taskId);
+      return { task: this.getTask(taskId), changed: true, blockers: [] };
+    }
+    return { task: this.getTask(taskId), changed: false, blockers };
+  }
+
+  #reopenTask(payload, envelope) {
+    const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
+    if (envelope.execution_id !== null) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'reopen_task cannot target an Execution');
+    const task = this.getTask(taskId);
+    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`);
+    if (TERMINAL_TASK_STATES.includes(task.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be reopened');
+    const blockers = this.#dependencyBlockers(taskId);
+    if (blockers.length > 0) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task dependencies are not satisfied', { blockers });
+    }
+    const active = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')").get(taskId).count;
+    if (active > 0) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Task already has an active Execution');
+    if (task.state === 'OPEN') return { task, changed: false, blockers: [] };
+    this.#assertOpenAdmission(task);
+    const updatedAt = now();
+    this.db.prepare("UPDATE tasks SET state = 'OPEN', block_reason = NULL, claimable_at = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+      .run(updatedAt, updatedAt, taskId);
+    return { task: this.getTask(taskId), changed: true, blockers: [] };
+  }
+
+  #blockTask(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    if (!['CREATED', 'RUNNING'].includes(execution.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `only an active Execution can block a Task, got ${execution.state}`);
+    }
+    const reason = requireString(payload.block_reason ?? payload.reason, 'block_reason');
+    let dependency = null;
+    if (payload.dependency !== undefined) {
+      dependency = this.#insertDependency(execution.task_id, payload.dependency, envelope);
+      this.#bumpStructure(execution.task_id, {
+        eventType: 'dependency_added',
+        payload: { dependency_id: dependency.dependency_id, dependency },
+        envelope,
+      });
+    }
+    const task = this.getTask(execution.task_id);
+    if (task?.completion_contract?.normal_flow === true && !dependency) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'normal_flow Tasks require execution_block with a typed dependency');
+    }
+    const blockReason = dependency ? `dependency:${dependency.dependency_id}` : reason;
+    const terminalState = payload.terminal_state ?? 'FENCED';
+    if (!TERMINAL_EXECUTION_STATES.includes(terminalState)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_state must be an Execution terminal state');
+    }
+    const updatedAt = now();
+    this.db.prepare(`UPDATE executions SET state = ?, fencing_version = fencing_version + 1,
+      terminal_reason = ?, checkpoint_ref = COALESCE(?, checkpoint_ref), checkpoint_hash = COALESCE(?, checkpoint_hash),
+      workspace_ref = COALESCE(?, workspace_ref), workspace_revision = COALESCE(?, workspace_revision),
+      workspace_content_hash = COALESCE(?, workspace_content_hash), state_version = state_version + 1, updated_at = ?
+      WHERE execution_id = ?`).run(
+      terminalState,
+      reason,
+      payload.checkpoint_ref ?? null,
+      payload.checkpoint_hash ?? null,
+      payload.workspace_ref ?? null,
+      payload.workspace_revision ?? null,
+      payload.workspace_content_hash ?? null,
+      updatedAt,
+      execution.execution_id,
+    );
+    // A dependency block releases the whole Task responsibility.  Parallel
+    // attempts are durable owners too; leaving one CREATED/RUNNING row behind
+    // would make BLOCKED both claimable-in-the-future and currently occupied.
+    const otherExecutionIds = this.db.prepare("SELECT execution_id FROM executions WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')")
+      .all(execution.task_id, execution.execution_id).map((row) => row.execution_id);
+    const fencedOthers = this.db.prepare(`UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1,
+      terminal_reason = ?, state_version = state_version + 1, updated_at = ?
+      WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')`)
+      .run(`dependency_blocked:${blockReason}`, updatedAt, execution.task_id, execution.execution_id).changes;
+    this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+      .run(blockReason, updatedAt, execution.task_id);
+    this.#emitExecutionState({
+      kind: 'executions_fenced',
+      task_id: execution.task_id,
+      execution_ids: otherExecutionIds,
+      excluded_execution_id: execution.execution_id,
+      reason,
+    });
+    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id), blocked: true, dependency, fenced_execution_count: fencedOthers };
+  }
+
   #claimTask(task, payload, envelope) {
     if (TERMINAL_TASK_STATES.includes(task.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be claimed');
     const dependencyBlockers = this.#dependencyBlockers(task.task_id);
@@ -1150,7 +1782,20 @@ export class TaskService {
     if (envelope.spec_version !== task.spec_version || envelope.state_version !== task.state_version) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Task claim version is stale', { expected_state_version: task.state_version, expected_spec_version: task.spec_version });
     }
+    this.#enforceFairness(task);
     const ownerRef = payload.owner_ref ?? envelope.actor_ref;
+    const coreId = payload.core_id ?? payload.coreId ?? null;
+    if (coreId !== null) requireString(coreId, 'core_id');
+    if (coreId !== null) {
+      const occupied = this.getActiveExecutionForCore(coreId);
+      if (occupied) {
+        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', {
+          core_id: coreId,
+          execution_id: occupied.execution_id,
+          task_id: occupied.task_id,
+        });
+      }
+    }
     const agentPrompt = payload.agent_prompt ?? payload.initial_prompt ?? task.task_instructions ?? '';
     if (typeof agentPrompt !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'agent_prompt must be a string');
     const inputMaterialRefs = payload.input_material_refs ?? task.input_material_refs;
@@ -1199,8 +1844,11 @@ export class TaskService {
       (payload.workspace_revision === undefined || payload.workspace_revision === reworkExecution.workspace_revision)) {
       const updatedAt = now();
       const nextLease = payload.lease_expires_at ?? new Date(Date.now() + 30_000).toISOString();
-      this.db.prepare(`UPDATE executions SET owner_ref = ?, lease_expires_at = ?, heartbeat_at = ?, agent_prompt = ?, state_version = state_version + 1, updated_at = ?
-        WHERE execution_id = ?`).run(ownerRef, nextLease, updatedAt, agentPrompt, updatedAt, reworkExecution.execution_id);
+      if (coreId !== null && reworkExecution.core_id !== null && reworkExecution.core_id !== coreId) {
+        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Execution is permanently bound to another Core', { core_id: reworkExecution.core_id });
+      }
+      this.db.prepare(`UPDATE executions SET owner_ref = ?, core_id = COALESCE(?, core_id), lease_expires_at = ?, heartbeat_at = ?, agent_prompt = ?, state_version = state_version + 1, updated_at = ?
+        WHERE execution_id = ?`).run(ownerRef, coreId, nextLease, updatedAt, agentPrompt, updatedAt, reworkExecution.execution_id);
       this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
         .run('RUNNING', updatedAt, task.task_id);
       this.db.prepare('INSERT INTO claim_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
@@ -1209,7 +1857,8 @@ export class TaskService {
     }
     const resumableWaiting = waitingExecution && this.#isWaitingResumable(rowToExecution(waitingExecution));
     const canContinueCurrentWaiting = Boolean(waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting &&
-      (payload.workspace_revision === undefined || payload.workspace_revision === waitingExecution.workspace_revision));
+      (payload.workspace_revision === undefined || payload.workspace_revision === waitingExecution.workspace_revision) &&
+      !(coreId !== null && waitingExecution.core_id !== null && waitingExecution.core_id !== coreId));
     if (workspaceMode === 'resume' && payload.workspace_revision !== undefined && !sourceWorkspaceRef && !canContinueCurrentWaiting) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'resume Workspace selection with a revision requires a source Workspace or the current waiting Workspace revision');
     }
@@ -1226,10 +1875,10 @@ export class TaskService {
       } else {
       const updatedAt = now();
       const nextLease = payload.lease_expires_at ?? new Date(Date.now() + 30_000).toISOString();
-      this.db.prepare(`UPDATE executions SET owner_ref = ?, state = 'CREATED', attempt_no = attempt_no + 1,
+      this.db.prepare(`UPDATE executions SET owner_ref = ?, core_id = COALESCE(?, core_id), state = 'CREATED', attempt_no = attempt_no + 1,
         lease_expires_at = ?, heartbeat_at = ?, agent_prompt = ?, wait_condition_json = NULL,
         wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ?
-        WHERE execution_id = ?`).run(ownerRef, nextLease, updatedAt, agentPrompt, updatedAt, waitingExecution.execution_id);
+        WHERE execution_id = ?`).run(ownerRef, coreId, nextLease, updatedAt, agentPrompt, updatedAt, waitingExecution.execution_id);
       this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
         .run('RUNNING', updatedAt, task.task_id);
       this.db.prepare('INSERT INTO claim_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
@@ -1305,8 +1954,11 @@ export class TaskService {
         execution.started_at, execution.handoff_deadline, execution.execution_deadline, execution.handoff_reminder_sent_at, json(execution.handoff_metadata), execution.terminal_reason,
         execution.instruction_version, json(execution.steer_material_refs), json(execution.wait_condition), execution.wait_deadline, execution.resume_token,
         execution.created_at, execution.updated_at);
-    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
-      .run('RUNNING', createdAt, task.task_id);
+    if (coreId !== null) {
+      this.db.prepare('UPDATE executions SET core_id = ? WHERE execution_id = ?').run(coreId, executionId);
+    }
+    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, claimable_at = CASE WHEN ? = \'OPEN\' THEN claimable_at ELSE NULL END, updated_at = ? WHERE task_id = ?')
+      .run('RUNNING', 'RUNNING', createdAt, task.task_id);
     this.db.prepare('INSERT INTO claim_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
       .run(claimKey, task.task_id, keyFingerprint, executionId, createdAt);
     return { task: this.getTask(task.task_id), execution: this.getExecution(executionId) };
@@ -1380,6 +2032,24 @@ export class TaskService {
   #startExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot start Execution from ${execution.state}`);
+    const coreId = payload.core_id ?? payload.coreId ?? null;
+    if (coreId !== null) {
+      requireString(coreId, 'core_id');
+      if (execution.core_id !== null && execution.core_id !== coreId) {
+        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Execution is permanently bound to another Core', {
+          execution_id: execution.execution_id,
+          expected_core_id: execution.core_id,
+          received_core_id: coreId,
+        });
+      }
+      const occupied = this.getActiveExecutionForCore(coreId);
+      if (occupied && occupied.execution_id !== execution.execution_id) {
+        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', {
+          core_id: coreId,
+          execution_id: occupied.execution_id,
+        });
+      }
+    }
     const updatedAt = now();
     const startedAt = payload.started_at ?? updatedAt;
     if (typeof startedAt !== 'string' || Number.isNaN(Date.parse(startedAt))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'started_at must be an ISO timestamp');
@@ -1388,17 +2058,24 @@ export class TaskService {
     for (const [name, value] of [['handoff_deadline', handoffDeadline], ['execution_deadline', executionDeadline]]) {
       if (value !== null && (typeof value !== 'string' || Number.isNaN(Date.parse(value)))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${name} must be an ISO timestamp`);
     }
-    this.db.prepare('UPDATE executions SET state = ?, started_at = ?, handoff_deadline = ?, execution_deadline = ?, handoff_reminder_sent_at = NULL, terminal_reason = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('RUNNING', startedAt, handoffDeadline, executionDeadline, updatedAt, execution.execution_id);
+    this.db.prepare('UPDATE executions SET state = ?, core_id = COALESCE(?, core_id), started_at = ?, handoff_deadline = ?, execution_deadline = ?, handoff_reminder_sent_at = NULL, terminal_reason = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run('RUNNING', coreId, startedAt, handoffDeadline, executionDeadline, updatedAt, execution.execution_id);
     return { execution: this.getExecution(execution.execution_id) };
   }
 
   #resumeExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     if (execution.state !== 'WAITING' && execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot resume Execution from ${execution.state}`);
+    const coreId = payload.core_id ?? payload.coreId ?? null;
+    if (coreId !== null) {
+      requireString(coreId, 'core_id');
+      if (execution.core_id !== null && execution.core_id !== coreId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Execution is permanently bound to another Core');
+      const occupied = this.getActiveExecutionForCore(coreId);
+      if (occupied && occupied.execution_id !== execution.execution_id) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', { core_id: coreId, execution_id: occupied.execution_id });
+    }
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('RUNNING', updatedAt, execution.execution_id);
+    this.db.prepare('UPDATE executions SET state = ?, core_id = COALESCE(?, core_id), wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run('RUNNING', coreId, updatedAt, execution.execution_id);
     this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
       .run('RUNNING', updatedAt, execution.task_id);
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
@@ -1406,6 +2083,9 @@ export class TaskService {
 
   #validateWaitCondition(execution, task, rawCondition, rawDeadline = null) {
     if (!rawCondition || typeof rawCondition !== 'object' || Array.isArray(rawCondition)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
+    if (task?.completion_contract?.normal_flow === true) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'normal_flow Tasks use execution_block with a typed dependency instead of request_wait');
+    }
     const waitCondition = { ...rawCondition };
     if (waitCondition.type === 'check_result_arrived' && waitCondition.candidate_material_id !== undefined) {
       requireString(waitCondition.candidate_material_id, 'wait_condition.candidate_material_id');
@@ -1415,6 +2095,9 @@ export class TaskService {
     const allowed = new Set(['child_task_terminal', 'children_all_terminal', 'parent_review', 'check_result_arrived', 'checker_health', 'timer']);
     if (!allowed.has(waitCondition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
     if (waitCondition.type === 'parent_review' && !task.parent_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent_review requires a child Task');
+    if (waitCondition.type === 'parent_review' && task.completion_contract?.normal_flow === true) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'normal_flow Tasks do not enter parent_review');
+    }
     if (waitCondition.type === 'child_task_terminal') {
       const childTaskId = requireString(waitCondition.child_task_id ?? waitCondition.task_id, 'wait_condition.child_task_id');
       const child = this.getTask(childTaskId);
@@ -1516,9 +2199,13 @@ export class TaskService {
     const execution = this.#executionForWrite(envelope);
     const terminalState = payload.terminal_state ?? 'FAILED';
     if (!TERMINAL_EXECUTION_STATES.includes(terminalState)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_state must be an Execution terminal state');
+    const terminalReason = payload.terminal_reason ?? payload.reason ?? terminalState.toLowerCase();
+    if (typeof terminalReason !== 'string' || terminalReason.length === 0) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_reason must be a non-empty string');
+    }
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run(terminalState, updatedAt, execution.execution_id);
+    this.db.prepare('UPDATE executions SET state = ?, terminal_reason = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run(terminalState, terminalReason, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt, cancelIfIdle: terminalState === 'CANCELLED' });
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
@@ -1527,8 +2214,12 @@ export class TaskService {
   #expireExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('EXPIRED', payload.runtime_generation ?? null, updatedAt, execution.execution_id);
+    const terminalReason = payload.terminal_reason ?? payload.reason ?? 'lease_expired';
+    if (typeof terminalReason !== 'string' || terminalReason.length === 0) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_reason must be a non-empty string');
+    }
+    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), terminal_reason = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run('EXPIRED', payload.runtime_generation ?? null, terminalReason, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt });
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
@@ -1537,8 +2228,12 @@ export class TaskService {
   #fenceExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('FENCED', payload.runtime_generation ?? null, updatedAt, execution.execution_id);
+    const terminalReason = payload.terminal_reason ?? payload.reason ?? 'fenced';
+    if (typeof terminalReason !== 'string' || terminalReason.length === 0) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_reason must be a non-empty string');
+    }
+    this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), terminal_reason = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run('FENCED', payload.runtime_generation ?? null, terminalReason, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt });
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
@@ -1550,7 +2245,7 @@ export class TaskService {
     const updatedAt = now();
     const nextLease = payload.lease_expires_at ?? new Date(Date.now() + 30_000).toISOString();
     this.db.prepare(`UPDATE executions SET state = 'CREATED', fencing_version = fencing_version + 1,
-      runtime_generation = COALESCE(?, runtime_generation), attempt_no = attempt_no + 1,
+      runtime_generation = COALESCE(?, runtime_generation), session_generation = session_generation + 1, attempt_no = attempt_no + 1,
       lease_expires_at = ?, heartbeat_at = ?, agent_prompt = ?, state_version = state_version + 1, updated_at = ?
       WHERE execution_id = ?`)
       .run(payload.runtime_generation ?? null, nextLease, updatedAt, payload.agent_prompt ?? execution.agent_prompt, updatedAt, execution.execution_id);
@@ -1592,7 +2287,7 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'target Task state_version is stale', { expected_state_version: target.state_version });
     }
     if (TERMINAL_TASK_STATES.includes(target.state)) {
-      if (target.state === 'SATISFIED') return { task: target, execution: this.#latestExecution(target.task_id), authority_execution: authorityExecution };
+      if (isCompletedTaskState(target.state)) return { task: target, execution: this.#latestExecution(target.task_id), authority_execution: authorityExecution };
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be accepted');
     }
     const execution = this.#latestExecution(target.task_id, true);
@@ -1605,8 +2300,8 @@ export class TaskService {
     const updatedAt = now();
     this.db.prepare("UPDATE executions SET state = 'SUCCEEDED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
       .run(updatedAt, execution.execution_id);
-    this.db.prepare("UPDATE tasks SET state = 'SATISFIED', state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?")
-      .run(updatedAt, target.task_id);
+    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
+      .run(taskCompletionState(target), updatedAt, target.task_id);
     return { task: this.getTask(target.task_id), execution: this.getExecution(execution.execution_id), authority_execution: authorityExecution };
   }
 
@@ -1695,12 +2390,26 @@ export class TaskService {
     this.db.prepare("UPDATE check_results SET status = 'APPLIED', applied_task_state_version = ?, applied_at = ?, updated_at = ? WHERE check_result_id = ?")
       .run(task.state_version + 1, updatedAt, updatedAt, checkResultId);
     if (result.result_class === 'infrastructure_failure') {
-      if (!result.retryable || result.evidence?.retry_exhausted) {
+      const deferInfrastructureBlock = payload.defer_execution_block === true;
+      if (task.completion_contract?.normal_flow === true && !deferInfrastructureBlock) {
         const blockReason = `checker_unavailable:${result.diagnostic_code ?? 'unknown'}`;
-        this.db.prepare("UPDATE executions SET state = 'FAILED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
-          .run(updatedAt, execution.execution_id);
-        this.db.prepare("UPDATE tasks SET state = 'BLOCKED', state_version = state_version + 1, block_reason = ?, updated_at = ? WHERE task_id = ?")
-          .run(blockReason, updatedAt, task.task_id);
+        const dependency = {
+          dependency_kind: 'CHECK_RESULT',
+          check_result_id: checkResultId,
+          requirement: result.evidence?.preflight_key && result.evidence?.health_fingerprint
+            ? { checker_health: { preflight_key: result.evidence.preflight_key, health_fingerprint: result.evidence.health_fingerprint } }
+            : {},
+        };
+        const blocked = this.#blockTask({ block_reason: blockReason, dependency, terminal_state: 'FAILED' }, envelope);
+        return { task: blocked.task, execution: blocked.execution, check_result: this.getCheckResult(checkResultId), dependency: blocked.dependency };
+      }
+      if (!result.retryable || result.evidence?.retry_exhausted) {
+        if (deferInfrastructureBlock) {
+          return { task: this.getTask(task.task_id), execution: this.getExecution(execution.execution_id), check_result: this.getCheckResult(checkResultId) };
+        }
+        const blockReason = `checker_unavailable:${result.diagnostic_code ?? 'unknown'}`;
+        const blocked = this.#blockTask({ block_reason: blockReason, terminal_state: 'FAILED' }, envelope);
+        return { task: blocked.task, execution: blocked.execution, check_result: this.getCheckResult(checkResultId) };
       } else if (execution.state === 'WAITING') {
         // A retryable infrastructure result is not mathematical feedback. Keep
         // the checkpointed responsibility resumable while allowing the next
@@ -1725,8 +2434,8 @@ export class TaskService {
       if (completion.satisfied) {
         this.db.prepare("UPDATE executions SET state = 'SUCCEEDED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
           .run(updatedAt, execution.execution_id);
-        this.db.prepare("UPDATE tasks SET state = 'SATISFIED', state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?")
-          .run(updatedAt, task.task_id);
+        this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
+          .run(taskCompletionState(task), updatedAt, task.task_id);
       }
     } else if (execution.state === 'WAITING') {
       // A failed check wakes the responsibility for another Agent. Keep the
@@ -1752,9 +2461,16 @@ export class TaskService {
     }
     const execution = this.#executionForWrite(envelope);
     if (execution.state !== 'WAITING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot wake Execution from ${execution.state}`);
+    const coreId = payload.core_id ?? payload.coreId ?? null;
+    if (coreId !== null) {
+      requireString(coreId, 'core_id');
+      if (execution.core_id !== null && execution.core_id !== coreId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Execution is permanently bound to another Core');
+      const occupied = this.getActiveExecutionForCore(coreId);
+      if (occupied && occupied.execution_id !== execution.execution_id) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', { core_id: coreId, execution_id: occupied.execution_id });
+    }
     const updatedAt = now();
-    this.db.prepare("UPDATE executions SET state = 'RUNNING', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
-      .run(updatedAt, execution.execution_id);
+    this.db.prepare("UPDATE executions SET state = 'RUNNING', core_id = COALESCE(?, core_id), wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
+      .run(coreId, updatedAt, execution.execution_id);
     this.#refreshTaskState(execution.task_id, { updatedAt });
     this.db.prepare('INSERT INTO wake_keys (request_key, execution_id, fingerprint, created_at) VALUES (?, ?, ?, ?)')
       .run(wakeKey, execution.execution_id, fingerprint, updatedAt);
@@ -1781,13 +2497,13 @@ export class TaskService {
     if (!task || TERMINAL_TASK_STATES.includes(task.state)) return task;
     const active = this.db.prepare("SELECT state FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'WAITING')").all(taskId);
     const nextState = active.length === 0
-      ? (cancelIfIdle ? 'CANCELLED' : 'OPEN')
+      ? (cancelIfIdle ? taskCancellationState(task) : 'OPEN')
       : (active.some((execution) => execution.state === 'RUNNING')
         ? 'RUNNING'
         : (active.some((execution) => execution.state === 'WAITING') ? 'WAITING' : 'OPEN'));
     if (task.state === nextState) return task;
-    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, cancelled_at = CASE WHEN ? = \'CANCELLED\' THEN ? ELSE cancelled_at END, updated_at = ? WHERE task_id = ?')
-      .run(nextState, nextState, nextState === 'CANCELLED' ? updatedAt : null, updatedAt, taskId);
+    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, claimable_at = CASE WHEN ? = \'OPEN\' THEN COALESCE(claimable_at, ?) ELSE NULL END, cancelled_at = CASE WHEN ? IN (\'CANCELLED\', \'CANCELED\') THEN ? ELSE cancelled_at END, updated_at = ? WHERE task_id = ?')
+      .run(nextState, nextState, updatedAt, nextState, ['CANCELLED', 'CANCELED'].includes(nextState) ? updatedAt : null, updatedAt, taskId);
     return this.getTask(taskId);
   }
 
@@ -1928,7 +2644,7 @@ export class TaskService {
     const missing = [];
     if (contract.required_children) {
       for (const childId of contract.required_children) {
-        if (this.getTask(childId)?.state !== 'SATISFIED') missing.push(`child:${childId}`);
+        if (!isCompletedTaskState(this.getTask(childId)?.state)) missing.push(`child:${childId}`);
       }
     }
     if (contract.required_branch_groups) {
@@ -1946,9 +2662,27 @@ export class TaskService {
     if (contract.required_materials) {
       if (!this.contextService) missing.push('required_materials');
       else for (const requirement of contract.required_materials) {
-        const count = this.contextService.readMaterials({ source_task: task.task_id }).filter((material) =>
-          requirement.kinds.includes(material.kind) && (!requirement.scope || requirement.scope === material.scope)).length;
-        if (count < requirement.min_count) missing.push(`materials:${requirement.kinds.join('|')}`);
+        const consumptionAction = requirement.action ?? requirement.consumption_action;
+        const materials = this.contextService.readMaterials({ source_task: task.task_id }).filter((material) =>
+          requirement.kinds.includes(material.kind) && (!requirement.scope || requirement.scope === material.scope));
+        let count = materials.length;
+        if (requirement.requires_consumption) {
+          const consumptionRows = typeof this.contextService.listMaterialConsumptions === 'function'
+            ? this.contextService.listMaterialConsumptions({ reader_task: task.task_id, action: consumptionAction })
+            : [];
+          const consumedIds = new Set(consumptionRows.map((row) => row.material_id));
+          count = materials.filter((material) => {
+            const consumedMaterialIds = material.provenance?.consumed_material_ids;
+            if (Array.isArray(consumedMaterialIds) && consumedMaterialIds.length > 0) {
+              return consumedMaterialIds.every((materialId) => consumedIds.has(materialId));
+            }
+            return consumedIds.has(material.material_id);
+          }).length;
+        }
+        if (count < requirement.min_count) {
+          const suffix = requirement.requires_consumption ? `:${consumptionAction}` : '';
+          missing.push(`materials${suffix}:${requirement.kinds.join('|')}`);
+        }
       }
     }
     if (contract.required_candidate) {

@@ -52,13 +52,14 @@ test('benchmark Agent sessions explicitly deny Pi parallel coordination', () => 
     sessionDir: '/tmp/swarmenv-benchmark-session',
   });
   const args = adapter.buildLaunchArgs({ executionId: 'benchmark-execution' });
-  assert.ok(args.includes('--no-builtin-tools'));
+  assert.ok(args.includes('--no-tools'));
+  assert.ok(!args.includes('--no-builtin-tools'));
   assert.ok(args.includes('--tools'));
   assert.deepEqual(args.slice(args.indexOf('--exclude-tools'), args.indexOf('--exclude-tools') + 2), ['--exclude-tools', 'parallel']);
 });
 
 class FakeSession extends EventEmitter {
-  constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, bound = false) {
+  constructor(env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, bound = false, selectionOnly = false) {
     super();
     this.env = env;
     this.cheat = cheat;
@@ -69,6 +70,7 @@ class FakeSession extends EventEmitter {
     this.hardToolError = hardToolError;
     this.hardToolErrorUsed = false;
     this.bound = bound;
+    this.selectionOnly = selectionOnly;
     this.rpcRecords = [];
     this.closed = false;
     this.candidateResults = [];
@@ -109,6 +111,10 @@ class FakeSession extends EventEmitter {
         tasks = await call('list_tasks', { limit: 10 });
       }
       if (tasks.length === 0) return { data: { disposition: 'handled' } };
+      if (this.selectionOnly) {
+        await call('select_task', { task_id: tasks[0].task_id });
+        return { data: { disposition: 'handled' } };
+      }
       if (this.invalidClaim && !this.invalidClaimUsed) {
         this.invalidClaimUsed = true;
         try {
@@ -233,13 +239,14 @@ class FakeSession extends EventEmitter {
 }
 
 class FakeAdapter {
-  constructor({ env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false }) {
+  constructor({ env, cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false }) {
     this.env = env;
     this.cheat = cheat;
     this.noWork = noWork;
     this.fileCandidate = fileCandidate;
     this.invalidClaim = invalidClaim;
     this.hardToolError = hardToolError;
+    this.selectionOnly = selectionOnly;
     this.starts = [];
     this.sessions = [];
   }
@@ -249,7 +256,7 @@ class FakeAdapter {
     const { logger } = options;
     logger?.append({ type: 'fake-agent-start' });
     const isWorkerSession = String(options.executionId ?? '').startsWith('worker-');
-    const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate, this.invalidClaim && isWorkerSession, this.hardToolError && isWorkerSession, !isWorkerSession);
+    const session = new FakeSession(this.env, this.cheat, this.noWork, this.fileCandidate, this.invalidClaim && isWorkerSession, this.hardToolError && isWorkerSession, !isWorkerSession, this.selectionOnly);
     this.sessions.push(session);
     session.manifest = { fake: true, pi_version: 'fake' };
     return session;
@@ -411,11 +418,27 @@ class CollaborationSession extends EventEmitter {
         return { data: { disposition: 'handled' } };
       }
       const research = tasks.find((task) => task.task_id === 'collab-research');
-      await this.call('read_materials', {});
+      const materialsRead = await this.call('read_materials', {});
+      const consumedMaterialIds = materialsRead.map((material) => material.material_id).filter(Boolean);
+      await this.call('consume_materials', {
+        material_ids: consumedMaterialIds,
+        action: 'integration',
+        action_ref: 'collaboration-root',
+      });
       if (research?.state === 'WAITING') {
         await this.call('accept_task', { target_task_id: research.task_id, target_state_version: research.state_version });
       }
-      const material = await this.call('publish_material', { kind: 'artifact', scope: 'proof_relevant', content: 'def collaborationRoot : Nat := 0' });
+      await this.call('publish_material', {
+        kind: 'artifact',
+        scope: 'root_integration',
+        content: 'def collaborationRoot : Nat := 0',
+        provenance: { consumed_material_ids: consumedMaterialIds },
+      });
+      const material = await this.call('publish_material', {
+        kind: 'artifact',
+        scope: 'proof_relevant',
+        content: 'def collaborationRoot : Nat := 0',
+      });
       await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
       this.adapter.rootFinished = true;
       return { data: { disposition: 'handled' } };
@@ -660,7 +683,7 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500 }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -671,12 +694,13 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     watchdogTimeoutMs,
     watchdogIntervalMs,
     maxInfrastructureRetries,
+    ...(normalFlow === undefined ? {} : { normalFlow }),
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
     observationStore,
     agentAdapterFactory: ({ env, index }) => {
-      const adapter = new FakeAdapter({ env, cheat, noWork: noWork || (invalidClaim && index !== 1), fileCandidate, invalidClaim: invalidClaim && index === 1, hardToolError: hardToolError && index === 1 });
+      const adapter = new FakeAdapter({ env, cheat, noWork: noWork || (invalidClaim && index !== 1), fileCandidate, invalidClaim: invalidClaim && index === 1, hardToolError: hardToolError && index === 1, selectionOnly });
       onAdapter?.(adapter);
       return adapter;
     },
@@ -699,11 +723,37 @@ test('benchmark runtime publishes live core, execution, service, and completion 
     assert.equal(experiment.status, 'SUCCEEDED');
     assert.ok(events.some((event) => event.kind === 'experiment_started'));
     assert.ok(events.some((event) => event.kind === 'execution_assigned' && event.execution_id));
+    assert.ok(events.filter((event) => event.kind === 'execution_released').every((event) => event.task_id && event.execution_id));
+    assert.ok(events.filter((event) => event.kind === 'core_capacity_released').every((event) => !event.task_id && !event.execution_id));
     assert.ok(events.some((event) => event.kind === 'workspace_revision_saved'));
     assert.ok(events.some((event) => event.source === 'task-service' && event.kind === 'dispatch.start'));
     assert.ok(events.some((event) => event.kind === 'experiment_finished'));
   } finally {
     observationStore.close();
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('select_task keeps the selection Session through claim and Runtime bind', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-selection-bind-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-selection-bind-report-');
+  try {
+    const report = await runFixture({
+      reportDir,
+      experimentDir,
+      id: 'putnam_selection_bind_test',
+      selectionOnly: true,
+      timeboxMs: 2_000,
+    });
+    assert.equal(report.run.protocol_valid, true);
+    assert.equal(report.run.solved, true);
+    assert.ok(report.run.claim_count > 0);
+    assert.ok(report.run.progress_evidence.workspace_write_count > 0);
+    assert.ok(report.run.candidate_check_count > 0);
+    assert.ok(report.cores.some((core) => core.claims.some((claim) => claim.workspace_revision_start !== null)));
+    assert.equal(report.audit.invalid, false);
+  } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
   }
@@ -923,6 +973,7 @@ test('checker infrastructure errors returned by submit_candidate retain actionab
       id: 'putnam_checker_error_test',
       maxInfrastructureRetries: 1,
       timeboxMs: 1_500,
+      normalFlow: true,
       checker: {
         preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: { exit_code: 0 } }),
         check: async () => ({ verdict: 'ERROR', evidence: { checker_started: false, error_code: 'ENOENT', diagnostic: 'spawn lake ENOENT' } }),
@@ -939,7 +990,8 @@ test('checker infrastructure errors returned by submit_candidate retain actionab
     assert.ok(report.run.checker_infrastructure_failure_count >= 1);
     assert.ok(report.run.checker_unassessed_count >= 1);
     assert.ok(report.run.lifecycle_events.some((event) => event.wait_condition_type === 'checker_health'));
-    assert.ok(report.cores.every((core) => core.execution_state === null || ['FAILED', 'WAITING'].includes(core.execution_state)));
+    assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'block_task' && event.wait_condition_type === 'checker_health'));
+    assert.ok(report.cores.every((core) => core.execution_state === null || ['FAILED', 'FENCED', 'WAITING'].includes(core.execution_state)));
     assert.equal(report.audit.invalid, false);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
@@ -1027,6 +1079,12 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'request_wait' && event.dependency_ids.length > 0));
     assert.ok(report.run.resumed_execution_count >= 1, 'a resumable WAITING Execution should return through claim and Scheduler');
     assert.ok(report.cores.some((core) => core.material_reads.some((read) => read.source_task_ids.includes('collab-research'))));
+    const rootTaskId = report.project.task_tree.find((task) => task.parent_id === null).task_id;
+    const rootNarratives = report.project.execution_narratives.filter((item) => item.task_id === rootTaskId);
+    assert.ok(rootNarratives.some((item) => item.actions.some((event) => event.kind === 'material_read')),
+      'Root Material reads must be bounded operator observations');
+    assert.ok(rootNarratives.some((item) => item.actions.some((event) => event.kind === 'material_published')),
+      'Root downstream integration must be durable operator evidence');
     assert.equal(report.project.task_tree.filter((task) => task.parent_id !== null).length, 3);
     assert.ok(report.run.claim_count >= 4, `expected root and three child claims, got ${report.run.claim_count}`);
     assert.ok(report.run.child_claim_count >= 3, `expected every child to be claimed, got ${report.run.child_claim_count}`);
@@ -1034,7 +1092,7 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.ok(report.run.resumed_execution_count >= 1, `expected at least one Execution to be resumed; root=${report.run.root_claim_count}, claims=${report.run.claim_count}, details=${JSON.stringify(report.project.execution_history)}`);
     assert.ok(report.run.resumed_execution_count >= 1, `expected a Scheduler-mediated resumed Execution, got ${report.run.resumed_execution_count}`);
     const rootExecutionIds = new Set(report.cores.flatMap((core) => core.claims)
-      .filter((claim) => claim.task_id === report.project.task_tree.find((task) => task.parent_id === null).task_id)
+      .filter((claim) => claim.task_id === rootTaskId)
       .map((claim) => claim.execution_id));
     assert.equal(rootExecutionIds.size, 1, 'root wait/resume must preserve one Execution lineage');
     assert.ok(report.run.progress_evidence.workspace_write_count >= 4);
@@ -1164,7 +1222,12 @@ test('production queue consumes pre-existing independent Tasks without Root synt
     assert.equal(rootTask.state, 'RUNNING');
     assert.equal(childTasks.length, 8);
     assert.ok(childTasks.every((task) => task.state === 'SATISFIED'));
-    assert.equal(childClaims.length, 8);
+    // A failed Runtime handoff may fence and reclaim one independent Task;
+    // acceptance is that every queued responsibility is consumed, not that
+    // recovery is indistinguishable from a first attempt.
+    assert.ok(childClaims.length >= 8);
+    assert.ok(childClaims.length <= childTasks.length * 2, 'claim recovery must remain bounded per queued Task');
+    assert.equal(new Set(childClaims.map((claim) => claim.task_id)).size, 8);
     assert.ok(coreTaskSets.some((tasks) => tasks.size >= 2), 'a Core must claim different pre-existing Tasks across waves');
     assert.ok(report.run.candidate_check_count >= 8);
     assert.ok(report.parallelism.eligible_window_ms > 0);

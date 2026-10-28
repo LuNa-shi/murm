@@ -52,6 +52,10 @@ test('ServicesBridge exposes public SDK calls over a loopback token and keeps Ru
     const publishedBody = await published.json();
     assert.equal(published.status, 200);
     assert.equal(publishedBody.result.material.kind, 'artifact');
+    const consumed = await fetch(`${environment.SWARMENV_BRIDGE_URL}/call`, { method: 'POST', headers: { authorization: `Bearer ${environment.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'consume_materials', payload: { material_ids: [publishedBody.result.material.material_id], action: 'task', action_ref: 'bridge-test' } }) });
+    const consumedBody = await consumed.json();
+    assert.equal(consumed.status, 200);
+    assert.deepEqual(consumedBody.result.material_ids, [publishedBody.result.material.material_id]);
     const waited = await fetch(`${environment.SWARMENV_BRIDGE_URL}/call`, { method: 'POST', headers: { authorization: `Bearer ${environment.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'request_wait', payload: { waitCondition: { type: 'timer', deadline: new Date(Date.now() + 1_000).toISOString() }, checkpoint: { phase: 'bridge' }, files: {} } }) });
     const waitedBody = await waited.json();
     assert.equal(waited.status, 200);
@@ -59,6 +63,34 @@ test('ServicesBridge exposes public SDK calls over a loopback token and keeps Ru
     assert.deepEqual(waitedBody.result.payload.checkpoint, { phase: 'bridge' });
     assert.equal(bridge.taskId, null);
     assert.equal(bridge.executionId, null);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
+test('ServicesBridge releases the original binding when bindClaim handoff fails', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const released = [];
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router: new ServicesRouter({ taskService, contextService }),
+    onClaim: async () => { throw new Error('handoff failed'); },
+    onRelease: async (value) => released.push(value),
+  });
+  try {
+    await assert.rejects(
+      () => bridge.bindClaim({ task: { task_id: 'bind-failure-task' }, execution: { execution_id: 'bind-failure-execution' } }),
+      /handoff failed/,
+    );
+    assert.equal(bridge.taskId, null);
+    assert.equal(bridge.executionId, null);
+    assert.deepEqual(released, [{ taskId: 'bind-failure-task', executionId: 'bind-failure-execution', result: null }]);
   } finally {
     await bridge.stop();
     taskService.close();
@@ -83,6 +115,55 @@ test('ServicesBridge returns structured tool errors and exposes them to audit ho
     assert.equal(errors.length, 1);
     assert.equal(errors[0].operation, 'host_shell');
     assert.equal(errors[0].error.code, 'NOT_ALLOWED');
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
+test('ServicesBridge exposes only the bounded selection shortlist and never claims from select_task', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const selected = [];
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router: new ServicesRouter({ taskService, contextService }),
+    onSelectTask: async (candidate) => selected.push(candidate),
+  });
+  try {
+    bridge.setSelectionCandidates([{
+      task_id: 'task-shortlist',
+      goal: 'bounded selection',
+      expected_output: 'one task',
+      workspace: { secret: 'must not cross selection boundary' },
+      completion_contract: { normal_flow: true },
+      selection_rank: 1,
+    }]);
+    const listed = await bridge.call({ operation: 'list_tasks', payload: { limit: 100 } });
+    assert.deepEqual(listed.map((task) => task.task_id), ['task-shortlist']);
+    assert.equal(listed[0].workspace, undefined);
+    const result = await bridge.call({ operation: 'select_task', payload: { task_id: 'task-shortlist' } });
+    assert.deepEqual(result, { selected_task_id: 'task-shortlist' });
+    assert.equal(selected.length, 1);
+    assert.equal(selected[0].task_id, 'task-shortlist');
+    await assert.rejects(
+      () => bridge.call({ operation: 'select_task', payload: { task_id: 'task-outside-shortlist' } }),
+      (error) => error.code === 'INVALID_CONTRACT',
+    );
+    await assert.rejects(
+      () => bridge.call({ operation: 'claim', payload: { task_id: 'task-outside-shortlist', claim_key: 'outside-shortlist' } }),
+      (error) => error.code === 'INVALID_CONTRACT' && /bounded shortlist/.test(error.message),
+    );
+    const bound = new ServicesBridge({ taskService, contextService, runtime: {}, taskId: 'task-shortlist', executionId: 'execution-bound' });
+    await assert.rejects(
+      () => bound.call({ operation: 'select_task', payload: { task_id: 'task-shortlist' } }),
+      (error) => error.code === 'NOT_ALLOWED',
+    );
+    await bound.stop();
   } finally {
     await bridge.stop();
     taskService.close();

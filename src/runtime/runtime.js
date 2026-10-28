@@ -47,7 +47,7 @@ function normalizeWaitFiles(files) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, clock = () => Date.now(), onSessionStarted = null }) {
+  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -65,16 +65,68 @@ export class Runtime {
     this.handoffReminderMs = handoffReminderMs;
     this.clock = clock;
     this.onSessionStarted = onSessionStarted;
+    this.onCoreEvent = onCoreEvent;
     this.activeProcesses = new Map();
+    this.coreStates = new Map();
+    const configuredCoreIds = Array.isArray(coreIds)
+      ? coreIds
+      : Array.from({ length: Math.max(0, maxWorkers) }, (_, index) => `core-${index + 1}`);
+    for (const coreId of configuredCoreIds) this.registerCore(coreId);
     this.recoveryAttempts = new Map();
     this.handoffPromises = new Map();
     this.reminderPromises = new Map();
     this.pendingFailurePromises = new Set();
+    this.pendingReleasePromises = new Set();
     this.stopping = false;
+    this.executionStateUnsubscribe = typeof this.taskService?.subscribeExecutionState === 'function'
+      ? this.taskService.subscribeExecutionState((event) => this.#onExecutionState(event))
+      : null;
   }
 
   getActiveProcessCount() {
     return this.activeProcesses.size;
+  }
+
+  /**
+   * Register a reusable Core with the execution substrate. Core Daemons own
+   * discovery and selection; Runtime only records the execution occupancy
+   * that follows a successful claim.
+   */
+  registerCore(coreId) {
+    const id = requireString(coreId, 'core_id');
+    if (!this.coreStates.has(id)) {
+      this.coreStates.set(id, {
+        core_id: id,
+        state: 'IDLE',
+        execution_id: null,
+        task_id: null,
+        session_id: null,
+        updated_at: new Date(this.clock()).toISOString(),
+      });
+    }
+    return this.getCoreStatus(id);
+  }
+
+  getCoreStatus(coreId) {
+    const id = requireString(coreId, 'core_id');
+    const state = this.coreStates.get(id);
+    if (!state) return null;
+    return { ...state };
+  }
+
+  listCoreStatus() {
+    return [...this.coreStates.values()].map((state) => ({ ...state }));
+  }
+
+  /** A Runtime capacity view that never performs Task selection. */
+  getCapacityStatus() {
+    const cores = this.listCoreStatus();
+    return {
+      core_count: this.maxWorkers,
+      active_core_count: cores.filter((core) => core.state === 'RUNNING').length,
+      idle_core_count: cores.filter((core) => core.state === 'IDLE').length,
+      cores,
+    };
   }
 
   hasActiveExecution(executionId) {
@@ -85,6 +137,39 @@ export class Runtime {
     while (this.pendingFailurePromises.size > 0) {
       await Promise.allSettled([...this.pendingFailurePromises]);
     }
+    while (this.pendingReleasePromises.size > 0) {
+      await Promise.allSettled([...this.pendingReleasePromises]);
+    }
+  }
+
+  /** Wait until Runtime no longer owns an Execution process. */
+  async waitForExecutionRelease(executionId, { timeoutMs = Number.POSITIVE_INFINITY, pollMs = 25, signal = null } = {}) {
+    const id = requireString(executionId, 'execution_id');
+    if (timeoutMs !== Number.POSITIVE_INFINITY && (!Number.isFinite(timeoutMs) || timeoutMs < 0)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timeoutMs must be non-negative or Infinity');
+    if (!Number.isFinite(pollMs) || pollMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'pollMs must be positive');
+    const startedAt = this.clock();
+    let current = this.taskService.getExecution(id);
+    while (this.activeProcesses.has(id) || ['CREATED', 'RUNNING'].includes(current?.state)) {
+      if (signal?.aborted) return { released: false, aborted: true, execution: current, elapsed_ms: this.clock() - startedAt };
+      if (timeoutMs !== Number.POSITIVE_INFINITY && this.clock() - startedAt >= timeoutMs) {
+        return { released: false, execution: current, elapsed_ms: this.clock() - startedAt };
+      }
+      await new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          signal?.removeEventListener('abort', onAbort);
+          resolve();
+        };
+        const onAbort = () => finish();
+        const timer = setTimeout(finish, pollMs);
+        signal?.addEventListener('abort', onAbort, { once: true });
+      });
+      current = this.taskService.getExecution(id);
+    }
+    return { released: true, execution: current, elapsed_ms: this.clock() - startedAt };
   }
 
   /**
@@ -92,16 +177,19 @@ export class Runtime {
    * The benchmark uses this seam for terminal cleanup so it never has to
    * mutate Runtime ownership maps or recovery flags directly.
    */
-  async shutdown({ terminalState = 'FAILED' } = {}) {
+  async shutdown({ terminalState = 'FAILED', terminalReason = 'runtime_shutdown' } = {}) {
     this.stopping = true;
+    this.executionStateUnsubscribe?.();
+    this.executionStateUnsubscribe = null;
     const executionIds = [...this.activeProcesses.keys()];
     for (const executionId of executionIds) {
       const execution = this.taskService.getExecution(executionId);
       if (execution && ['CREATED', 'RUNNING'].includes(execution.state)) {
-        await this.stopExecution(executionId, terminalState).catch(() => undefined);
+        await this.stopExecution(executionId, terminalState, terminalReason).catch(() => undefined);
       } else {
         const active = this.activeProcesses.get(executionId);
         this.activeProcesses.delete(executionId);
+        this.#setCoreState(active?.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
         await Promise.resolve(active?.session?.stop?.()).catch(() => undefined);
       }
     }
@@ -212,33 +300,58 @@ export class Runtime {
     });
   }
 
-  async startExecution(executionId, { sessionReason = 'start' } = {}) {
+  async startExecution(executionId, { sessionReason = 'start', coreId = null } = {}) {
     this.logger?.append({ event: 'runtime.start_execution', execution_id: executionId, session_reason: sessionReason });
     const execution = this.#getExecution(executionId);
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only start CREATED executions, got ${execution.state}`);
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
+    const selectedCoreId = this.#resolveCoreId(execution, coreId);
+    this.#assertCoreAvailable(selectedCoreId, execution.execution_id);
     const workspace = await this.#prepareWorkspace(execution);
     // A recovery start restores the already persisted revision. Rewriting that
     // same revision would violate the Workspace Manager's monotonic CAS rule.
     let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
-    const started = this.taskService.dispatch('start_execution', this.#executionTimingPayload(), this.#executionEnvelope(current, operationId('start')));
+    const started = this.taskService.dispatch('start_execution', {
+      ...this.#executionTimingPayload(),
+      ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
+    }, this.#executionEnvelope(current, operationId('start')));
     current = started.execution;
     try {
-      return await this.#launch(current, workspace, { sessionReason });
+      return await this.#launch(current, workspace, { sessionReason, coreId: selectedCoreId });
     } catch (error) {
       const active = this.activeProcesses.get(executionId);
       this.activeProcesses.delete(executionId);
+      this.#setCoreState(active?.coreId ?? selectedCoreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       await Promise.resolve(active?.session.stop?.()).catch(() => undefined);
       if (this.stopping) throw error;
       const failed = this.#getExecution(executionId);
       if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
-        this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('start-failed')));
+        this.taskService.dispatch('stop_execution', {
+          terminal_state: 'FAILED',
+          terminal_reason: 'startup_failed',
+        }, this.#executionEnvelope(failed, operationId('start-failed')));
       }
       throw error;
     }
   }
 
-  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null } = {}) {
+  /**
+   * Start an Execution that has already been selected and claimed by a Core
+   * Daemon. The method intentionally accepts no Task filters or ranking
+   * inputs: Task choice belongs to the Daemon and the claim is the handoff
+   * boundary.
+   */
+  startClaimedExecution(executionOrId, { coreId = null, sessionReason = 'claimed' } = {}) {
+    const executionId = typeof executionOrId === 'string' ? executionOrId : executionOrId?.execution_id;
+    requireString(executionId, 'execution_id');
+    return this.startExecution(executionId, { coreId, sessionReason });
+  }
+
+  runClaimedExecution(executionOrId, options = {}) {
+    return this.startClaimedExecution(executionOrId, options);
+  }
+
+  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null, coreId = null, sessionReason = 'bound' } = {}) {
     this.logger?.append({ event: 'runtime.bind_execution', execution_id: executionId });
     if ((!session || typeof session.stop !== 'function') && typeof startSession !== 'function') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Agent session or startSession is required');
@@ -246,25 +359,76 @@ export class Runtime {
     const execution = this.#getExecution(executionId);
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only bind CREATED executions, got ${execution.state}`);
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
+    const selectedCoreId = this.#resolveCoreId(execution, coreId);
+    this.#assertCoreAvailable(selectedCoreId, execution.execution_id);
     const workspace = await this.#prepareWorkspace(execution, workspaceRef);
     let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
-    current = this.taskService.dispatch('start_execution', this.#executionTimingPayload(), this.#executionEnvelope(current, operationId('bind'))).execution;
+    current = this.taskService.dispatch('start_execution', {
+      ...this.#executionTimingPayload(),
+      ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
+    }, this.#executionEnvelope(current, operationId('bind'))).execution;
     let boundSession = session;
     try {
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
       if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
-      this.#registerActiveProcess(current, workspace, boundSession, { sessionReason: 'bound' });
+      this.#registerActiveProcess(current, workspace, boundSession, { sessionReason, coreId: selectedCoreId });
       await this.#sendInitialPrompt(boundSession, agentPrompt);
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
       this.activeProcesses.delete(executionId);
+      this.#setCoreState(selectedCoreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       await Promise.resolve(boundSession?.stop?.()).catch(() => undefined);
       const failed = this.#getExecution(executionId);
       if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
-        this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED' }, this.#executionEnvelope(failed, operationId('bind-failed')));
+        this.taskService.dispatch('stop_execution', {
+          terminal_state: 'FAILED',
+          terminal_reason: 'bind_failed',
+        }, this.#executionEnvelope(failed, operationId('bind-failed')));
       }
       throw error;
     }
+  }
+
+  /**
+   * Restart only the process incarnation for an active Execution. The
+   * durable Execution ID and Core binding remain stable; Task Service records
+   * the fencing/session generation transition through recover_execution.
+   */
+  async restartSession(executionId, { reason = 'session_restart', agentPrompt = null } = {}) {
+    const existing = this.#getExecution(executionId);
+    if (!['CREATED', 'RUNNING'].includes(existing.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only restart CREATED or RUNNING executions, got ${existing.state}`);
+    }
+    const active = this.activeProcesses.get(executionId);
+    if (active) {
+      this.activeProcesses.delete(executionId);
+      await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+    }
+    let current = this.#getExecution(executionId);
+    if (current.state === 'RUNNING') {
+      if (current.workspace_ref) {
+        await this.workspaceManager.fenceWorkspace({
+          workspaceRef: current.workspace_ref,
+          executionId,
+          fencingVersion: current.fencing_version,
+          newFencingVersion: current.fencing_version + 1,
+        });
+      }
+      current = this.taskService.dispatch('recover_execution', {
+        runtime_generation: this.runtimeGeneration,
+        ...(agentPrompt ? { agent_prompt: agentPrompt } : {}),
+      }, this.#executionEnvelope(current, operationId('session-restart'))).execution;
+    }
+    const restarted = await this.startExecution(executionId, {
+      coreId: current.core_id ?? null,
+      sessionReason: reason,
+    });
+    return { previous_execution_id: executionId, execution: restarted.execution, workspace: restarted.workspace, session: restarted.session };
+  }
+
+  restartExecutionSession(executionId, options = {}) {
+    return this.restartSession(executionId, options);
   }
 
   async wakeExecution(executionId, { wakeKey = null, beforePrompt = null } = {}) {
@@ -277,9 +441,23 @@ export class Runtime {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only wake WAITING executions, got ${waiting.state}`);
     }
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
-    const resumed = this.taskService.dispatch('wake_execution', { wake_key: key }, this.#executionEnvelope(waiting, operationId('wake'))).execution;
-    const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'), executionId, fencingVersion: resumed.fencing_version });
-    return this.#launch(resumed, workspace, { beforePrompt, sessionReason: 'wake' });
+    const wakeCoreId = this.#resolveCoreId(waiting, null);
+    const resumed = this.taskService.dispatch('wake_execution', {
+      wake_key: key,
+      ...(wakeCoreId ? { core_id: wakeCoreId } : {}),
+    }, this.#executionEnvelope(waiting, operationId('wake'))).execution;
+    try {
+      const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'), executionId, fencingVersion: resumed.fencing_version });
+      const coreId = this.#resolveCoreId(resumed, wakeCoreId);
+      this.#assertCoreAvailable(coreId, executionId);
+      return await this.#launch(resumed, workspace, { beforePrompt, sessionReason: 'wake', coreId });
+    } catch (error) {
+      const current = this.taskService.getExecution(executionId);
+      if (current && ['CREATED', 'RUNNING'].includes(current.state)) {
+        await this.fenceExecution(executionId, { reason: 'wake_failed' }).catch(() => undefined);
+      }
+      throw error;
+    }
   }
 
   async requestWait(executionId, { waitCondition, checkpoint = {}, files = {}, deadline = null, waitKey = null }) {
@@ -287,10 +465,24 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     const execution = this.#getExecution(executionId);
     if (!active || execution.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime process can request wait');
-    const validatedWait = this.taskService.validateWaitCondition?.(executionId, {
-      waitCondition,
-      waitDeadline: deadline ?? waitCondition?.deadline ?? null,
-    });
+    let validatedWait;
+    try {
+      validatedWait = this.taskService.validateWaitCondition?.(executionId, {
+        waitCondition,
+        waitDeadline: deadline ?? waitCondition?.deadline ?? null,
+      });
+    } catch (error) {
+      // A dependency can become satisfied between the Agent's read and its
+      // request_wait call. Keep the active Execution alive and let the
+      // Session continue on its next turn; a stale wait request must not turn
+      // into a failed claim or strand Core capacity.
+      if (error?.code === ERROR_CODES.INVALID_CONTRACT && /condition is already satisfied/.test(error.message ?? '') &&
+        this.taskService.isWaitConditionSatisfied?.(executionId, waitCondition)) {
+        this.logger?.append({ event: 'runtime.wait_already_satisfied', execution_id: executionId, wait_condition: waitCondition });
+        return { execution, task: this.taskService.getTask(execution.task_id), disposition: 'already_satisfied' };
+      }
+      throw error;
+    }
     if (!validatedWait && (!waitCondition || typeof waitCondition !== 'object')) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
     }
@@ -317,10 +509,91 @@ export class Runtime {
       wait_condition: waitCondition,
       wait_deadline: deadline ?? waitCondition?.deadline ?? null,
     }, this.#executionEnvelope(current, operationId('wait')));
-    this.activeProcesses.delete(executionId);
     await Promise.resolve(active.session.stop()).catch(() => undefined);
     await this.workspaceManager.releaseWorkspace({ workspaceRef: workspace.workspace_ref, executionId, fencingVersion: execution.fencing_version });
+    this.activeProcesses.delete(executionId);
+    this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     return waited;
+  }
+
+  /**
+   * End an Execution because it has reached a concrete external dependency.
+   * Task Service performs the durable BLOCKED transition and Runtime then
+   * stops the Session and releases the physical Workspace/Core. The legacy
+   * requestWait path remains available for reading old evidence, but new
+   * orchestration code should use this boundary for dependency blocking.
+   */
+  async blockExecution(executionId, {
+    reason,
+    dependency = undefined,
+    checkpoint = {},
+    files = {},
+    terminalState = 'FENCED',
+  } = {}) {
+    const active = this.activeProcesses.get(executionId);
+    const execution = this.#getExecution(executionId);
+    if (!active || !['CREATED', 'RUNNING'].includes(execution.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime Execution can be blocked');
+    }
+    requireString(reason, 'block_reason');
+    const task = this.taskService.getTask(execution.task_id);
+    if (task?.completion_contract?.normal_flow === true && dependency === undefined) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'normal_flow Tasks require execution_block with a typed dependency');
+    }
+    const normalizedFiles = normalizeWaitFiles(files);
+    let current = execution;
+    let workspace = null;
+    let checkpointResult = null;
+    if (current.workspace_ref) {
+      workspace = await this.workspaceManager.saveWorkspaceRevision({
+        workspaceRef: current.workspace_ref,
+        executionId,
+        fencingVersion: current.fencing_version,
+        files: normalizedFiles,
+      });
+      current = this.#saveWorkspaceReference(current, workspace, operationId('block-workspace'));
+      checkpointResult = await this.workspaceManager.saveCheckpoint({
+        workspaceRef: workspace.workspace_ref,
+        executionId,
+        fencingVersion: current.fencing_version,
+        checkpoint,
+      });
+      current = this.taskService.dispatch('save_checkpoint', checkpointResult, this.#executionEnvelope(current, operationId('block-checkpoint'))).execution;
+    }
+    const result = this.taskService.dispatch('block_task', {
+      block_reason: reason,
+      ...(dependency !== undefined ? { dependency } : {}),
+      terminal_state: terminalState,
+      checkpoint_ref: checkpointResult?.checkpoint_ref ?? current.checkpoint_ref,
+      checkpoint_hash: checkpointResult?.checkpoint_hash ?? current.checkpoint_hash,
+      workspace_ref: workspace?.workspace_ref ?? current.workspace_ref,
+      workspace_revision: workspace?.workspace_revision ?? current.workspace_revision,
+      workspace_content_hash: workspace?.content_hash ?? current.workspace_content_hash,
+    }, this.#executionEnvelope(current, operationId('block')));
+    // The Task Service transition is the logical ownership boundary. Fence the
+    // physical Workspace only after block_task commits; otherwise a rejected
+    // dependency contract leaves a RUNNING Execution with an unwritable
+    // Workspace and traps the Agent in a repeated FENCED retry loop.
+    const workspaceFenced = await this.#fenceWorkspaceBestEffort({
+      ...current,
+      workspace_ref: result.execution.workspace_ref ?? current.workspace_ref,
+      fencing_version: current.fencing_version,
+    }, {
+      newFencingVersion: result.execution.fencing_version,
+      event: 'runtime.block_workspace_fence_error',
+    });
+    await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+    if (workspaceFenced && result.execution.workspace_ref) {
+      await this.workspaceManager.releaseWorkspace({
+        workspaceRef: result.execution.workspace_ref,
+        executionId,
+        fencingVersion: result.execution.fencing_version,
+      }).catch(() => undefined);
+    }
+    this.activeProcesses.delete(executionId);
+    this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+    this.logger?.append({ event: 'runtime.execution_blocked', execution_id: executionId, block_reason: reason });
+    return { ...result, checkpoint: checkpointResult, workspace };
   }
 
   /**
@@ -450,14 +723,6 @@ export class Runtime {
     }
     const handoffOperationId = `runtime:handoff:${executionId}:${handoffKey ?? `${reason}:${current.state_version}`}`;
     const oldFence = current.fencing_version;
-    if (current.workspace_ref) {
-      await this.workspaceManager.fenceWorkspace({
-        workspaceRef: current.workspace_ref,
-        executionId,
-        fencingVersion: oldFence,
-        newFencingVersion: oldFence + 1,
-      });
-    }
     const result = this.taskService.dispatch('handoff_execution', {
       terminal_state: terminalState,
       terminal_reason: reason,
@@ -468,6 +733,13 @@ export class Runtime {
       workspace_content_hash: workspace?.content_hash ?? current.workspace_content_hash,
       handoff_metadata: metadata,
     }, this.#executionEnvelope(current, handoffOperationId));
+    // Durable ownership ends before physical cleanup. A transient or stale
+    // Workspace metadata error must not strand the Execution in RUNNING.
+    const workspaceFenced = await this.#fenceWorkspaceBestEffort({
+      ...current,
+      workspace_ref: result.execution.workspace_ref ?? current.workspace_ref,
+      fencing_version: oldFence,
+    }, { newFencingVersion: result.execution.fencing_version, event: 'runtime.handoff_workspace_fence_error' });
     const active = this.activeProcesses.get(executionId);
     if (active) {
       active.closing = true;
@@ -475,8 +747,9 @@ export class Runtime {
         this.logger?.append({ event: 'runtime.handoff_stop_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'session_stop_error' });
       });
       this.activeProcesses.delete(executionId);
+      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
-    if (result.execution.workspace_ref) {
+    if (workspaceFenced && result.execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({
         workspaceRef: result.execution.workspace_ref,
         executionId,
@@ -564,15 +837,20 @@ export class Runtime {
     return result;
   }
 
-  async stopExecution(executionId, terminalState = 'CANCELLED') {
-    this.logger?.append({ event: 'runtime.stop_execution', execution_id: executionId, terminal_state: terminalState });
+  async stopExecution(executionId, terminalState = 'CANCELLED', terminalReason = null) {
+    const reason = terminalReason ?? terminalState.toLowerCase();
+    this.logger?.append({ event: 'runtime.stop_execution', execution_id: executionId, terminal_state: terminalState, terminal_reason: reason });
     const execution = this.#getExecution(executionId);
     const active = this.activeProcesses.get(executionId);
     if (active) {
       this.activeProcesses.delete(executionId);
       await Promise.resolve(active.session.stop()).catch(() => undefined);
+      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
-    const result = this.taskService.dispatch('stop_execution', { terminal_state: terminalState }, this.#executionEnvelope(execution, operationId('stop')));
+    const result = this.taskService.dispatch('stop_execution', {
+      terminal_state: terminalState,
+      terminal_reason: reason,
+    }, this.#executionEnvelope(execution, operationId('stop')));
     if (execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({ workspaceRef: execution.workspace_ref, executionId, fencingVersion: execution.fencing_version });
     }
@@ -590,6 +868,7 @@ export class Runtime {
     if (active) {
       this.activeProcesses.delete(id);
       await Promise.resolve(active.session.stop()).catch(() => undefined);
+      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
     if (execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({
@@ -601,18 +880,31 @@ export class Runtime {
     return { execution };
   }
 
-  async fenceExecution(executionId) {
-    this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId });
+  async fenceExecution(executionId, { reason = 'fenced' } = {}) {
+    this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId, terminal_reason: reason });
     const execution = this.#getExecution(executionId);
-    const newFencingVersion = execution.fencing_version + 1;
-    if (execution.workspace_ref) {
-      await this.workspaceManager.fenceWorkspace({ workspaceRef: execution.workspace_ref, executionId, fencingVersion: execution.fencing_version, newFencingVersion });
-    }
-    const result = this.taskService.dispatch('fence_execution', { runtime_generation: this.runtimeGeneration }, this.#executionEnvelope(execution, operationId('fence')));
+    const result = this.taskService.dispatch('fence_execution', {
+      runtime_generation: this.runtimeGeneration,
+      terminal_reason: reason,
+    }, this.#executionEnvelope(execution, operationId('fence')));
+    const workspaceFenced = await this.#fenceWorkspaceBestEffort(execution, {
+      newFencingVersion: result.execution.fencing_version,
+      event: 'runtime.fence_workspace_error',
+    });
     const active = this.activeProcesses.get(executionId);
     if (active) {
       this.activeProcesses.delete(executionId);
       await Promise.resolve(active.session.stop()).catch(() => undefined);
+      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+    }
+    if (workspaceFenced && result.execution.workspace_ref) {
+      await this.workspaceManager.releaseWorkspace({
+        workspaceRef: result.execution.workspace_ref,
+        executionId,
+        fencingVersion: result.execution.fencing_version,
+      }).catch((error) => {
+        this.logger?.append({ event: 'runtime.fence_workspace_release_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'workspace_release_error' });
+      });
     }
     return result;
   }
@@ -622,14 +914,28 @@ export class Runtime {
     const expired = [];
     for (const execution of this.taskService.listActiveExecutions()) {
       if (!['CREATED', 'RUNNING'].includes(execution.state) || Date.parse(execution.lease_expires_at) > at.getTime()) continue;
-      if (execution.workspace_ref) {
-        await this.workspaceManager.fenceWorkspace({ workspaceRef: execution.workspace_ref, executionId: execution.execution_id, fencingVersion: execution.fencing_version, newFencingVersion: execution.fencing_version + 1 });
-      }
-      const result = this.taskService.dispatch('expire_execution', { runtime_generation: this.runtimeGeneration }, this.#executionEnvelope(execution, operationId('expire')));
+      const result = this.taskService.dispatch('expire_execution', {
+        runtime_generation: this.runtimeGeneration,
+        terminal_reason: 'lease_expired',
+      }, this.#executionEnvelope(execution, operationId('expire')));
+      const workspaceFenced = await this.#fenceWorkspaceBestEffort(execution, {
+        newFencingVersion: result.execution.fencing_version,
+        event: 'runtime.expire_workspace_fence_error',
+      });
       const active = this.activeProcesses.get(execution.execution_id);
       if (active) {
         this.activeProcesses.delete(execution.execution_id);
         await Promise.resolve(active.session.stop()).catch(() => undefined);
+        this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+      }
+      if (workspaceFenced && result.execution.workspace_ref) {
+        await this.workspaceManager.releaseWorkspace({
+          workspaceRef: result.execution.workspace_ref,
+          executionId: execution.execution_id,
+          fencingVersion: result.execution.fencing_version,
+        }).catch((error) => {
+          this.logger?.append({ event: 'runtime.expire_workspace_release_error', execution_id: execution.execution_id, error_class: error?.code ?? error?.name ?? 'workspace_release_error' });
+        });
       }
       expired.push(result);
     }
@@ -640,7 +946,7 @@ export class Runtime {
     this.runtimeGeneration += 1;
     for (const execution of this.taskService.listActiveExecutions()) {
       if (execution.state === 'RUNNING' || execution.state === 'CREATED') {
-        await this.fenceExecution(execution.execution_id);
+        await this.fenceExecution(execution.execution_id, { reason: 'runtime_restart' });
       }
     }
     await Promise.all([...this.activeProcesses.values()].map((active) => Promise.resolve(active.session.stop()).catch(() => undefined)));
@@ -652,6 +958,26 @@ export class Runtime {
     const execution = this.taskService.getExecution(requireString(executionId, 'execution_id'));
     if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
     return execution;
+  }
+
+  async #fenceWorkspaceBestEffort(execution, { newFencingVersion = execution?.fencing_version + 1, event = 'runtime.workspace_fence_error' } = {}) {
+    if (!execution?.workspace_ref) return true;
+    try {
+      await this.workspaceManager.fenceWorkspace({
+        workspaceRef: execution.workspace_ref,
+        executionId: execution.execution_id,
+        fencingVersion: execution.fencing_version,
+        newFencingVersion,
+      });
+      return true;
+    } catch (error) {
+      this.logger?.append({
+        event,
+        execution_id: execution.execution_id,
+        error_class: error?.code ?? error?.name ?? 'workspace_fence_error',
+      });
+      return false;
+    }
   }
 
   async #prepareWorkspace(execution, workspaceRef = null) {
@@ -742,13 +1068,16 @@ export class Runtime {
     throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'could not persist Workspace reference after concurrent updates');
   }
 
-  async #launch(execution, workspace, { beforePrompt = null, sessionReason = 'start' } = {}) {
+  async #launch(execution, workspace, { beforePrompt = null, sessionReason = 'start', coreId = null } = {}) {
     const session = await this.agentAdapter.start({
       executionId: execution.execution_id,
       sessionId: randomUUID(),
       sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
       cwd: workspace.workspace_ref,
       logger: this.agentLogger,
+      coreId,
+      taskId: execution.task_id,
+      observationContext: { coreId, taskId: execution.task_id, executionId: execution.execution_id },
     });
     const manifestContent = JSON.stringify(session.manifest ?? {}, null, 2);
     const nextWorkspace = await this.workspaceManager.saveWorkspaceRevision({
@@ -758,7 +1087,7 @@ export class Runtime {
       files: { 'runtime-manifest.json': manifestContent },
     });
     const current = this.#saveWorkspaceReference(execution, nextWorkspace);
-    this.#registerActiveProcess(current, nextWorkspace, session, { sessionReason });
+    this.#registerActiveProcess(current, nextWorkspace, session, { sessionReason, coreId });
     await beforePrompt?.({ execution: current, workspace: nextWorkspace, session });
     await this.#sendInitialPrompt(session, execution.agent_prompt);
     const active = this.activeProcesses.get(execution.execution_id);
@@ -783,12 +1112,13 @@ export class Runtime {
     await session.prompt(prompt, { timeoutMs: 30_000 });
   }
 
-  #registerActiveProcess(execution, workspace, session, { sessionReason = 'start' } = {}) {
+  #registerActiveProcess(execution, workspace, session, { sessionReason = 'start', coreId = null } = {}) {
     const nowMs = this.clock();
     const active = {
       session,
       execution,
       workspace,
+      coreId,
       phase: 'idle',
       lastEventAt: nowMs,
       lastHeartbeatAt: null,
@@ -799,6 +1129,12 @@ export class Runtime {
       failurePromise: null,
     };
     this.activeProcesses.set(execution.execution_id, active);
+    this.#setCoreState(coreId, {
+      state: 'RUNNING',
+      execution_id: execution.execution_id,
+      task_id: execution.task_id,
+      session_id: session.sessionId ?? null,
+    });
     session.on('rpc', (record) => {
       void this.#handleSessionEvent(execution.execution_id, record);
     });
@@ -842,6 +1178,42 @@ export class Runtime {
     }
   }
 
+  #onExecutionState(event) {
+    if (event?.kind !== 'executions_fenced' || !Array.isArray(event.execution_ids)) return;
+    for (const executionId of event.execution_ids) {
+      if (!executionId || executionId === event.excluded_execution_id || !this.activeProcesses.has(executionId)) continue;
+      const promise = this.#releaseFencedProcess(executionId).finally(() => this.pendingReleasePromises.delete(promise));
+      this.pendingReleasePromises.add(promise);
+    }
+  }
+
+  async #releaseFencedProcess(executionId) {
+    const active = this.activeProcesses.get(executionId);
+    if (!active) return;
+    this.activeProcesses.delete(executionId);
+    const execution = this.taskService.getExecution(executionId);
+    await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+    if (execution?.workspace_ref) {
+      const oldFence = Math.max(0, execution.fencing_version - 1);
+      await this.workspaceManager.fenceWorkspace({
+        workspaceRef: execution.workspace_ref,
+        executionId,
+        fencingVersion: oldFence,
+        newFencingVersion: execution.fencing_version,
+      }).catch(() => undefined);
+      await this.workspaceManager.releaseWorkspace({
+        workspaceRef: execution.workspace_ref,
+        executionId,
+        fencingVersion: execution.fencing_version,
+      }).catch(() => undefined);
+    }
+    // Keep the Core occupied until the old process has actually stopped and
+    // its fenced Workspace is released. Durable fencing alone must not make a
+    // reusable slot look idle while the sibling Session is still exiting.
+    this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+    this.logger?.append({ event: 'runtime.execution_fenced_released', execution_id: executionId });
+  }
+
   async #handleSessionEvent(executionId, record) {
     if (this.stopping) return;
     const active = this.activeProcesses.get(executionId);
@@ -879,7 +1251,10 @@ export class Runtime {
     if (!active || this.stopping) return;
     const execution = this.#getExecution(executionId);
     if (execution.state === 'RUNNING') await this.#handleSessionFailure(executionId, 'process_exit');
-    else this.activeProcesses.delete(executionId);
+    else {
+      this.activeProcesses.delete(executionId);
+      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+    }
   }
 
   async #handleSessionFailure(executionId, failureClass) {
@@ -892,7 +1267,9 @@ export class Runtime {
     if (active.failurePromise) return active.failurePromise;
     active.lastFailureClass = failureClass;
     const failurePromise = (async () => {
+      const coreId = active.coreId;
       this.activeProcesses.delete(executionId);
+      this.#setCoreState(coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       const execution = this.#getExecution(executionId);
       if (execution.state !== 'RUNNING') return { execution };
       await Promise.resolve(active.session.stop?.()).catch(() => undefined);
@@ -901,7 +1278,7 @@ export class Runtime {
       this.recoveryAttempts.set(execution.task_id, recoveryAttempt);
       this.logger?.append({ event: 'runtime.session_failure', execution_id: executionId, failure_class: failureClass, recovery_attempt: recoveryAttempt });
       if (recoveryAttempt > this.maxRecoveryAttempts) {
-        const fenced = await this.fenceExecution(executionId);
+        const fenced = await this.fenceExecution(executionId, { reason: 'recovery_exhausted' });
         this.logger?.append({ event: 'runtime.recovery_exhausted', execution_id: executionId, failure_class: failureClass, recovery_attempt: recoveryAttempt });
         return { execution: fenced.execution, recovery: null, disposition: 'exhausted' };
       }
@@ -955,6 +1332,59 @@ export class Runtime {
       stateVersion: execution.state_version,
       fencingVersion: execution.fencing_version,
     });
+  }
+
+  #resolveCoreId(execution, requestedCoreId) {
+    const persisted = execution.core_id ?? execution.coreId ?? null;
+    if (requestedCoreId !== null && requestedCoreId !== undefined) {
+      const selected = requireString(requestedCoreId, 'core_id');
+      if (persisted !== null && persisted !== selected) {
+        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Execution is bound to another Core', {
+          execution_id: execution.execution_id,
+          expected_core_id: persisted,
+          received_core_id: selected,
+        });
+      }
+      this.registerCore(selected);
+      return selected;
+    }
+    if (persisted !== null) {
+      this.registerCore(persisted);
+      return persisted;
+    }
+    const idle = [...this.coreStates.values()].find((state) => state.state === 'IDLE');
+    return idle?.core_id ?? null;
+  }
+
+  #assertCoreAvailable(coreId, executionId) {
+    if (coreId === null) return;
+    const current = this.coreStates.get(coreId);
+    if (current && current.execution_id !== null && current.execution_id !== executionId) {
+      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', {
+        core_id: coreId,
+        execution_id: current.execution_id,
+      });
+    }
+  }
+
+  #setCoreState(coreId, patch) {
+    if (coreId === null || coreId === undefined) return;
+    const id = requireString(coreId, 'core_id');
+    const current = this.coreStates.get(id) ?? {
+      core_id: id,
+      state: 'IDLE',
+      execution_id: null,
+      task_id: null,
+      session_id: null,
+      updated_at: null,
+    };
+    const next = { ...current, ...patch, core_id: id, updated_at: new Date(this.clock()).toISOString() };
+    this.coreStates.set(id, next);
+    try {
+      this.onCoreEvent?.({ kind: 'core_occupancy', ...next });
+    } catch {
+      // Observability cannot change Runtime ownership behavior.
+    }
   }
 
   #executionTimingPayload(at = this.clock()) {

@@ -37,6 +37,10 @@ export class ServicesSDK {
     return this.#read('list_tasks', filters);
   }
 
+  listClaimableTasks(filters = {}) {
+    return this.#read('list_claimable_tasks', filters);
+  }
+
   listExecutions(taskId = this.context.taskId, { includeTerminal = true } = {}) {
     return this.#read('list_executions', { task_id: taskId, include_terminal: includeTerminal });
   }
@@ -55,6 +59,15 @@ export class ServicesSDK {
 
   readMaterials(filters = {}) {
     return this.#read('read_materials', filters);
+  }
+
+  /** Record the bounded Material IDs this Execution actually used. */
+  consumeMaterials(payload = {}, options = {}) {
+    return this.#write('consume_materials', payload, options);
+  }
+
+  listMaterialConsumptions(filters = {}) {
+    return this.#read('list_material_consumptions', filters);
   }
 
   getCheckResult(checkResultId) {

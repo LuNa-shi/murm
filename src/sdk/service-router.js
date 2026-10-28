@@ -1,12 +1,12 @@
 import { getServiceMetadata, listServices, listTools } from './service-catalog.js';
 
 const TASK_OPERATIONS = new Set([
-  'abort', 'claim', 'create_child_task', 'fence_execution', 'get_execution', 'get_task', 'heartbeat', 'list_children', 'list_tasks', 'list_executions',
+  'abort', 'claim', 'create_child_task', 'fence_execution', 'get_execution', 'get_task', 'heartbeat', 'list_children', 'list_tasks', 'list_claimable_tasks', 'list_executions',
   'propose_task', 'request_wait', 'resume_execution', 'start_execution', 'stop_execution', 'submit_candidate',
   'accept_task', 'request_rework', 'apply_check_result', 'wake_execution',
   'create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task',
 ]);
-const CONTEXT_OPERATIONS = new Set(['publish_material', 'read_materials']);
+const CONTEXT_OPERATIONS = new Set(['publish_material', 'read_materials', 'consume_materials', 'list_material_consumptions']);
 const JUDGE_OPERATIONS = new Set(['get_check_result']);
 
 export class ServicesRouter {

@@ -8,8 +8,9 @@ import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const AGENT_OPERATIONS = new Set([
-  'get_task', 'get_execution', 'read_materials', 'publish_material', 'submit_candidate',
-  'heartbeat', 'create_child_task', 'request_wait', 'claim', 'list_tasks', 'list_executions',
+  'get_task', 'get_execution', 'read_materials', 'consume_materials', 'publish_material', 'submit_candidate',
+  'heartbeat', 'create_child_task', 'request_wait', 'block_execution', 'claim', 'list_tasks', 'list_claimable_tasks', 'list_executions',
+  'select_task',
   'accept_task', 'request_rework', 'get_check_result',
   'create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task',
   'list_services', 'get_service_metadata', 'list_tools', 'scheduler_status', 'get_workspace', 'list_workspace_revisions',
@@ -18,6 +19,24 @@ const AGENT_OPERATIONS = new Set([
 
 function json(value) {
   return JSON.stringify(value ?? null);
+}
+
+function selectionCandidate(candidate) {
+  return {
+    task_id: candidate?.task_id ?? null,
+    task_type: candidate?.task_type ?? null,
+    parent_id: candidate?.parent_id ?? null,
+    goal: candidate?.goal ?? null,
+    expected_output: candidate?.expected_output ?? null,
+    task_instructions: candidate?.task_instructions ?? null,
+    acceptance_conditions: candidate?.acceptance_conditions ?? null,
+    completion_contract: candidate?.completion_contract ?? null,
+    priority: candidate?.priority ?? 0,
+    state: candidate?.state ?? null,
+    age_ms: candidate?.age_ms ?? null,
+    fairness_protected: candidate?.fairness_protected ?? false,
+    selection_rank: candidate?.selection_rank ?? null,
+  };
 }
 
 function errorBody(error) {
@@ -91,7 +110,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, onClaim = null, onClaimAccepted = null, onSelectTask = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -102,6 +121,7 @@ export class ServicesBridge {
     this.executionId = executionId;
     this.onClaim = onClaim;
     this.onClaimAccepted = onClaimAccepted;
+    this.onSelectTask = onSelectTask;
     this.onRelease = onRelease;
     this.onWorkspaceWrite = onWorkspaceWrite;
     this.onWorkUnit = onWorkUnit;
@@ -119,6 +139,40 @@ export class ServicesBridge {
     // Agent-visible HTTP response.  Keeping this state on the bridge also
     // makes the handoff boundary explicit for direct seam tests.
     this.deferredLifecycle = null;
+    this.selectionCandidates = null;
+    this.selectionClaimAttempted = false;
+  }
+
+  /** Set the complete bounded view visible to the next stateless selection turn. */
+  setSelectionCandidates(candidates = null) {
+    this.selectionCandidates = Array.isArray(candidates) ? candidates.map(selectionCandidate) : null;
+    this.selectionClaimAttempted = false;
+    return this.selectionCandidates ? this.selectionCandidates.map((candidate) => ({ ...candidate })) : null;
+  }
+
+  /** Bind a durable Daemon claim before Runtime starts the fresh Task Session. */
+  async bindClaim(result) {
+    if (!result?.task?.task_id || !result?.execution?.execution_id) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bindClaim requires a Task and Execution result');
+    }
+    if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'bridge already has a claimed binding');
+    this.taskId = result.task.task_id;
+    this.executionId = result.execution.execution_id;
+    this.selectionCandidates = null;
+    try {
+      await this.onClaimAccepted?.(result);
+      await this.onClaim?.(result);
+    } catch (error) {
+      const released = { taskId: this.taskId, executionId: this.executionId, result: null };
+      this.taskId = null;
+      this.executionId = null;
+      // A failed handoff still owns a durable claim until the caller fences it.
+      // Deliver the original binding to the release hook before surfacing the
+      // handoff error, so a Core cannot retain a stale Execution identity.
+      try { await this.onRelease?.(released); } catch { /* preserve handoff failure */ }
+      throw error;
+    }
+    return result;
   }
 
   async start({ port = 0 } = {}) {
@@ -189,20 +243,22 @@ export class ServicesBridge {
     const deferred = this.deferredLifecycle;
     if (!deferred) return null;
     this.deferredLifecycle = null;
-    const waited = await this.runtime.requestWait(deferred.executionId, deferred.wait);
+    const settled = deferred.kind === 'block'
+      ? await this.runtime.blockExecution(deferred.executionId, deferred.block)
+      : await this.runtime.requestWait(deferred.executionId, deferred.wait);
     if (this.taskId === deferred.taskId && this.executionId === deferred.executionId) {
       await this.releaseClaim({
         result: {
           ...deferred.result,
           applied: {
             ...(deferred.result?.applied ?? {}),
-            execution: waited?.execution ?? deferred.result?.applied?.execution,
-            task: waited?.task ?? deferred.result?.applied?.task,
+            execution: settled?.execution ?? deferred.result?.applied?.execution,
+            task: settled?.task ?? deferred.result?.applied?.task,
           },
         },
       });
     }
-    return waited;
+    return settled;
   }
 
   async call({ operation, payload = {}, operation_id: operationId = null } = {}) {
@@ -211,11 +267,26 @@ export class ServicesBridge {
       if (!AGENT_OPERATIONS.has(operation)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Agent operation is not allowed: ${operation}`, { operation });
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bridge payload must be an object');
       const service = this.router ?? { dispatch: (name, body, envelope) => {
-        if (['get_task', 'get_execution', 'list_tasks', 'list_executions'].includes(name)) return this.taskService.dispatch(name, body, envelope);
+        if (['get_task', 'get_execution', 'list_tasks', 'list_claimable_tasks', 'list_executions'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
       } };
       const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
-      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_executions', 'get_task_structure', 'explain_task_readiness', 'scheduler_status'].includes(operation)) {
+      if (operation === 'select_task') {
+        if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'select_task is only available to an unbound selection Session');
+        if (!Array.isArray(this.selectionCandidates)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'select_task is only available during a Core Daemon selection turn');
+        const selectedTaskId = payload.task_id;
+        if (typeof selectedTaskId !== 'string' || selectedTaskId.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'select_task requires payload.task_id');
+        const selected = this.selectionCandidates.find((candidate) => String(candidate.task_id ?? candidate.taskId ?? candidate.id) === selectedTaskId);
+        if (!selected) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'select_task must choose a task_id from the bounded shortlist', { task_id: selectedTaskId });
+        await this.onSelectTask?.({ task_id: selectedTaskId, task: { ...selected } });
+        const result = { selected_task_id: selectedTaskId };
+        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+        return result;
+      }
+      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_claimable_tasks', 'list_executions', 'get_task_structure', 'explain_task_readiness', 'scheduler_status'].includes(operation)) {
+        if (operation === 'list_claimable_tasks' && this.taskId !== null) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claimable discovery is only available to an unbound selection Session');
+        }
         if (operation === 'scheduler_status') {
           const result = await (this.onSchedulerStatus
             ? this.onSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId })
@@ -223,11 +294,16 @@ export class ServicesBridge {
           this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
-        const discoveryPayload = operation === 'list_tasks' && this.taskId === null && payload.available_only !== false
+        const discoveryPayload = (operation === 'list_tasks' || operation === 'list_claimable_tasks') && this.taskId === null && payload.available_only !== false
           ? { ...payload, states: ['OPEN', 'RUNNING', 'WAITING'] }
           : (['get_task_structure', 'explain_task_readiness'].includes(operation) && payload.task_id === undefined && this.taskId
             ? { ...payload, task_id: this.taskId }
             : payload);
+        if (['list_tasks', 'list_claimable_tasks'].includes(operation) && Array.isArray(this.selectionCandidates)) {
+          const result = this.selectionCandidates.map(selectionCandidate);
+          this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+          return result;
+        }
         const result = service.dispatch(operation, discoveryPayload, makeEnvelope({
           operationId: bridgeOperationId,
           actorRef: this.actorRef,
@@ -239,6 +315,10 @@ export class ServicesBridge {
         if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claim is only available to an unbound worker bridge', { task_id: this.taskId, execution_id: this.executionId });
         const taskId = payload.task_id;
         if (typeof taskId !== 'string' || taskId.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim requires payload.task_id');
+        if (Array.isArray(this.selectionCandidates) && !this.selectionCandidates.some((candidate) => String(candidate.task_id ?? candidate.taskId ?? candidate.id) === taskId)) {
+          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim must target a task_id from the bounded shortlist', { task_id: taskId });
+        }
+        this.selectionClaimAttempted = true;
         const task = this.taskService.getTask(taskId);
         if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`, { task_id: taskId });
         // The bridge is the Agent identity boundary. A model may choose the
@@ -254,6 +334,11 @@ export class ServicesBridge {
         }));
         this.taskId = result.task.task_id;
         this.executionId = result.execution.execution_id;
+        // Legacy selection adapters may claim through this same bridge before
+        // Runtime starts the fresh bound Session. End the shortlist boundary
+        // before the bound prompt so that Task collaboration reads are not
+        // accidentally reduced to the old selection view.
+        this.selectionCandidates = null;
         let handoffRequired = false;
         try {
           await this.onClaimAccepted?.(result);
@@ -307,6 +392,10 @@ export class ServicesBridge {
           waitCondition,
           deadline: payload.deadline ?? payload.wait_deadline,
         });
+        if (result?.disposition === 'already_satisfied') {
+          this.logger?.append({ event: 'bridge.wait_already_satisfied', operation, result });
+          return result;
+        }
         const released = { taskId: this.taskId, executionId: this.executionId, result };
         // Record the durable wait request before releasing the bridge binding;
         // the runner uses this ordering to measure physical Core release.
@@ -314,6 +403,22 @@ export class ServicesBridge {
         this.taskId = null;
         this.executionId = null;
         if (this.onRelease) await this.onRelease(released);
+        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+        return result;
+      }
+      if (operation === 'block_execution') {
+        const result = await this.runtime.blockExecution(this.executionId, {
+          ...payload,
+          reason: payload.reason ?? payload.block_reason,
+          checkpoint: payload.checkpoint ?? {},
+          files: payload.files ?? {},
+          terminalState: payload.terminal_state ?? 'FENCED',
+        });
+        const released = { taskId: this.taskId, executionId: this.executionId, result };
+        await this.onWorkUnit?.({ operation, taskId: released.taskId, executionId: released.executionId, payload, result });
+        this.taskId = null;
+        this.executionId = null;
+        await this.onRelease?.(released);
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
@@ -332,19 +437,23 @@ export class ServicesBridge {
         case 'get_task': result = sdk.getTask(payload.task_id ?? this.taskId); break;
         case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
         case 'read_materials': result = sdk.readMaterials(payload); break;
+        case 'consume_materials': result = sdk.consumeMaterials(payload, options); break;
         case 'publish_material': result = sdk.publishMaterial(payload, options); break;
         case 'submit_candidate':
           result = sdk.submitCandidate(payload, options);
           if (this.onSubmitCandidate) {
             const callbackResult = await this.onSubmitCandidate({ taskId: boundTaskId, executionId: boundExecutionId, payload, result });
-            const { deferred_wait: deferredWait = null, ...visibleCallbackResult } = callbackResult ?? {};
+            const { deferred_wait: deferredWait = null, deferred_block: deferredBlock = null, ...visibleCallbackResult } = callbackResult ?? {};
+            if (deferredWait && deferredBlock) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'a candidate lifecycle cannot defer both wait and block');
             result = { ...result, ...visibleCallbackResult };
-            if (deferredWait) {
+            if (deferredWait || deferredBlock) {
               if (this.deferredLifecycle) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'a deferred candidate lifecycle is already pending');
               this.deferredLifecycle = {
+                kind: deferredBlock ? 'block' : 'wait',
                 taskId: boundTaskId,
                 executionId: boundExecutionId,
                 wait: deferredWait,
+                block: deferredBlock,
                 result,
               };
             }
@@ -380,7 +489,7 @@ export class ServicesBridge {
       if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {
         await this.onWorkspaceWrite({ taskId: boundTaskId, executionId: boundExecutionId, result });
       }
-      if (this.onWorkUnit && ['read_materials', 'publish_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+      if (this.onWorkUnit && ['read_materials', 'consume_materials', 'publish_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
         await this.onWorkUnit({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });

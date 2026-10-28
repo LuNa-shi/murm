@@ -51,6 +51,25 @@ test('a root exposes alternative ordinary Tasks that are independently claimable
   service.close();
 });
 
+test('normal-flow structure children inherit self-validation contracts', () => {
+  const { service, sdk } = environment();
+  const root = propose(sdk, 'normal-structure-root', { normal_flow: true });
+  const rootRun = claim(sdk, root, 'owner:root', 'normal-structure-root-claim');
+  const rootSdk = bound(sdk, root, rootRun);
+  const branch = rootSdk.createBranchGroup({
+    branch_tasks: [{ task_type: 'default', goal: 'normal branch', expected_output: 'branch result', acceptance_conditions: {}, completion_contract: {} }],
+  }, { operationId: 'normal-structure-branch' }).tasks[0];
+  assert.equal(branch.completion_contract.normal_flow, true);
+  assert.equal(branch.completion_contract.parent_review, undefined);
+  const branchRun = claim(sdk, branch, 'worker:branch', 'normal-structure-branch-claim');
+  const required = bound(sdk, branch, branchRun, 'worker:branch').addRequiredSubtask({
+    subtask: { task_type: 'default', goal: 'normal required', expected_output: 'required result', acceptance_conditions: {}, completion_contract: {} },
+  }, { operationId: 'normal-structure-required' }).task;
+  assert.equal(required.completion_contract.normal_flow, true);
+  assert.equal(required.completion_contract.parent_review, undefined);
+  service.close();
+});
+
 test('a Branch Task cannot create another Branch group but can add required subtasks', () => {
   const { service, sdk } = environment();
   const root = propose(sdk, 'nested-branch-root');
