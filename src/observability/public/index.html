@@ -57,7 +57,10 @@
           </div>
         </header>
         <section id="main-view" class="page-view" aria-live="polite">
-          <div class="loading-state"><span class="spinner"></span><span>Loading observation plane…</span></div>
+          <div class="loading-state" role="status" aria-label="Loading observation plane">
+            <div class="loading-copy"><span class="eyebrow">OBSERVATION PLANE</span><strong>Loading the selected run</strong><span>Connecting to live Core activity…</span></div>
+            <div class="loading-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
+          </div>
         </section>
       </main>
     </div>
