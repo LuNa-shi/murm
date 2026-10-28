@@ -6,6 +6,9 @@ const state = {
   toolCounts: {},
   model: null,
   source: null,
+  registrySource: null,
+  registryRevision: null,
+  registryLongPoll: false,
   lastUpdated: null,
   refreshInFlight: false,
   timelineTimer: null,
@@ -1116,6 +1119,77 @@ function connectStream(id) {
   });
 }
 
+function applyExperimentRegistry(experiments, revision) {
+  if (revision) state.registryRevision = revision;
+  state.experiments = Array.isArray(experiments) ? experiments : [];
+  updateExperimentOptions(state.experiments);
+  const current = state.experiments.find((experiment) => state.experiment && experiment.experiment_id === state.experiment.experiment_id);
+  const running = state.experiments.find((experiment) => experiment.status === 'RUNNING');
+  if (!state.experiment) {
+    const target = running?.experiment_id || state.experiments[0]?.experiment_id;
+    if (target) void selectExperiment(target);
+    else { setConnection('Waiting for data'); updateExperimentMeta(); renderNoExperiment(); }
+    return;
+  }
+  if (!current) {
+    const target = running?.experiment_id || state.experiments[0]?.experiment_id;
+    if (target) void selectExperiment(target);
+    else { state.experiment = null; updateExperimentMeta(); renderNoExperiment(); }
+    return;
+  }
+  state.experiment = Object.assign({}, state.experiment, current);
+  updateExperimentMeta();
+  renderCurrent();
+}
+
+function connectExperimentRegistry() {
+  if (state.registrySource) state.registrySource.close();
+  const source = new EventSource('/api/experiments/stream');
+  state.registrySource = source;
+  let received = false;
+  const fallbackTimer = setTimeout(() => {
+    if (!received && state.registrySource === source) {
+      source.close();
+      state.registrySource = null;
+      startRegistryLongPoll();
+    }
+  }, 8_000);
+  source.addEventListener('experiments', (message) => {
+    received = true;
+    clearTimeout(fallbackTimer);
+    try {
+      const payload = JSON.parse(message.data);
+      applyExperimentRegistry(payload.experiments, payload.revision);
+    } catch { /* A malformed registry event is ignored until the next update. */ }
+  });
+  source.onerror = () => {
+    if (!received && state.registrySource === source) {
+      clearTimeout(fallbackTimer);
+      source.close();
+      state.registrySource = null;
+      startRegistryLongPoll();
+    } else if (!state.experiment) setConnection('Reconnecting…', 'error');
+  };
+}
+
+function startRegistryLongPoll() {
+  if (state.registryLongPoll) return;
+  state.registryLongPoll = true;
+  const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+  const loop = async () => {
+    while (state.registryLongPoll) {
+      try {
+        const response = await get('/api/experiments/changes?since=' + encodeURIComponent(state.registryRevision || ''));
+        applyExperimentRegistry(response.experiments, response.revision);
+      } catch {
+        if (!state.experiment) setConnection('Reconnecting…', 'error');
+        await wait(2_000);
+      }
+    }
+  };
+  void loop();
+}
+
 function scheduleTimelineRefresh(id) {
   if (state.timelineTimer) clearTimeout(state.timelineTimer);
   state.timelineTimer = setTimeout(() => { void refreshTimeline(id); }, 80);
@@ -1219,14 +1293,12 @@ async function refreshExperiments(initial) {
   state.refreshInFlight = true;
   try {
     const response = await get('/api/experiments?limit=100');
-    state.experiments = response.experiments || [];
-    updateExperimentOptions(state.experiments);
-    const current = state.experiments.find((experiment) => state.experiment && experiment.experiment_id === state.experiment.experiment_id);
-    const running = state.experiments.find((experiment) => experiment.status === 'RUNNING');
-    const target = initial || !state.experiment ? running && running.experiment_id || state.experiments[0] && state.experiments[0].experiment_id : !current && state.experiments[0] && state.experiments[0].experiment_id;
-    if (target && target !== (state.experiment && state.experiment.experiment_id)) await selectExperiment(target);
-    else if (current && state.experiment) { state.experiment = Object.assign({}, state.experiment, current); updateExperimentMeta(); renderCurrent(); }
-    else if (!state.experiment) { setConnection('Waiting for data'); updateExperimentMeta(); renderNoExperiment(); }
+    if (initial) {
+      state.experiment = null;
+      applyExperimentRegistry(response.experiments || [], response.revision);
+    } else {
+      applyExperimentRegistry(response.experiments || [], response.revision);
+    }
   } catch (error) {
     setConnection('Unavailable', 'error');
     if (!state.experiment) $('#main-view').innerHTML = '<section class="card"><div class="card-body">' + emptyState('Cannot reach observer', error.message) + '</div></section>';
@@ -1251,7 +1323,7 @@ async function main() {
   installIcons();
   bindInteractions();
   await refreshExperiments(true);
-  setInterval(() => { void refreshExperiments(false); }, 4000);
+  connectExperimentRegistry();
 }
 
 main().catch((error) => { setConnection('Error', 'error'); $('#main-view').innerHTML = '<section class="card"><div class="card-body">' + emptyState('Dashboard failed to load', error.message) + '</div></section>'; });

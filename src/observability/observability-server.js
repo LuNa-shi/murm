@@ -1,3 +1,5 @@
+import { watch } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { basename, dirname, extname, join } from 'node:path';
@@ -505,18 +507,26 @@ async function readStatic(path) {
  * their existing Service boundaries.
  */
 export class ObservabilityServer {
-  constructor({ observationStore, taskService = null, contextService = null, workspaceManager = null, workspaceProvider = null, host = '127.0.0.1', advertiseHost = null } = {}) {
+  constructor({ observationStore, taskService = null, contextService = null, workspaceManager = null, workspaceProvider = null, experimentRoot = null, host = '127.0.0.1', advertiseHost = null } = {}) {
     if (!observationStore) throw new TypeError('ObservabilityServer requires observationStore');
     this.observationStore = observationStore;
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
     this.workspaceProvider = workspaceProvider;
+    this.experimentRoot = experimentRoot;
     this.host = host;
     this.advertiseHost = advertiseHost;
     this.server = null;
     this.addressValue = null;
     this.streamResponses = new Set();
+    this.registryResponses = new Set();
+    this.registryWaiters = new Set();
+    this.registryWatchers = [];
+    this.registryWatcherPaths = new Set();
+    this.registryRefreshTimer = null;
+    this.registryRescanTimer = null;
+    this.registrySnapshotKey = null;
   }
 
   async start({ port = 0 } = {}) {
@@ -529,6 +539,7 @@ export class ObservabilityServer {
     const address = this.server.address();
     if (!address || typeof address === 'string') throw new Error('observability server did not receive an address');
     this.addressValue = address;
+    this.#startRegistryWatchers();
     return this.address();
   }
 
@@ -548,8 +559,18 @@ export class ObservabilityServer {
     const server = this.server;
     this.server = null;
     this.addressValue = null;
+    if (this.registryRefreshTimer) clearTimeout(this.registryRefreshTimer);
+    this.registryRefreshTimer = null;
+    if (this.registryRescanTimer) clearInterval(this.registryRescanTimer);
+    this.registryRescanTimer = null;
+    for (const watcher of this.registryWatchers) watcher.close();
+    this.registryWatchers = [];
+    this.registryWatcherPaths.clear();
     for (const response of this.streamResponses) response.destroy();
     this.streamResponses.clear();
+    this.registryResponses.clear();
+    for (const resolveWaiter of this.registryWaiters) resolveWaiter(null);
+    this.registryWaiters.clear();
     server.close();
     await once(server, 'close').catch(() => undefined);
   }
@@ -584,9 +605,16 @@ export class ObservabilityServer {
 
   async #api(url, response) {
     const parts = url.pathname.split('/').filter(Boolean);
+    if (parts[1] === 'experiments' && parts[2] === 'stream' && parts.length === 3) {
+      this.#registryStream(response);
+      return;
+    }
+    if (parts[1] === 'experiments' && parts[2] === 'changes' && parts.length === 3) {
+      await this.#registryChanges(url, response);
+      return;
+    }
     if (parts[1] === 'experiments' && parts.length === 2) {
-      const experiments = this.observationStore.listExperiments({ limit: parseLimit(url.searchParams.get('limit')) });
-      send(response, 200, { experiments: experiments.map((experiment) => this.#summary(experiment)) });
+      send(response, 200, this.#registryPayload(parseLimit(url.searchParams.get('limit'))));
       return;
     }
     if (parts[1] === 'experiments' && parts.length >= 3) {
@@ -1083,6 +1111,153 @@ export class ObservabilityServer {
       core_ids: this.observationStore.listEvents({ experimentId: experiment.experiment_id, limit: 1_000 }).events
         .map((event) => event.core_id).filter(Boolean).filter((id, index, ids) => ids.indexOf(id) === index),
     };
+  }
+
+  #registryPayload(limit = 100) {
+    this.observationStore.refresh?.();
+    this.#startRegistryWatchers();
+    const experiments = this.observationStore.listExperiments({ limit }).map((experiment) => this.#summary(experiment));
+    return {
+      revision: createHash('sha256').update(JSON.stringify(experiments)).digest('hex'),
+      experiments,
+    };
+  }
+
+  #emitRegistryPayload(payload) {
+    const message = `event: experiments\ndata: ${json(payload)}\n\n`;
+    for (const response of this.registryResponses) {
+      if (response.destroyed || response.writableEnded) {
+        this.registryResponses.delete(response);
+        this.streamResponses.delete(response);
+        continue;
+      }
+      try {
+        response.write(message);
+      } catch {
+        response.destroy();
+        this.registryResponses.delete(response);
+        this.streamResponses.delete(response);
+      }
+    }
+    const waiters = [...this.registryWaiters];
+    this.registryWaiters.clear();
+    for (const resolveWaiter of waiters) resolveWaiter(true);
+  }
+
+  #refreshRegistry() {
+    if (this.registryResponses.size === 0 && this.registryWaiters.size === 0) return;
+    try {
+      const payload = this.#registryPayload();
+      const key = payload.revision;
+      if (key === this.registrySnapshotKey) return;
+      this.registrySnapshotKey = key;
+      this.#emitRegistryPayload(payload);
+    } catch {
+      // A short SQLite lock is normal while a benchmark writer commits. The
+      // next filesystem notification will retry the snapshot.
+    }
+  }
+
+  #scheduleRegistryRefresh() {
+    if (this.registryRefreshTimer || (this.registryResponses.size === 0 && this.registryWaiters.size === 0)) return;
+    this.registryRefreshTimer = setTimeout(() => {
+      this.registryRefreshTimer = null;
+      this.#refreshRegistry();
+    }, 50);
+    this.registryRefreshTimer.unref?.();
+  }
+
+  #startRegistryWatchers() {
+    const paths = new Set(this.observationStore.watchPaths?.() ?? []);
+    if (this.experimentRoot) {
+      paths.add(this.experimentRoot);
+      paths.add(join(this.experimentRoot, '.observability'));
+    }
+    if (this.observationStore.databasePath) paths.add(dirname(this.observationStore.databasePath));
+    for (const path of paths) {
+      if (!path || this.registryWatcherPaths.has(path)) continue;
+      try {
+        const watcher = watch(path, { persistent: false, recursive: true }, () => this.#scheduleRegistryRefresh());
+        this.registryWatchers.push(watcher);
+        this.registryWatcherPaths.add(path);
+      } catch {
+        try {
+          const watcher = watch(path, { persistent: false }, () => this.#scheduleRegistryRefresh());
+          this.registryWatchers.push(watcher);
+          this.registryWatcherPaths.add(path);
+        } catch {
+          // The dashboard can still serve existing data when a root is removed
+          // during experiment cleanup; a later server restart reattaches it.
+        }
+      }
+    }
+  }
+
+  #registryStream(response) {
+    this.streamResponses.add(response);
+    this.registryResponses.add(response);
+    response.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    });
+    response.flushHeaders?.();
+    response.write(': connected\n\n');
+    try {
+      const payload = this.#registryPayload();
+      this.registrySnapshotKey = payload.revision;
+      this.#emitRegistryPayload(payload);
+    } catch {
+      response.write('event: error\ndata: {"message":"registry temporarily unavailable"}\n\n');
+    }
+    const heartbeat = setInterval(() => response.write(': keep-alive\n\n'), 15_000);
+    this.#ensureRegistryRescan();
+    response.on('close', () => {
+      clearInterval(heartbeat);
+      this.registryResponses.delete(response);
+      this.streamResponses.delete(response);
+      this.#maybeStopRegistryRescan();
+    });
+  }
+
+  #ensureRegistryRescan() {
+    if (this.registryRescanTimer) return;
+    this.registryRescanTimer = setInterval(() => this.#refreshRegistry(), 2_000);
+    this.registryRescanTimer.unref?.();
+  }
+
+  #maybeStopRegistryRescan() {
+    if (this.registryResponses.size !== 0 || this.registryWaiters.size !== 0 || !this.registryRescanTimer) return;
+    clearInterval(this.registryRescanTimer);
+    this.registryRescanTimer = null;
+  }
+
+  async #registryChanges(url, response) {
+    const since = url.searchParams.get('since') ?? '';
+    let payload = this.#registryPayload();
+    if (!since || since !== payload.revision) {
+      send(response, 200, { changed: true, ...payload });
+      return;
+    }
+    this.#ensureRegistryRescan();
+    const changed = await new Promise((resolvePromise) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.registryWaiters.delete(finish);
+        this.#maybeStopRegistryRescan();
+        resolvePromise(value);
+      };
+      const timer = setTimeout(() => finish(false), 25_000);
+      this.registryWaiters.add(finish);
+      response.on('close', () => finish(null));
+    });
+    if (changed === null || response.destroyed || response.writableEnded) return;
+    payload = this.#registryPayload();
+    send(response, 200, { changed: payload.revision !== since, ...payload });
+    this.#maybeStopRegistryRescan();
   }
 
   #executionFromEvents(experimentId, executionId) {
