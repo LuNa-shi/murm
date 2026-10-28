@@ -141,6 +141,12 @@ export class CoreDaemon {
     this.selectionRetryAt = null;
     this.lastError = null;
     this.lastEventAt = this.now();
+    // Monotonic identity for completed retryable idle attempts.  A Core can
+    // return to IDLE without the Controller observing the intermediate
+    // SELECTING or RUNNING state; the Controller uses this value to
+    // distinguish that new retry from an untouched idle view. A deferred
+    // selection is a handoff race, not a retry, and must remain deduplicated.
+    this.idleGeneration = 0;
     this.stateHistory = [{ state: this.state, at: this.lastEventAt }];
     this.handoffAbortController = null;
   }
@@ -161,6 +167,7 @@ export class CoreDaemon {
       selection_exhausted: this.selectionExhausted,
       selection_retry_at: this.selectionRetryAt,
       idle_backoff_ms: this.idleBackoffMs,
+      idle_generation: this.idleGeneration,
       last_error: this.lastError,
       last_event_at: this.lastEventAt,
       state_history: this.stateHistory.map((entry) => ({ ...entry })),
@@ -171,6 +178,15 @@ export class CoreDaemon {
   /** Wake an idle Daemon after Task Controller observes new claimable work. */
   notify(reason = 'event') {
     this.#rearmSelectionIfDue(reason);
+    // A bounded selection retry cooldown is an intentional backoff.  A wake
+    // delivered after the final failed attempt must not turn that cooldown
+    // into a tight loop of exhausted turns; a later signal after the deadline
+    // will re-arm the selector above.
+    if (this.selectionExhausted) {
+      this.pendingWake = false;
+      this.#emit({ kind: 'daemon_wake_deferred', core_id: this.coreId, reason, retry_at: this.selectionRetryAt, timestamp: this.now() });
+      return this.snapshot();
+    }
     // A wake received while a selection or handoff is already in flight is
     // already covered by that turn. Remember it only for an idle Daemon,
     // where the signal can otherwise land just before #wait registers.
@@ -515,7 +531,10 @@ export class CoreDaemon {
   #setIdle({ reason }) {
     this.taskId = null;
     this.executionId = null;
-    if (!this.stopped) this.#setState(CORE_DAEMON_STATES.IDLE, { reason });
+    if (!this.stopped) {
+      if (!['selection_deferred', 'selection_attempts_exhausted', 'no_claimable_task', 'stopped'].includes(reason)) this.idleGeneration += 1;
+      this.#setState(CORE_DAEMON_STATES.IDLE, { reason });
+    }
   }
 
   #setState(state, payload = {}) {

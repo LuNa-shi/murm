@@ -38,6 +38,60 @@ test('TaskController reconciles claimability and signals each idle daemon once p
   assert.equal(events.some((event) => event.kind === 'controller_task_claimable'), true);
 });
 
+test('TaskController re-arms an idle signal after an unseen completed attempt', async () => {
+  const signals = [];
+  let idleGeneration = 0;
+  const daemon = {
+    core_id: 'core-1',
+    snapshot: () => ({
+      core_id: 'core-1', state: 'IDLE', healthy: true, idle_generation: idleGeneration,
+    }),
+  };
+  const controller = new TaskController({
+    taskService: {
+      listTasks: ({ states, availableOnly }) => states.includes('OPEN') && availableOnly
+        ? [{ task_id: 'task-1', state: 'OPEN' }]
+        : [],
+    },
+    listDaemons: () => [daemon],
+    signalIdleDaemon: (_target, payload) => signals.push(payload.reason),
+  });
+
+  await controller.reconcile({ reason: 'initial' });
+  await controller.reconcile({ reason: 'duplicate' });
+  idleGeneration = 1;
+  await controller.reconcile({ reason: 'selection_invalid' });
+  await controller.reconcile({ reason: 'duplicate-after-retry' });
+
+  assert.deepEqual(signals, ['initial', 'selection_invalid']);
+});
+
+test('TaskController does not wake an idle daemon during selection retry cooldown', async () => {
+  const signals = [];
+  const daemon = {
+    core_id: 'core-1',
+    snapshot: () => ({
+      core_id: 'core-1', state: 'IDLE', healthy: true, idle_generation: 1,
+      selection_exhausted: true, selection_retry_at: 2_000,
+    }),
+  };
+  const controller = new TaskController({
+    now: () => 1_000,
+    taskService: {
+      listTasks: ({ states, availableOnly }) => states.includes('OPEN') && availableOnly
+        ? [{ task_id: 'task-1', state: 'OPEN' }]
+        : [],
+    },
+    listDaemons: () => [daemon],
+    signalIdleDaemon: () => signals.push('signal'),
+  });
+
+  const result = await controller.reconcile({ reason: 'selection_exhausted' });
+
+  assert.equal(result.idle_daemon_count, 0);
+  assert.deepEqual(signals, []);
+});
+
 test('TaskController re-arms a daemon signal after a running handoff returns idle', async () => {
   const signals = [];
   const daemon = { core_id: 'core-1', state: 'IDLE', healthy: true };
@@ -211,6 +265,7 @@ test('CoreDaemon boundedly rescans after a lost claim race without retrying the 
 test('CoreDaemon re-arms a selection failure after its bounded cooldown', async () => {
   let now = 1_000;
   let selectionAttempts = 0;
+  const events = [];
   const daemon = new CoreDaemon({
     coreId: 'core-rearm',
     maxSelectionAttempts: 1,
@@ -224,12 +279,15 @@ test('CoreDaemon re-arms a selection failure after its bounded cooldown', async 
     },
     claimTask: async () => ({ task: { task_id: 'task-rearm' }, execution: { execution_id: 'execution-rearm', task_id: 'task-rearm', state: 'CREATED' } }),
     runExecution: async (claim) => ({ execution: { ...claim.execution, state: 'SUCCEEDED' } }),
+    onEvent: (event) => events.push(event),
   });
 
   assert.equal((await daemon.runOnce({ reason: 'initial' })).disposition, 'selection_failed');
   assert.equal(daemon.snapshot().selection_exhausted, true);
+  assert.equal(daemon.snapshot().idle_generation, 1);
   daemon.notify('before-cooldown');
   assert.equal(daemon.snapshot().selection_exhausted, true);
+  assert.equal(events.at(-1).kind, 'daemon_wake_deferred');
   now += 100;
   daemon.notify('provider-recovered');
   assert.equal(daemon.snapshot().selection_exhausted, false);

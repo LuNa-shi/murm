@@ -2537,7 +2537,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           payload: sanitized,
         });
         if (sanitized.kind === 'daemon_state_changed' && sanitized.changed === true && sanitized.state === 'IDLE' &&
-          ['execution_released', 'runtime_failed', 'claim_conflict', 'claim_failed', 'claim_invalid'].includes(sanitized.reason)) {
+          ['execution_released', 'runtime_failed', 'selection_failed', 'selection_invalid', 'claim_conflict', 'claim_failed', 'claim_invalid'].includes(sanitized.reason)) {
           // The release event can arrive while CoreDaemon is still inside its
           // handoff. Wake this Daemon once it has actually returned to IDLE,
           // then reconcile for durable projections. The direct wake avoids a
