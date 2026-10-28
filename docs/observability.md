@@ -55,14 +55,16 @@ logs into the local Observation Store for operator diagnosis:
 node scripts/serve-observability.mjs \
   --report .worktrees/issue-28-four-core-parallelism/reports/issue-28-real-gpt-6.1-sol-v10-20261020/ \
   --root experiments \
+  --scan-root /home/ubuntu/SwarmEnv-worktrees \
+  --metadata experiments/.observability/public-server.json \
   --port 8787
 ```
 
 The server uses `experiments/.observability/observability.sqlite` by default
 and remains online after an imported or live Experiment finishes. The
-benchmark runner starts or reuses this same server before the root Task is
-created. The printed URL and `metadata/observability.json` are the operator
-entry points for a run:
+benchmark runner reuses this same server before the root Task is created. The
+printed URL and `metadata/observability.json` are the operator entry points for
+a run:
 
 ```sh
 node scripts/run-putnambench-benchmark.mjs \
@@ -75,6 +77,7 @@ node scripts/run-putnambench-benchmark.mjs \
   --model gpt-6.1-sol \
   --experiment-dir experiments/observability-dynamic-YYYYMMDD \
   --report-dir reports/observability-dynamic-YYYYMMDD \
+  --observability-metadata /home/ubuntu/SwarmEnv/experiments/.observability/public-server.json \
   --observability-host 0.0.0.0 \
   --observability-advertise-host "$(tailscale ip -4)" \
   --observability-port 8787
@@ -83,8 +86,15 @@ node scripts/run-putnambench-benchmark.mjs \
 All live experiment directories must be below `--experiment-root` (which
 defaults to `experiments`). For a server and browser on different machines in
 the same Tailscale network, open the advertised URL, such as
-`http://100.78.32.56:8787/`. The browser refreshes the Experiment registry
-periodically, so an already open tab discovers later RUNNING Experiments.
+`http://100.78.32.56:8787/`. The browser subscribes to
+`/api/experiments/stream` using server-sent events, so an already open tab
+discovers later RUNNING Experiments without a periodic browser refresh. If an
+edge proxy buffers the stream, it falls back to `/api/experiments/changes`, a
+long request that waits for a registry revision instead of polling on a short
+timer. If a runner is started from a different checkout, set
+`SWARMENV_OBSERVABILITY_METADATA` to the persistent service's
+`public-server.json` so
+it reuses the shared database and port.
 
 Every Execution segment carries its Workspace reference, current revision,
 content hash, file manifest, and revision history. A selected segment opens

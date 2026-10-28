@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { ObservationStore } from '../src/observability/observation-store.js';
+import { ObservationStore, ObservationStoreCollection } from '../src/observability/observation-store.js';
 
 test('ObservationStore persists experiment facts and returns cursor pages in event order', async () => {
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-observability-'));
@@ -71,4 +71,23 @@ test('ObservationStore rejects events outside a registered Experiment and duplic
   store.append({ experimentId: 'run-duplicate', source: 'runtime', kind: 'x', sequence: 7 });
   assert.throws(() => store.append({ experimentId: 'run-duplicate', source: 'runtime', kind: 'y', sequence: 7 }), /UNIQUE constraint/);
   store.close();
+});
+
+test('ObservationStoreCollection merges experiments and routes events across worktree databases', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observability-collection-'));
+  await mkdir(join(root, 'worktree-a', '.observability'), { recursive: true });
+  await mkdir(join(root, 'worktree-b', '.observability'), { recursive: true });
+  const first = new ObservationStore(join(root, 'worktree-a', '.observability', 'observability.sqlite'));
+  const second = new ObservationStore(join(root, 'worktree-b', '.observability', 'observability.sqlite'));
+  first.registerExperiment({ experimentId: 'worktree-a-run', status: 'RUNNING' });
+  first.append({ experimentId: 'worktree-a-run', source: 'runtime', kind: 'session_started', payload: {} });
+  second.registerExperiment({ experimentId: 'worktree-b-run', status: 'CREATED' });
+  second.append({ experimentId: 'worktree-b-run', source: 'runtime', kind: 'experiment_started', payload: {} });
+  const collection = new ObservationStoreCollection({ stores: [first, second] });
+  assert.deepEqual(collection.listExperiments({ limit: 10 }).map((experiment) => experiment.experiment_id).sort(), ['worktree-a-run', 'worktree-b-run']);
+  assert.equal(collection.countEvents('worktree-a-run'), 1);
+  assert.equal(collection.listEvents({ experimentId: 'worktree-b-run' }).events[0].kind, 'experiment_started');
+  assert.ok(collection.watchPaths().some((path) => path.endsWith('worktree-a/.observability')));
+  collection.close();
+  await rm(root, { recursive: true, force: true });
 });

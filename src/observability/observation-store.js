@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { EventEmitter } from 'node:events';
+import { dirname } from 'node:path';
 
 const SENSITIVE_KEY = /(?:^|_)(?:authorization|content|credential|formal_source|password|private_key|proof|raw_transcript|secret|stderr|stdout|task_instructions|token|api_key)(?:$|_)/i;
 const MAX_AGENT_STRING_LENGTH = 4_000;
@@ -138,6 +139,7 @@ function rowToExperiment(row) {
  */
 export class ObservationStore {
   constructor(database = ':memory:') {
+    this.databasePath = typeof database === 'string' && database !== ':memory:' ? database : null;
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(OBSERVATION_SCHEMA_SQL);
     this.events = new EventEmitter();
@@ -314,6 +316,88 @@ export class ObservationStore {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+}
+
+/**
+ * Read-only composition of Observation Stores owned by several experiment
+ * roots. New runs should write to the persistent primary store, while this
+ * projection keeps older worktree-local databases visible to one dashboard.
+ */
+export class ObservationStoreCollection {
+  constructor({ stores = [], discover = null, watchPaths = [] } = {}) {
+    this.stores = [];
+    this.discover = discover;
+    this._watchPaths = new Set(watchPaths);
+    for (const store of stores) this.add(store);
+    this.refresh();
+  }
+
+  get databasePath() {
+    return null;
+  }
+
+  add(store) {
+    if (!store || this.stores.includes(store)) return store;
+    if (store.databasePath && this.stores.some((candidate) => candidate.databasePath === store.databasePath)) return this.stores.find((candidate) => candidate.databasePath === store.databasePath);
+    this.stores.push(store);
+    return store;
+  }
+
+  refresh() {
+    const paths = typeof this.discover === 'function' ? this.discover() : [];
+    for (const path of paths ?? []) {
+      if (typeof path !== 'string' || !path || this.stores.some((store) => store.databasePath === path)) continue;
+      try {
+        this.add(new ObservationStore(path));
+      } catch {
+        // A database can appear while its writer is creating the directory.
+        // The next registry refresh will retry it.
+      }
+    }
+    return this.stores.length;
+  }
+
+  watchPaths() {
+    const paths = new Set(this._watchPaths);
+    for (const store of this.stores) if (store.databasePath) paths.add(dirname(store.databasePath));
+    return [...paths];
+  }
+
+  #storeFor(experimentId) {
+    for (const store of this.stores) if (store.getExperiment(experimentId)) return store;
+    return null;
+  }
+
+  listExperiments({ status = null, limit = 100 } = {}) {
+    const rows = new Map();
+    for (const store of this.stores) {
+      for (const experiment of store.listExperiments({ status, limit: 1_000 })) {
+        const previous = rows.get(experiment.experiment_id);
+        if (!previous || String(experiment.updated_at ?? '').localeCompare(String(previous.updated_at ?? '')) > 0) rows.set(experiment.experiment_id, experiment);
+      }
+    }
+    return [...rows.values()]
+      .sort((left, right) => String(right.started_at ?? '').localeCompare(String(left.started_at ?? '')) || String(right.experiment_id).localeCompare(String(left.experiment_id)))
+      .slice(0, limit);
+  }
+
+  getExperiment(experimentId) {
+    return this.#storeFor(experimentId)?.getExperiment(experimentId) ?? null;
+  }
+
+  countEvents(experimentId, options) {
+    return this.#storeFor(experimentId)?.countEvents(experimentId, options) ?? 0;
+  }
+
+  listEvents(options = {}) {
+    const store = this.#storeFor(options.experimentId);
+    return store?.listEvents(options) ?? { events: [], next_cursor: null, has_more: false };
+  }
+
+  close() {
+    for (const store of this.stores) store.close();
+    this.stores = [];
   }
 }
 

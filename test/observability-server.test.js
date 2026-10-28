@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
@@ -88,6 +88,46 @@ test('ObservabilityServer exposes a live SSE stream for a registered Experiment'
     if (result.done) break;
   }
   assert.match(text, /session_started/);
+  await server.stop();
+  await reader.cancel().catch(() => undefined);
+  readerStore.close();
+  writer.close();
+});
+
+test('ObservabilityServer pushes cross-process Experiment registry updates over SSE', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observability-registry-'));
+  await mkdir(join(root, '.observability'), { recursive: true });
+  const database = join(root, '.observability', 'observability.sqlite');
+  const writer = new ObservationStore(database);
+  const readerStore = new ObservationStore(database);
+  writer.registerExperiment({ experimentId: 'run-registry-first', status: 'RUNNING' });
+  const server = new ObservabilityServer({ observationStore: readerStore, experimentRoot: root });
+  const { url } = await server.start();
+  const response = await fetch(`${url}/api/experiments/stream`);
+  assert.equal(response.headers.get('content-type'), 'text/event-stream; charset=utf-8');
+  const reader = response.body.getReader();
+  let text = '';
+  const readUntil = async (needle) => {
+    const deadline = Date.now() + 3_000;
+    while (!text.includes(needle) && Date.now() < deadline) {
+      const result = await Promise.race([
+        reader.read(),
+        new Promise((resolve) => setTimeout(() => resolve({ done: true, value: new Uint8Array() }), 500)),
+      ]);
+      text += new TextDecoder().decode(result.value ?? new Uint8Array());
+      if (result.done) break;
+    }
+    assert.match(text, new RegExp(needle));
+  };
+  await readUntil('run-registry-first');
+  writer.registerExperiment({ experimentId: 'run-registry-second', status: 'CREATED' });
+  await readUntil('run-registry-second');
+  const registry = await fetch(`${url}/api/experiments`).then((result) => result.json());
+  const pendingChanges = fetch(`${url}/api/experiments/changes?since=${encodeURIComponent(registry.revision)}`).then((result) => result.json());
+  writer.registerExperiment({ experimentId: 'run-registry-third', status: 'RUNNING' });
+  const changes = await pendingChanges;
+  assert.equal(changes.changed, true);
+  assert.ok(changes.experiments.some((experiment) => experiment.experiment_id === 'run-registry-third'));
   await server.stop();
   await reader.cancel().catch(() => undefined);
   readerStore.close();
