@@ -1,10 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildModel } from '@/lib/observation';
 
+const MAX_CLIENT_EVENTS = 6_000;
+const EVENT_BATCH_MS = 300;
+const REQUEST_TIMEOUT_MS = 15_000;
+
 async function getJson(path, options = {}) {
-  const response = await fetch(path, { headers: { accept: 'application/json' }, ...options });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return response.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(path, { headers: { accept: 'application/json' }, ...options, signal: options.signal || controller.signal });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return response.json();
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s: ${path}`);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function mergeEvents(current, incoming) {
+  const bySequence = new Map(current.map((event) => [event.sequence, event]));
+  for (const event of incoming) if (Number.isInteger(event?.sequence)) bySequence.set(event.sequence, event);
+  return [...bySequence.values()].sort((left, right) => left.sequence - right.sequence).slice(-MAX_CLIENT_EVENTS);
 }
 
 export function useObservation() {
@@ -17,6 +36,7 @@ export function useObservation() {
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [details, setDetails] = useState({});
+  const [projectionMeta, setProjectionMeta] = useState(null);
   const sourceRef = useRef(null);
   const registrySourceRef = useRef(null);
   const registryFallbackRef = useRef(false);
@@ -25,6 +45,8 @@ export function useObservation() {
   const registryRevisionRef = useRef('');
   const timelineTimer = useRef(null);
   const selectedRef = useRef(null);
+  const pendingEventsRef = useRef(new Map());
+  const eventBatchTimer = useRef(null);
 
   const model = useMemo(() => buildModel(events, timeline, toolCounts), [events, timeline, toolCounts]);
 
@@ -40,8 +62,23 @@ export function useObservation() {
 
   const scheduleTimeline = useCallback((id) => {
     clearTimeout(timelineTimer.current);
-    timelineTimer.current = setTimeout(() => void refreshTimeline(id), 100);
+    timelineTimer.current = setTimeout(() => void refreshTimeline(id), 450);
   }, [refreshTimeline]);
+
+  const flushEvents = useCallback(() => {
+    eventBatchTimer.current = null;
+    const pending = [...pendingEventsRef.current.values()];
+    pendingEventsRef.current.clear();
+    if (!pending.length) return;
+    setEvents((current) => mergeEvents(current, pending));
+    setLastUpdated(new Date());
+  }, []);
+
+  const queueEvent = useCallback((event) => {
+    if (!Number.isInteger(event?.sequence)) return;
+    pendingEventsRef.current.set(event.sequence, event);
+    if (eventBatchTimer.current === null) eventBatchTimer.current = setTimeout(flushEvents, EVENT_BATCH_MS);
+  }, [flushEvents]);
 
   const openStream = useCallback((id, cursor) => {
     sourceRef.current?.close();
@@ -54,8 +91,7 @@ export function useObservation() {
         const parsed = JSON.parse(message.data);
         const incoming = parsed.event || parsed;
         if (!incoming || selectedRef.current !== id) return;
-        setEvents((current) => current.some((event) => event.sequence === incoming.sequence) ? current : [...current, incoming].sort((a, b) => a.sequence - b.sequence));
-        setLastUpdated(new Date());
+        queueEvent(incoming);
         if (/execution_assigned|execution_released|core_state_changed|core_capacity_released|execution_started/.test(incoming.kind || '')) scheduleTimeline(id);
       } catch {
         // Ignore keepalive comments and malformed frames from a closing stream.
@@ -63,7 +99,7 @@ export function useObservation() {
     };
     source.addEventListener('observation', handleMessage);
     source.onmessage = handleMessage;
-  }, [scheduleTimeline]);
+  }, [queueEvent, scheduleTimeline]);
 
   const selectExperiment = useCallback(async (id) => {
     if (!id) return;
@@ -71,15 +107,27 @@ export function useObservation() {
     setConnection('Loading');
     setError(null);
     try {
-      const [nextExperiment, overview] = await Promise.all([
-        getJson(`/api/experiments/${encodeURIComponent(id)}`),
-        getJson(`/api/experiments/${encodeURIComponent(id)}/overview?view=agent`),
-      ]);
+      const overviewPromise = getJson(`/api/experiments/${encodeURIComponent(id)}/overview?view=agent`);
+      const nextExperiment = await getJson(`/api/experiments/${encodeURIComponent(id)}`);
       if (selectedRef.current !== id) return;
       setExperiment(nextExperiment);
-      setEvents(overview.events || []);
+      setEvents([]);
+      setTimeline({ lanes: [] });
+      setToolCounts({});
+      setProjectionMeta(null);
+      setConnection('Loading projection');
+      const overview = await overviewPromise;
+      if (selectedRef.current !== id) return;
+      setEvents(mergeEvents([], overview.events || []));
       setTimeline(overview.timeline || { lanes: [] });
       setToolCounts(overview.tool_counts || {});
+      setProjectionMeta({
+        historyTruncated: Boolean(overview.overview_history_truncated),
+        eventCount: overview.events?.length || 0,
+        startSequence: overview.overview_start_sequence || 0,
+        endSequence: overview.overview_end_sequence || 0,
+        toolCountsWindowed: Boolean(overview.tool_counts_windowed),
+      });
       setDetails({});
       setLastUpdated(new Date());
       setConnection('Live');
@@ -104,6 +152,7 @@ export function useObservation() {
       setEvents([]);
       setTimeline({ lanes: [] });
       setToolCounts({});
+      setProjectionMeta(null);
       setDetails({});
       setError(null);
     }
@@ -193,6 +242,8 @@ export function useObservation() {
   useEffect(() => () => {
     sourceRef.current?.close();
     clearTimeout(timelineTimer.current);
+    clearTimeout(eventBatchTimer.current);
+    pendingEventsRef.current.clear();
   }, []);
 
   const loadDetail = useCallback(async (kind, id) => {
@@ -227,6 +278,7 @@ export function useObservation() {
     error,
     lastUpdated,
     details,
+    projectionMeta,
     selectExperiment,
     refresh: () => (experiment?.experiment_id ? selectExperiment(experiment.experiment_id) : refreshExperiments(true)),
     refreshExperiments,
