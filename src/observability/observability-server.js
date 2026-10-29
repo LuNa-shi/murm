@@ -148,6 +148,11 @@ const DETAIL_MAX_EVENTS = 10_000;
 const DETAIL_MAX_BYTES = 4_000_000;
 const OVERVIEW_MAX_EVENTS = 50_000;
 const OVERVIEW_MAX_BYTES = 4_000_000;
+// The dashboard is a live operational view. Keep the initial projection close
+// to the active window instead of replaying an entire historical run into the
+// server and browser. Detail endpoints remain available for historical reads.
+const OVERVIEW_RECENT_EVENTS = 12_000;
+const TIMELINE_RECENT_EVENTS = 2_000;
 
 function parseJson(value) {
   if (typeof value !== 'string' || value.length === 0) return value;
@@ -790,27 +795,33 @@ export class ObservabilityServer {
 
   async #overview(experimentId, url) {
     const [events, toolProjection] = await Promise.all([
-      this.#allEvents({
+      this.#recentEvents({
         experimentId,
         kinds: OVERVIEW_EVENT_KINDS,
         view: 'agent',
-      }, 200),
+      }, OVERVIEW_RECENT_EVENTS),
       this.#toolProjection(experimentId),
     ]);
     const overviewEvents = [...events, ...toolProjection.events].sort((left, right) => left.sequence - right.sequence);
     const bounded = boundOverviewEvents(compactOverviewEvents(overviewEvents));
+    const latestSequence = this.observationStore.latestSequence(experimentId);
+    const firstSequence = overviewEvents.at(0)?.sequence ?? latestSequence;
     return {
       experiment_id: experimentId,
       events: bounded.events,
       overview_bytes: bounded.bytes,
       overview_truncated: bounded.truncated,
+      overview_history_truncated: firstSequence > 1,
+      overview_start_sequence: firstSequence,
+      overview_end_sequence: latestSequence,
       timeline: this.#timeline(experimentId, url),
       tool_counts: toolProjection.counts,
+      tool_counts_windowed: toolProjection.windowed,
     };
   }
 
   async #toolProjection(experimentId) {
-    const events = await this.#allEvents({ experimentId, kinds: ['rpc_record'], view: 'agent' }, 200);
+    const events = await this.#recentEvents({ experimentId, kinds: ['rpc_record'], view: 'agent' }, OVERVIEW_RECENT_EVENTS);
     const calls = new Map();
     const overviewEvents = [];
     for (const event of events) {
@@ -823,7 +834,11 @@ export class ObservabilityServer {
     }
     const counts = {};
     for (const executionId of calls.values()) counts[executionId] = (counts[executionId] ?? 0) + 1;
-    return { counts, events: overviewEvents };
+    return { counts, events: overviewEvents, windowed: this.observationStore.latestSequence(experimentId) > OVERVIEW_RECENT_EVENTS };
+  }
+
+  #recentEvents(options, limit = OVERVIEW_RECENT_EVENTS) {
+    return this.observationStore.listRecentEvents({ ...options, limit }).events;
   }
 
   async #executionInsight(experimentId, executionId) {
@@ -1108,8 +1123,8 @@ export class ObservabilityServer {
         made_progress: metadata.made_progress ?? null,
       },
       event_count: this.observationStore.countEvents(experiment.experiment_id),
-      core_ids: this.observationStore.listEvents({ experimentId: experiment.experiment_id, limit: 1_000 }).events
-        .map((event) => event.core_id).filter(Boolean).filter((id, index, ids) => ids.indexOf(id) === index),
+      core_ids: this.observationStore.listCoreIds(experiment.experiment_id),
+      latest_sequence: this.observationStore.latestSequence(experiment.experiment_id),
     };
   }
 
@@ -1291,11 +1306,11 @@ export class ObservabilityServer {
 
   #timeline(experimentId, url) {
     const filters = this.#eventFilters(url);
-    const events = this.observationStore.listEvents({
+    const events = this.observationStore.listRecentEvents({
       experimentId,
       ...filters,
       kinds: ['core_state_changed', 'execution_assigned', 'execution_released'],
-      limit: 1_000,
+      limit: TIMELINE_RECENT_EVENTS,
     }).events;
     const lanes = new Map();
     for (const event of events) {
