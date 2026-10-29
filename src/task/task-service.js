@@ -11,7 +11,7 @@ import {
   validateTaskProposal,
 } from './task-types.js';
 
-const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'block_task', 'expire_execution', 'fence_execution', 'handoff_execution', 'heartbeat', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
+const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'block_task', 'close_task', 'complete_task', 'expire_execution', 'fence_execution', 'handoff_execution', 'heartbeat', 'link_material', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
 const CLAIM_OPERATION = 'claim';
 const MODERN_OPERATION_ALIASES = Object.freeze({
   'mission.create': 'create_mission',
@@ -24,13 +24,22 @@ const MODERN_OPERATION_ALIASES = Object.freeze({
   task_create: 'create_task',
   task_list: 'list_task',
   task_view: 'view_task',
+  'task.link_material': 'link_material',
+  task_link_material: 'link_material',
+  'task.materials': 'list_task_materials',
+  task_materials: 'list_task_materials',
+  'task.complete': 'complete_task',
+  task_complete: 'complete_task',
+  'task.close': 'close_task',
+  task_close: 'close_task',
 });
-const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task']);
-const MODERN_READ_OPERATIONS = new Set(['get_mission', 'list_task', 'view_task']);
+const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'complete_task', 'close_task']);
+const MODERN_READ_OPERATIONS = new Set(['get_mission', 'list_task', 'view_task', 'list_task_materials']);
 const TASK_MUTATING_OPERATIONS = new Set([
   'accept_task', 'apply_check_result', 'create_branch_group', 'create_child_task',
   'add_required_subtask', 'propose_structure_change', 'create_rework_task',
   'propose_task', 'reconcile_task', 'reopen_task', 'request_rework', 'submit_candidate',
+  'link_material', 'complete_task', 'close_task',
   ...MODERN_MUTATING_OPERATIONS,
 ]);
 const TASK_EVENT_OPERATIONS = new Set([
@@ -39,6 +48,7 @@ const TASK_EVENT_OPERATIONS = new Set([
   'handoff_execution', 'reconcile_task', 'recover_execution', 'reopen_task', 'request_rework',
   'request_wait', 'resume_execution', 'stop_execution', 'submit_candidate', 'wake_execution',
   'propose_structure_change', 'propose_task', 'expire_execution',
+  'link_material', 'complete_task', 'close_task',
 ]);
 const TASK_READ_OPERATIONS = new Set([
   'get_task', 'get_execution', 'get_task_structure', 'explain_task_readiness',
@@ -126,6 +136,15 @@ function rowToCheckResult(row) {
     mathematical_outcome: resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed',
     retryable: Boolean(row.retryable),
     evidence: parse(row.evidence_json),
+  };
+}
+
+function rowToMaterialLink(row, material = null) {
+  if (!row) return null;
+  return {
+    ...row,
+    receiving_task_id: row.receiving_task_id || null,
+    material,
   };
 }
 
@@ -410,6 +429,22 @@ export class TaskService {
     return this.dispatch('view_task', { task_id: taskId }, envelope);
   }
 
+  linkMaterial(payload, envelope) {
+    return this.dispatch('link_material', payload, envelope);
+  }
+
+  listTaskMaterials(taskId, envelope = makeEnvelope({ actorRef: 'unknown', taskId })) {
+    return this.dispatch('list_task_materials', { task_id: taskId }, envelope);
+  }
+
+  completeTask(payload = {}, envelope) {
+    return this.dispatch('complete_task', payload, envelope);
+  }
+
+  closeTask(payload = {}, envelope) {
+    return this.dispatch('close_task', payload, envelope);
+  }
+
   getExecution(executionId) {
     return rowToExecution(this.db.prepare('SELECT * FROM executions WHERE execution_id = ?').get(executionId));
   }
@@ -649,6 +684,15 @@ export class TaskService {
     return this.db.prepare('SELECT * FROM modern_task_records WHERE task_id = ?').get(taskId);
   }
 
+  #taskMaterialLinks(taskId, { role = null, materialId = null } = {}) {
+    const rows = this.db.prepare(`SELECT * FROM task_material_links
+      WHERE task_id = ?
+        AND (? IS NULL OR role = ?)
+        AND (? IS NULL OR material_id = ?)
+      ORDER BY created_at, link_id`).all(taskId, role, role, materialId, materialId);
+    return rows.map((row) => rowToMaterialLink(row, this.contextService?.getMaterial(row.material_id) ?? null));
+  }
+
   #taskMissionId(taskId) {
     const modern = this.#modernTaskRecord(taskId);
     if (modern) return modern.mission_id;
@@ -666,6 +710,7 @@ export class TaskService {
       summary: modern.summary,
       timebox_ms: modern.timebox_ms,
       relations: this.#modernRelations(task.task_id),
+      materials: this.#taskMaterialLinks(task.task_id),
     };
   }
 
@@ -846,13 +891,146 @@ export class TaskService {
   #viewModernTask(taskId) {
     const task = this.#decorateModernTask(rowToTask(this.db.prepare('SELECT * FROM tasks WHERE task_id = ?').get(taskId)));
     if (!task?.mission_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown modern Task: ${taskId}`);
-    return { task, mission: this.#getMission(task.mission_id), relations: task.relations };
+    return { task, mission: this.#getMission(task.mission_id), relations: task.relations, materials: task.materials };
+  }
+
+  #linkMaterial(payload, envelope) {
+    const materialId = requireString(payload.material_id ?? payload.materialId, 'material_id');
+    if (!this.contextService) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Context Service is required for Task Material links');
+    const material = this.contextService.getMaterial(materialId);
+    if (!material) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Material: ${materialId}`);
+    const role = payload.role ?? material.role ?? 'experience';
+    if (!['input', 'response', 'handoff', 'experience'].includes(role)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'role must be input, response, handoff, or experience');
+    }
+    if (material.role && material.role !== role) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Material role does not match the Task link role');
+    }
+    const producerTaskId = requireString(material.source_task, 'material source_task');
+    const producerExecutionId = requireString(material.source_execution, 'material source_execution');
+    if (envelope.task_id !== producerTaskId) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the producing Task Execution may create a Material link');
+    }
+    const producerExecution = this.#executionForWrite(envelope);
+    if (producerExecution.task_id !== producerTaskId || producerExecution.execution_id !== producerExecutionId) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material provenance does not match the current Execution');
+    }
+    const targetTaskId = payload.task_id ?? payload.receiving_task_id ?? (role === 'handoff' ? producerTaskId : null);
+    const targetTask = this.getTask(requireString(targetTaskId, 'task_id'));
+    if (!targetTask) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown receiving Task: ${targetTaskId}`);
+    if (this.#taskMissionId(targetTaskId) !== this.#taskMissionId(producerTaskId)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'linked Tasks must belong to the same Mission');
+    }
+    const receivingTaskId = role === 'response'
+      ? requireString(payload.receiving_task_id ?? payload.task_id, 'receiving_task_id')
+      : role === 'handoff' ? '' : (payload.receiving_task_id ?? '');
+    if (role === 'response' && receivingTaskId === producerTaskId) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Response Material must target a receiving Task');
+    }
+    if (receivingTaskId && receivingTaskId !== targetTaskId) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'receiving_task_id must match task_id');
+    }
+    const existing = this.db.prepare(`SELECT * FROM task_material_links
+      WHERE task_id = ? AND material_id = ? AND role = ? AND receiving_task_id = ?`).get(targetTaskId, materialId, role, receivingTaskId);
+    if (existing) return { link: rowToMaterialLink(existing, material) };
+    const linkId = payload.link_id ?? randomUUID();
+    requireString(linkId, 'link_id');
+    const createdAt = now();
+    this.db.prepare(`INSERT INTO task_material_links
+      (link_id, task_id, material_id, role, receiving_task_id, producer_task_id,
+       producer_execution_id, created_by_task_id, created_by_execution_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      linkId, targetTaskId, materialId, role, receivingTaskId, producerTaskId,
+      producerExecutionId, envelope.task_id, envelope.execution_id, createdAt,
+    );
+    return { link: rowToMaterialLink(this.db.prepare('SELECT * FROM task_material_links WHERE link_id = ?').get(linkId), material) };
+  }
+
+  #completeTask(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    if (execution.owner_ref !== envelope.actor_ref) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the current Task Execution owner may complete the Task');
+    }
+    if (!['CREATED', 'RUNNING'].includes(execution.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot complete Execution in ${execution.state}`);
+    }
+    const task = this.getTask(execution.task_id);
+    const requestedMaterialIds = payload.material_ids ?? payload.materialIds ?? [];
+    if (!Array.isArray(requestedMaterialIds) || requestedMaterialIds.some((id) => typeof id !== 'string' || id.length === 0)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must be an array of Material IDs');
+    }
+    const linked = this.#taskMaterialLinks(task.task_id);
+    const linkedIds = new Set(linked.map((link) => link.material_id));
+    const unlinked = [...new Set(requestedMaterialIds)].filter((id) => !linkedIds.has(id));
+    if (unlinked.length > 0) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.complete can reference only linked Materials', { unlinked_material_ids: unlinked });
+    }
+    const completion = this.#completion(task, execution, payload.check_result_id ?? null);
+    if (!completion.satisfied) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'completion_contract is not satisfied', { missing: completion.missing });
+    }
+    const updatedAt = now();
+    this.db.prepare(`UPDATE executions
+      SET state = 'SUCCEEDED', wait_condition_json = NULL, wait_deadline = NULL,
+          resume_token = NULL, state_version = state_version + 1, updated_at = ?
+      WHERE execution_id = ?`).run(updatedAt, execution.execution_id);
+    this.db.prepare(`UPDATE tasks
+      SET state = 'DONE', state_version = state_version + 1, block_reason = NULL,
+          claimable_at = NULL, updated_at = ? WHERE task_id = ?`).run(updatedAt, task.task_id);
+    return { task: this.getTask(task.task_id), execution: this.getExecution(execution.execution_id), materials: linked };
+  }
+
+  #closeTask(payload, envelope) {
+    const receivingTaskId = envelope.task_id;
+    const producerTaskId = requireString(payload.producer_task_id ?? payload.producerTaskId, 'producer_task_id');
+    const materialId = requireString(payload.material_id ?? payload.materialId, 'material_id');
+    if (producerTaskId === receivingTaskId) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'a producer Task cannot close itself');
+    }
+    const acceptingExecution = this.#executionForWrite(envelope);
+    if (acceptingExecution.owner_ref !== envelope.actor_ref) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the receiving Task Execution owner may close a producer Task');
+    }
+    const producer = this.getTask(producerTaskId);
+    if (!producer) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown producer Task: ${producerTaskId}`);
+    const link = this.db.prepare(`SELECT * FROM task_material_links
+      WHERE task_id = ? AND material_id = ? AND role = 'response' AND receiving_task_id = ?`).get(receivingTaskId, materialId, receivingTaskId);
+    if (!link || link.producer_task_id !== producerTaskId) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'producer Task must have a linked Response Material for this receiving Task');
+    }
+    if (producer.state === 'CLOSED') {
+      return { task: producer, producer_task_id: producerTaskId, material_id: materialId, accepting_task_id: receivingTaskId, link: rowToMaterialLink(link, this.contextService?.getMaterial(materialId) ?? null) };
+    }
+    if (producer.state !== 'DONE') {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a DONE producer Task can be closed by a receiving Task');
+    }
+    const acceptedAt = now();
+    this.db.prepare(`UPDATE task_material_links
+      SET accepted_at = ?, accepted_by_task_id = ?, accepted_by_execution_id = ?
+      WHERE link_id = ?`).run(acceptedAt, receivingTaskId, acceptingExecution.execution_id, link.link_id);
+    this.db.prepare(`UPDATE tasks
+      SET state = 'CLOSED', state_version = state_version + 1, block_reason = NULL,
+          claimable_at = NULL, updated_at = ? WHERE task_id = ?`).run(acceptedAt, producerTaskId);
+    const acceptedLink = this.db.prepare('SELECT * FROM task_material_links WHERE link_id = ?').get(link.link_id);
+    return {
+      task: this.getTask(producerTaskId),
+      producer_task_id: producerTaskId,
+      material_id: materialId,
+      accepting_task_id: receivingTaskId,
+      accepting_execution_id: acceptingExecution.execution_id,
+      link: rowToMaterialLink(acceptedLink, this.contextService?.getMaterial(materialId) ?? null),
+    };
   }
 
   #read(operation, payload, envelope) {
     if (operation === 'get_mission') return this.#getMission(requireString(payload.mission_id, 'mission_id'));
     if (operation === 'list_task') return this.#listModernTasks(payload);
     if (operation === 'view_task') return this.#viewModernTask(requireString(payload.task_id ?? envelope.task_id, 'task_id'));
+    if (operation === 'list_task_materials') {
+      const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
+      if (!this.getTask(taskId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
+      return { links: this.#taskMaterialLinks(taskId, { role: payload.role ?? null, materialId: payload.material_id ?? payload.materialId ?? null }) };
+    }
     if (operation === 'get_task') {
       const taskId = payload.task_id ?? envelope.task_id;
       return this.getTask(requireString(taskId, 'task_id'));
@@ -892,6 +1070,9 @@ export class TaskService {
     switch (operation) {
       case 'create_mission': return this.#createMission(payload, envelope);
       case 'create_task': return this.#createModernTask(payload, envelope);
+      case 'link_material': return this.#linkMaterial(payload, envelope);
+      case 'complete_task': return this.#completeTask(payload, envelope);
+      case 'close_task': return this.#closeTask(payload, envelope);
       case 'propose_task': return this.#proposeTask(payload, envelope);
       case 'create_child_task': return this.#createChildTask(payload, envelope);
       case 'create_branch_group': return this.#createBranchGroup(payload, envelope);
@@ -2935,11 +3116,21 @@ export class TaskService {
     if (contract.required_materials) {
       if (!this.contextService) missing.push('required_materials');
       else for (const requirement of contract.required_materials) {
-        const consumptionAction = requirement.action ?? requirement.consumption_action;
-        const materials = this.contextService.readMaterials({ source_task: task.task_id }).filter((material) =>
-          requirement.kinds.includes(material.kind) && (!requirement.scope || requirement.scope === material.scope));
+        const normalizedRequirement = typeof requirement === 'string' ? { kind: requirement, min_count: 1 } : (requirement ?? {});
+        const kinds = normalizedRequirement.kinds ?? (normalizedRequirement.kind ? [normalizedRequirement.kind] : []);
+        if (!Array.isArray(kinds) || kinds.length === 0) {
+          missing.push('materials:invalid_requirement');
+          continue;
+        }
+        const consumptionAction = normalizedRequirement.action ?? normalizedRequirement.consumption_action;
+        const linkedMaterials = this.#modernTaskRecord(task.task_id)
+          ? this.#taskMaterialLinks(task.task_id).map((link) => link.material).filter(Boolean)
+          : null;
+        const materials = (linkedMaterials ?? this.contextService.readMaterials({ source_task: task.task_id })).filter((material) =>
+          kinds.includes(material.kind) && (!normalizedRequirement.scope || normalizedRequirement.scope === material.scope) &&
+          (!normalizedRequirement.role || normalizedRequirement.role === material.role));
         let count = materials.length;
-        if (requirement.requires_consumption) {
+        if (normalizedRequirement.requires_consumption) {
           const consumptionRows = typeof this.contextService.listMaterialConsumptions === 'function'
             ? this.contextService.listMaterialConsumptions({ reader_task: task.task_id, action: consumptionAction })
             : [];
@@ -2952,9 +3143,9 @@ export class TaskService {
             return consumedIds.has(material.material_id);
           }).length;
         }
-        if (count < requirement.min_count) {
-          const suffix = requirement.requires_consumption ? `:${consumptionAction}` : '';
-          missing.push(`materials${suffix}:${requirement.kinds.join('|')}`);
+        if (count < (normalizedRequirement.min_count ?? 1)) {
+          const suffix = normalizedRequirement.requires_consumption ? `:${consumptionAction}` : '';
+          missing.push(`materials${suffix}:${kinds.join('|')}`);
         }
       }
     }

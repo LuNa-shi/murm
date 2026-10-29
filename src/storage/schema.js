@@ -84,6 +84,34 @@ CREATE INDEX IF NOT EXISTS task_relations_task
 CREATE INDEX IF NOT EXISTS task_relations_related
   ON task_relations(related_task_id, relation_kind, created_at);
 
+-- A Material link is an explicit delivery/knowledge edge.  It does not make
+-- the linked Task a parent or create a scheduling dependency.  role tells
+-- readers whether the edge is an input, response, handoff, or shared
+-- experience; producer provenance is copied from the immutable Material so a
+-- later reader can audit who produced it.
+CREATE TABLE IF NOT EXISTS task_material_links (
+  link_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  material_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('input', 'response', 'handoff', 'experience')),
+  receiving_task_id TEXT NOT NULL DEFAULT '' REFERENCES tasks(task_id),
+  producer_task_id TEXT,
+  producer_execution_id TEXT,
+  created_by_task_id TEXT REFERENCES tasks(task_id),
+  created_by_execution_id TEXT REFERENCES executions(execution_id),
+  accepted_at TEXT,
+  accepted_by_task_id TEXT REFERENCES tasks(task_id),
+  accepted_by_execution_id TEXT REFERENCES executions(execution_id),
+  created_at TEXT NOT NULL,
+  UNIQUE(task_id, material_id, role, receiving_task_id)
+);
+
+CREATE INDEX IF NOT EXISTS task_material_links_task
+  ON task_material_links(task_id, role, created_at, link_id);
+
+CREATE INDEX IF NOT EXISTS task_material_links_material
+  ON task_material_links(material_id, role, created_at, link_id);
+
 CREATE TABLE IF NOT EXISTS tasks ${TASKS_TABLE_DEFINITION};
 
 CREATE TABLE IF NOT EXISTS executions (

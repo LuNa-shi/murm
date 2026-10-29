@@ -288,7 +288,7 @@ export class ServicesBridge {
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
-      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_claimable_tasks', 'list_executions', 'get_task_structure', 'explain_task_readiness', 'scheduler_status'].includes(operation)) {
+      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_claimable_tasks', 'list_executions', 'get_task_structure', 'explain_task_readiness', 'scheduler_status', 'task_list', 'task_view'].includes(operation)) {
         if (operation === 'list_claimable_tasks' && this.taskId !== null) {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claimable discovery is only available to an unbound selection Session');
         }
@@ -299,7 +299,7 @@ export class ServicesBridge {
           this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
-        const discoveryPayload = (operation === 'list_tasks' || operation === 'list_claimable_tasks') && this.taskId === null && payload.available_only !== false
+        const discoveryPayload = (operation === 'list_tasks' || operation === 'list_claimable_tasks' || operation === 'task_list') && this.taskId === null && payload.available_only !== false
           ? { ...payload, states: ['OPEN', 'RUNNING', 'WAITING'] }
           : (['get_task_structure', 'explain_task_readiness'].includes(operation) && payload.task_id === undefined && this.taskId
             ? { ...payload, task_id: this.taskId }
@@ -441,6 +441,26 @@ export class ServicesBridge {
       switch (operation) {
         case 'get_task': result = sdk.getTask(payload.task_id ?? this.taskId); break;
         case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
+        case 'task_list': result = sdk.listMissionTasks(payload); break;
+        case 'task_view': result = sdk.viewTask(payload.task_id ?? this.taskId); break;
+        case 'task_create': result = sdk.createTask(payload, options); break;
+        case 'task_link_material': result = sdk.linkMaterial(payload, options); break;
+        case 'task_complete':
+          result = sdk.completeTask(payload, options);
+          await this.onWorkUnit?.({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
+          // Task Service records the semantic DONE/SUCCEEDED transition first.
+          // Runtime then releases the live Session/Core/Workspace without
+          // attempting a second Task transition.  Test doubles that do not
+          // materialize a Runtime process may omit this optional seam.
+          if (typeof this.runtime.releaseExecution === 'function') {
+            await this.runtime.releaseExecution(boundExecutionId);
+          }
+          await this.releaseClaim({ result });
+          break;
+        case 'task_close': result = sdk.closeTask(payload, options); break;
+        case 'context_search_materials': result = sdk.searchMaterials(payload); break;
+        case 'context_get_material': result = sdk.getMaterial(payload.material_id ?? payload.materialId); break;
+        case 'context_publish_material': result = sdk.publishMaterial(payload, options); break;
         case 'read_materials': result = sdk.readMaterials(payload); break;
         case 'consume_materials': result = sdk.consumeMaterials(payload, options); break;
         case 'publish_material': result = sdk.publishMaterial(payload, options); break;
@@ -494,7 +514,7 @@ export class ServicesBridge {
       if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {
         await this.onWorkspaceWrite({ taskId: boundTaskId, executionId: boundExecutionId, result });
       }
-      if (this.onWorkUnit && ['read_materials', 'consume_materials', 'publish_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+      if (this.onWorkUnit && ['read_materials', 'consume_materials', 'publish_material', 'context_publish_material', 'task_link_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
         await this.onWorkUnit({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
