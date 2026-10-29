@@ -61,9 +61,13 @@ function inferRepositoryWorktreeRoots(options) {
   const experimentRoots = [options.root, ...options.additionalRoots];
   for (const root of experimentRoots) {
     const repositoryRoot = dirname(resolve(root));
+    if (!isDirectory(repositoryRoot)) continue;
     for (const name of ['.worktrees', '.worktree']) {
       const candidate = join(repositoryRoot, name);
-      if (isDirectory(candidate)) scanRoots.add(candidate);
+      // Keep the conventional path even before the directory exists. The
+      // registry rescan can then discover a worktree created while the daemon
+      // is already serving an open dashboard.
+      scanRoots.add(candidate);
     }
   }
   return [...scanRoots];

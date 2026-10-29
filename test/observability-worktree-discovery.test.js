@@ -41,18 +41,15 @@ test('persistent observability discovers repository .worktrees and .worktree exp
   const primaryDatabase = join(root, 'experiments', '.observability', 'observability.sqlite');
   const pluralDatabase = join(root, '.worktrees', 'feature-plural', 'experiments', 'run-plural', '.observability', 'observability.sqlite');
   const deepDatabase = join(root, '.worktrees', 'feature-plural', 'experiments', 'group', 'run-deep', '.observability', 'observability.sqlite');
-  const singularDatabase = join(root, '.worktree', 'feature-singular', 'experiments', '.observability', 'observability.sqlite');
   await Promise.all([
     mkdir(join(root, 'experiments', '.observability'), { recursive: true }),
     mkdir(join(root, '.worktrees', 'feature-plural', 'experiments', 'run-plural', '.observability'), { recursive: true }),
     mkdir(join(root, '.worktrees', 'feature-plural', 'experiments', 'group', 'run-deep', '.observability'), { recursive: true }),
-    mkdir(join(root, '.worktree', 'feature-singular', 'experiments', '.observability'), { recursive: true }),
   ]);
   for (const [database, experimentId] of [
     [primaryDatabase, 'run-primary'],
     [pluralDatabase, 'run-plural'],
     [deepDatabase, 'run-deep'],
-    [singularDatabase, 'run-singular'],
   ]) {
     const store = new ObservationStore(database);
     store.registerExperiment({ experimentId, status: 'RUNNING' });
@@ -63,29 +60,42 @@ test('persistent observability discovers repository .worktrees and .worktree exp
     const registry = await fetch(`${startup.url}/api/experiments`).then((response) => response.json());
     assert.deepEqual(
       registry.experiments.map((experiment) => experiment.experiment_id).sort(),
-      ['run-deep', 'run-plural', 'run-primary', 'run-singular'],
+      ['run-deep', 'run-plural', 'run-primary'],
     );
     assert.ok(startup.scan_roots.includes(join(root, '.worktrees')));
     assert.ok(startup.scan_roots.includes(join(root, '.worktree')));
 
-    const pendingChanges = fetch(`${startup.url}/api/experiments/changes?since=${encodeURIComponent(registry.revision)}`)
+    const waitForChanges = async (revision) => {
+      const pendingChanges = fetch(`${startup.url}/api/experiments/changes?since=${encodeURIComponent(revision)}`)
       .then((response) => response.json());
+      let timeout;
+      try {
+        const timeoutPromise = new Promise((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('worktree registry did not refresh')), 8_000);
+        });
+        return await Promise.race([pendingChanges, timeoutPromise]);
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
+    const singularDatabase = join(root, '.worktree', 'feature-singular', 'experiments', '.observability', 'observability.sqlite');
+    await mkdir(join(root, '.worktree', 'feature-singular', 'experiments', '.observability'), { recursive: true });
+    const singularStore = new ObservationStore(singularDatabase);
+    singularStore.registerExperiment({ experimentId: 'run-singular', status: 'RUNNING' });
+    singularStore.close();
+    const singularChanges = await waitForChanges(registry.revision);
+    assert.equal(singularChanges.changed, true);
+    assert.ok(singularChanges.experiments.some((experiment) => experiment.experiment_id === 'run-singular'));
+
     const lateDatabase = join(root, '.worktrees', 'feature-late', 'experiments', 'run-late', '.observability', 'observability.sqlite');
     await mkdir(join(root, '.worktrees', 'feature-late', 'experiments', 'run-late', '.observability'), { recursive: true });
     const lateStore = new ObservationStore(lateDatabase);
     lateStore.registerExperiment({ experimentId: 'run-late', status: 'RUNNING' });
     lateStore.close();
-    let timeout;
-    try {
-      const timeoutPromise = new Promise((_, reject) => {
-        timeout = setTimeout(() => reject(new Error('worktree registry did not refresh')), 8_000);
-      });
-      const changes = await Promise.race([pendingChanges, timeoutPromise]);
-      assert.equal(changes.changed, true);
-      assert.ok(changes.experiments.some((experiment) => experiment.experiment_id === 'run-late'));
-    } finally {
-      clearTimeout(timeout);
-    }
+    const lateChanges = await waitForChanges(singularChanges.revision);
+    assert.equal(lateChanges.changed, true);
+    assert.ok(lateChanges.experiments.some((experiment) => experiment.experiment_id === 'run-late'));
   } finally {
     child.kill('SIGTERM');
     await new Promise((resolve) => child.once('exit', resolve));
