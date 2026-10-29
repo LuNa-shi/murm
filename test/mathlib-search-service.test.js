@@ -89,6 +89,7 @@ test('Mathlib Search Service matches the documented Loogle HTTP query and filter
   const requests = [];
   const provider = createMathlibSearchService({
     upstreamUrl: 'http://loogle.test',
+    allowedModules: ['Mathlib.Algebra', 'Mathlib.Data'],
     fetchImpl: async (url) => {
       requests.push(String(url));
       return new Response(JSON.stringify({ hits: [
@@ -107,6 +108,7 @@ test('Mathlib Search Service matches the documented Loogle HTTP query and filter
 test('Mathlib Search Service applies the module filter before the bounded result limit', async () => {
   const provider = createMathlibSearchService({
     upstreamUrl: 'http://loogle.test',
+    allowedModules: ['Mathlib.Algebra', 'Mathlib.Data'],
     fetchImpl: async () => new Response(JSON.stringify({ hits: [
       { name: 'List.length', type: 'length xs = length xs', module: 'Mathlib.Data.List.Basic' },
       { name: 'Nat.add_comm', type: 'a + b = b + a', module: 'Mathlib.Algebra.Group.Basic' },
@@ -122,6 +124,17 @@ test('Mathlib Search Service applies the module filter before the bounded result
   assert.deepEqual(result.results.map((entry) => entry.name), ['Nat.add_comm']);
   assert.equal(result.result_count, 1);
   assert.equal(result.truncated, true);
+});
+
+test('Mathlib Search rejects module scopes for an upstream provider without a configured boundary', async () => {
+  const provider = createMathlibSearchService({
+    upstreamUrl: 'http://loogle.test',
+    fetchImpl: async () => new Response(JSON.stringify({ hits: [] }), { status: 200 }),
+  });
+  await assert.rejects(
+    () => provider.service.search({ query: 'add_comm', module: 'Mathlib.Algebra' }),
+    (error) => error.code === 'INVALID_CONTRACT' && /configured project\/module boundary/.test(error.message),
+  );
 });
 
 test('Mathlib Search rejects module and path scopes outside the configured source boundary before searching', async () => {

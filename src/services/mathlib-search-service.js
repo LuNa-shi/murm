@@ -337,6 +337,11 @@ export class MathlibSearchService {
     const scopedModule = module ? (this.sourceModulePrefix && module !== this.sourceModulePrefix && !module.startsWith(`${this.sourceModulePrefix}.`)
       ? `${this.sourceModulePrefix}.${module}`
       : module) : null;
+    if (scopedModule && !this.sourceRoot && !this.allowedModules) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module requires a configured project/module boundary', {
+        module,
+      });
+    }
     if (scopedModule && this.allowedModules && ![...this.allowedModules].some((candidate) => moduleMatches(candidate, scopedModule, this.sourceModulePrefix))) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module is outside the configured source/project boundary', {
         module,
