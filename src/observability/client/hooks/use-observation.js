@@ -18,6 +18,11 @@ export function useObservation() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [details, setDetails] = useState({});
   const sourceRef = useRef(null);
+  const registrySourceRef = useRef(null);
+  const registryFallbackRef = useRef(false);
+  const registryFallbackTimer = useRef(null);
+  const registryInitialTimer = useRef(null);
+  const registryRevisionRef = useRef('');
   const timelineTimer = useRef(null);
   const selectedRef = useRef(null);
 
@@ -87,26 +92,93 @@ export function useObservation() {
     }
   }, [openStream]);
 
+  const applyRegistry = useCallback(async (result, initial = false) => {
+    const next = result?.experiments || [];
+    if (result?.revision) registryRevisionRef.current = result.revision;
+    setExperiments(next);
+    const selected = selectedRef.current && next.find((item) => item.experiment_id === selectedRef.current);
+    const target = selected?.experiment_id
+      || (initial || !selectedRef.current ? next.find((item) => item.status === 'RUNNING')?.experiment_id || next[0]?.experiment_id : null);
+    if (target && target !== selectedRef.current) await selectExperiment(target);
+    else if (selected) setExperiment((current) => current ? { ...current, ...selected } : current);
+    else if (!target && !selectedRef.current) setConnection('Waiting for data');
+  }, [selectExperiment]);
+
   const refreshExperiments = useCallback(async (initial = false) => {
     try {
       const result = await getJson('/api/experiments?limit=100');
-      const next = result.experiments || [];
-      setExperiments(next);
-      const selected = selectedRef.current && next.find((item) => item.experiment_id === selectedRef.current);
-      const target = selected?.experiment_id || (initial || !selectedRef.current ? next.find((item) => item.status === 'RUNNING')?.experiment_id || next[0]?.experiment_id : null);
-      if (target && target !== selectedRef.current) await selectExperiment(target);
-      else if (selected && experiment) setExperiment((current) => ({ ...current, ...selected }));
-      else if (!target && !selectedRef.current) setConnection('Waiting for data');
+      await applyRegistry(result, initial);
     } catch (cause) {
-      if (!experiment) { setConnection('Unavailable'); setError(cause); }
+      setConnection('Unavailable');
+      setError(cause);
     }
-  }, [experiment, selectExperiment]);
+  }, [applyRegistry]);
+
+  const startRegistryFallback = useCallback(() => {
+    if (registryFallbackRef.current) return;
+    registryFallbackRef.current = true;
+    registrySourceRef.current?.close();
+    const wait = (milliseconds) => new Promise((resolve) => {
+      clearTimeout(registryFallbackTimer.current);
+      registryFallbackTimer.current = setTimeout(resolve, milliseconds);
+    });
+    const run = async () => {
+      while (registryFallbackRef.current) {
+        try {
+          const since = registryRevisionRef.current;
+          const suffix = since ? `?since=${encodeURIComponent(since)}` : '';
+          const result = await getJson(`/api/experiments/changes${suffix}`);
+          if (!registryFallbackRef.current) return;
+          await applyRegistry(result);
+        } catch {
+          if (!registryFallbackRef.current) return;
+          await wait(2_000);
+        }
+      }
+    };
+    void run();
+  }, [applyRegistry]);
+
+  const openRegistryStream = useCallback(() => {
+    registrySourceRef.current?.close();
+    clearTimeout(registryInitialTimer.current);
+    const source = new EventSource('/api/experiments/stream');
+    registrySourceRef.current = source;
+    let received = false;
+    const handleRegistry = (message) => {
+      try {
+        const result = JSON.parse(message.data);
+        received = true;
+        clearTimeout(registryInitialTimer.current);
+        void applyRegistry(result);
+      } catch {
+        // Ignore malformed frames while the edge connection is closing.
+      }
+    };
+    source.addEventListener('experiments', handleRegistry);
+    source.onmessage = handleRegistry;
+    source.onerror = () => {
+      source.close();
+      clearTimeout(registryInitialTimer.current);
+      registryInitialTimer.current = setTimeout(startRegistryFallback, received ? 1_000 : 250);
+    };
+    // Some edge proxies deliver the SSE headers but buffer the first event.
+    // Switch to the server-side long request instead of polling the registry.
+    registryInitialTimer.current = setTimeout(() => {
+      if (!received) startRegistryFallback();
+    }, 8_000);
+  }, [applyRegistry, startRegistryFallback]);
 
   useEffect(() => {
     void refreshExperiments(true);
-    const timer = setInterval(() => void refreshExperiments(false), 4_000);
-    return () => clearInterval(timer);
-  }, []); // Registry polling intentionally keeps one stable stream owner.
+    openRegistryStream();
+    return () => {
+      registryFallbackRef.current = false;
+      registrySourceRef.current?.close();
+      clearTimeout(registryInitialTimer.current);
+      clearTimeout(registryFallbackTimer.current);
+    };
+  }, [openRegistryStream, refreshExperiments]);
 
   useEffect(() => () => {
     sourceRef.current?.close();

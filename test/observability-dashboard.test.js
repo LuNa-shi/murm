@@ -6,6 +6,7 @@ import { buildModel, coreTraceData, extractToolCalls, queueTasks } from '../src/
 const dashboardSource = await readFile(new URL('../src/observability/public/app.js', import.meta.url), 'utf8');
 const stylesheet = await readFile(new URL('../src/observability/public/styles.css', import.meta.url), 'utf8');
 const page = await readFile(new URL('../src/observability/public/index.html', import.meta.url), 'utf8');
+const observationHook = await readFile(new URL('../src/observability/client/hooks/use-observation.js', import.meta.url), 'utf8');
 
 function fixtureEvents() {
   return [
@@ -41,6 +42,10 @@ test('generated Observation frontend keeps the server contract and redacted UI b
   assert.ok(dashboardSource.length > 100_000, 'React production bundle should be present');
   assert.match(dashboardSource, /Observation plane/);
   assert.match(dashboardSource, /EventSource/);
+  assert.match(dashboardSource, /\/api\/experiments\/stream/);
+  assert.match(dashboardSource, /\/api\/experiments\/changes/);
+  assert.doesNotMatch(observationHook, /setInterval\(/, 'registry updates should use SSE or a long-change request, not short polling');
+  assert.match(dashboardSource, /Registry updates arrive over live SSE/);
   assert.match(dashboardSource, /trace-span/);
   assert.match(stylesheet, /--primary/);
   assert.match(stylesheet, /\.data-table/);
