@@ -104,6 +104,7 @@ export function useObservation() {
   const selectExperiment = useCallback(async (id) => {
     if (!id) return;
     selectedRef.current = id;
+    sourceRef.current?.close();
     setConnection('Loading');
     setError(null);
     clearTimeout(eventBatchTimer.current);
