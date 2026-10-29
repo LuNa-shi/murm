@@ -39,6 +39,21 @@ test('ObservationStore persists experiment facts and returns cursor pages in eve
   await rm(root, { recursive: true, force: true });
 });
 
+test('ObservationStore returns recent windows and indexed summary data without payload replay', () => {
+  const store = new ObservationStore();
+  store.registerExperiment({ experimentId: 'run-window' });
+  for (let sequence = 1; sequence <= 20; sequence += 1) {
+    store.append({
+      experimentId: 'run-window', sequence, source: 'runtime', kind: sequence % 2 ? 'execution_assigned' : 'core_state_changed',
+      coreId: `core-${sequence % 2}`, payload: { state: 'RUNNING', large: 'x'.repeat(1_000) },
+    });
+  }
+  assert.equal(store.latestSequence('run-window'), 20);
+  assert.deepEqual(store.listCoreIds('run-window'), ['core-0', 'core-1']);
+  assert.deepEqual(store.listRecentEvents({ experimentId: 'run-window', limit: 3 }).events.map((event) => event.sequence), [18, 19, 20]);
+  store.close();
+});
+
 test('ObservationStore publishes live events and keeps Agent payloads bounded and redacted', () => {
   const store = new ObservationStore();
   store.registerExperiment({ experimentId: 'run-live' });
