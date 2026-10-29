@@ -70,6 +70,7 @@ export class ServicesBridge {
     this.executionId = executionId;
     this.role = role ?? (taskId || executionId ? AGENT_ROLES.BOUND : AGENT_ROLES.SELECTION);
     this.capabilityProfile = capabilityProfile;
+    this.capabilityProfileRegistryRevision = null;
     this.registry = registry ?? router?.registry ?? null;
     this.runtimeCapabilities = runtimeCapabilities ?? runtimeCapabilityList();
     this.onClaim = onClaim;
@@ -111,6 +112,7 @@ export class ServicesBridge {
     this.executionId = result.execution.execution_id;
     this.role = AGENT_ROLES.BOUND;
     this.capabilityProfile = null;
+    this.capabilityProfileRegistryRevision = null;
     this.selectionCandidates = null;
     try {
       await this.onClaimAccepted?.(result);
@@ -121,6 +123,7 @@ export class ServicesBridge {
       this.executionId = null;
       this.role = AGENT_ROLES.SELECTION;
       this.capabilityProfile = null;
+      this.capabilityProfileRegistryRevision = null;
       // A failed handoff still owns a durable claim until the caller fences it.
       // Deliver the original binding to the release hook before surfacing the
       // handoff error, so a Core cannot retain a stale Execution identity.
@@ -152,7 +155,10 @@ export class ServicesBridge {
   }
 
   getCapabilityProfile() {
-    if (this.capabilityProfile?.role !== this.role) this.capabilityProfile = null;
+    const registryRevision = typeof this.registry?.getRevision === 'function' ? this.registry.getRevision() : null;
+    if (this.capabilityProfile?.role !== this.role || this.capabilityProfileRegistryRevision !== registryRevision) {
+      this.capabilityProfile = null;
+    }
     if (!this.capabilityProfile) {
       this.capabilityProfile = buildCapabilityProfile({
         role: this.role,
@@ -160,6 +166,7 @@ export class ServicesBridge {
         runtimeCapabilities: this.runtimeCapabilities,
         context: { task_id: this.taskId, execution_id: this.executionId },
       });
+      this.capabilityProfileRegistryRevision = registryRevision;
     }
     return structuredClone(this.capabilityProfile);
   }
@@ -214,6 +221,7 @@ export class ServicesBridge {
     this.executionId = null;
     this.role = AGENT_ROLES.SELECTION;
     this.capabilityProfile = null;
+    this.capabilityProfileRegistryRevision = null;
     if (this.onRelease) await this.onRelease(released);
   }
 
@@ -392,6 +400,7 @@ export class ServicesBridge {
         this.executionId = result.execution.execution_id;
         this.role = AGENT_ROLES.BOUND;
         this.capabilityProfile = null;
+        this.capabilityProfileRegistryRevision = null;
         // End the bounded selection view before the bound prompt.
         this.selectionCandidates = null;
         let handoffRequired = false;
@@ -424,6 +433,7 @@ export class ServicesBridge {
           this.executionId = null;
           this.role = AGENT_ROLES.SELECTION;
           this.capabilityProfile = null;
+          this.capabilityProfileRegistryRevision = null;
           await this.onRelease?.({ taskId: result.task.task_id, executionId: result.execution.execution_id, result: null });
           throw error;
         }
@@ -494,6 +504,7 @@ export class ServicesBridge {
         this.executionId = null;
         this.role = AGENT_ROLES.SELECTION;
         this.capabilityProfile = null;
+        this.capabilityProfileRegistryRevision = null;
         await this.onRelease?.(released);
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;

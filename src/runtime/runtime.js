@@ -378,9 +378,14 @@ export class Runtime {
     let initialPromptSnapshot = promptSnapshot;
     if (!initialPromptSnapshot && capabilityProfile) {
       const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
+      const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
+      const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
+        ? agentPrompt
+        : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
       initialPromptSnapshot = buildPromptSnapshot({
         role,
         profile: capabilityProfile,
+        staticSop,
         task: this.taskService.getTask(current.task_id),
         execution: current,
         workspace,
@@ -392,9 +397,13 @@ export class Runtime {
     }
     if (!capabilityProfile && this.capabilityRegistry) {
       const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
+      const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
+      const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
+        ? agentPrompt
+        : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
       const profile = buildCapabilityProfile({ role, registry: this.capabilityRegistry, runtimeCapabilities: this.runtimeCapabilities, context: { task_id: current.task_id, execution_id: current.execution_id } });
       initialPromptSnapshot = buildPromptSnapshot({
-        role, profile, task: this.taskService.getTask(current.task_id), execution: current, workspace, recovery: promptContext.recovery ?? null,
+        role, profile, staticSop, task: this.taskService.getTask(current.task_id), execution: current, workspace, recovery: promptContext.recovery ?? null,
       });
       initialPrompt = initialPromptSnapshot.prompt;
     }

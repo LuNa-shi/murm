@@ -52,6 +52,25 @@ test('Mathlib Search Service indexes a locked Lean source root with a bounded st
   }
 });
 
+test('Mathlib Search Service matches the documented Loogle HTTP query and filters module results locally', async () => {
+  const requests = [];
+  const provider = createMathlibSearchService({
+    upstreamUrl: 'http://loogle.test',
+    fetchImpl: async (url) => {
+      requests.push(String(url));
+      return new Response(JSON.stringify({ hits: [
+        { name: 'Nat.add_comm', type: 'a + b = b + a', module: 'Mathlib.Algebra.Group.Basic' },
+        { name: 'List.length', type: 'length xs = length xs', module: 'Mathlib.Data.List.Basic' },
+      ], count: 2 }), { status: 200, headers: { 'content-type': 'application/json' } });
+    },
+  });
+  assert.equal(await provider.readiness(), true);
+  const result = await provider.service.search({ query: 'Nat.add_comm', module: 'Mathlib.Algebra', max_results: 1 });
+  assert.deepEqual(result.results.map((entry) => entry.name), ['Nat.add_comm']);
+  assert.match(requests.at(-1), /\/json\?q=Nat\.add_comm$/);
+  assert.doesNotMatch(requests.at(-1), /module=|max-results=/);
+});
+
 test('Mathlib Search Service crosses the independent HTTP Host and Registry adapter boundary', async () => {
   const fixture = await sourceFixture();
   const provider = createMathlibSearchService({

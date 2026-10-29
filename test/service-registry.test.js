@@ -117,7 +117,7 @@ test('HTTP ServiceHost and adapter expose manifest, health, readiness, and struc
     assert.equal(manifestBody.result.service_id, 'remote');
     const unauthorized = await fetch(`${environment.url}/v1/echo`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ envelope, input: { value: 'no' } }) });
     assert.equal(unauthorized.status, 401);
-    const invalid = await fetch(`${environment.url}/v1/echo`, { method: 'POST', headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' }, body: JSON.stringify({ envelope: { actor_ref: 'missing-operation-id' }, input: {} }) });
+    const invalid = await fetch(`${environment.url}/v1/echo`, { method: 'POST', headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' }, body: JSON.stringify({ envelope: { actor_ref: 'missing-operation-id' }, input: {}, role: 'selection' }) });
     assert.equal(invalid.status, 400);
     const invalidBody = await invalid.json();
     assert.equal(invalidBody.error.code, ERROR_CODES.INVALID_CONTRACT);
@@ -146,6 +146,7 @@ test('built-in Task, Context, Judge, and Catalog providers can all be replaced b
       const host = createServiceHost({
         manifest: initial,
         token,
+        trusted: true,
         handler: async ({ capability, input, envelope }) => {
           if (id === 'catalog') {
             if (capability.operation === 'list_services') return { services: [] };

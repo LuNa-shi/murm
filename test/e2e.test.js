@@ -85,10 +85,10 @@ test('real-agent candidate source accepts plain text and source-wrapped Material
 
 test('real-agent feedback trace proves the revision submission follows the delivered source failure', () => {
   const trace = summarizeFeedbackTrace([
-    { type: 'tool_execution_start', toolName: 'swarmenv_call', args: { operation: 'submit_candidate', payload: { candidate_material_id: 'candidate-1' } } },
-    { type: 'tool_execution_end', toolName: 'swarmenv_call', result: { check_result: { check_result_id: 'check-1', result_class: 'source_failure', checker_process_status: 'completed', diagnostic_code: 'lean_proof_error', diagnostic_excerpt: 'Candidate.lean:1:1: type mismatch', diagnostic_location: { file: 'Candidate.lean', line: 1, column: 1 } } } },
+    { type: 'tool_execution_start', toolName: 'swarmenv_judge_submit_candidate', args: { candidate_material_id: 'candidate-1' } },
+    { type: 'tool_execution_end', toolName: 'swarmenv_judge_submit_candidate', result: { check_result: { check_result_id: 'check-1', result_class: 'source_failure', checker_process_status: 'completed', diagnostic_code: 'lean_proof_error', diagnostic_excerpt: 'Candidate.lean:1:1: type mismatch', diagnostic_location: { file: 'Candidate.lean', line: 1, column: 1 } } } },
     { type: 'tool_execution_start', toolName: 'swarmenv_publish_material', args: { scope: 'proof_relevant' } },
-    { type: 'tool_execution_start', toolName: 'swarmenv_call', arguments: JSON.stringify({ operation: 'submit_candidate', payload: { candidate_material_id: 'candidate-2' } }) },
+    { type: 'tool_execution_start', toolName: 'swarmenv_judge_submit_candidate', arguments: JSON.stringify({ candidate_material_id: 'candidate-2' }) },
   ]);
   assert.equal(trace.first_source_failure_result_delivered, true);
   assert.equal(trace.revision_submission_after_feedback, true);

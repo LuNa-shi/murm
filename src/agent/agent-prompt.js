@@ -45,13 +45,17 @@ function compact(value, fallback = 'none') {
 
 function taskSection(task) {
   if (!task) return 'Task context: supplied by the bound Task capability.';
-  return [
+  const sections = [
     `Task ID: ${task.task_id ?? task.id ?? 'unknown'}`,
     `Goal: ${task.goal ?? 'not supplied'}`,
     `Expected output: ${task.expected_output ?? 'not supplied'}`,
     `Completion contract: ${compact(task.completion_contract ?? task.acceptance_conditions)}`,
     `Allowed inputs: ${compact(task.input_material_refs ?? task.allowed_inputs)}`,
-  ].join('\n');
+  ];
+  if (typeof task.task_instructions === 'string' && task.task_instructions.trim().length > 0) {
+    sections.push(`Task instructions: ${task.task_instructions}`);
+  }
+  return sections.join('\n');
 }
 
 function executionSection(execution) {

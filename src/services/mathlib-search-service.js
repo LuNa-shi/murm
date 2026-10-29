@@ -233,7 +233,6 @@ export class MathlibSearchService {
     const path = url.pathname.endsWith('/json') ? url.pathname : `${url.pathname.replace(/\/$/, '')}/json`;
     url.pathname = path;
     url.searchParams.set('q', 'Nat.add_comm');
-    url.searchParams.set('max-results', '1');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('mathlib readiness probe timed out')), Math.min(this.timeoutMs, 3_000));
     try {
@@ -279,8 +278,10 @@ export class MathlibSearchService {
     const path = url.pathname.endsWith('/json') ? url.pathname : `${url.pathname.replace(/\/$/, '')}/json`;
     url.pathname = path;
     url.searchParams.set('q', query);
-    if (module) url.searchParams.set('module', module);
-    url.searchParams.set('max-results', String(Math.min(maxResults, this.maxResults)));
+    // Loogle's HTTP wrapper documents only /json?q=...; --module and
+    // --max-results are backend process flags, not request parameters. Apply
+    // the SwarmEnv module and result limits after normalizing the response so
+    // a deployment cannot silently ignore a caller's bounded filter.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('mathlib search timed out')), this.timeoutMs);
     const onAbort = () => controller.abort(signal.reason ?? new Error('mathlib search aborted'));
@@ -297,11 +298,19 @@ export class MathlibSearchService {
       if (!response.ok) {
         throw new SwarmEnvError(response.status === 408 || response.status === 504 ? ERROR_CODES.SERVICE_TIMEOUT : ERROR_CODES.SERVICE_UNAVAILABLE, `mathlib search backend returned HTTP ${response.status}`, { status: response.status }, { retryable: response.status >= 500 || response.status === 408 });
       }
-      return normalizeUpstreamResult(body, {
+      const normalized = normalizeUpstreamResult(body, {
         query,
         maxResults: Math.min(maxResults, this.maxResults),
         metadata: { backend: 'loogle-http', mathlib_revision: this.mathlibRevision, lean_version: this.leanVersion },
       });
+      if (!module) return normalized;
+      const results = normalized.results.filter((candidate) => candidate.module === module || candidate.module?.startsWith(`${module}.`));
+      return {
+        ...normalized,
+        results,
+        result_count: results.length,
+        truncated: normalized.truncated || results.length < normalized.results.length,
+      };
     } catch (error) {
       if (error instanceof SwarmEnvError) throw error;
       if (controller.signal.aborted) {

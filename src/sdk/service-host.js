@@ -63,15 +63,18 @@ async function readJson(request, maxBytes) {
 }
 
 export class ServiceHost {
-  constructor({ manifest, handler, readiness = null, token = null, host = '127.0.0.1', maxBodyBytes = DEFAULT_MAX_BODY_BYTES, logger = null } = {}) {
+  constructor({ manifest, handler, readiness = null, token = null, host = '127.0.0.1', advertiseHost = null, publicUrl = null, requireRole = false, trusted = false, maxBodyBytes = DEFAULT_MAX_BODY_BYTES, logger = null } = {}) {
     if (!manifest) throw new TypeError('ServiceHost requires a Service Manifest');
     if (typeof handler !== 'function') throw new TypeError('ServiceHost requires a handler');
     if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 1) throw new TypeError('maxBodyBytes must be a positive integer');
-    this.manifest = createServiceManifest(manifest);
+    this.manifest = createServiceManifest(manifest, { allowOpenObjects: trusted === true });
     this.handler = handler;
     this.readiness = readiness;
     this.token = token;
     this.host = host;
+    this.advertiseHost = advertiseHost ?? (host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host);
+    this.publicUrl = publicUrl;
+    this.requireRole = requireRole;
     this.maxBodyBytes = maxBodyBytes;
     this.logger = logger;
     this.server = null;
@@ -93,7 +96,7 @@ export class ServiceHost {
     if (!this.address) throw new Error('ServiceHost has not started');
     return {
       service_id: this.manifest.service_id,
-      url: `http://${this.host}:${this.address.port}`,
+      url: this.publicUrl ?? `http://${this.advertiseHost}:${this.address.port}`,
       token: this.token,
     };
   }
@@ -138,6 +141,9 @@ export class ServiceHost {
       validateEnvelope(body.envelope);
       const input = body.input ?? {};
       const role = body.role ?? null;
+      if (this.requireRole && role === null) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, 'service invocation requires an Agent role', { service_id: this.manifest.service_id, capability: capability.name });
+      }
       if (role !== null && !capability.audience.includes(role)) {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `capability ${capability.name} is not available to role ${role}`, { service_id: this.manifest.service_id, capability: capability.name, role });
       }

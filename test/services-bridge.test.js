@@ -161,6 +161,38 @@ test('ServicesBridge invokes a registered HTTP capability through its adapter', 
   }
 });
 
+test('ServicesBridge refreshes the profile when a Service is registered after startup', async () => {
+  const registry = new ServiceRegistry();
+  const bridge = new ServicesBridge({
+    taskService: { getTask: () => null, getExecution: () => null },
+    contextService: {},
+    runtime: {},
+    registry,
+    taskId: 'task-dynamic',
+    executionId: 'execution-dynamic',
+  });
+  try {
+    assert.equal(bridge.getCapabilityProfile().capabilities.some((capability) => capability.service_id === 'dynamic'), false);
+    registry.registerService({
+      manifest: createServiceManifest({
+        id: 'dynamic', title: 'Dynamic Service', purpose: 'Registered after the Bridge was created.',
+        provider_version: '1.0.0', contract_version: '1', endpoint: { transport: 'in-process' },
+        capabilities: [{
+          name: 'dynamic_read', operation: 'dynamic_read', description: 'Read dynamic state.',
+          input_schema: { type: 'object', properties: {}, additionalProperties: false },
+          output_schema: { type: 'object', properties: {}, additionalProperties: false },
+          audience: ['bound'], side_effect: 'read', idempotent: true, context: ['task', 'execution'],
+          help: { when: 'Use the dynamic provider.', ref: 'service://dynamic/dynamic_read' },
+        }],
+      }),
+      adapter: { invoke: async () => ({ ok: true }) },
+    });
+    assert.equal(bridge.getCapabilityProfile().capabilities.some((capability) => capability.service_id === 'dynamic'), true);
+  } finally {
+    await bridge.stop();
+  }
+});
+
 test('ServicesBridge exposes only the bounded selection shortlist and lets Selection claim exactly once', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);

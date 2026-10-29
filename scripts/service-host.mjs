@@ -75,6 +75,10 @@ const serviceHost = createServiceHost({
   readiness: async () => true,
   token: process.env.SWARMENV_SERVICE_TOKEN ?? null,
   host,
+  advertiseHost,
+  publicUrl: endpointUrl,
+  requireRole: true,
+  trusted: true,
 });
 
 await serviceHost.start({ port });

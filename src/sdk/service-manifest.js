@@ -23,8 +23,9 @@ function requiredString(value, field, { pattern = null } = {}) {
   return value;
 }
 
-function strictSchema(value, field) {
-  const validObject = isRecord(value) && value.type === 'object' && isRecord(value.properties) && value.additionalProperties === false;
+function strictSchema(value, field, { allowOpenObjects = false } = {}) {
+  const validObject = isRecord(value) && value.type === 'object' && isRecord(value.properties)
+    && (value.additionalProperties === false || (allowOpenObjects && value.additionalProperties === true));
   const validArray = isRecord(value) && value.type === 'array' && isRecord(value.items);
   const validPrimitive = isRecord(value) && ['string', 'number', 'integer', 'boolean', 'null'].includes(value.type);
   const validUnion = isRecord(value) && Array.isArray(value.type) && value.type.length > 0
@@ -70,7 +71,7 @@ function normalizeHelp(help, index) {
   };
 }
 
-function normalizeCapability(capability, index) {
+function normalizeCapability(capability, index, { allowOpenObjects = false } = {}) {
   if (!isRecord(capability)) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `capabilities[${index}] must be an object`, { index });
   const name = requiredString(capability.name ?? capability.operation, `capabilities[${index}].name`, { pattern: CAPABILITY_PATTERN });
   const description = requiredString(capability.description, `capabilities[${index}].description`);
@@ -95,8 +96,8 @@ function normalizeCapability(capability, index) {
     name,
     operation: requiredString(capability.operation ?? name, `capabilities[${index}].operation`, { pattern: CAPABILITY_PATTERN }),
     description,
-    input_schema: strictSchema(capability.input_schema ?? capability.inputSchema, `capabilities[${index}].input_schema`),
-    output_schema: strictSchema(capability.output_schema ?? capability.outputSchema, `capabilities[${index}].output_schema`),
+    input_schema: strictSchema(capability.input_schema ?? capability.inputSchema, `capabilities[${index}].input_schema`, { allowOpenObjects }),
+    output_schema: strictSchema(capability.output_schema ?? capability.outputSchema, `capabilities[${index}].output_schema`, { allowOpenObjects }),
     audience: [...new Set(audience)],
     side_effect: sideEffect,
     idempotent: capability.idempotent,
@@ -119,7 +120,7 @@ function hashManifest(value) {
   return createHash('sha256').update(stableStringify(value)).digest('hex');
 }
 
-export function createServiceManifest(input) {
+export function createServiceManifest(input, { allowOpenObjects = false } = {}) {
   if (!isRecord(input)) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service manifest must be an object');
   const id = requiredString(input.id ?? input.service_id, 'id', { pattern: ID_PATTERN });
   const title = requiredString(input.title ?? input.display_name, 'title');
@@ -130,7 +131,7 @@ export function createServiceManifest(input) {
   if (!Array.isArray(input.capabilities) || input.capabilities.length === 0) {
     throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'capabilities must be a non-empty array');
   }
-  const capabilities = input.capabilities.map(normalizeCapability);
+  const capabilities = input.capabilities.map((capability, index) => normalizeCapability(capability, index, { allowOpenObjects }));
   const names = new Set();
   const operations = new Set();
   const paths = new Set();
@@ -161,7 +162,10 @@ export function createServiceManifest(input) {
 }
 
 export function manifestSnapshot(manifest) {
-  const normalized = createServiceManifest(manifest);
+  // A registered trusted built-in may intentionally expose an open object
+  // contract (for example, structured Task changes). Snapshotting must retain
+  // that contract instead of silently narrowing it during HTTP discovery.
+  const normalized = createServiceManifest(manifest, { allowOpenObjects: true });
   return structuredClone(normalized);
 }
 

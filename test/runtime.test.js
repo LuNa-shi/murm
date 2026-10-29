@@ -7,7 +7,10 @@ import { EventEmitter } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 import {
   ContextService,
+  createBuiltinServiceRegistry,
+  createMathlibSearchManifest,
   ERROR_CODES,
+  registerUserService,
   Runtime,
   ServicesRouter,
   ServicesSDK,
@@ -276,6 +279,35 @@ test('Runtime creates an isolated workspace before Pi, saves checkpoint before w
   await runtime.stopExecution(claimed.execution.execution_id);
   await rm(rootDir, { recursive: true, force: true });
   fixtureData.taskService.close();
+});
+
+test('Runtime bind composes the supplied mode prompt with the live Service profile', async () => {
+  const fixtureData = await fixture();
+  const { runtime, taskService, claimed, rootDir, contextService, adapter } = fixtureData;
+  const registry = createBuiltinServiceRegistry({ taskService, contextService });
+  registerUserService(registry, {
+    manifest: createMathlibSearchManifest(),
+    adapter: { invoke: async () => ({ query: 'True', results: [], result_count: 0, truncated: false }) },
+  });
+  runtime.capabilityRegistry = registry;
+  taskService.db.prepare('UPDATE tasks SET task_instructions = ? WHERE task_id = ?').run('TASK_INSTRUCTIONS_SENTINEL', fixtureData.task.task_id);
+  try {
+    const bound = await runtime.bindAgentExecution(claimed.execution.execution_id, null, {
+      agentPrompt: 'MODE_PROMPT_SENTINEL',
+      startSession: async ({ execution }) => adapter.start({ executionId: execution.execution_id }),
+    });
+    const prompt = bound.session.prompts[0];
+    assert.match(prompt, /MODE_PROMPT_SENTINEL/);
+    assert.match(prompt, /TASK_INSTRUCTIONS_SENTINEL/);
+    assert.match(prompt, /Mathlib Search/);
+    assert.match(prompt, /swarmenv_mathlib_search/);
+    assert.doesNotMatch(prompt, /swarmenv_call|request_wait/);
+    await runtime.stopExecution(claimed.execution.execution_id);
+  } finally {
+    await runtime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
 });
 
 test('fencing and Runtime restart prevent old workspace writes and leave an auditable workspace', async () => {

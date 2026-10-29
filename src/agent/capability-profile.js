@@ -230,7 +230,7 @@ export function capabilityDirectory(profile) {
       if (!capability) continue;
       const guidance = capability.help?.when ?? capability.help?.usage ?? capability.help?.summary ?? null;
       const effect = capability.side_effect === false || capability.side_effect === 'read' ? 'read-only' : 'writes state';
-      lines.push(`  - ${name}: ${capability.description || 'Use the registered capability.'} (${effect}${guidance ? `; ${guidance}` : ''})`);
+      lines.push(`  - swarmenv_${name}: ${capability.description || 'Use the registered capability.'} (logical operation ${capability.service_id}.${capability.operation}; ${effect}${guidance ? `; ${guidance}` : ''})`);
     }
   }
   return lines.length > 0 ? lines.join('\n') : '- No callable provider capabilities are available in this Session.';

@@ -22,6 +22,9 @@ const serviceHost = createServiceHost({
   readiness: provider.readiness,
   token: process.env.MATHLIB_SEARCH_TOKEN ?? null,
   host,
+  advertiseHost,
+  publicUrl: endpointUrl,
+  requireRole: true,
 });
 
 await serviceHost.start({ port });

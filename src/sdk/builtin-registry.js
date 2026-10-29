@@ -44,7 +44,10 @@ function strictInputSchema(parameters) {
   schema.properties = schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)
     ? schema.properties
     : {};
-  schema.additionalProperties = false;
+  // Preserve an explicitly open built-in contract. Missing declarations still
+  // default to a closed object so a service cannot accidentally advertise an
+  // unbounded payload.
+  if (schema.additionalProperties === undefined) schema.additionalProperties = false;
   return schema;
 }
 
@@ -83,7 +86,7 @@ function normalizeServiceEndpoint(serviceId, configured) {
 
 function manifestForService(serviceId, tools, { endpoint = { transport: 'in-process' }, manifest = null } = {}) {
   if (manifest) {
-    const supplied = createServiceManifest({ ...manifest, endpoint });
+    const supplied = createServiceManifest({ ...manifest, endpoint }, { allowOpenObjects: true });
     if (supplied.service_id !== serviceId) {
       throw new TypeError(`service manifest id does not match configured provider: expected ${serviceId}, got ${supplied.service_id}`);
     }
@@ -114,7 +117,7 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
       errors: [],
       scope: tool.scope ?? null,
     })),
-  });
+  }, { allowOpenObjects: true });
 }
 
 function serviceDispatch(serviceId, services, registry) {

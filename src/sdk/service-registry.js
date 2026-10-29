@@ -45,6 +45,7 @@ export class ServiceRegistry {
   constructor({ adapters = [], logger = null, requiredContractVersion = null } = {}) {
     this.adapters = new Map();
     this.services = new Map();
+    this.revision = 0;
     this.logger = logger;
     this.requiredContractVersion = requiredContractVersion;
     for (const entry of adapters) {
@@ -53,7 +54,7 @@ export class ServiceRegistry {
   }
 
   registerService({ manifest, adapter = null, trusted = false } = {}) {
-    const normalized = createServiceManifest(manifest);
+    const normalized = createServiceManifest(manifest, { allowOpenObjects: trusted === true });
     if (this.services.has(normalized.service_id)) throw new SwarmEnvError(ERROR_CODES.SERVICE_ALREADY_REGISTERED, `service is already registered: ${normalized.service_id}`, { service_id: normalized.service_id });
     if (RESERVED_SERVICE_IDS.has(normalized.service_id) && trusted !== true) {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `service id is reserved for a built-in provider: ${normalized.service_id}`, { service_id: normalized.service_id });
@@ -67,6 +68,7 @@ export class ServiceRegistry {
     }
     this.services.set(normalized.service_id, { manifest: normalized, adapter: resolvedAdapter, ready: null });
     this.adapters.set(normalized.service_id, resolvedAdapter);
+    this.revision += 1;
     this.logger?.({ event: 'service.registry.registered', service_id: normalized.service_id, manifest_hash: normalized.manifest_hash });
     return this.getServiceMetadata(normalized.service_id);
   }
@@ -78,6 +80,11 @@ export class ServiceRegistry {
   unregisterService(serviceId) {
     if (!this.services.delete(serviceId)) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_FOUND, `unknown service: ${serviceId}`, { service_id: serviceId });
     this.adapters.delete(serviceId);
+    this.revision += 1;
+  }
+
+  getRevision() {
+    return this.revision;
   }
 
   getService(serviceId) {
