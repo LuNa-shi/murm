@@ -51,6 +51,12 @@ CREATE INDEX IF NOT EXISTS observation_events_kind_sequence
   ON observation_events(kind, sequence);
 CREATE INDEX IF NOT EXISTS observation_events_experiment_kind_sequence
   ON observation_events(experiment_id, kind, sequence);
+CREATE INDEX IF NOT EXISTS observation_events_experiment_task_sequence
+  ON observation_events(experiment_id, task_id, sequence);
+CREATE INDEX IF NOT EXISTS observation_events_experiment_execution_sequence
+  ON observation_events(experiment_id, execution_id, sequence);
+CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
+  ON observation_events(experiment_id, core_id, sequence);
 `;
 
 function now() {
@@ -353,6 +359,32 @@ export class ObservationStore {
     return { events: rows.reverse().map((row) => rowToEvent(row, view)) };
   }
 
+  listLatestEntityEvents({ experimentId, kinds = null, view = 'operator', limit = 1_000 } = {}) {
+    requireString(experimentId, 'experiment_id');
+    validateLimit(limit);
+    if (!['operator', 'agent'].includes(view)) throw new TypeError(`unsupported observation view: ${view}`);
+    if (kinds !== null && (!Array.isArray(kinds) || kinds.some((kind) => typeof kind !== 'string' || kind.length === 0))) {
+      throw new TypeError('kinds must be an array of non-empty strings');
+    }
+    const kindClause = kinds?.length ? ` AND kind IN (${kinds.map(() => '?').join(', ')})` : '';
+    const rows = [];
+    for (const column of ['task_id', 'execution_id', 'core_id']) {
+      const params = [experimentId, ...(kinds ?? []), limit];
+      rows.push(...this.db.prepare(`
+        SELECT * FROM (
+          SELECT observation_events.*, ROW_NUMBER() OVER (PARTITION BY ${column} ORDER BY sequence DESC) AS entity_rank
+          FROM observation_events
+          WHERE experiment_id = ?${kindClause} AND ${column} IS NOT NULL
+        )
+        WHERE entity_rank = 1
+        ORDER BY sequence DESC
+        LIMIT ?
+      `).all(...params));
+    }
+    const unique = new Map(rows.map((row) => [row.event_id, row]));
+    return { events: [...unique.values()].sort((left, right) => left.sequence - right.sequence).slice(-limit).map((row) => rowToEvent(row, view)) };
+  }
+
   #transaction(callback) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -453,6 +485,11 @@ export class ObservationStoreCollection {
   listRecentEvents(options = {}) {
     const store = this.#storeFor(options.experimentId);
     return store?.listRecentEvents(options) ?? { events: [] };
+  }
+
+  listLatestEntityEvents(options = {}) {
+    const store = this.#storeFor(options.experimentId);
+    return store?.listLatestEntityEvents(options) ?? { events: [] };
   }
 
   close() {
