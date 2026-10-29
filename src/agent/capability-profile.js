@@ -88,7 +88,8 @@ function normalizeCapability(capability, role) {
   // Execution lease/process controls remain Runtime-owned. Only the read-only
   // Execution projection may appear in a bound profile; typed Task actions
   // are supplied separately as Runtime capabilities.
-  if (serviceId === 'execution' && (capability.side_effect ?? capability.sideEffect) === true) return null;
+  const sideEffect = capability.side_effect ?? capability.sideEffect;
+  if (serviceId === 'execution' && (sideEffect === true || sideEffect === 'write')) return null;
   if (audience.some((item) => INTERNAL_AUDIENCES.has(item))) return null;
   return {
     id: capability.id ?? `${serviceId}.${operation}`,
