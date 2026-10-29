@@ -90,6 +90,15 @@ export class ContextService {
       'context.read_materials': 'read_materials',
       context_read_materials: 'read_materials',
     }[operation] ?? operation;
+    const normalizedPayload = normalizedOperation === 'publish_material' &&
+      (operation === 'context.publish_material' || operation === 'context_publish_material')
+      ? {
+        ...payload,
+        kind: payload.kind ?? (payload.role === 'experience' ? 'experience' : payload.role === 'handoff' ? 'failure' : 'fact'),
+        scope: payload.scope ?? 'mission',
+        evidence_state: payload.evidence_state ?? 'proposed',
+      }
+      : payload;
     this.logger?.append({ event: 'dispatch.start', service: 'context', operation: normalizedOperation, requested_operation: operation, envelope });
     try {
       const executionWrite = ['publish_material', 'consume_materials'].includes(normalizedOperation) && envelope?.execution_id !== null;
@@ -102,15 +111,15 @@ export class ContextService {
         : normalizedOperation === 'list_material_consumptions'
           ? this.listMaterialConsumptions(payload)
           : this.#transaction(() => {
-        const fingerprint = operationPayload(normalizedOperation, payload, envelope);
+        const fingerprint = operationPayload(normalizedOperation, normalizedPayload, envelope);
         const replay = this.#replay(envelope.operation_id, fingerprint);
         if (replay) {
           replayed = true;
           return replay;
         }
         let value;
-        if (normalizedOperation === 'publish_material') value = this.#publishMaterial(payload, envelope);
-        else if (normalizedOperation === 'consume_materials') value = this.#consumeMaterials(payload, envelope);
+        if (normalizedOperation === 'publish_material') value = this.#publishMaterial(normalizedPayload, envelope);
+        else if (normalizedOperation === 'consume_materials') value = this.#consumeMaterials(normalizedPayload, envelope);
         else throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Context Service operation: ${operation}`);
         this.#saveOperation(envelope.operation_id, normalizedOperation, fingerprint, value);
         return value;

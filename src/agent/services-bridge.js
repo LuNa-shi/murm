@@ -387,6 +387,17 @@ export class ServicesBridge {
       if (execution.task_id !== this.taskId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'bridge execution does not match task', { task_id: this.taskId, execution_id: this.executionId });
       const boundTaskId = this.taskId;
       const boundExecutionId = this.executionId;
+      if (operation === 'task_handoff' || operation === 'task_block') {
+        const method = operation === 'task_handoff' ? 'handoffTask' : 'blockTask';
+        if (typeof this.runtime?.[method] !== 'function') {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime does not expose semantic ${operation} boundary`);
+        }
+        const result = await this.runtime[method](boundExecutionId, payload);
+        await this.onWorkUnit?.({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
+        await this.releaseClaim({ result });
+        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+        return result;
+      }
       if (operation === 'request_wait') {
         const waitCondition = normalizeWaitCondition(payload.waitCondition ?? payload.wait_condition, payload.checkpoint);
         if (waitCondition?.type === 'check_result_arrived') {
@@ -460,7 +471,7 @@ export class ServicesBridge {
         case 'task_close': result = sdk.closeTask(payload, options); break;
         case 'context_search_materials': result = sdk.searchMaterials(payload); break;
         case 'context_get_material': result = sdk.getMaterial(payload.material_id ?? payload.materialId); break;
-        case 'context_publish_material': result = sdk.publishMaterial(payload, options); break;
+        case 'context_publish_material': result = sdk.publishCollaborationMaterial(payload, options); break;
         case 'read_materials': result = sdk.readMaterials(payload); break;
         case 'consume_materials': result = sdk.consumeMaterials(payload, options); break;
         case 'publish_material': result = sdk.publishMaterial(payload, options); break;

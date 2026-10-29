@@ -260,7 +260,7 @@ const publicTaskTools = [
     name: 'task_block', service: 'task', operation: 'task_block', version: '1.0',
     description: 'Publish and link Handoff Material, record a typed dependency, and stop unfinished work as BLOCKED.',
     scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['blocker', 'handoff_material_id'], properties: { blocker: { type: 'object' }, handoff_material_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['blocker', 'dependency', 'handoff_material_id'], properties: { blocker: { type: 'object' }, dependency: { type: 'object', description: 'A real Task, Material, or CheckResult prerequisite.' }, handoff_material_id: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'task_close', service: 'task', operation: 'task_close', version: '1.0',
