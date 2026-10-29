@@ -87,14 +87,14 @@ function declarationFromLine(line, file, root, lineNumber) {
   };
 }
 
-function normalizeUpstreamResult(value, { query, maxResults, metadata }) {
+function normalizeUpstreamResult(value, { query, maxResults = null, metadata }) {
   const candidates = Array.isArray(value)
     ? value
     : value?.results ?? value?.declarations ?? value?.hits ?? value?.matches ?? [];
   if (!Array.isArray(candidates)) {
     throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'mathlib search backend returned an unsupported result shape', undefined, { retryable: true });
   }
-  const results = candidates.map((candidate) => {
+  const normalized = candidates.map((candidate) => {
     if (typeof candidate === 'string') return { name: candidate, type: null, module: null, source: null, score: null };
     if (!isRecord(candidate)) return null;
     return {
@@ -104,12 +104,13 @@ function normalizeUpstreamResult(value, { query, maxResults, metadata }) {
       source: candidate.source ?? candidate.url ?? candidate.file ?? null,
       score: Number.isFinite(candidate.score) ? candidate.score : null,
     };
-  }).filter((result) => typeof result?.name === 'string' && result.name.length > 0).slice(0, maxResults);
+  }).filter((result) => typeof result?.name === 'string' && result.name.length > 0);
+  const results = Number.isFinite(maxResults) ? normalized.slice(0, maxResults) : normalized;
   return {
     query,
     results,
     result_count: results.length,
-    truncated: candidates.length > results.length,
+    truncated: normalized.length > results.length,
     ...metadata,
   };
 }
@@ -300,16 +301,22 @@ export class MathlibSearchService {
       }
       const normalized = normalizeUpstreamResult(body, {
         query,
-        maxResults: Math.min(maxResults, this.maxResults),
+        // Loogle's HTTP contract accepts only `q`; module filtering is a
+        // SwarmEnv-side concern. Normalize the complete response first so a
+        // non-matching declaration cannot consume the caller's result limit
+        // before a matching declaration is considered.
+        maxResults: null,
         metadata: { backend: 'loogle-http', mathlib_revision: this.mathlibRevision, lean_version: this.leanVersion },
       });
-      if (!module) return normalized;
-      const results = normalized.results.filter((candidate) => candidate.module === module || candidate.module?.startsWith(`${module}.`));
+      const scoped = module
+        ? normalized.results.filter((candidate) => candidate.module === module || candidate.module?.startsWith(`${module}.`))
+        : normalized.results;
+      const results = scoped.slice(0, Math.min(maxResults, this.maxResults));
       return {
         ...normalized,
         results,
         result_count: results.length,
-        truncated: normalized.truncated || results.length < normalized.results.length,
+        truncated: normalized.truncated || scoped.length > results.length,
       };
     } catch (error) {
       if (error instanceof SwarmEnvError) throw error;
