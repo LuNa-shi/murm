@@ -76,6 +76,7 @@ test('only depends_on gates the flat claimable view and cycles are rejected', ()
 
   const available = service.dispatch('task.list', { mission_id: mission.mission_id, available_only: true }, op('task:available:one', 'agent:test'));
   assert.deepEqual(available.map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
+  assert.deepEqual(service.listClaimableTasks({ missionId: mission.mission_id, limit: 10 }).map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
 
   assert.throws(() => service.dispatch('task.create', {
     mission_id: mission.mission_id,

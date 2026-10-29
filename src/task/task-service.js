@@ -460,7 +460,7 @@ export class TaskService {
     params.push(scanAll ? -1 : (availableOnly ? 100 : limit));
     const tasks = this.db.prepare(`SELECT t.* FROM tasks t WHERE ${conditions.join(' AND ')}
       ORDER BY t.priority DESC, t.created_at ASC, t.task_id ASC LIMIT ?`).all(...params).map((row) => ({
-      ...rowToTask(row),
+      ...this.#decorateModernTask(rowToTask(row)),
       // A fenced or superseded recovery attempt must not hide a still-active
       // resumable Execution from an Agent browsing the queue. The response is
       // the Agent's handoff boundary, so prefer the latest active Execution;
