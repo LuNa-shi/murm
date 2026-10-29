@@ -39,6 +39,11 @@ test('Mathlib Search Service indexes a locked Lean source root with a bounded st
     const provider = createMathlibSearchService({ sourceRoot: fixture.root, mathlibRevision: 'mathlib-test', leanVersion: 'lean-test' });
     assert.equal(provider.manifest.service_id, 'mathlib-search');
     assert.equal(provider.manifest.capabilities[0].name, 'mathlib_search');
+    assert.deepEqual(provider.manifest.metadata, {
+      backend: 'loogle-compatible',
+      mathlib_revision: 'mathlib-test',
+      lean_version: 'lean-test',
+    });
     assert.deepEqual(await provider.readiness(), true);
     const result = await provider.service.search({ query: 'add_comm', max_results: 1 });
     assert.equal(result.backend, 'source-index');
@@ -47,6 +52,26 @@ test('Mathlib Search Service indexes a locked Lean source root with a bounded st
     assert.equal(result.mathlib_revision, 'mathlib-test');
     await assert.rejects(() => provider.service.search({ query: 'x', max_results: 0 }), /max_results/);
     await assert.rejects(() => provider.service.search({ query: '' }), /query is required/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('Mathlib Search Service falls back to the locked source root when Loogle is unavailable', async () => {
+  const fixture = await sourceFixture();
+  try {
+    const provider = createMathlibSearchService({
+      upstreamUrl: 'http://loogle.unavailable',
+      sourceRoot: fixture.root,
+      fetchImpl: async () => { throw new Error('upstream unavailable'); },
+      mathlibRevision: 'mathlib-fallback-test',
+    });
+    assert.equal(await provider.readiness(), true);
+    const result = await provider.service.search({ query: 'distance_nonneg', max_results: 1 });
+    assert.equal(result.backend, 'source-index');
+    assert.equal(result.fallback, true);
+    assert.equal(result.upstream_error_code, 'SERVICE_UNAVAILABLE');
+    assert.equal(result.results[0].name, 'distance_nonneg_demo');
   } finally {
     await fixture.cleanup();
   }
@@ -69,6 +94,26 @@ test('Mathlib Search Service matches the documented Loogle HTTP query and filter
   assert.deepEqual(result.results.map((entry) => entry.name), ['Nat.add_comm']);
   assert.match(requests.at(-1), /\/json\?q=Nat\.add_comm$/);
   assert.doesNotMatch(requests.at(-1), /module=|max-results=/);
+});
+
+test('Mathlib Search Service applies the module filter before the bounded result limit', async () => {
+  const provider = createMathlibSearchService({
+    upstreamUrl: 'http://loogle.test',
+    fetchImpl: async () => new Response(JSON.stringify({ hits: [
+      { name: 'List.length', type: 'length xs = length xs', module: 'Mathlib.Data.List.Basic' },
+      { name: 'Nat.add_comm', type: 'a + b = b + a', module: 'Mathlib.Algebra.Group.Basic' },
+      { name: 'Nat.add_left_comm', type: 'a + b + c = a + c + b', module: 'Mathlib.Algebra.Group.Basic' },
+    ] }), { status: 200, headers: { 'content-type': 'application/json' } }),
+  });
+
+  const result = await provider.service.search({
+    query: 'comm',
+    module: 'Mathlib.Algebra',
+    max_results: 1,
+  });
+  assert.deepEqual(result.results.map((entry) => entry.name), ['Nat.add_comm']);
+  assert.equal(result.result_count, 1);
+  assert.equal(result.truncated, true);
 });
 
 test('Mathlib Search Service crosses the independent HTTP Host and Registry adapter boundary', async () => {
@@ -114,6 +159,83 @@ test('Mathlib Search Service crosses the independent HTTP Host and Registry adap
     assert.equal(manifestResponse.status, 200);
     assert.equal((await manifestResponse.json()).result.service_id, 'mathlib-search');
   } finally {
+    await host.stop();
+    await fixture.cleanup();
+  }
+});
+
+test('A registered HTTP Mathlib capability is visible in the Bound prompt and executes through its named Pi tool', async () => {
+  const fixture = await sourceFixture();
+  const provider = createMathlibSearchService({
+    sourceRoot: fixture.root,
+    endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' },
+    mathlibRevision: 'mathlib-named-tool-test',
+    leanVersion: 'lean-named-tool-test',
+  });
+  const host = createServiceHost({
+    manifest: provider.manifest,
+    handler: provider.handler,
+    readiness: provider.readiness,
+    token: 'mathlib-named-tool-token',
+    requireRole: true,
+  });
+  const hostEnvironment = await host.start();
+  const manifest = createMathlibSearchManifest({
+    endpoint: { transport: 'http-json', url: hostEnvironment.url },
+    mathlibRevision: 'mathlib-named-tool-test',
+    leanVersion: 'lean-named-tool-test',
+  });
+  const registry = new ServiceRegistry();
+  registerUserService(registry, {
+    manifest,
+    adapter: createHttpJsonAdapter({ token: 'mathlib-named-tool-token' }),
+  });
+  const bridge = new ServicesBridge({
+    taskService: {
+      getTask: () => ({ task_id: 'task-named-tool', spec_version: 1, state_version: 2 }),
+      getExecution: () => ({ execution_id: 'execution-named-tool', task_id: 'task-named-tool', spec_version: 1, state_version: 3, fencing_version: 1 }),
+    },
+    contextService: {},
+    runtime: {},
+    registry,
+    taskId: 'task-named-tool',
+    executionId: 'execution-named-tool',
+    actorRef: 'agent:named-tool',
+    role: AGENT_ROLES.BOUND,
+    runtimeCapabilities: [],
+  });
+  const bridgeEnvironment = await bridge.start();
+  const previousBridgeUrl = process.env.SWARMENV_BRIDGE_URL;
+  const previousBridgeToken = process.env.SWARMENV_BRIDGE_TOKEN;
+  process.env.SWARMENV_BRIDGE_URL = bridgeEnvironment.SWARMENV_BRIDGE_URL;
+  process.env.SWARMENV_BRIDGE_TOKEN = bridgeEnvironment.SWARMENV_BRIDGE_TOKEN;
+  try {
+    const profile = bridge.getCapabilityProfile();
+    const prompt = composeAgentPrompt({
+      role: AGENT_ROLES.BOUND,
+      profile,
+      task: { task_id: 'task-named-tool', goal: 'find the relevant declaration', expected_output: 'a declaration reference' },
+      execution: { execution_id: 'execution-named-tool', workspace_revision: 1 },
+    });
+    assert.match(prompt, /swarmenv_mathlib_search/);
+    assert.match(prompt, /mathlib_search/);
+    assert.match(prompt, /before proposing a proof or API research route/);
+    assert.doesNotMatch(prompt, /swarmenv_call|request_wait|execution_wait|parent_review/i);
+
+    const registeredTools = [];
+    await swarmenvExtension({ registerTool(tool) { registeredTools.push(tool); } }, { profile });
+    assert.deepEqual(registeredTools.map((tool) => tool.name), ['swarmenv_mathlib_search']);
+    const tool = registeredTools[0];
+    const invocation = await tool.execute('named-tool-call', { query: 'distance_nonneg', max_results: 2 });
+    assert.equal(invocation.details.backend, 'source-index');
+    assert.equal(invocation.details.mathlib_revision, 'mathlib-named-tool-test');
+    assert.equal(invocation.details.results[0].name, 'distance_nonneg_demo');
+  } finally {
+    if (previousBridgeUrl === undefined) delete process.env.SWARMENV_BRIDGE_URL;
+    else process.env.SWARMENV_BRIDGE_URL = previousBridgeUrl;
+    if (previousBridgeToken === undefined) delete process.env.SWARMENV_BRIDGE_TOKEN;
+    else process.env.SWARMENV_BRIDGE_TOKEN = previousBridgeToken;
+    await bridge.stop();
     await host.stop();
     await fixture.cleanup();
   }
