@@ -231,3 +231,26 @@ test('ObservabilityServer caps oversized overview projections', async () => {
     store.close();
   }
 });
+
+test('ObservabilityServer serves a recent overview window for large Experiments', async () => {
+  const store = new ObservationStore();
+  store.registerExperiment({ experimentId: 'run-recent-overview' });
+  for (let sequence = 1; sequence <= 2_500; sequence += 1) {
+    store.append({
+      experimentId: 'run-recent-overview', sequence, source: 'runtime', kind: 'execution_observed',
+      coreId: `core-${sequence % 4}`, executionId: `execution-${sequence % 8}`, payload: { state: 'RUNNING' },
+    });
+  }
+  const server = new ObservabilityServer({ observationStore: store });
+  const { url } = await server.start();
+  try {
+    const overview = await fetch(`${url}/api/experiments/run-recent-overview/overview`).then((response) => response.json());
+    assert.ok(overview.events.length <= 2_000);
+    assert.equal(overview.overview_history_truncated, true);
+    assert.ok(overview.overview_start_sequence > 1);
+    assert.equal(overview.overview_end_sequence, 2_500);
+  } finally {
+    await server.stop();
+    store.close();
+  }
+});
