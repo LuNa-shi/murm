@@ -153,6 +153,7 @@ const OVERVIEW_MAX_BYTES = 4_000_000;
 // server and browser. Detail endpoints remain available for historical reads.
 const OVERVIEW_RECENT_EVENTS = 2_000;
 const TIMELINE_RECENT_EVENTS = 1_000;
+const OVERVIEW_ENTITY_SEEDS = 750;
 
 function parseJson(value) {
   if (typeof value !== 'string' || value.length === 0) return value;
@@ -794,15 +795,22 @@ export class ObservabilityServer {
   }
 
   async #overview(experimentId, url) {
-    const [events, toolProjection] = await Promise.all([
+    const [events, entitySeeds, toolProjection] = await Promise.all([
       this.#recentEvents({
         experimentId,
         kinds: OVERVIEW_EVENT_KINDS,
         view: 'agent',
       }, OVERVIEW_RECENT_EVENTS),
+      Promise.resolve(this.observationStore.listLatestEntityEvents({
+        experimentId,
+        kinds: OVERVIEW_EVENT_KINDS,
+        view: 'agent',
+        limit: OVERVIEW_ENTITY_SEEDS,
+      }).events),
       this.#toolProjection(experimentId),
     ]);
-    const overviewEvents = [...events, ...toolProjection.events].sort((left, right) => left.sequence - right.sequence);
+    const overviewEvents = [...new Map([...entitySeeds, ...events, ...toolProjection.events].map((event) => [event.event_id, event])).values()]
+      .sort((left, right) => left.sequence - right.sequence);
     const bounded = boundOverviewEvents(compactOverviewEvents(overviewEvents));
     const latestSequence = this.observationStore.latestSequence(experimentId);
     return {
@@ -811,8 +819,9 @@ export class ObservabilityServer {
       overview_bytes: bounded.bytes,
       overview_truncated: bounded.truncated,
       overview_history_truncated: latestSequence > OVERVIEW_RECENT_EVENTS,
-      overview_start_sequence: overviewEvents.at(0)?.sequence ?? latestSequence,
+      overview_start_sequence: events.at(0)?.sequence ?? overviewEvents.at(0)?.sequence ?? latestSequence,
       overview_end_sequence: latestSequence,
+      overview_entity_seed_count: entitySeeds.length,
       timeline: this.#timeline(experimentId, url),
       tool_counts: toolProjection.counts,
       tool_counts_windowed: toolProjection.windowed,
