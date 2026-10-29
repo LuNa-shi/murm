@@ -2,587 +2,661 @@
 
 Status: Target model for [Issue #100](https://github.com/LuNa-shi/SwarmEnv/issues/100)
 
-This document defines how the Task-oriented Agent Swarm runs through the
-existing Core Daemon and Runtime seams. It is a design target, not a claim that
-the current Task Service already implements every operation described here.
-Issue #87 defines the Service registration and role-scoped capability boundary;
-this document does not redesign that boundary.
+This document describes the Runtime-facing part of the Task-oriented Agent
+Swarm. It is a design target, not a claim that the current Task Service
+already implements every operation below. Issue #87 remains the Service
+registration and role-scoped capability boundary; this document does not
+redesign it.
 
-## 1. Why the runtime model changes
+## 1. What is changing
 
-The current runtime already has useful physical lifecycle seams:
+The current repository already has useful physical seams:
 
-- Task Service persists Tasks, dependencies, Executions, and completion facts.
+- Task Service persists Tasks, Executions, completion contracts, and Materials
+  referenced by Tasks.
 - Task Controller reconciles claimability and signals idle Core Daemons.
-- Core Daemon obtains a bounded shortlist, runs a selection turn, Claims one
-  Task, and hands the resulting Execution to Runtime.
-- Runtime owns Execution leases, fencing, Session startup, and private
-  Workspace materialization.
-- Context Service persists shared Materials with source Task and Execution
+- Core Daemon obtains a bounded shortlist, runs an optional selection turn,
+  Claims one Task, and hands the resulting Execution to Runtime.
+- Runtime creates a private Workspace, starts an Agent Session, tracks liveness,
+  and performs terminal cleanup.
+- Runtime already has a configurable execution deadline and a handoff warning;
+  the warning is sent to the active Session as a queued follow-up prompt.
+- Context Service persists immutable Materials with Task and Execution
   provenance.
-- Judge validates configured Candidate evidence.
+- Judge validates Candidate Materials for checker-backed contracts.
 
-The current Task Service and Agent prompt still organize semantic work as a
-Root-led tree. They expose Branch Groups, Required Subtask Groups, parent
-review, rework, and several overlapping dependency paths. The latest
-Task-oriented model keeps the physical Daemon/Runtime lifecycle but replaces
-the semantic control structure with a Mission-scoped Task pool and relation
-graph.
+The current semantic model still exposes Root, Branch Group, Required Subtask,
+Parent Review, rework, and legacy wait operations. The target keeps the
+physical Core/Daemon/Runtime lifecycle and replaces the Agent-facing semantic
+model with one Mission-scoped pool of identical Tasks.
 
-The target must answer these questions without making the Root an implicit
-manager:
+The target must make these facts explicit:
 
-- Which substantial work is already being explored?
-- Which Agent owns the current Task attempt?
-- Why was a new Task proposed, and how is it different from existing work?
-- Which shared Documents changed what another Agent can do?
-- Is this Task complete according to its own contract?
-- Which Task or Document dependency currently blocks it?
-- Which Core is physically available to run the next Task?
+- A Task created during an Execution does not automatically stop or block that
+  Execution.
+- A Core Daemon selects work only when its Core is idle. A new `OPEN` Task waits
+  in the queue when all Cores are busy.
+- An Agent must leave durable Handoff Material before voluntarily handing off,
+  blocking, or releasing an unfinished Execution.
+- A finished Task becomes `DONE` from its own Agent's action. A receiving Task
+  may later accept a linked Response Material and move that producing Task to
+  `CLOSED`.
+- Runtime can send a deadline warning and a Material-available notification to
+  a running Session without starting a concurrent turn.
+- Runtime fencing is an internal stale-owner protection mechanism. It is not a
+  normal Agent operation and it is not the same thing as handoff.
 
 ## 2. Target architecture
 
 ```text
-                         Mission
-              goal + acceptance + Task pool
-                         |
-       +-----------------+------------------+
-       |                                    |
-  Task Service                         Context Service
-  Tasks, relations,                   Documents/Materials,
-  contracts, state,                    search, versions,
-  claimable projection                 source/result links
-       |                                    |
-       +-----------------+------------------+
-                         |
-                  Task Controller
-             readiness reconciliation/wake
-                         |
-                 Core Daemon per Core
-             shortlist -> selection -> Claim
-                         |
-                       Runtime
-       Execution lease + Session + private Workspace
-                         |
-                    Bound Agent
-       work, publish, propose Task, complete/block
-                         |
-                    Judge (when required)
+                              Mission
+                   goal + Task pool + acceptance
+                              |
+       +----------------------+----------------------+
+       |                                             |
+  Task Service                                  Context Service
+  Tasks, two relations,                    Materials, versions,
+  contracts, status,                       search, provenance
+  Material links                                  |
+       |                                             |
+       +----------------------+----------------------+
+                              |
+                       Task Controller
+              claimability, reopen, notification routing
+                              |
+                   Core Daemon when Core is idle
+                    shortlist -> selection -> Claim
+                              |
+                            Runtime
+           Execution deadline + Session + private Workspace
+                              |
+                         Bound Agent
+      work, create Task, publish Material, complete/handoff/block
+                              |
+                  Judge when the Task contract requires it
 ```
 
-The boundaries are deliberate:
+The responsibilities are separate:
 
-- **Agent** reasons about the Mission, current Task, Context, and next useful
-  action.
-- **Task Service** records Tasks, contracts, relations, overlap reviews, and
-  self-owned completion.
-- **Context Service** stores shared Documents/Materials and their provenance.
-- **Task Controller** reconciles persisted readiness and wakes idle Daemons.
-- **Core Daemon** selects and Claims one executable Task for one Core.
-- **Runtime** starts and fences the Execution and owns the private Workspace.
-- **Judge** validates only Task kinds that require an independent check.
+- **Agent** decides what useful work to do, whether to create another Task,
+  what Material to publish, and whether its own Task is complete or needs a
+  handoff.
+- **Task Service** records Task summaries, the two Task relations, status,
+  Task Material links, completion, handoff, block, and downstream close.
+- **Context Service** stores and searches Materials. It does not own Task
+  status or Workspace files.
+- **Task Controller** reconciles durable facts and wakes idle Daemons. It does
+  not choose semantic work.
+- **Core Daemon** selects and Claims one `OPEN` Task for one idle Core.
+- **Runtime** starts and stops the Execution, enforces the deadline, maintains
+  liveness, owns the private Workspace, and delivers notifications.
+- **Judge** checks Candidate Materials only when the Task contract requires it.
 
-No component owns a complete recursive task tree.
+No component owns a recursive Task tree.
 
-## 3. Current implementation versus target model
+## 3. Current implementation versus target
 
 | Concern | Current implementation | Target for #100 |
 |---|---|---|
-| Mission scope | `root_id` and one Root Task | Mission containing a flat executable Task pool |
-| Task origin | `parent_id`, creation provenance, Branch/Required-Subtask groups | Optional `origin_task_id` and explicit relation graph |
-| Task creation | `create_child_task`, `create_branch_group`, `add_required_subtask`, rework | One substantial `task.create` proposal with optional origin |
-| Duplicate avoidance | Optional responsibility keys and admission counters | Agent-authored overlap review; Service advisory search, no hidden semantic deduper |
-| Claim loop | Core Daemon selection and Task Service Claim | Same physical loop over all Mission Tasks |
-| Readiness | Task state plus explicit dependency and legacy structure logic | Only explicit `depends_on` affects Claimability |
-| Completion | Completion contract plus generic Material/Candidate/Check paths | Self-owned, Task-kind-specific validation |
-| Context | Immutable Material publish/read/consume ledger | Mission-scoped Documents/Materials with Task input/result links |
-| Workspace | Runtime-owned private Execution Workspace and revisions | Same boundary; shared results leave through Context references |
-| Waiting | Legacy `request_wait`/wake/resume paths remain in code | Normal flow uses typed `task.block`; legacy waiting is not a new Agent concept |
-| Prompt | Root/Branch decomposition and legacy lifecycle instructions | Static Swarm SOP plus dynamic Mission/Task/Context/profile projection |
+| Mission scope | `root_id` and one Root Task | Mission containing one pool of identical Tasks |
+| Task origin | `parent_id`, creation provenance, Branch/Required-Subtask structure | Optional `spawned_from` provenance relation |
+| Task creation | `create_child_task`, Branch Group, Required Subtask, rework | One `task.create` with a short summary and optional relation |
+| Similar work | Responsibility keys and admission counters exist in legacy code | Agent searches Task summaries; no hidden semantic duplicate lock |
+| Task relations | Several structure and dependency paths | Only `spawned_from` and `depends_on` are semantic Task relations |
+| Claim loop | Daemon shortlist, selection, Claim | Same physical loop across the Mission Task pool |
+| Core availability | Daemon waits after a handoff and Controller wakes idle Daemons | New Tasks remain `OPEN` until an idle Core can Claim them |
+| Handoff | Runtime has deadline, reminder, checkpoint, and handoff code | Handoff Material and Task Material link are required before voluntary release/block |
+| Notifications | Same-Execution handoff reminder exists; no durable cross-Task Material inbox | Material-available notifications to active Sessions plus pending delivery |
+| Completion | Completion contract, Materials, Candidate/Check, and legacy parent acceptance | `DONE` is self-completion; `CLOSED` is downstream acceptance of Response Material |
+| Context | Immutable Material publish/read/consume ledger | Mission-scoped Materials with explicit Task links and three collaboration roles |
+| Workspace | Runtime-owned private Execution Workspace and revisions | Keep private; make it optional for Task contracts and remove artifact Task mode |
+| Fencing | Runtime/Task Service use fencing versions and `FENCED` terminal state | Keep internal for stale-owner safety; remove from Agent-facing vocabulary |
+| Prompt | Root/Branch decomposition and legacy lifecycle instructions | Small Swarm SOP plus dynamic Task/Material/deadline/notification context |
 
-This table is an implementation map. It prevents the design document from
-pretending that the current legacy Task API has already become #100.
+The table is an implementation map. It deliberately says which existing
+surfaces are retained internally and which Agent-facing concepts are retired;
+it does not pretend that the current legacy Task API already implements #100.
 
-## 4. Domain model at the Runtime boundary
+## 4. Minimal domain model
 
-### 4.1 Mission
+### 4.1 Mission and Task
 
-A Mission is the scope shared by one problem or project. It owns the objective
-and may define a final acceptance contract. It does not own or approve every
-Task.
-
-```text
-Mission M
-├── Task A: final proof attempt
-├── Task B: geometric route
-├── Task C: Lean API route
-├── Task D: Boolean route
-└── Task E: non-collinearity route
-```
-
-A finalization Task is still an ordinary Task. It may read shared Documents,
-propose follow-up work, continue its own Workspace work, and submit a Candidate
-when its contract requires it.
-
-### 4.2 Task
-
-Every executable responsibility has one Task shape:
+A Mission is the scope of one problem or project. Every executable
+responsibility is one ordinary Task:
 
 ```text
 Task
 ├── task_id
 ├── mission_id
-├── title and summary
-├── goal
-├── scope boundary
-├── expected output
+├── short summary
+├── goal and expected output
 ├── acceptance conditions
-├── Mission contribution
-├── task kind and validation mode
-├── source/result Document references
-├── origin and relation references
-├── state and priority
-└── timestamps
+├── optional spawned_from relation
+├── optional depends_on relations
+├── execution timebox
+├── Task Material links
+└── state and timestamps
 ```
 
-A Task without an origin relation is a Peer Task. A Task with
-`spawned_from = A` can be shown as a Child of A, but it enters the same Mission
-queue and has the same permissions and lifecycle.
+The summary is a few sentences. It should state the question, intended angle,
+and boundary clearly enough for another Agent to search for similar work. The
+Agent searches before creating a Task; the Task Service does not require a
+separate overlap form and does not decide natural-language equivalence through
+an opaque lock.
 
-### 4.3 Task relations
+A final proof Task is still an ordinary Task. It can read Materials, create a
+new Task, continue its own work, publish a result, and submit a Candidate when
+its contract requires one.
 
-The target relation kinds are:
+### 4.2 The only two Task relations
+
+The first Task Service keeps only the relations needed for scheduling and
+provenance:
 
 ```text
-spawned_from    provenance; never ownership
-related_to      useful association; never a blocker
-depends_on      explicit prerequisite; affects Claimability
-supersedes      newer work replaces an earlier result
-contradicts     evidence challenges an earlier result
-duplicate_of    Agent-declared duplicate or convergence link
+spawned_from  proposal provenance; never ownership or approval
+depends_on    prerequisite Task; the only relation that affects Claimability
 ```
 
-Only `depends_on` makes a Task `BLOCKED`. The Service checks dependency cycles
-and records relation events. A Child relation alone never blocks the origin
-Task and never requires parent approval.
+`A spawned_from B` says that B's work led Agent A to propose A. It does not
+make B a controller, reviewer, scheduler, or owner of A. The UI may describe B
+as the source Task or parent for navigation, but A is still the same Task type
+with the same permissions and lifecycle.
 
-### 4.4 Overlap review
+`A depends_on B` says that A cannot be claimed until the dependency condition
+on B is satisfied. A dependency is explicit, cycle-checked, and visible in the
+Task view. A source relation alone never blocks a Task.
 
-A Task proposal includes a few-sentence description, an in-scope/out-of-scope
-boundary, and an Agent-authored comparison:
+Contradictions, superseding conclusions, and repeated ideas are represented by
+Material versions and Material links in the first version. They do not require
+more Task relation kinds. Similarity is handled by Task summary search and
+Agent judgment rather than a hidden global deduper.
 
-```text
-summary: the problem and intended angle
-scope.in: what this Task covers
-scope.out: what this Task deliberately excludes
-compared_tasks: existing comparable Task IDs
-compared_documents: relevant Context Document IDs
-distinction: why the proposed work is new or materially different
-```
+### 4.3 Material roles and Task links
 
-Task Service provides comparable records from its search projection, validates
-that referenced records exist, and stores the review. It does not treat a
-single exact label as a global lock and does not silently decide whether two
-natural-language proposals are equivalent.
+Context Service stores one Material abstraction. The collaboration role is
+explicit in the Task link:
 
-### 4.5 Execution
-
-An Execution is one leased attempt to work on one Task. Runtime owns:
-
-- Execution state and state version;
-- Core binding;
-- lease and heartbeat;
-- fencing version;
-- Session binding;
-- Workspace reference and revision;
-- checkpoint and terminal reason.
-
-The target lifecycle is:
-
-```text
-Task T: OPEN
-  -> Daemon Claim
-Execution E1: CREATED -> RUNNING
-  -> Agent works
-  -> Task complete: E1 terminal, T = DONE
-  -> or Task block: E1 terminal, T = BLOCKED
-Task T: BLOCKED -> OPEN after dependency reconciliation
-Execution E2: new attempt on the same Task lineage
-```
-
-A retry has a new Execution identity even if it resumes a prior Workspace
-lineage. A Core is never the durable owner of a Task.
-
-### 4.6 Core and Core Daemon
-
-A Core is reusable physical capacity. Its physical states are separate from
-Task semantics:
-
-```text
-IDLE -> DISCOVERING -> SELECTING -> RUNNING -> STOPPING -> IDLE
-```
-
-A Core Daemon is a long-lived supervisor for one Core. It:
-
-1. asks Task Service for a bounded Mission Task shortlist;
-2. gives that shortlist to an optional stateless selection Agent;
-3. receives exactly one selected Task ID;
-4. Calls Task Service Claim once;
-5. hands the created Execution to Runtime;
-6. supervises the Session until completion, blocking, failure, fencing, or
-   cancellation;
-7. returns to discovery.
-
-The Daemon does not create Branch Groups, approve Child Tasks, choose semantic
-work for the whole Mission, or write a Task Workspace.
-
-### 4.7 Task Controller
-
-Task Controller is deterministic reconciliation, not a second reasoning Agent.
-It:
-
-- observes committed Task, dependency, and result-link events;
-- computes the claimable projection;
-- reopens Blocked Tasks whose typed dependencies are satisfied;
-- observes Daemon health;
-- signals healthy idle Daemons when work is available.
-
-It never selects a Task for a Daemon and never reviews a Document or Candidate.
-
-### 4.8 Context Document and Material
-
-Context Service stores immutable, versioned Mission-scoped Documents. The
-current implementation calls these records Materials. A Document can record a
-fact, failure, experience, analysis, decision, artifact, or Candidate.
-
-A Task links Documents as:
-
-```text
-input      a Document read as task context
-result     a Document produced by the Task
-candidate  a proof/artifact Document submitted to Judge
-reference  a Document used to justify a proposal
-```
-
-Publishing a result makes it visible to the Mission. It does not send a
-private message only to an origin Task. Read/use telemetry can be derived later
-and is not required as a manual `consume` ritual for Task completion.
-
-### 4.9 Workspace
-
-Workspace is an Execution-private, Runtime-owned capability. Peer and Child
-Tasks do not share mutable files. A shared artifact must be represented by a
-Context Document or artifact reference containing:
-
-- Task and Execution source;
-- Workspace revision;
-- relative path;
-- content hash;
-- artifact role or acceptance reference.
-
-The exact input/output manifest, Bash capability, and Sandbox remain Runtime
-design questions. They are not Task Service concepts.
-
-### 4.10 Judge and validation mode
-
-The Task kind selects the completion evidence:
-
-| Mode | Typical kind | Required result |
+| Role | Meaning | Required link |
 |---|---|---|
-| `judge` | proof or checker-backed implementation | Candidate reference plus applied passing CheckResult |
-| `material` | research, analysis, coordination, design | Context Document/Material satisfying the Task contract |
-| `artifact` | file-producing implementation without Judge | Workspace artifact reference plus explanatory Document |
+| `response` | result prepared for another Task | producer Task/Execution and receiving Task |
+| `handoff` | unfinished reasoning and state needed by a later attempt | current Task and current Execution |
+| `experience` | reusable insight for the Mission or wider library | producer Task/Execution; receiver optional |
 
-Judge is not a universal completion ritual. A research Task must not submit a
-meaningless Candidate, and a proof Task must not complete from an unverified
-prose Material.
+Each Task has a queryable Materials area. A link records `task_id`,
+`material_id`, role, producer provenance, and optional receiving Task. The
+Material remains immutable and shared; linking it does not copy or mutate its
+content.
 
-## 5. Runtime lifecycle
+Response Material is optional. If a Task was created to produce a result for
+another Task, its completion contract requires a response link. If it was
+created to contribute a reusable insight, Experience Material is enough. If it
+cannot finish, Handoff Material is required before the Execution is released.
 
-### 5.1 Task proposal to Claim
+### 4.4 Task states and downstream acceptance
 
-```text
-Bound Agent
-  -> task.create(summary, scope, overlap review, contract)
-Task Service
-  -> validates proposal and records OPEN Task
-Task Controller
-  -> observes committed event and signals idle Daemon
-Core Daemon
-  -> obtains bounded shortlist
-Selection Agent (optional)
-  -> selects one Task ID from shortlist
-Core Daemon
-  -> task.claim(selected Task ID)
-Task Service
-  -> creates Execution and marks Task RUNNING
-Runtime
-  -> materializes private Workspace and starts Agent Session
-```
-
-A newly proposed Task can be a Peer or a Child in provenance. The Daemon treats
-both identically.
-
-### 5.2 Bound Execution
+The target Task states are:
 
 ```text
-Agent Session
-  -> reads current Task, Workspace, and relevant Context Documents
-  -> performs useful work
-  -> may task.create a substantial Peer/Child Task after overlap review
-  -> publishes reusable Documents
-  -> continues the current Task
-  -> task.complete(result refs) or task.block(typed dependency)
-Runtime
-  -> ends/fences the Execution and releases the Core
-Task Controller
-  -> reconciles newly claimable work and wakes a Daemon
+OPEN -> RUNNING -> DONE
+  |        |       |
+  |        |       +-> CLOSED when a receiving Task accepts a Response Material
+  |        +-> OPEN after a valid handoff
+  |        +-> BLOCKED after a valid typed blocker and handoff
+  +-> CANCELED by an explicit decision
 ```
 
-Creating a Task does not implicitly block or preempt the current Execution.
-Publishing a Document does not implicitly complete another Task.
+`DONE` is self-owned completion. The current Execution satisfies its own
+contract and links the required Materials. No other Agent is needed to make
+that result durable.
 
-### 5.3 Block and reopen
+`CLOSED` is different. It is used only when another Task explicitly needed a
+Response Material and its current Execution accepts that Material. The
+receiving Task may call the close operation against the producing Task after
+checking the linked response. Tasks that publish Experience Material or only
+finish their own local contract stay `DONE`; they do not need a meaningless
+close step.
 
-A bound Agent calls `task.block` only when it has a concrete unresolved
-Dependency. It should preserve useful Workspace and publish a blocker Document
-before releasing capacity. The Task has no active Execution while Blocked.
+## 5. Initialization, Claim, and Execution lifecycle
 
-Task Controller reopens the Task when the dependency is satisfied. A new Core
-can then Claim a new Execution for that Task. The reopen operation is
-idempotent and evidence-linked.
+### 5.1 Mission initialization
 
-The current code still contains legacy `request_wait`, `wake_execution`, and
-resumable wait handling for older contracts. The #100 normal flow does not add
-those operations to the bound Agent profile.
+Initialization happens before any Agent Execution is started:
 
-### 5.4 Complete and self-own
+1. The benchmark or caller creates a Mission with its goal and final
+   acceptance conditions.
+2. It creates one or more initial `OPEN` Tasks with summaries, expected output,
+   acceptance conditions, timeboxes, and initial Material links.
+3. Task Service commits those Tasks and emits Task-created events.
+4. Task Controller reconciles the claimable projection.
+5. No Execution exists until an idle Core Daemon Claims a Task.
 
-`task.complete` validates the current Task's own contract:
+An initial Mission can start with one final Task or several independent Tasks.
+There is no mandatory Root decomposition step.
+
+### 5.2 Core availability and Claim
+
+The Core Daemon runs this loop:
+
+1. If its Core is busy, it does not select another Task.
+2. When its Core is idle, it asks Task Service for a bounded `OPEN` shortlist.
+3. An optional selection turn chooses one Task ID from that shortlist.
+4. The Daemon calls Claim. Task Service is the ownership boundary.
+5. A successful Claim marks the Task `RUNNING` and creates one Execution.
+6. Runtime materializes the private Workspace and starts the Agent Session.
+7. The Daemon waits until the Execution completes, hands off, blocks, expires,
+   fails, or is canceled, then releases physical Core capacity.
+8. The Daemon returns to idle discovery.
+
+If a running Agent creates another Task, the new Task is simply `OPEN`. The
+current Task and Execution remain `RUNNING`. Task Controller may wake a
+different idle Core, but it never interrupts the current Agent. If no Core is
+idle, the new Task waits in the queue.
+
+Creating work is therefore independent from releasing work. The current Agent
+continues unless it explicitly completes, hands off, blocks, or reaches its
+deadline.
+
+### 5.3 Bound Execution and task creation
+
+Once Runtime starts an Execution, the Agent receives:
+
+- the current Task summary, goal, expected output, acceptance conditions, and
+  timebox;
+- the Task's linked input, response, handoff, and experience Materials;
+- the private Workspace state when the Task uses Workspace;
+- pending notifications for the Task;
+- the small role-scoped capability profile.
+
+During the turn, the Agent may:
+
+1. work directly on the current Task;
+2. search Task summaries and create another Task when a substantial uncovered
+   question is worth independent work;
+3. publish Response or Experience Material;
+4. consume a notification and revise its plan;
+5. complete, hand off, or block the current Task.
+
+Creating another Task does not create a nested Execution immediately. The
+Daemon and Core availability determine when that Task is claimed.
+
+## 6. Timeboxes, handoff, release, and fencing
+
+### 6.1 Timebox and warning
+
+Every Execution has a bounded execution deadline and an earlier handoff
+warning. The initial policy is a warning five minutes before the deadline; the
+exact duration remains configurable by the Runtime.
+
+At the warning, Runtime persists that the warning was sent and queues a
+follow-up prompt to the active Session:
 
 ```text
-proof Task
-  -> Candidate reference
-  -> Judge submit
-  -> applied PASS
-  -> DONE
-
-research Task
-  -> accepted result Document
-  -> DONE
-
-artifact Task
-  -> artifact reference + explanatory Document
-  -> DONE
+This Execution is approaching its deadline. Publish Handoff Material now if
+useful work is unfinished. Include what was tried, evidence, current state,
+open questions, and the recommended next step. Continue only if the remaining
+time is likely to produce a useful result.
 ```
 
-No parent review is required. Other Agents can read the result, publish
-contradictory evidence, or propose superseding work without mutating the
-completed Task.
+The follow-up is queued after the current Agent turn. Runtime never starts a
+second concurrent prompt for the same Session.
 
-## 6. Agent prompt and capability model
+### 6.2 Voluntary handoff and block
 
-### 6.1 Static Swarm SOP
+The target Agent-facing lifecycle has two explicit unfinished paths:
+
+```text
+task.handoff(handoff_material_id)
+  -> Execution terminal as HANDED_OFF (new target state)
+  -> Task returns to OPEN
+  -> Core becomes idle
+
+task.block(blocker, handoff_material_id)
+  -> Execution terminal as HANDED_OFF (new target state)
+  -> Task becomes BLOCKED with a typed dependency
+  -> Core becomes idle
+```
+
+Both operations require a Handoff Material linked to the current Task and
+Execution. The Material must contain the useful exploration, current
+reasoning, evidence, checkpoint reference when applicable, open questions,
+and a recommended next step. A bare release without this link is rejected.
+
+The existing Runtime code has `handoffExecution`, checkpoint persistence,
+deadline sweeping, and Workspace cleanup. Its current persistence uses the
+legacy `FENCED` terminal state for some handoff paths. #100 introduces the
+typed `HANDED_OFF` terminal state/reason for voluntary handoff and block, while
+retaining `FENCED` for stale-owner and forced-cleanup protection. The Agent-
+facing contract makes the Handoff Material link mandatory and visible in Task
+state and reports.
+
+At the deadline, Runtime may force expiry to release physical capacity when the
+Agent did not hand off. The resulting `EXPIRED` Execution is recorded with a
+typed timeout reason and `handoff_missing=true` when appropriate. Forced expiry
+must not be reported as a successful handoff.
+
+### 6.3 What heartbeat, release, and fence mean
+
+These are Runtime internals, not normal Agent tools:
+
+- **Heartbeat** refreshes the liveness lease while Runtime owns a running
+  Execution. The Session or Runtime adapter can perform it automatically.
+- **Release** stops the Agent process and releases the private Workspace after
+  Task Service has already recorded a terminal transition. It is physical
+  cleanup, not a semantic decision about Task work.
+- **Fence** increments the ownership version so a stale process cannot write
+  after a restart, timeout, or handoff. For example, if Session E1 is stalled
+  and Runtime starts a replacement, E1's late Workspace write carries the old
+  version and is rejected. The Agent never chooses a fence.
+
+The existing internal `FENCED` Execution state remains useful for stale-owner,
+restart, and forced-cleanup paths. #100 removes `execution.heartbeat`,
+`execution.release`, and `execution.fence` from the normal Agent profile; it
+does not delete the Runtime safety mechanisms.
+
+## 7. Material delivery and runtime notifications
+
+### 7.1 Material flow
+
+The three Material roles define the collaboration flow:
+
+```text
+Response Material
+  producer Task -> linked to receiving Task
+  receiving Execution reads it -> may accept -> producer Task CLOSED
+
+Handoff Material
+  current Task/Execution -> linked to itself
+  next Execution reads it -> continues the Task from durable state
+
+Experience Material
+  producer Task/Execution -> Mission Context library
+  any Agent searches it -> changes its own plan or proposes work
+```
+
+The Task link is the meaning of “贴到 Task 上”. It is a durable reference,
+not a copy of the Material and not a private return value visible only to a
+parent.
+
+### 7.2 Notification mechanism
+
+The target adds a small Runtime notification path rather than a general Agent
+chat service:
+
+```text
+Task/Context event
+  -> Notification record with delivery key and recipient Task
+  -> Task Controller/Runtime checks recipient Execution
+  -> active Session receives a queued follow-up prompt
+  -> inactive Task receives the notification in its next initial prompt
+```
+
+The first notification types are:
+
+1. `handoff_warning`: generated five minutes before the Execution deadline;
+2. `material_available`: generated when a Response Material is linked to a
+   Task that has an active Execution;
+3. `task_reopened`: generated when a typed blocker is satisfied and a Task is
+   claimable again.
+
+Notifications are at-least-once with a stable delivery key. The recipient
+Agent must be able to read the Material itself; the notification only tells it
+where the new information is and why it may matter. If a receiving Task is
+running, Runtime uses the existing safe `followUp` prompt behavior. If it is
+not running, the notification is stored until the next Execution starts.
+
+The first version does not expose an arbitrary `send_message` tool to Agents.
+System-generated lifecycle and Material notifications cover the required
+coordination path while keeping the Agent tool surface small.
+
+## 8. Workspace boundary and initialization
+
+Workspace is private Runtime state, not a shared Material store and not an
+external Service under #87.
+
+The current Workspace Manager initializes every new Execution with a common
+scaffold: `README.md`, `workspace-manifest.json`, `runtime-manifest.json`,
+metadata/revision directories, and Pi settings. A Task can add specific inputs
+such as a formal source file and problem path. The current implementation does
+not create a fully customized environment for each mathematical route.
+
+For #100:
+
+- Workspace remains available for private scratch files, formal inputs, and
+  checker operations when a Task needs them.
+- Materials remain the primary collaboration path for research and proof
+  reasoning.
+- A Task does not need a Workspace artifact in order to complete.
+- There is no separate `artifact` validation mode or `artifact Task` in this
+  issue. If a file or checker output matters, the Agent publishes it as a
+  Material with the relevant Workspace revision/path metadata.
+- Sandbox and Bash decisions remain outside this issue.
+
+This explicitly removes the proposed `artifact` Task validation path from
+#100. It does not delete the existing `artifact` Material kind or the Runtime
+Workspace file operations; those are retained until a later, explicit Runtime
+change decides otherwise.
+
+## 9. Agent prompt and capability model
+
+### 9.1 Static Swarm SOP
 
 The stable prompt should say:
 
 ```text
 You are an Agent in a shared Task-oriented Swarm.
 
-Complete the current Task's own goal and acceptance conditions. Read the Task,
-private Workspace, and relevant Context Documents before choosing the next
-useful action.
+Complete the current Task's goal and acceptance conditions. Read the Task's
+summary, linked Materials, pending notifications, and private Workspace state
+before choosing the next useful action.
 
-Propose another Task only when it is substantial, independently verifiable,
-and not already covered. Before proposing it, inspect comparable Tasks and
-Documents, describe the scope boundary, and record why the work is distinct.
-A proposed Task may be a Child in provenance, but it enters the shared Mission
-pool. Continue the current Task after proposing it.
+Before creating a Task, search existing Task summaries. Create work only when
+the question is substantial, has a clear expected output and acceptance
+condition, and is not already covered. A new Task may record spawned_from
+provenance, but every Task uses the same queue and lifecycle.
 
-Publish reusable facts, failures, decisions, analyses, and artifacts as
-Context Documents. Complete the current Task by recording its own result
-references. No other Agent accepts your result.
+After creating a Task, continue the current Task unless you explicitly hand
+off or block it. Publish Response Material for a receiving Task, Handoff
+Material before unfinished release/block, and Experience Material for reusable
+knowledge. Complete your own Task; another Agent closes it only when a linked
+Response Material requires downstream acceptance.
 
-Use typed blocking only for a concrete dependency. Claim, lease, heartbeat,
-fencing, Core status, and process lifecycle belong to the Daemon and Runtime.
+Claim, heartbeat, lease, release, fencing, Core status, and process lifecycle
+belong to the Daemon and Runtime. Use the Task handoff/block operations when
+unfinished work must leave the Core.
 ```
 
-This is guidance, not a prescribed `split -> wait -> integrate` loop. The Agent
-can choose to solve the current Task directly, propose work, consume a result,
-revise its plan, or complete the Task.
+This is guidance, not a fixed decomposition loop. The Agent may solve the
+current Task directly, create another Task, publish Material, respond to a
+notification, revise its plan, complete, or hand off according to the current
+evidence.
 
-### 6.2 Dynamic Execution projection
+### 9.2 Dynamic Execution projection
 
-Runtime composes the static SOP with:
+Runtime composes the SOP with:
 
-- Mission goal and final acceptance contract;
-- current Task summary, goal, scope, output, and acceptance conditions;
-- Task kind and validation mode;
-- current private Workspace manifest and revision;
-- source/result Context Document references;
-- comparable Mission Tasks and unresolved questions;
-- role-scoped capabilities from the #87 Service Registry;
-- typed blocker and completion instructions for this Task kind.
+- Mission goal and final acceptance conditions;
+- current Task summary, goal, expected output, acceptance conditions, and
+  deadline;
+- linked Materials and pending notifications;
+- private Workspace manifest and revision only when the Task uses Workspace;
+- available Task summaries for the Mission;
+- role-scoped Service capabilities from #87;
+- the valid completion, handoff, and block operation for this Task.
 
-It must not inject benchmark-specific Branch counts, Required Subtask counts,
-repeated decomposition commands, or lease-management instructions into a bound
-Task Session.
+It must not inject Branch counts, Required Subtask counts, parent-review loops,
+artifact completion requirements, or lease-management instructions into a
+normal Task Session.
 
-### 6.3 Role separation
+### 9.3 Role separation
 
-The selection Session may see only bounded Task discovery and selection tools.
-The bound Task Session may see Task proposal/view/complete/block, Context
-Document operations, private Workspace operations, and Judge operations when
-its Task kind requires them. Claim and Runtime lifecycle tools remain behind
-the Daemon/Runtime boundary.
+The selection Session sees only a bounded Task shortlist and selection
+operation. The bound Task Session sees Task proposal/view/complete/handoff/
+block/close, Material operations, optional Workspace operations, and Judge
+operations when the Task contract requires them. Claim, heartbeat, release,
+fence, Core status, and process lifecycle remain behind the Daemon/Runtime
+boundary.
 
-## 7. Target Agent-facing interfaces
+## 10. Target Agent-facing interfaces
 
-The normal bound profile is intentionally small:
+The exact names remain an implementation choice, but the normal semantic
+surface is:
 
 ```text
-task.discover
- task.view
-task.create
-task.complete
-task.block
-context.search
-context.get
-context.publish
-workspace.list_files
-workspace.read_file
-workspace.write_file
-workspace.diff
-judge.submit_candidate        (only when validation mode = judge)
-judge.get_check_result        (only when needed)
+task.list                 list Mission Tasks and search summaries
+task.view                 read one Task, status, relations, and Material links
+task.create               create a substantial Task with a short summary
+task.complete             self-complete the current Task
+task.handoff              publish-linked unfinished handoff and return to OPEN
+task.block                publish-linked handoff and record a typed blocker
+task.close                receiving Task accepts a linked Response Material
+
+context.search_materials  search shared Materials
+context.get_material      read one Material
+context.publish_material  publish a response, handoff, or experience Material
+
+workspace.*               available only when the Task needs private files
+judge.*                   available only when the Task contract requires it
 ```
 
-The Daemon/Runtime profile retains:
+The Agent does not call `task.claim`, `execution.heartbeat`,
+`execution.release`, or `execution.fence`. The Daemon and Runtime use those
+internal boundaries to enforce physical ownership and cleanup.
 
-```text
-task.list_claimable
-task.claim
-execution.heartbeat
-execution.release
-execution.fence
-task.reopen
-task.cancel
-```
+## 11. Observability requirements
 
-The exact operation names are an implementation decision for #100. The
-ownership and visibility boundary is the invariant.
+Reports must show the Mission Task pool and the two-relation graph separately.
+For each Task, record:
 
-## 8. Observability requirements
-
-Reports must show the flat Mission Task pool and relation graph separately. For
-each Task, record:
-
-- proposal summary and scope boundary;
-- overlap review and comparable records;
-- origin/relation events;
-- state transitions;
-- Claim and Execution identity;
-- source and result Document references;
-- Workspace artifact references;
-- Candidate and CheckResult references;
-- blocker and reopen events.
+- summary, expected output, acceptance conditions, and timebox;
+- `spawned_from` and `depends_on` events;
+- Task state transitions and Execution identity;
+- each Material link, role, producer, and receiving Task;
+- handoff warning, handoff Material, timeout, and blocker evidence;
+- notification creation, delivery, and acknowledgement;
+- Workspace revision only when it is part of the Task evidence;
+- Candidate and Judge results when required.
 
 The report must distinguish:
 
 ```text
-Task proposed
-Task compared with existing work
-Task claimed
-Execution ran
-Document published
-Document read or referenced
-Task completed its own contract
-Document changed another Agent's plan
-Judge validated a Candidate
+Task created
+Task claimed while a Core was idle
+Execution worked
+Task created additional work
+Material published and linked
+Material notification delivered or queued
+Task completed itself -> DONE
+Receiving Task accepted Response Material -> CLOSED
+Task handed off or blocked with Handoff Material
+Execution expired with or without handoff evidence
 Mission-level result reached
 ```
 
 Counts of Tasks, Materials, Claims, or tool calls are not proof of useful
 collaboration.
 
-## 9. Acceptance seam
+## 12. Acceptance seam
 
-The highest-value seam is the production integration path:
+The highest-value integration path is:
 
 ```text
-Task Service
-  -> Task Controller
-  -> Core Daemon
-  -> Runtime Execution
-  -> Agent capability profile
-  -> Context / Workspace / Judge
+Mission initialization
+  -> Task Service OPEN Task pool
+  -> idle Core Daemon shortlist and Claim
+  -> Runtime Execution + private Workspace
+  -> Agent creates work or publishes Material
+  -> handoff/complete/block and Material links
+  -> notification to a running or future Execution
+  -> receiving Task reads a Response Material and may close its producer
 ```
 
 Deterministic tests should cover:
 
-1. Peer and Child Tasks appear in one Mission claimable projection.
-2. A Child origin relation does not grant parent ownership or approval power.
-3. An overlap review records compared Tasks/Documents and a distinction.
-4. Task Service returns comparable work as advisory information without hidden
-   semantic deduplication.
-5. A Task can propose new work and continue its own Execution.
-6. A research Task completes with a valid Document and does not invoke Judge.
-7. A proof Task cannot complete without Candidate plus Judge PASS.
-8. An artifact Task requires an artifact reference and explanatory Document.
-9. A Blocked Task releases its Execution and reopens after dependency release.
-10. Daemon Claim and Runtime Execution are identical for Peer and Child Tasks.
-11. Workspaces are private across Tasks while Context Documents are Mission
-    visible.
-12. A new Task event wakes an idle Daemon.
-13. Prompt composition includes dynamic Task/Context/profile information and no
-    fixed decomposition loop.
-14. Reports preserve relation, lifecycle, document, workspace, and Judge
-    identity separately.
+1. Mission initialization creates `OPEN` Tasks without starting Executions.
+2. A new Task remains `OPEN` while every Core is busy.
+3. An idle Core claims Tasks with and without `spawned_from` through the same
+   queue.
+4. A running Agent creates another Task and continues its current Execution.
+5. Only `depends_on` blocks claimability; `spawned_from` never does.
+6. A voluntary handoff without linked Handoff Material is rejected.
+7. A valid handoff returns the Task to `OPEN` and releases the Core.
+8. A valid block requires Handoff Material and leaves the Task `BLOCKED`.
+9. A deadline warning is delivered once, five minutes before expiry, without a
+   concurrent prompt.
+10. An expired Execution records whether Handoff Material was missing.
+11. Response, Handoff, and Experience Material links are persisted distinctly.
+12. A Response Material notification reaches an active Session as a follow-up
+   and reaches an inactive Task on its next start.
+13. A Task completes itself as `DONE`; a receiver can close it only through an
+   accepted Response Material.
+14. A proof Task still requires Candidate plus Judge PASS; research work uses
+   Material completion without an artifact validation mode.
+15. Runtime rejects a stale Workspace write carrying an old fence version.
+16. Reports preserve Task, Execution, Material, notification, Workspace, and
+   Judge identity separately.
 
 The public real-Agent fixture should show:
 
 ```text
-Agent A proposes a substantial Task
-  -> overlap review records existing comparable work
-  -> Core claims Task A
-  -> Agent A works in private Workspace
-  -> Agent A publishes a Context Document and completes its own Task
-  -> Agent B reads the Document and changes its own plan
-  -> Agent B proposes a distinct follow-up Task
-  -> a proof Task receives Judge PASS, or the run records an honest typed blocker
+Mission creates initial OPEN Tasks
+  -> idle Core claims one Task
+  -> Agent creates another Task and continues
+  -> Agent publishes Experience or Response Material
+  -> recipient receives a notification
+  -> Agent completes or hands off with Handoff Material
+  -> next idle Core claims the remaining OPEN Task
+  -> receiver accepts a Response Material when required
+  -> proof Task receives Judge PASS or the run records an honest typed blocker
 ```
 
-The fixture must not require a fixed number of Branch Groups, Required
-Subtasks, parent approvals, or repeated prompt loops.
+The fixture must not require fixed Branch Groups, Required Subtasks, separate
+Peer/Child Task types, parent-review loops, artifact validation, or a repeated
+decomposition prompt.
 
-## 10. Explicit non-goals
+## 13. Explicit removals and non-goals
 
-- Redesigning the Service Manifest, Registry, adapter, or dynamic capability
-  loading defined by #87.
-- Treating Workspace as an external registered Service.
-- Choosing a Sandbox or Bash implementation.
-- Building semantic embeddings, vector search, or a general knowledge graph.
-- Adding a central LLM scheduler that plans the Mission.
-- Applying an exact `work_scope` lock or opaque semantic duplicate detector.
-- Requiring Judge validation for non-proof Tasks.
-- Sharing mutable Workspace files between Tasks.
-- Preserving Branch Group, Required Subtask, Parent Review, or legacy waiting
-  APIs as part of the new Agent model.
+The #100 implementation must explicitly retire these Agent-facing legacy
+concepts and code paths:
 
-## 11. Decisions still requiring explicit confirmation
+- Branch Group and Required Subtask creation;
+- Parent Review and rework as the normal completion path;
+- the separate `overlap review` payload and vocabulary;
+- Peer Task and Child Task as distinct Task types;
+- the `artifact` Task validation mode and any requirement that completion use a
+  Workspace artifact; file evidence remains representable as Material;
+- normal-Agent access to `execution.heartbeat`, `execution.release`, and
+  `execution.fence`.
 
-The target model is clear enough to implement, but these boundaries should be
-confirmed before coding begins:
+The implementation must retain these internal Runtime safety mechanisms unless
+a later issue explicitly replaces them:
 
-1. Whether the first implementation calls the Mission scope `mission_id` or
-   continues exposing `root_id` internally while the public API uses Mission.
-2. Whether `task.complete` publishes a Document itself or requires a separate
-   `context.publish` immediately before completion.
-3. The minimum acceptance schema for `material` Tasks: one Document, a set of
-   Documents, or a typed Document kind per Task.
-4. Whether an artifact reference is a Context Document subtype or a separate
-   Runtime/Workspace record linked from Context.
-5. Whether `depends_on` may target only Tasks and Documents initially, or also
-   Judge CheckResults.
-6. Whether the first real-Agent fixture includes one Mission-final proof Task
-   or validates the Swarm lifecycle with a non-proof final Task first.
+- liveness heartbeat and lease expiry;
+- physical process/Workspace release after a durable terminal transition;
+- fencing versions and the internal `FENCED` state for stale-owner and
+  restart cleanup;
+- the existing Workspace file safety checks;
+- the current Context Material storage and Judge checker boundary.
+
+Also outside this issue are Service Manifest/Registry changes in #87, a
+central semantic scheduler, exact `work_scope` locking, embeddings/vector
+retrieval, Sandbox technology, native Bash exposure, and shared mutable
+Workspaces.
+
+## 14. Decisions still requiring confirmation
+
+Before implementation begins, confirm these smaller boundaries:
+
+1. Whether `task.handoff` and `task.block` publish the Handoff Material in the
+   same Task Service transaction or require a prior `context.publish_material`
+   followed by a checked link.
+2. Whether `task.close` is allowed only to the Task named by a Response Material
+   link or also to another explicitly authorized receiving Task.
+3. Whether an Experience Material can be linked to several Tasks at publish
+   time or gains additional links through later Task operations.
+4. Whether timeout cleanup creates a system Handoff Material or records only a
+   missing-handoff fact and the last durable checkpoint.
+5. The default Execution timebox and the exact five-minute warning policy for
+   the first benchmark fixture.
+6. Whether the first proof fixture needs a Response Material accepted by a
+   receiving Task or only a self-completed proof Task with Judge PASS.
