@@ -2,6 +2,8 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
+import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
+import { buildPromptSnapshot } from '../agent/agent-prompt.js';
 
 function requireString(value, field) {
   if (typeof value !== 'string' || value.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
@@ -47,7 +49,7 @@ function normalizeWaitFiles(files) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = [], maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -57,6 +59,8 @@ export class Runtime {
     this.actorRef = actorRef;
     this.logger = logger;
     this.agentLogger = agentLogger;
+    this.capabilityRegistry = capabilityRegistry;
+    this.runtimeCapabilities = runtimeCapabilities;
     this.maxRecoveryAttempts = maxRecoveryAttempts;
     this.watchdogTimeoutMs = watchdogTimeoutMs;
     if (!Number.isFinite(executionTimeoutMs) || executionTimeoutMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'executionTimeoutMs must be positive');
@@ -351,7 +355,7 @@ export class Runtime {
     return this.startClaimedExecution(executionOrId, options);
   }
 
-  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null, coreId = null, sessionReason = 'bound' } = {}) {
+  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null, promptSnapshot = null, capabilityProfile = null, promptContext = {}, coreId = null, sessionReason = 'bound' } = {}) {
     this.logger?.append({ event: 'runtime.bind_execution', execution_id: executionId });
     if ((!session || typeof session.stop !== 'function') && typeof startSession !== 'function') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Agent session or startSession is required');
@@ -363,6 +367,41 @@ export class Runtime {
     this.#assertCoreAvailable(selectedCoreId, execution.execution_id);
     const workspace = await this.#prepareWorkspace(execution, workspaceRef);
     let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
+    let initialPrompt = agentPrompt;
+    let initialPromptSnapshot = promptSnapshot;
+    if (!initialPromptSnapshot && capabilityProfile) {
+      const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
+      initialPromptSnapshot = buildPromptSnapshot({
+        role,
+        profile: capabilityProfile,
+        task: this.taskService.getTask(current.task_id),
+        execution: current,
+        workspace,
+        recovery: promptContext.recovery ?? null,
+      });
+      initialPrompt = initialPromptSnapshot.prompt;
+    } else if (initialPromptSnapshot?.prompt) {
+      initialPrompt = initialPromptSnapshot.prompt;
+    }
+    if (!capabilityProfile && this.capabilityRegistry) {
+      const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
+      const profile = buildCapabilityProfile({ role, registry: this.capabilityRegistry, runtimeCapabilities: this.runtimeCapabilities, context: { task_id: current.task_id, execution_id: current.execution_id } });
+      initialPromptSnapshot = buildPromptSnapshot({
+        role, profile, task: this.taskService.getTask(current.task_id), execution: current, workspace, recovery: promptContext.recovery ?? null,
+      });
+      initialPrompt = initialPromptSnapshot.prompt;
+    }
+    if (initialPromptSnapshot) {
+      this.logger?.append({
+        event: 'runtime.initial_prompt_composed',
+        execution_id: current.execution_id,
+        role: initialPromptSnapshot.role,
+        prompt_version: initialPromptSnapshot.prompt_version,
+        prompt_hash: initialPromptSnapshot.prompt_hash,
+        profile_version: initialPromptSnapshot.profile_version,
+        profile_hash: initialPromptSnapshot.profile_hash,
+      });
+    }
     current = this.taskService.dispatch('start_execution', {
       ...this.#executionTimingPayload(),
       ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
@@ -372,7 +411,7 @@ export class Runtime {
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
       if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
       this.#registerActiveProcess(current, workspace, boundSession, { sessionReason, coreId: selectedCoreId });
-      await this.#sendInitialPrompt(boundSession, agentPrompt);
+      await this.#sendInitialPrompt(boundSession, initialPrompt);
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
       this.activeProcesses.delete(executionId);

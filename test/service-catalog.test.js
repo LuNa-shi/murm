@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { listServices, listTools, getServiceMetadata } from '../src/sdk/service-catalog.js';
 import swarmenvExtension from '../src/agent/swarmenv-extension.mjs';
+import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
 
 test('Service catalog exposes named tools grouped by Service', () => {
   const services = listServices();
@@ -31,12 +32,12 @@ test('Service catalog exposes named tools grouped by Service', () => {
   assert.equal(getServiceMetadata('missing'), null);
 });
 
-test('Pi extension registers one discoverable tool for every Service operation', () => {
+test('Pi extension registers only the deterministic role profile', async () => {
+  const profile = buildCapabilityProfile({ role: AGENT_ROLES.BOUND });
   const names = [];
-  swarmenvExtension({ registerTool(tool) { names.push(tool.name); } });
-  for (const tool of listTools()) assert.ok(names.includes(`swarmenv_${tool.name}`), tool.name);
-  assert.ok(names.includes('swarmenv_catalog_list_services'));
-  assert.ok(names.includes('swarmenv_catalog_get_service_metadata'));
-  assert.ok(names.includes('swarmenv_catalog_list_tools'));
-  assert.ok(names.includes('swarmenv_call'));
+  await swarmenvExtension({ registerTool(tool) { names.push(tool.name); } }, { profile });
+  assert.deepEqual(names, profile.capabilities.map((tool) => `swarmenv_${tool.name}`));
+  assert.ok(names.length > 0);
+  assert.ok(!names.includes('swarmenv_call'));
+  assert.ok(!names.includes('swarmenv_task_claim'));
 });

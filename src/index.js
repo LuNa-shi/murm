@@ -6,6 +6,7 @@ export * from './agent/pi-adapter.js';
 export * from './agent/services-bridge.js';
 export * from './agent/version-manifest.js';
 export * from './agent/agent-prompt.js';
+export * from './agent/capability-profile.js';
 export * from './task/task-types.js';
 export * from './task/task-service.js';
 export * from './context/context-service.js';
