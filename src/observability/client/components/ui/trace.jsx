@@ -4,7 +4,7 @@ import { StateBadge } from './badge';
 
 export function Trace({ traces = [], selectedExecution, onExecution }) {
   const allSpans = traces.flatMap((trace) => [...trace.executions, ...trace.tools, ...trace.checks, ...trace.markers, ...trace.turns, ...trace.session_turns]);
-  const timestamps = allSpans.flatMap((span) => [new Date(span.start || 0).getTime(), new Date(span.end || span.start || 0).getTime()]).filter(Number.isFinite);
+  const timestamps = allSpans.flatMap((span) => [Date.parse(span.start || ''), Date.parse(span.end || span.start || '')]).filter(Number.isFinite);
   const min = Math.min(...timestamps, Date.now() - 60_000);
   const max = Math.max(...timestamps, Date.now());
   const span = Math.max(1, max - min);
