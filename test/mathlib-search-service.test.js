@@ -116,6 +116,34 @@ test('Mathlib Search Service applies the module filter before the bounded result
   assert.equal(result.truncated, true);
 });
 
+test('Mathlib Search rejects module and path scopes outside the configured source boundary before searching', async () => {
+  const fixture = await sourceFixture();
+  let upstreamCalls = 0;
+  try {
+    const provider = createMathlibSearchService({
+      upstreamUrl: 'http://loogle.test',
+      sourceRoot: fixture.root,
+      fetchImpl: async () => {
+        upstreamCalls += 1;
+        return new Response(JSON.stringify({ hits: [{ name: 'add_comm_demo', module: 'Algebra' }] }), { status: 200 });
+      },
+    });
+    const valid = await provider.service.search({ query: 'add_comm', module: 'Algebra' });
+    assert.equal(valid.results[0].name, 'add_comm_demo');
+    await assert.rejects(
+      () => provider.service.search({ query: 'add_comm', module: 'Outside' }),
+      (error) => error.code === 'INVALID_CONTRACT' && /module.*boundary/i.test(error.message),
+    );
+    await assert.rejects(
+      () => provider.service.search({ query: 'add_comm', path: '../outside' }),
+      (error) => error.code === 'INVALID_CONTRACT' && /path.*boundary/i.test(error.message),
+    );
+    assert.equal(upstreamCalls, 1);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test('Mathlib Search Service crosses the independent HTTP Host and Registry adapter boundary', async () => {
   const fixture = await sourceFixture();
   const provider = createMathlibSearchService({

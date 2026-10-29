@@ -312,6 +312,12 @@ export class ServicesBridge {
       const isCatalogDiscovery = capability.service_id === 'catalog' && ['list_services', 'get_service_metadata', 'list_tools'].includes(operation);
       const isTaskDiscovery = capability.service_id === 'task' && ['list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'get_task_structure', 'explain_task_readiness'].includes(operation);
       if (isCatalogDiscovery || isTaskDiscovery || (capability.service_id === 'task' && operation === 'scheduler_status')) {
+        if (this.role === AGENT_ROLES.SELECTION && isTaskDiscovery && !Array.isArray(this.selectionCandidates)) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Selection task discovery requires a bounded shortlist', {
+            operation,
+            role: this.role,
+          });
+        }
         if (operation === 'list_claimable_tasks' && this.taskId !== null) {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claimable discovery is only available to an unbound selection Session');
         }

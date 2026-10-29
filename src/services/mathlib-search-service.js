@@ -1,5 +1,5 @@
 import { access, readdir, readFile, stat } from 'node:fs/promises';
-import { join, relative, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { createServiceManifest } from '../sdk/service-manifest.js';
@@ -10,6 +10,7 @@ export const DEFAULT_MAX_RESULTS = 20;
 export const MAX_RESULTS = 50;
 export const MAX_QUERY_LENGTH = 2_000;
 export const MAX_MODULE_LENGTH = 200;
+export const MAX_PATH_LENGTH = 1_000;
 
 const DECLARATION_PATTERN = /^\s*(?:theorem|lemma|def|abbrev|opaque|class|structure|inductive|instance)\s+([A-Za-z0-9_'.]+)/;
 const DEFAULT_PROVIDER_VERSION = '1.0.0';
@@ -39,11 +40,15 @@ function normalizeQuery(input = {}) {
   if (moduleName && (moduleName.length > MAX_MODULE_LENGTH || !/^[A-Za-z][A-Za-z0-9_.]*$/.test(moduleName))) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module must be a Lean module name', { max_length: MAX_MODULE_LENGTH });
   }
+  const pathScope = input.path === undefined || input.path === null ? null : String(input.path).trim();
+  if (pathScope && (pathScope.length > MAX_PATH_LENGTH || pathScope.includes('\0'))) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `mathlib_search.path must be at most ${MAX_PATH_LENGTH} characters`, { max_length: MAX_PATH_LENGTH });
+  }
   const maxResults = input.max_results ?? input.maxResults ?? DEFAULT_MAX_RESULTS;
   if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > MAX_RESULTS) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `mathlib_search.max_results must be an integer from 1 to ${MAX_RESULTS}`, { max_results: maxResults, max: MAX_RESULTS });
   }
-  return { query, module: moduleName, max_results: maxResults };
+  return { query, module: moduleName, path: pathScope, max_results: maxResults };
 }
 
 function queryTokens(query) {
@@ -57,6 +62,16 @@ function queryTokens(query) {
 function moduleNameFor(root, file) {
   const relativePath = relative(root, file).split(sep).join('/');
   return relativePath.replace(/\.lean$/, '').split('/').join('.');
+}
+
+function sourcePathFor(declaration) {
+  return String(declaration?.source ?? '').split('#L', 1)[0].replaceAll('\\', '/').replace(/^\.\//, '');
+}
+
+function pathMatches(declaration, scope) {
+  if (!scope) return true;
+  const source = sourcePathFor(declaration);
+  return source === scope || source.startsWith(`${scope}/`);
 }
 
 async function walkLeanFiles(root, { maxFiles = 100_000 } = {}) {
@@ -160,6 +175,7 @@ export function createMathlibSearchManifest({
       input_schema: objectSchema({
         query: { type: 'string', minLength: 1, maxLength: MAX_QUERY_LENGTH },
         module: { type: 'string', minLength: 1, maxLength: MAX_MODULE_LENGTH },
+        path: { type: 'string', minLength: 1, maxLength: MAX_PATH_LENGTH },
         max_results: { type: 'integer', minimum: 1, maximum: MAX_RESULTS },
       }, ['query']),
       output_schema: objectSchema({
@@ -207,6 +223,7 @@ export class MathlibSearchService {
     this.leanVersion = leanVersion;
     this.logger = logger;
     this.indexPromise = null;
+    this.sourceModules = null;
   }
 
   async readiness() {
@@ -247,11 +264,13 @@ export class MathlibSearchService {
 
   async search(input, { signal = null } = {}) {
     const normalized = normalizeQuery(input);
+    const scoped = await this.#validateScope(normalized);
+    const searchInput = { ...normalized, ...scoped };
     const started = performance.now();
     let upstreamError = null;
     if (this.upstreamUrl) {
       try {
-        const result = await this.#searchUpstream(normalized, { signal });
+        const result = await this.#searchUpstream(searchInput, { signal });
         return { ...result, duration_ms: Math.round(performance.now() - started) };
       } catch (error) {
         upstreamError = error;
@@ -260,7 +279,7 @@ export class MathlibSearchService {
       }
     }
     if (this.sourceRoot) {
-      const result = await this.#searchSource(normalized);
+      const result = await this.#searchSource(searchInput);
       return {
         ...result,
         duration_ms: Math.round(performance.now() - started),
@@ -274,7 +293,39 @@ export class MathlibSearchService {
     return this.search(input, { signal });
   }
 
-  async #searchUpstream({ query, module, max_results: maxResults }, { signal }) {
+  async #validateScope({ module, path }) {
+    if (!module && !path) return { path: null };
+    if (path && !this.sourceRoot) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.path requires a configured source/project boundary', { path });
+    }
+    let scopedPath = path;
+    if (path) {
+      const boundary = resolve(this.sourceRoot);
+      const candidate = isAbsolute(path) ? resolve(path) : resolve(boundary, path);
+      const relativeCandidate = relative(boundary, candidate).split(sep).join('/');
+      if (relativeCandidate === '..' || relativeCandidate.startsWith('../') || isAbsolute(relativeCandidate)) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.path is outside the configured source/project boundary', {
+          path,
+          source_root: this.sourceRoot,
+        });
+      }
+      scopedPath = relativeCandidate === '.' ? null : relativeCandidate;
+    }
+    if (module && this.sourceRoot) {
+      const declarations = await this.#loadSourceIndex();
+      const modules = this.sourceModules ?? new Set(declarations.map((declaration) => declaration.module));
+      const inBoundary = [...modules].some((candidate) => candidate === module || candidate.startsWith(`${module}.`));
+      if (!inBoundary) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module is outside the configured source/project boundary', {
+          module,
+          source_root: this.sourceRoot,
+        });
+      }
+    }
+    return { path: scopedPath };
+  }
+
+  async #searchUpstream({ query, module, path: scopePath, max_results: maxResults }, { signal }) {
     const url = new URL(this.upstreamUrl.toString());
     const path = url.pathname.endsWith('/json') ? url.pathname : `${url.pathname.replace(/\/$/, '')}/json`;
     url.pathname = path;
@@ -311,12 +362,13 @@ export class MathlibSearchService {
       const scoped = module
         ? normalized.results.filter((candidate) => candidate.module === module || candidate.module?.startsWith(`${module}.`))
         : normalized.results;
-      const results = scoped.slice(0, Math.min(maxResults, this.maxResults));
+      const pathScoped = scopePath ? scoped.filter((candidate) => pathMatches(candidate, scopePath)) : scoped;
+      const results = pathScoped.slice(0, Math.min(maxResults, this.maxResults));
       return {
         ...normalized,
         results,
         result_count: results.length,
-        truncated: normalized.truncated || scoped.length > results.length,
+        truncated: normalized.truncated || pathScoped.length > results.length,
       };
     } catch (error) {
       if (error instanceof SwarmEnvError) throw error;
@@ -336,6 +388,7 @@ export class MathlibSearchService {
         const root = await stat(this.sourceRoot);
         if (!root.isDirectory()) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'mathlib search sourceRoot must be a directory', { source_root: this.sourceRoot }, { retryable: true });
         const files = await walkLeanFiles(this.sourceRoot);
+        this.sourceModules = new Set(files.map((file) => moduleNameFor(this.sourceRoot, file)));
         const declarations = [];
         for (const file of files) {
           const content = await readFile(file, 'utf8');
@@ -354,11 +407,12 @@ export class MathlibSearchService {
     return this.indexPromise;
   }
 
-  async #searchSource({ query, module, max_results: maxResults }) {
+  async #searchSource({ query, module, path, max_results: maxResults }) {
     const declarations = await this.#loadSourceIndex();
     const tokens = queryTokens(query);
     const matched = declarations
       .filter((declaration) => !module || declaration.module === module || declaration.module.startsWith(`${module}.`))
+      .filter((declaration) => pathMatches(declaration, path))
       .map((declaration) => {
         const haystack = `${declaration.name} ${declaration.type} ${declaration.module}`.toLowerCase();
         const score = tokens.reduce((total, token) => total + (haystack.includes(token) ? 1 : 0), 0);
