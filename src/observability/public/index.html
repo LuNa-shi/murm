@@ -1,70 +1,17 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f7f7f8" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f8fafc" />
     <script>
-      try {
-        document.documentElement.dataset.theme = localStorage.getItem('swarmenv-theme') === 'black' ? 'black' : 'light';
-      } catch {
-        document.documentElement.dataset.theme = 'light';
-      }
+      try { document.documentElement.dataset.theme = localStorage.getItem('swarmenv-theme') === 'black' ? 'dark' : 'light'; } catch { document.documentElement.dataset.theme = 'light'; }
     </script>
-    <title>SwarmEnv · Experiment monitor</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <title>SwarmEnv · Observation</title>
+    <script type="module" crossorigin src="/app.js"></script>
+    <link rel="stylesheet" crossorigin href="/styles.css">
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="sidebar" id="sidebar">
-        <div class="brand">
-          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-          <div><strong>SwarmEnv</strong><small>OBSERVABILITY</small></div>
-        </div>
-
-        <div class="experiment-picker">
-          <label for="experiments">ACTIVE EXPERIMENT</label>
-          <select id="experiments" aria-label="Select experiment"><option>Loading experiments…</option></select>
-          <div class="experiment-meta" id="experiment-meta">Loading experiment registry…</div>
-        </div>
-
-        <nav class="nav" aria-label="Primary navigation">
-          <span class="nav-label">WORKSPACE</span>
-          <a class="nav-item active" href="#home" data-route="home"><span class="nav-icon" data-icon="home"></span><span>Home</span></a>
-          <a class="nav-item" href="#executions" data-route="executions"><span class="nav-icon" data-icon="activity"></span><span>Executions</span><span class="nav-count" id="nav-executions">0</span></a>
-          <a class="nav-item" href="#tasks" data-route="tasks"><span class="nav-icon" data-icon="tasks"></span><span>Tasks</span><span class="nav-count" id="nav-tasks">0</span></a>
-          <a class="nav-item" href="#materials" data-route="materials"><span class="nav-icon" data-icon="layers"></span><span>Materials</span><span class="nav-count" id="nav-materials">0</span></a>
-          <span class="nav-label nav-label-spaced">OPERATIONS</span>
-          <a class="nav-item" href="#diagnostics" data-route="diagnostics"><span class="nav-icon" data-icon="pulse"></span><span>Diagnostics</span><span class="nav-dot" id="nav-alert"></span></a>
-          <a class="nav-item" href="#services" data-route="services"><span class="nav-icon" data-icon="server"></span><span>Services</span></a>
-        </nav>
-
-        <div class="sidebar-footer">
-          <div class="connection"><span class="connection-dot" id="connection-dot"></span><span id="connection">Connecting…</span></div>
-          <div class="sidebar-footer-meta"><span>LOCAL OBSERVATION PLANE</span><span>v1</span></div>
-        </div>
-      </aside>
-
-      <main class="main-shell">
-        <header class="topbar">
-          <div class="mobile-brand"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><strong>SwarmEnv</strong></div>
-          <div class="breadcrumbs" id="breadcrumbs"><span class="crumb-muted">Workspace</span><span class="crumb-separator">/</span><strong>Home</strong></div>
-          <div class="top-actions">
-            <span class="last-refresh" id="last-refresh">—</span>
-            <label class="theme-control" for="theme-select"><span class="theme-label">Theme</span><select id="theme-select" aria-label="Color theme"><option value="light">White</option><option value="black">Black</option></select></label>
-            <button class="icon-button" id="refresh" type="button" title="Refresh data" aria-label="Refresh data"><span data-icon="refresh"></span></button>
-            <button class="mobile-menu icon-button" id="mobile-menu" type="button" title="Open navigation" aria-label="Open navigation"><span data-icon="menu"></span></button>
-          </div>
-        </header>
-        <section id="main-view" class="page-view" aria-live="polite">
-          <div class="loading-state" role="status" aria-label="Loading observation plane">
-            <div class="loading-copy"><span class="eyebrow">OBSERVATION PLANE</span><strong>Loading the selected run</strong><span>Connecting to live Core activity…</span></div>
-            <div class="loading-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
-          </div>
-        </section>
-      </main>
-    </div>
-    <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js" type="module"></script>
+    <div id="root"></div>
   </body>
 </html>
