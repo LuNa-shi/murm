@@ -560,9 +560,12 @@ as open:
    minutes. The Mission wall-clock timebox remains separate, and generic
    Runtime defaults remain configurable.
 
-The remaining implementation choices are deliberately local: handoff/block may
-publish Material first and atomically validate/link it during the Task
-transition, or use one transaction spanning the service calls; both must reject
-missing or foreign Handoff Material. Notifications use at-least-once delivery
-with a stable idempotency key, and the first blocker taxonomy is limited to
-real Task dependencies.
+The service boundary is concrete: the Agent first calls Context Service to
+publish Handoff Material, then calls Task Service with its `material_id`.
+Task Service atomically validates that the Material exists, has the current
+Task and Execution as producer, links it, records the terminal transition, and
+releases the Execution. A missing or foreign Material rejects the transition.
+If the second call fails, the Material remains an auditable but unlinked
+Material; the system does not synthesize a replacement. Notifications use
+at-least-once delivery with a stable idempotency key, and the first blocker
+taxonomy is limited to real Task dependencies.

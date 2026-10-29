@@ -708,12 +708,13 @@ one proof flow:
    records an honest typed blocker). It does not make Response acceptance a
    hidden prerequisite for every proof Task.
 
-One implementation detail remains intentionally small and local: the service
-may implement handoff/block as “publish Material, then atomically validate and
-link it during the Task transition,” or as one transaction spanning the two
-service operations. In either form, a voluntary transition must fail if the
-referenced Handoff Material is absent or was produced by another Execution.
-Notification delivery should be at-least-once with a stable idempotency key.
-The first typed blocker set should remain limited to real Task dependencies;
-broader external-condition taxonomies can follow after this lifecycle is
-verified.
+The service boundary is concrete: the Agent first calls Context Service to
+publish Handoff Material, then calls Task Service with its `material_id`.
+Task Service atomically validates that the Material exists, has the current
+Task and Execution as producer, links it, records the terminal transition, and
+releases the Execution. A missing or foreign Material rejects the transition.
+If the second call fails, the Material remains an auditable but unlinked
+Material; the system does not synthesize a replacement. Notification delivery
+uses at-least-once semantics with a stable idempotency key. The first typed
+blocker set remains limited to real Task dependencies; broader external-
+condition taxonomies can follow after this lifecycle is verified.
