@@ -96,6 +96,10 @@ export class HttpJsonServiceAdapter {
     return this.#get(manifest, manifest?.readiness?.path ?? '/readyz', signal);
   }
 
+  async manifest(manifest, { signal = null } = {}) {
+    return this.#get(manifest, '/v1/manifest', signal);
+  }
+
   async #get(manifest, path, signal) {
     if (!manifest?.endpoint?.url) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'HTTP adapter requires a manifest endpoint URL');
     const controller = new AbortController();

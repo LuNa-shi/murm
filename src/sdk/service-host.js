@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { ERROR_CODES, SwarmEnvError, asSwarmEnvError } from '../errors.js';
-import { createServiceManifest, manifestSnapshot } from './service-manifest.js';
+import { createServiceManifest, manifestSnapshot, SERVICE_ROLES } from './service-manifest.js';
 import { validateEnvelope } from '../protocol/envelope.js';
 
 const DEFAULT_MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -63,7 +63,7 @@ async function readJson(request, maxBytes) {
 }
 
 export class ServiceHost {
-  constructor({ manifest, handler, readiness = null, token = null, host = '127.0.0.1', advertiseHost = null, publicUrl = null, requireRole = false, trusted = false, maxBodyBytes = DEFAULT_MAX_BODY_BYTES, logger = null } = {}) {
+  constructor({ manifest, handler, readiness = null, token = null, host = '127.0.0.1', advertiseHost = null, publicUrl = null, requireRole = true, trusted = false, maxBodyBytes = DEFAULT_MAX_BODY_BYTES, logger = null } = {}) {
     if (!manifest) throw new TypeError('ServiceHost requires a Service Manifest');
     if (typeof handler !== 'function') throw new TypeError('ServiceHost requires a handler');
     if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 1) throw new TypeError('maxBodyBytes must be a positive integer');
@@ -89,6 +89,20 @@ export class ServiceHost {
     const address = this.server.address();
     if (!address || typeof address === 'string') throw new Error('service host did not receive an address');
     this.address = address;
+    // A host started on port 0 must advertise the bound endpoint in the
+    // manifest it serves. Keeping `:0` in the manifest makes a Registry unable
+    // to verify that it reached this provider and can route future calls to it.
+    if (this.manifest.endpoint.transport === 'http-json') {
+      const endpoint = new URL(this.manifest.endpoint.url);
+      if (endpoint.port === '0') {
+        endpoint.port = String(address.port);
+        const replacementUrl = this.publicUrl ?? endpoint.toString();
+        this.manifest = createServiceManifest({
+          ...this.manifest,
+          endpoint: { transport: 'http-json', url: replacementUrl },
+        }, { allowOpenObjects: true });
+      }
+    }
     return this.environment();
   }
 
@@ -118,8 +132,9 @@ export class ServiceHost {
         return;
       }
       if (request.method === 'GET' && url.pathname === (this.manifest.readiness?.path ?? '/readyz')) {
-        const ready = this.readiness ? await this.readiness({ manifest: this.manifest }) : true;
-        if (!ready) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, `service is not ready: ${this.manifest.service_id}`, { service_id: this.manifest.service_id }, { retryable: true });
+        const result = this.readiness ? await this.readiness({ manifest: this.manifest }) : true;
+        const ready = result === true || result?.ok === true;
+        if (!ready) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, `service is not ready: ${this.manifest.service_id}`, { service_id: this.manifest.service_id, readiness: result ?? null }, { retryable: true });
         send(response, 200, { ok: true, service_id: this.manifest.service_id });
         return;
       }
@@ -143,6 +158,13 @@ export class ServiceHost {
       const role = body.role ?? null;
       if (this.requireRole && role === null) {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, 'service invocation requires an Agent role', { service_id: this.manifest.service_id, capability: capability.name });
+      }
+      if (role !== null && !SERVICE_ROLES.includes(role)) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `unsupported Agent role: ${role}`, { service_id: this.manifest.service_id, capability: capability.name, role, supported: SERVICE_ROLES });
+      }
+      const actorRole = /^agent:(selection|bound|recovery)$/.exec(body.envelope.actor_ref ?? '')?.[1] ?? null;
+      if (actorRole && actorRole !== role) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, 'service role does not match the Agent envelope', { service_id: this.manifest.service_id, capability: capability.name, role, actor_role: actorRole });
       }
       if (role !== null && !capability.audience.includes(role)) {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `capability ${capability.name} is not available to role ${role}`, { service_id: this.manifest.service_id, capability: capability.name, role });

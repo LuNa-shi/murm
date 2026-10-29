@@ -209,22 +209,71 @@ export class ServiceRegistry {
     const entry = capabilityId
       ? this.getCapabilityById(capabilityId)
       : this.getCapability(id, name);
-    if (role !== null && !entry.capability.audience.includes(roleName(role))) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `capability ${id}.${name} is not available to role ${role}`, { service_id: id, capability: name, role });
+    const actorRole = /^agent:(selection|bound|recovery)$/.exec(envelope?.actor_ref ?? '')?.[1] ?? null;
+    if (actorRole && role !== null && actorRole !== role) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, 'service role does not match the Agent envelope', { service_id: entry.manifest.service_id, capability: entry.capability.name, role, actor_role: actorRole });
+    }
+    const effectiveRole = role ?? actorRole;
+    if (effectiveRole !== null && !entry.capability.audience.includes(roleName(effectiveRole))) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `capability ${id}.${name} is not available to role ${effectiveRole}`, { service_id: id, capability: name, role: effectiveRole });
     }
     if (!envelope || typeof envelope !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'service invocation envelope is required');
-    return entry.adapter.invoke({ manifest: entry.manifest, capability: entry.capability, input: payload ?? input, envelope, role, signal });
+    return entry.adapter.invoke({ manifest: entry.manifest, capability: entry.capability, input: payload ?? input, envelope, role: effectiveRole, signal });
   }
 
   async invoke(request = {}) {
+    const id = request.serviceId ?? request.service_id;
+    const entry = request.capability_id
+      ? this.getCapabilityById(request.capability_id)
+      : this.getCapability(id, request.capability ?? request.operation);
+    if (entry.adapter.kind === 'http-json' && entry.ready !== true) await this.checkReadiness(entry.manifest.service_id, { signal: request.signal ?? null });
     return this.invokeSync(request);
+  }
+
+  async checkManifest(serviceId, { signal = null } = {}) {
+    const entry = this.getService(serviceId);
+    if (typeof entry.adapter.manifest !== 'function') {
+      entry.manifest_verified = true;
+      return { ok: true, service_id: serviceId, manifest_hash: entry.manifest.manifest_hash, verified: false };
+    }
+    let observed;
+    try {
+      observed = await entry.adapter.manifest(entry.manifest, { signal });
+      if (!observed || typeof observed !== 'object' || Array.isArray(observed)) throw new Error('service manifest response must be an object');
+      const normalized = createServiceManifest(observed, { allowOpenObjects: true });
+      if (observed.manifest_hash && observed.manifest_hash !== normalized.manifest_hash) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service advertised an invalid manifest hash', { service_id: serviceId, observed_manifest_hash: observed.manifest_hash, computed_manifest_hash: normalized.manifest_hash });
+      }
+      if (normalized.service_id !== entry.manifest.service_id || normalized.manifest_hash !== entry.manifest.manifest_hash) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service manifest does not match the registered contract', {
+          service_id: serviceId,
+          expected_service_id: entry.manifest.service_id,
+          observed_service_id: normalized.service_id,
+          expected_manifest_hash: entry.manifest.manifest_hash,
+          observed_manifest_hash: normalized.manifest_hash,
+        });
+      }
+      entry.manifest_verified = true;
+      return { ok: true, service_id: serviceId, manifest_hash: normalized.manifest_hash, verified: true };
+    } catch (error) {
+      entry.manifest_verified = false;
+      if (error instanceof SwarmEnvError) throw error;
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, error?.message ?? 'service manifest verification failed', { service_id: serviceId }, { cause: error, retryable: true });
+    }
   }
 
   async checkHealth(serviceId, { signal = null } = {}) {
     const entry = this.getService(serviceId);
-    if (typeof entry.adapter.health !== 'function') return { ok: true, service_id: serviceId };
+    await this.checkManifest(serviceId, { signal });
+    if (typeof entry.adapter.health !== 'function') {
+      entry.ready = true;
+      return { ok: true, service_id: serviceId };
+    }
     try {
       const result = await entry.adapter.health(entry.manifest, { signal });
+      if (result?.service_id && result.service_id !== entry.manifest.service_id) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service health response has the wrong service identity', { service_id: serviceId, observed_service_id: result.service_id });
+      }
       entry.ready = true;
       return result;
     } catch (error) {
@@ -235,9 +284,16 @@ export class ServiceRegistry {
 
   async checkReadiness(serviceId, { signal = null } = {}) {
     const entry = this.getService(serviceId);
-    if (typeof entry.adapter.readiness !== 'function') return { ok: true, service_id: serviceId };
+    await this.checkManifest(serviceId, { signal });
+    if (typeof entry.adapter.readiness !== 'function') {
+      entry.ready = true;
+      return { ok: true, service_id: serviceId };
+    }
     try {
       const result = await entry.adapter.readiness(entry.manifest, { signal });
+      if (result?.service_id && result.service_id !== entry.manifest.service_id) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service readiness response has the wrong service identity', { service_id: serviceId, observed_service_id: result.service_id });
+      }
       entry.ready = true;
       return result;
     } catch (error) {

@@ -121,6 +121,78 @@ test('HTTP ServiceHost and adapter expose manifest, health, readiness, and struc
     assert.equal(invalid.status, 400);
     const invalidBody = await invalid.json();
     assert.equal(invalidBody.error.code, ERROR_CODES.INVALID_CONTRACT);
+
+    const missingRole = await fetch(`${environment.url}/v1/echo`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ envelope, input: { value: 'no-role' } }),
+    });
+    assert.equal(missingRole.status, 403);
+    assert.equal((await missingRole.json()).error.code, ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED);
+
+    const mismatchedRole = await fetch(`${environment.url}/v1/echo`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ envelope, input: { value: 'wrong-role' }, role: 'bound' }),
+    });
+    assert.equal(mismatchedRole.status, 403);
+    assert.equal((await mismatchedRole.json()).error.code, ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED);
+  } finally {
+    await host.stop();
+  }
+});
+
+test('Registry verifies a remote manifest and readiness before its first invocation', async () => {
+  const initial = manifest({ id: 'verified-remote', endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' }, audience: ['selection'] });
+  let ready = true;
+  let calls = 0;
+  const host = createServiceHost({
+    manifest: initial,
+    readiness: async () => ready,
+    handler: async ({ input }) => {
+      calls += 1;
+      return { value: input.value };
+    },
+  });
+  const environment = await host.start();
+  try {
+    const expected = createServiceManifest({ ...initial, endpoint: { transport: 'http-json', url: environment.url } });
+    const registry = new ServiceRegistry();
+    registry.registerService({ manifest: expected, adapter: createHttpJsonAdapter() });
+    const envelope = makeEnvelope({ operationId: 'verified-remote-1', actorRef: 'agent:selection' });
+    assert.deepEqual(await registry.invoke({ serviceId: 'verified-remote', capability: 'echo', input: { value: 'ok' }, envelope, role: 'selection' }), { value: 'ok' });
+    assert.equal(calls, 1);
+    assert.equal(registry.getService('verified-remote').ready, true);
+
+    ready = false;
+    await assert.rejects(
+      registry.checkReadiness('verified-remote'),
+      (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.SERVICE_NOT_READY,
+    );
+  } finally {
+    await host.stop();
+  }
+});
+
+test('Registry refuses a remote provider whose advertised manifest differs from the registered contract', async () => {
+  const initial = manifest({ id: 'untruthful-remote', endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' }, audience: ['selection'] });
+  const host = createServiceHost({ manifest: initial, handler: async () => ({ ok: true }) });
+  const environment = await host.start();
+  try {
+    const mismatched = createServiceManifest({
+      ...initial,
+      title: 'a different provider',
+      endpoint: { transport: 'http-json', url: environment.url },
+    });
+    const registry = new ServiceRegistry();
+    registry.registerService({ manifest: mismatched, adapter: createHttpJsonAdapter() });
+    const envelope = makeEnvelope({ operationId: 'untruthful-remote-1', actorRef: 'agent:selection' });
+    await assert.rejects(
+      registry.invoke({ serviceId: 'untruthful-remote', capability: 'echo', input: {}, envelope, role: 'selection' }),
+      (error) => error instanceof SwarmEnvError
+        && error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID
+        && error.details?.expected_manifest_hash === mismatched.manifest_hash,
+    );
   } finally {
     await host.stop();
   }
