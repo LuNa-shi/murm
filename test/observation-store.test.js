@@ -51,6 +51,7 @@ test('ObservationStore returns recent windows and indexed summary data without p
   assert.equal(store.latestSequence('run-window'), 20);
   assert.deepEqual(store.listCoreIds('run-window'), ['core-0', 'core-1']);
   assert.deepEqual(store.listRecentEvents({ experimentId: 'run-window', limit: 3 }).events.map((event) => event.sequence), [18, 19, 20]);
+  assert.deepEqual(store.listLatestEntityEvents({ experimentId: 'run-window', kinds: ['execution_assigned'], limit: 10 }).events.map((event) => event.sequence), [17, 19]);
   store.close();
 });
 
