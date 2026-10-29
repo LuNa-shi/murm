@@ -59,6 +59,22 @@ export class ServicesSDK {
     return this.#read('view_task', { task_id: taskId });
   }
 
+  linkMaterial(payload = {}, options = {}) {
+    return this.#write('task_link_material', payload, options);
+  }
+
+  listTaskMaterials(taskId = this.context.taskId, filters = {}) {
+    return this.#read('list_task_materials', { ...filters, task_id: taskId });
+  }
+
+  completeTask(payload = {}, options = {}) {
+    return this.#write('task_complete', payload, options);
+  }
+
+  closeTask(payload = {}, options = {}) {
+    return this.#write('task_close', payload, options);
+  }
+
   listClaimableTasks(filters = {}) {
     return this.#read('list_claimable_tasks', filters);
   }
@@ -81,6 +97,14 @@ export class ServicesSDK {
 
   readMaterials(filters = {}) {
     return this.#read('read_materials', filters);
+  }
+
+  searchMaterials(filters = {}) {
+    return this.#read('context_search_materials', filters);
+  }
+
+  getMaterial(materialId) {
+    return this.#read('context_get_material', { material_id: materialId });
   }
 
   /** Record the bounded Material IDs this Execution actually used. */

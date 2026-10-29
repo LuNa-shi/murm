@@ -5,8 +5,16 @@ const TASK_OPERATIONS = new Set([
   'propose_task', 'request_wait', 'resume_execution', 'start_execution', 'stop_execution', 'submit_candidate',
   'accept_task', 'request_rework', 'apply_check_result', 'wake_execution',
   'create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task',
+  'create_mission', 'get_mission', 'create_task', 'list_task', 'view_task', 'task_list', 'task_view', 'task_create',
+  'link_material', 'task_link_material', 'list_task_materials', 'task_materials', 'complete_task', 'task_complete', 'close_task', 'task_close',
 ]);
-const CONTEXT_OPERATIONS = new Set(['publish_material', 'read_materials', 'consume_materials', 'list_material_consumptions']);
+const CONTEXT_OPERATIONS = new Set([
+  'publish_material', 'context.publish_material', 'context_publish_material',
+  'read_materials', 'context.read_materials', 'context_read_materials',
+  'search_materials', 'context.search_materials', 'context_search_materials',
+  'get_material', 'context.get_material', 'context_get_material',
+  'consume_materials', 'list_material_consumptions',
+]);
 const JUDGE_OPERATIONS = new Set(['get_check_result']);
 
 export class ServicesRouter {
