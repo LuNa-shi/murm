@@ -41,6 +41,49 @@ PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL;
 
+-- Mission and modern Task records are deliberately additive.  The legacy
+-- Task tables remain readable while the Issue #100 public surface uses these
+-- small records for a flat Mission-scoped queue.
+CREATE TABLE IF NOT EXISTS missions (
+  mission_id TEXT PRIMARY KEY,
+  goal TEXT NOT NULL,
+  acceptance_conditions_json TEXT NOT NULL DEFAULT '{}',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS modern_task_records (
+  task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+  mission_id TEXT NOT NULL REFERENCES missions(mission_id),
+  summary TEXT NOT NULL,
+  timebox_ms INTEGER NOT NULL CHECK (timebox_ms > 0),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS modern_task_records_mission
+  ON modern_task_records(mission_id, created_at, task_id);
+
+CREATE TABLE IF NOT EXISTS task_relations (
+  relation_id TEXT PRIMARY KEY,
+  mission_id TEXT NOT NULL REFERENCES missions(mission_id),
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  relation_kind TEXT NOT NULL CHECK (relation_kind IN ('spawned_from', 'depends_on')),
+  related_task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  created_by_task_id TEXT REFERENCES tasks(task_id),
+  created_by_execution_id TEXT REFERENCES executions(execution_id),
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(task_id, relation_kind, related_task_id)
+);
+
+CREATE INDEX IF NOT EXISTS task_relations_task
+  ON task_relations(task_id, relation_kind, created_at);
+
+CREATE INDEX IF NOT EXISTS task_relations_related
+  ON task_relations(related_task_id, relation_kind, created_at);
+
 CREATE TABLE IF NOT EXISTS tasks ${TASKS_TABLE_DEFINITION};
 
 CREATE TABLE IF NOT EXISTS executions (

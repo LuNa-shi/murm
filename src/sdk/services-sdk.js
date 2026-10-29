@@ -37,6 +37,28 @@ export class ServicesSDK {
     return this.#read('list_tasks', filters);
   }
 
+  /** Create the shared Mission scope used by the flat Task Service surface. */
+  createMission(mission, options = {}) {
+    return this.#write('create_mission', mission, { ...options, taskId: null, executionId: null, fencingVersion: null });
+  }
+
+  getMission(missionId) {
+    return this.#read('get_mission', { mission_id: missionId });
+  }
+
+  /** Create an ordinary Mission Task; a bound Execution may propose work without releasing itself. */
+  createTask(task, options = {}) {
+    return this.#write('create_task', task, options);
+  }
+
+  listMissionTasks(filters = {}) {
+    return this.#read('list_task', filters);
+  }
+
+  viewTask(taskId = this.context.taskId) {
+    return this.#read('view_task', { task_id: taskId });
+  }
+
   listClaimableTasks(filters = {}) {
     return this.#read('list_claimable_tasks', filters);
   }
