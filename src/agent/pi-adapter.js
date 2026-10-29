@@ -321,7 +321,15 @@ export class AgentCoreAdapter {
   async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = executionId } = {}) {
     const launchArgs = this.buildLaunchArgs({ executionId, sessionId, sessionDir });
     await mkdir(sessionDir, { recursive: true });
-    const manifest = await createVersionManifest({ ...this.manifestVersions, launchArgs });
+    // A real run must record the exact locally installed versions without
+    // contacting npm during startup. Operators can pin them in the process
+    // environment after the readiness probe; explicit constructor values win.
+    const manifest = await createVersionManifest({
+      ...this.manifestVersions,
+      piVersion: this.manifestVersions.piVersion ?? this.config.env.SWARMENV_PI_VERSION,
+      nurouterVersion: this.manifestVersions.nurouterVersion ?? this.config.env.SWARMENV_NUROUTER_VERSION,
+      launchArgs,
+    });
     let child;
     try {
       child = this.spawnProcess(this.command, launchArgs, {
