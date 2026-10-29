@@ -8,6 +8,11 @@ import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const AGENT_OPERATIONS = new Set([
+  // Issue #100 semantic Agent surface.  Claim and physical lifecycle remain
+  // below for the unbound Daemon/compatibility adapters, not the normal
+  // bound Task SOP.
+  'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
+  'context_search_materials', 'context_get_material', 'context_publish_material',
   'get_task', 'get_execution', 'read_materials', 'consume_materials', 'publish_material', 'submit_candidate',
   'heartbeat', 'create_child_task', 'request_wait', 'block_execution', 'claim', 'list_tasks', 'list_claimable_tasks', 'list_executions',
   'select_task',
