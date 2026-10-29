@@ -107,7 +107,9 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
       context: serviceId === 'catalog' ? [] : ['task', 'execution'],
       help: { when: tool.description, ref: `service://${serviceId}/${tool.operation}` },
       input_schema: strictInputSchema(tool.parameters),
-      output_schema: { type: 'object', properties: {}, additionalProperties: false },
+      // Built-in results intentionally use a JSON value schema: Task and
+      // Context reads include arrays while writes return structured objects.
+      output_schema: { type: ['object', 'array', 'string', 'number', 'boolean', 'null'] },
       path: `/v1/${tool.operation}`,
       errors: [],
       scope: tool.scope ?? null,
@@ -116,11 +118,19 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
 }
 
 function serviceDispatch(serviceId, services, registry) {
-  return ({ capability, input, envelope }) => {
+  return ({ capability, input, envelope, role = null }) => {
     if (serviceId === 'catalog') {
-      if (capability.operation === 'list_services') return { services: registry.listServices() };
-      if (capability.operation === 'get_service_metadata') return registry.getServiceMetadata(input?.service ?? null);
-      if (capability.operation === 'list_tools') return { tools: registry.listTools(input?.service ?? null) };
+      const allowed = (candidate) => role === null || candidate.audience.includes(role);
+      if (capability.operation === 'list_services') {
+        return { services: registry.listServices().filter((service) => registry.getServiceMetadata(service.service_id).capabilities.some(allowed)) };
+      }
+      if (capability.operation === 'get_service_metadata') {
+        const metadata = registry.getServiceMetadata(input?.service ?? null);
+        return { ...metadata, capabilities: metadata.capabilities.filter(allowed) };
+      }
+      if (capability.operation === 'list_tools') {
+        return { tools: registry.listTools(input?.service ?? null).filter(allowed) };
+      }
     }
     const service = services[serviceId];
     if (serviceId === 'judge' && ['submit_candidate', 'apply_check_result'].includes(capability.operation)) {
@@ -165,6 +175,7 @@ export function createBuiltinServiceRegistry({
     registry.registerService({
       manifest,
       adapter,
+      trusted: true,
     });
   }
   const catalogEndpoint = normalizeServiceEndpoint('catalog', endpoints?.catalog);
@@ -174,6 +185,7 @@ export function createBuiltinServiceRegistry({
       ?? (catalogEndpoint.endpoint.transport === 'http-json'
         ? createHttpJsonAdapter({ token: catalogEndpoint.token })
         : createInProcessAdapter({ invoke: serviceDispatch('catalog', services, registry) })),
+    trusted: true,
   });
   for (const definition of customServices) {
     if (!definition?.manifest) throw new TypeError('custom service registration requires a manifest');
@@ -192,4 +204,3 @@ export function builtInServiceManifest(serviceId, options = {}) {
   const tools = publicTools(serviceId);
   return tools.length === 0 ? null : manifestForService(serviceId, tools, options);
 }
-

@@ -8,7 +8,7 @@ const SELECTION_SOP = [
   'You are the SwarmEnv Selection Agent for one reusable Core.',
   'Your role is to inspect the bounded claimable Task set and claim exactly one listed Task.',
   'The shortlist attached to this turn is the complete candidate set. Never invent a Task ID or choose outside it.',
-  'Read only the Task facts needed to make a justified choice, then call task.claim exactly once.',
+  'Read only the Task facts needed to make a justified choice, then call the registered swarmenv_task_claim tool (logical operation task.claim) exactly once.',
   'When claim succeeds, stop this Session immediately. Runtime starts the bound Task Session for the new Execution.',
   'If the list is empty, end as IDLE. Do not create a dependency or keep retrying inside this Session.',
   'If the claim conflicts or a boundary error occurs, end this Session so the Core supervisor can make a fresh bounded attempt.',
@@ -21,7 +21,7 @@ const BOUND_SOP = [
   'Read the Task contract, current Execution, and Workspace contract before editing. Use only registered capabilities shown below.',
   'When the Mathlib Search capability is present, use mathlib_search before proposing a proof or API research route; verify every returned declaration in the locked project before relying on it.',
   'Create a child only for a genuinely independent, bounded responsibility with a verifiable result; the Task contract decides whether it is required.',
-  'Use task.complete when the current completion contract is satisfied. Use task.block with a non-empty typed dependency and checkpoint when external work prevents progress.',
+  'Use the registered swarmenv_task_complete tool (logical operation task.complete) when the current completion contract is satisfied. Use swarmenv_task_block (logical operation task.block) with a non-empty typed dependency and checkpoint when external work prevents progress.',
   'Treat structured tool errors as feedback. Do not infer completion from prose or an unverified file.',
 ].join('\n');
 
@@ -30,7 +30,7 @@ const RECOVERY_SOP = [
   'Continue from the checkpoint and recovery facts supplied below. Re-read the current Task, Workspace revision, and dependency status before changing work.',
   'This role cannot claim or select another Task and cannot operate Runtime lifecycle controls.',
   'When the Mathlib Search capability is present, use mathlib_search to re-check declarations before revising the proof or API route.',
-  'Preserve useful evidence, repair the declared contract, and use task.complete or task.block with the current typed dependency when appropriate.',
+  'Preserve useful evidence, repair the declared contract, and use swarmenv_task_complete or swarmenv_task_block with the current typed dependency when appropriate.',
 ].join('\n');
 
 function digest(value) {

@@ -13,7 +13,7 @@ export const CORE_DAEMON_STATES = Object.freeze({
 export const SELECTION_AGENT_PROMPT = [
   'You are a stateless Task selection turn for one reusable Core.',
   'Use the bounded list_tasks result as your complete candidate set.',
-  'Call task.claim exactly once for the one task_id you choose from that result. The Selection role may claim; a bound Task Agent cannot claim another Task.',
+  'Call the registered swarmenv_task_claim tool (logical operation task.claim) exactly once for the one task_id you choose from that result. The Selection role may claim; a bound Task Agent cannot claim another Task.',
   'Never guess an ID, issue concurrent claims, or read claimed-only state during this selection turn.',
   'A claim conflict means another Core won; end this turn so the Daemon can rescan once.',
 ].join('\n');

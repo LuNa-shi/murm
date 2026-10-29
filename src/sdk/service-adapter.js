@@ -35,7 +35,7 @@ export class HttpJsonServiceAdapter {
     this.kind = 'http-json';
   }
 
-  async invoke({ manifest, capability, input = {}, envelope, signal = null } = {}) {
+  async invoke({ manifest, capability, input = {}, envelope, role = null, signal = null } = {}) {
     if (!manifest?.endpoint?.url) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'HTTP adapter requires a manifest endpoint URL');
     if (!capability?.path) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'HTTP adapter requires a capability route');
     const url = joinUrl(manifest.endpoint.url, capability.path);
@@ -57,7 +57,7 @@ export class HttpJsonServiceAdapter {
       const response = await this.fetch(url, {
         method: capability.method ?? 'POST',
         headers,
-        body: JSON.stringify({ envelope, input }),
+        body: JSON.stringify({ envelope, input, ...(role ? { role } : {}) }),
         signal: controller.signal,
       });
       const body = await responseJson(response);

@@ -209,13 +209,39 @@ export class MathlibSearchService {
   }
 
   async readiness() {
-    if (this.upstreamUrl) return true;
+    if (this.upstreamUrl) {
+      try {
+        await this.#probeUpstream();
+        return true;
+      } catch {
+        // A configured source tree is a deliberate fallback and is sufficient
+        // for readiness when the optional Loogle endpoint is unavailable.
+        if (!this.sourceRoot) return false;
+      }
+    }
     if (!this.sourceRoot) return false;
     try {
-      await access(this.sourceRoot);
-      return true;
+      const source = await stat(this.sourceRoot);
+      return source.isDirectory();
     } catch {
       return false;
+    }
+  }
+
+  async #probeUpstream() {
+    const url = new URL(this.upstreamUrl.toString());
+    const path = url.pathname.endsWith('/json') ? url.pathname : `${url.pathname.replace(/\/$/, '')}/json`;
+    url.pathname = path;
+    url.searchParams.set('q', 'Nat.add_comm');
+    url.searchParams.set('max-results', '1');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error('mathlib readiness probe timed out')), Math.min(this.timeoutMs, 3_000));
+    try {
+      const response = await this.fetch(url, { headers: { accept: 'application/json' }, signal: controller.signal });
+      if (!response.ok) throw new Error(`mathlib readiness probe returned HTTP ${response.status}`);
+      await response.json();
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -354,4 +380,3 @@ export function createMathlibSearchService(options = {}) {
     readiness: service.readiness.bind(service),
   };
 }
-

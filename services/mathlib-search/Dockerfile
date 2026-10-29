@@ -10,4 +10,3 @@ ENV MATHLIB_SEARCH_HOST=0.0.0.0
 ENV MATHLIB_SEARCH_PORT=8787
 EXPOSE 8787
 CMD ["node", "scripts/mathlib-search-service.mjs"]
-

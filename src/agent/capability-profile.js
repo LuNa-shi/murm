@@ -57,6 +57,10 @@ function capabilityNameOf(capability) {
   return capability.tool_name ?? capability.toolName ?? capability.name ?? operationOf(capability);
 }
 
+function safeToolName(serviceId, name) {
+  return `${serviceId}_${name}`.replace(/[^A-Za-z0-9_]/g, '_');
+}
+
 function audienceOf(capability) {
   return asList(capability.audience ?? capability.roles ?? capability.role_scope ?? capability.roleScope);
 }
@@ -109,6 +113,7 @@ function normalizeCapability(capability, role) {
   return {
     id: capability.id ?? `${serviceId}.${operation}`,
     name,
+    tool_name: capability.tool_name ?? capability.toolName ?? null,
     operation,
     service_id: serviceId,
     service_title: capability.service_title ?? capability.serviceTitle ?? capability.title ?? serviceId,
@@ -151,7 +156,7 @@ function normalizeServices(capabilities) {
       purpose: capability.service_purpose,
       capabilities: [],
     };
-    service.capabilities.push(capability.name);
+    service.capabilities.push(capability.tool_name ?? capability.name);
     grouped.set(capability.service_id, service);
   }
   return [...grouped.values()]
@@ -168,11 +173,19 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
   const canonical = canonicalRole(role);
   const source = sourceCapabilities({ registry, role: canonical, context: { ...context, runtimeCapabilities }, tools });
   const candidates = [...(source.capabilities ?? []), ...runtimeCapabilities];
-  const capabilities = candidates
+  const normalizedCapabilities = candidates
     .map((capability) => normalizeCapability(capability, canonical))
     .filter(Boolean)
     .filter((capability, index, all) => all.findIndex((candidate) => candidate.id === capability.id) === index)
     .sort((a, b) => a.id.localeCompare(b.id));
+  const nameCounts = new Map();
+  for (const capability of normalizedCapabilities) nameCounts.set(capability.name, (nameCounts.get(capability.name) ?? 0) + 1);
+  const capabilities = normalizedCapabilities.map((capability) => {
+    const toolName = nameCounts.get(capability.name) > 1
+      ? safeToolName(capability.service_id, capability.name)
+      : (capability.tool_name ?? capability.name);
+    return { ...capability, tool_name: toolName };
+  });
   const services = normalizeServices(capabilities);
   const identity = {
     profile_version: source.profile?.profile_version ?? source.profile?.profileVersion ?? PROFILE_VERSION,
@@ -180,19 +193,30 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
     capabilities,
     services,
   };
-  const profileHash = source.profile?.profile_hash ?? source.profile?.profileHash ?? digest(identity);
+  const generatedNames = capabilities.some((capability) => capability.tool_name !== capability.name);
+  const usedToolNames = new Set();
+  const disambiguatedCapabilities = capabilities.map((capability) => {
+    let toolName = capability.tool_name ?? capability.name;
+    if (usedToolNames.has(toolName)) toolName = `${toolName}_${digest(capability.id).slice(0, 8)}`;
+    usedToolNames.add(toolName);
+    return { ...capability, tool_name: toolName };
+  });
+  const finalIdentity = { ...identity, capabilities: disambiguatedCapabilities, services: normalizeServices(disambiguatedCapabilities) };
+  const profileHash = generatedNames || disambiguatedCapabilities.some((capability, index) => capability.tool_name !== capabilities[index].tool_name)
+    ? digest(finalIdentity)
+    : (source.profile?.profile_hash ?? source.profile?.profileHash ?? digest(identity));
   return {
     role: canonical,
     profile_version: identity.profile_version,
     profile_hash: profileHash,
-    capabilities,
-    services,
+    capabilities: disambiguatedCapabilities,
+    services: normalizeServices(disambiguatedCapabilities),
   };
 }
 
 export function profileToolNames(profile) {
   return [...(profile?.capabilities ?? [])]
-    .map((capability) => capability.name)
+    .map((capability) => capability.tool_name ?? capability.name)
     .filter((name) => typeof name === 'string' && name.length > 0)
     .sort();
 }
@@ -202,7 +226,7 @@ export function capabilityDirectory(profile) {
   for (const service of profile?.services ?? []) {
     lines.push(`- ${service.title || service.id}${service.purpose ? ` — ${service.purpose}` : ''}`);
     for (const name of service.capabilities) {
-      const capability = profile.capabilities.find((candidate) => candidate.name === name && candidate.service_id === service.id);
+      const capability = profile.capabilities.find((candidate) => (candidate.tool_name ?? candidate.name) === name && candidate.service_id === service.id);
       if (!capability) continue;
       const guidance = capability.help?.when ?? capability.help?.usage ?? capability.help?.summary ?? null;
       const effect = capability.side_effect === false || capability.side_effect === 'read' ? 'read-only' : 'writes state';

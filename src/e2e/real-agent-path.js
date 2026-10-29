@@ -283,10 +283,6 @@ export function validateRealAgentReport(report) {
 function toolOperation(record) {
   const name = record?.toolName ?? record?.tool_name ?? record?.name ?? null;
   if (typeof name !== 'string') return null;
-  if (name === 'swarmenv_call') {
-    const payload = recordPayload(record);
-    return typeof payload?.operation === 'string' ? payload.operation : name;
-  }
   const operation = name.replace(/^swarmenv_/, '');
   // Pi's named-tool events carry the service prefix (for example
   // `judge_submit_candidate`), while the bridge RPC carries the registered
@@ -520,6 +516,7 @@ export async function runRealAgentPath({
       }),
       adapter: createHttpJsonAdapter({ token: env.SWARMENV_MATHLIB_SEARCH_TOKEN ?? null }),
     });
+    await capabilityRegistry.checkReadiness('mathlib-search');
   }
   const ownerSdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const task = ownerSdk.proposeTask({

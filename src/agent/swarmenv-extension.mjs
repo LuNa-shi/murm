@@ -40,10 +40,15 @@ export async function loadCapabilityProfile({ signal, role = process.env.SWARMEN
   return profile;
 }
 
-async function callBridge(operation, payload, signal) {
+async function callBridge(capability, payload, signal) {
   const response = await bridgeFetch('/call', {
     method: 'POST',
-    body: { operation, payload },
+    body: {
+      operation: capability.operation,
+      service_id: capability.service_id,
+      capability_id: capability.id ?? `${capability.service_id}.${capability.name}`,
+      payload,
+    },
     signal,
   });
   return { content: [{ type: 'text', text: text(response.result) }], details: response.result };
@@ -51,30 +56,31 @@ async function callBridge(operation, payload, signal) {
 
 function registerTool(pi, profile, capability) {
   const help = capability.help;
+  const toolName = capability.tool_name ?? capability.name;
   const guidance = [
     help?.when ?? help?.usage ?? help?.summary,
     help?.ref ? `Help: ${help.ref}` : null,
   ].filter(Boolean);
   pi.registerTool({
-    name: `swarmenv_${capability.name}`,
-    label: `SwarmEnv ${capability.name}`,
+    name: `swarmenv_${toolName}`,
+    label: `SwarmEnv ${toolName}`,
     description: capability.description || `Call ${capability.service_title ?? capability.service_id} capability ${capability.name}`,
     promptSnippet: `${capability.service_title ?? capability.service_id}: ${capability.description || capability.name}`,
     promptGuidelines: guidance,
     parameters: capability.input_schema ?? { type: 'object', additionalProperties: true },
     ...(capability.output_schema ? { outputSchema: capability.output_schema } : {}),
     annotations: {
-      readOnlyHint: capability.side_effect === false,
-      destructiveHint: capability.side_effect === 'destructive',
+      readOnlyHint: capability.side_effect === false || capability.side_effect === 'read',
+      destructiveHint: capability.side_effect === 'destructive' || capability.side_effect === 'write',
       idempotentHint: capability.idempotent === true,
       openWorldHint: false,
     },
     executionMode: 'sequential',
     async execute(_toolCallId, params, signal) {
-      return callBridge(capability.operation, params ?? {}, signal);
+      return callBridge(capability, params ?? {}, signal);
     },
   });
-  return `swarmenv_${capability.name}`;
+  return `swarmenv_${toolName}`;
 }
 
 /**

@@ -93,4 +93,3 @@ export const RUNTIME_CAPABILITIES = Object.freeze([
 export function runtimeCapabilityList() {
   return structuredClone(RUNTIME_CAPABILITIES);
 }
-

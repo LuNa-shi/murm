@@ -485,6 +485,7 @@ test('ServicesBridge binds an explicit claim to the bridge Agent and keeps the r
     onClaim: async (result) => { claimed = result; },
   });
   try {
+    bridge.setSelectionCandidates([{ task_id: task.task_id }]);
     const result = await bridge.call({ operation: 'claim', payload: {
       task_id: task.task_id,
       claim_key: 'bridge:identity:claim',
@@ -522,6 +523,7 @@ test('ServicesBridge rolls back a Task claim when Runtime handoff fails', async 
     onClaim: async () => { throw new Error('controlled handoff failure'); },
   });
   try {
+    bridge.setSelectionCandidates([{ task_id: task.task_id }]);
     await assert.rejects(() => bridge.call({ operation: 'claim', payload: { task_id: task.task_id, claim_key: 'bridge:rollback:claim', workspace_mode: 'clean' } }), /controlled handoff failure/);
     assert.equal(bridge.taskId, null);
     assert.equal(bridge.executionId, null);

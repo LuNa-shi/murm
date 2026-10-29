@@ -110,11 +110,11 @@ export class ServiceHost {
   async #handle(request, response) {
     const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
     try {
-      if (request.method === 'GET' && url.pathname === '/healthz') {
+      if (request.method === 'GET' && url.pathname === (this.manifest.health?.path ?? '/healthz')) {
         send(response, 200, { ok: true, service_id: this.manifest.service_id, manifest_hash: this.manifest.manifest_hash });
         return;
       }
-      if (request.method === 'GET' && url.pathname === '/readyz') {
+      if (request.method === 'GET' && url.pathname === (this.manifest.readiness?.path ?? '/readyz')) {
         const ready = this.readiness ? await this.readiness({ manifest: this.manifest }) : true;
         if (!ready) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, `service is not ready: ${this.manifest.service_id}`, { service_id: this.manifest.service_id }, { retryable: true });
         send(response, 200, { ok: true, service_id: this.manifest.service_id });
@@ -137,7 +137,11 @@ export class ServiceHost {
       if (!body || typeof body !== 'object' || Array.isArray(body) || !body.envelope) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'service request requires envelope and input');
       validateEnvelope(body.envelope);
       const input = body.input ?? {};
-      const result = await this.handler({ manifest: this.manifest, capability, input, envelope: body.envelope, request });
+      const role = body.role ?? null;
+      if (role !== null && !capability.audience.includes(role)) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `capability ${capability.name} is not available to role ${role}`, { service_id: this.manifest.service_id, capability: capability.name, role });
+      }
+      const result = await this.handler({ manifest: this.manifest, capability, input, envelope: body.envelope, role, request });
       this.logger?.({ event: 'service.host.complete', service_id: this.manifest.service_id, capability: capability.name, ok: true });
       send(response, 200, { ok: true, result });
     } catch (error) {

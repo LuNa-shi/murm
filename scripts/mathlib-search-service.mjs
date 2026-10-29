@@ -5,7 +5,9 @@ const host = process.env.MATHLIB_SEARCH_HOST ?? '0.0.0.0';
 const port = Number(process.env.MATHLIB_SEARCH_PORT ?? 8787);
 if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('MATHLIB_SEARCH_PORT must be an integer from 1 to 65535');
 
-const endpointUrl = process.env.MATHLIB_SEARCH_PUBLIC_URL ?? `http://127.0.0.1:${port}`;
+const advertiseHost = process.env.MATHLIB_SEARCH_ADVERTISE_HOST
+  ?? (host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host);
+const endpointUrl = process.env.MATHLIB_SEARCH_PUBLIC_URL ?? `http://${advertiseHost}:${port}`;
 const provider = createMathlibSearchService({
   endpoint: { transport: 'http-json', url: endpointUrl },
   upstreamUrl: process.env.MATHLIB_SEARCH_UPSTREAM_URL ?? null,
@@ -35,4 +37,3 @@ const stop = async () => {
 };
 process.once('SIGINT', stop);
 process.once('SIGTERM', stop);
-

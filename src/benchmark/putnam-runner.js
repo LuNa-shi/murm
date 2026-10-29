@@ -38,7 +38,7 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
 
 const FORBIDDEN_PLACEHOLDER = /\b(?:sorry|admit|axiom)\b/i;
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const PARALLEL_MODES = new Set(['legacy', 'semantic', 'root-only']);
+const PARALLEL_MODES = new Set(['direct', 'semantic', 'root-only']);
 const STRUCTURE_OPERATIONS = new Set([
   'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task',
 ]);
@@ -48,7 +48,7 @@ function completedTaskState(state) {
 }
 
 function parallelMode(options = {}) {
-  const mode = options.parallelMode ?? 'legacy';
+  const mode = options.parallelMode ?? 'direct';
   if (!PARALLEL_MODES.has(mode)) throw new TypeError(`parallelMode must be one of ${[...PARALLEL_MODES].join(', ')}`);
   return mode;
 }
@@ -1353,7 +1353,7 @@ function projectReport(state, startedAt, deadline) {
   });
   const toolViolation = cores.some((core) => core.tool_events.some((tool) => {
     const name = String(tool);
-    return name !== 'swarmenv_call' && !name.startsWith('swarmenv_');
+    return !name.startsWith('swarmenv_');
   }));
   const toolErrorCount = cores.reduce((count, core) => count + core.tool_errors.length, 0);
   // A Service tool can reject an Agent request because the model supplied a
@@ -1423,7 +1423,7 @@ function projectReport(state, startedAt, deadline) {
       parallel_mode: state.parallelMode,
       normal_flow: state.normalFlow,
       input_policy: 'pinned formalization only; no candidate or solution input',
-      tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
+      tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; generic service calls are rejected',
       registered_services: state.capabilityRegistry.listServices().map((service) => ({
         service_id: service.service_id,
         provider_version: service.provider_version,
@@ -1642,9 +1642,27 @@ async function createProjectState(problem, config, options) {
   });
   taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
   judgeService.setDependencyEventSink((event) => taskService.notifyDependencyEvent(event));
-  const router = new ServicesRouter({ taskService, contextService, judgeService, logger: routerLogger });
   const mathlibSearchUrl = options.mathlibSearchUrl ?? process.env.SWARMENV_MATHLIB_SEARCH_URL ?? null;
-  const capabilityRegistry = options.serviceRegistry ?? createBuiltinServiceRegistry({ taskService, contextService, judgeService });
+  const serviceEndpoints = options.serviceEndpoints ?? Object.fromEntries(
+    ['task', 'context', 'judge', 'catalog']
+      .map((serviceId) => {
+        const key = serviceId.toUpperCase();
+        const url = process.env[`SWARMENV_${key}_SERVICE_URL`];
+        if (!url) return [serviceId, undefined];
+        return [serviceId, {
+          url,
+          token: process.env[`SWARMENV_${key}_SERVICE_TOKEN`] ?? null,
+        }];
+      })
+      .filter(([, endpoint]) => endpoint !== undefined),
+  );
+  const capabilityRegistry = options.serviceRegistry ?? createBuiltinServiceRegistry({
+    taskService,
+    contextService,
+    judgeService,
+    serviceEndpoints,
+    customServices: options.customServices ?? [],
+  });
   if (!options.serviceRegistry && mathlibSearchUrl) {
     registerUserService(capabilityRegistry, {
       manifest: createMathlibSearchManifest({
@@ -1656,6 +1674,11 @@ async function createProjectState(problem, config, options) {
     });
     await capabilityRegistry.checkReadiness('mathlib-search');
   }
+  // Owner/controller SDK calls are synchronous local transactions. Keep that
+  // control-plane registry local even when Agent-facing providers are remote;
+  // ServicesBridge uses capabilityRegistry for the named HTTP calls.
+  const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService });
+  const router = new ServicesRouter({ taskService, contextService, judgeService, registry: routerRegistry, logger: routerLogger });
   const allowedAgentToolNames = [...new Set([
     AGENT_ROLES.SELECTION,
     AGENT_ROLES.BOUND,
@@ -1664,7 +1687,7 @@ async function createProjectState(problem, config, options) {
     role,
     registry: capabilityRegistry,
     runtimeCapabilities: role === AGENT_ROLES.SELECTION ? [] : runtimeCapabilityList(),
-  }).capabilities.map((capability) => `swarmenv_${capability.name}`)))];
+  }).capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`)))];
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const modeInstructions = selectedParallelMode === 'semantic'
@@ -2771,7 +2794,7 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
             project_isolation: true,
             core_count: 4,
             input_policy: 'pinned formalization only; no candidate or solution input',
-            tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
+            tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; generic service calls are rejected',
             cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
           },
           parallelism,

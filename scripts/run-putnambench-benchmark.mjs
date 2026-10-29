@@ -126,7 +126,7 @@ function optionsFromArgs(argv) {
     observabilityMetadataPath: process.env.SWARMENV_OBSERVABILITY_METADATA ?? null,
     model: process.env.NUROUTER_PI_MODEL,
     provider: process.env.NUROUTER_PI_PROVIDER,
-    parallelMode: 'legacy',
+    parallelMode: 'semantic',
     normalFlow: process.env.SWARMENV_NORMAL_FLOW === 'true',
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -178,7 +178,7 @@ function usage() {
     '    --cores 4',
     '    --project-parallelism 3',
     '    --timebox-ms 3600000',
-    '    --parallel-mode semantic|legacy|root-only',
+    '    --parallel-mode direct|semantic|root-only',
     '    --normal-flow',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
@@ -201,7 +201,7 @@ if (!options.configPath || !options.putnamBenchRoot) throw new Error(usage() + '
 if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark protocol');
 if (!Number.isInteger(options.projectParallelism) || options.projectParallelism < 1) throw new Error('--project-parallelism must be a positive integer');
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
-if (!['legacy', 'semantic', 'root-only'].includes(options.parallelMode)) throw new Error('--parallel-mode must be legacy, semantic, or root-only');
+if (!['direct', 'semantic', 'root-only'].includes(options.parallelMode)) throw new Error('--parallel-mode must be direct, semantic, or root-only');
 if (!options.provider) throw new Error('NUROUTER_PI_PROVIDER is required; set it in .env or the environment');
 if (!options.model) throw new Error('NUROUTER_PI_MODEL is required; set it in .env or the environment');
 

@@ -24,11 +24,16 @@ function requiredString(value, field, { pattern = null } = {}) {
 }
 
 function strictSchema(value, field) {
-  if (!isRecord(value) || value.type !== 'object' || !isRecord(value.properties) || value.additionalProperties !== false) {
+  const validObject = isRecord(value) && value.type === 'object' && isRecord(value.properties) && value.additionalProperties === false;
+  const validArray = isRecord(value) && value.type === 'array' && isRecord(value.items);
+  const validPrimitive = isRecord(value) && ['string', 'number', 'integer', 'boolean', 'null'].includes(value.type);
+  const validUnion = isRecord(value) && Array.isArray(value.type) && value.type.length > 0
+    && value.type.every((type) => ['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'].includes(type));
+  if (!validObject && !validArray && !validPrimitive && !validUnion) {
     throw new SwarmEnvError(
       ERROR_CODES.SERVICE_MANIFEST_INVALID,
       `${field} must be a strict object JSON Schema`,
-      { field, requirement: "type='object', properties object, additionalProperties=false" },
+      { field, requirement: "strict object, array with items, or primitive JSON Schema" },
     );
   }
   if (value.required !== undefined && (!Array.isArray(value.required) || value.required.some((item) => typeof item !== 'string'))) {
@@ -96,6 +101,7 @@ function normalizeCapability(capability, index) {
     side_effect: sideEffect,
     idempotent: capability.idempotent,
     context: [...new Set(context)],
+    scope: capability.scope ?? null,
     help: normalizeHelp(capability.help, index),
     method,
     path,
@@ -126,11 +132,14 @@ export function createServiceManifest(input) {
   }
   const capabilities = input.capabilities.map(normalizeCapability);
   const names = new Set();
+  const operations = new Set();
   const paths = new Set();
   for (const capability of capabilities) {
     if (names.has(capability.name)) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `duplicate capability: ${capability.name}`, { capability: capability.name });
+    if (operations.has(capability.operation)) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `duplicate capability operation: ${capability.operation}`, { operation: capability.operation });
     if (paths.has(capability.path)) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `duplicate capability path: ${capability.path}`, { path: capability.path });
     names.add(capability.name);
+    operations.add(capability.operation);
     paths.add(capability.path);
   }
   const manifest = {

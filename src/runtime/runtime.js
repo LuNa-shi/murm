@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
-import { buildPromptSnapshot } from '../agent/agent-prompt.js';
+import { BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT, buildPromptSnapshot } from '../agent/agent-prompt.js';
 import { runtimeCapabilityList } from './runtime-capabilities.js';
 
 function requireString(value, field) {
@@ -1144,7 +1144,44 @@ export class Runtime {
     const current = this.#saveWorkspaceReference(execution, nextWorkspace);
     this.#registerActiveProcess(current, nextWorkspace, session, { sessionReason, coreId });
     await beforePrompt?.({ execution: current, workspace: nextWorkspace, session });
-    await this.#sendInitialPrompt(session, execution.agent_prompt);
+    let initialPrompt = execution.agent_prompt;
+    if (this.capabilityRegistry) {
+      const role = sessionReason === 'recovery' || sessionReason === 'session_recovery'
+        ? AGENT_ROLES.RECOVERY
+        : AGENT_ROLES.BOUND;
+      const profile = buildCapabilityProfile({
+        role,
+        registry: this.capabilityRegistry,
+        runtimeCapabilities: this.runtimeCapabilities,
+        context: { task_id: current.task_id, execution_id: current.execution_id },
+      });
+      const staticSop = [
+        role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT,
+        execution.agent_prompt,
+      ].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
+      const promptSnapshot = buildPromptSnapshot({
+        role,
+        profile,
+        staticSop,
+        task: this.taskService.getTask(current.task_id),
+        execution: current,
+        workspace: nextWorkspace,
+        recovery: role === AGENT_ROLES.RECOVERY
+          ? { reason: current.block_reason ?? sessionReason, checkpoint: current.checkpoint_ref, dependency: current.wait_condition }
+          : null,
+      });
+      initialPrompt = promptSnapshot.prompt;
+      this.logger?.append({
+        event: 'runtime.initial_prompt_composed',
+        execution_id: current.execution_id,
+        role: promptSnapshot.role,
+        prompt_version: promptSnapshot.prompt_version,
+        prompt_hash: promptSnapshot.prompt_hash,
+        profile_version: promptSnapshot.profile_version,
+        profile_hash: promptSnapshot.profile_hash,
+      });
+    }
+    await this.#sendInitialPrompt(session, initialPrompt);
     const active = this.activeProcesses.get(execution.execution_id);
     return { execution: current, workspace: nextWorkspace, session };
   }

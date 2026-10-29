@@ -29,6 +29,13 @@ recipe and pinned-toolchain guidance are in
 [`services/mathlib-search/README.md`](services/mathlib-search/README.md) and
 [`docs/research/mathlib-search-service.md`](docs/research/mathlib-search-service.md).
 
+Task, Context, Judge, and Catalog can use the same host boundary. Run one
+`npm run service:builtin` process per service with `SWARMENV_SERVICE_ID` and a
+shared durable `SWARMENV_SERVICE_DATABASE` volume, then pass the resulting URLs
+to `createBuiltinServiceRegistry({ serviceEndpoints })`. Custom providers use
+`registerUserService(registry, { manifest, adapter })`; the benchmark accepts
+the same definitions through its `customServices` option.
+
 ## Experiment and observation runtime
 
 All live experiment evidence must be created below the repository's

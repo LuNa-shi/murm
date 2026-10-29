@@ -226,4 +226,3 @@ test('Built-in Registry exposes the current Task contract without legacy lifecyc
   assert.ok(!selectionNames.includes('context_read'));
   assert.ok(!selectionNames.includes('judge_get_check_result'));
 });
-

@@ -25,6 +25,32 @@ function problem(id) {
   };
 }
 
+const toolNameForOperation = Object.freeze({
+  list_services: 'catalog_list_services',
+  get_service_metadata: 'catalog_get_service_metadata',
+  list_tools: 'catalog_list_tools',
+  list_tasks: 'task_discover',
+  list_claimable_tasks: 'task_list_claimable',
+  get_task: 'task_view',
+  get_execution: 'execution_get',
+  claim: 'task_claim',
+  publish_material: 'context_publish',
+  read_materials: 'context_read',
+  consume_materials: 'context_consume',
+  submit_candidate: 'judge_submit_candidate',
+  get_check_result: 'judge_get_check_result',
+  task_block: 'task_block',
+  accept_task: 'task_complete',
+  get_workspace: 'workspace_get',
+  list_workspace_files: 'workspace_list_files',
+  read_workspace_file: 'workspace_read_file',
+  write_workspace_file: 'workspace_write_file',
+  workspace_diff: 'workspace_diff',
+});
+function namedTool(operation) {
+  return `swarmenv_${toolNameForOperation[operation] ?? operation}`;
+}
+
 function checkerWithPreflight(checker) {
   if (typeof checker.preflight === 'function') return checker;
   return {
@@ -84,7 +110,7 @@ class FakeSession extends EventEmitter {
   async prompt() {
     if (this.noWork) return { data: { disposition: 'handled' } };
     const call = async (operation, payload) => {
-      this.rpcRecords.push({ type: 'tool_call', tool_name: 'swarmenv_call' });
+      this.rpcRecords.push({ type: 'tool_call', tool_name: namedTool(operation) });
       const response = await fetch(`${this.env.SWARMENV_BRIDGE_URL}/call`, {
         method: 'POST',
         headers: {
@@ -99,7 +125,7 @@ class FakeSession extends EventEmitter {
         error.code = body.error?.code;
         throw error;
       }
-      this.rpcRecords.push({ type: 'tool_result', tool_name: 'swarmenv_call' });
+      this.rpcRecords.push({ type: 'tool_result', tool_name: namedTool(operation) });
       return body.result;
     };
     let claim;
@@ -315,7 +341,7 @@ class CollaborationSession extends EventEmitter {
   async waitForReady() {}
 
   async call(operation, payload = {}) {
-    this.rpcRecords.push({ type: 'tool_call', tool_name: 'swarmenv_call' });
+    this.rpcRecords.push({ type: 'tool_call', tool_name: namedTool(operation) });
     const response = await fetch(`${this.adapter.env.SWARMENV_BRIDGE_URL}/call`, {
       method: 'POST',
       headers: {
@@ -325,7 +351,7 @@ class CollaborationSession extends EventEmitter {
       body: JSON.stringify({ operation, payload }),
     });
     const body = await response.json();
-    this.rpcRecords.push({ type: 'tool_result', tool_name: 'swarmenv_call' });
+    this.rpcRecords.push({ type: 'tool_result', tool_name: namedTool(operation) });
     if (!body.ok) throw new Error(body.error?.message ?? `${operation} failed`);
     return body.result;
   }
@@ -509,7 +535,7 @@ class DynamicCollaborationSession extends EventEmitter {
   async waitForSettled() {}
 
   async call(operation, payload = {}) {
-    this.rpcRecords.push({ type: 'tool_call', tool_name: 'swarmenv_call' });
+    this.rpcRecords.push({ type: 'tool_call', tool_name: namedTool(operation) });
     const response = await fetch(`${this.adapter.env.SWARMENV_BRIDGE_URL}/call`, {
       method: 'POST',
       headers: {
@@ -519,7 +545,7 @@ class DynamicCollaborationSession extends EventEmitter {
       body: JSON.stringify({ operation, payload }),
     });
     const body = await response.json();
-    this.rpcRecords.push({ type: 'tool_result', tool_name: 'swarmenv_call' });
+    this.rpcRecords.push({ type: 'tool_result', tool_name: namedTool(operation) });
     if (!body.ok) {
       const error = new Error(body.error?.message ?? `${operation} failed`);
       error.code = body.error?.code;
@@ -684,7 +710,7 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = false }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -695,7 +721,7 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     watchdogTimeoutMs,
     watchdogIntervalMs,
     maxInfrastructureRetries,
-    ...(normalFlow === undefined ? {} : { normalFlow }),
+    normalFlow,
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
@@ -852,7 +878,8 @@ test('benchmark project starts four isolated cores and redacts candidate content
     assert.ok(report.cores.some((core) => core.task_state === 'SATISFIED'));
     const claimedCores = report.cores.filter((core) => core.claims.length > 0);
     assert.ok(claimedCores.length > 0);
-    assert.ok(claimedCores.every((core) => core.tool_events.includes('swarmenv_call')));
+    assert.ok(claimedCores.every((core) => core.tool_events.every((tool) => tool.startsWith('swarmenv_'))));
+    assert.ok(claimedCores.every((core) => !core.tool_events.includes('swarmenv_call')));
     assert.equal(JSON.stringify(report).includes('formal_source'), false);
     assert.equal(JSON.stringify(report).includes('benchmarkArtifact'), false);
     assert.equal(JSON.stringify(report).includes('candidate contents'), false);

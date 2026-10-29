@@ -158,6 +158,7 @@ export class ServicesBridge {
         role: this.role,
         registry: this.registry,
         runtimeCapabilities: this.runtimeCapabilities,
+        context: { task_id: this.taskId, execution_id: this.executionId },
       });
     }
     return structuredClone(this.capabilityProfile);
@@ -291,17 +292,22 @@ export class ServicesBridge {
       const profile = this.getCapabilityProfile();
       const capability = this.#profileCapability(profile, operation, { serviceId, capabilityId });
       if (!capability) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Agent capability is not available for this Session: ${operation}`, { operation, role: this.role, profile_hash: profile.profile_hash });
+      if (this.role === AGENT_ROLES.SELECTION && capability.side_effect !== false && capability.side_effect !== 'read' && !(capability.service_id === 'task' && operation === 'claim')) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Selection role may only invoke read-only capabilities and task.claim', { operation, service_id: capability.service_id });
+      }
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bridge payload must be an object');
       const service = this.router ?? { dispatch: (name, body, envelope) => {
         if (['get_task', 'get_execution', 'list_tasks', 'list_claimable_tasks', 'list_executions'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
       } };
       const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
-      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'get_task_structure', 'explain_task_readiness', 'scheduler_status'].includes(operation)) {
+      const isCatalogDiscovery = capability.service_id === 'catalog' && ['list_services', 'get_service_metadata', 'list_tools'].includes(operation);
+      const isTaskDiscovery = capability.service_id === 'task' && ['list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'get_task_structure', 'explain_task_readiness'].includes(operation);
+      if (isCatalogDiscovery || isTaskDiscovery || (capability.service_id === 'task' && operation === 'scheduler_status')) {
         if (operation === 'list_claimable_tasks' && this.taskId !== null) {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claimable discovery is only available to an unbound selection Session');
         }
-        if (operation === 'scheduler_status') {
+        if (capability.service_id === 'task' && operation === 'scheduler_status') {
           const result = await (this.onSchedulerStatus
             ? this.onSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId })
             : this.runtime.getSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId }));
@@ -313,12 +319,12 @@ export class ServicesBridge {
           : ((operation === 'get_task' || ['get_task_structure', 'explain_task_readiness'].includes(operation)) && payload.task_id === undefined && this.taskId
             ? { ...payload, task_id: this.taskId }
             : payload);
-        if (['list_tasks', 'list_claimable_tasks'].includes(operation) && Array.isArray(this.selectionCandidates)) {
+        if (isTaskDiscovery && ['list_tasks', 'list_claimable_tasks'].includes(operation) && Array.isArray(this.selectionCandidates)) {
           const result = this.selectionCandidates.map(selectionCandidate);
           this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
-        if (operation === 'get_task' && this.taskId === null) {
+        if (capability.service_id === 'task' && operation === 'get_task' && this.taskId === null) {
           const taskId = payload.task_id;
           if (typeof taskId !== 'string' || taskId.length === 0) {
             throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'selection task_view requires payload.task_id');
@@ -343,11 +349,14 @@ export class ServicesBridge {
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
-      if (operation === 'claim') {
+      if (capability.service_id === 'task' && operation === 'claim') {
         if (this.role !== AGENT_ROLES.SELECTION || this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claim is only available to a Selection Session', { role: this.role, task_id: this.taskId, execution_id: this.executionId });
         const taskId = payload.task_id;
         if (typeof taskId !== 'string' || taskId.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim requires payload.task_id');
-        if (Array.isArray(this.selectionCandidates) && !this.selectionCandidates.some((candidate) => String(candidate.task_id ?? candidate.taskId ?? candidate.id) === taskId)) {
+        if (!Array.isArray(this.selectionCandidates)) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claim requires a bounded shortlist');
+        }
+        if (!this.selectionCandidates.some((candidate) => String(candidate.task_id ?? candidate.taskId ?? candidate.id) === taskId)) {
           throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim must target a task_id from the bounded shortlist', { task_id: taskId });
         }
         if (this.selectionClaimAttempted) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'a Selection Session may claim exactly one Task');
@@ -437,7 +446,7 @@ export class ServicesBridge {
         const requiresBinding = Array.isArray(capability.context) && capability.context.length > 0;
         if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
         let result = await this.#invokeRegistered(capability, payload, bridgeOperationId);
-        if (operation === 'submit_candidate' && this.onSubmitCandidate) {
+        if (capability.service_id === 'judge' && operation === 'submit_candidate' && this.onSubmitCandidate) {
           const callbackResult = await this.onSubmitCandidate({ taskId: this.taskId, executionId: this.executionId, payload, result });
           const { deferred_block: deferredBlock = null, ...visibleCallbackResult } = callbackResult ?? {};
           result = { ...result, ...visibleCallbackResult };
@@ -457,7 +466,7 @@ export class ServicesBridge {
             };
           }
         }
-        if (this.onWorkUnit && ['read_materials', 'consume_materials', 'publish_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+        if (this.onWorkUnit && (operation !== 'submit_candidate' || capability.service_id === 'judge') && ['read_materials', 'consume_materials', 'publish_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
           await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
         }
         this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });

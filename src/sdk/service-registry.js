@@ -39,6 +39,8 @@ function capabilityView(manifest, capability) {
   };
 }
 
+const RESERVED_SERVICE_IDS = new Set(['runtime', 'workspace', 'execution', 'task', 'context', 'judge', 'catalog']);
+
 export class ServiceRegistry {
   constructor({ adapters = [], logger = null, requiredContractVersion = null } = {}) {
     this.adapters = new Map();
@@ -50,9 +52,12 @@ export class ServiceRegistry {
     }
   }
 
-  registerService({ manifest, adapter = null } = {}) {
+  registerService({ manifest, adapter = null, trusted = false } = {}) {
     const normalized = createServiceManifest(manifest);
     if (this.services.has(normalized.service_id)) throw new SwarmEnvError(ERROR_CODES.SERVICE_ALREADY_REGISTERED, `service is already registered: ${normalized.service_id}`, { service_id: normalized.service_id });
+    if (RESERVED_SERVICE_IDS.has(normalized.service_id) && trusted !== true) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `service id is reserved for a built-in provider: ${normalized.service_id}`, { service_id: normalized.service_id });
+    }
     if (this.requiredContractVersion && normalized.contract_version !== this.requiredContractVersion) {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_VERSION_MISMATCH, `unsupported service contract version: ${normalized.contract_version}`, { service_id: normalized.service_id, expected: this.requiredContractVersion, actual: normalized.contract_version });
     }
@@ -201,7 +206,7 @@ export class ServiceRegistry {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `capability ${id}.${name} is not available to role ${role}`, { service_id: id, capability: name, role });
     }
     if (!envelope || typeof envelope !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'service invocation envelope is required');
-    return entry.adapter.invoke({ manifest: entry.manifest, capability: entry.capability, input: payload ?? input, envelope, signal });
+    return entry.adapter.invoke({ manifest: entry.manifest, capability: entry.capability, input: payload ?? input, envelope, role, signal });
   }
 
   async invoke(request = {}) {
