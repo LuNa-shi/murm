@@ -22,9 +22,11 @@ Task attempt and ends when the Task is completed, canceled, failed, or released
 because the Task is blocked. A later retry of the same Task creates a new
 Execution and may continue the same Workspace lineage.
 
-**Workspace** is the versioned working surface containing the problem input,
-requirements, edits, checkpoints, and revision metadata. Task initialization
-and later Execution revisions are parts of one Workspace lineage.
+**Workspace** is the versioned, task-scoped working surface containing the
+problem input, requirements, edits, checkpoints, and revision metadata. Runtime
+materializes and fences it for an Execution; Task initialization and later
+Execution revisions are parts of one Workspace lineage. Workspace is a
+Runtime-owned capability, not an independently registered external Service.
 
 **Core slot** is reusable worker capacity. It is not a Task, does not own a
 semantic blocked state, and is not tied to a permanent child.
@@ -39,9 +41,28 @@ separate responsibility is useful.
 **Material** is immutable shared work or evidence published through Context
 Service.
 
-**Service** is a named group of tools. Agents can use the Service Catalog to
-list Services, inspect a Service's metadata, and list all named tools before
-choosing work.
+**Service** is an independently owned capability provider with a stable public
+interface. A Service can be registered with SwarmEnv and expose role-scoped
+capabilities to an Agent Session. A Service is more than an arbitrary group of
+tools: its operations, schemas, usage guidance, and errors form one contract.
+
+**Service Manifest** is the versioned declaration used to register a Service.
+It identifies the provider, endpoint or adapter, capabilities, schemas, scope,
+side effects, help/SOP references, and structured errors.
+
+**Service Registry** is the authority that validates Service Manifests,
+resolves adapters, and derives discoverable, role-scoped capability profiles.
+It is the source for the Agent tool registration and service help surface.
+
+**Runtime-owned capability** is an Agent-callable operation supplied by the
+Runtime for the current Task or Execution rather than by an independently
+registered Service. Workspace operations are Runtime-owned capabilities;
+claim, lease, fencing, and process lifecycle remain behind the Runtime
+boundary.
+
+**Capability profile** is the exact set of Service capabilities and
+Runtime-owned capabilities available to one Agent Session role, such as
+Selection, Bound Task work, or Recovery.
 
 **Lease** is the time-bounded ownership period of an Execution. Heartbeats
 extend it; expiry fences the old owner and makes the Task claimable again.
@@ -54,8 +75,9 @@ Materials, Workspace revisions, and Service activity observed during that run.
 can own several Agent Sessions and Executions over the life of an Experiment.
 
 **Agent Session** is one Pi process session started by a Core daemon. A bound
-Task Session belongs to one Execution and one Core for its lifetime. A daemon
-may use a separate discovery Session before starting the bound Task Session.
+Task Session belongs to one Execution and one Core for its lifetime and
+receives a role-specific capability profile. A daemon may use a separate
+discovery Session before starting the bound Task Session.
 
 **Execution segment** is one continuous interval in which one Execution attempt
 is assigned to one Core lane. A later retry of the Task has a new Execution ID,
