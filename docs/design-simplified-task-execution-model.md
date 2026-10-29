@@ -174,24 +174,32 @@ Agent judgment rather than a hidden global deduper.
 
 ### 4.3 Material roles and Task links
 
-Context Service stores one Material abstraction. The collaboration role is
-explicit in the Task link:
+Context Service stores one Material abstraction. Every Agent-published Material
+records where it came from, even when no Task link is added. At minimum the
+record contains `material_id`, `mission_id`, `producer_task_id`,
+`producer_execution_id`, `created_at`, the Material role, and the immutable
+content/version. The producer Execution is mandatory for Material published by
+an Execution; an optional Agent Session/actor identifier makes the source even
+more precise. The collaboration role is explicit in the Task link when a link
+exists:
 
 | Role | Meaning | Required link |
 |---|---|---|
 | `response` | result prepared for another Task | producer Task/Execution and receiving Task |
 | `handoff` | unfinished reasoning and state needed by a later attempt | current Task and current Execution |
-| `experience` | reusable insight for the Mission or wider library | producer Task/Execution; receiver optional |
+| `experience` | reusable insight for the Mission or wider library | producer Task/Execution; Task links optional |
 
 Each Task has a queryable Materials area. A link records `task_id`,
-`material_id`, role, producer provenance, and optional receiving Task. The
-Material remains immutable and shared; linking it does not copy or mutate its
-content.
+`material_id`, role, producer provenance, and optional receiving Task. A
+Material may have no Task link at all, or may later be linked to several Tasks;
+that choice does not erase its producer provenance. The Material remains
+immutable and shared; linking it does not copy or mutate its content.
 
 Response Material is optional. If a Task was created to produce a result for
 another Task, its completion contract requires a response link. If it was
-created to contribute a reusable insight, Experience Material is enough. If it
-cannot finish, Handoff Material is required before the Execution is released.
+created to contribute a reusable insight, an Experience Material may remain in
+the shared library without any Task link. If it cannot finish, Handoff Material
+is required before the Execution is released.
 
 ### 4.4 Task states and downstream acceptance
 
@@ -273,7 +281,8 @@ During the turn, the Agent may:
 1. work directly on the current Task;
 2. search Task summaries and create another Task when a substantial uncovered
    question is worth independent work;
-3. publish Response or Experience Material;
+3. publish Response or Experience Material, including intermediate findings
+   when they are useful to another Agent;
 4. consume a notification and revise its plan;
 5. complete, hand off, or block the current Task.
 
@@ -285,8 +294,11 @@ Daemon and Core availability determine when that Task is claimed.
 ### 6.1 Timebox and warning
 
 Every Execution has a bounded execution deadline and an earlier handoff
-warning. The initial policy is a warning five minutes before the deadline; the
-exact duration remains configurable by the Runtime.
+warning. The first benchmark fixture uses a 30-minute Execution timebox and a
+warning at 25 minutes, five minutes before expiry. The Mission wall-clock
+timebox remains independent (the current full run is two hours). Runtime keeps
+the duration configurable so a generic deployment can retain its existing
+60-minute/55-minute defaults until the benchmark profile is selected.
 
 At the warning, Runtime persists that the warning was sent and queues a
 follow-up prompt to the active Session:
@@ -317,10 +329,21 @@ task.block(blocker, handoff_material_id)
   -> Core becomes idle
 ```
 
-Both operations require a Handoff Material linked to the current Task and
-Execution. The Material must contain the useful exploration, current
-reasoning, evidence, checkpoint reference when applicable, open questions,
-and a recommended next step. A bare release without this link is rejected.
+Both operations are release-and-takeover operations: they end the current
+Execution and return the Core to the Daemon. They require a Handoff Material
+linked to the current Task and Execution. The Material must contain the useful
+exploration, current reasoning, evidence, checkpoint reference when applicable,
+open questions, and a recommended next step. A bare release without this link
+is rejected.
+
+Their only semantic difference is readiness after release:
+
+- `task.handoff` means the Task is unfinished but another Execution may try it
+  now. The Task returns to `OPEN` and is claimable when a Core is idle.
+- `task.block` means a concrete typed dependency prevents useful progress. The
+  Task becomes `BLOCKED` and is not claimable until the dependency is satisfied
+  and Task Controller reopens it. `task.block` is therefore a specialized
+  handoff outcome, not a second ownership model.
 
 The existing Runtime code has `handoffExecution`, checkpoint persistence,
 deadline sweeping, and Workspace cleanup. Its current persistence uses the
@@ -332,8 +355,11 @@ state and reports.
 
 At the deadline, Runtime may force expiry to release physical capacity when the
 Agent did not hand off. The resulting `EXPIRED` Execution is recorded with a
-typed timeout reason and `handoff_missing=true` when appropriate. Forced expiry
-must not be reported as a successful handoff.
+typed timeout reason, the last durable checkpoint, and
+`handoff_missing=true` when appropriate. Runtime does not synthesize a system
+Handoff Material. If the Agent published none, there is no Handoff Material;
+the report records that absence explicitly. Forced expiry must not be reported
+as a successful handoff.
 
 ### 6.3 What heartbeat, release, and fence mean
 
@@ -456,10 +482,13 @@ condition, and is not already covered. A new Task may record spawned_from
 provenance, but every Task uses the same queue and lifecycle.
 
 After creating a Task, continue the current Task unless you explicitly hand
-off or block it. Publish Response Material for a receiving Task, Handoff
-Material before unfinished release/block, and Experience Material for reusable
-knowledge. Complete your own Task; another Agent closes it only when a linked
-Response Material requires downstream acceptance.
+off or block it. Publish useful Material during the work whenever you reach a
+durable result, important fact, failed approach, decision, or reusable
+experience; do not defer all materialization until the deadline reminder.
+Publish Response Material for a receiving Task, Handoff Material before
+unfinished release/block, and Experience Material for reusable knowledge.
+Complete your own Task; another Agent closes it only when a linked Response
+Material requires downstream acceptance.
 
 Claim, heartbeat, lease, release, fencing, Core status, and process lifecycle
 belong to the Daemon and Runtime. Use the Task handoff/block operations when
@@ -581,20 +610,25 @@ Deterministic tests should cover:
 5. Only `depends_on` blocks claimability; `spawned_from` never does.
 6. A voluntary handoff without linked Handoff Material is rejected.
 7. A valid handoff returns the Task to `OPEN` and releases the Core.
-8. A valid block requires Handoff Material and leaves the Task `BLOCKED`.
-9. A deadline warning is delivered once, five minutes before expiry, without a
-   concurrent prompt.
-10. An expired Execution records whether Handoff Material was missing.
-11. Response, Handoff, and Experience Material links are persisted distinctly.
-12. A Response Material notification reaches an active Session as a follow-up
-   and reaches an inactive Task on its next start.
-13. A Task completes itself as `DONE`; a receiver can close it only through an
-   accepted Response Material.
-14. A proof Task still requires Candidate plus Judge PASS; research work uses
-   Material completion without an artifact validation mode.
-15. Runtime rejects a stale Workspace write carrying an old fence version.
-16. Reports preserve Task, Execution, Material, notification, Workspace, and
-   Judge identity separately.
+8. A valid block requires Handoff Material, records a typed dependency, and
+   leaves the Task `BLOCKED` and unclaimable until reopening.
+9. Handoff and block both end the current Execution through the same release
+   protocol; only the post-release readiness differs.
+10. A deadline warning is delivered once, five minutes before expiry, without a
+    concurrent prompt.
+11. An expired Execution records whether Handoff Material was missing and does
+    not create a synthetic system Handoff Material.
+12. Response, Handoff, and Experience Material records retain producer Task and
+    producer Execution provenance; Experience may be unlinked or linked later.
+13. A Response Material notification reaches an active Session as a follow-up
+    and reaches an inactive Task on its next start.
+14. A Task completes itself as `DONE`; a receiver can close it only through an
+    accepted Response Material.
+15. A proof Task still requires Candidate plus Judge PASS; research work uses
+    Material completion without an artifact validation mode.
+16. Runtime rejects a stale Workspace write carrying an old fence version.
+17. Reports preserve Task, Execution, Material, notification, Workspace, and
+    Judge identity separately.
 
 The public real-Agent fixture should show:
 
@@ -643,20 +677,43 @@ central semantic scheduler, exact `work_scope` locking, embeddings/vector
 retrieval, Sandbox technology, native Bash exposure, and shared mutable
 Workspaces.
 
-## 14. Decisions still requiring confirmation
+## 14. Resolved boundaries and implementation defaults
 
-Before implementation begins, confirm these smaller boundaries:
+The feedback review resolves the semantic choices that were previously listed
+as open:
 
-1. Whether `task.handoff` and `task.block` publish the Handoff Material in the
-   same Task Service transaction or require a prior `context.publish_material`
-   followed by a checked link.
-2. Whether `task.close` is allowed only to the Task named by a Response Material
-   link or also to another explicitly authorized receiving Task.
-3. Whether an Experience Material can be linked to several Tasks at publish
-   time or gains additional links through later Task operations.
-4. Whether timeout cleanup creates a system Handoff Material or records only a
-   missing-handoff fact and the last durable checkpoint.
-5. The default Execution timebox and the exact five-minute warning policy for
-   the first benchmark fixture.
-6. Whether the first proof fixture needs a Response Material accepted by a
-   receiving Task or only a self-completed proof Task with Judge PASS.
+1. `task.handoff` and `task.block` both release the current Execution and make
+   takeover possible. Handoff returns the Task to `OPEN`; block records a typed
+   dependency and leaves it `BLOCKED` until reopening.
+2. A producer Task cannot close itself. Only the receiving Task's current
+   Execution can accept a linked Response Material and close the producer.
+3. Every Agent-published Material records its producer Execution. Response and
+   Handoff roles require the relevant Task link; Experience may have no Task
+   link or gain links later.
+4. Timeout cleanup never creates a system Handoff Material. It records the
+   timeout, last checkpoint, and explicit missing-handoff fact when no Material
+   exists.
+5. The first benchmark Execution profile is 30 minutes with a warning at 25
+   minutes. The Mission wall-clock timebox remains separate, and generic
+   Runtime defaults remain configurable.
+
+The first acceptance run uses two layers rather than an ambiguous choice about
+one proof flow:
+
+1. A deterministic lifecycle fixture exercises Task creation while an
+   Execution is running, progressive Material publication, Response delivery,
+   active/inactive notifications, voluntary handoff, typed block, reopening,
+   `DONE`, and downstream `CLOSED`.
+2. A proof fixture separately exercises Candidate Material plus Judge PASS (or
+   records an honest typed blocker). It does not make Response acceptance a
+   hidden prerequisite for every proof Task.
+
+One implementation detail remains intentionally small and local: the service
+may implement handoff/block as “publish Material, then atomically validate and
+link it during the Task transition,” or as one transaction spanning the two
+service operations. In either form, a voluntary transition must fail if the
+referenced Handoff Material is absent or was produced by another Execution.
+Notification delivery should be at-least-once with a stable idempotency key.
+The first typed blocker set should remain limited to real Task dependencies;
+broader external-condition taxonomies can follow after this lifecycle is
+verified.

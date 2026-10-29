@@ -39,9 +39,11 @@ Contradictory conclusions, superseding conclusions, and repeated ideas are
 represented through Material content and links. They do not need additional
 Task relation kinds in the first Task Service.
 
-**Material** is immutable, versioned shared work stored by Context Service. A
-Material can be linked to one or more Tasks and has producer Task/Execution
-provenance. The three collaboration roles are:
+**Material** is immutable, versioned shared work stored by Context Service. An
+Agent-published Material always records its `producer_task_id` and
+`producer_execution_id` (and may record its Agent Session/actor); it may be
+unlinked, linked to one Task, or linked to several Tasks. The three
+collaboration roles are:
 
 - **Response Material** is a result prepared for another Task. Its link names
   the receiving Task. A receiving Task may later accept the response and close
@@ -78,11 +80,18 @@ records whether a required Handoff Material was missing.
 
 **Handoff** is an explicit transfer of useful unfinished work. Before a
 voluntary handoff, release, or block, the Agent publishes Handoff Material and
-links it to the current Task and Execution. `task.handoff` returns an unfinished
-Task to the claimable queue. `task.block` records a typed dependency and leaves
-the Task blocked. Runtime may force an expiry at the deadline when the Agent
-did not hand off; the report must distinguish that forced cleanup from a valid
-handoff.
+links it to the current Task and Execution. `task.handoff` and `task.block` both
+end the current Execution and release the Core through the same protocol.
+`task.handoff` returns an unfinished Task to the claimable queue;
+`task.block` records a typed dependency and leaves the Task blocked until it is
+reopened. Runtime may force an expiry at the deadline when the Agent did not
+hand off; it never synthesizes a system Handoff Material, and the report must
+distinguish that forced cleanup from a valid handoff.
+
+Agents should publish useful Response or Experience Material progressively when
+they reach durable findings, failed approaches, decisions, or reusable
+experience. A deadline warning is a last chance to hand off, not the first
+time Material should be written.
 
 **Notification** is a runtime-delivered update associated with a Task or
 Execution. The first target notifications are a handoff warning and a

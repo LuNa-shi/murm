@@ -16,8 +16,9 @@ provenance and does not grant ownership. `depends_on` records a prerequisite
 Task and is the only relation that affects Claimability.
 
 **Material** is immutable, versioned shared work published through Context
-Service. A Material carries producer Task/Execution provenance and can be
-linked to Tasks.
+Service. Every Agent-published Material carries producer Task/Execution
+provenance, even when it has no Task link. It can be linked to zero, one, or
+several Tasks.
 
 **Response Material** is a result intended for another Task. The link names the
 receiving Task. The receiving Task may explicitly accept it and close the
@@ -28,7 +29,7 @@ checkpoint information, open questions, and a recommended next step. It is
 required before a voluntary handoff, release, or block.
 
 **Experience Material** is reusable knowledge that may help many Tasks. It
-does not require one receiving Task.
+does not require one receiving Task and may remain unlinked or gain links later.
 
 **Task Material link** is a durable reference from a Task to a Material. It
 records a role such as `input`, `response`, `handoff`, or `experience` and does
@@ -44,8 +45,10 @@ Core, Agent Session, and private Workspace, and assigns a handoff warning and
 execution deadline.
 
 **Handoff** ends an unfinished Execution after its Agent publishes and links
-Handoff Material. A normal handoff returns the Task to `OPEN`; a blocked
-handoff leaves it `BLOCKED` with a typed dependency.
+Handoff Material. `task.handoff` and `task.block` use the same release protocol;
+normal handoff returns the Task to `OPEN`, while a blocked handoff leaves it
+`BLOCKED` with a typed dependency until reopening. Timeout cleanup does not
+create a system Handoff Material.
 
 **Notification** is a durable, keyed update addressed to a Task or Execution.
 Active Sessions receive it as a queued follow-up prompt; inactive Sessions see
