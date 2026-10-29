@@ -211,6 +211,11 @@ test('Runtime creates an isolated workspace before Pi, saves checkpoint before w
   });
   assert.equal(written.workspace.workspace_revision, started.workspace.workspace_revision + 1);
   assert.match(written.file.content, /inspected the fixture/);
+  assert.deepEqual(written.artifact_ref, {
+    path: 'notes/progress.md',
+    workspace_revision: written.file.workspace_revision,
+    content_hash: written.file.content_hash,
+  });
   assert.ok(written.diff.changed_files.some((file) => file.path === 'notes/progress.md' && file.status === 'added'));
   assert.equal(taskService.getExecution(claimed.execution.execution_id).workspace_revision, written.workspace.workspace_revision);
   await assert.rejects(

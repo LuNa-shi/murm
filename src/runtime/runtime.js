@@ -284,9 +284,15 @@ export class Runtime {
       active.execution = current;
       active.workspace = workspace;
     }
+    const file = await this.readWorkspaceFile(executionId, { path });
     return {
       workspace,
-      file: await this.readWorkspaceFile(executionId, { path }),
+      file,
+      artifact_ref: {
+        path: file.path,
+        workspace_revision: file.workspace_revision,
+        content_hash: file.content_hash,
+      },
       diff: await this.workspaceDiff(executionId, { fromRevision: revision, toRevision: workspace.workspace_revision }),
       execution: current,
     };

@@ -3,6 +3,12 @@ import { cp, mkdir, lstat, readFile, readdir, rename, rm, stat, writeFile } from
 import { dirname, isAbsolute, join, relative as pathRelative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
+import {
+  assertReadableWorkspacePath,
+  assertWritableWorkspacePath,
+  normalizeWorkspaceContract,
+  validateRequiredWorkspaceInputs,
+} from './workspace-contract.js';
 
 const META_DIR = '.swarm';
 const META_FILE = 'workspace.json';
@@ -79,6 +85,7 @@ export class WorkspaceManager {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task is required to create a Workspace');
     }
     const taskWorkspace = task.workspace && typeof task.workspace === 'object' ? task.workspace : {};
+    const workspaceContract = normalizeWorkspaceContract(taskWorkspace);
     const files = {
       'README.md': [
         `# ${task.goal}`,
@@ -101,6 +108,7 @@ export class WorkspaceManager {
         goal: task.goal,
         expected_output: task.expected_output,
         workspace: taskWorkspace,
+        workspace_contract: workspaceContract,
         workspace_manifest: workspaceManifest ?? null,
         input_snapshot: inputSnapshotManifest,
       }, null, 2),
@@ -119,6 +127,7 @@ export class WorkspaceManager {
       await writeFile(target, content, 'utf8');
       fileManifest[relativePath] = contentEntry(content);
     }
+    validateRequiredWorkspaceInputs(fileManifest, workspaceContract);
     const metadata = {
       execution_id: executionId,
       workspace_ref: workspaceRef,
@@ -126,6 +135,7 @@ export class WorkspaceManager {
       workspace_revision: 1,
       content_hash: hash({ revision: 1, files: fileManifest }),
       files: fileManifest,
+      workspace_contract: workspaceContract,
       checkpoint_ref: null,
       checkpoint_hash: null,
       changed_files: Object.keys(fileManifest),
@@ -145,6 +155,7 @@ export class WorkspaceManager {
    */
   async cloneWorkspace({ sourceWorkspaceRef, targetWorkspaceRef, executionId, fencingVersion, revision = null, task, workspaceManifest = {}, inputSnapshotManifest = {}, runtimeManifest = {} }) {
     const source = await this.#readMetadata(sourceWorkspaceRef);
+    const workspaceContract = normalizeWorkspaceContract(task?.workspace ?? {}, source.workspace_contract ?? null);
     const selectedRevision = revision ?? source.workspace_revision;
     if (!Number.isInteger(selectedRevision) || selectedRevision < 1 || selectedRevision > source.workspace_revision) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace revision is outside the source Workspace history');
@@ -212,6 +223,7 @@ export class WorkspaceManager {
       workspace_revision: selectedRevision,
       content_hash: selected.content_hash,
       files,
+      workspace_contract: workspaceContract,
       checkpoint_ref: null,
       checkpoint_hash: null,
       released_at: null,
@@ -242,7 +254,7 @@ export class WorkspaceManager {
     const nextFiles = { ...metadata.files };
     const changedFiles = [];
     for (const [inputPath, rawContent] of Object.entries(files)) {
-      const relativePath = safePath(inputPath);
+      const relativePath = assertWritableWorkspacePath(inputPath, metadata.workspace_contract ?? normalizeWorkspaceContract({}));
       if (typeof rawContent !== 'string' && !Buffer.isBuffer(rawContent)) {
         throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `workspace file content must be text: ${relativePath}`);
       }
@@ -272,6 +284,7 @@ export class WorkspaceManager {
   async listFiles({ workspaceRef, executionId, fencingVersion = undefined, path = '' }) {
     const metadata = await this.#readOwnedMetadata({ workspaceRef, executionId, fencingVersion });
     const prefix = safeDirectoryPath(path);
+    if (prefix) assertReadableWorkspacePath(prefix, metadata.workspace_contract ?? normalizeWorkspaceContract({}), new Set(Object.keys(metadata.files ?? {})));
     const files = Object.entries(metadata.files ?? {})
       .filter(([relativePath]) => !prefix || relativePath === prefix || relativePath.startsWith(`${prefix}/`))
       .map(([relativePath, file]) => ({ path: relativePath, type: 'file', ...file }))
@@ -280,13 +293,14 @@ export class WorkspaceManager {
       workspace_ref: metadata.workspace_ref,
       workspace_revision: metadata.workspace_revision,
       content_hash: metadata.content_hash,
+      workspace_contract: metadata.workspace_contract ?? normalizeWorkspaceContract({}),
       files,
     };
   }
 
   async readWorkspaceFile({ workspaceRef, executionId, fencingVersion = undefined, path, maxBytes = 1_000_000 }) {
     const metadata = await this.#readOwnedMetadata({ workspaceRef, executionId, fencingVersion });
-    const relativePath = safePath(path);
+    const relativePath = assertReadableWorkspacePath(path, metadata.workspace_contract ?? normalizeWorkspaceContract({}), new Set(Object.keys(metadata.files ?? {})));
     if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 10_000_000) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'max_bytes must be an integer between 1 and 10000000');
     }
@@ -523,6 +537,7 @@ export class WorkspaceManager {
       parent_workspace_revision: metadata.parent_workspace_revision ?? null,
       task_id: metadata.task_id ?? null,
       workspace_manifest: metadata.workspace_manifest ?? null,
+      workspace_contract: metadata.workspace_contract ?? normalizeWorkspaceContract({}),
       input_snapshot: metadata.input_snapshot ?? null,
       checkpoint_ref: metadata.checkpoint_ref,
       checkpoint_hash: metadata.checkpoint_hash,

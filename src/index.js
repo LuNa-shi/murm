@@ -17,6 +17,7 @@ export * from './sdk/service-adapter.js';
 export * from './sdk/service-registry.js';
 export * from './sdk/service-host.js';
 export * from './runtime/workspace-manager.js';
+export * from './runtime/workspace-contract.js';
 export * from './runtime/runtime.js';
 export * from './runtime/scheduler.js';
 export * from './runtime/task-controller.js';
