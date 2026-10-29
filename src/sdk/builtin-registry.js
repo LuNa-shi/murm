@@ -56,7 +56,39 @@ function audienceFor(tool) {
   return ['bound', 'recovery'];
 }
 
-function manifestForService(serviceId, tools) {
+function normalizeServiceEndpoint(serviceId, configured) {
+  if (configured === undefined || configured === null) {
+    return { endpoint: { transport: 'in-process' }, adapter: null, manifest: null };
+  }
+  if (typeof configured === 'string') {
+    return { endpoint: { transport: 'http-json', url: configured }, adapter: null, manifest: null };
+  }
+  if (!configured || typeof configured !== 'object' || Array.isArray(configured)) {
+    throw new TypeError(`service endpoint for ${serviceId} must be a URL or configuration object`);
+  }
+  const suppliedManifest = configured.manifest ?? null;
+  const endpoint = configured.endpoint
+    ?? (configured.url ? { transport: 'http-json', url: configured.url } : null)
+    ?? (suppliedManifest?.endpoint ?? { transport: 'in-process' });
+  if (!endpoint || typeof endpoint !== 'object') {
+    throw new TypeError(`service endpoint for ${serviceId} must include endpoint or url`);
+  }
+  return {
+    endpoint,
+    adapter: configured.adapter ?? null,
+    token: configured.token ?? null,
+    manifest: suppliedManifest,
+  };
+}
+
+function manifestForService(serviceId, tools, { endpoint = { transport: 'in-process' }, manifest = null } = {}) {
+  if (manifest) {
+    const supplied = createServiceManifest({ ...manifest, endpoint });
+    if (supplied.service_id !== serviceId) {
+      throw new TypeError(`service manifest id does not match configured provider: expected ${serviceId}, got ${supplied.service_id}`);
+    }
+    return supplied;
+  }
   const info = SERVICE_INFO[serviceId] ?? { title: serviceId, purpose: `${serviceId} capabilities.` };
   return createServiceManifest({
     id: serviceId,
@@ -64,7 +96,7 @@ function manifestForService(serviceId, tools) {
     purpose: info.purpose,
     provider_version: 'builtin-1',
     contract_version: '1',
-    endpoint: { transport: 'in-process' },
+    endpoint,
     capabilities: tools.map((tool) => ({
       name: tool.name,
       operation: tool.operation,
@@ -78,6 +110,7 @@ function manifestForService(serviceId, tools) {
       output_schema: { type: 'object', properties: {}, additionalProperties: false },
       path: `/v1/${tool.operation}`,
       errors: [],
+      scope: tool.scope ?? null,
     })),
   });
 }
@@ -107,20 +140,40 @@ function serviceDispatch(serviceId, services, registry) {
  * seam used by independently hosted providers. `customServices` accepts the
  * exact `{ manifest, adapter }` pair used by `ServiceRegistry.registerService`.
  */
-export function createBuiltinServiceRegistry({ taskService, contextService, judgeService = null, customServices = [], logger = null } = {}) {
+export function createBuiltinServiceRegistry({
+  taskService,
+  contextService,
+  judgeService = null,
+  customServices = [],
+  // A configured endpoint replaces the local provider for that Service. Each
+  // value may be a URL, `{ url, token }`, or `{ endpoint, manifest, adapter }`.
+  // This lets Task, Context, Judge, and Catalog run as independent HTTP hosts
+  // without changing the Registry, Bridge, or Agent-facing contract.
+  serviceEndpoints = {},
+  endpoints = serviceEndpoints,
+  logger = null,
+} = {}) {
   const registry = new ServiceRegistry({ logger });
   const services = { task: taskService, context: contextService, judge: judgeService };
   for (const serviceId of ['task', 'context', 'judge']) {
     const tools = publicTools(serviceId);
     if (tools.length === 0) continue;
+    const configured = normalizeServiceEndpoint(serviceId, endpoints?.[serviceId]);
+    const manifest = manifestForService(serviceId, tools, configured);
+    const adapter = configured.adapter
+      ?? (manifest.endpoint.transport === 'http-json' ? createHttpJsonAdapter({ token: configured.token }) : createInProcessAdapter({ invoke: serviceDispatch(serviceId, services, registry) }));
     registry.registerService({
-      manifest: manifestForService(serviceId, tools),
-      adapter: createInProcessAdapter({ invoke: serviceDispatch(serviceId, services, registry) }),
+      manifest,
+      adapter,
     });
   }
+  const catalogEndpoint = normalizeServiceEndpoint('catalog', endpoints?.catalog);
   registry.registerService({
-    manifest: manifestForService('catalog', publicTools('catalog')),
-    adapter: createInProcessAdapter({ invoke: serviceDispatch('catalog', services, registry) }),
+    manifest: manifestForService('catalog', publicTools('catalog'), catalogEndpoint),
+    adapter: catalogEndpoint.adapter
+      ?? (catalogEndpoint.endpoint.transport === 'http-json'
+        ? createHttpJsonAdapter({ token: catalogEndpoint.token })
+        : createInProcessAdapter({ invoke: serviceDispatch('catalog', services, registry) })),
   });
   for (const definition of customServices) {
     if (!definition?.manifest) throw new TypeError('custom service registration requires a manifest');
@@ -135,8 +188,8 @@ export function registerUserService(registry, { manifest, adapter = null, token 
   return registry.registerService({ manifest, adapter: resolvedAdapter });
 }
 
-export function builtInServiceManifest(serviceId) {
+export function builtInServiceManifest(serviceId, options = {}) {
   const tools = publicTools(serviceId);
-  return tools.length === 0 ? null : manifestForService(serviceId, tools);
+  return tools.length === 0 ? null : manifestForService(serviceId, tools, options);
 }
 

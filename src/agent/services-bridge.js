@@ -70,7 +70,7 @@ export class ServicesBridge {
     this.executionId = executionId;
     this.role = role ?? (taskId || executionId ? AGENT_ROLES.BOUND : AGENT_ROLES.SELECTION);
     this.capabilityProfile = capabilityProfile;
-    this.registry = registry;
+    this.registry = registry ?? router?.registry ?? null;
     this.runtimeCapabilities = runtimeCapabilities ?? runtimeCapabilityList();
     this.onClaim = onClaim;
     this.onClaimAccepted = onClaimAccepted;
@@ -163,6 +163,50 @@ export class ServicesBridge {
     return structuredClone(this.capabilityProfile);
   }
 
+  #profileCapability(profile, operation, { serviceId = null, capabilityId = null } = {}) {
+    const matches = profile.capabilities.filter((candidate) => {
+      if (capabilityId && (candidate.id ?? candidate.capability_id) !== capabilityId) return false;
+      if (serviceId && candidate.service_id !== serviceId) return false;
+      return candidate.operation === operation || candidate.name === operation || (capabilityId && (candidate.id ?? candidate.capability_id) === capabilityId);
+    });
+    if (matches.length > 1) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `ambiguous Agent capability: ${operation}`, {
+        operation,
+        capability_id: capabilityId,
+        service_id: serviceId,
+        matches: matches.map((candidate) => candidate.id ?? `${candidate.service_id}.${candidate.name}`),
+      });
+    }
+    return matches[0] ?? null;
+  }
+
+  async #invokeRegistered(capability, payload, operationId, context = {}) {
+    if (!this.registry?.invoke) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `registered Service is unavailable: ${capability.service_id}`);
+    const taskId = context.taskId ?? this.taskId;
+    const executionId = context.executionId ?? this.executionId;
+    const currentExecution = executionId && typeof this.taskService?.getExecution === 'function'
+      ? this.taskService.getExecution(executionId)
+      : null;
+    const currentTask = taskId && typeof this.taskService?.getTask === 'function'
+      ? this.taskService.getTask(taskId)
+      : null;
+    return this.registry.invoke({
+      serviceId: capability.service_id,
+      capability: capability.name,
+      input: payload,
+      envelope: makeEnvelope({
+        operationId,
+        actorRef: this.actorRef,
+        taskId,
+        executionId,
+        specVersion: context.specVersion ?? currentExecution?.spec_version ?? currentTask?.spec_version ?? null,
+        stateVersion: context.stateVersion ?? currentExecution?.state_version ?? currentTask?.state_version ?? null,
+        fencingVersion: currentExecution?.fencing_version ?? null,
+      }),
+      role: this.role,
+    });
+  }
+
   async releaseClaim({ result = null } = {}) {
     const released = { taskId: this.taskId, executionId: this.executionId, result };
     this.taskId = null;
@@ -241,11 +285,11 @@ export class ServicesBridge {
     }
   }
 
-  async call({ operation, payload = {}, operation_id: operationId = null } = {}) {
+  async call({ operation, payload = {}, operation_id: operationId = null, service_id: serviceId = null, capability_id: capabilityId = null } = {}) {
     this.logger?.append({ event: 'bridge.start', operation, operation_id: operationId, task_id: this.taskId, execution_id: this.executionId, payload });
     try {
       const profile = this.getCapabilityProfile();
-      const capability = profile.capabilities.find((candidate) => candidate.operation === operation || candidate.name === operation);
+      const capability = this.#profileCapability(profile, operation, { serviceId, capabilityId });
       if (!capability) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Agent capability is not available for this Session: ${operation}`, { operation, role: this.role, profile_hash: profile.profile_hash });
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bridge payload must be an object');
       const service = this.router ?? { dispatch: (name, body, envelope) => {
@@ -261,21 +305,6 @@ export class ServicesBridge {
           const result = await (this.onSchedulerStatus
             ? this.onSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId })
             : this.runtime.getSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId }));
-          this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
-          return result;
-        }
-        if (this.registry && operation === 'list_services') {
-          const result = { services: this.registry.listServices() };
-          this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
-          return result;
-        }
-        if (this.registry && operation === 'get_service_metadata') {
-          const result = this.registry.getServiceMetadata(payload.service ?? null);
-          this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
-          return result;
-        }
-        if (this.registry && operation === 'list_tools') {
-          const result = { tools: this.registry.listTools(payload.service ?? null) };
           this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
@@ -305,10 +334,12 @@ export class ServicesBridge {
           this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
-        const result = service.dispatch(operation, discoveryPayload, makeEnvelope({
-          operationId: bridgeOperationId,
-          actorRef: this.actorRef,
-        }));
+        const result = this.registry?.invoke
+          ? await this.#invokeRegistered(capability, discoveryPayload, bridgeOperationId)
+          : service.dispatch(operation, discoveryPayload, makeEnvelope({
+            operationId: bridgeOperationId,
+            actorRef: this.actorRef,
+          }));
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
@@ -321,19 +352,33 @@ export class ServicesBridge {
         }
         if (this.selectionClaimAttempted) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'a Selection Session may claim exactly one Task');
         this.selectionClaimAttempted = true;
-        const task = this.taskService.getTask(taskId);
+        let task = typeof this.taskService?.getTask === 'function' ? this.taskService.getTask(taskId) : null;
+        if (!task && this.registry?.invoke) {
+          const taskCapability = profile.capabilities.find((candidate) => candidate.service_id === 'task' && (candidate.operation === 'get_task' || candidate.name === 'get_task' || candidate.name === 'task_get'));
+          if (taskCapability) {
+            const remoteTask = await this.#invokeRegistered(taskCapability, { task_id: taskId }, `${bridgeOperationId}:view`, { taskId });
+            task = remoteTask?.task ?? remoteTask;
+          }
+        }
         if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`, { task_id: taskId });
         // The bridge is the Agent identity boundary. A model may choose the
         // Task and Workspace lineage, but it cannot claim on behalf of a
         // different owner or replace the reusable startup prompt with
         // task-specific transport data.
-        const result = service.dispatch('claim', { ...payload, owner_ref: this.actorRef, agent_prompt: this.agentPrompt }, makeEnvelope({
-          operationId: bridgeOperationId,
-          actorRef: this.actorRef,
-          taskId: task.task_id,
-          specVersion: task.spec_version,
-          stateVersion: task.state_version,
-        }));
+        const claimPayload = { ...payload, owner_ref: this.actorRef, agent_prompt: this.agentPrompt };
+        const result = this.registry?.invoke
+          ? await this.#invokeRegistered(capability, claimPayload, bridgeOperationId, {
+            taskId: task.task_id,
+            specVersion: task.spec_version,
+            stateVersion: task.state_version,
+          })
+          : service.dispatch('claim', claimPayload, makeEnvelope({
+            operationId: bridgeOperationId,
+            actorRef: this.actorRef,
+            taskId: task.task_id,
+            specVersion: task.spec_version,
+            stateVersion: task.state_version,
+          }));
         this.taskId = result.task.task_id;
         this.executionId = result.execution.execution_id;
         this.role = AGENT_ROLES.BOUND;
@@ -388,24 +433,33 @@ export class ServicesBridge {
       if (this.registry?.getCapability && capability.service_id) {
         try { registeredService = this.registry.getCapability(capability.service_id, capability.name); } catch { registeredService = null; }
       }
-      if (registeredService && !capability.runtime_owned && !['task', 'context', 'judge', 'catalog', 'runtime'].includes(capability.service_id)) {
-        const currentExecution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
-        const currentTask = this.taskId ? this.taskService.getTask(this.taskId) : null;
-        const result = await this.registry.invoke({
-          serviceId: capability.service_id,
-          capability: capability.name,
-          input: payload,
-          envelope: makeEnvelope({
-            operationId: bridgeOperationId,
-            actorRef: this.actorRef,
-            taskId: this.taskId,
-            executionId: this.executionId,
-            specVersion: currentExecution?.spec_version ?? currentTask?.spec_version ?? null,
-            stateVersion: currentExecution?.state_version ?? currentTask?.state_version ?? null,
-            fencingVersion: currentExecution?.fencing_version ?? null,
-          }),
-          role: this.role,
-        });
+      if (registeredService && !capability.runtime_owned && capability.service_id !== 'runtime') {
+        const requiresBinding = Array.isArray(capability.context) && capability.context.length > 0;
+        if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
+        let result = await this.#invokeRegistered(capability, payload, bridgeOperationId);
+        if (operation === 'submit_candidate' && this.onSubmitCandidate) {
+          const callbackResult = await this.onSubmitCandidate({ taskId: this.taskId, executionId: this.executionId, payload, result });
+          const { deferred_block: deferredBlock = null, ...visibleCallbackResult } = callbackResult ?? {};
+          result = { ...result, ...visibleCallbackResult };
+          if (deferredBlock) {
+            if (this.deferredLifecycle) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'a candidate Task block is already pending');
+            this.deferredLifecycle = {
+              taskId: this.taskId,
+              executionId: this.executionId,
+              block: {
+                reason: deferredBlock.reason,
+                dependency: deferredBlock.dependency,
+                checkpoint: deferredBlock.checkpoint ?? {},
+                files: deferredBlock.files ?? {},
+                terminalState: deferredBlock.terminal_state ?? 'FENCED',
+              },
+              result,
+            };
+          }
+        }
+        if (this.onWorkUnit && ['read_materials', 'consume_materials', 'publish_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+          await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
+        }
         this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
         return result;
       }

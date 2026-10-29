@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 import {
+  ContextService,
   ERROR_CODES,
+  JudgeService,
   ServiceRegistry,
+  ServicesRouter,
   SwarmEnvError,
+  TaskService,
+  builtInServiceManifest,
+  createBuiltinServiceRegistry,
   createHttpJsonAdapter,
   createServiceHost,
   createServiceManifest,
@@ -98,6 +105,12 @@ test('HTTP ServiceHost and adapter expose manifest, health, readiness, and struc
     assert.deepEqual((await adapter.readiness(remote)).ok, true);
     const envelope = makeEnvelope({ operationId: 'remote-1', actorRef: 'agent:selection' });
     assert.deepEqual(await registry.invoke({ serviceId: 'remote', capability: 'echo', input: { value: 'remote' }, envelope, role: 'selection' }), { capability: 'echo', value: 'remote', operation_id: 'remote-1' });
+    const router = new ServicesRouter({ registry });
+    assert.throws(
+      () => router.dispatch('echo', { value: 'sync-remote' }, envelope),
+      (error) => error.code === ERROR_CODES.SERVICE_UNAVAILABLE && error.details.dispatch === 'dispatchAsync',
+    );
+    assert.deepEqual(await router.dispatchAsync('echo', { value: 'async-remote' }, envelope), { capability: 'echo', value: 'async-remote', operation_id: 'remote-1' });
     const manifestResponse = await fetch(`${environment.url}/v1/manifest`);
     assert.equal(manifestResponse.status, 200);
     const manifestBody = await manifestResponse.json();
@@ -111,4 +124,103 @@ test('HTTP ServiceHost and adapter expose manifest, health, readiness, and struc
   } finally {
     await host.stop();
   }
+});
+
+test('built-in Task, Context, Judge, and Catalog providers can all be replaced by independent HTTP hosts', async () => {
+  const domain = [
+    { id: 'task', token: 'task-token' },
+    { id: 'context', token: 'context-token' },
+    { id: 'judge', token: 'judge-token' },
+    { id: 'catalog', token: 'catalog-token' },
+  ];
+  const databases = domain.slice(0, 3).map(() => new DatabaseSync(':memory:'));
+  const taskService = new TaskService(databases[0]);
+  const contextService = new ContextService(databases[1]);
+  const judgeService = new JudgeService(databases[2], { checker: { async check() { return { verdict: 'PASS' }; } } });
+  const services = { task: taskService, context: contextService, judge: judgeService };
+  const hosts = [];
+  const endpoints = {};
+  try {
+    for (const { id, token } of domain) {
+      const initial = builtInServiceManifest(id, { endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' } });
+      const host = createServiceHost({
+        manifest: initial,
+        token,
+        handler: async ({ capability, input, envelope }) => {
+          if (id === 'catalog') {
+            if (capability.operation === 'list_services') return { services: [] };
+            if (capability.operation === 'list_tools') return { tools: [] };
+            return null;
+          }
+          return services[id].dispatch(capability.operation, input, envelope);
+        },
+      });
+      const environment = await host.start();
+      hosts.push(host);
+      const manifestResponse = await fetch(`${environment.url}/v1/manifest`);
+      assert.equal(manifestResponse.status, 200);
+      assert.equal((await manifestResponse.json()).result.service_id, id);
+      endpoints[id] = {
+        url: environment.url,
+        token,
+        manifest: builtInServiceManifest(id, { endpoint: { transport: 'http-json', url: environment.url } }),
+      };
+    }
+
+    const registry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, serviceEndpoints: endpoints });
+    assert.deepEqual(registry.listServices().map((service) => service.service_id), ['catalog', 'context', 'judge', 'task']);
+    for (const id of ['task', 'context', 'judge', 'catalog']) {
+      assert.equal(registry.getService(id).adapter.kind, 'http-json');
+      assert.equal((await registry.checkHealth(id)).ok, true);
+      assert.equal((await registry.checkReadiness(id)).ok, true);
+    }
+    const taskResult = await registry.invoke({
+      serviceId: 'task', capability: 'list_tasks', input: { limit: 1 },
+      envelope: makeEnvelope({ operationId: 'remote-task-list', actorRef: 'agent:selection' }), role: 'selection',
+    });
+    assert.ok(Array.isArray(taskResult));
+    const contextResult = await registry.invoke({
+      serviceId: 'context', capability: 'read_materials', input: {},
+      envelope: makeEnvelope({ operationId: 'remote-context-read', actorRef: 'agent:bound', taskId: 'task-1', executionId: 'exec-1' }), role: 'bound',
+    });
+    assert.ok(Array.isArray(contextResult.materials ?? contextResult));
+    const judgeResult = await registry.invoke({
+      serviceId: 'judge', capability: 'get_check_result', input: { check_result_id: 'missing-check' },
+      envelope: makeEnvelope({ operationId: 'remote-judge-read', actorRef: 'agent:bound', taskId: 'task-1', executionId: 'exec-1' }), role: 'bound',
+    });
+    assert.equal(judgeResult, null);
+    const catalogResult = await registry.invoke({
+      serviceId: 'catalog', capability: 'list_tools', input: {},
+      envelope: makeEnvelope({ operationId: 'remote-catalog-list', actorRef: 'agent:selection' }), role: 'selection',
+    });
+    assert.deepEqual(catalogResult, { tools: [] });
+  } finally {
+    await Promise.all(hosts.map((host) => host.stop()));
+    judgeService.close();
+    contextService.close();
+    taskService.close();
+    databases.forEach((database) => { try { database.close(); } catch {} });
+  }
+});
+
+test('capability IDs keep same-operation providers addressable without namespace guessing', async () => {
+  const alphaBase = manifest({ id: 'alpha', name: 'search', audience: ['selection'] });
+  const alpha = createServiceManifest({
+    ...alphaBase,
+    capabilities: [{ ...alphaBase.capabilities[0], operation: 'echo' }],
+  });
+  const beta = createServiceManifest({
+    ...alpha,
+    id: 'beta',
+    title: 'beta provider',
+    capabilities: [{ ...alpha.capabilities[0], name: 'search_beta', operation: 'echo' }],
+  });
+  const calls = [];
+  const registry = new ServiceRegistry();
+  registry.registerService({ manifest: alpha, adapter: { invoke: async () => { calls.push('alpha'); return 'a'; } } });
+  registry.registerService({ manifest: beta, adapter: { invoke: async () => { calls.push('beta'); return 'b'; } } });
+  const envelope = makeEnvelope({ operationId: 'capability-id', actorRef: 'agent:selection' });
+  assert.equal(await registry.invoke({ capability_id: 'beta.search_beta', input: {}, envelope, role: 'selection' }), 'b');
+  assert.deepEqual(calls, ['beta']);
+  assert.deepEqual(registry.getCapabilityById('alpha.search').capability.name, 'search');
 });

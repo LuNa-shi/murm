@@ -4,10 +4,14 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   ContextService,
   JudgeService,
+  ServiceRegistry,
   ServicesBridge,
   ServicesRouter,
   ServicesSDK,
   TaskService,
+  createHttpJsonAdapter,
+  createServiceHost,
+  createServiceManifest,
 } from '../src/index.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
@@ -111,6 +115,49 @@ test('ServicesBridge returns structured tool errors and exposes them to audit ho
   } finally {
     await bridge.stop();
     taskService.close();
+  }
+});
+
+test('ServicesBridge invokes a registered HTTP capability through its adapter', async () => {
+  const initial = createServiceManifest({
+    id: 'remote_math',
+    title: 'Remote Math Service',
+    purpose: 'Remote capability used by the bound Agent.',
+    provider_version: '1.0.0',
+    contract_version: '1',
+    endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' },
+    capabilities: [{
+      name: 'remote_echo', operation: 'remote_echo', description: 'Echo a bounded value.',
+      input_schema: { type: 'object', properties: { value: { type: 'string' } }, additionalProperties: false },
+      output_schema: { type: 'object', properties: { value: { type: 'string' } }, additionalProperties: false },
+      audience: ['bound'], side_effect: 'read', idempotent: true, context: ['task', 'execution'],
+      help: { when: 'Use for the remote capability smoke test.', ref: 'service://remote_math/remote_echo' },
+    }],
+  });
+  const host = createServiceHost({
+    manifest: initial,
+    token: 'remote-token',
+    handler: async ({ input, envelope }) => ({ value: input.value, operation_id: envelope.operation_id }),
+  });
+  const environment = await host.start();
+  const manifest = createServiceManifest({ ...initial, endpoint: { transport: 'http-json', url: environment.url } });
+  const registry = new ServiceRegistry();
+  registry.registerService({ manifest, adapter: createHttpJsonAdapter({ token: 'remote-token' }) });
+  const bridge = new ServicesBridge({
+    taskService: { getTask: () => null, getExecution: () => null },
+    contextService: {},
+    runtime: {},
+    registry,
+    taskId: 'task-remote',
+    executionId: 'execution-remote',
+  });
+  try {
+    const result = await bridge.call({ operation: 'remote_echo', payload: { value: 'through-http' } });
+    assert.deepEqual(result, { value: 'through-http', operation_id: result.operation_id });
+    assert.match(result.operation_id, /^bridge:remote_echo:/);
+  } finally {
+    await bridge.stop();
+    await host.stop();
   }
 });
 

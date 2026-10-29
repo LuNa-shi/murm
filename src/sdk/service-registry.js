@@ -12,7 +12,10 @@ function roleName(role) {
 }
 
 function capabilityView(manifest, capability) {
+  const capabilityId = `${manifest.service_id}.${capability.name}`;
   return {
+    id: capabilityId,
+    capability_id: capabilityId,
     service_id: manifest.service_id,
     service_title: manifest.title,
     service_purpose: manifest.purpose,
@@ -26,6 +29,7 @@ function capabilityView(manifest, capability) {
     output_schema: clone(capability.output_schema),
     audience: [...capability.audience],
     side_effect: capability.side_effect,
+    scope: capability.scope ?? null,
     idempotent: capability.idempotent,
     context: [...capability.context],
     help: clone(capability.help),
@@ -119,6 +123,17 @@ export class ServiceRegistry {
     return { manifest, capability, adapter };
   }
 
+  getCapabilityById(capabilityId) {
+    if (typeof capabilityId !== 'string' || capabilityId.length === 0) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND, 'capability_id is required');
+    }
+    for (const { manifest, adapter } of this.services.values()) {
+      const capability = manifest.capabilities.find((candidate) => `${manifest.service_id}.${candidate.name}` === capabilityId);
+      if (capability) return { manifest, capability, adapter };
+    }
+    throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND, `unknown capability_id: ${capabilityId}`, { capability_id: capabilityId });
+  }
+
   getCapabilityProfile(role, context = {}) {
     const normalizedRole = roleName(role);
     const serviceEntries = [...this.services.values()].sort((a, b) => a.manifest.service_id.localeCompare(b.manifest.service_id));
@@ -176,15 +191,21 @@ export class ServiceRegistry {
     };
   }
 
-  async invoke({ serviceId, service_id: serviceIdAlias, capability, operation, input = {}, payload, envelope, role = null, signal = null } = {}) {
+  invokeSync({ serviceId, service_id: serviceIdAlias, capability, capability_id: capabilityId, operation, input = {}, payload, envelope, role = null, signal = null } = {}) {
     const id = serviceId ?? serviceIdAlias;
     const name = capability ?? operation;
-    const entry = this.getCapability(id, name);
+    const entry = capabilityId
+      ? this.getCapabilityById(capabilityId)
+      : this.getCapability(id, name);
     if (role !== null && !entry.capability.audience.includes(roleName(role))) {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `capability ${id}.${name} is not available to role ${role}`, { service_id: id, capability: name, role });
     }
     if (!envelope || typeof envelope !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'service invocation envelope is required');
     return entry.adapter.invoke({ manifest: entry.manifest, capability: entry.capability, input: payload ?? input, envelope, signal });
+  }
+
+  async invoke(request = {}) {
+    return this.invokeSync(request);
   }
 
   async checkHealth(serviceId, { signal = null } = {}) {
