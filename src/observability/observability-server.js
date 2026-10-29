@@ -819,7 +819,7 @@ export class ObservabilityServer {
       overview_bytes: bounded.bytes,
       overview_truncated: bounded.truncated,
       overview_history_truncated: latestSequence > OVERVIEW_RECENT_EVENTS,
-      overview_start_sequence: events.at(0)?.sequence ?? overviewEvents.at(0)?.sequence ?? latestSequence,
+      overview_start_sequence: overviewEvents.at(0)?.sequence ?? latestSequence,
       overview_end_sequence: latestSequence,
       overview_entity_seed_count: entitySeeds.length,
       timeline: this.#timeline(experimentId, url),
