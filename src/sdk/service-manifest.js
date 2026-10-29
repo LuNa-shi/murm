@@ -88,7 +88,7 @@ function normalizeCapability(capability, index) {
   if (!['POST', 'PUT', 'PATCH'].includes(method)) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `capabilities[${index}].method is unsupported`, { index, method });
   return Object.freeze({
     name,
-    operation: name,
+    operation: requiredString(capability.operation ?? name, `capabilities[${index}].operation`, { pattern: CAPABILITY_PATTERN }),
     description,
     input_schema: strictSchema(capability.input_schema ?? capability.inputSchema, `capabilities[${index}].input_schema`),
     output_schema: strictSchema(capability.output_schema ?? capability.outputSchema, `capabilities[${index}].output_schema`),
@@ -142,6 +142,7 @@ export function createServiceManifest(input) {
     provider_version: providerVersion,
     contract_version: contractVersion,
     endpoint,
+    metadata: isRecord(input.metadata) ? structuredClone(input.metadata) : {},
     capabilities,
     health: isRecord(input.health) ? structuredClone(input.health) : { path: '/healthz' },
     readiness: isRecord(input.readiness) ? structuredClone(input.readiness) : { path: '/readyz' },

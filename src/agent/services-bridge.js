@@ -6,6 +6,7 @@ import { ServicesSDK } from '../sdk/services-sdk.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
+import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 function json(value) {
@@ -70,12 +71,7 @@ export class ServicesBridge {
     this.role = role ?? (taskId || executionId ? AGENT_ROLES.BOUND : AGENT_ROLES.SELECTION);
     this.capabilityProfile = capabilityProfile;
     this.registry = registry;
-    this.runtimeCapabilities = runtimeCapabilities ?? [{
-      id: 'runtime.task_block', name: 'task_block', operation: 'task_block', service_id: 'runtime',
-      service_title: 'Task Runtime', description: 'Record a typed Task dependency and release this Execution.',
-      audience: [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY], runtime_owned: true, side_effect: true, idempotent: true,
-      input_schema: { type: 'object', required: ['reason', 'dependency'] },
-    }];
+    this.runtimeCapabilities = runtimeCapabilities ?? runtimeCapabilityList();
     this.onClaim = onClaim;
     this.onClaimAccepted = onClaimAccepted;
     this.onRelease = onRelease;
@@ -90,6 +86,10 @@ export class ServicesBridge {
     this.token = randomUUID();
     this.server = null;
     this.address = null;
+    // Candidate feedback is returned synchronously. A normal-flow checker
+    // failure may then stage a typed Task block, which is applied only after
+    // the HTTP response has been handed to the Agent.
+    this.deferredLifecycle = null;
     this.selectionCandidates = null;
     this.selectionClaimAttempted = false;
   }
@@ -172,6 +172,27 @@ export class ServicesBridge {
     if (this.onRelease) await this.onRelease(released);
   }
 
+  /** Apply a staged typed block after the Agent has received its result. */
+  async flushDeferredLifecycle() {
+    const deferred = this.deferredLifecycle;
+    if (!deferred) return null;
+    this.deferredLifecycle = null;
+    const settled = await this.runtime.blockExecution(deferred.executionId, deferred.block);
+    if (this.taskId === deferred.taskId && this.executionId === deferred.executionId) {
+      await this.releaseClaim({
+        result: {
+          ...deferred.result,
+          applied: {
+            ...(deferred.result?.applied ?? {}),
+            execution: settled?.execution ?? deferred.result?.applied?.execution,
+            task: settled?.task ?? deferred.result?.applied?.task,
+          },
+        },
+      });
+    }
+    return settled;
+  }
+
   async stop() {
     if (!this.server) return;
     const server = this.server;
@@ -207,6 +228,13 @@ export class ServicesBridge {
       const result = await this.call(input);
       send(response, 200, { ok: true, result });
       this.logger?.append({ event: 'bridge.response_sent', operation: input.operation });
+      if (this.deferredLifecycle) {
+        setImmediate(() => {
+          void this.flushDeferredLifecycle().catch((error) => {
+            this.logger?.append({ event: 'bridge.lifecycle_error', operation: 'deferred_block', ok: false, error: { name: error.name, code: error.code, message: error.message } });
+          });
+        });
+      }
     } catch (error) {
       if (!response.writableEnded) send(response, 400, { ok: false, error: errorBody(error) });
       else this.logger?.append({ event: 'bridge.error_after_response', operation: input?.operation ?? null, ok: false, error: { name: error.name, code: error.code, message: error.message } });
@@ -225,7 +253,7 @@ export class ServicesBridge {
         return this.contextService.dispatch(name, body, envelope);
       } };
       const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
-      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_claimable_tasks', 'list_executions', 'get_task_structure', 'explain_task_readiness', 'scheduler_status'].includes(operation)) {
+      if (['list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'get_task_structure', 'explain_task_readiness', 'scheduler_status'].includes(operation)) {
         if (operation === 'list_claimable_tasks' && this.taskId !== null) {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claimable discovery is only available to an unbound selection Session');
         }
@@ -236,13 +264,44 @@ export class ServicesBridge {
           this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
+        if (this.registry && operation === 'list_services') {
+          const result = { services: this.registry.listServices() };
+          this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+          return result;
+        }
+        if (this.registry && operation === 'get_service_metadata') {
+          const result = this.registry.getServiceMetadata(payload.service ?? null);
+          this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+          return result;
+        }
+        if (this.registry && operation === 'list_tools') {
+          const result = { tools: this.registry.listTools(payload.service ?? null) };
+          this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+          return result;
+        }
         const discoveryPayload = (operation === 'list_tasks' || operation === 'list_claimable_tasks') && this.taskId === null && payload.available_only !== false
-          ? { ...payload, states: ['OPEN', 'RUNNING', 'WAITING'] }
-          : (['get_task_structure', 'explain_task_readiness'].includes(operation) && payload.task_id === undefined && this.taskId
+          ? { ...payload, states: ['OPEN'] }
+          : ((operation === 'get_task' || ['get_task_structure', 'explain_task_readiness'].includes(operation)) && payload.task_id === undefined && this.taskId
             ? { ...payload, task_id: this.taskId }
             : payload);
         if (['list_tasks', 'list_claimable_tasks'].includes(operation) && Array.isArray(this.selectionCandidates)) {
           const result = this.selectionCandidates.map(selectionCandidate);
+          this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+          return result;
+        }
+        if (operation === 'get_task' && this.taskId === null) {
+          const taskId = payload.task_id;
+          if (typeof taskId !== 'string' || taskId.length === 0) {
+            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'selection task_view requires payload.task_id');
+          }
+          if (!Array.isArray(this.selectionCandidates)) {
+            throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'selection task_view requires a bounded shortlist');
+          }
+          const candidate = this.selectionCandidates.find((entry) => String(entry.task_id) === taskId);
+          if (!candidate) {
+            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task_view must target a task_id from the bounded shortlist', { task_id: taskId });
+          }
+          const result = selectionCandidate(candidate);
           this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
@@ -290,7 +349,7 @@ export class ServicesBridge {
           }
         } catch (error) {
           const claimedExecution = this.taskService.getExecution(result.execution.execution_id);
-          if (claimedExecution && ['CREATED', 'RUNNING', 'WAITING'].includes(claimedExecution.state)) {
+          if (claimedExecution && ['CREATED', 'RUNNING'].includes(claimedExecution.state)) {
             try {
               service.dispatch('stop_execution', { terminal_state: 'FAILED' }, makeEnvelope({
                 operationId: `bridge:claim-rollback:${claimedExecution.execution_id}`,
@@ -320,6 +379,37 @@ export class ServicesBridge {
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result: response });
         return response;
       }
+
+      // User-defined registered Services are invoked through the Registry's
+      // adapter boundary. This keeps a remote HTTP provider on the same
+      // Agent/Core path as a local provider and avoids reintroducing a generic
+      // catch-all service call tool.
+      let registeredService = null;
+      if (this.registry?.getCapability && capability.service_id) {
+        try { registeredService = this.registry.getCapability(capability.service_id, capability.name); } catch { registeredService = null; }
+      }
+      if (registeredService && !capability.runtime_owned && !['task', 'context', 'judge', 'catalog', 'runtime'].includes(capability.service_id)) {
+        const currentExecution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
+        const currentTask = this.taskId ? this.taskService.getTask(this.taskId) : null;
+        const result = await this.registry.invoke({
+          serviceId: capability.service_id,
+          capability: capability.name,
+          input: payload,
+          envelope: makeEnvelope({
+            operationId: bridgeOperationId,
+            actorRef: this.actorRef,
+            taskId: this.taskId,
+            executionId: this.executionId,
+            specVersion: currentExecution?.spec_version ?? currentTask?.spec_version ?? null,
+            stateVersion: currentExecution?.state_version ?? currentTask?.state_version ?? null,
+            fencingVersion: currentExecution?.fencing_version ?? null,
+          }),
+          role: this.role,
+        });
+        this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
+        return result;
+      }
+
       if (!this.taskId || !this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
       const execution = this.taskService.getExecution(this.executionId);
       if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${this.executionId}`, { execution_id: this.executionId });
@@ -366,7 +456,23 @@ export class ServicesBridge {
           result = sdk.submitCandidate(payload, options);
           if (this.onSubmitCandidate) {
             const callbackResult = await this.onSubmitCandidate({ taskId: boundTaskId, executionId: boundExecutionId, payload, result });
-            result = { ...result, ...(callbackResult ?? {}) };
+            const { deferred_block: deferredBlock = null, ...visibleCallbackResult } = callbackResult ?? {};
+            result = { ...result, ...visibleCallbackResult };
+            if (deferredBlock) {
+              if (this.deferredLifecycle) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'a candidate Task block is already pending');
+              this.deferredLifecycle = {
+                taskId: boundTaskId,
+                executionId: boundExecutionId,
+                block: {
+                  reason: deferredBlock.reason,
+                  dependency: deferredBlock.dependency,
+                  checkpoint: deferredBlock.checkpoint ?? {},
+                  files: deferredBlock.files ?? {},
+                  terminalState: deferredBlock.terminal_state ?? 'FENCED',
+                },
+                result,
+              };
+            }
           }
           break;
         case 'heartbeat': result = sdk.heartbeat(payload, options); break;

@@ -11,6 +11,7 @@
     "test": "node --test --test-concurrency=1",
     "pretest": "npm run build:observability",
     "analyze:experiment": "node scripts/analyze-experiment.mjs",
+    "service:mathlib-search": "node scripts/mathlib-search-service.mjs",
     "build:observability": "vite build --config src/observability/vite.config.js",
     "dev:observability": "vite --config src/observability/vite.config.js"
   },

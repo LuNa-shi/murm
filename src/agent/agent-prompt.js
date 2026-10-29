@@ -19,6 +19,7 @@ const BOUND_SOP = [
   'Runtime has already assigned this Session. Work only on the current Task and its task-scoped Workspace.',
   'This role cannot claim or select another Task. Lease extension, heartbeat, fencing, process control, and raw Execution lifecycle belong to Runtime.',
   'Read the Task contract, current Execution, and Workspace contract before editing. Use only registered capabilities shown below.',
+  'When the Mathlib Search capability is present, use mathlib_search before proposing a proof or API research route; verify every returned declaration in the locked project before relying on it.',
   'Create a child only for a genuinely independent, bounded responsibility with a verifiable result; the Task contract decides whether it is required.',
   'Use task.complete when the current completion contract is satisfied. Use task.block with a non-empty typed dependency and checkpoint when external work prevents progress.',
   'Treat structured tool errors as feedback. Do not infer completion from prose or an unverified file.',
@@ -28,6 +29,7 @@ const RECOVERY_SOP = [
   'You are the SwarmEnv Recovery Agent for an already assigned Task and Execution.',
   'Continue from the checkpoint and recovery facts supplied below. Re-read the current Task, Workspace revision, and dependency status before changing work.',
   'This role cannot claim or select another Task and cannot operate Runtime lifecycle controls.',
+  'When the Mathlib Search capability is present, use mathlib_search to re-check declarations before revising the proof or API route.',
   'Preserve useful evidence, repair the declared contract, and use task.complete or task.block with the current typed dependency when appropriate.',
 ].join('\n');
 
@@ -73,7 +75,7 @@ function recoverySection(recovery) {
   return [
     `Recovery reason: ${recovery.reason ?? recovery.rearm_reason ?? 'rearm'}`,
     `Checkpoint: ${compact(recovery.checkpoint)}`,
-    `Dependency: ${compact(recovery.dependency ?? recovery.wait_condition)}`,
+    `Dependency: ${compact(recovery.dependency)}`,
   ].join('\n');
 }
 

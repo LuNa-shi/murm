@@ -90,6 +90,7 @@ export class ServiceRegistry {
         provider_version: manifest.provider_version,
         contract_version: manifest.contract_version,
         manifest_hash: manifest.manifest_hash,
+        metadata: clone(manifest.metadata ?? {}),
         tool_count: manifest.capabilities.length,
       }));
   }

@@ -14,6 +14,9 @@ import { LeanChecker } from '../judge/lean-adapter.js';
 import { agentCheckResult } from '../judge/check-result.js';
 import { validateFixtureManifest } from '../judge/fixture.js';
 import { DatabaseSync } from 'node:sqlite';
+import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
+import { createHttpJsonAdapter } from '../sdk/service-adapter.js';
+import { createMathlibSearchManifest } from '../services/mathlib-search-service.js';
 
 const execFile = promisify(defaultExecFile);
 const extensionPath = fileURLToPath(new URL('../agent/swarmenv-extension.mjs', import.meta.url));
@@ -90,7 +93,7 @@ function promptForCandidates({ firstCandidate }) {
     'Publish the first source below as one artifact Material with kind=artifact and scope=proof_relevant, with content set to the complete Lean source as a plain text string (do not wrap it in an object such as {source: ...}), then call submit_candidate with its material_id.',
     'The first candidate is intentionally invalid. The submit_candidate result is synchronous and authoritative. Read the returned CheckResult, including its diagnostic, before doing anything else.',
     'When the result is a source_failure, use its diagnostic to make a repaired candidate in this same Agent turn. Publish the revised source as a second artifact Material with kind=artifact and scope=proof_relevant, set supersedes to the first material_id, and call submit_candidate again.',
-    'Do not call request_wait. Do not stop after the first source failure. Finish only after the revised candidate submission.',
+    'If checker infrastructure blocks progress, preserve the evidence and call task.block with a typed dependency; do not use a wait lifecycle operation. Do not stop after the first source failure. Finish only after the revised candidate submission.',
     'First candidate source:',
     firstCandidate,
   ].join('\n');
@@ -454,6 +457,7 @@ export async function runRealAgentPath({
   env = process.env,
   command = null,
   timeoutMs = 180_000,
+  serviceRegistry = null,
 } = {}) {
   const probe = await probeRealAgentConfig({ env });
   const report = {
@@ -506,6 +510,17 @@ export async function runRealAgentPath({
   taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
   judgeService.setDependencyEventSink((event) => taskService.notifyDependencyEvent(event));
   const router = new ServicesRouter({ taskService, contextService, judgeService });
+  const capabilityRegistry = serviceRegistry ?? createBuiltinServiceRegistry({ taskService, contextService, judgeService });
+  if (!serviceRegistry && present(env.SWARMENV_MATHLIB_SEARCH_URL)) {
+    registerUserService(capabilityRegistry, {
+      manifest: createMathlibSearchManifest({
+        endpoint: { transport: 'http-json', url: env.SWARMENV_MATHLIB_SEARCH_URL },
+        mathlibRevision: env.MATHLIB_REVISION ?? lockedFixture.mathlib_version ?? null,
+        leanVersion: env.LEAN_VERSION ?? lockedFixture.lean_toolchain ?? null,
+      }),
+      adapter: createHttpJsonAdapter({ token: env.SWARMENV_MATHLIB_SEARCH_TOKEN ?? null }),
+    });
+  }
   const ownerSdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const task = ownerSdk.proposeTask({
     task_type: 'proof',
@@ -554,15 +569,16 @@ export async function runRealAgentPath({
     workspaceManager: new WorkspaceManager({ rootDir }),
     agentAdapter: adapter,
     actorRef: 'runtime:local',
+    capabilityRegistry,
     logger: {
       append(event = {}) {
-        if (!['runtime.request_wait', 'runtime.wake_execution', 'runtime.resume_execution'].includes(event.event)) return;
+        if (event.event !== 'runtime.execution_blocked') return;
         if (event.execution_id !== executionId) return;
         runtimeLifecycleEvents.push({
           sequence: runtimeLifecycleEvents.length,
           event: event.event,
           execution_id: event.execution_id,
-          wait_condition_type: event.wait_condition?.type ?? null,
+          dependency_kind: event.dependency?.dependency_kind ?? null,
           created_at: new Date().toISOString(),
         });
       },
@@ -608,23 +624,30 @@ export async function runRealAgentPath({
       fencingVersion: fresh.fencing_version,
     }).applyCheckResult({ check_result_id: result.check_result_id }, { operationId: `real:apply:${material.material_id}:${attempt}` });
     const retryableInfrastructure = result.result_class === 'infrastructure_failure' && result.retryable && !result.evidence?.retry_exhausted;
-    let deferredWait = null;
+    let deferredBlock = null;
     if (retryableInfrastructure) {
       const preflight = judgeService.getCheckerPreflight(result.evidence?.preflight_key);
       if (!preflight?.health_fingerprint) throw new Error('real-agent retryable checker failure has no preflight fingerprint');
-      deferredWait = {
-        waitCondition: {
-          type: 'checker_health',
-          preflight_key: result.evidence.preflight_key,
-          health_fingerprint: preflight.health_fingerprint,
-          diagnostic_code: result.diagnostic_code,
-          candidate_material_id: material.material_id,
+      deferredBlock = {
+        reason: 'checker health unavailable',
+        dependency: {
+          dependency_kind: 'CHECK_RESULT',
+          check_result_id: result.check_result_id,
+          requirement: {
+            checker_health: {
+              preflight_key: result.evidence.preflight_key,
+              health_fingerprint: preflight.health_fingerprint,
+            },
+          },
         },
         checkpoint: {
           phase: 'checker_unavailable',
           candidate_material_id: material.material_id,
           check_result_id: result.check_result_id,
+          preflight_key: result.evidence.preflight_key,
+          diagnostic_code: result.diagnostic_code,
         },
+        terminal_state: 'FAILED',
       };
     }
     const record = { material_id: material.material_id, result: taskService.getCheckResult(result.check_result_id), applied };
@@ -636,7 +659,7 @@ export async function runRealAgentPath({
       // read route after TaskService applies the result.
       check_result: agentCheckResult(taskService.getCheckResult(result.check_result_id)),
       applied,
-      ...(deferredWait ? { deferred_wait: deferredWait } : {}),
+      ...(deferredBlock ? { deferred_block: deferredBlock } : {}),
     };
   };
   const onSubmitCandidate = (args) => {
@@ -648,6 +671,7 @@ export async function runRealAgentPath({
     contextService,
     runtime,
     router,
+    registry: capabilityRegistry,
     taskId: task.task_id,
     executionId,
     onSubmitCandidate,
@@ -730,7 +754,7 @@ export async function runRealAgentPath({
       same_agent_session: sameAgentSession,
       same_execution: firstApplied.execution.execution_id === secondApplied.execution.execution_id,
       source_failure_execution_state: firstApplied.execution.state,
-      wait_between_candidates: lifecycleEventsBetweenCandidates.length > 0,
+      block_between_candidates: lifecycleEventsBetweenCandidates.length > 0,
       lifecycle_events: lifecycleEvents,
       lifecycle_events_between_candidates: lifecycleEventsBetweenCandidates,
       session_id: firstRun.session.sessionId ?? null,
@@ -746,7 +770,7 @@ export async function runRealAgentPath({
     };
     if (!report.feedback_handoff.same_agent_session) throw new Error('real Agent repair did not use the same Agent session');
     if (!report.feedback_handoff.same_execution) throw new Error('real Agent repair changed Execution identity');
-    if (report.feedback_handoff.wait_between_candidates) throw new Error('real Agent repair crossed a WAITING/wake lifecycle handoff');
+    if (report.feedback_handoff.block_between_candidates) throw new Error('real Agent repair crossed a typed block lifecycle handoff');
     if (secondApplied.task.state !== 'SATISFIED' || secondApplied.execution.state !== 'SUCCEEDED') {
       throw new Error(`real Agent repair did not complete the Task: ${secondApplied.task.state}/${secondApplied.execution.state}`);
     }

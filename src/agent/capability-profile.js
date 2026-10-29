@@ -11,6 +11,21 @@ export const AGENT_ROLES = Object.freeze({
 const PROFILE_VERSION = '1';
 const INTERNAL_AUDIENCES = new Set(['runtime', 'daemon', 'internal']);
 
+// The catalog still contains historical Task/Execution entries for bounded
+// observability imports. They must not leak through the no-Registry migration
+// path into a live Agent profile. Registry-backed profiles are authoritative;
+// this allowlist keeps the fallback equally aligned with the current Agent
+// contract while callers migrate to a Registry.
+const CURRENT_AGENT_OPERATIONS = new Set([
+  'list_services', 'get_service_metadata', 'list_tools',
+  'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'claim',
+  'create_child_task', 'propose_task', 'accept_task',
+  'publish_material', 'read_materials', 'consume_materials',
+  'submit_candidate', 'get_check_result', 'get_execution',
+  'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
+  'read_workspace_file', 'write_workspace_file', 'workspace_diff',
+]);
+
 function clone(value) {
   return value === undefined ? undefined : structuredClone(value);
 }
@@ -123,7 +138,8 @@ function sourceCapabilities({ registry, role, context, tools }) {
   if (registry && typeof registry.listTools === 'function') {
     return { profile: null, capabilities: registry.listTools(null, context) ?? [] };
   }
-  return { profile: null, capabilities: tools ?? listTools() };
+  const catalog = tools ?? listTools();
+  return { profile: null, capabilities: catalog.filter((capability) => CURRENT_AGENT_OPERATIONS.has(operationOf(capability))) };
 }
 
 function normalizeServices(capabilities) {
@@ -189,7 +205,7 @@ export function capabilityDirectory(profile) {
       const capability = profile.capabilities.find((candidate) => candidate.name === name && candidate.service_id === service.id);
       if (!capability) continue;
       const guidance = capability.help?.when ?? capability.help?.usage ?? capability.help?.summary ?? null;
-      const effect = capability.side_effect ? 'writes state' : 'read-only';
+      const effect = capability.side_effect === false || capability.side_effect === 'read' ? 'read-only' : 'writes state';
       lines.push(`  - ${name}: ${capability.description || 'Use the registered capability.'} (${effect}${guidance ? `; ${guidance}` : ''})`);
     }
   }

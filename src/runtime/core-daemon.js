@@ -13,7 +13,7 @@ export const CORE_DAEMON_STATES = Object.freeze({
 export const SELECTION_AGENT_PROMPT = [
   'You are a stateless Task selection turn for one reusable Core.',
   'Use the bounded list_tasks result as your complete candidate set.',
-  'select exactly one task_id from that result and return it to the Core Daemon; the Daemon calls claim(task_id) once.',
+  'Call task.claim exactly once for the one task_id you choose from that result. The Selection role may claim; a bound Task Agent cannot claim another Task.',
   'Never guess an ID, issue concurrent claims, or read claimed-only state during this selection turn.',
   'A claim conflict means another Core won; end this turn so the Daemon can rescan once.',
 ].join('\n');
@@ -41,6 +41,11 @@ function normalizeSelection(value) {
   return value.task_id ?? value.taskId ?? value.id ?? value.selected_task_id ?? null;
 }
 
+function directClaim(value) {
+  const candidate = value?.claim ?? value;
+  return candidate?.task?.task_id && candidate?.execution?.execution_id ? candidate : null;
+}
+
 function errorView(error) {
   return {
     name: error?.name ?? 'Error',
@@ -56,7 +61,7 @@ function errorView(error) {
  * CoreDaemon owns the discovery/selection/claim loop. Task Service remains the
  * claim authority, while Runtime is invoked only after a successful claim.
  * The daemon keeps no durable responsibility for a Task and never exposes a
- * semantic WAITING Core state.
+ * semantic blocked Core state; typed dependencies release the Core to IDLE.
  */
 export class CoreDaemon {
   constructor({
@@ -310,7 +315,8 @@ export class CoreDaemon {
         }
         return { disposition: 'selection_failed', error: this.lastError, snapshot: this.snapshot() };
       }
-      const selectedId = normalizeSelection(selection);
+      const claimed = directClaim(selection);
+      const selectedId = claimed?.task?.task_id ?? normalizeSelection(selection);
       if (selection && typeof selection === 'object' && selection.selection_deferred === true) {
         this.#setIdle({ reason: 'selection_deferred' });
         return { disposition: 'selection_deferred', snapshot: this.snapshot() };
@@ -330,24 +336,26 @@ export class CoreDaemon {
       }
       this.claimAttemptCount += 1;
       this.#emit({ kind: 'daemon_claim_started', core_id: this.coreId, task_id: taskId(selected), reason, rescan: rescans, timestamp: this.now() });
-      let claim;
+      let claim = claimed;
       try {
-        const selectedTaskId = taskId(selected);
-        const claimSequence = this.claimKeySequence;
-        this.claimKeySequence += 1;
-        claim = await this.claimTask(selectedTaskId, {
-          task_id: selectedTaskId,
-          core_id: this.coreId,
-          // A rescan counter only identifies attempts within one handoff.
-          // Include a daemon-wide sequence so a later reclaim of the same
-          // Task gets a fresh idempotency key and can create a new Execution.
-          claim_key: `${this.coreId}:${selectedTaskId}:${claimSequence}`,
-          owner_ref: `daemon:${this.coreId}`,
-          task: selected,
-          candidates: candidateView,
-          reason,
-          rescan: rescans,
-        });
+        if (!claim) {
+          const selectedTaskId = taskId(selected);
+          const claimSequence = this.claimKeySequence;
+          this.claimKeySequence += 1;
+          claim = await this.claimTask(selectedTaskId, {
+            task_id: selectedTaskId,
+            core_id: this.coreId,
+            // A rescan counter only identifies attempts within one handoff.
+            // Include a daemon-wide sequence so a later reclaim of the same
+            // Task gets a fresh idempotency key and can create a new Execution.
+            claim_key: `${this.coreId}:${selectedTaskId}:${claimSequence}`,
+            owner_ref: `daemon:${this.coreId}`,
+            task: selected,
+            candidates: candidateView,
+            reason,
+            rescan: rescans,
+          });
+        }
       } catch (error) {
         if (isConflict(error)) {
           this.claimConflictCount += 1;
