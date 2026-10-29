@@ -49,6 +49,8 @@ CREATE INDEX IF NOT EXISTS observation_events_execution_sequence
   ON observation_events(execution_id, sequence);
 CREATE INDEX IF NOT EXISTS observation_events_kind_sequence
   ON observation_events(kind, sequence);
+CREATE INDEX IF NOT EXISTS observation_events_experiment_kind_sequence
+  ON observation_events(experiment_id, kind, sequence);
 `;
 
 function now() {
