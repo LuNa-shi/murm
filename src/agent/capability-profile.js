@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { listTools } from '../sdk/service-catalog.js';
+import { isLegacyAgentSurface, listTools } from '../sdk/service-catalog.js';
 import { stableStringify } from '../protocol/envelope.js';
 
 export const AGENT_ROLES = Object.freeze({
@@ -19,7 +19,7 @@ const INTERNAL_AUDIENCES = new Set(['runtime', 'daemon', 'internal']);
 const CURRENT_AGENT_OPERATIONS = new Set([
   'list_services', 'get_service_metadata', 'list_tools',
   'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'claim',
-  'create_child_task', 'propose_task', 'accept_task',
+  'create_child_task', 'propose_task',
   'publish_material', 'read_materials', 'consume_materials',
   'submit_candidate', 'get_check_result', 'get_execution',
   'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
@@ -104,6 +104,8 @@ function normalizeCapability(capability, role) {
   if (!allowsRole(capability, role)) return null;
   const serviceId = serviceIdOf(capability);
   const audience = audienceOf(capability);
+  const runtimeOwned = capability.runtime_owned === true || serviceId === 'runtime';
+  if (isLegacyAgentSurface({ ...capability, name, operation }, { runtimeOwned })) return null;
   // Execution lease/process controls remain Runtime-owned. Only the read-only
   // Execution projection may appear in a bound profile; typed Task actions
   // are supplied separately as Runtime capabilities.
@@ -127,7 +129,7 @@ function normalizeCapability(capability, role) {
     context: clone(capability.context ?? capability.required_context ?? null),
     path: capability.path ?? null,
     audience: audience.length > 0 ? audience : inferredAudience(capability),
-    runtime_owned: capability.runtime_owned === true || serviceId === 'workspace' || serviceId === 'execution',
+    runtime_owned: runtimeOwned || serviceId === 'workspace' || serviceId === 'execution',
   };
 }
 
