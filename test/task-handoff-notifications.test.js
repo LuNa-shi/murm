@@ -28,10 +28,11 @@ function setup() {
 }
 
 function makeTask(taskService, missionId, taskId, summary = taskId, overrides = {}) {
+  const taskSummary = summary === taskId ? `Investigate ${taskId} as an independently useful responsibility.` : summary;
   return taskService.dispatch('task.create', {
     mission_id: missionId,
     task_id: taskId,
-    summary,
+    summary: taskSummary,
     goal: summary,
     expected_output: 'durable Material',
     acceptance_conditions: ['publish a useful result'],

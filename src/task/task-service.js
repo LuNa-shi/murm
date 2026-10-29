@@ -910,6 +910,13 @@ export class TaskService {
       (typeof payload.acceptance_conditions !== 'object' && !Array.isArray(payload.acceptance_conditions))) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'acceptance_conditions must be an object or array');
     }
+    if (payload.summary.trim().length < 20) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'summary must describe a substantial question and boundary');
+    }
+    if ((Array.isArray(payload.acceptance_conditions) && payload.acceptance_conditions.length === 0) ||
+      (!Array.isArray(payload.acceptance_conditions) && Object.keys(payload.acceptance_conditions).length === 0)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'acceptance_conditions must contain at least one condition');
+    }
     if (payload.summary.length > 4_000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'summary must be at most 4000 characters');
     const timebox = payload.timebox_ms ?? payload.timeboxMs ?? 60 * 60 * 1000;
     if (!Number.isInteger(timebox) || timebox <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timebox_ms must be a positive integer');
