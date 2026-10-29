@@ -97,8 +97,18 @@ export function useObservation() {
     if (result?.revision) registryRevisionRef.current = result.revision;
     setExperiments(next);
     const selected = selectedRef.current && next.find((item) => item.experiment_id === selectedRef.current);
+    if (!selected && selectedRef.current) {
+      selectedRef.current = null;
+      sourceRef.current?.close();
+      setExperiment(null);
+      setEvents([]);
+      setTimeline({ lanes: [] });
+      setToolCounts({});
+      setDetails({});
+      setError(null);
+    }
     const target = selected?.experiment_id
-      || (initial || !selectedRef.current ? next.find((item) => item.status === 'RUNNING')?.experiment_id || next[0]?.experiment_id : null);
+      || (initial || !selectedRef.current || !selected ? next.find((item) => item.status === 'RUNNING')?.experiment_id || next[0]?.experiment_id : null);
     if (target && target !== selectedRef.current) await selectExperiment(target);
     else if (selected) setExperiment((current) => current ? { ...current, ...selected } : current);
     else if (!target && !selectedRef.current) setConnection('Waiting for data');
