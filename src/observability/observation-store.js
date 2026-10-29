@@ -80,9 +80,9 @@ function requireString(value, field) {
   return value;
 }
 
-function validateLimit(limit) {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
-    throw new TypeError('limit must be an integer between 1 and 1000');
+function validateLimit(limit, maximum = 1_000) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > maximum) {
+    throw new TypeError(`limit must be an integer between 1 and ${maximum}`);
   }
 }
 
@@ -336,7 +336,9 @@ export class ObservationStore {
     limit = 100,
   } = {}) {
     requireString(experimentId, 'experiment_id');
-    validateLimit(limit);
+    // The initial dashboard tail is allowed to be larger than one cursor page,
+    // while ordinary event pagination remains capped at 1,000 rows.
+    validateLimit(limit, 2_000);
     if (!['operator', 'agent'].includes(view)) throw new TypeError(`unsupported observation view: ${view}`);
     if (kinds !== null && (!Array.isArray(kinds) || kinds.some((kind) => typeof kind !== 'string' || kind.length === 0))) {
       throw new TypeError('kinds must be an array of non-empty strings');
