@@ -34,7 +34,6 @@ const MODERN_RETIRED_OPERATIONS = new Set([
   'create_rework_task', 'accept_task', 'request_rework',
 ]);
 
-const MODERN_LEGACY_READ_ALIASES = new Set(['get_task', 'get_execution', 'list_tasks', 'list_executions']);
 const WORKSPACE_OPERATIONS = new Set([
   'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
   'read_workspace_file', 'write_workspace_file', 'workspace_diff',
