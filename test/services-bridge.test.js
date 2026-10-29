@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import {
   ContextService,
+  AGENT_ROLES,
   JudgeService,
   ServiceRegistry,
   ServicesBridge,
@@ -247,6 +248,65 @@ test('ServicesBridge exposes only the bounded selection shortlist and lets Selec
   } finally {
     await bridge.stop();
     taskService.close();
+  }
+});
+
+test('Selection task discovery requires an injected bounded shortlist on every task discovery route', async () => {
+  const calls = [];
+  const taskDiscoveryCapabilities = [
+    'list_tasks',
+    'list_claimable_tasks',
+    'get_task',
+    'list_executions',
+    'get_task_structure',
+    'explain_task_readiness',
+  ].map((operation) => ({
+    id: `task.${operation}`,
+    name: operation,
+    operation,
+    service_id: 'task',
+    service_title: 'Task Service',
+    service_purpose: 'Task discovery',
+    description: `Discover through ${operation}`,
+    audience: ['selection'],
+    side_effect: 'read',
+    idempotent: true,
+    context: [],
+  }));
+  const registry = {
+    getRevision: () => 1,
+    getCapabilityProfile: () => ({ profile_version: 'test', profile_hash: 'selection-test', capabilities: taskDiscoveryCapabilities }),
+    invoke: async (request) => {
+      calls.push(request);
+      return [];
+    },
+  };
+  const bridge = new ServicesBridge({
+    taskService: { getTask: () => null, getExecution: () => null },
+    contextService: {},
+    runtime: {},
+    registry,
+    role: AGENT_ROLES.SELECTION,
+  });
+  try {
+    const payloads = {
+      list_tasks: {},
+      list_claimable_tasks: {},
+      get_task: { task_id: 'task-1' },
+      list_executions: { task_id: 'task-1' },
+      get_task_structure: { task_id: 'task-1' },
+      explain_task_readiness: { task_id: 'task-1' },
+    };
+    for (const operation of Object.keys(payloads)) {
+      await assert.rejects(
+        () => bridge.call({ operation, payload: payloads[operation] }),
+        (error) => error.code === 'NOT_ALLOWED' && /bounded shortlist/.test(error.message),
+        operation,
+      );
+    }
+    assert.equal(calls.length, 0);
+  } finally {
+    await bridge.stop();
   }
 });
 
