@@ -106,6 +106,9 @@ export function useObservation() {
     selectedRef.current = id;
     setConnection('Loading');
     setError(null);
+    clearTimeout(eventBatchTimer.current);
+    eventBatchTimer.current = null;
+    pendingEventsRef.current.clear();
     try {
       const overviewPromise = getJson(`/api/experiments/${encodeURIComponent(id)}/overview?view=agent`);
       const nextExperiment = await getJson(`/api/experiments/${encodeURIComponent(id)}`);
