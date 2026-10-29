@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -31,6 +31,14 @@ async function sourceFixture() {
   ].join('\n'));
   await writeFile(join(root, 'Geometry.lean'), 'theorem distance_nonneg_demo (x : Nat) : 0 ≤ x := by omega\n');
   return { root, cleanup: () => rm(root, { recursive: true, force: true }) };
+}
+
+async function standaloneMathlibFixture() {
+  const parent = await mkdtemp(join(tmpdir(), 'swarmenv-mathlib-project-'));
+  const root = join(parent, 'Mathlib');
+  await mkdir(root);
+  await writeFile(join(root, 'Algebra.lean'), 'theorem add_comm_demo (a b : Nat) : a + b = b + a := by omega\n');
+  return { root, cleanup: () => rm(parent, { recursive: true, force: true }) };
 }
 
 test('Mathlib Search Service indexes a locked Lean source root with a bounded stable result shape', async () => {
@@ -139,6 +147,20 @@ test('Mathlib Search rejects module and path scopes outside the configured sourc
       (error) => error.code === 'INVALID_CONTRACT' && /path.*boundary/i.test(error.message),
     );
     assert.equal(upstreamCalls, 1);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('Mathlib Search accepts the Mathlib prefix for a standalone Mathlib source root', async () => {
+  const fixture = await standaloneMathlibFixture();
+  try {
+    const provider = createMathlibSearchService({ sourceRoot: fixture.root });
+    const prefixed = await provider.service.search({ query: 'add_comm', module: 'Mathlib.Algebra' });
+    assert.equal(prefixed.results[0].name, 'add_comm_demo');
+    assert.equal(prefixed.results[0].module, 'Mathlib.Algebra');
+    const shorthand = await provider.service.search({ query: 'add_comm', module: 'Algebra' });
+    assert.equal(shorthand.results[0].module, 'Mathlib.Algebra');
   } finally {
     await fixture.cleanup();
   }

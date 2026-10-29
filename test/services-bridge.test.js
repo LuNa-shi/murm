@@ -310,6 +310,52 @@ test('Selection task discovery requires an injected bounded shortlist on every t
   }
 });
 
+test('Selection task discovery keeps every task id inside the injected shortlist', async () => {
+  const calls = [];
+  const operations = ['list_executions', 'get_task_structure', 'explain_task_readiness'];
+  const capabilities = operations.map((operation) => ({
+    id: `task.${operation}`,
+    name: operation,
+    operation,
+    service_id: 'task',
+    service_title: 'Task Service',
+    service_purpose: 'Task discovery',
+    description: `Discover through ${operation}`,
+    audience: ['selection'],
+    side_effect: 'read',
+    idempotent: true,
+    context: [],
+  }));
+  const registry = {
+    getRevision: () => 1,
+    getCapabilityProfile: () => ({ profile_hash: 'selection-membership-test', capabilities }),
+    invoke: async (request) => {
+      calls.push(request);
+      return { unexpected: true };
+    },
+  };
+  const bridge = new ServicesBridge({
+    taskService: { getTask: () => null, getExecution: () => null },
+    contextService: {},
+    runtime: {},
+    registry,
+    role: AGENT_ROLES.SELECTION,
+  });
+  bridge.setSelectionCandidates([{ task_id: 'task-in-shortlist', goal: 'bounded task' }]);
+  try {
+    for (const operation of operations) {
+      await assert.rejects(
+        () => bridge.call({ operation, payload: { task_id: 'task-outside-shortlist' } }),
+        (error) => error.code === 'INVALID_CONTRACT' && /bounded shortlist/.test(error.message),
+        operation,
+      );
+    }
+    assert.equal(calls.length, 0);
+  } finally {
+    await bridge.stop();
+  }
+});
+
 test('ServicesBridge exposes controlled Workspace file operations with snake_case payloads', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);

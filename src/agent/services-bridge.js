@@ -333,24 +333,24 @@ export class ServicesBridge {
           : ((operation === 'get_task' || ['get_task_structure', 'explain_task_readiness'].includes(operation)) && payload.task_id === undefined && this.taskId
             ? { ...payload, task_id: this.taskId }
             : payload);
-        if (isTaskDiscovery && ['list_tasks', 'list_claimable_tasks'].includes(operation) && Array.isArray(this.selectionCandidates)) {
-          const result = this.selectionCandidates.map(selectionCandidate);
-          this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
-          return result;
-        }
-        if (capability.service_id === 'task' && operation === 'get_task' && this.taskId === null) {
-          const taskId = payload.task_id;
+        const shortlistScopedOperations = ['get_task', 'list_executions', 'get_task_structure', 'explain_task_readiness'];
+        if (this.role === AGENT_ROLES.SELECTION && Array.isArray(this.selectionCandidates) && shortlistScopedOperations.includes(operation)) {
+          const taskId = discoveryPayload.task_id;
           if (typeof taskId !== 'string' || taskId.length === 0) {
-            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'selection task_view requires payload.task_id');
-          }
-          if (!Array.isArray(this.selectionCandidates)) {
-            throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'selection task_view requires a bounded shortlist');
+            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${operation} requires payload.task_id`);
           }
           const candidate = this.selectionCandidates.find((entry) => String(entry.task_id) === taskId);
           if (!candidate) {
-            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task_view must target a task_id from the bounded shortlist', { task_id: taskId });
+            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${operation} must target a task_id from the bounded shortlist`, { task_id: taskId });
           }
-          const result = selectionCandidate(candidate);
+          if (operation === 'get_task') {
+            const result = selectionCandidate(candidate);
+            this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+            return result;
+          }
+        }
+        if (isTaskDiscovery && ['list_tasks', 'list_claimable_tasks'].includes(operation) && Array.isArray(this.selectionCandidates)) {
+          const result = this.selectionCandidates.map(selectionCandidate);
           this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
