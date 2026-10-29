@@ -1115,6 +1115,15 @@ export class Runtime {
   }
 
   async #launch(execution, workspace, { beforePrompt = null, sessionReason = 'start', coreId = null } = {}) {
+    // The extension fetches the profile from the Bridge before it registers
+    // tools. Keep the child-process role in lockstep with the Runtime
+    // lifecycle, including recovery restarts.
+    const agentEnvironment = this.agentAdapter?.config?.env;
+    if (agentEnvironment && typeof agentEnvironment === 'object') {
+      agentEnvironment.SWARMENV_AGENT_ROLE = sessionReason === 'recovery' || sessionReason === 'session_recovery'
+        ? AGENT_ROLES.RECOVERY
+        : AGENT_ROLES.BOUND;
+    }
     const session = await this.agentAdapter.start({
       executionId: execution.execution_id,
       sessionId: randomUUID(),

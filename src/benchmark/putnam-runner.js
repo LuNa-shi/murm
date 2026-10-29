@@ -556,6 +556,7 @@ function scheduleTurn(core, prompt, timeoutMs) {
 
 async function startAgentSession(core) {
   core.bridge.actorRef = core.actorRef;
+  core.childEnv.SWARMENV_AGENT_ROLE = AGENT_ROLES.SELECTION;
   core.sessionNumber += 1;
   const suffix = core.sessionNumber === 1 ? 'worker-session' : `worker-session-${core.sessionNumber}`;
   const session = await core.adapter.start({
@@ -1866,6 +1867,7 @@ async function createProjectState(problem, config, options) {
         const bound = await runtime.bindAgentExecution(claim.execution.execution_id, null, {
           workspaceRef: join(workspaceRoot, claim.execution.execution_id),
           startSession: async ({ execution, workspace }) => {
+            core.childEnv.SWARMENV_AGENT_ROLE = AGENT_ROLES.BOUND;
             const session = await core.adapter.start({
               executionId: execution.execution_id,
               sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
