@@ -1,4 +1,5 @@
 .env
+node_modules/
 
 # Durable raw experiment evidence stays on disk but is kept out of Git because
 # it may contain candidate source, proof text, transcripts, or checker output.
