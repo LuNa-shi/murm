@@ -151,8 +151,8 @@ const OVERVIEW_MAX_BYTES = 4_000_000;
 // The dashboard is a live operational view. Keep the initial projection close
 // to the active window instead of replaying an entire historical run into the
 // server and browser. Detail endpoints remain available for historical reads.
-const OVERVIEW_RECENT_EVENTS = 12_000;
-const TIMELINE_RECENT_EVENTS = 2_000;
+const OVERVIEW_RECENT_EVENTS = 2_000;
+const TIMELINE_RECENT_EVENTS = 1_000;
 
 function parseJson(value) {
   if (typeof value !== 'string' || value.length === 0) return value;
@@ -805,14 +805,13 @@ export class ObservabilityServer {
     const overviewEvents = [...events, ...toolProjection.events].sort((left, right) => left.sequence - right.sequence);
     const bounded = boundOverviewEvents(compactOverviewEvents(overviewEvents));
     const latestSequence = this.observationStore.latestSequence(experimentId);
-    const firstSequence = overviewEvents.at(0)?.sequence ?? latestSequence;
     return {
       experiment_id: experimentId,
       events: bounded.events,
       overview_bytes: bounded.bytes,
       overview_truncated: bounded.truncated,
-      overview_history_truncated: firstSequence > 1,
-      overview_start_sequence: firstSequence,
+      overview_history_truncated: latestSequence > OVERVIEW_RECENT_EVENTS,
+      overview_start_sequence: overviewEvents.at(0)?.sequence ?? latestSequence,
       overview_end_sequence: latestSequence,
       timeline: this.#timeline(experimentId, url),
       tool_counts: toolProjection.counts,
