@@ -181,6 +181,7 @@ function safeObservationEvent(event) {
 function executionNarratives(state, taskTree, materials) {
   return taskTree.flatMap((task) => {
     const structure = state.taskService.getTaskStructure(task.task_id);
+    const materialLinks = taskMaterialLinks(state, task);
     return state.taskService.listExecutions(task.task_id).map((execution) => {
       const events = state.observationStore.listEvents({
         experimentId: state.runId,
@@ -212,6 +213,8 @@ function executionNarratives(state, taskTree, materials) {
         task_type: task.task_type,
         goal: task.goal,
         expected_output: task.expected_output,
+        acceptance_conditions: task.acceptance_conditions ?? null,
+        timebox_ms: task.timebox_ms ?? null,
         state: execution.state,
         attempt_no: execution.attempt_no,
         owner_ref: execution.owner_ref,
@@ -224,11 +227,25 @@ function executionNarratives(state, taskTree, materials) {
         wait_condition_type: execution.wait_condition?.type ?? null,
         wait_dependency_ids: waitDependencyIds(execution.wait_condition),
         dependencies,
+        material_links: materialLinks.map((link) => ({
+          link_id: link.link_id,
+          task_id: link.task_id,
+          material_id: link.material_id,
+          role: link.role,
+          receiving_task_id: link.receiving_task_id ?? null,
+          producer_task_id: link.producer_task_id ?? null,
+          producer_execution_id: link.producer_execution_id ?? null,
+          accepted_at: link.accepted_at ?? null,
+        })),
         actions: events,
         outputs,
       };
     });
   });
+}
+
+function taskMaterialLinks(state, task) {
+  return task.materials ?? state.taskService.listTaskMaterials?.(task.task_id)?.links ?? [];
 }
 
 function inputSnapshotHash(task, inputMaterialRefs) {
@@ -1465,6 +1482,18 @@ function projectReport(state, startedAt, deadline) {
       input_workspace_hash: state.inputMaterialHash,
       task_count: taskTree.length,
       task_tree: taskTree.map((task) => ({
+        expected_output: task.expected_output ?? null,
+        acceptance_conditions: task.acceptance_conditions ?? null,
+        timebox_ms: task.timebox_ms ?? null,
+        material_links: taskMaterialLinks(state, task).map((link) => ({
+          link_id: link.link_id,
+          material_id: link.material_id,
+          role: link.role,
+          receiving_task_id: link.receiving_task_id ?? null,
+          producer_task_id: link.producer_task_id ?? null,
+          producer_execution_id: link.producer_execution_id ?? null,
+          accepted_at: link.accepted_at ?? null,
+        })),
         task_id: task.task_id,
         parent_id: task.parent_id,
         mission_id: task.mission_id ?? state.missionId ?? null,

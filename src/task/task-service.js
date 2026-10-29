@@ -3524,6 +3524,17 @@ export class TaskService {
         }
       }
     }
+    if (contract.required_response) {
+      const requirements = Array.isArray(contract.required_response) ? contract.required_response : [contract.required_response];
+      const responseLinks = this.#taskMaterialLinks(task.task_id, { role: 'response' });
+      for (const requirement of requirements) {
+        const targetTaskId = typeof requirement === 'string' ? requirement : requirement?.receiving_task_id ?? requirement?.task_id ?? null;
+        const matches = responseLinks.filter((link) => !targetTaskId || link.receiving_task_id === targetTaskId);
+        if (matches.length < (typeof requirement === 'object' ? requirement.min_count ?? 1 : 1)) {
+          missing.push(`response${targetTaskId ? `:${targetTaskId}` : ''}`);
+        }
+      }
+    }
     if (contract.required_candidate) {
       const candidate = execution?.candidate_material_id && this.contextService?.getMaterial(execution.candidate_material_id);
       if (!candidate || candidate.kind !== contract.required_candidate.kind || (contract.required_candidate.scope && candidate.scope !== contract.required_candidate.scope)) {
