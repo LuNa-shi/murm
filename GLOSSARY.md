@@ -1,108 +1,119 @@
 # SwarmEnv Glossary
 
-**Task** is a durable unit of responsibility. It owns a goal, output contract,
-priority, state, and Workspace description.
+**Mission** is the shared objective scope for one problem or project. It
+contains a Task pool, a relation graph, and optionally a final acceptance
+contract. It does not make one Task the owner of all other Tasks.
 
-Normal Task states are `OPEN`, `RUNNING`, `BLOCKED`, `DONE`, `CLOSED`, and
-`CANCELED`. `DONE` satisfies the Task's own contract, `CLOSED` is
-administrative cleanup, and `CANCELED` is an explicit terminal decision.
+**Task** is one durable responsibility in a Mission. It has a concise summary,
+goal, scope boundary, expected output, acceptance conditions, Mission
+contribution, document references, validation mode, priority, and lifecycle
+state.
 
-**Root Task** is the one problem-level Task in a project. A PutnamBench root
-has one purpose: prove the selected problem.
+**Peer Task** is a Task with no origin relation. It enters the same Mission
+pool as every other Task.
 
-**Task list** is the ordered set of claimable Tasks. Agents inspect the list,
-select a Task, and call the explicit claim operation.
+**Child Task** is a Task with a `spawned_from` origin relation. The relation
+records provenance; it does not grant ownership, approval authority, or special
+scheduling behavior. Child and Peer Tasks share one lifecycle.
 
-**Task Controller** is the deterministic reconciliation loop. It checks
-dependency and admission conditions, reopens eligible blocked Tasks, and wakes
-idle Core daemons. It never ranks or claims Tasks.
+**Task relation** is a durable link such as `spawned_from`, `related_to`,
+`depends_on`, `supersedes`, `duplicate_of`, or `contradicts`. Only
+`depends_on` changes Claimability.
 
-**Execution** is one leased attempt to carry out one Task. It is scoped to that
-Task attempt and ends when the Task is completed, canceled, failed, or released
-because the Task is blocked. A later retry of the same Task creates a new
-Execution and may continue the same Workspace lineage.
+**Overlap review** is the Agent-authored comparison of a proposed Task with
+existing Tasks and Context Documents. It explains why the proposal is distinct.
+Task Service provides comparable records and validates references; it does not
+apply an opaque semantic duplicate detector.
 
-**Workspace** is the versioned, task-scoped working surface containing the
-problem input, requirements, edits, checkpoints, and revision metadata. Runtime
-materializes and fences it for an Execution; Task initialization and later
-Execution revisions are parts of one Workspace lineage. Workspace is a
-Runtime-owned capability, not an independently registered external Service.
+**Task kind** is a domain label such as `proof`, `research`, `analysis`,
+`coordination`, or `artifact`. It selects validation behavior, not topology or
+permissions.
 
-**Core slot** is reusable worker capacity. It is not a Task, does not own a
-semantic blocked state, and is not tied to a permanent child.
+**Validation mode** is the evidence required by a Task contract. Proof Tasks
+need a Candidate and passing Judge result; research and coordination Tasks need
+valid Context Documents or Materials; artifact Tasks need a Workspace artifact
+reference and explanatory Document.
 
-**Core daemon** is the long-lived supervisor for one Core slot. It discovers
-claimable Tasks, starts a Task Session for a claimed Execution, releases that
-Session when the Execution ends, and returns to discovery.
+**Task completion** is self-owned. The current Execution satisfies the Task's
+contract and records result references. Other Agents may consume the result or
+propose follow-up work but do not approve or rewrite it.
 
-**Child Task** is a direct Task created by an active parent Execution when a
-separate responsibility is useful.
+**Task list** is the bounded Mission-scoped view of claimable Tasks.
 
-**Material** is immutable shared work or evidence published through Context
-Service.
+**Execution** is one leased attempt to carry out one Task. Runtime binds it to
+one Core, Agent Session, and private Workspace revision.
 
-**Service** is an independently owned capability provider with a stable public
-interface. A Service can be registered with SwarmEnv and expose role-scoped
-capabilities to an Agent Session. A Service is more than an arbitrary group of
-tools: its operations, schemas, usage guidance, and errors form one contract.
+**Blocked** means a Task has a concrete unresolved dependency and no active
+Execution. An empty queue is `IDLE`.
 
-**Service Manifest** is the versioned declaration used to register a Service.
-It identifies the provider, endpoint or adapter, capabilities, schemas, scope,
-side effects, help/SOP references, and structured errors.
+**Workspace** is the private, versioned working surface of an Execution. Shared
+results leave the Workspace through Context Documents or artifact references.
+Workspace is Runtime-owned, not an independently registered external Service.
 
-**Service Registry** is the authority that validates Service Manifests,
-resolves adapters, and derives discoverable, role-scoped capability profiles.
-It is the source for the Agent tool registration and service help surface.
+**Context Document** is an immutable, versioned, Mission-scoped record of a
+fact, failure, decision, experience, analysis, artifact, or candidate. The
+current implementation persists this collaboration record as a Material.
 
-**Runtime-owned capability** is an Agent-callable operation supplied by the
-Runtime for the current Task or Execution rather than by an independently
-registered Service. Workspace operations are Runtime-owned capabilities;
-claim, lease, fencing, and process lifecycle remain behind the Runtime
-boundary.
+**Material** is the current Context Service representation of a shared
+Document, including source Task/Execution provenance and evidence state.
 
-**Capability profile** is the exact set of Service capabilities and
-Runtime-owned capabilities available to one Agent Session role, such as
-Selection, Bound Task work, or Recovery.
+**Judge** is the independent validator for Candidate evidence. Its CheckResult
+is tied to a Task, Candidate, Workspace snapshot, checker, and environment.
+
+**Core slot** is reusable physical worker capacity. It has no semantic Task
+ownership.
+
+**Core Daemon** is the long-lived supervisor for one Core. It discovers a
+bounded Task shortlist, selects and Claims one Task, starts its Execution,
+releases the Session when the Execution ends, and returns to discovery.
+
+**Task Controller** is the deterministic reconciliation loop that maintains
+claimability, reopens eligible Blocked Tasks, and signals idle Core Daemons. It
+does not choose or Claim semantic work.
+
+**Agent Session** is one Agent process session. A bound Session belongs to one
+Execution and receives a role-scoped capability profile.
+
+**Service** is an independently owned capability provider with a versioned
+public interface, schemas, usage guidance, side-effect declarations, and
+structured errors.
+
+**Service Manifest** is the declaration used to register a Service with
+SwarmEnv. It describes identity, endpoint/adapter, capabilities, role scope,
+schemas, and help references.
+
+**Service Registry** validates Manifests and derives the role-scoped capability
+profile used for Agent tool registration and dynamic prompt construction.
+
+**Runtime-owned capability** is a Task- or Execution-scoped capability supplied
+by Runtime rather than an independently registered external Service. Workspace
+operations and lease/fencing enforcement remain Runtime-owned.
 
 **Lease** is the time-bounded ownership period of an Execution. Heartbeats
-extend it; expiry fences the old owner and makes the Task claimable again.
+extend it; expiry fences the old owner.
 
-**Experiment** is one complete observed run of one Root Task, identified by a
-run ID. It includes the Core slots, Agent Sessions, Executions, Tasks,
-Materials, Workspace revisions, and Service activity observed during that run.
+**Experiment** is one complete observed run of one Mission, including Tasks,
+Executions, Materials/Documents, Workspace revisions, Judge results, Agent
+Sessions, Core lanes, and Service events.
 
-**Core lane** is the time-ordered view of one reusable Core slot. A Core slot
-can own several Agent Sessions and Executions over the life of an Experiment.
+**Core lane** is the timeline identity of one reusable Core slot over an
+Experiment.
 
-**Agent Session** is one Pi process session started by a Core daemon. A bound
-Task Session belongs to one Execution and one Core for its lifetime and
-receives a role-specific capability profile. A daemon may use a separate
-discovery Session before starting the bound Task Session.
+**Execution segment** is one continuous assignment of an Execution attempt to a
+Core lane.
 
-**Execution segment** is one continuous interval in which one Execution attempt
-is assigned to one Core lane. A later retry of the Task has a new Execution ID,
-even when it continues the prior Workspace lineage.
+**Interaction** is one ordered Agent-facing exchange: a message, capability
+call, result, lifecycle notification, or diagnostic.
 
-**Interaction** is one ordered exchange in an Agent Session, such as an Agent
-message, a Service tool call, a tool result, a lifecycle notification, or a
-process diagnostic.
+**Observation Event** is append-only evidence for monitoring and diagnosis. It
+does not replace domain truth held by Task, Runtime, Context, Judge, or
+Workspace.
 
-**Observation Event** is an immutable record of a fact emitted by a Runtime,
-Agent Session, Service, Judge, or Workspace operation. Observation Events
-support monitoring and diagnosis; they do not replace Task, Execution,
-Material, or Workspace truth.
+**Diagnostic Finding** is an evidence-linked, typed conclusion about an
+Experiment or one of its parts.
 
-**Diagnostic Finding** is a typed conclusion about an Experiment or one of its
-parts, with a severity, evidence references, and a current status. Findings
-may be produced by a human or an Agent analysis pass.
+**Eligible window** is a reporting interval with enough independent unfinished
+work for the configured Core slots to execute concurrently.
 
-**Eligible window** is a set of intervals in an Experiment during which the
-configured scenario has enough independent, unfinished work that the
-available Core slots could execute it concurrently. It is a reporting aid for
-interpreting parallelism; it is not a claim that every problem should provide
-that amount of work or a standalone success criterion.
-
-**Deterministic test scenario** is a bounded Experiment setup whose Tasks,
-expected Agent interactions, and completion conditions are known in advance.
-It supplies controlled work to exercise the production Runtime and Services;
-it does not decide whether a research result is semantically useful.
+**Deterministic test scenario** is a bounded fixture used to exercise the
+production lifecycle with known inputs, calls, and acceptance conditions.
