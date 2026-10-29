@@ -86,3 +86,14 @@ test('Pi extension registers only the supplied role profile and no generic trans
   assert.equal(result.profile_hash, profile.profile_hash);
   assert.equal(result.tool_names.length, 2);
 });
+
+test('every role profile and generated named directory excludes legacy Agent surfaces', () => {
+  const legacy = /execution_wait|request_wait|wake(?:_execution)?|parent_review|request_rework|create_rework_task|swarmenv_call/i;
+  for (const role of Object.values(AGENT_ROLES)) {
+    const profile = buildCapabilityProfile({ role });
+    assert.ok(profile.capabilities.length > 0, `${role} profile should have capabilities`);
+    assert.ok(profile.capabilities.every((capability) => !legacy.test(JSON.stringify(capability))), role);
+    assert.ok(profile.services.every((service) => service.capabilities.every((name) => !legacy.test(name))), role);
+    assert.ok(!legacy.test(capabilityDirectory(profile)), role);
+  }
+});

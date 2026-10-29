@@ -214,6 +214,22 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
 ]);
 
+// These definitions remain available to internal Runtime/Task Service callers,
+// but they are not part of the Agent-facing catalog. Runtime owns the
+// execution lifecycle and the current Task contract has typed completion and
+// blocking capabilities instead of exposing historical wait/review controls.
+const LEGACY_AGENT_OPERATIONS = new Set([
+  'abort', 'accept_task', 'apply_check_result', 'block_execution',
+  'create_rework_task', 'fence_execution', 'heartbeat', 'request_rework',
+  'request_wait', 'resume_execution', 'start_execution', 'stop_execution',
+  'wake', 'wake_execution',
+]);
+
+const LEGACY_AGENT_TOOL_NAMES = new Set([
+  'execution_wait', 'task_accept', 'task_create_rework', 'task_request_rework',
+  'service_call', 'swarmenv_call',
+]);
+
 const SERVICE_DEFINITIONS = Object.freeze([
   { name: 'task', version: '1.0', description: 'Task goals, completion contracts, alternative branches, jointly required subtasks, explicit dependencies, provenance, structure discovery, rework, and explicit claim.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'task') },
   { name: 'execution', version: '1.0', description: 'Lease, heartbeat, wait and execution responsibility lifecycle.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'execution') },
@@ -227,22 +243,64 @@ function clone(value) {
   return structuredClone(value);
 }
 
-export function listServices() {
-  return clone(SERVICE_DEFINITIONS.map(({ name, version, description, tools }) => ({ name, version, description, tool_count: tools.length })));
+/**
+ * Return whether a catalog definition is a historical Agent surface. The
+ * complete definitions are retained for internal compatibility, but all
+ * default catalog reads use this predicate before crossing an Agent boundary.
+ */
+export function isLegacyAgentSurface(tool, { runtimeOwned = false } = {}) {
+  if (!tool || typeof tool !== 'object') return false;
+  const operation = tool.operation ?? null;
+  const name = tool.name ?? tool.tool_name ?? tool.toolName ?? null;
+  // Runtime's typed task_complete capability still routes to the historical
+  // Task Service operation internally. Its public name is task_complete, so
+  // it is allowed when explicitly marked runtime-owned.
+  if (runtimeOwned && operation === 'accept_task') return false;
+  return LEGACY_AGENT_OPERATIONS.has(operation) || LEGACY_AGENT_TOOL_NAMES.has(name);
 }
 
-export function getServiceMetadata(name) {
-  const service = SERVICE_DEFINITIONS.find((candidate) => candidate.name === name);
-  return service ? clone(service) : null;
+function normalizeCatalogOptions(options) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) return { includeInternal: false };
+  return { includeInternal: options.includeInternal === true };
 }
 
-export function listTools(service = null) {
-  const tools = service === null
-    ? TOOL_DEFINITIONS
-    : TOOL_DEFINITIONS.filter((tool) => tool.service === service);
+function toolsForService(service, options) {
+  const { includeInternal } = normalizeCatalogOptions(options);
+  const tools = includeInternal ? service.tools : service.tools.filter((tool) => !isLegacyAgentSurface(tool));
   return clone(tools);
 }
 
-export function serviceCatalog() {
-  return { services: listServices(), tools: listTools() };
+export function listServices(options = {}) {
+  const { includeInternal } = normalizeCatalogOptions(options);
+  return clone(SERVICE_DEFINITIONS.map(({ name, version, description, tools }) => ({
+    name,
+    version,
+    description,
+    tool_count: includeInternal ? tools.length : tools.filter((tool) => !isLegacyAgentSurface(tool)).length,
+  })));
+}
+
+export function getServiceMetadata(name, options = {}) {
+  const service = SERVICE_DEFINITIONS.find((candidate) => candidate.name === name);
+  return service
+    ? { ...clone(service), tools: toolsForService(service, options) }
+    : null;
+}
+
+export function listTools(service = null, options = {}) {
+  const selected = service === null
+    ? SERVICE_DEFINITIONS.flatMap((definition) => definition.tools)
+    : SERVICE_DEFINITIONS.find((definition) => definition.name === service)?.tools ?? [];
+  const { includeInternal } = normalizeCatalogOptions(options);
+  const tools = includeInternal ? selected : selected.filter((tool) => !isLegacyAgentSurface(tool));
+  return clone(tools);
+}
+
+/** Internal adapters can opt into the historical definitions explicitly. */
+export function listLegacyTools(service = null) {
+  return listTools(service, { includeInternal: true });
+}
+
+export function serviceCatalog(options = {}) {
+  return { services: listServices(options), tools: listTools(null, options) };
 }
