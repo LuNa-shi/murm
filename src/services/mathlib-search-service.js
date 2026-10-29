@@ -1,5 +1,5 @@
 import { access, readdir, readFile, stat } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { createServiceManifest } from '../sdk/service-manifest.js';
@@ -59,9 +59,11 @@ function queryTokens(query) {
     .filter((token) => token.length >= 2))];
 }
 
-function moduleNameFor(root, file) {
+function moduleNameFor(root, file, prefix = null) {
   const relativePath = relative(root, file).split(sep).join('/');
-  return relativePath.replace(/\.lean$/, '').split('/').join('.');
+  const moduleName = relativePath.replace(/\.lean$/, '').split('/').join('.');
+  if (!prefix || moduleName === prefix || moduleName.startsWith(`${prefix}.`)) return moduleName;
+  return `${prefix}.${moduleName}`;
 }
 
 function sourcePathFor(declaration) {
@@ -72,6 +74,18 @@ function pathMatches(declaration, scope) {
   if (!scope) return true;
   const source = sourcePathFor(declaration);
   return source === scope || source.startsWith(`${scope}/`);
+}
+
+function moduleScopeNames(module, prefix = null) {
+  const names = new Set([module]);
+  if (prefix && module !== prefix && !module.startsWith(`${prefix}.`)) names.add(`${prefix}.${module}`);
+  if (prefix && module.startsWith(`${prefix}.`)) names.add(module.slice(prefix.length + 1));
+  return names;
+}
+
+function moduleMatches(candidate, module, prefix = null) {
+  if (typeof candidate !== 'string' || !module) return false;
+  return [...moduleScopeNames(module, prefix)].some((scope) => candidate === scope || candidate.startsWith(`${scope}.`));
 }
 
 async function walkLeanFiles(root, { maxFiles = 100_000 } = {}) {
@@ -91,13 +105,13 @@ async function walkLeanFiles(root, { maxFiles = 100_000 } = {}) {
   return files;
 }
 
-function declarationFromLine(line, file, root, lineNumber) {
+function declarationFromLine(line, file, root, lineNumber, prefix = null) {
   const match = DECLARATION_PATTERN.exec(line);
   if (!match) return null;
   return {
     name: match[1],
     type: line.trim(),
-    module: moduleNameFor(root, file),
+    module: moduleNameFor(root, file, prefix),
     source: `${relative(root, file).split(sep).join('/')}#L${lineNumber}`,
   };
 }
@@ -201,6 +215,8 @@ export class MathlibSearchService {
   constructor({
     upstreamUrl = process.env.MATHLIB_SEARCH_UPSTREAM_URL ?? null,
     sourceRoot = process.env.MATHLIB_SEARCH_SOURCE_ROOT ?? null,
+    projectRoot = process.env.MATHLIB_SEARCH_PROJECT_ROOT ?? null,
+    allowedModules = null,
     fetchImpl = globalThis.fetch,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxResults = DEFAULT_MAX_RESULTS,
@@ -216,6 +232,13 @@ export class MathlibSearchService {
     if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > MAX_RESULTS) throw new TypeError(`maxResults must be an integer from 1 to ${MAX_RESULTS}`);
     this.upstreamUrl = endpointUrl(upstreamUrl);
     this.sourceRoot = sourceRoot;
+    this.projectRoot = projectRoot;
+    this.boundaryRoot = sourceRoot ?? projectRoot;
+    this.sourceModulePrefix = sourceRoot && basename(resolve(sourceRoot)) === 'Mathlib' ? 'Mathlib' : null;
+    if (allowedModules !== null && !Array.isArray(allowedModules) && !(allowedModules instanceof Set)) {
+      throw new TypeError('allowedModules must be an array or Set of Lean module names');
+    }
+    this.allowedModules = allowedModules === null ? null : new Set([...allowedModules].map((module) => String(module).trim()).filter(Boolean));
     this.fetch = fetchImpl;
     this.timeoutMs = timeoutMs;
     this.maxResults = maxResults;
@@ -295,26 +318,35 @@ export class MathlibSearchService {
 
   async #validateScope({ module, path }) {
     if (!module && !path) return { path: null };
-    if (path && !this.sourceRoot) {
+    if (path && !this.boundaryRoot) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.path requires a configured source/project boundary', { path });
     }
     let scopedPath = path;
     if (path) {
-      const boundary = resolve(this.sourceRoot);
+      const boundary = resolve(this.boundaryRoot);
       const candidate = isAbsolute(path) ? resolve(path) : resolve(boundary, path);
       const relativeCandidate = relative(boundary, candidate).split(sep).join('/');
       if (relativeCandidate === '..' || relativeCandidate.startsWith('../') || isAbsolute(relativeCandidate)) {
         throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.path is outside the configured source/project boundary', {
           path,
-          source_root: this.sourceRoot,
+          source_root: this.boundaryRoot,
         });
       }
       scopedPath = relativeCandidate === '.' ? null : relativeCandidate;
     }
-    if (module && this.sourceRoot) {
+    const scopedModule = module ? (this.sourceModulePrefix && module !== this.sourceModulePrefix && !module.startsWith(`${this.sourceModulePrefix}.`)
+      ? `${this.sourceModulePrefix}.${module}`
+      : module) : null;
+    if (scopedModule && this.allowedModules && ![...this.allowedModules].some((candidate) => moduleMatches(candidate, scopedModule, this.sourceModulePrefix))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module is outside the configured source/project boundary', {
+        module,
+        allowed_modules: [...this.allowedModules].slice(0, 100),
+      });
+    }
+    if (scopedModule && this.sourceRoot) {
       const declarations = await this.#loadSourceIndex();
       const modules = this.sourceModules ?? new Set(declarations.map((declaration) => declaration.module));
-      const inBoundary = [...modules].some((candidate) => candidate === module || candidate.startsWith(`${module}.`));
+      const inBoundary = [...modules].some((candidate) => moduleMatches(candidate, scopedModule, this.sourceModulePrefix));
       if (!inBoundary) {
         throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module is outside the configured source/project boundary', {
           module,
@@ -322,7 +354,7 @@ export class MathlibSearchService {
         });
       }
     }
-    return { path: scopedPath };
+    return { module: scopedModule, path: scopedPath };
   }
 
   async #searchUpstream({ query, module, path: scopePath, max_results: maxResults }, { signal }) {
@@ -360,7 +392,7 @@ export class MathlibSearchService {
         metadata: { backend: 'loogle-http', mathlib_revision: this.mathlibRevision, lean_version: this.leanVersion },
       });
       const scoped = module
-        ? normalized.results.filter((candidate) => candidate.module === module || candidate.module?.startsWith(`${module}.`))
+        ? normalized.results.filter((candidate) => moduleMatches(candidate.module, module, this.sourceModulePrefix))
         : normalized.results;
       const pathScoped = scopePath ? scoped.filter((candidate) => pathMatches(candidate, scopePath)) : scoped;
       const results = pathScoped.slice(0, Math.min(maxResults, this.maxResults));
@@ -388,13 +420,13 @@ export class MathlibSearchService {
         const root = await stat(this.sourceRoot);
         if (!root.isDirectory()) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'mathlib search sourceRoot must be a directory', { source_root: this.sourceRoot }, { retryable: true });
         const files = await walkLeanFiles(this.sourceRoot);
-        this.sourceModules = new Set(files.map((file) => moduleNameFor(this.sourceRoot, file)));
+        this.sourceModules = new Set(files.map((file) => moduleNameFor(this.sourceRoot, file, this.sourceModulePrefix)));
         const declarations = [];
         for (const file of files) {
           const content = await readFile(file, 'utf8');
           const lines = content.split(/\r?\n/);
           for (let index = 0; index < lines.length; index += 1) {
-            const declaration = declarationFromLine(lines[index], file, this.sourceRoot, index + 1);
+            const declaration = declarationFromLine(lines[index], file, this.sourceRoot, index + 1, this.sourceModulePrefix);
             if (declaration) declarations.push(declaration);
           }
         }
@@ -411,7 +443,7 @@ export class MathlibSearchService {
     const declarations = await this.#loadSourceIndex();
     const tokens = queryTokens(query);
     const matched = declarations
-      .filter((declaration) => !module || declaration.module === module || declaration.module.startsWith(`${module}.`))
+      .filter((declaration) => !module || moduleMatches(declaration.module, module, this.sourceModulePrefix))
       .filter((declaration) => pathMatches(declaration, path))
       .map((declaration) => {
         const haystack = `${declaration.name} ${declaration.type} ${declaration.module}`.toLowerCase();
