@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildModel } from '@/lib/observation';
 
-const MAX_CLIENT_EVENTS = 6_000;
+const MAX_CLIENT_EVENTS = 4_000;
 const EVENT_BATCH_MS = 300;
 const REQUEST_TIMEOUT_MS = 15_000;
 
