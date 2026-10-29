@@ -326,6 +326,7 @@ export class ObservationStore {
 
   listRecentEvents({
     experimentId,
+    afterSequence = 0,
     executionId = null,
     taskId = null,
     coreId = null,
@@ -339,12 +340,13 @@ export class ObservationStore {
     // The initial dashboard tail is allowed to be larger than one cursor page,
     // while ordinary event pagination remains capped at 1,000 rows.
     validateLimit(limit, 2_000);
+    if (!Number.isInteger(afterSequence) || afterSequence < 0) throw new TypeError('after_sequence must be a non-negative integer');
     if (!['operator', 'agent'].includes(view)) throw new TypeError(`unsupported observation view: ${view}`);
     if (kinds !== null && (!Array.isArray(kinds) || kinds.some((kind) => typeof kind !== 'string' || kind.length === 0))) {
       throw new TypeError('kinds must be an array of non-empty strings');
     }
-    const conditions = ['experiment_id = ?'];
-    const params = [experimentId];
+    const conditions = ['experiment_id = ?', 'sequence > ?'];
+    const params = [experimentId, afterSequence];
     for (const [column, value] of [['execution_id', executionId], ['task_id', taskId], ['core_id', coreId], ['session_id', sessionId], ['source', source]]) {
       if (value !== null) {
         requireString(value, column);

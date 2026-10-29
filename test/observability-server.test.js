@@ -27,6 +27,8 @@ test('ObservabilityServer serves experiment queries and reconstructs Core execut
     { state: 'RUNNING', reason: 'execution_bound', task_id: 'task-1', execution_id: 'exec-1', started_at: '2026-10-20T00:00:00.000Z', ended_at: '2026-10-20T00:00:02.000Z' },
     { state: 'WAITING', reason: 'execution_waiting', task_id: 'task-1', execution_id: 'exec-1', started_at: '2026-10-20T00:00:02.000Z', ended_at: null },
   ]);
+  const resumedTimeline = await fetch(`${url}/api/experiments/run-http/timeline?after_sequence=2`).then((response) => response.json());
+  assert.deepEqual(resumedTimeline.lanes[0].events.map((event) => event.sequence), [4, 5]);
   const overview = await fetch(`${url}/api/experiments/run-http/overview?view=agent`).then((response) => response.json());
   assert.equal(overview.events.length, 4);
   assert.equal(overview.timeline.lanes.length, 1);
