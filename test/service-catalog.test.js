@@ -1,37 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { listServices, listTools, getServiceMetadata } from '../src/sdk/service-catalog.js';
+import { listServices, listTools, getServiceMetadata, listLegacyTools } from '../src/sdk/service-catalog.js';
 import swarmenvExtension from '../src/agent/swarmenv-extension.mjs';
 
-test('Service catalog exposes named tools grouped by Service', () => {
+test('Service catalog exposes the minimal Issue #100 Agent surface', () => {
   const services = listServices();
-  assert.deepEqual(services.map((service) => service.name), ['task', 'execution', 'workspace', 'context', 'judge', 'catalog']);
+  assert.deepEqual(services.map((service) => service.name), ['task', 'workspace', 'context', 'judge', 'catalog']);
   const task = getServiceMetadata('task');
-  assert.ok(task.tools.some((tool) => tool.name === 'task_list'));
-  assert.ok(task.tools.some((tool) => tool.name === 'task_claim'));
-  const structureOperations = [
-    'create_branch_group',
-    'add_required_subtask',
-    'get_task_structure',
-    'propose_structure_change',
-    'explain_task_readiness',
-    'create_rework_task',
-  ];
-  for (const operation of structureOperations) {
-    const tool = task.tools.find((candidate) => candidate.operation === operation);
-    assert.ok(tool, `missing catalog tool for ${operation}`);
-    assert.match(tool.description, /alternative|jointly|required|dependency|provenance|rework/i);
+  for (const name of ['task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close']) {
+    assert.ok(task.tools.some((tool) => tool.name === name), `missing catalog tool for ${name}`);
   }
-  assert.match(task.description, /alternative|subtask|dependency|provenance|rework/i);
+  const context = getServiceMetadata('context');
+  for (const name of ['context_search_materials', 'context_get_material', 'context_publish_material']) {
+    assert.ok(context.tools.some((tool) => tool.name === name), `missing catalog tool for ${name}`);
+  }
   assert.ok(listTools('workspace').some((tool) => tool.name === 'workspace_read_file'));
   assert.ok(listTools('workspace').some((tool) => tool.name === 'workspace_write_file'));
-  assert.ok(listTools('workspace').every((tool) => tool.service === 'workspace'));
   assert.ok(getServiceMetadata('judge').tools.some((tool) => tool.name === 'judge_get_check_result'));
-  assert.ok(getServiceMetadata('catalog').tools.some((tool) => tool.operation === 'get_service_metadata'));
+  assert.equal(getServiceMetadata('execution'), null);
   assert.equal(getServiceMetadata('missing'), null);
+  assert.ok(listLegacyTools('task').some((tool) => tool.name === 'task_create_branch_group'));
 });
 
-test('Pi extension registers one discoverable tool for every Service operation', () => {
+test('Pi extension registers one discoverable tool for every public Service operation', () => {
   const names = [];
   swarmenvExtension({ registerTool(tool) { names.push(tool.name); } });
   for (const tool of listTools()) assert.ok(names.includes(`swarmenv_${tool.name}`), tool.name);
@@ -39,4 +30,6 @@ test('Pi extension registers one discoverable tool for every Service operation',
   assert.ok(names.includes('swarmenv_catalog_get_service_metadata'));
   assert.ok(names.includes('swarmenv_catalog_list_tools'));
   assert.ok(names.includes('swarmenv_call'));
+  assert.equal(names.includes('swarmenv_task_create_branch_group'), false);
+  assert.equal(names.includes('swarmenv_execution_heartbeat'), false);
 });
