@@ -1,34 +1,51 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT } from '../src/agent/agent-prompt.js';
+import test from 'node:test';
+import {
+  BOUND_AGENT_PROMPT,
+  GENERIC_AGENT_PROMPT,
+  IDLE_AGENT_PROMPT,
+  composeAgentPrompt,
+} from '../src/agent/agent-prompt.js';
 
-test('agent prompts make decomposition a queue and capacity decision without a child quota', () => {
-  const prompt = `${GENERIC_AGENT_PROMPT}\n${BOUND_AGENT_PROMPT}\n${IDLE_AGENT_PROMPT}`;
-  assert.match(prompt, /four reusable Core slots/);
-  assert.match(prompt, /scheduler_status/);
-  assert.match(prompt, /task_list with available_only=true/);
-  assert.match(prompt, /genuinely independent/);
-  assert.match(prompt, /(?:one or more|multiple) bounded direct child/);
-  assert.match(prompt, /Do not create children.*quota|without filling a quota/);
-  assert.match(prompt, /(?:If the list contains only waiting responsibilities or is empty, this Core is IDLE|If no Task is claimable, this is IDLE)/);
-  assert.doesNotMatch(prompt, /always create (?:two|three|four|N) children/i);
+const prompts = [GENERIC_AGENT_PROMPT, BOUND_AGENT_PROMPT, IDLE_AGENT_PROMPT];
+
+test('Agent prompts describe one flexible Task workflow and progressive Material publication', () => {
+  const prompt = prompts.join('\n');
+  for (const operation of ['task.create', 'task.complete', 'task.handoff', 'task.block', 'task.close']) {
+    assert.match(prompt, new RegExp(operation.replace('.', '\\.'), 'i'), `prompt should explain ${operation}`);
+  }
+  assert.match(prompt, /search Task summaries/i);
+  assert.match(prompt, /publish.*Material.*progressively/i);
+  assert.match(prompt, /Response Material/i);
+  assert.match(prompt, /Handoff Material/i);
+  assert.match(prompt, /Experience Material/i);
+  assert.match(prompt, /same Task model/i);
 });
 
-test('each Agent prompt teaches the Task structure semantics and rework path', () => {
-  for (const [name, prompt] of [['generic', GENERIC_AGENT_PROMPT], ['idle', IDLE_AGENT_PROMPT], ['bound', BOUND_AGENT_PROMPT]]) {
-    assert.match(prompt, /create_branch_group/, `${name} prompt should name branch creation`);
-    assert.match(prompt, /add_required_subtask/, `${name} prompt should name required subtasks`);
-    assert.match(prompt, /get_task_structure|explain_task_readiness/, `${name} prompt should name structure discovery`);
-    assert.match(prompt, /create_rework_task/, `${name} prompt should name explicit rework`);
-    assert.match(prompt, /alternative|jointly|required|dependency/i, `${name} prompt should explain relationship semantics`);
+test('normal Agent prompts do not expose retired structural or lease vocabulary', () => {
+  const prompt = prompts.join('\n');
+  for (const term of [
+    'create_branch_group', 'add_required_subtask', 'parent_review', 'create_rework_task',
+    'execution.heartbeat', 'execution.release', 'execution.fence', 'request_wait',
+  ]) {
+    assert.doesNotMatch(prompt, new RegExp(term.replace('.', '\\.'), 'i'), `prompt should hide ${term}`);
   }
 });
 
-test('proof prompts keep the locked formalization separate from candidate artifacts', () => {
-  const prompt = `${GENERIC_AGENT_PROMPT}\n${BOUND_AGENT_PROMPT}`;
-  assert.match(prompt, /locked formalization.*read-only input/i);
-  assert.match(prompt, /never publish or submit that input file as a candidate/i);
-  assert.match(prompt, /separate candidate file/i);
-  assert.match(prompt, /read it back/i);
-  assert.match(prompt, /execution_block.*concrete typed dependency/i);
+test('dynamic prompt includes only the bounded execution context supplied by Runtime', () => {
+  const prompt = composeAgentPrompt({
+    mission: { mission_id: 'mission-1', goal: 'solve one problem' },
+    task: { task_id: 'task-1', summary: 'derive a useful lemma', state: 'RUNNING' },
+    materials: [{ material_id: 'material-1', role: 'experience' }],
+    notifications: [{ type: 'material_available', material_id: 'material-2' }],
+    deadline: '2030-01-01T00:30:00.000Z',
+    services: [{ name: 'task', tools: ['task_list', 'task_create'] }],
+    workspace: { workspace_ref: 'workspace-1', revision: 2 },
+  });
+  assert.match(prompt, /mission-1/);
+  assert.match(prompt, /task-1/);
+  assert.match(prompt, /material-2/);
+  assert.match(prompt, /2030-01-01T00:30:00.000Z/);
+  assert.match(prompt, /task_create/);
+  assert.match(prompt, /workspace-1/);
 });

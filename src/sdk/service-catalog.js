@@ -214,13 +214,100 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
 ]);
 
+// The legacy catalog above remains available to internal adapters while the
+// Agent-facing projection is deliberately small.  Runtime lease/liveness
+// operations and the old structural Task vocabulary are not callable tools in
+// a normal bound Agent profile.  The target operations use a stable semantic
+// name even when an adapter temporarily maps them to an older implementation.
+const publicTaskTools = [
+  {
+    name: 'task_list', service: 'task', operation: 'task_list', version: '1.0',
+    description: 'List Mission Tasks and search their short summaries before proposing new work.',
+    scope: 'task-read', side_effect: false,
+    parameters: { type: 'object', properties: { mission_id: { type: 'string' }, query: { type: 'string' }, state: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, additionalProperties: false },
+  },
+  {
+    name: 'task_view', service: 'task', operation: 'task_view', version: '1.0',
+    description: 'Read one Task, its two relations, state, current Execution, and linked Materials.',
+    scope: 'task-read', side_effect: false,
+    parameters: { type: 'object', properties: { task_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_create', service: 'task', operation: 'task_create', version: '1.0',
+    description: 'Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['mission_id', 'summary', 'goal', 'expected_output', 'acceptance_conditions'], properties: { mission_id: { type: 'string' }, summary: { type: 'string' }, goal: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { type: 'array' }, spawned_from: { type: 'string' }, depends_on: { type: 'array', items: { type: 'string' } }, timebox_ms: { type: 'integer', minimum: 1 } }, additionalProperties: false },
+  },
+  {
+    name: 'task_link_material', service: 'task', operation: 'task_link_material', version: '1.0',
+    description: 'Link an immutable Material to a Task with an input, response, handoff, or experience role.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['task_id', 'material_id', 'role'], properties: { task_id: { type: 'string' }, material_id: { type: 'string' }, role: { type: 'string', enum: ['input', 'response', 'handoff', 'experience'] }, receiving_task_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_complete', service: 'task', operation: 'task_complete', version: '1.0',
+    description: 'Complete the current Task when its own contract and required Material or Judge evidence are satisfied.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', properties: { material_ids: { type: 'array', items: { type: 'string' } }, check_result_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_handoff', service: 'task', operation: 'task_handoff', version: '1.0',
+    description: 'Publish and link Handoff Material, then return unfinished work to the Mission queue.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['handoff_material_id'], properties: { handoff_material_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_block', service: 'task', operation: 'task_block', version: '1.0',
+    description: 'Publish and link Handoff Material, record a typed dependency, and stop unfinished work as BLOCKED.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['blocker', 'handoff_material_id'], properties: { blocker: { type: 'object' }, handoff_material_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'task_close', service: 'task', operation: 'task_close', version: '1.0',
+    description: 'Accept a linked Response Material from another Task and close its producer.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['producer_task_id', 'material_id'], properties: { producer_task_id: { type: 'string' }, material_id: { type: 'string' } }, additionalProperties: false },
+  },
+];
+
+const publicContextTools = [
+  {
+    name: 'context_search_materials', service: 'context', operation: 'context_search_materials', version: '1.0',
+    description: 'Search shared immutable Materials by summary, role, Task, producer, or Mission.',
+    scope: 'context-read', side_effect: false,
+    parameters: { type: 'object', properties: { mission_id: { type: 'string' }, query: { type: 'string' }, role: { type: 'string' }, task_id: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, additionalProperties: false },
+  },
+  {
+    name: 'context_get_material', service: 'context', operation: 'context_get_material', version: '1.0',
+    description: 'Read one immutable Material and its producer Task/Execution provenance.',
+    scope: 'context-read', side_effect: false,
+    parameters: { type: 'object', required: ['material_id'], properties: { material_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'context_publish_material', service: 'context', operation: 'context_publish_material', version: '1.0',
+    description: 'Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.',
+    scope: 'context-write', side_effect: true,
+    parameters: { type: 'object', required: ['role', 'content'], properties: { role: { type: 'string', enum: ['response', 'handoff', 'experience'] }, content: {}, summary: { type: 'string' }, receiving_task_id: { type: 'string' } }, additionalProperties: false },
+  },
+];
+
+const publicWorkspaceTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace');
+const publicJudgeTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge');
+const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'catalog');
+const PUBLIC_TOOL_DEFINITIONS = Object.freeze([
+  ...publicTaskTools,
+  ...publicWorkspaceTools,
+  ...publicContextTools,
+  ...publicJudgeTools,
+  ...publicCatalogTools,
+]);
+
 const SERVICE_DEFINITIONS = Object.freeze([
-  { name: 'task', version: '1.0', description: 'Task goals, completion contracts, alternative branches, jointly required subtasks, explicit dependencies, provenance, structure discovery, rework, and explicit claim.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'task') },
-  { name: 'execution', version: '1.0', description: 'Lease, heartbeat, wait and execution responsibility lifecycle.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'execution') },
-  { name: 'workspace', version: '1.0', description: 'Workspace materialization, revisions and checkpoint lineage.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace') },
-  { name: 'context', version: '1.0', description: 'Shared immutable Materials and their provenance.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'context') },
-  { name: 'judge', version: '1.0', description: 'Candidate submission and independent completion checks.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge') },
-  { name: 'catalog', version: '1.0', description: 'Service and named tool discovery metadata.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'catalog') },
+  { name: 'task', version: '1.0', description: 'Mission-scoped Tasks, minimal relations, Material links, and semantic completion.', tools: PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === 'task') },
+  { name: 'workspace', version: '1.0', description: 'Private Execution Workspace files and revisions when the current Task needs them.', tools: PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace') },
+  { name: 'context', version: '1.0', description: 'Shared immutable Materials with producer provenance and collaboration roles.', tools: PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === 'context') },
+  { name: 'judge', version: '1.0', description: 'Candidate submission and independent completion checks for contracts that require them.', tools: PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge') },
+  { name: 'catalog', version: '1.0', description: 'Service and named Agent tool discovery metadata.', tools: PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === 'catalog') },
 ]);
 
 function clone(value) {
@@ -238,8 +325,14 @@ export function getServiceMetadata(name) {
 
 export function listTools(service = null) {
   const tools = service === null
-    ? TOOL_DEFINITIONS
-    : TOOL_DEFINITIONS.filter((tool) => tool.service === service);
+    ? PUBLIC_TOOL_DEFINITIONS
+    : PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === service);
+  return clone(tools);
+}
+
+/** Internal adapters can inspect the pre-#100 catalog without exposing it to Agents. */
+export function listLegacyTools(service = null) {
+  const tools = service === null ? TOOL_DEFINITIONS : TOOL_DEFINITIONS.filter((tool) => tool.service === service);
   return clone(tools);
 }
 
