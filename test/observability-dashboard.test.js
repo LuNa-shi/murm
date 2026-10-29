@@ -7,6 +7,8 @@ const dashboardSource = await readFile(new URL('../src/observability/public/app.
 const stylesheet = await readFile(new URL('../src/observability/public/styles.css', import.meta.url), 'utf8');
 const page = await readFile(new URL('../src/observability/public/index.html', import.meta.url), 'utf8');
 const observationHook = await readFile(new URL('../src/observability/client/hooks/use-observation.js', import.meta.url), 'utf8');
+const appSource = await readFile(new URL('../src/observability/client/App.jsx', import.meta.url), 'utf8');
+const traceSource = await readFile(new URL('../src/observability/client/components/ui/trace.jsx', import.meta.url), 'utf8');
 
 function fixtureEvents() {
   return [
@@ -47,6 +49,11 @@ test('generated Observation frontend keeps the server contract and redacted UI b
   assert.doesNotMatch(observationHook, /setInterval\(/, 'registry updates should use SSE or a long-change request, not short polling');
   assert.match(dashboardSource, /Registry updates arrive over live SSE/);
   assert.match(dashboardSource, /trace-span/);
+  for (const path of ['executions', 'tasks', 'materials', 'diagnostics', 'services']) assert.match(appSource, new RegExp(`'${path}'`));
+  assert.match(appSource, /selectExperiment/);
+  assert.match(appSource, /swarmenv-theme/);
+  assert.match(appSource, /onExecution/);
+  assert.match(traceSource, /trace-span/);
   assert.match(stylesheet, /--primary/);
   assert.match(stylesheet, /\.data-table/);
   assert.match(stylesheet, /\.trace-span/);
