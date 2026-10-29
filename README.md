@@ -61,8 +61,11 @@ HTTP API; explicit process management or `SIGTERM` is required to stop it.
 
 Repeat `--root` for additional explicit experiment roots, or use
 `--scan-root` for a directory whose immediate worktree children each contain
-an `experiments/` directory. The server discovers each root's shared
-`.observability/observability.sqlite` and shallow per-experiment databases,
+an `experiments/` directory. When `--root` points at `<repository>/experiments`,
+the server also discovers the conventional `<repository>/.worktrees` and
+`<repository>/.worktree` roots automatically; an explicit `--scan-root` remains
+useful for worktrees stored elsewhere. The server discovers each root's shared
+`.observability/observability.sqlite` and bounded nested per-experiment databases,
 then presents them through the same registry and detail routes.
 
 On the current server the daemon is installed as the user service

@@ -56,9 +56,26 @@ function isDirectory(path) {
   try { return statSync(path).isDirectory(); } catch { return false; }
 }
 
+function inferRepositoryWorktreeRoots(options) {
+  const scanRoots = new Set(options.scanRoots.map((root) => resolve(root)));
+  const experimentRoots = [options.root, ...options.additionalRoots];
+  for (const root of experimentRoots) {
+    const repositoryRoot = dirname(resolve(root));
+    if (!isDirectory(repositoryRoot)) continue;
+    for (const name of ['.worktrees', '.worktree']) {
+      const candidate = join(repositoryRoot, name);
+      // Keep the conventional path even before the directory exists. The
+      // registry rescan can then discover a worktree created while the daemon
+      // is already serving an open dashboard.
+      scanRoots.add(candidate);
+    }
+  }
+  return [...scanRoots];
+}
+
 function discoverExperimentRoots(options) {
   const roots = new Set([resolve(options.root), ...options.additionalRoots.map((root) => resolve(root))]);
-  for (const scanRoot of options.scanRoots.map((root) => resolve(root))) {
+  for (const scanRoot of options.scanRoots) {
     if (!isDirectory(scanRoot)) continue;
     if (basename(scanRoot) === 'experiments' || isDirectory(join(scanRoot, '.observability'))) roots.add(scanRoot);
     let entries = [];
@@ -72,6 +89,8 @@ function discoverExperimentRoots(options) {
   return [...roots];
 }
 
+const MAX_DATABASE_SCAN_DEPTH = 5;
+
 function collectObservationDatabases(directory, depth, databases) {
   let entries;
   try { entries = readdirSync(directory, { withFileTypes: true }); } catch { return; }
@@ -84,7 +103,7 @@ function collectObservationDatabases(directory, depth, databases) {
 
 function discoverObservationDatabases(options) {
   const databases = new Set();
-  for (const root of discoverExperimentRoots(options)) collectObservationDatabases(root, 2, databases);
+  for (const root of discoverExperimentRoots(options)) collectObservationDatabases(root, MAX_DATABASE_SCAN_DEPTH, databases);
   return [...databases];
 }
 
@@ -95,6 +114,7 @@ async function writeMetadata(path, metadata) {
 }
 
 const options = optionsFromArgs(process.argv.slice(2));
+options.scanRoots = inferRepositoryWorktreeRoots(options);
 const experimentRoots = discoverExperimentRoots(options);
 const experimentRoot = experimentRoots[0];
 const experimentDir = options.experimentDir ? resolve(options.experimentDir) : null;
