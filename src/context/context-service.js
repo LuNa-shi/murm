@@ -180,7 +180,7 @@ export class ContextService {
     const materialId = filters.material_id ?? filters.materialId ?? null;
     const kind = filters.kind ?? null;
     const scope = filters.scope ?? null;
-    const sourceTask = filters.source_task ?? filters.sourceTask ?? null;
+    const sourceTask = filters.source_task ?? filters.sourceTask ?? filters.task_id ?? filters.taskId ?? null;
     const sourceExecution = filters.source_execution ?? filters.sourceExecution ?? null;
     const role = filters.role ?? null;
     const query = filters.query ?? filters.search ?? null;
@@ -264,7 +264,7 @@ export class ContextService {
     const provenance = payload.provenance ? { ...payload.provenance } : { actor_ref: envelope.actor_ref };
     provenance.role ??= role;
     const missionId = payload.mission_id ?? payload.missionId
-      ?? (typeof this.taskService?.getTask === 'function' ? this.taskService.getTask(envelope.task_id)?.mission_id : null)
+      ?? (envelope.task_id && typeof this.taskService?.getTask === 'function' ? this.taskService.getTask(envelope.task_id)?.mission_id : null)
       ?? null;
     if (missionId !== null) {
       requireString(missionId, 'mission_id');
