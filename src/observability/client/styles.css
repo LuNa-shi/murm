@@ -95,7 +95,7 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
 .queue-item::after { content: ''; position: absolute; inset: 0 auto 0 -35%; width: 35%; background: linear-gradient(90deg, transparent, hsl(var(--primary) / 10%), transparent); transform: translateX(0); pointer-events: none; }
 .queue-item:hover::after { animation: queue-sheen .8s ease-out forwards; }
 @keyframes queue-sheen { to { transform: translateX(385%); } }
-@media (prefers-reduced-motion: reduce) { .trace-lane, .trace-span-active, .queue-item::after { animation: none !important; transition: none !important; transform: none !important; } }
+@media (prefers-reduced-motion: reduce) { .trace-lane, .trace-span-active, .queue-item::after, .skeleton-line, .animate-spin, .animate-pulse { animation: none !important; transition: none !important; transform: none !important; } }
 .legend-swatch { display: inline-block; height: 7px; width: 7px; border-radius: 2px; }
 .skeleton-line { display: block; height: 10px; width: 100%; border-radius: 99px; background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--border)) 50%, hsl(var(--muted)) 75%); background-size: 200% 100%; animation: skeleton 1.5s infinite; }
 @keyframes skeleton { to { background-position: -200% 0; } }

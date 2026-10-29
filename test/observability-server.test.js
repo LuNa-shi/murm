@@ -256,3 +256,34 @@ test('ObservabilityServer serves a recent overview window for large Experiments'
     store.close();
   }
 });
+
+test('ObservabilityServer preserves active Core lanes beyond the recent timeline window', async () => {
+  const store = new ObservationStore();
+  store.registerExperiment({ experimentId: 'run-active-lane' });
+  store.append({
+    experimentId: 'run-active-lane', sequence: 1, source: 'runtime', kind: 'execution_assigned',
+    coreId: 'core-1', taskId: 'task-1', executionId: 'execution-1', sessionId: 'session-1', payload: { state: 'RUNNING' },
+  });
+  for (let sequence = 2; sequence <= 1_002; sequence += 1) {
+    store.append({
+      experimentId: 'run-active-lane', sequence, source: 'runtime', kind: 'core_state_changed',
+      coreId: 'core-1', taskId: 'task-1', executionId: 'execution-1', payload: { state: 'RUNNING' },
+    });
+  }
+  const server = new ObservabilityServer({ observationStore: store });
+  const { url } = await server.start();
+  try {
+    const timeline = await fetch(`${url}/api/experiments/run-active-lane/timeline`).then((response) => response.json());
+    assert.equal(timeline.lanes.length, 1);
+    assert.deepEqual(timeline.lanes[0].segments, [{
+      execution_id: 'execution-1', task_id: 'task-1', session_id: 'session-1',
+      started_at: timeline.lanes[0].segments[0].started_at, ended_at: null, state: 'RUNNING',
+    }]);
+    const overview = await fetch(`${url}/api/experiments/run-active-lane/overview`).then((response) => response.json());
+    assert.equal(overview.timeline.lanes[0].segments[0].execution_id, 'execution-1');
+    assert.equal(overview.timeline.lanes[0].segments[0].ended_at, null);
+  } finally {
+    await server.stop();
+    store.close();
+  }
+});

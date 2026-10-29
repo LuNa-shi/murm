@@ -389,6 +389,45 @@ export class ObservationStore {
     return { events: [...unique.values()].sort((left, right) => left.sequence - right.sequence).slice(-limit).map((row) => rowToEvent(row, view)) };
   }
 
+  listActiveTimelineEvents({ experimentId, view = 'operator', limit = 1_000 } = {}) {
+    requireString(experimentId, 'experiment_id');
+    validateLimit(limit, 2_000);
+    if (!['operator', 'agent'].includes(view)) throw new TypeError(`unsupported observation view: ${view}`);
+    const rows = this.db.prepare(`
+      WITH latest_assignments AS (
+        SELECT * FROM (
+          SELECT observation_events.*, ROW_NUMBER() OVER (PARTITION BY execution_id ORDER BY sequence DESC) AS entity_rank
+          FROM observation_events
+          WHERE experiment_id = ? AND kind = 'execution_assigned' AND execution_id IS NOT NULL
+        )
+        WHERE entity_rank = 1
+      ), latest_releases AS (
+        SELECT * FROM (
+          SELECT observation_events.*, ROW_NUMBER() OVER (PARTITION BY execution_id ORDER BY sequence DESC) AS entity_rank
+          FROM observation_events
+          WHERE experiment_id = ? AND kind = 'execution_released' AND execution_id IS NOT NULL
+        )
+        WHERE entity_rank = 1
+      ), latest_states AS (
+        SELECT * FROM (
+          SELECT observation_events.*, ROW_NUMBER() OVER (PARTITION BY core_id ORDER BY sequence DESC) AS entity_rank
+          FROM observation_events
+          WHERE experiment_id = ? AND kind = 'core_state_changed' AND core_id IS NOT NULL
+        )
+        WHERE entity_rank = 1
+      )
+      SELECT assignment.*
+      FROM latest_assignments assignment
+      LEFT JOIN latest_releases release ON release.execution_id = assignment.execution_id
+      WHERE release.sequence IS NULL OR assignment.sequence > release.sequence
+      UNION ALL
+      SELECT state.* FROM latest_states state
+      ORDER BY sequence DESC
+      LIMIT ?
+    `).all(experimentId, experimentId, experimentId, limit);
+    return { events: rows.reverse().map((row) => rowToEvent(row, view)) };
+  }
+
   #transaction(callback) {
     this.db.exec('BEGIN IMMEDIATE');
     try {

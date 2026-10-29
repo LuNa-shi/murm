@@ -1314,18 +1314,33 @@ export class ObservabilityServer {
 
   #timeline(experimentId, url) {
     const filters = this.#eventFilters(url);
-    const events = this.observationStore.listRecentEvents({
+    const recentEvents = this.observationStore.listRecentEvents({
       experimentId,
       ...filters,
       kinds: ['core_state_changed', 'execution_assigned', 'execution_released'],
       limit: TIMELINE_RECENT_EVENTS,
     }).events;
+    // A long-running Execution may have been assigned before the recent
+    // window while still owning a Core. Seed that assignment and each Core's
+    // latest state so the waterfall keeps showing active lanes without
+    // replaying the full lifecycle history.
+    const activeSeeds = this.observationStore.listActiveTimelineEvents({
+      experimentId,
+      view: 'agent',
+      limit: TIMELINE_RECENT_EVENTS,
+    }).events.filter((event) => event.sequence > filters.afterSequence);
+    const events = [...new Map([...activeSeeds, ...recentEvents].map((event) => [event.event_id, event])).values()]
+      .filter((event) => !filters.coreId || event.core_id === filters.coreId)
+      .filter((event) => !filters.sessionId || event.session_id === filters.sessionId)
+      .filter((event) => !filters.taskId || event.task_id === filters.taskId)
+      .filter((event) => !filters.source || event.source === filters.source)
+      .sort((left, right) => left.sequence - right.sequence);
     const lanes = new Map();
     for (const event of events) {
       if (!event.core_id) continue;
       if (!lanes.has(event.core_id)) lanes.set(event.core_id, { core_id: event.core_id, events: [], segments: [], states: [] });
       const lane = lanes.get(event.core_id);
-      lane.events.push(event);
+      if (event.sequence > filters.afterSequence) lane.events.push(event);
       if (event.kind === 'core_state_changed') {
         const previous = [...lane.states].reverse().find((candidate) => candidate.ended_at === null);
         if (previous) previous.ended_at = event.occurred_at;
