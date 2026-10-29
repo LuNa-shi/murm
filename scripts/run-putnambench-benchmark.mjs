@@ -127,6 +127,7 @@ function optionsFromArgs(argv) {
     model: process.env.NUROUTER_PI_MODEL,
     provider: process.env.NUROUTER_PI_PROVIDER,
     parallelMode: 'legacy',
+    normalFlow: process.env.SWARMENV_NORMAL_FLOW === 'true',
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -135,7 +136,6 @@ function optionsFromArgs(argv) {
       continue;
     }
     const [key, inline] = arg.split('=', 2);
-    const value = inline ?? argv[++index];
     const fields = {
       '--problems': 'configPath',
       '--putnambench-root': 'putnamBenchRoot',
@@ -154,8 +154,14 @@ function optionsFromArgs(argv) {
       '--model': 'model',
       '--provider': 'provider',
       '--parallel-mode': 'parallelMode',
+      '--normal-flow': 'normalFlow',
     };
     if (!fields[key]) throw new Error(`unknown option: ${arg}`);
+    if (fields[key] === 'normalFlow') {
+      options.normalFlow = inline === undefined ? true : inline !== 'false';
+      continue;
+    }
+    const value = inline ?? argv[++index];
     options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'turnTimeoutMs', 'observabilityPort'].includes(fields[key])
       ? Number(value)
       : value;
@@ -173,6 +179,7 @@ function usage() {
     '    --project-parallelism 3',
     '    --timebox-ms 3600000',
     '    --parallel-mode semantic|legacy|root-only',
+    '    --normal-flow',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
     '    --report-dir reports/putnambench-runs/run-<id>',
