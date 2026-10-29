@@ -40,15 +40,18 @@ test('persistent observability discovers repository .worktrees and .worktree exp
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-worktree-discovery-'));
   const primaryDatabase = join(root, 'experiments', '.observability', 'observability.sqlite');
   const pluralDatabase = join(root, '.worktrees', 'feature-plural', 'experiments', 'run-plural', '.observability', 'observability.sqlite');
+  const deepDatabase = join(root, '.worktrees', 'feature-plural', 'experiments', 'group', 'run-deep', '.observability', 'observability.sqlite');
   const singularDatabase = join(root, '.worktree', 'feature-singular', 'experiments', '.observability', 'observability.sqlite');
   await Promise.all([
     mkdir(join(root, 'experiments', '.observability'), { recursive: true }),
     mkdir(join(root, '.worktrees', 'feature-plural', 'experiments', 'run-plural', '.observability'), { recursive: true }),
+    mkdir(join(root, '.worktrees', 'feature-plural', 'experiments', 'group', 'run-deep', '.observability'), { recursive: true }),
     mkdir(join(root, '.worktree', 'feature-singular', 'experiments', '.observability'), { recursive: true }),
   ]);
   for (const [database, experimentId] of [
     [primaryDatabase, 'run-primary'],
     [pluralDatabase, 'run-plural'],
+    [deepDatabase, 'run-deep'],
     [singularDatabase, 'run-singular'],
   ]) {
     const store = new ObservationStore(database);
@@ -60,7 +63,7 @@ test('persistent observability discovers repository .worktrees and .worktree exp
     const registry = await fetch(`${startup.url}/api/experiments`).then((response) => response.json());
     assert.deepEqual(
       registry.experiments.map((experiment) => experiment.experiment_id).sort(),
-      ['run-plural', 'run-primary', 'run-singular'],
+      ['run-deep', 'run-plural', 'run-primary', 'run-singular'],
     );
     assert.ok(startup.scan_roots.includes(join(root, '.worktrees')));
     assert.ok(startup.scan_roots.includes(join(root, '.worktree')));

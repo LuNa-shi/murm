@@ -85,6 +85,8 @@ function discoverExperimentRoots(options) {
   return [...roots];
 }
 
+const MAX_DATABASE_SCAN_DEPTH = 5;
+
 function collectObservationDatabases(directory, depth, databases) {
   let entries;
   try { entries = readdirSync(directory, { withFileTypes: true }); } catch { return; }
@@ -97,7 +99,7 @@ function collectObservationDatabases(directory, depth, databases) {
 
 function discoverObservationDatabases(options) {
   const databases = new Set();
-  for (const root of discoverExperimentRoots(options)) collectObservationDatabases(root, 2, databases);
+  for (const root of discoverExperimentRoots(options)) collectObservationDatabases(root, MAX_DATABASE_SCAN_DEPTH, databases);
   return [...databases];
 }
 

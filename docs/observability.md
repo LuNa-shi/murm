@@ -103,6 +103,11 @@ exist. This covers Git worktrees created by the repository tooling without
 requiring each runner to start another observation daemon. Use `--scan-root`
 for worktrees kept outside the repository.
 
+Database discovery descends a bounded number of directories below each
+`experiments/` root, so grouped layouts such as
+`experiments/<suite>/<run>/.observability/observability.sqlite` remain visible
+without recursively walking unrelated repository content.
+
 Every Execution segment carries its Workspace reference, current revision,
 content hash, file manifest, and revision history. A selected segment opens
 its ordered Interaction events and Workspace projection together. A standalone
