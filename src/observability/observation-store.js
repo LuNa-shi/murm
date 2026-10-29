@@ -535,6 +535,11 @@ export class ObservationStoreCollection {
     return store?.listLatestEntityEvents(options) ?? { events: [] };
   }
 
+  listActiveTimelineEvents(options = {}) {
+    const store = this.#storeFor(options.experimentId);
+    return store?.listActiveTimelineEvents(options) ?? { events: [] };
+  }
+
   close() {
     for (const store of this.stores) store.close();
     this.stores = [];

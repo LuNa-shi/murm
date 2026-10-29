@@ -98,11 +98,13 @@ test('ObservationStoreCollection merges experiments and routes events across wor
   const second = new ObservationStore(join(root, 'worktree-b', '.observability', 'observability.sqlite'));
   first.registerExperiment({ experimentId: 'worktree-a-run', status: 'RUNNING' });
   first.append({ experimentId: 'worktree-a-run', source: 'runtime', kind: 'session_started', payload: {} });
+  first.append({ experimentId: 'worktree-a-run', source: 'runtime', kind: 'execution_assigned', coreId: 'core-a', executionId: 'execution-a', payload: { state: 'RUNNING' } });
   second.registerExperiment({ experimentId: 'worktree-b-run', status: 'CREATED' });
   second.append({ experimentId: 'worktree-b-run', source: 'runtime', kind: 'experiment_started', payload: {} });
   const collection = new ObservationStoreCollection({ stores: [first, second] });
   assert.deepEqual(collection.listExperiments({ limit: 10 }).map((experiment) => experiment.experiment_id).sort(), ['worktree-a-run', 'worktree-b-run']);
-  assert.equal(collection.countEvents('worktree-a-run'), 1);
+  assert.equal(collection.countEvents('worktree-a-run'), 2);
+  assert.equal(collection.listActiveTimelineEvents({ experimentId: 'worktree-a-run' }).events[0].kind, 'execution_assigned');
   assert.equal(collection.listEvents({ experimentId: 'worktree-b-run' }).events[0].kind, 'experiment_started');
   assert.ok(collection.watchPaths().some((path) => path.endsWith('worktree-a/.observability')));
   collection.close();
