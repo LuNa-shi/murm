@@ -155,6 +155,16 @@ function parseJson(value) {
 }
 
 const COMPATIBILITY_TOOL_NAMES = new Map(listTools().map((tool) => [tool.operation, `swarmenv_${tool.name}`]));
+// Older sanitized event streams use the transport operation names while the
+// current catalog uses semantic names. Keep the dashboard projection stable
+// without re-exposing those aliases to the Agent.
+for (const [legacy, semantic] of Object.entries({
+  publish_material: 'swarmenv_context_publish',
+  read_materials: 'swarmenv_context_search_materials',
+  consume_materials: 'swarmenv_context_consume',
+  get_task: 'swarmenv_task_get',
+  get_execution: 'swarmenv_execution_get',
+})) COMPATIBILITY_TOOL_NAMES.set(legacy, semantic);
 
 function rawToolName(record) {
   return record?.toolName ?? record?.tool_name ?? record?.name ?? null;

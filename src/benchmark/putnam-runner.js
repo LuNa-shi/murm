@@ -1394,6 +1394,7 @@ function projectReport(state, startedAt, deadline) {
   const decompositionAvailable = childTaskCount > 0;
   const lifecycle = lifecycleEvents(state.taskService);
   const taskLifecycle = taskLifecycleEvents(state.taskService);
+  const notifications = state.taskService.listNotifications?.({ missionId: state.missionId }) ?? [];
   const admissionEvents = taskLifecycle.filter((event) => ADMISSION_OPERATIONS.has(event.operation));
   const narratives = executionNarratives(state, taskTree, materials);
   const invalidWaitAttemptCount = cores.reduce((count, core) => count + (core.toolErrors ?? []).filter((error) =>
@@ -1519,6 +1520,22 @@ function projectReport(state, startedAt, deadline) {
         action_ref: row.action_ref,
         created_at: row.created_at,
       })),
+      notifications: notifications.map((notification) => ({
+        notification_id: notification.notification_id,
+        delivery_key: notification.delivery_key,
+        mission_id: notification.mission_id,
+        recipient_task_id: notification.recipient_task_id,
+        recipient_execution_id: notification.recipient_execution_id,
+        notification_type: notification.notification_type,
+        material_id: notification.material_id,
+        source_task_id: notification.source_task_id,
+        source_execution_id: notification.source_execution_id,
+        delivery_attempts: notification.delivery_attempts,
+        delivered_at: notification.delivered_at,
+        delivered_execution_id: notification.delivered_execution_id,
+        created_at: notification.created_at,
+      })),
+      notification_count: notifications.length,
       project_material_count: materials.filter((material) => material.source_task === state.rootTaskId).length,
       candidate_count: cores.reduce((count, core) => count + core.checks.length, 0),
       ended_early: state.stopOnSolved && state.solvedAt !== null,

@@ -1,12 +1,11 @@
 import { listTools } from '../sdk/service-catalog.js';
 
+// `swarmenv_call` is retained as a transport fallback, but its advertised
+// enum is the same semantic surface as the named tools.  Legacy operations
+// remain callable only by explicitly constructed internal/legacy bridges and
+// are not presented to a new Agent session.
 const OPERATIONS = [
-  'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
-  'context_search_materials', 'context_get_material', 'context_publish_material',
-  'list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'get_task', 'get_execution',
-  'select_task', 'claim', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task', 'accept_task', 'request_rework', 'get_check_result', 'list_claimable_tasks',
-  'get_workspace', 'list_workspace_revisions', 'list_workspace_files', 'read_workspace_file', 'write_workspace_file', 'workspace_diff', 'list_executions',
-  'read_materials', 'consume_materials', 'publish_material', 'submit_candidate', 'heartbeat', 'request_wait', 'block_execution',
+  ...new Set([...listTools().map((tool) => tool.operation), 'select_task']),
 ];
 
 function text(value) {

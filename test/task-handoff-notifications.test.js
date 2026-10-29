@@ -27,7 +27,7 @@ function setup() {
   return { database, contextService, taskService };
 }
 
-function makeTask(taskService, missionId, taskId, summary = taskId) {
+function makeTask(taskService, missionId, taskId, summary = taskId, overrides = {}) {
   return taskService.dispatch('task.create', {
     mission_id: missionId,
     task_id: taskId,
@@ -35,6 +35,7 @@ function makeTask(taskService, missionId, taskId, summary = taskId) {
     goal: summary,
     expected_output: 'durable Material',
     acceptance_conditions: ['publish a useful result'],
+    ...overrides,
   }, env(`create:${taskId}`, 'operator:test')).task;
 }
 
@@ -78,17 +79,13 @@ test('semantic handoff requires linked Handoff Material and returns Task to OPEN
       role: 'handoff',
       content: { explored: ['route A'], next_step: 'try route B' },
     }, bound(taskService, task.task_id, 'execution:handoff', 'agent:handoff', 'material:handoff'));
-    taskService.dispatch('task.link_material', {
-      task_id: task.task_id,
-      material_id: material.material.material_id,
-      role: 'handoff',
-    }, bound(taskService, task.task_id, 'execution:handoff', 'agent:handoff', 'link:handoff'));
     const handed = taskService.dispatch('task.handoff', {
       handoff_material_id: material.material.material_id,
     }, bound(taskService, task.task_id, 'execution:handoff', 'agent:handoff', 'handoff:valid'));
     assert.equal(handed.task.state, 'OPEN');
     assert.equal(handed.execution.state, 'HANDED_OFF');
     assert.equal(handed.handoff.material.role, 'handoff');
+    assert.equal(taskService.dispatch('task.materials', { task_id: task.task_id }, env('materials:handoff', 'agent:reader')).links[0].role, 'handoff');
   } finally {
     taskService.close();
   }
@@ -117,6 +114,14 @@ test('semantic block requires Handoff Material, records typed dependency, and re
     assert.equal(taskService.listPendingNotifications(blocked.task_id).length, 0);
 
     const prerequisiteExecution = claim(taskService, prerequisite, 'execution:prerequisite', 'agent:prerequisite');
+    const prerequisiteMaterial = contextService.dispatch('context.publish_material', {
+      role: 'experience', kind: 'fact', scope: 'mission', content: { result: 'prerequisite complete' },
+    }, bound(taskService, prerequisite.task_id, prerequisiteExecution.execution_id, 'agent:prerequisite', 'material:prerequisite'));
+    taskService.dispatch('task.link_material', {
+      task_id: prerequisite.task_id,
+      material_id: prerequisiteMaterial.material.material_id,
+      role: 'experience',
+    }, bound(taskService, prerequisite.task_id, prerequisiteExecution.execution_id, 'agent:prerequisite', 'link:prerequisite'));
     const completed = taskService.dispatch('task.complete', {}, bound(taskService, prerequisite.task_id, prerequisiteExecution.execution_id, 'agent:prerequisite', 'complete:prerequisite'));
     assert.equal(completed.task.state, 'DONE');
     const reopened = taskService.dispatch('reconcile_task', { task_id: blocked.task_id }, env('reconcile:blocked', 'controller:test'));
@@ -245,7 +250,7 @@ test('Runtime deadline warning is a durable notification and expiry records miss
   });
   try {
     taskService.dispatch('mission.create', { mission_id: 'mission:deadline', goal: 'deadline' }, env('mission:deadline', 'operator:test'));
-    const task = makeTask(taskService, 'mission:deadline', 'task:deadline');
+    const task = makeTask(taskService, 'mission:deadline', 'task:deadline', 'task:deadline', { timebox_ms: 60_000 });
     const claimed = claim(taskService, task, 'execution_deadline', 'agent:deadline');
     await runtime.startExecution(claimed.execution_id, { coreId: 'core-deadline' });
     currentTime += 50_000;

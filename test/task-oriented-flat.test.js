@@ -58,7 +58,6 @@ test('ServicesSDK exposes the Mission-scoped Task seam without parent-specific m
   const task = sdk.createTask({
     mission_id: mission.mission_id,
     summary: 'Find one independent route',
-    goal: 'Find one independent route',
     expected_output: 'A route note',
     acceptance_conditions: ['note exists'],
   }, { operationId: 'sdk:task' }).task;
@@ -108,5 +107,22 @@ test('creating a Task from a running Execution leaves the current work running',
   assert.equal(service.getTask(current.task_id).state, 'RUNNING');
   assert.equal(service.getExecution(claimed.execution.execution_id).state, 'CREATED');
   assert.equal(service.getTask(current.task_id).state_version, claimed.task.state_version);
+  service.close();
+});
+
+test('a modern Task with no specialized contract still needs a linked durable result', () => {
+  const { service } = env();
+  const mission = createMission(service, 'mission:completion');
+  const task = createTask(service, mission.mission_id, 'task:completion');
+  const claimed = service.dispatch('claim', {
+    claim_key: 'claim:completion', owner_ref: 'agent:test',
+  }, op('claim:completion', 'agent:test', {
+    taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version,
+  }));
+  assert.throws(() => service.dispatch('task.complete', {}, op('complete:empty', 'agent:test', {
+    taskId: task.task_id, executionId: claimed.execution.execution_id,
+    specVersion: claimed.execution.spec_version, stateVersion: claimed.execution.state_version,
+    fencingVersion: claimed.execution.fencing_version,
+  })), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
   service.close();
 });

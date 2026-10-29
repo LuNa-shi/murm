@@ -22,6 +22,36 @@ const AGENT_OPERATIONS = new Set([
   'list_workspace_files', 'read_workspace_file', 'write_workspace_file', 'workspace_diff',
 ]);
 
+// The compatibility transport remains available to legacy fixtures and
+// internal adapters, but a Mission-scoped Task must use the semantic API.
+// Keeping this gate at the bridge (rather than only hiding catalog entries)
+// prevents an Agent from bypassing the reduced Task-oriented surface by
+// sending a raw swarmenv_call operation.
+const MODERN_RETIRED_OPERATIONS = new Set([
+  'heartbeat', 'request_wait', 'block_execution',
+  'create_child_task', 'create_branch_group', 'add_required_subtask',
+  'get_task_structure', 'propose_structure_change', 'explain_task_readiness',
+  'create_rework_task', 'accept_task', 'request_rework',
+]);
+
+const MODERN_LEGACY_READ_ALIASES = new Set(['get_task', 'get_execution', 'list_tasks', 'list_executions']);
+const WORKSPACE_OPERATIONS = new Set([
+  'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
+  'read_workspace_file', 'write_workspace_file', 'workspace_diff',
+]);
+
+function requiresJudge(task) {
+  const contract = task?.completion_contract ?? {};
+  return Boolean(contract.required_candidate || contract.required_check || task?.task_type === 'proof');
+}
+
+function usesWorkspace(task) {
+  const workspace = task?.workspace;
+  const contract = task?.completion_contract ?? {};
+  return Boolean((workspace && typeof workspace === 'object' && Object.keys(workspace).length > 0) ||
+    contract.requires_workspace === true || contract.required_candidate?.workspace === true);
+}
+
 function json(value) {
   return JSON.stringify(value ?? null);
 }
@@ -271,6 +301,17 @@ export class ServicesBridge {
     try {
       if (!AGENT_OPERATIONS.has(operation)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Agent operation is not allowed: ${operation}`, { operation });
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bridge payload must be an object');
+      const boundTask = this.taskId ? this.taskService.getTask(this.taskId) : null;
+      const modernBoundTask = boundTask?.mission_id ? boundTask : null;
+      if (modernBoundTask && MODERN_RETIRED_OPERATIONS.has(operation)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} is retired from the modern Mission Task Agent surface`, { operation, task_id: modernBoundTask.task_id });
+      }
+      if (modernBoundTask && WORKSPACE_OPERATIONS.has(operation) && !usesWorkspace(modernBoundTask)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
+      }
+      if (modernBoundTask && ['submit_candidate', 'get_check_result'].includes(operation) && !requiresJudge(modernBoundTask)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
+      }
       const service = this.router ?? { dispatch: (name, body, envelope) => {
         if (['get_task', 'get_execution', 'list_tasks', 'list_claimable_tasks', 'list_executions'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
@@ -450,7 +491,11 @@ export class ServicesBridge {
       const options = { operationId: bridgeOperationId };
       let result;
       switch (operation) {
-        case 'get_task': result = sdk.getTask(payload.task_id ?? this.taskId); break;
+        case 'get_task':
+          result = modernBoundTask
+            ? sdk.viewTask(payload.task_id ?? this.taskId).task
+            : sdk.getTask(payload.task_id ?? this.taskId);
+          break;
         case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
         case 'task_list': result = sdk.listMissionTasks(payload); break;
         case 'task_view': result = sdk.viewTask(payload.task_id ?? this.taskId); break;

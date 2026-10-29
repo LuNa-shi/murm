@@ -194,8 +194,8 @@ task.list       list Mission Tasks and search summaries
 task.view       read one Task, relations, state, Execution, and Material links
 task.create     create a substantial Task with a short summary and contract
 task.complete   self-complete the current Task
-task.handoff    link Handoff Material and return the Task to OPEN
-task.block      link Handoff Material and record a typed blocker
+task.handoff    validate/link Handoff Material and return the Task to OPEN
+task.block      validate/link Handoff Material and record a typed Task blocker
 task.close      accept a linked Response Material and close its producer
 ```
 
@@ -224,9 +224,11 @@ second type name.
 - a directed Task: required Response Material link to the receiving Task.
 
 `task.handoff` and `task.block` are both release-and-takeover operations. They
-require Handoff Material linked to the current Task and Execution, end the
-current Execution, and release the Core through the same Runtime protocol. A
-normal handoff returns the Task to `OPEN` so another Execution may claim it.
+require Handoff Material published by the current Task and Execution, validate
+and create its Task link in the same Service transition, end the current
+Execution, and release the Core through the same Runtime protocol. An explicit
+`task.link_material` call is optional and idempotent. A normal handoff returns
+the Task to `OPEN` so another Execution may claim it.
 `task.block` records a concrete typed dependency and leaves the Task
 `BLOCKED` and unclaimable until reopening. It is a specialized handoff outcome,
 not a second ownership model. A bare `execution.release` is not an Agent
@@ -321,12 +323,15 @@ task.block(blocker, handoff_material_id)
 ```
 
 A Handoff Material is mandatory before voluntary handoff, block, or unfinished
-release. It must capture the exploration, reasoning, evidence, checkpoint
-reference when applicable, open questions, and recommended next step. The Agent
-should publish useful Response or Experience Material throughout the work when
-it reaches a durable finding, failed approach, decision, or reusable insight;
-the warning is a last chance to hand off, not the first time Material should
-be written.
+release. The Agent publishes it through Context Service and passes its ID to
+`task.handoff` or `task.block`; Task Service validates producer provenance and
+creates the Task link in the same terminal transition. An explicit
+`task.link_material` call is optional and idempotent. The Material must capture
+the exploration, reasoning, evidence, checkpoint reference when applicable,
+open questions, and recommended next step. The Agent should publish useful
+Response or Experience Material throughout the work when it reaches a durable
+finding, failed approach, decision, or reusable insight; the warning is a last
+chance to hand off, not the first time Material should be written.
 
 At the deadline Runtime may force `EXPIRED` cleanup when the Agent did not
 handoff. The report records a typed timeout, the last durable checkpoint, and

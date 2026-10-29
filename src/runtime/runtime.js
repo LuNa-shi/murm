@@ -48,6 +48,44 @@ function normalizeWaitFiles(files) {
   }));
 }
 
+function taskUsesJudge(task) {
+  const contract = task?.completion_contract ?? {};
+  return Boolean(contract.required_candidate || contract.required_check || task?.task_type === 'proof');
+}
+
+function taskUsesWorkspace(task) {
+  const workspace = task?.workspace;
+  const contract = task?.completion_contract ?? {};
+  return Boolean((workspace && typeof workspace === 'object' && Object.keys(workspace).length > 0) ||
+    contract.requires_workspace === true || contract.required_candidate?.workspace === true);
+}
+
+function modernTaskPromptProjection(task) {
+  if (!task?.mission_id) return task;
+  const contract = task.completion_contract ?? {};
+  return {
+    task_id: task.task_id,
+    mission_id: task.mission_id,
+    summary: task.summary,
+    goal: task.goal,
+    expected_output: task.expected_output,
+    acceptance_conditions: task.acceptance_conditions,
+    validation: {
+      requires_candidate: Boolean(contract.required_candidate),
+      requires_judge: Boolean(contract.required_check),
+      checker: contract.required_check ? {
+        checker_ref: contract.required_check.checker_ref ?? null,
+        checker_version: contract.required_check.checker_version ?? null,
+      } : null,
+    },
+    timebox_ms: task.timebox_ms,
+    state: task.state,
+    state_version: task.state_version,
+    relations: task.relations,
+    materials: task.materials,
+  };
+}
+
 export class Runtime {
   constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
@@ -319,7 +357,7 @@ export class Runtime {
     // same revision would violate the Workspace Manager's monotonic CAS rule.
     let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
     const started = this.taskService.dispatch('start_execution', {
-      ...this.#executionTimingPayload(),
+      ...this.#executionTimingPayload(this.clock(), current),
       ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
     }, this.#executionEnvelope(current, operationId('start')));
     current = started.execution;
@@ -371,7 +409,7 @@ export class Runtime {
     const workspace = await this.#prepareWorkspace(execution, workspaceRef);
     let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
     current = this.taskService.dispatch('start_execution', {
-      ...this.#executionTimingPayload(),
+      ...this.#executionTimingPayload(this.clock(), current),
       ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
     }, this.#executionEnvelope(current, operationId('bind'))).execution;
     let boundSession = session;
@@ -1187,6 +1225,8 @@ export class Runtime {
     // receive the bounded context required by Issue #100.
     if (!task?.mission_id) return { prompt: promptOverride ?? execution.agent_prompt, notifications: [] };
     const mission = this.taskService.getMission?.(task.mission_id) ?? null;
+    const judgeEnabled = taskUsesJudge(task);
+    const workspaceEnabled = taskUsesWorkspace(task);
     const materials = task.materials
       ?? this.taskService.listTaskMaterials?.(task.task_id)?.links
       ?? [];
@@ -1203,17 +1243,21 @@ export class Runtime {
       relations: candidate.relations,
     })) ?? [];
     const notifications = this.taskService.listPendingNotifications?.(task.task_id, execution.execution_id) ?? [];
-    const services = listServices().filter((service) => service.name !== 'workspace').map((service) => ({
+    const services = listServices()
+      .filter((service) => service.name !== 'workspace' && (service.name !== 'judge' || judgeEnabled))
+      .map((service) => ({
       name: service.name,
       version: service.version,
       description: service.description,
-      tools: listTools(service.name).map((tool) => ({ name: tool.name, description: tool.description, scope: tool.scope })),
+      tools: listTools(service.name)
+        .filter((tool) => workspaceEnabled || tool.capability !== 'workspace')
+        .map((tool) => ({ name: tool.name, description: tool.description, scope: tool.scope })),
     }));
     return {
       prompt: composeAgentPrompt({
         staticPrompt: (promptOverride ?? execution.agent_prompt) || undefined,
         mission,
-        task,
+        task: modernTaskPromptProjection(task),
         tasks,
         materials,
         notifications,
@@ -1223,7 +1267,7 @@ export class Runtime {
           execution_deadline: execution.execution_deadline,
         },
         services,
-        workspace: workspace ? {
+        workspace: workspaceEnabled && workspace ? {
           workspace_ref: workspace.workspace_ref,
           workspace_revision: workspace.workspace_revision,
           content_hash: workspace.content_hash,
@@ -1583,12 +1627,16 @@ export class Runtime {
     }
   }
 
-  #executionTimingPayload(at = this.clock()) {
+  #executionTimingPayload(at = this.clock(), execution = null) {
+    const task = execution?.task_id ? this.taskService.getTask(execution.task_id) : null;
+    const taskTimeout = task?.mission_id && Number.isInteger(task.timebox_ms) ? task.timebox_ms : this.executionTimeoutMs;
+    const timeoutMs = Math.max(1, taskTimeout);
+    const reminderMs = Math.min(this.handoffReminderMs, Math.max(1, timeoutMs - 1));
     const startedAt = new Date(at).toISOString();
     return {
       started_at: startedAt,
-      handoff_deadline: new Date(at + this.handoffReminderMs).toISOString(),
-      execution_deadline: new Date(at + this.executionTimeoutMs).toISOString(),
+      handoff_deadline: new Date(at + reminderMs).toISOString(),
+      execution_deadline: new Date(at + timeoutMs).toISOString(),
     };
   }
 }

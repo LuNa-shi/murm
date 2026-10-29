@@ -236,7 +236,7 @@ const publicTaskTools = [
     name: 'task_create', service: 'task', operation: 'task_create', version: '1.0',
     description: 'Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.',
     scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['mission_id', 'summary', 'goal', 'expected_output', 'acceptance_conditions'], properties: { mission_id: { type: 'string' }, summary: { type: 'string' }, goal: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] }, spawned_from: { type: 'string' }, depends_on: { type: 'array', items: { type: 'string' } }, timebox_ms: { type: 'integer', minimum: 1 } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['mission_id', 'summary', 'expected_output', 'acceptance_conditions'], properties: { mission_id: { type: 'string' }, summary: { type: 'string' }, goal: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] }, spawned_from: { type: 'string' }, depends_on: { type: 'array', items: { type: 'string' } }, timebox_ms: { type: 'integer', minimum: 1 } }, additionalProperties: false },
   },
   {
     name: 'task_link_material', service: 'task', operation: 'task_link_material', version: '1.0',
@@ -260,7 +260,7 @@ const publicTaskTools = [
     name: 'task_block', service: 'task', operation: 'task_block', version: '1.0',
     description: 'Publish and link Handoff Material, record a typed dependency, and stop unfinished work as BLOCKED.',
     scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['blocker', 'dependency', 'handoff_material_id'], properties: { blocker: { type: 'object' }, dependency: { type: 'object', description: 'A real Task, Material, or CheckResult prerequisite.' }, handoff_material_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['blocker', 'dependency', 'handoff_material_id'], properties: { blocker: { type: 'object' }, dependency: { type: 'object', description: 'A real prerequisite Task; this first version does not block on Material or CheckResult.' }, handoff_material_id: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'task_close', service: 'task', operation: 'task_close', version: '1.0',
@@ -287,7 +287,13 @@ const publicContextTools = [
     name: 'context_publish_material', service: 'context', operation: 'context_publish_material', version: '1.0',
     description: 'Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.',
     scope: 'context-write', side_effect: true,
-    parameters: { type: 'object', required: ['role', 'content'], properties: { role: { type: 'string', enum: ['response', 'handoff', 'experience'] }, content: {}, summary: { type: 'string' }, receiving_task_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['role', 'content'], properties: {
+      role: { type: 'string', enum: ['response', 'handoff', 'experience'] },
+      kind: { type: 'string', description: 'Material kind, for example fact, experience, failure, or artifact.' },
+      scope: { type: 'string', description: 'The bounded collaboration or proof scope for the Material.' },
+      evidence_state: { type: 'string', enum: ['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale'] },
+      content: {}, summary: { type: 'string' }, receiving_task_id: { type: 'string' },
+    }, additionalProperties: false },
   },
 ];
 

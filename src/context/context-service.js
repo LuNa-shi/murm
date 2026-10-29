@@ -40,6 +40,11 @@ function cloneMaterial(row) {
     // `role` was added after the first Context schema.  Keep reads from old
     // databases deterministic while the constructor migration catches up.
     role: row.role ?? 'experience',
+    // Stable semantic aliases.  The SQLite schema retains the historical
+    // source_* column names, while the public Material contract names the
+    // immutable producer identity explicitly.
+    producer_task_id: row.source_task ?? null,
+    producer_execution_id: row.source_execution ?? null,
     content: parse(row.content_json),
     provenance: parse(row.provenance_json),
   };
@@ -219,12 +224,7 @@ export class ContextService {
       .all(materialId, materialId, kind, kind, scope, scope, sourceTask, sourceTask, sourceExecution, sourceExecution,
         role, role, missionId, missionId, query, query, query);
     if (taskId !== null && this.taskService && explicitSourceTask === null) {
-      let linkedMaterialIds = new Set();
-      try {
-        linkedMaterialIds = new Set(this.db.prepare('SELECT material_id FROM task_material_links WHERE task_id = ?').all(taskId).map((row) => row.material_id));
-      } catch {
-        // Context can be used without Task Service's link table.
-      }
+      const linkedMaterialIds = new Set(this.taskService.listTaskMaterialIds?.(taskId) ?? []);
       rows = rows.filter((row) => row.source_task === taskId || linkedMaterialIds.has(row.material_id));
     }
     // Mission is represented by Task Service rather than duplicated into
@@ -287,9 +287,17 @@ export class ContextService {
     if (payload.content === undefined) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material content is required');
     const provenance = payload.provenance ? { ...payload.provenance } : { actor_ref: envelope.actor_ref };
     provenance.role ??= role;
-    const missionId = payload.mission_id ?? payload.missionId
-      ?? (envelope.task_id && typeof this.taskService?.getTask === 'function' ? this.taskService.getTask(envelope.task_id)?.mission_id : null)
-      ?? null;
+    const boundMissionId = envelope.task_id && typeof this.taskService?.getTask === 'function'
+      ? this.taskService.getTask(envelope.task_id)?.mission_id ?? null
+      : null;
+    const requestedMissionId = payload.mission_id ?? payload.missionId ?? null;
+    if (boundMissionId && requestedMissionId && requestedMissionId !== boundMissionId) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material mission_id must match the current Task Mission', {
+        current_mission_id: boundMissionId,
+        requested_mission_id: requestedMissionId,
+      });
+    }
+    const missionId = requestedMissionId ?? boundMissionId;
     if (missionId !== null) {
       requireString(missionId, 'mission_id');
       provenance.mission_id ??= missionId;
