@@ -306,6 +306,51 @@ export class ObservationStore {
     return row.count;
   }
 
+  latestSequence(experimentId) {
+    requireString(experimentId, 'experiment_id');
+    return this.db.prepare('SELECT COALESCE(MAX(sequence), 0) AS sequence FROM observation_events WHERE experiment_id = ?').get(experimentId).sequence;
+  }
+
+  listCoreIds(experimentId) {
+    requireString(experimentId, 'experiment_id');
+    return this.db.prepare('SELECT DISTINCT core_id FROM observation_events WHERE experiment_id = ? AND core_id IS NOT NULL ORDER BY core_id').all(experimentId).map((row) => row.core_id);
+  }
+
+  listRecentEvents({
+    experimentId,
+    executionId = null,
+    taskId = null,
+    coreId = null,
+    sessionId = null,
+    source = null,
+    kinds = null,
+    view = 'operator',
+    limit = 100,
+  } = {}) {
+    requireString(experimentId, 'experiment_id');
+    validateLimit(limit);
+    if (!['operator', 'agent'].includes(view)) throw new TypeError(`unsupported observation view: ${view}`);
+    if (kinds !== null && (!Array.isArray(kinds) || kinds.some((kind) => typeof kind !== 'string' || kind.length === 0))) {
+      throw new TypeError('kinds must be an array of non-empty strings');
+    }
+    const conditions = ['experiment_id = ?'];
+    const params = [experimentId];
+    for (const [column, value] of [['execution_id', executionId], ['task_id', taskId], ['core_id', coreId], ['session_id', sessionId], ['source', source]]) {
+      if (value !== null) {
+        requireString(value, column);
+        conditions.push(`${column} = ?`);
+        params.push(value);
+      }
+    }
+    if (kinds?.length) {
+      conditions.push(`kind IN (${kinds.map(() => '?').join(', ')})`);
+      params.push(...kinds);
+    }
+    params.push(limit);
+    const rows = this.db.prepare(`SELECT * FROM observation_events WHERE ${conditions.join(' AND ')} ORDER BY sequence DESC LIMIT ?`).all(...params);
+    return { events: rows.reverse().map((row) => rowToEvent(row, view)) };
+  }
+
   #transaction(callback) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -390,9 +435,22 @@ export class ObservationStoreCollection {
     return this.#storeFor(experimentId)?.countEvents(experimentId, options) ?? 0;
   }
 
+  latestSequence(experimentId) {
+    return this.#storeFor(experimentId)?.latestSequence(experimentId) ?? 0;
+  }
+
+  listCoreIds(experimentId) {
+    return this.#storeFor(experimentId)?.listCoreIds(experimentId) ?? [];
+  }
+
   listEvents(options = {}) {
     const store = this.#storeFor(options.experimentId);
     return store?.listEvents(options) ?? { events: [], next_cursor: null, has_more: false };
+  }
+
+  listRecentEvents(options = {}) {
+    const store = this.#storeFor(options.experimentId);
+    return store?.listRecentEvents(options) ?? { events: [] };
   }
 
   close() {
