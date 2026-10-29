@@ -51,7 +51,7 @@ const TASK_EVENT_OPERATIONS = new Set([
   'create_child_task', 'add_required_subtask', 'create_rework_task', 'fence_execution',
   'handoff_execution', 'reconcile_task', 'recover_execution', 'reopen_task', 'request_rework',
   'request_wait', 'resume_execution', 'stop_execution', 'submit_candidate', 'wake_execution',
-  'propose_structure_change', 'propose_task', 'expire_execution',
+  'propose_structure_change', 'propose_task', 'create_task', 'expire_execution',
   'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic',
 ]);
 const TASK_READ_OPERATIONS = new Set([
@@ -368,7 +368,11 @@ export class TaskService {
     );
     const row = this.db.prepare('SELECT * FROM task_notifications WHERE delivery_key = ?').get(deliveryKey);
     const notification = rowToNotification(row);
-    if (row?.notification_id === notificationId) this.#emitNotification(notification);
+    // The queue row is inserted inside the caller's mutation transaction in
+    // several paths. Defer the active-session signal until the current stack
+    // unwinds, after the outer transaction has committed, so a follow-up
+    // cannot race a Material/link read against an uncommitted SQLite write.
+    if (row?.notification_id === notificationId) queueMicrotask(() => this.#emitNotification(notification));
     return notification;
   }
 
@@ -377,7 +381,12 @@ export class TaskService {
     if (executionId !== null) requireString(executionId, 'execution_id');
     return this.db.prepare(`SELECT * FROM task_notifications
       WHERE recipient_task_id = ? AND delivered_at IS NULL
-        AND (recipient_execution_id IS NULL OR recipient_execution_id = ?)
+        AND (recipient_execution_id IS NULL OR recipient_execution_id = ?
+          OR NOT EXISTS (
+            SELECT 1 FROM executions addressed
+            WHERE addressed.execution_id = task_notifications.recipient_execution_id
+              AND addressed.state IN ('CREATED', 'RUNNING', 'WAITING')
+          ))
       ORDER BY created_at, notification_id`).all(taskId, executionId).map(rowToNotification);
   }
 
@@ -387,7 +396,10 @@ export class TaskService {
     const existing = this.db.prepare('SELECT * FROM task_notifications WHERE notification_id = ?').get(notificationId);
     if (!existing) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown notification: ${notificationId}`);
     if (existing.recipient_execution_id && existing.recipient_execution_id !== executionId) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `notification is addressed to another Execution: ${existing.recipient_execution_id}`);
+      const addressed = this.getExecution(existing.recipient_execution_id);
+      if (addressed && ['CREATED', 'RUNNING', 'WAITING'].includes(addressed.state)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `notification is addressed to another active Execution: ${existing.recipient_execution_id}`);
+      }
     }
     const updatedAt = now();
     this.db.prepare(`UPDATE task_notifications
@@ -997,7 +1009,7 @@ export class TaskService {
   #listModernTasks(payload = {}) {
     const missionId = payload.mission_id ?? payload.missionId ?? null;
     if (missionId !== null) requireString(missionId, 'mission_id');
-    const states = payload.states ?? ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED'];
+    const states = payload.states ?? (payload.state ? [payload.state] : ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED']);
     if (!Array.isArray(states) || states.length === 0 || states.some((state) => typeof state !== 'string' || state.length === 0)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'states must contain at least one Task state');
     }
@@ -1040,14 +1052,20 @@ export class TaskService {
     }
     const producerTaskId = requireString(material.source_task, 'material source_task');
     const producerExecutionId = requireString(material.source_execution, 'material source_execution');
-    if (envelope.task_id !== producerTaskId) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the producing Task Execution may create a Material link');
-    }
-    const producerExecution = this.#executionForWrite(envelope);
-    if (producerExecution.task_id !== producerTaskId || producerExecution.execution_id !== producerExecutionId) {
+    const currentTaskId = envelope.task_id;
+    const producerIsCurrent = currentTaskId === producerTaskId;
+    const producerExecution = producerIsCurrent ? this.#executionForWrite(envelope) : null;
+    if (producerExecution && (producerExecution.task_id !== producerTaskId || producerExecution.execution_id !== producerExecutionId)) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material provenance does not match the current Execution');
     }
-    const targetTaskId = payload.task_id ?? payload.receiving_task_id ?? (role === 'handoff' ? producerTaskId : null);
+    // A producer creates directed Response/Handoff links. Any bound Task may
+    // attach already-published Experience or input Material to its own local
+    // Materials area; the immutable producer provenance remains unchanged.
+    if (!producerIsCurrent && !['input', 'experience'].includes(role)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the producing Task Execution may create a Response or Handoff link');
+    }
+    const targetTaskId = payload.task_id ?? payload.receiving_task_id ??
+      (role === 'handoff' ? producerTaskId : ['input', 'experience'].includes(role) ? currentTaskId : null);
     const targetTask = this.getTask(requireString(targetTaskId, 'task_id'));
     if (!targetTask) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown receiving Task: ${targetTaskId}`);
     if (this.#taskMissionId(targetTaskId) !== this.#taskMissionId(producerTaskId)) {
@@ -1058,6 +1076,9 @@ export class TaskService {
       : (payload.receiving_task_id ?? null);
     if (role === 'response' && receivingTaskId === producerTaskId) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Response Material must target a receiving Task');
+    }
+    if (['input', 'experience'].includes(role) && targetTaskId !== currentTaskId) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'input and Experience Material links must target the current Task');
     }
     if (receivingTaskId && receivingTaskId !== targetTaskId) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'receiving_task_id must match task_id');
@@ -1083,22 +1104,29 @@ export class TaskService {
       const recipientExecution = this.db.prepare(`SELECT execution_id FROM executions
         WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')
         ORDER BY attempt_no DESC, created_at DESC LIMIT 1`).get(targetTaskId);
-      this.enqueueNotification({
-        deliveryKey: `material_available:${linkId}`,
-        missionId: this.#taskMissionId(targetTaskId),
-        recipientTaskId: targetTaskId,
-        recipientExecutionId: recipientExecution?.execution_id ?? null,
-        type: 'material_available',
-        materialId,
-        sourceTaskId: producerTaskId,
-        sourceExecutionId: producerExecutionId,
-        payload: {
-          material_id: materialId,
-          producer_task_id: producerTaskId,
-          producer_execution_id: producerExecutionId,
-          receiving_task_id: targetTaskId,
-        },
-      });
+      const missionId = this.#taskMissionId(targetTaskId);
+      // Legacy Tasks use root_id as their scope but do not have a Mission
+      // record. Notifications are a Mission-scoped Issue #100 capability;
+      // keep the legacy material-link path usable without inventing a
+      // notification addressed to a non-existent Mission.
+      if (missionId && this.#getMission(missionId)) {
+        this.enqueueNotification({
+          deliveryKey: `material_available:${linkId}`,
+          missionId,
+          recipientTaskId: targetTaskId,
+          recipientExecutionId: recipientExecution?.execution_id ?? null,
+          type: 'material_available',
+          materialId,
+          sourceTaskId: producerTaskId,
+          sourceExecutionId: producerExecutionId,
+          payload: {
+            material_id: materialId,
+            producer_task_id: producerTaskId,
+            producer_execution_id: producerExecutionId,
+            receiving_task_id: targetTaskId,
+          },
+        });
+      }
     }
     return { link };
   }
@@ -2370,7 +2398,7 @@ export class TaskService {
         .run(updatedAt, updatedAt, taskId);
       const reopened = this.getTask(taskId);
       const missionId = this.#taskMissionId(taskId);
-      if (missionId) {
+      if (missionId && this.#getMission(missionId)) {
         this.enqueueNotification({
           deliveryKey: `task_reopened:${taskId}:${reopened.state_version}`,
           missionId,
@@ -2403,7 +2431,7 @@ export class TaskService {
       .run(updatedAt, updatedAt, taskId);
     const reopened = this.getTask(taskId);
     const missionId = this.#taskMissionId(taskId);
-    if (missionId) {
+    if (missionId && this.#getMission(missionId)) {
       this.enqueueNotification({
         deliveryKey: `task_reopened:${taskId}:${reopened.state_version}`,
         missionId,
@@ -2440,10 +2468,14 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_state must be an Execution terminal state');
     }
     const updatedAt = now();
+    const handoffMetadata = payload.handoff_metadata && typeof payload.handoff_metadata === 'object' && !Array.isArray(payload.handoff_metadata)
+      ? json(payload.handoff_metadata)
+      : null;
     this.db.prepare(`UPDATE executions SET state = ?, fencing_version = fencing_version + 1,
       terminal_reason = ?, checkpoint_ref = COALESCE(?, checkpoint_ref), checkpoint_hash = COALESCE(?, checkpoint_hash),
       workspace_ref = COALESCE(?, workspace_ref), workspace_revision = COALESCE(?, workspace_revision),
-      workspace_content_hash = COALESCE(?, workspace_content_hash), state_version = state_version + 1, updated_at = ?
+      workspace_content_hash = COALESCE(?, workspace_content_hash), handoff_metadata_json = COALESCE(?, handoff_metadata_json),
+      state_version = state_version + 1, updated_at = ?
       WHERE execution_id = ?`).run(
       terminalState,
       reason,
@@ -2452,6 +2484,7 @@ export class TaskService {
       payload.workspace_ref ?? null,
       payload.workspace_revision ?? null,
       payload.workspace_content_hash ?? null,
+      handoffMetadata,
       updatedAt,
       execution.execution_id,
     );

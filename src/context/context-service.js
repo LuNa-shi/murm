@@ -189,7 +189,13 @@ export class ContextService {
     const materialId = filters.material_id ?? filters.materialId ?? null;
     const kind = filters.kind ?? null;
     const scope = filters.scope ?? null;
-    const sourceTask = filters.source_task ?? filters.sourceTask ?? filters.task_id ?? filters.taskId ?? null;
+    const explicitSourceTask = filters.source_task ?? filters.sourceTask ?? null;
+    const taskId = filters.task_id ?? filters.taskId ?? null;
+    // A standalone Context Service has no Task-link table, so task_id keeps
+    // its useful producer lookup there. Once Task Service is attached,
+    // task_id also includes Materials linked to that Task as input, response,
+    // handoff, or experience while source_task remains producer-only.
+    const sourceTask = explicitSourceTask ?? (this.taskService ? null : taskId);
     const sourceExecution = filters.source_execution ?? filters.sourceExecution ?? null;
     const role = filters.role ?? null;
     const query = filters.query ?? filters.search ?? null;
@@ -212,9 +218,18 @@ export class ContextService {
       ORDER BY created_at, material_id`)
       .all(materialId, materialId, kind, kind, scope, scope, sourceTask, sourceTask, sourceExecution, sourceExecution,
         role, role, missionId, missionId, query, query, query);
+    if (taskId !== null && this.taskService && explicitSourceTask === null) {
+      let linkedMaterialIds = new Set();
+      try {
+        linkedMaterialIds = new Set(this.db.prepare('SELECT material_id FROM task_material_links WHERE task_id = ?').all(taskId).map((row) => row.material_id));
+      } catch {
+        // Context can be used without Task Service's link table.
+      }
+      rows = rows.filter((row) => row.source_task === taskId || linkedMaterialIds.has(row.material_id));
+    }
     // Mission is represented by Task Service rather than duplicated into
-    // Context rows.  Resolve this optional filter through source_task when a
-    // Task Service is attached; standalone Context remains queryable by task.
+    // Context rows.  The optional Task filter above joins producer and
+    // consumer links without giving Context Service Task authority.
     return rows.map(cloneMaterial);
   }
 

@@ -236,7 +236,7 @@ const publicTaskTools = [
     name: 'task_create', service: 'task', operation: 'task_create', version: '1.0',
     description: 'Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.',
     scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['mission_id', 'summary', 'goal', 'expected_output', 'acceptance_conditions'], properties: { mission_id: { type: 'string' }, summary: { type: 'string' }, goal: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { type: 'array' }, spawned_from: { type: 'string' }, depends_on: { type: 'array', items: { type: 'string' } }, timebox_ms: { type: 'integer', minimum: 1 } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['mission_id', 'summary', 'goal', 'expected_output', 'acceptance_conditions'], properties: { mission_id: { type: 'string' }, summary: { type: 'string' }, goal: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] }, spawned_from: { type: 'string' }, depends_on: { type: 'array', items: { type: 'string' } }, timebox_ms: { type: 'integer', minimum: 1 } }, additionalProperties: false },
   },
   {
     name: 'task_link_material', service: 'task', operation: 'task_link_material', version: '1.0',
@@ -291,7 +291,13 @@ const publicContextTools = [
   },
 ];
 
-const publicWorkspaceTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace');
+// Workspace is a Runtime-owned capability attached to the bound Task, not a
+// separately registered external Service. Keep the stable workspace tool
+// names for the Agent bridge, but project them under Task with an explicit
+// capability marker so discovery has one Task boundary.
+const publicWorkspaceTools = TOOL_DEFINITIONS
+  .filter((tool) => tool.service === 'workspace')
+  .map((tool) => ({ ...tool, service: 'task', capability: 'workspace' }));
 const publicJudgeTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge');
 const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'catalog');
 const PUBLIC_TOOL_DEFINITIONS = Object.freeze([
@@ -303,8 +309,7 @@ const PUBLIC_TOOL_DEFINITIONS = Object.freeze([
 ]);
 
 const SERVICE_DEFINITIONS = Object.freeze([
-  { name: 'task', version: '1.0', description: 'Mission-scoped Tasks, minimal relations, Material links, and semantic completion.', tools: PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === 'task') },
-  { name: 'workspace', version: '1.0', description: 'Private Execution Workspace files and revisions when the current Task needs them.', tools: PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace') },
+  { name: 'task', version: '1.0', description: 'Mission-scoped Tasks, Material links, semantic completion, and optional Runtime-attached Workspace capability.', tools: PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === 'task') },
   { name: 'context', version: '1.0', description: 'Shared immutable Materials with producer provenance and collaboration roles.', tools: PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === 'context') },
   { name: 'judge', version: '1.0', description: 'Candidate submission and independent completion checks for contracts that require them.', tools: PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge') },
   { name: 'catalog', version: '1.0', description: 'Service and named Agent tool discovery metadata.', tools: PUBLIC_TOOL_DEFINITIONS.filter((tool) => tool.service === 'catalog') },

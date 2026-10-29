@@ -134,3 +134,29 @@ test('response links are queryable and receiving Task closes a producer after DO
   }, bound('close:self', 'agent:producer', producer, taskService.getExecution(producerClaim.execution.execution_id))), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED);
   taskService.close();
 });
+
+test('a receiving Task may attach shared Experience Material without changing producer provenance', () => {
+  const { contextService, taskService } = environment();
+  const mission = createMission(taskService, 'mission:experience-link');
+  const producer = createTask(taskService, mission.mission_id, 'task:experience-producer');
+  const receiver = createTask(taskService, mission.mission_id, 'task:experience-receiver');
+  const producerClaim = claim(taskService, producer, 'execution:experience-producer', 'agent:producer');
+  const experience = contextService.dispatch('context.publish_material', {
+    role: 'experience', kind: 'experience', scope: 'mission',
+    content: { heuristic: 'share this with later work' },
+  }, bound('material:experience-link', 'agent:producer', producer, producerClaim.execution));
+  const receiverClaim = claim(taskService, receiver, 'execution:experience-receiver', 'agent:receiver');
+  const link = taskService.dispatch('task.link_material', {
+    task_id: receiver.task_id,
+    material_id: experience.material.material_id,
+    role: 'experience',
+  }, bound('link:experience-receiver', 'agent:receiver', receiver, receiverClaim.execution));
+  assert.equal(link.link.task_id, receiver.task_id);
+  assert.equal(link.link.producer_task_id, producer.task_id);
+  assert.equal(link.link.producer_execution_id, producerClaim.execution.execution_id);
+  assert.equal(contextService.dispatch('context.search_materials', {
+    mission_id: mission.mission_id,
+    task_id: receiver.task_id,
+  }, envelope('search:experience-receiver', 'agent:receiver')).some((material) => material.material_id === experience.material.material_id), true);
+  taskService.close();
+});

@@ -1180,16 +1180,28 @@ export class Runtime {
     return { execution: current, workspace: nextWorkspace, session };
   }
 
-  #dynamicPromptContext(execution, workspace) {
+  #dynamicPromptContext(execution, workspace, promptOverride = null) {
     const task = this.taskService.getTask(execution.task_id);
     // Legacy Tasks have no Mission record. Keep their exact prompt semantics
     // so compatibility fixtures remain deterministic; modern Mission Tasks
     // receive the bounded context required by Issue #100.
-    if (!task?.mission_id) return { prompt: execution.agent_prompt, notifications: [] };
+    if (!task?.mission_id) return { prompt: promptOverride ?? execution.agent_prompt, notifications: [] };
     const mission = this.taskService.getMission?.(task.mission_id) ?? null;
     const materials = task.materials
       ?? this.taskService.listTaskMaterials?.(task.task_id)?.links
       ?? [];
+    const tasks = this.taskService.listMissionTasks?.({
+      mission_id: task.mission_id,
+      states: ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED'],
+      limit: 32,
+    })?.map((candidate) => ({
+      task_id: candidate.task_id,
+      summary: candidate.summary,
+      state: candidate.state,
+      goal: candidate.goal,
+      expected_output: candidate.expected_output,
+      relations: candidate.relations,
+    })) ?? [];
     const notifications = this.taskService.listPendingNotifications?.(task.task_id, execution.execution_id) ?? [];
     const services = listServices().filter((service) => service.name !== 'workspace').map((service) => ({
       name: service.name,
@@ -1199,9 +1211,10 @@ export class Runtime {
     }));
     return {
       prompt: composeAgentPrompt({
-        staticPrompt: execution.agent_prompt || undefined,
+        staticPrompt: (promptOverride ?? execution.agent_prompt) || undefined,
         mission,
         task,
+        tasks,
         materials,
         notifications,
         deadline: {
@@ -1221,8 +1234,9 @@ export class Runtime {
   }
 
   async #sendInitialPrompt(session, prompt, execution = null, workspace = null) {
-    if (!prompt || typeof session.prompt !== 'function') return;
-    const dynamic = execution ? this.#dynamicPromptContext(execution, workspace) : { prompt, notifications: [] };
+    if (typeof session.prompt !== 'function') return;
+    const dynamic = execution ? this.#dynamicPromptContext(execution, workspace, prompt) : { prompt, notifications: [] };
+    if (!dynamic.prompt) return;
     const send = async () => {
       await session.waitForReady?.({ timeoutMs: 30_000 });
       await session.setAutoCompaction?.(true);

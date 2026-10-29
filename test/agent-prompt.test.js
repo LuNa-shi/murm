@@ -36,6 +36,7 @@ test('dynamic prompt includes only the bounded execution context supplied by Run
   const prompt = composeAgentPrompt({
     mission: { mission_id: 'mission-1', goal: 'solve one problem' },
     task: { task_id: 'task-1', summary: 'derive a useful lemma', state: 'RUNNING' },
+    tasks: [{ task_id: 'task-2', summary: 'check a different route', state: 'OPEN' }],
     materials: [{ material_id: 'material-1', role: 'experience' }],
     notifications: [{ type: 'material_available', material_id: 'material-2' }],
     deadline: '2030-01-01T00:30:00.000Z',
@@ -44,6 +45,7 @@ test('dynamic prompt includes only the bounded execution context supplied by Run
   });
   assert.match(prompt, /mission-1/);
   assert.match(prompt, /task-1/);
+  assert.match(prompt, /task-2/);
   assert.match(prompt, /material-2/);
   assert.match(prompt, /2030-01-01T00:30:00.000Z/);
   assert.match(prompt, /task_create/);

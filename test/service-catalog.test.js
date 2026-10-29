@@ -5,7 +5,7 @@ import swarmenvExtension from '../src/agent/swarmenv-extension.mjs';
 
 test('Service catalog exposes the minimal Issue #100 Agent surface', () => {
   const services = listServices();
-  assert.deepEqual(services.map((service) => service.name), ['task', 'workspace', 'context', 'judge', 'catalog']);
+  assert.deepEqual(services.map((service) => service.name), ['task', 'context', 'judge', 'catalog']);
   const task = getServiceMetadata('task');
   for (const name of ['task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close']) {
     assert.ok(task.tools.some((tool) => tool.name === name), `missing catalog tool for ${name}`);
@@ -14,8 +14,9 @@ test('Service catalog exposes the minimal Issue #100 Agent surface', () => {
   for (const name of ['context_search_materials', 'context_get_material', 'context_publish_material']) {
     assert.ok(context.tools.some((tool) => tool.name === name), `missing catalog tool for ${name}`);
   }
-  assert.ok(listTools('workspace').some((tool) => tool.name === 'workspace_read_file'));
-  assert.ok(listTools('workspace').some((tool) => tool.name === 'workspace_write_file'));
+  assert.equal(getServiceMetadata('workspace'), null, 'Workspace is attached to Task/Runtime, not a standalone Service');
+  assert.ok(listTools('task').some((tool) => tool.name === 'workspace_read_file' && tool.capability === 'workspace'));
+  assert.ok(listTools('task').some((tool) => tool.name === 'workspace_write_file' && tool.capability === 'workspace'));
   assert.ok(getServiceMetadata('judge').tools.some((tool) => tool.name === 'judge_get_check_result'));
   assert.equal(getServiceMetadata('execution'), null);
   assert.equal(getServiceMetadata('missing'), null);
