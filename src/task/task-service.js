@@ -11,7 +11,7 @@ import {
   validateTaskProposal,
 } from './task-types.js';
 
-const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'block_task', 'close_task', 'complete_task', 'expire_execution', 'fence_execution', 'handoff_execution', 'heartbeat', 'link_material', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
+const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'block_task', 'block_task_semantic', 'close_task', 'complete_task', 'expire_execution', 'fence_execution', 'handoff_execution', 'handoff_task', 'heartbeat', 'link_material', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
 const CLAIM_OPERATION = 'claim';
 const MODERN_OPERATION_ALIASES = Object.freeze({
   'mission.create': 'create_mission',
@@ -32,14 +32,18 @@ const MODERN_OPERATION_ALIASES = Object.freeze({
   task_complete: 'complete_task',
   'task.close': 'close_task',
   task_close: 'close_task',
+  'task.handoff': 'handoff_task',
+  task_handoff: 'handoff_task',
+  'task.block': 'block_task_semantic',
+  task_block: 'block_task_semantic',
 });
-const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'complete_task', 'close_task']);
+const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic']);
 const MODERN_READ_OPERATIONS = new Set(['get_mission', 'list_task', 'view_task', 'list_task_materials']);
 const TASK_MUTATING_OPERATIONS = new Set([
   'accept_task', 'apply_check_result', 'create_branch_group', 'create_child_task',
   'add_required_subtask', 'propose_structure_change', 'create_rework_task',
   'propose_task', 'reconcile_task', 'reopen_task', 'request_rework', 'submit_candidate',
-  'link_material', 'complete_task', 'close_task',
+  'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic',
   ...MODERN_MUTATING_OPERATIONS,
 ]);
 const TASK_EVENT_OPERATIONS = new Set([
@@ -48,7 +52,7 @@ const TASK_EVENT_OPERATIONS = new Set([
   'handoff_execution', 'reconcile_task', 'recover_execution', 'reopen_task', 'request_rework',
   'request_wait', 'resume_execution', 'stop_execution', 'submit_candidate', 'wake_execution',
   'propose_structure_change', 'propose_task', 'expire_execution',
-  'link_material', 'complete_task', 'close_task',
+  'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic',
 ]);
 const TASK_READ_OPERATIONS = new Set([
   'get_task', 'get_execution', 'get_task_structure', 'explain_task_readiness',
@@ -148,6 +152,15 @@ function rowToMaterialLink(row, material = null) {
   };
 }
 
+function rowToNotification(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    payload: parse(row.payload_json) ?? {},
+    delivered: row.delivered_at !== null && row.delivered_at !== undefined,
+  };
+}
+
 function requireString(value, field) {
   if (typeof value !== 'string' || value.length === 0) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
@@ -228,6 +241,25 @@ export class TaskService {
     if (!executionColumns.has('handoff_reminder_sent_at')) this.db.exec('ALTER TABLE executions ADD COLUMN handoff_reminder_sent_at TEXT');
     if (!executionColumns.has('handoff_metadata_json')) this.db.exec("ALTER TABLE executions ADD COLUMN handoff_metadata_json TEXT");
     if (!executionColumns.has('terminal_reason')) this.db.exec('ALTER TABLE executions ADD COLUMN terminal_reason TEXT');
+    // Older persistent MVP stores have a CHECK constraint that predates the
+    // semantic HANDED_OFF terminal state.  Rebuild only that table after the
+    // additive column migrations; SQLite cannot alter a CHECK constraint in
+    // place.  The operation is equivalent to the existing Task state
+    // migration and preserves every durable Execution column.
+    const executionTableSql = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'executions'").get()?.sql ?? '';
+    if (executionTableSql && !executionTableSql.includes("'HANDED_OFF'")) {
+      const executionColumnsForMigration = this.db.prepare('PRAGMA table_info(executions)').all().map((column) => column.name);
+      const columnList = executionColumnsForMigration.map((column) => `"${column.replaceAll('"', '""')}"`).join(', ');
+      const migratedSql = executionTableSql.replace(/^CREATE TABLE executions\b/i, 'CREATE TABLE executions_migrated');
+      this.db.exec(`
+        PRAGMA foreign_keys = OFF;
+        ${migratedSql.replace(/state TEXT NOT NULL CHECK \(state IN \([^)]*\)\)/, "state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'))")};
+        INSERT INTO executions_migrated (${columnList}) SELECT ${columnList} FROM executions;
+        DROP TABLE executions;
+        ALTER TABLE executions_migrated RENAME TO executions;
+        PRAGMA foreign_keys = ON;
+      `);
+    }
     this.db.exec("CREATE INDEX IF NOT EXISTS executions_active_core ON executions(core_id, state) WHERE core_id IS NOT NULL AND state IN ('CREATED', 'RUNNING')");
     const admissionPolicyColumns = new Set(this.db.prepare('PRAGMA table_info(task_admission_policies)').all().map((column) => column.name));
     if (!admissionPolicyColumns.has('require_responsibility_key')) {
@@ -242,6 +274,7 @@ export class TaskService {
     this.logger = logger;
     this.executionStateListeners = new Set();
     this.taskEventListeners = new Set();
+    this.notificationListeners = new Set();
     this.admission = this.#normalizeAdmissionPolicy(admission);
   }
 
@@ -277,6 +310,97 @@ export class TaskService {
     if (typeof listener !== 'function') throw new TypeError('task event listener must be a function');
     this.taskEventListeners.add(listener);
     return () => this.taskEventListeners.delete(listener);
+  }
+
+  /** Subscribe Runtime instances to committed lifecycle notifications. */
+  subscribeNotifications(listener) {
+    if (typeof listener !== 'function') throw new TypeError('notification listener must be a function');
+    this.notificationListeners.add(listener);
+    return () => this.notificationListeners.delete(listener);
+  }
+
+  #emitNotification(event) {
+    for (const listener of this.notificationListeners) {
+      try { listener(event); } catch { /* delivery remains durable */ }
+    }
+  }
+
+  /**
+   * Insert a bounded lifecycle notification.  This is intentionally an
+   * internal service seam; Agents receive the resulting fact in their prompt
+   * or follow-up rather than calling a general send-message operation.
+   */
+  enqueueNotification({
+    deliveryKey,
+    missionId,
+    recipientTaskId,
+    recipientExecutionId = null,
+    type,
+    materialId = null,
+    sourceTaskId = null,
+    sourceExecutionId = null,
+    payload = {},
+  } = {}) {
+    requireString(deliveryKey, 'delivery_key');
+    requireString(missionId, 'mission_id');
+    requireString(recipientTaskId, 'recipient_task_id');
+    if (!['handoff_warning', 'material_available', 'task_reopened'].includes(type)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'notification type is unsupported');
+    }
+    if (recipientExecutionId !== null) requireString(recipientExecutionId, 'recipient_execution_id');
+    if (materialId !== null) requireString(materialId, 'material_id');
+    if (sourceTaskId !== null) requireString(sourceTaskId, 'source_task_id');
+    if (sourceExecutionId !== null) requireString(sourceExecutionId, 'source_execution_id');
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'notification payload must be an object');
+    }
+    if (!this.#getMission(missionId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown mission: ${missionId}`);
+    if (!this.getTask(recipientTaskId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown recipient Task: ${recipientTaskId}`);
+    const createdAt = now();
+    const notificationId = randomUUID();
+    this.db.prepare(`INSERT OR IGNORE INTO task_notifications
+      (notification_id, delivery_key, mission_id, recipient_task_id, recipient_execution_id,
+       notification_type, material_id, source_task_id, source_execution_id, payload_json,
+       delivery_attempts, created_at, delivered_at, delivered_execution_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL)`).run(
+      notificationId, deliveryKey, missionId, recipientTaskId, recipientExecutionId,
+      type, materialId, sourceTaskId, sourceExecutionId, json(payload), createdAt,
+    );
+    const row = this.db.prepare('SELECT * FROM task_notifications WHERE delivery_key = ?').get(deliveryKey);
+    const notification = rowToNotification(row);
+    if (row?.notification_id === notificationId) this.#emitNotification(notification);
+    return notification;
+  }
+
+  listPendingNotifications(taskId, executionId = null) {
+    requireString(taskId, 'task_id');
+    if (executionId !== null) requireString(executionId, 'execution_id');
+    return this.db.prepare(`SELECT * FROM task_notifications
+      WHERE recipient_task_id = ? AND delivered_at IS NULL
+        AND (recipient_execution_id IS NULL OR recipient_execution_id = ?)
+      ORDER BY created_at, notification_id`).all(taskId, executionId).map(rowToNotification);
+  }
+
+  markNotificationDelivered(notificationId, executionId) {
+    requireString(notificationId, 'notification_id');
+    requireString(executionId, 'execution_id');
+    const existing = this.db.prepare('SELECT * FROM task_notifications WHERE notification_id = ?').get(notificationId);
+    if (!existing) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown notification: ${notificationId}`);
+    if (existing.recipient_execution_id && existing.recipient_execution_id !== executionId) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `notification is addressed to another Execution: ${existing.recipient_execution_id}`);
+    }
+    const updatedAt = now();
+    this.db.prepare(`UPDATE task_notifications
+      SET delivered_at = ?, delivered_execution_id = ?, delivery_attempts = delivery_attempts + 1
+      WHERE notification_id = ? AND delivered_at IS NULL`).run(updatedAt, executionId, notificationId);
+    const row = this.db.prepare('SELECT * FROM task_notifications WHERE notification_id = ?').get(notificationId);
+    return rowToNotification(row);
+  }
+
+  recordNotificationAttempt(notificationId) {
+    requireString(notificationId, 'notification_id');
+    this.db.prepare('UPDATE task_notifications SET delivery_attempts = delivery_attempts + 1 WHERE notification_id = ? AND delivered_at IS NULL').run(notificationId);
+    return rowToNotification(this.db.prepare('SELECT * FROM task_notifications WHERE notification_id = ?').get(notificationId));
   }
 
   /** Wake reconciliation when a dependency-owned service commits a fact. */
@@ -443,6 +567,14 @@ export class TaskService {
 
   closeTask(payload = {}, envelope) {
     return this.dispatch('close_task', payload, envelope);
+  }
+
+  handoffTask(payload = {}, envelope) {
+    return this.dispatch('handoff_task', payload, envelope);
+  }
+
+  blockTaskSemantic(payload = {}, envelope) {
+    return this.dispatch('block_task_semantic', payload, envelope);
   }
 
   getExecution(executionId) {
@@ -923,7 +1055,7 @@ export class TaskService {
     }
     const receivingTaskId = role === 'response'
       ? requireString(payload.receiving_task_id ?? payload.task_id, 'receiving_task_id')
-      : role === 'handoff' ? '' : (payload.receiving_task_id ?? '');
+      : (payload.receiving_task_id ?? null);
     if (role === 'response' && receivingTaskId === producerTaskId) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Response Material must target a receiving Task');
     }
@@ -931,7 +1063,10 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'receiving_task_id must match task_id');
     }
     const existing = this.db.prepare(`SELECT * FROM task_material_links
-      WHERE task_id = ? AND material_id = ? AND role = ? AND receiving_task_id = ?`).get(targetTaskId, materialId, role, receivingTaskId);
+      WHERE task_id = ? AND material_id = ? AND role = ?
+        AND ((? IS NULL AND receiving_task_id IS NULL) OR receiving_task_id = ?)`).get(
+      targetTaskId, materialId, role, receivingTaskId, receivingTaskId,
+    );
     if (existing) return { link: rowToMaterialLink(existing, material) };
     const linkId = payload.link_id ?? randomUUID();
     requireString(linkId, 'link_id');
@@ -943,7 +1078,29 @@ export class TaskService {
       linkId, targetTaskId, materialId, role, receivingTaskId, producerTaskId,
       producerExecutionId, envelope.task_id, envelope.execution_id, createdAt,
     );
-    return { link: rowToMaterialLink(this.db.prepare('SELECT * FROM task_material_links WHERE link_id = ?').get(linkId), material) };
+    const link = rowToMaterialLink(this.db.prepare('SELECT * FROM task_material_links WHERE link_id = ?').get(linkId), material);
+    if (role === 'response') {
+      const recipientExecution = this.db.prepare(`SELECT execution_id FROM executions
+        WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')
+        ORDER BY attempt_no DESC, created_at DESC LIMIT 1`).get(targetTaskId);
+      this.enqueueNotification({
+        deliveryKey: `material_available:${linkId}`,
+        missionId: this.#taskMissionId(targetTaskId),
+        recipientTaskId: targetTaskId,
+        recipientExecutionId: recipientExecution?.execution_id ?? null,
+        type: 'material_available',
+        materialId,
+        sourceTaskId: producerTaskId,
+        sourceExecutionId: producerExecutionId,
+        payload: {
+          material_id: materialId,
+          producer_task_id: producerTaskId,
+          producer_execution_id: producerExecutionId,
+          receiving_task_id: targetTaskId,
+        },
+      });
+    }
+    return { link };
   }
 
   #completeTask(payload, envelope) {
@@ -1022,6 +1179,83 @@ export class TaskService {
     };
   }
 
+  #assertHandoffMaterial(execution, payload) {
+    const materialId = requireString(payload.handoff_material_id ?? payload.handoffMaterialId, 'handoff_material_id');
+    if (!this.contextService) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Context Service is required for Task handoff');
+    const material = this.contextService.getMaterial(materialId);
+    if (!material) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Handoff Material: ${materialId}`);
+    if (material.role !== 'handoff') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoff_material_id must reference Handoff Material');
+    if (material.source_task !== execution.task_id || material.source_execution !== execution.execution_id) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Handoff Material provenance does not match the current Execution');
+    }
+    const link = this.db.prepare(`SELECT * FROM task_material_links
+      WHERE task_id = ? AND material_id = ? AND role = 'handoff'
+        AND producer_task_id = ? AND producer_execution_id = ?`).get(
+      execution.task_id, materialId, execution.task_id, execution.execution_id,
+    );
+    if (!link) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Handoff Material must be linked to the current Task before release');
+    return { material, link };
+  }
+
+  #handoffTask(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    if (execution.owner_ref !== envelope.actor_ref) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the current Task Execution owner may hand off the Task');
+    }
+    if (!['CREATED', 'RUNNING'].includes(execution.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot hand off Execution from ${execution.state}`);
+    }
+    const { material, link } = this.#assertHandoffMaterial(execution, payload);
+    const updatedAt = now();
+    const metadata = {
+      ...(payload.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata) ? payload.metadata : {}),
+      handoff_material_id: material.material_id,
+      kind: 'voluntary_handoff',
+    };
+    this.db.prepare(`UPDATE executions SET state = 'HANDED_OFF', fencing_version = fencing_version + 1,
+      terminal_reason = ?, handoff_metadata_json = ?, wait_condition_json = NULL,
+      wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1,
+      updated_at = ? WHERE execution_id = ?`).run(
+      payload.reason ?? 'voluntary_handoff', json(metadata), updatedAt, execution.execution_id,
+    );
+    this.db.prepare(`UPDATE tasks SET state = 'OPEN', block_reason = NULL,
+      claimable_at = ?, state_version = state_version + 1, updated_at = ?
+      WHERE task_id = ? AND state NOT IN ('DONE', 'CLOSED', 'CANCELED')`).run(updatedAt, updatedAt, execution.task_id);
+    return {
+      task: this.getTask(execution.task_id),
+      execution: this.getExecution(execution.execution_id),
+      handoff: { material, link },
+      disposition: 'handed_off',
+    };
+  }
+
+  #blockTaskSemantic(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    if (execution.owner_ref !== envelope.actor_ref) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the current Task Execution owner may block the Task');
+    }
+    if (!['CREATED', 'RUNNING'].includes(execution.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot block Execution from ${execution.state}`);
+    }
+    const { material, link } = this.#assertHandoffMaterial(execution, payload);
+    const blocker = payload.blocker ?? payload.reason;
+    if (!blocker || (typeof blocker !== 'object' && typeof blocker !== 'string')) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'blocker is required');
+    }
+    const dependency = payload.dependency;
+    if (!dependency || typeof dependency !== 'object' || Array.isArray(dependency)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.block requires a typed dependency');
+    }
+    const blocked = this.#blockTask({
+      block_reason: typeof blocker === 'string' ? blocker : (blocker.reason ?? blocker.kind ?? 'typed_dependency'),
+      dependency,
+      terminal_state: 'HANDED_OFF',
+      terminal_reason: typeof blocker === 'string' ? blocker : (blocker.reason ?? 'typed_dependency'),
+      handoff_metadata: { handoff_material_id: material.material_id, blocker },
+    }, envelope);
+    return { ...blocked, handoff: { material, link }, disposition: 'blocked' };
+  }
+
   #read(operation, payload, envelope) {
     if (operation === 'get_mission') return this.#getMission(requireString(payload.mission_id, 'mission_id'));
     if (operation === 'list_task') return this.#listModernTasks(payload);
@@ -1073,6 +1307,8 @@ export class TaskService {
       case 'link_material': return this.#linkMaterial(payload, envelope);
       case 'complete_task': return this.#completeTask(payload, envelope);
       case 'close_task': return this.#closeTask(payload, envelope);
+      case 'handoff_task': return this.#handoffTask(payload, envelope);
+      case 'block_task_semantic': return this.#blockTaskSemantic(payload, envelope);
       case 'propose_task': return this.#proposeTask(payload, envelope);
       case 'create_child_task': return this.#createChildTask(payload, envelope);
       case 'create_branch_group': return this.#createBranchGroup(payload, envelope);
@@ -2132,7 +2368,18 @@ export class TaskService {
       }
       this.db.prepare("UPDATE tasks SET state = 'OPEN', block_reason = NULL, claimable_at = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
         .run(updatedAt, updatedAt, taskId);
-      return { task: this.getTask(taskId), changed: true, blockers: [] };
+      const reopened = this.getTask(taskId);
+      const missionId = this.#taskMissionId(taskId);
+      if (missionId) {
+        this.enqueueNotification({
+          deliveryKey: `task_reopened:${taskId}:${reopened.state_version}`,
+          missionId,
+          recipientTaskId: taskId,
+          type: 'task_reopened',
+          payload: { task_id: taskId, state_version: reopened.state_version, reason: 'dependency_satisfied' },
+        });
+      }
+      return { task: reopened, changed: true, blockers: [] };
     }
     return { task: this.getTask(taskId), changed: false, blockers };
   }
@@ -2154,7 +2401,18 @@ export class TaskService {
     const updatedAt = now();
     this.db.prepare("UPDATE tasks SET state = 'OPEN', block_reason = NULL, claimable_at = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
       .run(updatedAt, updatedAt, taskId);
-    return { task: this.getTask(taskId), changed: true, blockers: [] };
+    const reopened = this.getTask(taskId);
+    const missionId = this.#taskMissionId(taskId);
+    if (missionId) {
+      this.enqueueNotification({
+        deliveryKey: `task_reopened:${taskId}:${reopened.state_version}`,
+        missionId,
+        recipientTaskId: taskId,
+        type: 'task_reopened',
+        payload: { task_id: taskId, state_version: reopened.state_version, reason: 'explicit_reopen' },
+      });
+    }
+    return { task: reopened, changed: true, blockers: [] };
   }
 
   #blockTask(payload, envelope) {

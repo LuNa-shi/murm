@@ -2,6 +2,8 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
+import { composeAgentPrompt } from '../agent/agent-prompt.js';
+import { listServices, listTools } from '../sdk/service-catalog.js';
 
 function requireString(value, field) {
   if (typeof value !== 'string' || value.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
@@ -80,6 +82,9 @@ export class Runtime {
     this.stopping = false;
     this.executionStateUnsubscribe = typeof this.taskService?.subscribeExecutionState === 'function'
       ? this.taskService.subscribeExecutionState((event) => this.#onExecutionState(event))
+      : null;
+    this.notificationUnsubscribe = typeof this.taskService?.subscribeNotifications === 'function'
+      ? this.taskService.subscribeNotifications((notification) => this.#onNotification(notification))
       : null;
   }
 
@@ -181,6 +186,8 @@ export class Runtime {
     this.stopping = true;
     this.executionStateUnsubscribe?.();
     this.executionStateUnsubscribe = null;
+    this.notificationUnsubscribe?.();
+    this.notificationUnsubscribe = null;
     const executionIds = [...this.activeProcesses.keys()];
     for (const executionId of executionIds) {
       const execution = this.taskService.getExecution(executionId);
@@ -325,7 +332,7 @@ export class Runtime {
       await Promise.resolve(active?.session.stop?.()).catch(() => undefined);
       if (this.stopping) throw error;
       const failed = this.#getExecution(executionId);
-      if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
+      if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', {
           terminal_state: 'FAILED',
           terminal_reason: 'startup_failed',
@@ -372,14 +379,14 @@ export class Runtime {
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
       if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
       this.#registerActiveProcess(current, workspace, boundSession, { sessionReason, coreId: selectedCoreId });
-      await this.#sendInitialPrompt(boundSession, agentPrompt);
+      await this.#sendInitialPrompt(boundSession, agentPrompt, current, workspace);
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
       this.activeProcesses.delete(executionId);
       this.#setCoreState(selectedCoreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       await Promise.resolve(boundSession?.stop?.()).catch(() => undefined);
       const failed = this.#getExecution(executionId);
-      if (!['FAILED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(failed.state)) {
+      if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', {
           terminal_state: 'FAILED',
           terminal_reason: 'bind_failed',
@@ -597,6 +604,59 @@ export class Runtime {
   }
 
   /**
+   * Semantic Task handoff boundary used by the Agent-facing bridge.  The Task
+   * Service commits HANDED_OFF/OPEN only after validating Handoff Material;
+   * this method then performs the same physical Session/Workspace/Core
+   * cleanup as the legacy Runtime handoff path.
+   */
+  async handoffTask(executionId, payload = {}) {
+    return this.#semanticRelease(executionId, 'handoff_task', payload, 'handed_off');
+  }
+
+  /** Semantic typed block boundary used by the Agent-facing bridge. */
+  async blockTask(executionId, payload = {}) {
+    return this.#semanticRelease(executionId, 'block_task_semantic', payload, 'blocked');
+  }
+
+  async #semanticRelease(executionId, operation, payload, disposition) {
+    const id = requireString(executionId, 'execution_id');
+    const current = this.#getExecution(id);
+    if (!['CREATED', 'RUNNING'].includes(current.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `only an active Runtime Execution can ${operation === 'handoff_task' ? 'hand off' : 'block'} a Task`);
+    }
+    const result = this.taskService.dispatch(operation, payload, this.#executionEnvelope(current, operationId(operation)));
+    const active = this.activeProcesses.get(id);
+    const workspaceRef = result.execution.workspace_ref ?? current.workspace_ref;
+    const workspaceFenced = await this.#fenceWorkspaceBestEffort({
+      ...current,
+      workspace_ref: workspaceRef,
+      fencing_version: current.fencing_version,
+    }, {
+      newFencingVersion: result.execution.fencing_version,
+      event: `runtime.${operation}_workspace_fence_error`,
+    });
+    if (active) {
+      active.closing = true;
+      await Promise.resolve(active.session.stop?.()).catch((error) => {
+        this.logger?.append({ event: `runtime.${operation}_stop_error`, execution_id: id, error_class: error?.code ?? error?.name ?? 'session_stop_error' });
+      });
+      this.activeProcesses.delete(id);
+      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+    }
+    if (workspaceFenced && workspaceRef) {
+      await this.workspaceManager.releaseWorkspace({
+        workspaceRef,
+        executionId: id,
+        fencingVersion: result.execution.fencing_version,
+      }).catch((error) => {
+        this.logger?.append({ event: `runtime.${operation}_release_error`, execution_id: id, error_class: error?.code ?? error?.name ?? 'workspace_release_error' });
+      });
+    }
+    this.logger?.append({ event: `runtime.execution_${disposition}`, execution_id: id, terminal_state: result.execution.state });
+    return { ...result, disposition };
+  }
+
+  /**
    * Reconcile durable Execution deadlines. The sweep is intentionally
    * idempotent: the reminder is persisted before it is sent, and timeout is a
    * fenced Task Service transition. Schedulers may call this on every poll or
@@ -617,6 +677,9 @@ export class Runtime {
       if (atDate.getTime() >= timeoutMs) {
         const result = await this.handoffExecution(execution.execution_id, {
           terminalState: 'EXPIRED',
+          // Preserve the existing terminal_reason string for legacy report
+          // consumers; handoff_metadata.timeout_type carries the typed
+          // TIMEBOX_EXPIRED classification for the new surface.
           reason: 'timeout',
           handoffKey: `timeout:${execution.execution_deadline ?? timeoutMs}`,
           at: atDate,
@@ -651,7 +714,7 @@ export class Runtime {
   } = {}) {
     const id = requireString(executionId, 'execution_id');
     const existing = this.#getExecution(id);
-    if (['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(existing.state)) {
+    if (['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(existing.state)) {
       return { execution: existing, task: this.taskService.getTask(existing.task_id), disposition: 'already_terminal' };
     }
     if (existing.state === 'WAITING') {
@@ -677,6 +740,15 @@ export class Runtime {
     }
   }
 
+  #hasLinkedHandoffMaterial(execution) {
+    const links = this.taskService.listTaskMaterials?.(execution.task_id)?.links
+      ?? this.taskService.getTask(execution.task_id)?.materials
+      ?? [];
+    return links.some((link) => link.role === 'handoff' &&
+      link.material_id &&
+      (link.producer_execution_id ?? link.material?.source_execution) === execution.execution_id);
+  }
+
   async #performHandoff(executionId, { checkpoint, files, handoffMetadata, summary, reason, terminalState, handoffKey, at }) {
     const started = this.#getExecution(executionId);
     if (!['CREATED', 'RUNNING'].includes(started.state)) {
@@ -693,6 +765,10 @@ export class Runtime {
       ...(handoffMetadata ?? {}),
       summary: summary ?? handoffMetadata?.summary ?? null,
       reason,
+      ...(terminalState === 'EXPIRED' ? {
+        timeout_type: 'TIMEBOX_EXPIRED',
+        handoff_missing: !this.#hasLinkedHandoffMaterial(started),
+      } : {}),
       requested_at: new Date(at instanceof Date ? at.getTime() : at).toISOString(),
     };
     let current = started;
@@ -772,22 +848,32 @@ export class Runtime {
         reminded_at: new Date(at.getTime()).toISOString(),
       }, this.#executionEnvelope(execution, `runtime:handoff-reminder:${executionId}:${execution.state_version}`));
       const active = this.activeProcesses.get(executionId);
-      if (active) {
-        active.execution = marked.execution;
+      if (active) active.execution = marked.execution;
+      const task = this.taskService.getTask(execution.task_id);
+      let notification = null;
+      if (task?.mission_id && typeof this.taskService.enqueueNotification === 'function') {
+        notification = this.taskService.enqueueNotification({
+          deliveryKey: `handoff_warning:${executionId}:${marked.execution.execution_deadline ?? marked.execution.handoff_deadline ?? at.toISOString()}`,
+          missionId: task.mission_id,
+          recipientTaskId: task.task_id,
+          recipientExecutionId: executionId,
+          type: 'handoff_warning',
+          payload: { execution_id: executionId, deadline: marked.execution.execution_deadline ?? null },
+        });
+        if (active) await active.promptChain.catch(() => undefined);
+      } else if (active) {
         const prompt = [
           'Execution handoff reminder: this bounded attempt is approaching its deadline.',
           'Publish durable Materials, save the current Workspace/checkpoint, summarize what was attempted and learned, list outstanding questions, and recommend the next step.',
           'Continue only if useful progress remains; otherwise call the Runtime handoff boundary.',
         ].join('\n');
-        // Follow-up is queued by Pi when the Agent is already in a turn. A
-        // reminder must never race the Agent's current prompt and create a
-        // second concurrent turn.
-        await Promise.resolve(active.session.prompt?.(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' })).catch((error) => {
+        active.promptChain = active.promptChain.catch(() => undefined).then(() => active.session.prompt?.(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' }));
+        await active.promptChain.catch((error) => {
           this.logger?.append({ event: 'runtime.handoff_reminder_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'prompt_error' });
         });
       }
       this.logger?.append({ event: 'runtime.handoff_reminder', execution_id: executionId, handoff_deadline: marked.execution.handoff_deadline ?? null });
-      return { kind: 'handoff_reminder', execution: marked.execution };
+      return { kind: 'handoff_reminder', execution: marked.execution, notification };
     })();
     this.reminderPromises.set(executionId, promise);
     try {
@@ -1089,27 +1175,119 @@ export class Runtime {
     const current = this.#saveWorkspaceReference(execution, nextWorkspace);
     this.#registerActiveProcess(current, nextWorkspace, session, { sessionReason, coreId });
     await beforePrompt?.({ execution: current, workspace: nextWorkspace, session });
-    await this.#sendInitialPrompt(session, execution.agent_prompt);
+    await this.#sendInitialPrompt(session, execution.agent_prompt, current, nextWorkspace);
     const active = this.activeProcesses.get(execution.execution_id);
     return { execution: current, workspace: nextWorkspace, session };
   }
 
-  async #sendInitialPrompt(session, prompt) {
+  #dynamicPromptContext(execution, workspace) {
+    const task = this.taskService.getTask(execution.task_id);
+    // Legacy Tasks have no Mission record. Keep their exact prompt semantics
+    // so compatibility fixtures remain deterministic; modern Mission Tasks
+    // receive the bounded context required by Issue #100.
+    if (!task?.mission_id) return { prompt: execution.agent_prompt, notifications: [] };
+    const mission = this.taskService.getMission?.(task.mission_id) ?? null;
+    const materials = task.materials
+      ?? this.taskService.listTaskMaterials?.(task.task_id)?.links
+      ?? [];
+    const notifications = this.taskService.listPendingNotifications?.(task.task_id, execution.execution_id) ?? [];
+    const services = listServices().filter((service) => service.name !== 'workspace').map((service) => ({
+      name: service.name,
+      version: service.version,
+      description: service.description,
+      tools: listTools(service.name).map((tool) => ({ name: tool.name, description: tool.description, scope: tool.scope })),
+    }));
+    return {
+      prompt: composeAgentPrompt({
+        staticPrompt: execution.agent_prompt || undefined,
+        mission,
+        task,
+        materials,
+        notifications,
+        deadline: {
+          started_at: execution.started_at,
+          handoff_deadline: execution.handoff_deadline,
+          execution_deadline: execution.execution_deadline,
+        },
+        services,
+        workspace: workspace ? {
+          workspace_ref: workspace.workspace_ref,
+          workspace_revision: workspace.workspace_revision,
+          content_hash: workspace.content_hash,
+        } : null,
+      }),
+      notifications,
+    };
+  }
+
+  async #sendInitialPrompt(session, prompt, execution = null, workspace = null) {
     if (!prompt || typeof session.prompt !== 'function') return;
-    await session.waitForReady?.({ timeoutMs: 30_000 });
-    await session.setAutoCompaction?.(true);
-    await session.setAutoRetry?.(true);
-    this.logger?.append({
-      event: 'runtime.session_configured',
-      session_id: session.sessionId ?? null,
-      context_window: session.contextWindow ?? null,
-      auto_compaction: true,
-      auto_retry: true,
-      retry_max: PI_PROJECT_SETTINGS.retry.maxRetries,
-      retry_base_delay_ms: PI_PROJECT_SETTINGS.retry.baseDelayMs,
-      retry_max_delay_ms: PI_PROJECT_SETTINGS.retry.maxAgentDelayMs,
+    const dynamic = execution ? this.#dynamicPromptContext(execution, workspace) : { prompt, notifications: [] };
+    const send = async () => {
+      await session.waitForReady?.({ timeoutMs: 30_000 });
+      await session.setAutoCompaction?.(true);
+      await session.setAutoRetry?.(true);
+      this.logger?.append({
+        event: 'runtime.session_configured',
+        session_id: session.sessionId ?? null,
+        context_window: session.contextWindow ?? null,
+        auto_compaction: true,
+        auto_retry: true,
+        retry_max: PI_PROJECT_SETTINGS.retry.maxRetries,
+        retry_base_delay_ms: PI_PROJECT_SETTINGS.retry.baseDelayMs,
+        retry_max_delay_ms: PI_PROJECT_SETTINGS.retry.maxAgentDelayMs,
+      });
+      await session.prompt(dynamic.prompt, { timeoutMs: 30_000 });
+      for (const notification of dynamic.notifications) {
+        this.taskService.markNotificationDelivered?.(notification.notification_id, execution.execution_id);
+      }
+    };
+    const active = execution ? this.activeProcesses.get(execution.execution_id) : null;
+    if (active) {
+      active.promptChain = active.promptChain.then(send);
+      await active.promptChain;
+    } else {
+      await send();
+    }
+  }
+
+  #notificationText(notification) {
+    const payload = notification.payload ?? {};
+    if (notification.notification_type === 'handoff_warning') {
+      return 'Execution deadline is approaching. Publish and link Handoff Material now if the current Task is unfinished; this reminder is persisted.';
+    }
+    if (notification.notification_type === 'material_available') {
+      return `Response Material ${notification.material_id ?? payload.material_id ?? '<unknown>'} from Task ${notification.source_task_id ?? payload.producer_task_id ?? '<unknown>'} / Execution ${notification.source_execution_id ?? payload.producer_execution_id ?? '<unknown>'} is linked to this Task. Read it through Context Service and adapt your own work; call task.close only when your contract accepts it.`;
+    }
+    return `Task ${notification.recipient_task_id} is OPEN again because its typed dependency is satisfied; it is claimable when a Core is idle.`;
+  }
+
+  #onNotification(notification) {
+    if (!notification || notification.delivered_at) return;
+    for (const [executionId, active] of this.activeProcesses.entries()) {
+      if (notification.recipient_execution_id && notification.recipient_execution_id !== executionId) continue;
+      if (active.execution.task_id !== notification.recipient_task_id) continue;
+      this.#deliverNotification(active, notification);
+    }
+  }
+
+  #deliverNotification(active, notification) {
+    active.promptChain = active.promptChain.catch(() => undefined).then(async () => {
+      const current = this.taskService.getExecution(active.execution.execution_id);
+      if (!current || !['CREATED', 'RUNNING'].includes(current.state)) return;
+      this.taskService.recordNotificationAttempt?.(notification.notification_id);
+      try {
+        await active.session.prompt?.(this.#notificationText(notification), {
+          timeoutMs: 30_000,
+          streamingBehavior: 'followUp',
+        });
+        this.taskService.markNotificationDelivered?.(notification.notification_id, current.execution_id);
+        this.logger?.append({ event: 'runtime.notification_delivered', execution_id: current.execution_id, notification_id: notification.notification_id, notification_type: notification.notification_type });
+      } catch (error) {
+        this.logger?.append({ event: 'runtime.notification_delivery_error', execution_id: current.execution_id, notification_id: notification.notification_id, notification_type: notification.notification_type, error_class: error?.code ?? error?.name ?? 'prompt_error' });
+      }
     });
-    await session.prompt(prompt, { timeoutMs: 30_000 });
+    return active.promptChain;
   }
 
   #registerActiveProcess(execution, workspace, session, { sessionReason = 'start', coreId = null } = {}) {
@@ -1127,6 +1305,10 @@ export class Runtime {
       lastProductiveAt: nowMs,
       lastFailureClass: null,
       failurePromise: null,
+      // Initial and follow-up prompts share one queue.  Pi can accept a
+      // follow-up while a turn is active, but two concurrent prompt calls
+      // would reorder lifecycle notifications and Agent work.
+      promptChain: Promise.resolve(),
     };
     this.activeProcesses.set(execution.execution_id, active);
     this.#setCoreState(coreId, {

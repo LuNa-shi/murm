@@ -75,6 +75,14 @@ export class ServicesSDK {
     return this.#write('task_close', payload, options);
   }
 
+  handoffTask(payload = {}, options = {}) {
+    return this.#write('task_handoff', payload, options);
+  }
+
+  blockTask(payload = {}, options = {}) {
+    return this.#write('task_block', payload, options);
+  }
+
   listClaimableTasks(filters = {}) {
     return this.#read('list_claimable_tasks', filters);
   }
@@ -105,6 +113,10 @@ export class ServicesSDK {
 
   getMaterial(materialId) {
     return this.#read('context_get_material', { material_id: materialId });
+  }
+
+  publishCollaborationMaterial(material, options = {}) {
+    return this.#write('context_publish_material', material, options);
   }
 
   /** Record the bounded Material IDs this Execution actually used. */
