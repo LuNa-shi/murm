@@ -39,6 +39,23 @@ test('ObservationStore persists experiment facts and returns cursor pages in eve
   await rm(root, { recursive: true, force: true });
 });
 
+test('ObservationStore returns recent windows and indexed summary data without payload replay', () => {
+  const store = new ObservationStore();
+  store.registerExperiment({ experimentId: 'run-window' });
+  for (let sequence = 1; sequence <= 20; sequence += 1) {
+    store.append({
+      experimentId: 'run-window', sequence, source: 'runtime', kind: sequence % 2 ? 'execution_assigned' : 'core_state_changed',
+      coreId: `core-${sequence % 2}`, payload: { state: 'RUNNING', large: 'x'.repeat(1_000) },
+    });
+  }
+  assert.equal(store.latestSequence('run-window'), 20);
+  assert.deepEqual(store.listCoreIds('run-window'), ['core-0', 'core-1']);
+  assert.deepEqual(store.listRecentEvents({ experimentId: 'run-window', limit: 3 }).events.map((event) => event.sequence), [18, 19, 20]);
+  assert.equal(store.listRecentEvents({ experimentId: 'run-window', limit: 2_000 }).events.length, 20);
+  assert.deepEqual(store.listLatestEntityEvents({ experimentId: 'run-window', kinds: ['execution_assigned'], limit: 10 }).events.map((event) => event.sequence), [19]);
+  store.close();
+});
+
 test('ObservationStore publishes live events and keeps Agent payloads bounded and redacted', () => {
   const store = new ObservationStore();
   store.registerExperiment({ experimentId: 'run-live' });
@@ -81,11 +98,13 @@ test('ObservationStoreCollection merges experiments and routes events across wor
   const second = new ObservationStore(join(root, 'worktree-b', '.observability', 'observability.sqlite'));
   first.registerExperiment({ experimentId: 'worktree-a-run', status: 'RUNNING' });
   first.append({ experimentId: 'worktree-a-run', source: 'runtime', kind: 'session_started', payload: {} });
+  first.append({ experimentId: 'worktree-a-run', source: 'runtime', kind: 'execution_assigned', coreId: 'core-a', executionId: 'execution-a', payload: { state: 'RUNNING' } });
   second.registerExperiment({ experimentId: 'worktree-b-run', status: 'CREATED' });
   second.append({ experimentId: 'worktree-b-run', source: 'runtime', kind: 'experiment_started', payload: {} });
   const collection = new ObservationStoreCollection({ stores: [first, second] });
   assert.deepEqual(collection.listExperiments({ limit: 10 }).map((experiment) => experiment.experiment_id).sort(), ['worktree-a-run', 'worktree-b-run']);
-  assert.equal(collection.countEvents('worktree-a-run'), 1);
+  assert.equal(collection.countEvents('worktree-a-run'), 2);
+  assert.equal(collection.listActiveTimelineEvents({ experimentId: 'worktree-a-run' }).events[0].kind, 'execution_assigned');
   assert.equal(collection.listEvents({ experimentId: 'worktree-b-run' }).events[0].kind, 'experiment_started');
   assert.ok(collection.watchPaths().some((path) => path.endsWith('worktree-a/.observability')));
   collection.close();

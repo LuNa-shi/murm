@@ -49,6 +49,14 @@ CREATE INDEX IF NOT EXISTS observation_events_execution_sequence
   ON observation_events(execution_id, sequence);
 CREATE INDEX IF NOT EXISTS observation_events_kind_sequence
   ON observation_events(kind, sequence);
+CREATE INDEX IF NOT EXISTS observation_events_experiment_kind_sequence
+  ON observation_events(experiment_id, kind, sequence);
+CREATE INDEX IF NOT EXISTS observation_events_experiment_task_sequence
+  ON observation_events(experiment_id, task_id, sequence);
+CREATE INDEX IF NOT EXISTS observation_events_experiment_execution_sequence
+  ON observation_events(experiment_id, execution_id, sequence);
+CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
+  ON observation_events(experiment_id, core_id, sequence);
 `;
 
 function now() {
@@ -72,9 +80,9 @@ function requireString(value, field) {
   return value;
 }
 
-function validateLimit(limit) {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
-    throw new TypeError('limit must be an integer between 1 and 1000');
+function validateLimit(limit, maximum = 1_000) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > maximum) {
+    throw new TypeError(`limit must be an integer between 1 and ${maximum}`);
   }
 }
 
@@ -306,6 +314,120 @@ export class ObservationStore {
     return row.count;
   }
 
+  latestSequence(experimentId) {
+    requireString(experimentId, 'experiment_id');
+    return this.db.prepare('SELECT COALESCE(MAX(sequence), 0) AS sequence FROM observation_events WHERE experiment_id = ?').get(experimentId).sequence;
+  }
+
+  listCoreIds(experimentId) {
+    requireString(experimentId, 'experiment_id');
+    return this.db.prepare('SELECT DISTINCT core_id FROM observation_events WHERE experiment_id = ? AND core_id IS NOT NULL ORDER BY core_id').all(experimentId).map((row) => row.core_id);
+  }
+
+  listRecentEvents({
+    experimentId,
+    afterSequence = 0,
+    executionId = null,
+    taskId = null,
+    coreId = null,
+    sessionId = null,
+    source = null,
+    kinds = null,
+    view = 'operator',
+    limit = 100,
+  } = {}) {
+    requireString(experimentId, 'experiment_id');
+    // The initial dashboard tail is allowed to be larger than one cursor page,
+    // while ordinary event pagination remains capped at 1,000 rows.
+    validateLimit(limit, 2_000);
+    if (!Number.isInteger(afterSequence) || afterSequence < 0) throw new TypeError('after_sequence must be a non-negative integer');
+    if (!['operator', 'agent'].includes(view)) throw new TypeError(`unsupported observation view: ${view}`);
+    if (kinds !== null && (!Array.isArray(kinds) || kinds.some((kind) => typeof kind !== 'string' || kind.length === 0))) {
+      throw new TypeError('kinds must be an array of non-empty strings');
+    }
+    const conditions = ['experiment_id = ?', 'sequence > ?'];
+    const params = [experimentId, afterSequence];
+    for (const [column, value] of [['execution_id', executionId], ['task_id', taskId], ['core_id', coreId], ['session_id', sessionId], ['source', source]]) {
+      if (value !== null) {
+        requireString(value, column);
+        conditions.push(`${column} = ?`);
+        params.push(value);
+      }
+    }
+    if (kinds?.length) {
+      conditions.push(`kind IN (${kinds.map(() => '?').join(', ')})`);
+      params.push(...kinds);
+    }
+    params.push(limit);
+    const rows = this.db.prepare(`SELECT * FROM observation_events WHERE ${conditions.join(' AND ')} ORDER BY sequence DESC LIMIT ?`).all(...params);
+    return { events: rows.reverse().map((row) => rowToEvent(row, view)) };
+  }
+
+  listLatestEntityEvents({ experimentId, kinds = null, view = 'operator', limit = 1_000 } = {}) {
+    requireString(experimentId, 'experiment_id');
+    validateLimit(limit);
+    if (!['operator', 'agent'].includes(view)) throw new TypeError(`unsupported observation view: ${view}`);
+    if (kinds !== null && (!Array.isArray(kinds) || kinds.some((kind) => typeof kind !== 'string' || kind.length === 0))) {
+      throw new TypeError('kinds must be an array of non-empty strings');
+    }
+    const kindClause = kinds?.length ? ` AND kind IN (${kinds.map(() => '?').join(', ')})` : '';
+    const rows = [];
+    for (const column of ['task_id', 'execution_id', 'core_id']) {
+      const params = [experimentId, ...(kinds ?? []), limit];
+      rows.push(...this.db.prepare(`
+        SELECT * FROM (
+          SELECT observation_events.*, ROW_NUMBER() OVER (PARTITION BY ${column} ORDER BY sequence DESC) AS entity_rank
+          FROM observation_events
+          WHERE experiment_id = ?${kindClause} AND ${column} IS NOT NULL
+        )
+        WHERE entity_rank = 1
+        ORDER BY sequence DESC
+        LIMIT ?
+      `).all(...params));
+    }
+    const unique = new Map(rows.map((row) => [row.event_id, row]));
+    return { events: [...unique.values()].sort((left, right) => left.sequence - right.sequence).slice(-limit).map((row) => rowToEvent(row, view)) };
+  }
+
+  listActiveTimelineEvents({ experimentId, view = 'operator', limit = 1_000 } = {}) {
+    requireString(experimentId, 'experiment_id');
+    validateLimit(limit, 2_000);
+    if (!['operator', 'agent'].includes(view)) throw new TypeError(`unsupported observation view: ${view}`);
+    const rows = this.db.prepare(`
+      WITH latest_assignments AS (
+        SELECT * FROM (
+          SELECT observation_events.*, ROW_NUMBER() OVER (PARTITION BY execution_id ORDER BY sequence DESC) AS entity_rank
+          FROM observation_events
+          WHERE experiment_id = ? AND kind = 'execution_assigned' AND execution_id IS NOT NULL
+        )
+        WHERE entity_rank = 1
+      ), latest_releases AS (
+        SELECT * FROM (
+          SELECT observation_events.*, ROW_NUMBER() OVER (PARTITION BY execution_id ORDER BY sequence DESC) AS entity_rank
+          FROM observation_events
+          WHERE experiment_id = ? AND kind = 'execution_released' AND execution_id IS NOT NULL
+        )
+        WHERE entity_rank = 1
+      ), latest_states AS (
+        SELECT * FROM (
+          SELECT observation_events.*, ROW_NUMBER() OVER (PARTITION BY core_id ORDER BY sequence DESC) AS entity_rank
+          FROM observation_events
+          WHERE experiment_id = ? AND kind = 'core_state_changed' AND core_id IS NOT NULL
+        )
+        WHERE entity_rank = 1
+      )
+      SELECT assignment.*
+      FROM latest_assignments assignment
+      LEFT JOIN latest_releases release ON release.execution_id = assignment.execution_id
+      WHERE release.sequence IS NULL OR assignment.sequence > release.sequence
+      UNION ALL
+      SELECT state.* FROM latest_states state
+      ORDER BY sequence DESC
+      LIMIT ?
+    `).all(experimentId, experimentId, experimentId, limit);
+    return { events: rows.reverse().map((row) => rowToEvent(row, view)) };
+  }
+
   #transaction(callback) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -390,9 +512,32 @@ export class ObservationStoreCollection {
     return this.#storeFor(experimentId)?.countEvents(experimentId, options) ?? 0;
   }
 
+  latestSequence(experimentId) {
+    return this.#storeFor(experimentId)?.latestSequence(experimentId) ?? 0;
+  }
+
+  listCoreIds(experimentId) {
+    return this.#storeFor(experimentId)?.listCoreIds(experimentId) ?? [];
+  }
+
   listEvents(options = {}) {
     const store = this.#storeFor(options.experimentId);
     return store?.listEvents(options) ?? { events: [], next_cursor: null, has_more: false };
+  }
+
+  listRecentEvents(options = {}) {
+    const store = this.#storeFor(options.experimentId);
+    return store?.listRecentEvents(options) ?? { events: [] };
+  }
+
+  listLatestEntityEvents(options = {}) {
+    const store = this.#storeFor(options.experimentId);
+    return store?.listLatestEntityEvents(options) ?? { events: [] };
+  }
+
+  listActiveTimelineEvents(options = {}) {
+    const store = this.#storeFor(options.experimentId);
+    return store?.listActiveTimelineEvents(options) ?? { events: [] };
   }
 
   close() {
