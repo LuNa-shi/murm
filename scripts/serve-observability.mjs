@@ -56,9 +56,22 @@ function isDirectory(path) {
   try { return statSync(path).isDirectory(); } catch { return false; }
 }
 
+function inferRepositoryWorktreeRoots(options) {
+  const scanRoots = new Set(options.scanRoots.map((root) => resolve(root)));
+  const experimentRoots = [options.root, ...options.additionalRoots];
+  for (const root of experimentRoots) {
+    const repositoryRoot = dirname(resolve(root));
+    for (const name of ['.worktrees', '.worktree']) {
+      const candidate = join(repositoryRoot, name);
+      if (isDirectory(candidate)) scanRoots.add(candidate);
+    }
+  }
+  return [...scanRoots];
+}
+
 function discoverExperimentRoots(options) {
   const roots = new Set([resolve(options.root), ...options.additionalRoots.map((root) => resolve(root))]);
-  for (const scanRoot of options.scanRoots.map((root) => resolve(root))) {
+  for (const scanRoot of options.scanRoots) {
     if (!isDirectory(scanRoot)) continue;
     if (basename(scanRoot) === 'experiments' || isDirectory(join(scanRoot, '.observability'))) roots.add(scanRoot);
     let entries = [];
@@ -95,6 +108,7 @@ async function writeMetadata(path, metadata) {
 }
 
 const options = optionsFromArgs(process.argv.slice(2));
+options.scanRoots = inferRepositoryWorktreeRoots(options);
 const experimentRoots = discoverExperimentRoots(options);
 const experimentRoot = experimentRoots[0];
 const experimentDir = options.experimentDir ? resolve(options.experimentDir) : null;

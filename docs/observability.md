@@ -96,6 +96,13 @@ timer. If a runner is started from a different checkout, set
 `public-server.json` so
 it reuses the shared database and port.
 
+The server also infers repository-local worktree roots from the primary
+`--root`: if the root is `<repository>/experiments`, both
+`<repository>/.worktrees` and `<repository>/.worktree` are watched when they
+exist. This covers Git worktrees created by the repository tooling without
+requiring each runner to start another observation daemon. Use `--scan-root`
+for worktrees kept outside the repository.
+
 Every Execution segment carries its Workspace reference, current revision,
 content hash, file manifest, and revision history. A selected segment opens
 its ordered Interaction events and Workspace projection together. A standalone
