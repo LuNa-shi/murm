@@ -43,6 +43,57 @@ const TASK_MODELS = new Set(['legacy', 'flat']);
 const STRUCTURE_OPERATIONS = new Set([
   'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task',
 ]);
+const DEFAULT_FLAT_INITIAL_TASKS = 4;
+const FLAT_RESEARCH_ROUTES = Object.freeze([
+  {
+    key: 'formalization-audit',
+    label: 'formalization audit',
+    goal: 'Audit the locked formal statement, definitions, and proof obligations before proposing a proof route.',
+    expected_output: 'A bounded fact or failure Material describing the formalization invariants and the next useful proof step.',
+    priority: 100,
+    instructions: 'Check the theorem statement, definitions, hypotheses, and existing imports. Record which obligations are genuinely available in the locked formalization and which tempting shortcuts are invalid.',
+  },
+  {
+    key: 'geometry-route',
+    label: 'geometry route',
+    goal: 'Develop a distinct geometric or coordinate route for the locked problem.',
+    expected_output: 'A bounded fact, conjecture, or failure Material containing a concrete geometric route and its formalization boundary.',
+    priority: 100,
+    instructions: 'Explore a geometric, coordinate, or invariant route that another Agent can turn into Lean lemmas. Separate proved observations from conjectures and identify the smallest next lemma.',
+  },
+  {
+    key: 'combinatorics-route',
+    label: 'combinatorics route',
+    goal: 'Develop a distinct combinatorial, algebraic, or extremal route for the locked problem.',
+    expected_output: 'A bounded fact, conjecture, or failure Material containing a distinct route and a concrete verification plan.',
+    priority: 100,
+    instructions: 'Search for a combinatorial, algebraic, counting, or extremal invariant that is independent of the geometry route. State the exact claim to verify and the obstacle if the route fails.',
+  },
+  {
+    key: 'lean-route',
+    label: 'Lean implementation route',
+    goal: 'Map the useful proof obligations to the locked Lean and Mathlib environment.',
+    expected_output: 'A bounded experience or failure Material with verified API names, module boundaries, and an implementation sequence.',
+    priority: 100,
+    instructions: 'Inspect the locked project and available registered services, verify any declaration before relying on it, and outline a small compilable lemma sequence. Do not submit the input formalization as a candidate.',
+  },
+  {
+    key: 'validation-route',
+    label: 'validation and counterexample route',
+    goal: 'Stress-test the current proof obligations and identify counterexamples or missing hypotheses.',
+    expected_output: 'A bounded fact, conjecture, or failure Material that narrows the proof search and prevents repeated invalid attempts.',
+    priority: 90,
+    instructions: 'Try to falsify weak intermediate claims, check edge cases, and compare the resulting constraints with the formal statement. Preserve a useful correction or a precise reason a route cannot proceed.',
+  },
+]);
+
+function flatInitialTaskCount(options = {}) {
+  const value = options.flatInitialTaskCount ?? DEFAULT_FLAT_INITIAL_TASKS;
+  if (!Number.isInteger(value) || value < 1 || value > FLAT_RESEARCH_ROUTES.length + 1) {
+    throw new TypeError(`flatInitialTaskCount must be an integer between 1 and ${FLAT_RESEARCH_ROUTES.length + 1}`);
+  }
+  return value;
+}
 
 function completedTaskState(state) {
   return state === 'DONE' || state === 'SATISFIED';
@@ -1469,6 +1520,7 @@ function projectReport(state, startedAt, deadline) {
       normal_flow: state.normalFlow,
       task_model: state.taskModel,
       mission_id: state.missionId,
+      initial_task_count: state.initialTaskIds?.length ?? 1,
       execution_timeout_ms: state.executionTimeoutMs,
       handoff_reminder_ms: state.handoffReminderMs,
       input_policy: 'pinned formalization only; no candidate or solution input',
@@ -1772,7 +1824,7 @@ async function createProjectState(problem, config, options) {
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const modeInstructions = selectedTaskModel === 'flat'
-    ? 'Search the Mission Task summaries before proposing substantial new work. Create another ordinary Task only when it covers a genuinely uncovered question, with a useful expected output, acceptance condition, and clear boundary. Creating a Task does not stop this Execution; continue the current Task while progress remains useful. Publish Response, Handoff, or Experience Material as it becomes durable, and complete the current Task when its own contract is satisfied.'
+    ? 'Search the Mission Task summaries and linked Materials before proposing substantial new work. The Mission starts with a bounded pool of independent research Tasks so idle Cores can work immediately; create another ordinary Task only when it covers a genuinely uncovered question, with a useful expected output, acceptance condition, and clear boundary. Creating a Task does not stop this Execution; continue the current Task while progress remains useful. Publish a Response or Experience Material as soon as a bounded finding is durable, link it to the producing Task, and use a Response link when the final proof Task should receive it. A proof Task must read and durably consume useful incoming Materials before integrating them into a candidate. Complete the current Task when its own contract is satisfied.'
     : selectedParallelMode === 'semantic'
       ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes. After child or branch Materials exist, the Root must read them with swarmenv_context_read, durably record the bounded handoff with swarmenv_context_consume using action integration, make a bounded Workspace integration note, and publish one root-owned Material with scope root_integration whose provenance names the consumed Material IDs before blocking or claiming the collaboration loop complete.'
       : selectedParallelMode === 'root-only'
@@ -1784,18 +1836,31 @@ async function createProjectState(problem, config, options) {
       : 'When a real external dependency blocks progress, preserve useful Workspace and Materials and call execution_block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.')
     : 'Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency.';
   const taskSpecificInstruction = selectedTaskModel === 'flat'
-    ? 'The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition.'
+    ? 'The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition. Research Tasks must publish and link one bounded Material before completion; the proof Task must consume at least one linked research Material with action integration before completing.'
     : 'Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge.';
   const taskPayload = {
     task_type: 'proof',
     summary: `Prove ${problem.id} with an independently checked candidate and a clear boundary from other Mission work.`,
     goal: `Prove ${problem.id}`,
     expected_output: 'A verified Lean proof for the locked PutnamBench problem',
+    // Keep the final proof lane claimable alongside the bounded research pool
+    // when the pool is larger than the Core count; research routes remain
+    // independently available instead of starving the integration lane.
+    priority: selectedTaskModel === 'flat' ? 110 : 0,
     task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. If no honest candidate is ready, preserve useful evidence and block on a concrete dependency instead of submitting the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable Materials as findings become available.`,
     completion_contract: {
       ...(normalFlow ? { normal_flow: true } : {}),
       ...(selectedParallelMode === 'semantic' && selectedTaskModel !== 'flat' ? {
         required_materials: [{ kinds: ['artifact', 'fact', 'experience', 'failure'], scope: 'root_integration', min_count: 1, requires_consumption: true, action: 'integration' }],
+      } : {}),
+      ...(selectedTaskModel === 'flat' ? {
+        required_materials: [{
+          kinds: ['fact', 'experience', 'conjecture', 'artifact', 'failure'],
+          scope: 'proof_relevant',
+          min_count: 1,
+          requires_consumption: true,
+          action: 'integration',
+        }],
       } : {}),
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
       required_check: {
@@ -1831,7 +1896,55 @@ async function createProjectState(problem, config, options) {
       owner_ref: 'owner:benchmark',
     }, { operationId: `benchmark:task:create:${runId}` }).task
     : owner.proposeTask(taskPayload, { operationId: `benchmark:root:propose:${runId}` }).task;
-  observationStore.registerExperiment({ experimentId: runId, rootTaskId: root.task_id, status: 'RUNNING', metadata: { problem_id: problem.id, task_model: selectedTaskModel, mission_id: mission?.mission_id ?? null } });
+  const initialTasks = [root];
+  if (selectedTaskModel === 'flat') {
+    const seedCount = flatInitialTaskCount(options);
+    for (const route of FLAT_RESEARCH_ROUTES.slice(0, Math.max(0, seedCount - 1))) {
+      const responseInstruction = [
+        `You own the independent ${route.label} responsibility for ${problem.id}.`,
+        route.instructions,
+        'Read the current Task and Mission Materials before starting. Keep the route bounded and do not spend the whole Execution repeating a final proof attempt owned by another Task.',
+        'When you have a useful finding, publish exactly one bounded Material through context_publish_material with role experience, scope proof_relevant, and kind fact, experience, conjecture, or failure. The content must state the finding, evidence boundary, open question, and next step without credentials or hidden answers.',
+        'Immediately link that Material to this Task with task_link_material using role experience, then link the same Material to the final proof Task with role response, task_id and receiving_task_id set to the final proof Task ID below. This produces a durable notification for the receiver.',
+        `Final proof Task ID: ${root.task_id}.`,
+        'After both links exist, call task_complete with the linked Material ID. If the route fails, publish a failure Material with the precise blocker and complete the research Task; do not hand off empty work.',
+        dependencyInstruction,
+      ].join(' ');
+      const seeded = owner.createTask({
+        task_id: randomUUID(),
+        mission_id: mission.mission_id,
+        spawned_from: root.task_id,
+        task_type: 'research',
+        task_type_version: '1.0',
+        summary: `${route.label}: ${route.goal}`,
+        goal: route.goal,
+        expected_output: route.expected_output,
+        acceptance_conditions: { project: problem.id, source_hash: problem.source_hash, route: route.key },
+        priority: route.priority,
+        task_instructions: responseInstruction,
+        completion_contract: {
+          ...(normalFlow ? { normal_flow: true } : {}),
+          required_materials: [{
+            kinds: ['fact', 'experience', 'conjecture', 'artifact', 'failure'],
+            scope: 'proof_relevant',
+            min_count: 1,
+          }],
+        },
+        owner_ref: 'owner:benchmark',
+        workspace: taskPayload.workspace,
+        max_children: 8,
+        max_depth: 3,
+        timebox_ms: options.taskTimeboxMs ?? 30 * 60_000,
+      }, { operationId: `benchmark:task:create:${runId}:${route.key}` }).task;
+      initialTasks.push(seeded);
+    }
+  }
+  observationStore.registerExperiment({ experimentId: runId, rootTaskId: root.task_id, status: 'RUNNING', metadata: {
+    problem_id: problem.id,
+    task_model: selectedTaskModel,
+    mission_id: mission?.mission_id ?? null,
+    initial_task_count: initialTasks.length,
+  } });
   observationStore.append({
     experimentId: runId,
     source: 'runtime',
@@ -1850,7 +1963,7 @@ async function createProjectState(problem, config, options) {
   // Deterministic queue scenarios may seed durable Tasks before reusable Core
   // sessions start. The hook uses the same Task Service boundary as Agent
   // operations; it does not replace queue claim, Runtime, or dispatch logic.
-  await options.prepareProject?.({ owner, root, taskService, contextService, router, fixture, problem });
+  await options.prepareProject?.({ owner, root, initialTasks, taskService, contextService, router, fixture, problem });
   const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt });
   const cores = [];
   try {
@@ -2274,7 +2387,8 @@ async function createProjectState(problem, config, options) {
         });
       },
       onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
-        if (['publish_material', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+        const materialPublishOperation = operation === 'publish_material' || operation === 'context_publish_material';
+        if (materialPublishOperation || ['task_link_material', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
           core.stateRef?.requestDaemonWake?.();
         }
         if (STRUCTURE_OPERATIONS.has(operation)) {
@@ -2367,7 +2481,7 @@ async function createProjectState(problem, config, options) {
             progress_kind: 'child_task',
           });
           core.stateRef?.requestDaemonWake?.();
-        } else if (operation === 'publish_material') {
+        } else if (materialPublishOperation) {
           const published = result?.material ?? result ?? {};
           core.observe({
             source: 'context-service', kind: 'material_published', visibility: 'operator',
@@ -2389,6 +2503,25 @@ async function createProjectState(problem, config, options) {
             execution_id: executionId,
             core: core.index,
             progress_kind: 'material',
+          });
+        } else if (operation === 'task_link_material') {
+          const link = result?.link ?? result ?? {};
+          core.observe({
+            source: 'task-service', kind: 'material_linked', visibility: 'operator',
+            taskId, executionId, coreId: `core-${core.index}`,
+            payload: {
+              material_id: link.material_id ?? payload?.material_id ?? null,
+              role: link.role ?? payload?.role ?? null,
+              receiving_task_id: link.receiving_task_id ?? payload?.receiving_task_id ?? payload?.task_id ?? null,
+              producer_task_id: link.producer_task_id ?? null,
+              producer_execution_id: link.producer_execution_id ?? null,
+            },
+          });
+          core.parallelism.recordWorkUnit({
+            task_id: taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'material_link',
           });
         } else if (operation === 'accept_task' || operation === 'request_rework') {
           const reviewed = result?.task ?? result?.target_task ?? result ?? {};
@@ -2477,6 +2610,7 @@ async function createProjectState(problem, config, options) {
     databasePath,
     projectDir,
     rootTaskId: root.task_id,
+    initialTaskIds: initialTasks.map((task) => task.task_id),
     reportProjectDir,
     experimentDir: experimentRoot,
     logRoot,
