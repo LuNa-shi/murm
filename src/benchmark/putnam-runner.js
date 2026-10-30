@@ -48,6 +48,19 @@ const DEFAULT_FLAT_INITIAL_TASKS = 4;
 const DEFAULT_FLAT_DYNAMIC_TASKS = 2;
 const MAX_FLAT_DYNAMIC_TASKS = 3;
 const FLAT_TASK_STATES = Object.freeze(['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
+
+class SerialTaskCreateAdmission {
+  constructor() {
+    this.tail = Promise.resolve();
+  }
+
+  run(work) {
+    const previous = this.tail;
+    let release;
+    this.tail = new Promise((resolvePromise) => { release = resolvePromise; });
+    return previous.then(work).finally(() => release());
+  }
+}
 const FLAT_RESEARCH_ROUTES = Object.freeze([
   {
     key: 'formalization-audit',
@@ -1110,14 +1123,29 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
   // for a genuinely new repair responsibility. The admission is idempotent
   // by responsibility_key, so an Agent-created Task and this controller
   // safety net cannot create duplicate work for the same CheckResult.
+  const routeGate = state.taskModel === 'flat' && persistedResult.result_class === 'source_failure' && feedback?.material_id
+    ? {
+      proofTaskId: pending.taskId,
+      checkResultId: persistedResult.check_result_id,
+      feedbackMaterialId: feedback.material_id,
+      eligibleTaskIds: new Set(),
+      responseMaterialIds: new Set(),
+      fulfilled: false,
+    }
+    : null;
+  if (routeGate) state.flatRouteGates.set(pending.taskId, routeGate);
   if (state.taskModel === 'flat' && persistedResult.result_class === 'source_failure' && feedback?.material_id) {
-    const dynamic = state.createFlatFeedbackTask?.({
+    const createFeedbackTask = () => state.createFlatFeedbackTask?.({
       taskId: pending.taskId,
       executionId: pending.executionId,
       feedback,
       checkResult: persistedResult,
     });
+    const dynamic = state.taskCreateMutex
+      ? await state.taskCreateMutex.run(createFeedbackTask)
+      : createFeedbackTask();
     if (dynamic?.task) {
+      routeGate?.eligibleTaskIds.add(dynamic.task.task_id);
       const event = {
         task_id: dynamic.task.task_id,
         source_task_id: pending.taskId,
@@ -1747,6 +1775,14 @@ function projectReport(state, startedAt, deadline) {
       dynamic_task_count: taskTree.filter((task) => !state.initialTaskIds.includes(task.task_id)).length,
       controller_dynamic_task_count: taskTree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length,
       dynamic_task_events: state.dynamicTaskEvents,
+      route_gates: [...state.flatRouteGates.values()].map((gate) => ({
+        proof_task_id: gate.proofTaskId,
+        check_result_id: gate.checkResultId,
+        feedback_material_id: gate.feedbackMaterialId,
+        eligible_follow_up_task_count: gate.eligibleTaskIds.size,
+        response_material_count: gate.responseMaterialIds.size,
+        fulfilled: gate.fulfilled,
+      })),
       lifecycle_events: lifecycle,
       task_lifecycle_events: taskLifecycle,
       admission_events: admissionEvents,
@@ -1896,6 +1932,7 @@ async function createProjectState(problem, config, options) {
   }).capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`)))];
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const selectedFlatDynamicTaskBudget = selectedTaskModel === 'flat' ? flatDynamicTaskBudget(options) : 0;
+  const taskCreateMutex = selectedTaskModel === 'flat' ? new SerialTaskCreateAdmission() : null;
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const modeInstructions = selectedTaskModel === 'flat'
     ? `Search the Mission Task summaries and linked Materials before proposing substantial new work. The Mission starts with a bounded pool of independent research Tasks so idle Cores can work immediately. A source-level Judge FAIL is a route boundary: read the returned CheckResult and feedback Material, then create at most ${selectedFlatDynamicTaskBudget} bounded follow-up Task(s) in total after initialization, counting both Agent-created Tasks and the controller safety-net Task. Use swarmenv_task_create with the current mission_id, a concrete summary/goal, expected_output, acceptance_conditions, timebox_ms, spawned_from, input_material_refs, and a unique responsibility_key. Call task_list first and do not duplicate an existing responsibility. A follow-up Task must cover a genuinely new repair question; if no distinct route exists, call task_block with a typed dependency instead. Creating a Task does not stop this Execution; continue the current Task while progress remains useful, but after a checked source failure do not submit the same proof route again until a newly completed follow-up Task has produced a Response Material that the proof Task has read and durably consumed with action integration. Publish a Response or Experience Material as soon as a bounded finding is durable, link it to the producing Task, and use a Response link when the final proof Task should receive it. A proof Task must read and durably consume useful incoming Materials before integrating them into a candidate. Complete the current Task when its own contract is satisfied.`
@@ -2158,7 +2195,8 @@ async function createProjectState(problem, config, options) {
       router,
       registry: capabilityRegistry,
       actorRef: `agent:core-${index}`,
-      onTaskCreate: async ({ payload }) => {
+      taskCreateMutex,
+      onTaskCreate: ({ payload }) => {
         const state = core.stateRef;
         if (state?.taskModel !== 'flat' || payload?.mission_id !== state.missionId) return;
         const missionTasks = state.taskService.listMissionTasks({
@@ -2182,6 +2220,28 @@ async function createProjectState(problem, config, options) {
             },
           );
         }
+      },
+      onBeforeSubmitCandidate: ({ taskId }) => {
+        const state = core.stateRef;
+        const gate = state?.flatRouteGates?.get(taskId);
+        if (state?.taskModel !== 'flat' || !gate) return;
+        const completedFollowUp = [...gate.eligibleTaskIds].some((followUpTaskId) => {
+          const followUp = state.taskService.getTask(followUpTaskId);
+          if (!followUp || !['DONE', 'CLOSED'].includes(followUp.state)) return false;
+          return (state.taskService.listTaskMaterials(followUpTaskId)?.links ?? []).some((link) =>
+            link.role === 'response' && link.receiving_task_id === taskId && gate.responseMaterialIds.has(link.material_id));
+        });
+        if (completedFollowUp && gate.fulfilled) return;
+        throw new SwarmEnvError(
+          ERROR_CODES.INVALID_CONTRACT,
+          'proof candidate route is gated until a follow-up Response Material is integrated',
+          {
+            task_id: taskId,
+            check_result_id: gate.checkResultId,
+            eligible_follow_up_task_count: gate.eligibleTaskIds.size,
+            response_material_count: gate.responseMaterialIds.size,
+          },
+        );
       },
       onClaim: async (claim) => {
         if (core.selectionActive) core.selectionClaim = claim;
@@ -2563,6 +2623,12 @@ async function createProjectState(problem, config, options) {
             action_ref: typeof result?.action_ref === 'string' ? result.action_ref : payload?.action_ref ?? null,
           };
           core.materialConsumptions.push(consumption);
+          const state = core.stateRef;
+          if (state?.taskModel === 'flat' && taskId === state.rootTaskId && consumption.action === 'integration') {
+            for (const gate of state.flatRouteGates.values()) {
+              if (consumedIds.some((materialId) => gate.responseMaterialIds.has(materialId))) gate.fulfilled = true;
+            }
+          }
           core.observe({
             source: 'context-service', kind: 'material_consumed', visibility: 'operator',
             taskId, executionId, coreId: `core-${core.index}`,
@@ -2594,11 +2660,20 @@ async function createProjectState(problem, config, options) {
           const state = core.stateRef;
           const dynamic = Boolean(state?.taskModel === 'flat' && created.task_id && !state.initialTaskIds.includes(created.task_id));
           if (dynamic && state) {
+            state.flatRouteGates.get(taskId)?.eligibleTaskIds.add(created.task_id);
             state.flatDynamicTaskCount = state.taskService.listMissionTasks({
               mission_id: state.missionId,
               states: FLAT_TASK_STATES,
               limit: 500,
             }).filter((task) => !state.initialTaskIds.includes(task.task_id)).length;
+            state.dynamicTaskEvents.push({
+              task_id: created.task_id ?? null,
+              source_task_id: taskId,
+              source_execution_id: executionId,
+              responsibility_key: created.responsibility_key ?? payload?.responsibility_key ?? null,
+              status: result?.deduplicated === true ? 'deduplicated' : 'created',
+              origin: 'agent',
+            });
           }
           core.observe({
             source: 'task-service', kind: 'task_created', visibility: 'operator',
@@ -2644,6 +2719,15 @@ async function createProjectState(problem, config, options) {
           });
         } else if (operation === 'task_link_material') {
           const link = result?.link ?? result ?? {};
+          const state = core.stateRef;
+          if (state?.taskModel === 'flat' && link.role === 'response' && link.material_id) {
+            for (const gate of state.flatRouteGates.values()) {
+              const producerTaskId = link.producer_task_id ?? taskId;
+              if (gate.eligibleTaskIds.has(producerTaskId) && link.receiving_task_id === gate.proofTaskId) {
+                gate.responseMaterialIds.add(link.material_id);
+              }
+            }
+          }
           core.observe({
             source: 'task-service', kind: 'material_linked', visibility: 'operator',
             taskId, executionId, coreId: `core-${core.index}`,
@@ -2816,6 +2900,8 @@ async function createProjectState(problem, config, options) {
     missionId: mission?.mission_id ?? null,
     flatDynamicTaskBudget: selectedFlatDynamicTaskBudget,
     flatDynamicTaskCount: 0,
+    taskCreateMutex,
+    flatRouteGates: new Map(),
     dynamicTaskEvents: [],
     executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? 30 * 60_000 : 60 * 60_000),
     handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? 25 * 60_000 : 55 * 60_000),
@@ -2870,6 +2956,7 @@ async function createProjectState(problem, config, options) {
             scope: 'proof_relevant',
             min_count: 1,
           }],
+          required_response: [{ receiving_task_id: root.task_id, min_count: 1 }],
         },
         workspace: taskPayload.workspace,
         timebox_ms: options.taskTimeboxMs ?? 30 * 60_000,

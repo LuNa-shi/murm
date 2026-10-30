@@ -87,7 +87,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onBeforeSubmitCandidate = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -101,12 +101,14 @@ export class ServicesBridge {
     this.capabilityProfileRegistryRevision = null;
     this.registry = registry ?? router?.registry ?? null;
     this.runtimeCapabilities = runtimeCapabilities ?? runtimeCapabilityList();
+    this.taskCreateMutex = taskCreateMutex;
     this.onClaim = onClaim;
     this.onClaimAccepted = onClaimAccepted;
     this.onRelease = onRelease;
     this.onWorkspaceWrite = onWorkspaceWrite;
     this.onWorkUnit = onWorkUnit;
     this.onTaskCreate = onTaskCreate;
+    this.onBeforeSubmitCandidate = onBeforeSubmitCandidate;
     this.onSubmitCandidate = onSubmitCandidate;
     this.onSchedulerStatus = onSchedulerStatus;
     this.onError = onError;
@@ -591,10 +593,20 @@ export class ServicesBridge {
       if (registeredService && !capability.runtime_owned && capability.service_id !== 'runtime') {
         const requiresBinding = Array.isArray(capability.context) && capability.context.length > 0;
         if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
-        if (operation === 'task_create') {
-          await this.onTaskCreate?.({ taskId: this.taskId, executionId: this.executionId, payload });
+        if (operation === 'submit_candidate') {
+          const guard = this.onBeforeSubmitCandidate?.({ taskId: this.taskId, executionId: this.executionId, payload });
+          if (guard && typeof guard.then === 'function') await guard;
         }
-        let result = await this.#invokeRegistered(capability, payload, bridgeOperationId);
+        const invoke = async () => {
+          if (operation === 'task_create') {
+            const guard = this.onTaskCreate?.({ taskId: this.taskId, executionId: this.executionId, payload });
+            if (guard && typeof guard.then === 'function') await guard;
+          }
+          return this.#invokeRegistered(capability, payload, bridgeOperationId);
+        };
+        let result = operation === 'task_create' && this.taskCreateMutex
+          ? await this.taskCreateMutex.run(invoke)
+          : await invoke();
         if (operation === 'task_complete') {
           await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
           // The Task Service commits the semantic completion; Runtime owns the
@@ -727,9 +739,16 @@ export class ServicesBridge {
         case 'task_list': result = sdk.listMissionTasks(payload); break;
         case 'task_view': result = sdk.viewTask(payload.task_id ?? this.taskId); break;
         case 'task_create':
-          await this.onTaskCreate?.({ taskId: boundTaskId, executionId: boundExecutionId, payload });
-          result = sdk.createTask(payload, options);
-          await this.onWorkUnit?.({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
+          {
+            const createTask = async () => {
+              const guard = this.onTaskCreate?.({ taskId: boundTaskId, executionId: boundExecutionId, payload });
+              if (guard && typeof guard.then === 'function') await guard;
+              return sdk.createTask(payload, options);
+            };
+            result = this.taskCreateMutex
+              ? await this.taskCreateMutex.run(createTask)
+              : await createTask();
+          }
           break;
         case 'task_link_material': result = sdk.linkMaterial(payload, options); break;
         case 'task_complete':
@@ -752,6 +771,10 @@ export class ServicesBridge {
         case 'consume_materials': result = sdk.consumeMaterials(payload, options); break;
         case 'publish_material': result = sdk.publishMaterial(payload, options); break;
         case 'submit_candidate':
+          {
+            const guard = this.onBeforeSubmitCandidate?.({ taskId: boundTaskId, executionId: boundExecutionId, payload });
+            if (guard && typeof guard.then === 'function') await guard;
+          }
           result = sdk.submitCandidate(payload, options);
           if (this.onSubmitCandidate) {
             const callbackResult = await this.onSubmitCandidate({ taskId: boundTaskId, executionId: boundExecutionId, payload, result });
