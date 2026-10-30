@@ -6,10 +6,10 @@ export const TASK_TYPE_VERSION = '1.0';
 // SATISFIED/CANCELLED spellings and WAITING/FAILED/REJECTED remain readable
 // for migrated evidence and compatibility adapters.
 export const TASK_STATES = Object.freeze(['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
-export const EXECUTION_STATES = Object.freeze(['CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED']);
+export const EXECUTION_STATES = Object.freeze(['CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED']);
 export const ACTIVE_EXECUTION_STATES = Object.freeze(['CREATED', 'RUNNING', 'WAITING']);
 export const TERMINAL_TASK_STATES = Object.freeze(['DONE', 'CLOSED', 'CANCELED', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
-export const TERMINAL_EXECUTION_STATES = Object.freeze(['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED']);
+export const TERMINAL_EXECUTION_STATES = Object.freeze(['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED']);
 
 const CONTRACT_KEYS = new Set([
   'required_children', 'required_materials', 'required_candidate', 'required_check', 'parent_review', 'normal_flow',

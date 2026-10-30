@@ -38,7 +38,8 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
 
 const FORBIDDEN_PLACEHOLDER = /\b(?:sorry|admit|axiom)\b/i;
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const PARALLEL_MODES = new Set(['direct', 'semantic', 'root-only']);
+const PARALLEL_MODES = new Set(['direct', 'legacy', 'semantic', 'root-only']);
+const TASK_MODELS = new Set(['legacy', 'flat']);
 const STRUCTURE_OPERATIONS = new Set([
   'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task',
 ]);
@@ -53,7 +54,40 @@ function parallelMode(options = {}) {
   return mode;
 }
 
-function modePrompt(mode, prompt) {
+/**
+ * Select the Task Service model independently from the historical benchmark
+ * treatment.  Existing fixtures keep the legacy Root tree by default; the
+ * Issue #100 profile opts into the Mission-scoped flat pool explicitly.
+ */
+function taskModel(options = {}) {
+  const model = options.taskModel ?? (options.taskOriented === true ? 'flat' : 'legacy');
+  if (!TASK_MODELS.has(model)) throw new TypeError(`taskModel must be one of ${[...TASK_MODELS].join(', ')}`);
+  return model;
+}
+
+function projectTasks(state, {
+  states = ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
+  limit = 100,
+  availableOnly = false,
+} = {}) {
+  if (state.taskModel === 'flat') {
+    return state.taskService.listMissionTasks({
+      mission_id: state.missionId,
+      states,
+      limit,
+      available_only: availableOnly,
+    });
+  }
+  return state.taskService.listTasks({ rootId: state.rootTaskId, states, limit, availableOnly });
+}
+
+function projectClaimableTasks(state, { limit = 100 } = {}) {
+  if (state.taskModel === 'flat') return state.taskService.listClaimableTasks({ missionId: state.missionId, limit });
+  return state.taskService.listClaimableTasks({ rootId: state.rootTaskId, limit });
+}
+
+function modePrompt(mode, prompt, selectedTaskModel = 'legacy') {
+  if (selectedTaskModel === 'flat') return prompt;
   if (mode === 'semantic') {
     return [
       'This run is the Issue #56 semantic-structure treatment. Before doing proof work on a root Task, use the registered swarmenv_task_create_branch_group tool to create at least two genuinely different ordinary alternative Tasks. When a Branch Task is bound, its Agent must use swarmenv_task_add_required_subtask at least twice to create one jointly required group before finishing either route. Give every Task a concrete goal, expected output, acceptance condition, and real Workspace or Material result. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each mutation. Do not replace these relations with generic child creation. Continue useful root and Branch work after the structure is created; the shared queue must keep the resulting Tasks claimable by other Cores.',
@@ -152,6 +186,7 @@ function safeObservationEvent(event) {
 function executionNarratives(state, taskTree, materials) {
   return taskTree.flatMap((task) => {
     const structure = state.taskService.getTaskStructure(task.task_id);
+    const materialLinks = taskMaterialLinks(state, task);
     return state.taskService.listExecutions(task.task_id).map((execution) => {
       const events = state.observationStore.listEvents({
         experimentId: state.runId,
@@ -183,6 +218,8 @@ function executionNarratives(state, taskTree, materials) {
         task_type: task.task_type,
         goal: task.goal,
         expected_output: task.expected_output,
+        acceptance_conditions: task.acceptance_conditions ?? null,
+        timebox_ms: task.timebox_ms ?? null,
         state: execution.state,
         attempt_no: execution.attempt_no,
         owner_ref: execution.owner_ref,
@@ -195,11 +232,25 @@ function executionNarratives(state, taskTree, materials) {
         wait_condition_type: execution.wait_condition?.type ?? null,
         wait_dependency_ids: waitDependencyIds(execution.wait_condition),
         dependencies,
+        material_links: materialLinks.map((link) => ({
+          link_id: link.link_id,
+          task_id: link.task_id,
+          material_id: link.material_id,
+          role: link.role,
+          receiving_task_id: link.receiving_task_id ?? null,
+          producer_task_id: link.producer_task_id ?? null,
+          producer_execution_id: link.producer_execution_id ?? null,
+          accepted_at: link.accepted_at ?? null,
+        })),
         actions: events,
         outputs,
       };
     });
   });
+}
+
+function taskMaterialLinks(state, task) {
+  return task.materials ?? state.taskService.listTaskMaterials?.(task.task_id)?.links ?? [];
 }
 
 function inputSnapshotHash(task, inputMaterialRefs) {
@@ -212,15 +263,11 @@ function inputSnapshotHash(task, inputMaterialRefs) {
 }
 
 function observedEligibleWorkCount(state, readyTasks) {
-  const tasks = state.taskService.listTasks({
-    rootId: state.rootTaskId,
-    states: ['OPEN', 'RUNNING'],
-    limit: 100,
-    availableOnly: false,
-  });
+  const tasks = projectTasks(state, { states: ['OPEN', 'RUNNING'], limit: 100, availableOnly: false });
   const readyIds = new Set(readyTasks.map((task) => task.task_id));
   return tasks.filter((task) => {
-    if (task.parent_id === null) return false;
+    if (state.taskModel !== 'flat' && task.parent_id === null) return false;
+    if (state.taskModel === 'flat' && task.task_id === state.rootTaskId) return false;
     if (readyIds.has(task.task_id)) return true;
     if (task.state !== 'RUNNING') return false;
     const execution = task.latest_execution ?? state.taskService.listExecutions(task.task_id, { includeTerminal: false })[0];
@@ -665,6 +712,9 @@ async function ensureAgentSession(core) {
 function selectionView(candidates) {
   return candidates.map((candidate) => ({
     task_id: candidate.task_id,
+    mission_id: candidate.mission_id ?? null,
+    summary: candidate.summary ?? null,
+    relations: candidate.relations ?? null,
     task_type: candidate.task_type,
     parent_id: candidate.parent_id,
     goal: candidate.goal,
@@ -752,7 +802,7 @@ async function selectTaskWithAgent(core, candidates, prompt) {
 async function releaseTerminalExecution(core) {
   if (!core.executionId) return;
   const execution = core.runtime.taskService.getExecution(core.executionId);
-  if (!execution || !['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(execution.state)) return;
+  if (!execution || !['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(execution.state)) return;
   core.parallelism.transition(core.index, 'IDLE', {
     task_id: execution.task_id,
     execution_id: execution.execution_id,
@@ -1270,12 +1320,7 @@ function readinessEvidence(samples, endedAt) {
 }
 
 function recordReadinessSnapshot(state, at = Date.now()) {
-  const tasks = state.taskService.listTasks({
-    rootId: state.rootTaskId,
-    states: ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
-    limit: 100,
-    availableOnly: false,
-  });
+  const tasks = projectTasks(state, { limit: 100, availableOnly: false });
   state.readinessSamples.push({
     at_ms: at,
     tasks: tasks.map((task) => {
@@ -1292,12 +1337,7 @@ function projectReport(state, startedAt, deadline) {
   }
   const materials = state.contextService.readMaterials({});
   const materialConsumptions = state.contextService.listMaterialConsumptions({});
-  const taskTree = state.taskService.listTasks({
-    rootId: state.rootTaskId,
-    states: ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
-    limit: 100,
-    availableOnly: false,
-  });
+  const taskTree = projectTasks(state, { limit: 100, availableOnly: false });
   const claimHistory = state.cores.flatMap((core) => core.claimHistory);
   const allowedTaskIds = new Set([state.rootTaskId, ...claimHistory.map((claim) => claim.task_id)]);
   const allowedExecutionIds = new Set(claimHistory.map((claim) => claim.execution_id));
@@ -1372,16 +1412,21 @@ function projectReport(state, startedAt, deadline) {
   });
   const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     candidateBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
-  const childTaskCount = taskTree.filter((task) => task.parent_id !== null).length;
+  const childTaskCount = state.taskModel === 'flat'
+    ? taskTree.filter((task) => task.task_id !== state.rootTaskId).length
+    : taskTree.filter((task) => task.parent_id !== null).length;
   const decompositionAvailable = childTaskCount > 0;
   const lifecycle = lifecycleEvents(state.taskService);
   const taskLifecycle = taskLifecycleEvents(state.taskService);
+  const notifications = state.taskService.listNotifications?.({ missionId: state.missionId }) ?? [];
   const admissionEvents = taskLifecycle.filter((event) => ADMISSION_OPERATIONS.has(event.operation));
   const narratives = executionNarratives(state, taskTree, materials);
   const invalidWaitAttemptCount = cores.reduce((count, core) => count + (core.toolErrors ?? []).filter((error) =>
     error.operation === 'request_wait' && ['INVALID_CONTRACT', 'NOT_ALLOWED', 'FENCED'].includes(error.code)).length, 0);
   const taskById = new Map(taskTree.map((task) => [task.task_id, task]));
-  const childClaimCount = claimHistory.filter((claim) => taskById.get(claim.task_id)?.parent_id !== null).length;
+  const childClaimCount = claimHistory.filter((claim) => state.taskModel === 'flat'
+    ? claim.task_id !== state.rootTaskId
+    : taskById.get(claim.task_id)?.parent_id !== null).length;
   const rootClaimCount = claimHistory.filter((claim) => claim.task_id === state.rootTaskId).length;
   const executionClaimCounts = new Map();
   for (const claim of claimHistory) executionClaimCounts.set(claim.execution_id, (executionClaimCounts.get(claim.execution_id) ?? 0) + 1);
@@ -1422,6 +1467,10 @@ function projectReport(state, startedAt, deadline) {
       repository_worktree_dirty: state.repositoryWorktreeDirty,
       parallel_mode: state.parallelMode,
       normal_flow: state.normalFlow,
+      task_model: state.taskModel,
+      mission_id: state.missionId,
+      execution_timeout_ms: state.executionTimeoutMs,
+      handoff_reminder_ms: state.handoffReminderMs,
       input_policy: 'pinned formalization only; no candidate or solution input',
       tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; generic service calls are rejected',
       registered_services: state.capabilityRegistry.listServices().map((service) => ({
@@ -1448,8 +1497,23 @@ function projectReport(state, startedAt, deadline) {
       input_workspace_hash: state.inputMaterialHash,
       task_count: taskTree.length,
       task_tree: taskTree.map((task) => ({
+        expected_output: task.expected_output ?? null,
+        acceptance_conditions: task.acceptance_conditions ?? null,
+        timebox_ms: task.timebox_ms ?? null,
+        material_links: taskMaterialLinks(state, task).map((link) => ({
+          link_id: link.link_id,
+          material_id: link.material_id,
+          role: link.role,
+          receiving_task_id: link.receiving_task_id ?? null,
+          producer_task_id: link.producer_task_id ?? null,
+          producer_execution_id: link.producer_execution_id ?? null,
+          accepted_at: link.accepted_at ?? null,
+        })),
         task_id: task.task_id,
         parent_id: task.parent_id,
+        mission_id: task.mission_id ?? state.missionId ?? null,
+        summary: task.summary ?? null,
+        relations: task.relations ?? null,
         task_type: task.task_type,
         priority: task.priority,
         state: task.state,
@@ -1500,6 +1564,22 @@ function projectReport(state, startedAt, deadline) {
         action_ref: row.action_ref,
         created_at: row.created_at,
       })),
+      notifications: notifications.map((notification) => ({
+        notification_id: notification.notification_id,
+        delivery_key: notification.delivery_key,
+        mission_id: notification.mission_id,
+        recipient_task_id: notification.recipient_task_id,
+        recipient_execution_id: notification.recipient_execution_id,
+        notification_type: notification.notification_type,
+        material_id: notification.material_id,
+        source_task_id: notification.source_task_id,
+        source_execution_id: notification.source_execution_id,
+        delivery_attempts: notification.delivery_attempts,
+        delivered_at: notification.delivered_at,
+        delivered_execution_id: notification.delivered_execution_id,
+        created_at: notification.created_at,
+      })),
+      notification_count: notifications.length,
       project_material_count: materials.filter((material) => material.source_task === state.rootTaskId).length,
       candidate_count: cores.reduce((count, core) => count + core.checks.length, 0),
       ended_early: state.stopOnSolved && state.solvedAt !== null,
@@ -1588,6 +1668,7 @@ function projectReport(state, startedAt, deadline) {
 
 async function createProjectState(problem, config, options) {
   const selectedParallelMode = parallelMode(options);
+  const selectedTaskModel = taskModel(options);
   const normalFlow = options.normalFlow ?? selectedParallelMode === 'semantic';
   const runId = options.runId ?? randomUUID();
   const startedAt = options.startedAt ?? Date.now();
@@ -1690,22 +1771,30 @@ async function createProjectState(problem, config, options) {
   }).capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`)))];
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
-  const modeInstructions = selectedParallelMode === 'semantic'
-    ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes. After child or branch Materials exist, the Root must read them with swarmenv_context_read, durably record the bounded handoff with swarmenv_context_consume using action integration, make a bounded Workspace integration note, and publish one root-owned Material with scope root_integration whose provenance names the consumed Material IDs before blocking or claiming the collaboration loop complete.'
-    : selectedParallelMode === 'root-only'
-      ? 'This is the Root-only control. Keep all work on this root Task. Do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks.'
-      : 'Use direct child Tasks only when a genuinely separable route emerges.';
+  const modeInstructions = selectedTaskModel === 'flat'
+    ? 'Search the Mission Task summaries before proposing substantial new work. Create another ordinary Task only when it covers a genuinely uncovered question, with a useful expected output, acceptance condition, and clear boundary. Creating a Task does not stop this Execution; continue the current Task while progress remains useful. Publish Response, Handoff, or Experience Material as it becomes durable, and complete the current Task when its own contract is satisfied.'
+    : selectedParallelMode === 'semantic'
+      ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes. After child or branch Materials exist, the Root must read them with swarmenv_context_read, durably record the bounded handoff with swarmenv_context_consume using action integration, make a bounded Workspace integration note, and publish one root-owned Material with scope root_integration whose provenance names the consumed Material IDs before blocking or claiming the collaboration loop complete.'
+      : selectedParallelMode === 'root-only'
+        ? 'This is the Root-only control. Keep all work on this root Task and do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks. Do not call the semantic structure mutation tools. Keep all proof work and checking on the root responsibility.'
+        : 'Use direct child Tasks only when a genuinely separable route emerges.';
   const dependencyInstruction = normalFlow
-    ? 'When a real external dependency blocks progress, preserve useful Workspace and Materials and call execution_block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.'
+    ? (selectedTaskModel === 'flat'
+      ? 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.'
+      : 'When a real external dependency blocks progress, preserve useful Workspace and Materials and call execution_block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.')
     : 'Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency.';
-  const root = owner.proposeTask({
+  const taskSpecificInstruction = selectedTaskModel === 'flat'
+    ? 'The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition.'
+    : 'Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge.';
+  const taskPayload = {
     task_type: 'proof',
+    summary: `Prove ${problem.id} with an independently checked candidate and a clear boundary from other Mission work.`,
     goal: `Prove ${problem.id}`,
     expected_output: 'A verified Lean proof for the locked PutnamBench problem',
-    task_instructions: `The sole goal of this root Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. If no honest candidate is ready, preserve useful evidence and block on a concrete dependency instead of submitting the input file. ${modeInstructions} Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge. ${dependencyInstruction} Later reclaim the root to read child Workspace changes, Materials, and Judge feedback, then accept completed work or request focused rework before integrating it into the proof.`,
+    task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. If no honest candidate is ready, preserve useful evidence and block on a concrete dependency instead of submitting the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable Materials as findings become available.`,
     completion_contract: {
       ...(normalFlow ? { normal_flow: true } : {}),
-      ...(selectedParallelMode === 'semantic' ? {
+      ...(selectedParallelMode === 'semantic' && selectedTaskModel !== 'flat' ? {
         required_materials: [{ kinds: ['artifact', 'fact', 'experience', 'failure'], scope: 'root_integration', min_count: 1, requires_consumption: true, action: 'integration' }],
       } : {}),
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
@@ -1726,14 +1815,37 @@ async function createProjectState(problem, config, options) {
     },
     max_children: 32,
     max_depth: 3,
-  }, { operationId: `benchmark:root:propose:${runId}` }).task;
-  observationStore.registerExperiment({ experimentId: runId, rootTaskId: root.task_id, status: 'RUNNING', metadata: { problem_id: problem.id } });
+  };
+  const mission = selectedTaskModel === 'flat'
+    ? owner.createMission({
+      mission_id: `mission:${problem.id}:${runId}`,
+      goal: `Solve ${problem.id} through independent, shared Task work.`,
+      acceptance_conditions: { project: problem.id, source_hash: problem.source_hash },
+    }, { operationId: `benchmark:mission:create:${runId}` }).mission
+    : null;
+  const root = selectedTaskModel === 'flat'
+    ? owner.createTask({
+      ...taskPayload,
+      mission_id: mission.mission_id,
+      timebox_ms: options.taskTimeboxMs ?? 30 * 60_000,
+      owner_ref: 'owner:benchmark',
+    }, { operationId: `benchmark:task:create:${runId}` }).task
+    : owner.proposeTask(taskPayload, { operationId: `benchmark:root:propose:${runId}` }).task;
+  observationStore.registerExperiment({ experimentId: runId, rootTaskId: root.task_id, status: 'RUNNING', metadata: { problem_id: problem.id, task_model: selectedTaskModel, mission_id: mission?.mission_id ?? null } });
   observationStore.append({
     experimentId: runId,
     source: 'runtime',
     kind: 'experiment_started',
     taskId: root.task_id,
-    payload: { problem_id: problem.id, core_count: 4, timebox_ms: options.timeboxMs ?? 60 * 60_000, parallel_mode: selectedParallelMode, normal_flow: normalFlow },
+    payload: {
+      problem_id: problem.id,
+      core_count: 4,
+      timebox_ms: options.timeboxMs ?? 60 * 60_000,
+      parallel_mode: selectedParallelMode,
+      task_model: selectedTaskModel,
+      mission_id: mission?.mission_id ?? null,
+      normal_flow: normalFlow,
+    },
   });
   // Deterministic queue scenarios may seed durable Tasks before reusable Core
   // sessions start. The hook uses the same Task Service boundary as Agent
@@ -1773,8 +1885,11 @@ async function createProjectState(problem, config, options) {
       coreIds: [`core-${index}`],
       actorRef: `runtime:core-${index}`,
       watchdogTimeoutMs: options.watchdogTimeoutMs,
-      executionTimeoutMs: options.executionTimeoutMs,
-      handoffReminderMs: options.handoffReminderMs,
+      // The Issue #100 benchmark profile gives each first-class Task a
+      // 30-minute bounded Execution and a five-minute handoff warning.  The
+      // generic Runtime defaults remain 60/55 minutes for legacy callers.
+      executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? 30 * 60_000 : undefined),
+      handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? 25 * 60_000 : undefined),
       logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
       onSessionStarted: ({ execution, session, recovery }) => {
@@ -1943,7 +2058,7 @@ async function createProjectState(problem, config, options) {
             }
             return session;
           },
-          agentPrompt: modePrompt(selectedParallelMode, BOUND_AGENT_PROMPT),
+          agentPrompt: modePrompt(selectedParallelMode, BOUND_AGENT_PROMPT, selectedTaskModel),
         });
         const boundSession = core.session;
         const boundExecutionId = claim.execution.execution_id;
@@ -1966,7 +2081,7 @@ async function createProjectState(problem, config, options) {
                 if (core.stopping || core.session !== boundSession || core.executionId !== boundExecutionId) break;
                 core.turnStartedAt = Date.now();
                 core.turnInFlight = false;
-                await runTurn(core, modePrompt(selectedParallelMode, BOUND_AGENT_PROMPT), core.startConfig.options.turnTimeoutMs ?? 30_000);
+                await runTurn(core, modePrompt(selectedParallelMode, BOUND_AGENT_PROMPT, selectedTaskModel), core.startConfig.options.turnTimeoutMs ?? 30_000);
               }
             } catch (error) {
               const expectedHandoff = boundSession.expectedStop || core.session !== boundSession || core.stopping;
@@ -1988,7 +2103,7 @@ async function createProjectState(problem, config, options) {
               // sweep to break a handoff wait.
               if (core.executionId === boundExecutionId) {
                 const settled = taskService.getExecution(boundExecutionId);
-                if (settled && ['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED'].includes(settled.state)) {
+                if (settled && ['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(settled.state)) {
                   await releaseTerminalExecution(core);
                 }
               }
@@ -2037,8 +2152,7 @@ async function createProjectState(problem, config, options) {
       onSchedulerStatus: async (payload) => {
         if (core.stateRef) core.stateRef.schedulerStatusCount += 1;
         const cores = core.stateRef?.cores ?? [core];
-        const readyTasks = taskService.listTasks({
-          rootId: payload.root_id ?? core.stateRef?.rootTaskId ?? null,
+        const readyTasks = projectTasks(core.stateRef, {
           states: ['OPEN', 'RUNNING'],
           limit: payload.limit ?? 100,
           availableOnly: true,
@@ -2403,6 +2517,10 @@ async function createProjectState(problem, config, options) {
     repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
     parallelism,
     parallelMode: selectedParallelMode,
+    taskModel: selectedTaskModel,
+    missionId: mission?.mission_id ?? null,
+    executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? 30 * 60_000 : 60 * 60_000),
+    handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? 25 * 60_000 : 55 * 60_000),
     normalFlow,
     readinessSamples: [],
   };
@@ -2413,6 +2531,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   for (const core of state.cores) core.stateRef = state;
   state.controller = new TaskController({
     taskService: state.taskService,
+    listClaimableTasks: () => projectClaimableTasks(state, { limit: options.controllerShortlistLimit ?? 16 }),
     shortlistLimit: options.controllerShortlistLimit ?? 16,
     // The benchmark loop is already the bounded repair sweep. Keeping a
     // second five-second Controller timer would duplicate reconciliations and
@@ -2474,7 +2593,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   // CoreDaemon waits for the whole Runtime Execution to release after a
   // successful claim. Keep that ownership deadline at least as long as the
   // durable Runtime deadline; a turn timeout is only the per-prompt bound.
-  const executionTimeoutMs = options.executionTimeoutMs ?? 60 * 60_000;
+  const executionTimeoutMs = state.executionTimeoutMs;
   const basePrompt = (core) => core.taskId
       ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or blocking on a typed dependency.`
       : GENERIC_AGENT_PROMPT;
@@ -2490,10 +2609,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       // queue poll when an event source is quiet or unavailable.
       idleBackoffMs: options.daemonIdleBackoffMs ?? 5_000,
       taskService: state.taskService,
-      listClaimableTasks: () => state.taskService.listClaimableTasks({
-        rootId: state.rootTaskId,
-        limit: options.controllerShortlistLimit ?? 16,
-      }),
+      listClaimableTasks: () => projectClaimableTasks(state, { limit: options.controllerShortlistLimit ?? 16 }),
       selectTask: ({ candidates, prompt }) => selectTaskWithAgent(core, candidates, prompt),
       claimTask: async (selectedTaskId, context) => {
         // The Selection Agent may already have claimed the Task. Reuse that
@@ -2624,7 +2740,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   // production composition has no Scheduler instance or Scheduler decision
   // maker. Every value is derived from CoreDaemon lifecycle counters.
   state.scheduler = { snapshot: () => ({
-    ready_count: state.taskService.listClaimableTasks({ rootId: state.rootTaskId, limit: 100 }).length,
+    ready_count: projectClaimableTasks(state, { limit: 100 }).length,
     dispatch_count: state.daemons.reduce((count, daemon) => count + daemon.snapshot().claim_count, 0),
     startup_attempt_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartAttempts ?? 0), 0),
     startup_failure_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartFailures ?? 0), 0),
@@ -2716,8 +2832,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         state.daemonWakeRequested = false;
         daemonWake = new Promise((resolve) => { resolveDaemonWake = resolve; });
         const readyStartedAt = Date.now();
-        const readyTasks = state.taskService.listTasks({
-          rootId: state.rootTaskId,
+        const readyTasks = projectTasks(state, {
           states: ['OPEN', 'RUNNING', 'WAITING'],
           limit: 100,
           availableOnly: true,

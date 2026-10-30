@@ -101,13 +101,15 @@ class FakeSession extends EventEmitter {
     this.bound = bound;
     this.selectionOnly = selectionOnly;
     this.rpcRecords = [];
+    this.promptMessages = [];
     this.closed = false;
     this.candidateResults = [];
   }
 
   async waitForReady() {}
 
-  async prompt() {
+  async prompt(message) {
+    if (typeof message === 'string') this.promptMessages.push(message);
     if (this.noWork) return { data: { disposition: 'handled' } };
     const call = async (operation, payload) => {
       this.rpcRecords.push({ type: 'tool_call', tool_name: namedTool(operation) });
@@ -710,7 +712,7 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = false }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, taskModel = undefined, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -721,7 +723,8 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     watchdogTimeoutMs,
     watchdogIntervalMs,
     maxInfrastructureRetries,
-    normalFlow,
+    ...(normalFlow === undefined ? {} : { normalFlow }),
+    ...(taskModel === undefined ? {} : { taskModel }),
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
@@ -762,7 +765,38 @@ test('benchmark runtime publishes live core, execution, service, and completion 
   }
 });
 
-test('Selection Agent keeps its Session through claim and Runtime bind', async () => {
+test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Executions', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-flat-benchmark-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-flat-benchmark-report-');
+  const adapters = [];
+  try {
+    const report = await runFixture({
+      reportDir,
+      experimentDir,
+      id: 'putnam_flat_task_model_test',
+      taskModel: 'flat',
+      timeboxMs: 1_500,
+      onAdapter: (adapter) => adapters.push(adapter),
+    });
+    assert.equal(report.protocol.task_model, 'flat');
+    assert.equal(report.protocol.execution_timeout_ms, 30 * 60_000);
+    assert.equal(report.protocol.handoff_reminder_ms, 25 * 60_000);
+    assert.equal(report.project.task_count, 1);
+    assert.ok(report.project.task_tree[0].mission_id);
+    assert.equal(report.project.task_tree[0].parent_id, null);
+    assert.equal(report.run.protocol_valid, true);
+    const boundPrompts = adapters.flatMap((adapter) => adapter.sessions.flatMap((session) => session.promptMessages));
+    assert.ok(boundPrompts.length > 0);
+    const prompt = boundPrompts.join('\n');
+    assert.match(prompt, /current Task/);
+    assert.doesNotMatch(prompt, /Branch Task|branch group|required subtask|parent review|root integration/i);
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('select_task keeps the selection Session through claim and Runtime bind', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-selection-bind-experiment-');
   const reportDir = await mkdtemp('/tmp/swarmenv-selection-bind-report-');
   try {

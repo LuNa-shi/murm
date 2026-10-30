@@ -6,6 +6,7 @@ import { CONTEXT_SCHEMA_SQL } from '../storage/context-schema.js';
 
 const EVIDENCE_STATES = new Set(['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale']);
 const CONSUMPTION_ACTIONS = new Set(['route', 'task', 'candidate', 'integration']);
+const MATERIAL_ROLES = new Set(['input', 'response', 'handoff', 'experience']);
 const TRUSTED_ACTOR_PREFIXES = ['judge:', 'system:'];
 const SECRET_KEY = /(secret|password|token|api[_-]?key|credential|private[_-]?key)/i;
 
@@ -34,7 +35,19 @@ function requireString(value, field) {
 
 function cloneMaterial(row) {
   if (!row) return null;
-  return { ...row, content: parse(row.content_json), provenance: parse(row.provenance_json) };
+  return {
+    ...row,
+    // `role` was added after the first Context schema.  Keep reads from old
+    // databases deterministic while the constructor migration catches up.
+    role: row.role ?? 'experience',
+    // Stable semantic aliases.  The SQLite schema retains the historical
+    // source_* column names, while the public Material contract names the
+    // immutable producer identity explicitly.
+    producer_task_id: row.source_task ?? null,
+    producer_execution_id: row.source_execution ?? null,
+    content: parse(row.content_json),
+    provenance: parse(row.provenance_json),
+  };
 }
 
 function rejectSecrets(value, path = 'payload') {
@@ -55,6 +68,13 @@ export class ContextService {
   constructor(database = ':memory:', { trustedActorPrefixes = TRUSTED_ACTOR_PREFIXES, taskService = null, logger = null } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(CONTEXT_SCHEMA_SQL);
+    const materialColumns = new Set(this.db.prepare('PRAGMA table_info(materials)').all().map((column) => column.name));
+    if (!materialColumns.has('role')) {
+      this.db.exec("ALTER TABLE materials ADD COLUMN role TEXT NOT NULL DEFAULT 'experience'");
+    }
+    if (!materialColumns.has('mission_id')) {
+      this.db.exec('ALTER TABLE materials ADD COLUMN mission_id TEXT');
+    }
     this.trustedActorPrefixes = trustedActorPrefixes;
     this.taskService = taskService;
     this.logger = logger;
@@ -65,41 +85,62 @@ export class ContextService {
   }
 
   dispatch(operation, payload = {}, envelope) {
-    this.logger?.append({ event: 'dispatch.start', service: 'context', operation, envelope });
+    const normalizedOperation = {
+      'context.publish_material': 'publish_material',
+      context_publish_material: 'publish_material',
+      'context.search_materials': 'search_materials',
+      context_search_materials: 'search_materials',
+      'context.get_material': 'get_material',
+      context_get_material: 'get_material',
+      'context.read_materials': 'read_materials',
+      context_read_materials: 'read_materials',
+    }[operation] ?? operation;
+    const normalizedPayload = normalizedOperation === 'publish_material' &&
+      (operation === 'context.publish_material' || operation === 'context_publish_material')
+      ? {
+        ...payload,
+        kind: payload.kind ?? (payload.role === 'experience' ? 'experience' : payload.role === 'handoff' ? 'failure' : 'fact'),
+        scope: payload.scope ?? 'mission',
+        evidence_state: payload.evidence_state ?? 'proposed',
+      }
+      : payload;
+    this.logger?.append({ event: 'dispatch.start', service: 'context', operation: normalizedOperation, requested_operation: operation, envelope });
     try {
-      const executionWrite = ['publish_material', 'consume_materials'].includes(operation) && envelope?.execution_id !== null;
+      const executionWrite = ['publish_material', 'consume_materials'].includes(normalizedOperation) && envelope?.execution_id !== null;
       validateEnvelope(envelope, { executionWrite });
       let replayed = false;
-      const result = operation === 'read_materials'
+      const result = normalizedOperation === 'read_materials' || normalizedOperation === 'search_materials'
         ? this.#readMaterials(payload)
-        : operation === 'list_material_consumptions'
+        : normalizedOperation === 'get_material'
+          ? { material: this.getMaterial(requireString(payload.material_id ?? payload.materialId, 'material_id')) }
+        : normalizedOperation === 'list_material_consumptions'
           ? this.listMaterialConsumptions(payload)
           : this.#transaction(() => {
-        const fingerprint = operationPayload(operation, payload, envelope);
+        const fingerprint = operationPayload(normalizedOperation, normalizedPayload, envelope);
         const replay = this.#replay(envelope.operation_id, fingerprint);
         if (replay) {
           replayed = true;
           return replay;
         }
         let value;
-        if (operation === 'publish_material') value = this.#publishMaterial(payload, envelope);
-        else if (operation === 'consume_materials') value = this.#consumeMaterials(payload, envelope);
+        if (normalizedOperation === 'publish_material') value = this.#publishMaterial(normalizedPayload, envelope);
+        else if (normalizedOperation === 'consume_materials') value = this.#consumeMaterials(normalizedPayload, envelope);
         else throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Context Service operation: ${operation}`);
-        this.#saveOperation(envelope.operation_id, operation, fingerprint, value);
+        this.#saveOperation(envelope.operation_id, normalizedOperation, fingerprint, value);
         return value;
       });
-      if (operation === 'publish_material' && !replayed) {
+      if (normalizedOperation === 'publish_material' && !replayed) {
         this.taskService?.notifyDependencyEvent?.({
           kind: 'material_published',
-          operation: 'publish_material',
+          operation: normalizedOperation,
           task_id: result?.material?.source_task ?? null,
           execution_id: result?.material?.source_execution ?? null,
         });
       }
-      this.logger?.append({ event: 'dispatch.complete', service: 'context', operation, ok: true, result });
+      this.logger?.append({ event: 'dispatch.complete', service: 'context', operation: normalizedOperation, requested_operation: operation, ok: true, result });
       return result;
     } catch (error) {
-      this.logger?.append({ event: 'dispatch.complete', service: 'context', operation, ok: false, error: { name: error.name, code: error.code, message: error.message } });
+      this.logger?.append({ event: 'dispatch.complete', service: 'context', operation: normalizedOperation, requested_operation: operation, ok: false, error: { name: error.name, code: error.code, message: error.message } });
       throw error;
     }
   }
@@ -153,17 +194,43 @@ export class ContextService {
     const materialId = filters.material_id ?? filters.materialId ?? null;
     const kind = filters.kind ?? null;
     const scope = filters.scope ?? null;
-    const sourceTask = filters.source_task ?? filters.sourceTask ?? null;
+    const explicitSourceTask = filters.source_task ?? filters.sourceTask ?? null;
+    const taskId = filters.task_id ?? filters.taskId ?? null;
+    // A standalone Context Service has no Task-link table, so task_id keeps
+    // its useful producer lookup there. Once Task Service is attached,
+    // task_id also includes Materials linked to that Task as input, response,
+    // handoff, or experience while source_task remains producer-only.
+    const sourceTask = explicitSourceTask ?? (this.taskService ? null : taskId);
     const sourceExecution = filters.source_execution ?? filters.sourceExecution ?? null;
-    return this.db.prepare(`SELECT * FROM materials
+    const role = filters.role ?? null;
+    const query = filters.query ?? filters.search ?? null;
+    if (role !== null && !MATERIAL_ROLES.has(role)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'role must be input, response, handoff, or experience');
+    }
+    if (query !== null && (typeof query !== 'string' || query.length === 0)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'query must be a non-empty string or null');
+    }
+    const missionId = filters.mission_id ?? filters.missionId ?? null;
+    let rows = this.db.prepare(`SELECT * FROM materials
       WHERE (? IS NULL OR material_id = ?)
         AND (? IS NULL OR kind = ?)
         AND (? IS NULL OR scope = ?)
         AND (? IS NULL OR source_task = ?)
         AND (? IS NULL OR source_execution = ?)
+        AND (? IS NULL OR role = ?)
+        AND (? IS NULL OR mission_id = ?)
+        AND (? IS NULL OR content_json LIKE '%' || ? || '%' OR provenance_json LIKE '%' || ? || '%')
       ORDER BY created_at, material_id`)
-      .all(materialId, materialId, kind, kind, scope, scope, sourceTask, sourceTask, sourceExecution, sourceExecution)
-      .map(cloneMaterial);
+      .all(materialId, materialId, kind, kind, scope, scope, sourceTask, sourceTask, sourceExecution, sourceExecution,
+        role, role, missionId, missionId, query, query, query);
+    if (taskId !== null && this.taskService && explicitSourceTask === null) {
+      const linkedMaterialIds = new Set(this.taskService.listTaskMaterialIds?.(taskId) ?? []);
+      rows = rows.filter((row) => row.source_task === taskId || linkedMaterialIds.has(row.material_id));
+    }
+    // Mission is represented by Task Service rather than duplicated into
+    // Context rows.  The optional Task filter above joins producer and
+    // consumer links without giving Context Service Task authority.
+    return rows.map(cloneMaterial);
   }
 
   #consumeMaterials(payload, envelope) {
@@ -210,11 +277,31 @@ export class ContextService {
     this.#assertExecutionFence(envelope);
     rejectSecrets(payload);
     for (const field of ['kind', 'scope']) requireString(payload[field], field);
+    const role = payload.role ?? 'experience';
+    if (!MATERIAL_ROLES.has(role)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'role must be input, response, handoff, or experience');
+    }
     if (!EVIDENCE_STATES.has(payload.evidence_state ?? 'proposed')) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported evidence_state');
     }
     if (payload.content === undefined) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material content is required');
     const provenance = payload.provenance ? { ...payload.provenance } : { actor_ref: envelope.actor_ref };
+    provenance.role ??= role;
+    const boundMissionId = envelope.task_id && typeof this.taskService?.getTask === 'function'
+      ? this.taskService.getTask(envelope.task_id)?.mission_id ?? null
+      : null;
+    const requestedMissionId = payload.mission_id ?? payload.missionId ?? null;
+    if (boundMissionId && requestedMissionId && requestedMissionId !== boundMissionId) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material mission_id must match the current Task Mission', {
+        current_mission_id: boundMissionId,
+        requested_mission_id: requestedMissionId,
+      });
+    }
+    const missionId = requestedMissionId ?? boundMissionId;
+    if (missionId !== null) {
+      requireString(missionId, 'mission_id');
+      provenance.mission_id ??= missionId;
+    }
     if (payload.scope === 'root_integration') {
       const consumedIds = provenance?.consumed_material_ids;
       if (!Array.isArray(consumedIds) || consumedIds.length === 0 || consumedIds.length > 100 || consumedIds.some((id) => typeof id !== 'string' || id.length === 0)) {
@@ -257,6 +344,8 @@ export class ContextService {
       kind: payload.kind,
       scope: payload.scope,
       evidence_state: evidenceState,
+      role,
+      mission_id: missionId,
       content_ref: payload.content_ref ?? `sqlite://material/${materialId}`,
       content_hash: contentHash,
       content: payload.content,
@@ -269,16 +358,16 @@ export class ContextService {
     };
     const existing = this.getMaterial(materialId);
     if (existing) {
-      if (existing.content_hash !== contentHash || existing.kind !== material.kind || existing.scope !== material.scope || existing.supersedes !== material.supersedes) {
+      if (existing.content_hash !== contentHash || existing.kind !== material.kind || existing.role !== material.role || existing.mission_id !== material.mission_id || existing.scope !== material.scope || existing.supersedes !== material.supersedes) {
         throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'material_id already contains a different immutable record');
       }
       return { material: existing };
     }
     this.db.prepare(`INSERT INTO materials (
-      material_id, kind, scope, evidence_state, content_ref, content_hash, content_json, version,
+      material_id, kind, role, mission_id, scope, evidence_state, content_ref, content_hash, content_json, version,
       source_task, source_execution, provenance_json, supersedes, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(material.material_id, material.kind, material.scope, material.evidence_state, material.content_ref, material.content_hash,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(material.material_id, material.kind, material.role, material.mission_id, material.scope, material.evidence_state, material.content_ref, material.content_hash,
         json(material.content), material.version, material.source_task, material.source_execution, json(material.provenance), material.supersedes, material.created_at);
     return { material: cloneMaterial(this.db.prepare('SELECT * FROM materials WHERE material_id = ?').get(materialId)) };
   }
