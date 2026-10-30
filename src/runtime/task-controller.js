@@ -250,7 +250,14 @@ export class TaskController {
     const signature = taskSignature(claimable);
     let signaled = 0;
     if (claimable.length > 0 && typeof this.signalIdleDaemon === 'function') {
+      // A single claimable Task needs one selector. Waking every idle Core for
+      // that same shortlist creates a thundering-herd of valid but losing
+      // claim attempts. Keep one wake slot per distinct claimable Task so
+      // multiple independent Tasks can still use the available Cores.
+      let signalBudget = claimable.length;
       for (const { daemon, view, id } of idle) {
+        if (signalBudget <= 0) break;
+        signalBudget -= 1;
         // Include the Daemon's idle epoch so a completed failed/invalid
         // selection can be woken again even when the Controller never saw a
         // non-IDLE snapshot between attempts.  The task signature and state
