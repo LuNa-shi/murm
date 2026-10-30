@@ -12,13 +12,14 @@ export const TERMINAL_TASK_STATES = Object.freeze(['DONE', 'CLOSED', 'CANCELED',
 export const TERMINAL_EXECUTION_STATES = Object.freeze(['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED']);
 
 const CONTRACT_KEYS = new Set([
-  'required_children', 'required_materials', 'required_candidate', 'required_check', 'parent_review', 'normal_flow',
+  'required_children', 'required_materials', 'required_response', 'required_candidate', 'required_check', 'parent_review', 'normal_flow',
   'required_branch_groups', 'required_subtask_groups',
 ]);
 const CHECK_KEYS = new Set(['checker_ref', 'checker_version', 'environment_ref', 'input_snapshot_hash']);
 const MATERIAL_KEYS = new Set(['kind', 'kinds', 'scope', 'min_count', 'requires_consumption', 'action', 'consumption_action']);
 const MATERIAL_CONSUMPTION_ACTIONS = new Set(['route', 'task', 'candidate', 'integration']);
 const CANDIDATE_KEYS = new Set(['kind', 'scope']);
+const RESPONSE_KEYS = new Set(['receiving_task_id', 'task_id', 'min_count']);
 
 function assertPlainObject(value, field) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -92,6 +93,27 @@ function normalizeCandidate(value) {
   return { ...value };
 }
 
+function normalizeResponses(value) {
+  const requirements = Array.isArray(value) ? value : [value];
+  return requirements.map((item, index) => {
+    if (typeof item === 'string') return { receiving_task_id: item, min_count: 1 };
+    assertPlainObject(item, `required_response[${index}]`);
+    assertNoUnknownKeys(item, RESPONSE_KEYS, `required_response[${index}]`);
+    const receivingTaskId = item.receiving_task_id ?? item.task_id ?? null;
+    if (receivingTaskId !== null && (typeof receivingTaskId !== 'string' || receivingTaskId.length === 0)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_response[${index}].receiving_task_id must be a Task ID`);
+    }
+    const minCount = item.min_count ?? 1;
+    if (!Number.isInteger(minCount) || minCount < 1) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_response[${index}].min_count must be positive`);
+    }
+    return {
+      ...(receivingTaskId === null ? {} : { receiving_task_id: receivingTaskId }),
+      min_count: minCount,
+    };
+  });
+}
+
 export function validateCompletionContract(contract, { taskType, parentId = null } = {}) {
   assertPlainObject(contract, 'completion_contract');
   assertNoUnknownKeys(contract, CONTRACT_KEYS, 'completion_contract');
@@ -130,6 +152,7 @@ export function validateCompletionContract(contract, { taskType, parentId = null
   if (normalized.normal_flow === true && normalized.parent_review === true) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'normal_flow Tasks cannot require parent_review');
   }
+  if (contract.required_response !== undefined) normalized.required_response = normalizeResponses(contract.required_response);
   if (taskType === 'proof' && !normalized.required_check) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'proof tasks require required_check');
   }

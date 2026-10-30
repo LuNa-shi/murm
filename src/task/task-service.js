@@ -1201,7 +1201,13 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must be an array of Material IDs');
     }
     const linked = this.#taskMaterialLinks(task.task_id);
-    const linkedIds = new Set(linked.map((link) => link.material_id));
+    const producedResponseLinks = this.db.prepare(`SELECT * FROM task_material_links
+      WHERE producer_task_id = ? AND role = 'response'
+      ORDER BY created_at, link_id`).all(task.task_id)
+      .map((row) => rowToMaterialLink(row, this.contextService?.getMaterial(row.material_id) ?? null));
+    const completionLinks = [...linked, ...producedResponseLinks].filter((link, index, links) =>
+      links.findIndex((candidate) => candidate.link_id === link.link_id) === index);
+    const linkedIds = new Set(completionLinks.map((link) => link.material_id));
     const unlinked = [...new Set(requestedMaterialIds)].filter((id) => !linkedIds.has(id));
     if (unlinked.length > 0) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.complete can reference only linked Materials', { unlinked_material_ids: unlinked });
@@ -1218,7 +1224,7 @@ export class TaskService {
     this.db.prepare(`UPDATE tasks
       SET state = 'DONE', state_version = state_version + 1, block_reason = NULL,
           claimable_at = NULL, updated_at = ? WHERE task_id = ?`).run(updatedAt, task.task_id);
-    return { task: this.getTask(task.task_id), execution: this.getExecution(execution.execution_id), materials: linked };
+    return { task: this.getTask(task.task_id), execution: this.getExecution(execution.execution_id), materials: completionLinks };
   }
 
   #closeTask(payload, envelope) {
@@ -3554,7 +3560,15 @@ export class TaskService {
     }
     if (contract.required_response) {
       const requirements = Array.isArray(contract.required_response) ? contract.required_response : [contract.required_response];
-      const responseLinks = this.#taskMaterialLinks(task.task_id, { role: 'response' });
+      // A required response is a delivery obligation of the current
+      // producer Task. Response links are stored on the receiving Task, so
+      // query by producer_task_id rather than treating the producer as the
+      // receiver. This keeps completion aligned with the directed Material
+      // link semantics used by Mission Tasks.
+      const responseLinks = this.db.prepare(`SELECT * FROM task_material_links
+        WHERE producer_task_id = ? AND role = 'response'
+        ORDER BY created_at, link_id`).all(task.task_id)
+        .map((row) => rowToMaterialLink(row, this.contextService?.getMaterial(row.material_id) ?? null));
       for (const requirement of requirements) {
         const targetTaskId = typeof requirement === 'string' ? requirement : requirement?.receiving_task_id ?? requirement?.task_id ?? null;
         const matches = responseLinks.filter((link) => !targetTaskId || link.receiving_task_id === targetTaskId);

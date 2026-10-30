@@ -135,6 +135,35 @@ test('response links are queryable and receiving Task closes a producer after DO
   taskService.close();
 });
 
+test('a producer Task completes after delivering a required Response Material', () => {
+  const { contextService, taskService } = environment();
+  const mission = createMission(taskService, 'mission:required-response');
+  const receiver = createTask(taskService, mission.mission_id, 'task:required-response-receiver');
+  const producer = createTask(taskService, mission.mission_id, 'task:required-response-producer', {
+    completion_contract: {
+      required_response: [{ receiving_task_id: receiver.task_id, min_count: 1 }],
+    },
+  });
+  const producerClaim = claim(taskService, producer, 'execution:required-response-producer', 'agent:producer');
+  const response = contextService.dispatch('context.publish_material', {
+    role: 'response', kind: 'fact', scope: 'mission',
+    content: { answer: 'directed result' },
+  }, bound('material:required-response', 'agent:producer', producer, producerClaim.execution));
+  taskService.dispatch('task.link_material', {
+    task_id: receiver.task_id,
+    material_id: response.material.material_id,
+    role: 'response',
+    receiving_task_id: receiver.task_id,
+  }, bound('link:required-response', 'agent:producer', producer, producerClaim.execution));
+
+  const completed = taskService.dispatch('task.complete', {
+    material_ids: [response.material.material_id],
+  }, bound('complete:required-response', 'agent:producer', producer, producerClaim.execution));
+  assert.equal(completed.task.state, 'DONE');
+  assert.equal(completed.execution.state, 'SUCCEEDED');
+  taskService.close();
+});
+
 test('a receiving Task may attach shared Experience Material without changing producer provenance', () => {
   const { contextService, taskService } = environment();
   const mission = createMission(taskService, 'mission:experience-link');
