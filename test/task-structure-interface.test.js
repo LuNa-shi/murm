@@ -57,14 +57,13 @@ test('ServicesRouter exposes the semantic Task structure operations', () => {
   ]);
 });
 
-test('ServicesBridge lets an unbound Agent inspect structure and a bound Agent mutate it', async () => {
+test('ServicesBridge exposes current discovery to Selection and Task work to Bound', async () => {
   const { calls, taskService, contextService } = services();
   const router = new ServicesRouter({ taskService, contextService });
   const bridge = new ServicesBridge({ taskService, contextService, runtime: {}, router, actorRef: 'agent:surface' });
-  const structure = await bridge.call({ operation: 'get_task_structure', payload: { task_id: 'task-1' } });
-  const readiness = await bridge.call({ operation: 'explain_task_readiness', payload: { task_id: 'task-1' } });
-  assert.equal(structure.operation, 'get_task_structure');
-  assert.equal(readiness.operation, 'explain_task_readiness');
+  bridge.setSelectionCandidates([{ task_id: 'selection-task', goal: 'bounded discovery' }]);
+  const tasks = await bridge.call({ operation: 'list_tasks', payload: { limit: 8 } });
+  assert.deepEqual(tasks.map((task) => task.task_id), ['selection-task']);
   assert.equal(bridge.taskId, null);
 
   const bound = new ServicesBridge({
@@ -77,25 +76,17 @@ test('ServicesBridge lets an unbound Agent inspect structure and a bound Agent m
     executionId: 'execution-1',
   });
   try {
-    await bound.call({ operation: 'create_branch_group', payload: { parent_task_id: 'task-1', branch_tasks: [{ goal: 'route A' }] } });
-    await bound.call({ operation: 'add_required_subtask', payload: { owner_task_id: 'task-1', subtask: { goal: 'check A' } } });
-    await bound.call({ operation: 'propose_structure_change', payload: { task_id: 'task-1', change: { kind: 'add_branch' } } });
-    await bound.call({ operation: 'create_rework_task', payload: { prior_task_id: 'task-1', instruction: 'address feedback' } });
+    await bound.call({ operation: 'create_child_task', payload: { task_type: 'research', goal: 'route A', expected_output: 'fact', acceptance_conditions: {} } });
   } finally {
     await bound.stop();
     await bridge.stop();
   }
   assert.deepEqual(calls.map(({ operation }) => operation), [
-    'get_task_structure',
-    'explain_task_readiness',
-    'create_branch_group',
-    'add_required_subtask',
-    'propose_structure_change',
-    'create_rework_task',
+    'create_child_task',
   ]);
-  assert.equal(calls[2].envelope.actor_ref, 'agent:surface');
-  assert.equal(calls[2].envelope.task_id, 'task-1');
-  assert.equal(calls[2].envelope.execution_id, 'execution-1');
+  assert.equal(calls[0].envelope.actor_ref, 'agent:surface');
+  assert.equal(calls[0].envelope.task_id, 'task-1');
+  assert.equal(calls[0].envelope.execution_id, 'execution-1');
 });
 
 test('Runtime-only handoff transitions are not exposed as Agent Service tools', () => {

@@ -32,7 +32,12 @@ export async function createVersionManifest({
   launchArgs,
   resolver = {},
 } = {}) {
-  const resolvedPi = exactVersion(piVersion ?? await resolveNpmLatestVersion(resolver), 'pi_version');
+  // Resolve the installed executable by default. Looking up the npm latest
+  // tag makes every Agent startup depend on registry connectivity and can
+  // record a version that is different from the binary actually launched.
+  // `resolveNpmLatestVersion` remains available for an explicit catalog check,
+  // but it is not part of the runtime startup path.
+  const resolvedPi = exactVersion(piVersion ?? await resolveCommandVersion('pi', resolver), 'pi_version');
   const resolvedNuRouter = exactVersion(nurouterVersion ?? await resolveCommandVersion('nurouter', resolver), 'nurouter_version');
   const resolvedNode = exactVersion(nodeVersion, 'node_version');
   if (!Array.isArray(launchArgs) || launchArgs.length === 0) {

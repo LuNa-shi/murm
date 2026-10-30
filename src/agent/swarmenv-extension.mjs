@@ -1,76 +1,103 @@
-import { listTools } from '../sdk/service-catalog.js';
-
-const OPERATIONS = [
-  'list_services', 'get_service_metadata', 'list_tools', 'list_tasks', 'get_task', 'get_execution',
-  'select_task', 'claim', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task', 'accept_task', 'request_rework', 'get_check_result', 'list_claimable_tasks',
-  'get_workspace', 'list_workspace_revisions', 'list_workspace_files', 'read_workspace_file', 'write_workspace_file', 'workspace_diff', 'list_executions',
-  'read_materials', 'consume_materials', 'publish_material', 'submit_candidate', 'heartbeat', 'request_wait', 'block_execution',
-];
+import { buildCapabilityProfile, profileToolNames, AGENT_ROLES } from './capability-profile.js';
 
 function text(value) {
   const encoded = JSON.stringify(value);
   return encoded.length > 64 * 1024 ? `${encoded.slice(0, 64 * 1024)}\n[bridge result truncated]` : encoded;
 }
 
-async function callBridge(operation, payload, signal) {
+function bridgeConfig() {
   const url = process.env.SWARMENV_BRIDGE_URL;
   const token = process.env.SWARMENV_BRIDGE_TOKEN;
   if (!url || !token) throw new Error('SwarmEnv bridge configuration is missing');
-  const response = await fetch(`${url}/call`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ operation, payload }),
+  return { url, token };
+}
+
+async function bridgeFetch(path, { method = 'GET', body, signal } = {}) {
+  const { url, token } = bridgeConfig();
+  const response = await fetch(`${url}${path}`, {
+    method,
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal,
   });
-  const body = await response.json();
-  if (!response.ok || !body.ok) {
-    return { content: [{ type: 'text', text: text(body) }], details: body, isError: true };
+  const payload = await response.json();
+  if (!response.ok || payload.ok === false) {
+    const error = new Error(payload?.error?.message ?? `SwarmEnv bridge request failed (${response.status})`);
+    error.code = payload?.error?.code ?? 'BRIDGE_ERROR';
+    error.details = payload?.error?.details;
+    throw error;
   }
-  return { content: [{ type: 'text', text: text(body.result) }], details: body.result };
+  return payload;
 }
 
-function registerTool(pi, { name, operation, description, parameters, promptGuidelines = [] }) {
+export async function loadCapabilityProfile({ signal, role = process.env.SWARMENV_AGENT_ROLE ?? AGENT_ROLES.BOUND } = {}) {
+  const payload = await bridgeFetch('/profile', { signal });
+  const profile = payload.profile ?? payload.result;
+  if (!profile || profile.role !== role) throw new Error(`bridge returned an unexpected ${role} capability profile`);
+  return profile;
+}
+
+async function callBridge(capability, payload, signal) {
+  const response = await bridgeFetch('/call', {
+    method: 'POST',
+    body: {
+      operation: capability.operation,
+      service_id: capability.service_id,
+      capability_id: capability.id ?? `${capability.service_id}.${capability.name}`,
+      payload,
+    },
+    signal,
+  });
+  return { content: [{ type: 'text', text: text(response.result) }], details: response.result };
+}
+
+function registerTool(pi, profile, capability) {
+  const help = capability.help;
+  const toolName = capability.tool_name ?? capability.name;
+  const guidance = [
+    help?.when ?? help?.usage ?? help?.summary,
+    help?.ref ? `Help: ${help.ref}` : null,
+  ].filter(Boolean);
   pi.registerTool({
-    name: `swarmenv_${name}`,
-    label: `SwarmEnv ${name}`,
-    description,
-    promptSnippet: 'Use the public SwarmEnv Service tool for this operation',
-    promptGuidelines,
-    parameters,
+    name: `swarmenv_${toolName}`,
+    label: `SwarmEnv ${toolName}`,
+    description: capability.description || `Call ${capability.service_title ?? capability.service_id} capability ${capability.name}`,
+    promptSnippet: `${capability.service_title ?? capability.service_id}: ${capability.description || capability.name}`,
+    promptGuidelines: guidance,
+    parameters: capability.input_schema ?? { type: 'object', additionalProperties: true },
+    ...(capability.output_schema ? { outputSchema: capability.output_schema } : {}),
+    annotations: {
+      readOnlyHint: capability.side_effect === false || capability.side_effect === 'read',
+      destructiveHint: capability.side_effect === 'destructive' || capability.side_effect === 'write',
+      idempotentHint: capability.idempotent === true,
+      openWorldHint: false,
+    },
     executionMode: 'sequential',
     async execute(_toolCallId, params, signal) {
-      return callBridge(operation, params ?? {}, signal);
+      return callBridge(capability, params ?? {}, signal);
     },
   });
+  return `swarmenv_${toolName}`;
 }
 
-export default function swarmenvExtension(pi) {
-  for (const tool of listTools()) registerTool(pi, tool);
-
-  // Keep the transport-level call during the migration so older Pi sessions
-  // can finish, while new sessions receive one discoverable tool per Service
-  // operation above.
-  pi.registerTool({
-    name: 'swarmenv_call',
-    label: 'SwarmEnv Service Call (compatibility)',
-    description: 'Compatibility transport for the public SwarmEnv Service operations. Prefer the named Service tools.',
-    promptSnippet: 'Prefer named SwarmEnv Service tools; use this only for compatibility.',
-    promptGuidelines: [
-      'Use named Service tools for normal work and swarmenv_call only when a named tool is unavailable.',
-      'Never claim a proof is complete from a file or from your own text; submit the candidate and let the Judge decide.',
-    ],
-    parameters: {
-      type: 'object',
-      properties: {
-        operation: { type: 'string', enum: OPERATIONS },
-        payload: { type: 'object', additionalProperties: true },
-      },
-      required: ['operation', 'payload'],
-      additionalProperties: false,
-    },
-    executionMode: 'sequential',
-    async execute(_toolCallId, params, signal) {
-      return callBridge(params.operation, params.payload, signal);
-    },
-  });
+/**
+ * Pi waits for an asynchronous extension factory. The profile is fetched once
+ * before startup, so the registered named tools and the initial prompt see the
+ * same deterministic Registry snapshot. Tests and local doubles may pass a
+ * profile directly without starting a Bridge.
+ */
+export default async function swarmenvExtension(pi, { profile = null, profileLoader = null, role = process.env.SWARMENV_AGENT_ROLE ?? AGENT_ROLES.BOUND, registry = null, tools = null } = {}) {
+  const resolved = profile
+    ?? (profileLoader ? await profileLoader({ role }) : null)
+    ?? (process.env.SWARMENV_BRIDGE_URL && process.env.SWARMENV_BRIDGE_TOKEN
+      ? await loadCapabilityProfile({ role })
+      : buildCapabilityProfile({ role, registry, tools }));
+  if (!resolved || resolved.role !== role) throw new TypeError(`capability profile role must be ${role}`);
+  const registeredTools = resolved.capabilities.map((capability) => registerTool(pi, resolved, capability));
+  return { profile: resolved, tool_names: registeredTools, profile_hash: resolved.profile_hash };
 }
+
+export { profileToolNames };

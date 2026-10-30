@@ -29,6 +29,22 @@ compatibility, and derives role-scoped capability profiles. Pi registration,
 Bridge validation, Router dispatch, SDK metadata, and service help are all
 projections of the Registry contract.
 
+The provider is an independent deployment boundary. The first implementation
+supports an in-process adapter for deterministic local fixtures and an HTTP
+JSON adapter for a separate process or container. A provider never needs to be
+compiled into the Agent Core: registering its Manifest adds its named
+capabilities to the appropriate profile, and the Bridge invokes that provider
+through the adapter. A user-defined provider therefore follows the same SDK
+flow as a built-in provider: create a Manifest, create or select an adapter,
+call `registerService`, and pass the Registry to Runtime and the Agent Bridge.
+
+The `mathlib-search` provider is the reference integration. It exposes one
+read-only `mathlib_search` capability to `bound` and `recovery` Agents. Its
+production backend is a separately deployed Loogle HTTP service; its stable
+SwarmEnv response schema hides Loogle's deliberately unstable JSON shape. The
+provider reports the locked Lean and Mathlib revisions in its result metadata
+and applies query, module, result-count, and timeout limits at its own boundary.
+
 The first adapter remains the existing in-process/loopback HTTP and JSON
 boundary. The manifest and Registry are transport-neutral. MCP may be added as
 a later adapter when interoperability is useful; gRPC or another provider
@@ -45,6 +61,14 @@ Claim, lease, heartbeat, fencing, process control, and raw Execution lifecycle
 operations remain behind the Core Daemon/Runtime boundary. If a normal-flow
 Agent must finish or block a Task, the exposed operation must be a typed
 Task-scoped action rather than a lease-management API.
+
+The normal Task flow has no Agent-facing wait or parent-review capability. A
+bound Agent completes its own Task or records a concrete typed dependency with
+`task_block`; Runtime releases the Execution and the Controller reconciles the
+blocked Task. Lease, heartbeat, fencing, process control, and claim remain
+outside the bound profile. Historical lifecycle records may still be imported
+for observability, but they are not registered capabilities or prompt
+instructions.
 
 ### Initial prompt
 

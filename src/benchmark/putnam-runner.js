@@ -15,12 +15,16 @@ import { WorkspaceManager } from '../runtime/workspace-manager.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
 import { ServicesRouter } from '../sdk/service-router.js';
 import { ServicesSDK } from '../sdk/services-sdk.js';
-import { listTools } from '../sdk/service-catalog.js';
 import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
 import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
+import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
+import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
+import { createHttpJsonAdapter } from '../sdk/service-adapter.js';
+import { createMathlibSearchManifest } from '../services/mathlib-search-service.js';
+import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
 import { CoreDaemon, SELECTION_AGENT_PROMPT } from '../runtime/core-daemon.js';
 import { TaskController } from '../runtime/task-controller.js';
 import { CoreParallelismTracker } from './parallelism.js';
@@ -34,7 +38,7 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
 
 const FORBIDDEN_PLACEHOLDER = /\b(?:sorry|admit|axiom)\b/i;
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const PARALLEL_MODES = new Set(['legacy', 'semantic', 'root-only']);
+const PARALLEL_MODES = new Set(['direct', 'semantic', 'root-only']);
 const STRUCTURE_OPERATIONS = new Set([
   'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task',
 ]);
@@ -44,7 +48,7 @@ function completedTaskState(state) {
 }
 
 function parallelMode(options = {}) {
-  const mode = options.parallelMode ?? 'legacy';
+  const mode = options.parallelMode ?? 'direct';
   if (!PARALLEL_MODES.has(mode)) throw new TypeError(`parallelMode must be one of ${[...PARALLEL_MODES].join(', ')}`);
   return mode;
 }
@@ -104,6 +108,7 @@ function lifecycleEvents(taskService) {
       created_at: row.created_at,
       task_id: execution?.task_id ?? null,
       execution_id: execution?.execution_id ?? null,
+      dependency_kind: result?.dependency?.dependency_kind ?? null,
       wait_condition_type: condition?.type ?? dependencyCondition?.type ?? null,
       dependency_ids: waitDependencyIds(condition).concat(result?.dependency?.dependency_id ?? []),
     };
@@ -385,6 +390,11 @@ function observationLogger(observationStore, experimentId, source) {
 }
 
 export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
+  constructor({ allowedToolNames = null, ...options } = {}) {
+    super(options);
+    this.allowedToolNames = allowedToolNames;
+  }
+
   buildLaunchArgs(options) {
     // Pi keeps its coordinator tools enabled when only built-ins are disabled.
     // Start from a completely empty tool set, then add the explicit
@@ -395,7 +405,17 @@ export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
     // NuRouter/Pi versions have differed in how --no-builtin-tools is
     // forwarded. An explicit allowlist makes the benchmark boundary
     // deterministic: only named SwarmEnv extension tools are enabled.
-    args.push('--tools', listTools().map((tool) => `swarmenv_${tool.name}`).join(','));
+    const tools = this.allowedToolNames ?? [
+      'swarmenv_catalog_get_service_metadata', 'swarmenv_catalog_list_services', 'swarmenv_catalog_list_tools',
+      'swarmenv_context_consume', 'swarmenv_context_publish', 'swarmenv_context_read',
+      'swarmenv_judge_get_check_result', 'swarmenv_judge_submit_candidate',
+      'swarmenv_execution_get', 'swarmenv_task_block', 'swarmenv_task_claim', 'swarmenv_task_complete',
+      'swarmenv_task_create_child', 'swarmenv_task_discover', 'swarmenv_task_list_claimable',
+      'swarmenv_task_list_executions', 'swarmenv_task_view',
+      'swarmenv_workspace_diff', 'swarmenv_workspace_get', 'swarmenv_workspace_list_files',
+      'swarmenv_workspace_read_file', 'swarmenv_workspace_write_file',
+    ];
+    args.push('--tools', tools.join(','));
     // Pi exposes its `parallel` coordinator even when built-in tools are
     // disabled. It can issue unregistered tool events and invalidate an
     // otherwise compliant benchmark run, so deny it explicitly at the
@@ -536,6 +556,7 @@ function scheduleTurn(core, prompt, timeoutMs) {
 
 async function startAgentSession(core) {
   core.bridge.actorRef = core.actorRef;
+  core.childEnv.SWARMENV_AGENT_ROLE = AGENT_ROLES.SELECTION;
   core.sessionNumber += 1;
   const suffix = core.sessionNumber === 1 ? 'worker-session' : `worker-session-${core.sessionNumber}`;
   const session = await core.adapter.start({
@@ -660,35 +681,28 @@ function selectionView(candidates) {
 }
 
 /**
- * Run one stateless selection turn. The Agent can only return a task_id via
- * the selection Service operation; the CoreDaemon performs the durable claim
- * after this function settles. A temporary legacy claim observation keeps old
- * deterministic adapters readable during the migration, but the normal
- * production prompt uses select_task and never claims from this Session.
+ * Run one stateless selection turn. The Selection Agent owns the bounded
+ * choice and durable claim. CoreDaemon accepts the returned claim and owns
+ * only the Runtime handoff; a bound Agent never receives the claim surface.
  */
 async function selectTaskWithAgent(core, candidates, prompt) {
   const session = await ensureAgentSession(core);
   if (!session) return core.turnInFlight ? { selection_deferred: true } : null;
   const sequence = session.rpcRecords?.length ?? 0;
-  core.selectionResult = null;
-  core.legacySelectionClaim = null;
+  core.selectionClaim = null;
   core.selectionActive = true;
   core.dispatchReserved = true;
   core.turnInFlight = true;
   core.turnStartedAt = Date.now();
   core.selectionTurnCount = (core.selectionTurnCount ?? 0) + 1;
   core.bridge.setSelectionCandidates(candidates);
-  const message = `${prompt}\n\nBounded shortlist (choose exactly one with select_task):\n${JSON.stringify(selectionView(candidates))}`;
+  const message = `${prompt}\n\nBounded shortlist (call task.claim exactly once for one listed task):\n${JSON.stringify(selectionView(candidates))}`;
   try {
     const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });
     if (response?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
       await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: sequence });
     }
-    if (core.selectionResult?.task_id) return core.selectionResult.task_id;
-    if (core.legacySelectionClaim?.task?.task_id) return core.legacySelectionClaim.task.task_id;
-    // Pre-Daemon deterministic adapters may still try the old claim path.
-    // Losing that race means this selection turn made no choice; it is a
-    // benign retry condition, not an invalid Agent selection.
+    if (core.selectionClaim?.task?.task_id) return core.selectionClaim;
     if (core.bridge.selectionClaimAttempted || Object.hasOwn(session, 'bound')) return { selection_deferred: true };
     return null;
   } catch (error) {
@@ -705,12 +719,9 @@ async function selectTaskWithAgent(core, candidates, prompt) {
     core.turnDurationsMs.push(duration);
     core.parallelism.recordTurnTime(duration);
     const handedOff = core.session !== session && Boolean(core.taskId && core.executionId);
-    // A normal `select_task` turn settles before CoreDaemon claims the
-    // selected Task. Keep the Core reserved across that short gap so the
-    // benchmark repair loop cannot start a second Agent turn while Runtime is
-    // materializing the claimed Execution. Invalid or empty selections do not
-    // reserve the Core.
-    const selectedTaskId = core.selectionResult?.task_id ?? null;
+    // Keep the Core reserved across the claim and Runtime handoff. Invalid or
+    // empty selections do not reserve the Core.
+    const selectedTaskId = core.selectionClaim?.task?.task_id ?? null;
     const handoffPending = !handedOff && typeof selectedTaskId === 'string' &&
       candidates.some((candidate) => String(candidate.task_id ?? candidate.taskId ?? candidate.id) === selectedTaskId);
     if (!handedOff && !handoffPending) {
@@ -726,18 +737,14 @@ async function selectTaskWithAgent(core, candidates, prompt) {
     if (!handedOff && !handoffPending && !core.taskId && core.session === session) {
       // Empty, invalid, or failed selection turns have no claim to hand off;
       // release their transport so bounded startup retry accounting remains
-      // meaningful. A valid `select_task` choice takes the path above and is
-      // retained until CoreDaemon finishes the claim/bind boundary.
+      // meaningful. A valid claim takes the path above and is retained until
+      // CoreDaemon finishes the Runtime handoff boundary.
       core.session = null;
       await Promise.resolve(session.stop?.()).catch(() => undefined);
     }
-    // Keep the unbound selection Session alive through the Daemon's durable
-    // claim and Runtime bind. The Agent's `select_task` response settles
-    // before the Daemon calls `bindClaim`; stopping this Session here leaves
-    // onClaim without the worker transport and fences every CREATED
-    // Execution before Runtime can materialize its Workspace. A failed claim
-    // may safely reuse the same stateless Session on the next bounded turn;
-    // normal project cleanup stops all sessions through stopCore.
+    // Keep the selection Session alive until its claim and Runtime handoff
+    // have completed. The bound Session is started by the claim callback;
+    // normal project cleanup stops both transports through stopCore.
     core.stateRef?.requestDaemonWake?.();
   }
 }
@@ -989,8 +996,8 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
       throw new Error('retryable checker failure has no durable preflight health fingerprint');
     }
     // The checker result is synchronous from the Agent's perspective. Stage
-    // the legacy health wait, or the normal-flow typed dependency block, for
-    // ServicesBridge to flush after its HTTP response has been written, so
+    // the typed dependency block for ServicesBridge to flush after its HTTP
+    // response has been written, so
     // Runtime cannot stop the Session before the Agent sees the result.
     const lifecycle = {
       waitCondition: {
@@ -1346,7 +1353,7 @@ function projectReport(state, startedAt, deadline) {
   });
   const toolViolation = cores.some((core) => core.tool_events.some((tool) => {
     const name = String(tool);
-    return name !== 'swarmenv_call' && !name.startsWith('swarmenv_');
+    return !name.startsWith('swarmenv_');
   }));
   const toolErrorCount = cores.reduce((count, core) => count + core.tool_errors.length, 0);
   // A Service tool can reject an Agent request because the model supplied a
@@ -1416,7 +1423,15 @@ function projectReport(state, startedAt, deadline) {
       parallel_mode: state.parallelMode,
       normal_flow: state.normalFlow,
       input_policy: 'pinned formalization only; no candidate or solution input',
-      tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
+      tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; generic service calls are rejected',
+      registered_services: state.capabilityRegistry.listServices().map((service) => ({
+        service_id: service.service_id,
+        provider_version: service.provider_version,
+        contract_version: service.contract_version,
+        manifest_hash: service.manifest_hash,
+        tool_count: service.tool_count,
+      })),
+      allowed_agent_tool_names: [...state.allowedAgentToolNames].sort(),
       cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
     },
     project: {
@@ -1627,7 +1642,52 @@ async function createProjectState(problem, config, options) {
   });
   taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
   judgeService.setDependencyEventSink((event) => taskService.notifyDependencyEvent(event));
-  const router = new ServicesRouter({ taskService, contextService, judgeService, logger: routerLogger });
+  const mathlibSearchUrl = options.mathlibSearchUrl ?? process.env.SWARMENV_MATHLIB_SEARCH_URL ?? null;
+  const serviceEndpoints = options.serviceEndpoints ?? Object.fromEntries(
+    ['task', 'context', 'judge', 'catalog']
+      .map((serviceId) => {
+        const key = serviceId.toUpperCase();
+        const url = process.env[`SWARMENV_${key}_SERVICE_URL`];
+        if (!url) return [serviceId, undefined];
+        return [serviceId, {
+          url,
+          token: process.env[`SWARMENV_${key}_SERVICE_TOKEN`] ?? null,
+        }];
+      })
+      .filter(([, endpoint]) => endpoint !== undefined),
+  );
+  const capabilityRegistry = options.serviceRegistry ?? createBuiltinServiceRegistry({
+    taskService,
+    contextService,
+    judgeService,
+    serviceEndpoints,
+    customServices: options.customServices ?? [],
+  });
+  if (!options.serviceRegistry && mathlibSearchUrl) {
+    registerUserService(capabilityRegistry, {
+      manifest: createMathlibSearchManifest({
+        endpoint: { transport: 'http-json', url: mathlibSearchUrl },
+        mathlibRevision: options.mathlibRevision ?? fixture.mathlib_version ?? null,
+        leanVersion: options.leanVersion ?? fixture.lean_toolchain ?? null,
+      }),
+      adapter: createHttpJsonAdapter({ token: options.mathlibSearchToken ?? process.env.SWARMENV_MATHLIB_SEARCH_TOKEN ?? null }),
+    });
+    await capabilityRegistry.checkReadiness('mathlib-search');
+  }
+  // Owner/controller SDK calls are synchronous local transactions. Keep that
+  // control-plane registry local even when Agent-facing providers are remote;
+  // ServicesBridge uses capabilityRegistry for the named HTTP calls.
+  const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService });
+  const router = new ServicesRouter({ taskService, contextService, judgeService, registry: routerRegistry, logger: routerLogger });
+  const allowedAgentToolNames = [...new Set([
+    AGENT_ROLES.SELECTION,
+    AGENT_ROLES.BOUND,
+    AGENT_ROLES.RECOVERY,
+  ].flatMap((role) => buildCapabilityProfile({
+    role,
+    registry: capabilityRegistry,
+    runtimeCapabilities: role === AGENT_ROLES.SELECTION ? [] : runtimeCapabilityList(),
+  }).capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`)))];
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const modeInstructions = selectedParallelMode === 'semantic'
@@ -1697,6 +1757,7 @@ async function createProjectState(problem, config, options) {
         cwd: coreDir,
         sessionDir: join(coreDir, '.swarm', 'pi-session'),
         env: childEnv,
+        allowedToolNames: allowedAgentToolNames,
       });
     // All reusable slots must be able to resume an Execution created by any
     // other slot. The physical Workspace is execution-owned and unique, but
@@ -1707,6 +1768,7 @@ async function createProjectState(problem, config, options) {
       contextService,
       workspaceManager,
       agentAdapter: adapter,
+      capabilityRegistry,
       maxWorkers: 1,
       coreIds: [`core-${index}`],
       actorRef: `runtime:core-${index}`,
@@ -1771,8 +1833,7 @@ async function createProjectState(problem, config, options) {
       sessionStartAttempts: 0,
       sessionStartFailures: 0,
       selectionActive: false,
-      selectionResult: null,
-      legacySelectionClaim: null,
+      selectionClaim: null,
       selectionTurnCount: 0,
       daemon: null,
       unboundSessionCount: 0,
@@ -1792,16 +1853,11 @@ async function createProjectState(problem, config, options) {
       contextService,
       runtime,
       router,
+      registry: capabilityRegistry,
       actorRef: `agent:core-${index}`,
-      onSelectTask: ({ task_id: selectedTaskId }) => {
-        core.selectionResult = { task_id: selectedTaskId };
-      },
       onClaim: async (claim) => {
-        if (core.selectionActive) core.legacySelectionClaim = claim;
+        if (core.selectionActive) core.selectionClaim = claim;
         core.dispatchReserved = false;
-        // A resumable WAITING Execution is selected through the normal claim
-        // path. The claim itself clears the logical wait association; the
-        // Core Daemon remains the only component that reserved this Core.
         const claimedAt = Date.now();
         const priorWaitingExecutionId = core.waitingExecutionId;
         core.waitingExecutionId = null;
@@ -1834,6 +1890,7 @@ async function createProjectState(problem, config, options) {
         const bound = await runtime.bindAgentExecution(claim.execution.execution_id, null, {
           workspaceRef: join(workspaceRoot, claim.execution.execution_id),
           startSession: async ({ execution, workspace }) => {
+            core.childEnv.SWARMENV_AGENT_ROLE = AGENT_ROLES.BOUND;
             const session = await core.adapter.start({
               executionId: execution.execution_id,
               sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
@@ -2315,6 +2372,8 @@ async function createProjectState(problem, config, options) {
     taskService,
     contextService,
     router,
+    capabilityRegistry,
+    allowedAgentToolNames,
     judgeService,
     cores,
     solvedAt: null,
@@ -2417,7 +2476,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   // durable Runtime deadline; a turn timeout is only the per-prompt bound.
   const executionTimeoutMs = options.executionTimeoutMs ?? 60 * 60_000;
   const basePrompt = (core) => core.taskId
-      ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or waiting.`
+      ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or blocking on a typed dependency.`
       : GENERIC_AGENT_PROMPT;
   state.daemonEvents = state.daemonEvents ?? [];
   state.daemons = state.cores.map((core) => {
@@ -2437,12 +2496,10 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       }),
       selectTask: ({ candidates, prompt }) => selectTaskWithAgent(core, candidates, prompt),
       claimTask: async (selectedTaskId, context) => {
-        // Deterministic adapters from the pre-Daemon protocol may still issue
-        // claim from their selection transport. Reuse that single durable
-        // result rather than creating a second claim; real selection Sessions
-        // use select_task and arrive here with no legacy result.
-        if (core.legacySelectionClaim?.task?.task_id === selectedTaskId) {
-          return core.legacySelectionClaim;
+        // The Selection Agent may already have claimed the Task. Reuse that
+        // durable result rather than creating a second Execution.
+        if (core.selectionClaim?.task?.task_id === selectedTaskId) {
+          return core.selectionClaim;
         }
         const selectedTask = state.taskService.getTask(selectedTaskId);
         if (!selectedTask) {
@@ -2460,9 +2517,8 @@ export async function runBenchmarkProject(problem, config, options = {}) {
             workspace_mode: 'resume',
           });
         } catch (error) {
-          // `select_task` reserves the Core until this durable claim starts.
-          // A lost race or admission rejection must release that provisional
-          // reservation before the Daemon returns to its bounded idle loop.
+          // A lost race or admission rejection must release the provisional
+          // Core reservation before the Daemon returns to its bounded idle loop.
           core.turnInFlight = false;
           core.dispatchReserved = false;
           core.nextTurnAt = Date.now();
@@ -2471,7 +2527,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       },
       runtime: core.runtime,
       runExecution: async (claim) => {
-        if (core.legacySelectionClaim?.execution?.execution_id === claim.execution.execution_id) {
+        if (core.selectionClaim?.execution?.execution_id === claim.execution.execution_id) {
           return { execution: state.taskService.getExecution(claim.execution.execution_id) };
         }
         try {
@@ -2738,7 +2794,7 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
             project_isolation: true,
             core_count: 4,
             input_policy: 'pinned formalization only; no candidate or solution input',
-            tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; swarmenv_call is compatibility-only',
+            tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; generic service calls are rejected',
             cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
           },
           parallelism,

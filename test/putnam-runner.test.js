@@ -25,6 +25,32 @@ function problem(id) {
   };
 }
 
+const toolNameForOperation = Object.freeze({
+  list_services: 'catalog_list_services',
+  get_service_metadata: 'catalog_get_service_metadata',
+  list_tools: 'catalog_list_tools',
+  list_tasks: 'task_discover',
+  list_claimable_tasks: 'task_list_claimable',
+  get_task: 'task_view',
+  get_execution: 'execution_get',
+  claim: 'task_claim',
+  publish_material: 'context_publish',
+  read_materials: 'context_read',
+  consume_materials: 'context_consume',
+  submit_candidate: 'judge_submit_candidate',
+  get_check_result: 'judge_get_check_result',
+  task_block: 'task_block',
+  accept_task: 'task_complete',
+  get_workspace: 'workspace_get',
+  list_workspace_files: 'workspace_list_files',
+  read_workspace_file: 'workspace_read_file',
+  write_workspace_file: 'workspace_write_file',
+  workspace_diff: 'workspace_diff',
+});
+function namedTool(operation) {
+  return `swarmenv_${toolNameForOperation[operation] ?? operation}`;
+}
+
 function checkerWithPreflight(checker) {
   if (typeof checker.preflight === 'function') return checker;
   return {
@@ -55,6 +81,9 @@ test('benchmark Agent sessions explicitly deny Pi parallel coordination', () => 
   assert.ok(args.includes('--no-tools'));
   assert.ok(!args.includes('--no-builtin-tools'));
   assert.ok(args.includes('--tools'));
+  const allowedTools = args[args.indexOf('--tools') + 1].split(',');
+  assert.ok(allowedTools.includes('swarmenv_task_complete'));
+  assert.ok(!allowedTools.some((name) => /wait|wake|select_task|swarmenv_call/i.test(name)));
   assert.deepEqual(args.slice(args.indexOf('--exclude-tools'), args.indexOf('--exclude-tools') + 2), ['--exclude-tools', 'parallel']);
 });
 
@@ -81,7 +110,7 @@ class FakeSession extends EventEmitter {
   async prompt() {
     if (this.noWork) return { data: { disposition: 'handled' } };
     const call = async (operation, payload) => {
-      this.rpcRecords.push({ type: 'tool_call', tool_name: 'swarmenv_call' });
+      this.rpcRecords.push({ type: 'tool_call', tool_name: namedTool(operation) });
       const response = await fetch(`${this.env.SWARMENV_BRIDGE_URL}/call`, {
         method: 'POST',
         headers: {
@@ -96,7 +125,7 @@ class FakeSession extends EventEmitter {
         error.code = body.error?.code;
         throw error;
       }
-      this.rpcRecords.push({ type: 'tool_result', tool_name: 'swarmenv_call' });
+      this.rpcRecords.push({ type: 'tool_result', tool_name: namedTool(operation) });
       return body.result;
     };
     let claim;
@@ -112,7 +141,11 @@ class FakeSession extends EventEmitter {
       }
       if (tasks.length === 0) return { data: { disposition: 'handled' } };
       if (this.selectionOnly) {
-        await call('select_task', { task_id: tasks[0].task_id });
+        await call('claim', {
+          task_id: tasks[0].task_id,
+          claim_key: `fake-selection-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
+          workspace_mode: 'clean',
+        });
         return { data: { disposition: 'handled' } };
       }
       if (this.invalidClaim && !this.invalidClaimUsed) {
@@ -308,7 +341,7 @@ class CollaborationSession extends EventEmitter {
   async waitForReady() {}
 
   async call(operation, payload = {}) {
-    this.rpcRecords.push({ type: 'tool_call', tool_name: 'swarmenv_call' });
+    this.rpcRecords.push({ type: 'tool_call', tool_name: namedTool(operation) });
     const response = await fetch(`${this.adapter.env.SWARMENV_BRIDGE_URL}/call`, {
       method: 'POST',
       headers: {
@@ -318,7 +351,7 @@ class CollaborationSession extends EventEmitter {
       body: JSON.stringify({ operation, payload }),
     });
     const body = await response.json();
-    this.rpcRecords.push({ type: 'tool_result', tool_name: 'swarmenv_call' });
+    this.rpcRecords.push({ type: 'tool_result', tool_name: namedTool(operation) });
     if (!body.ok) throw new Error(body.error?.message ?? `${operation} failed`);
     return body.result;
   }
@@ -390,6 +423,7 @@ class CollaborationSession extends EventEmitter {
         await this.call('create_child_task', {
           task_id: 'collab-research', child_creation_key: 'collab-research', task_type: 'research',
           goal: 'Collaboration research route', expected_output: 'A reusable research Material', acceptance_conditions: { route: 'research' },
+          completion_contract: { required_materials: [{ kinds: ['fact'], scope: 'proof_relevant', min_count: 1 }] },
         });
         await this.call('create_child_task', {
           task_id: 'collab-proof-b', child_creation_key: 'collab-proof-b', task_type: 'proof',
@@ -397,8 +431,9 @@ class CollaborationSession extends EventEmitter {
           completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: checks },
         });
         await this.call('publish_material', { kind: 'experience', scope: 'proof_relevant', content: { route: 'root exploration complete' } });
-        await this.call('request_wait', {
-          wait_condition: { type: 'child_task_terminal', child_task_id: 'collab-proof-a' },
+        await this.call('task_block', {
+          reason: 'proof route A is still running',
+          dependency: { dependency_kind: 'TASK', prerequisite_task_id: 'collab-proof-a' },
           checkpoint: { phase: 'root-exploration-complete' },
         });
         return { data: { disposition: 'handled' } };
@@ -411,8 +446,9 @@ class CollaborationSession extends EventEmitter {
       });
       const proofB = tasks.find((task) => task.task_id === 'collab-proof-b');
       if (proofB?.state !== 'SATISFIED') {
-        await this.call('request_wait', {
-          wait_condition: { type: 'child_task_terminal', child_task_id: 'collab-proof-b' },
+        await this.call('task_block', {
+          reason: 'proof route B is still running',
+          dependency: { dependency_kind: 'TASK', prerequisite_task_id: 'collab-proof-b' },
           checkpoint: { phase: 'root-awaiting-second-proof' },
         });
         return { data: { disposition: 'handled' } };
@@ -425,9 +461,6 @@ class CollaborationSession extends EventEmitter {
         action: 'integration',
         action_ref: 'collaboration-root',
       });
-      if (research?.state === 'WAITING') {
-        await this.call('accept_task', { target_task_id: research.task_id, target_state_version: research.state_version });
-      }
       await this.call('publish_material', {
         kind: 'artifact',
         scope: 'root_integration',
@@ -448,9 +481,9 @@ class CollaborationSession extends EventEmitter {
     if (currentTask.task_type === 'research') {
       const material = await this.call('publish_material', { kind: 'fact', scope: 'proof_relevant', content: { route: 'reusable research result' } });
       assert.ok(material.material.material_id);
-      await this.call('request_wait', {
-        wait_condition: { type: 'parent_review' },
-        checkpoint: { phase: 'research-delivered' },
+      await this.call('accept_task', {
+        target_task_id: currentTask.task_id,
+        target_state_version: currentTask.state_version,
       });
     } else {
       const material = await this.call('publish_material', { kind: 'artifact', scope: 'proof_relevant', content: `def ${this.adapter.role.replaceAll('-', '_')} : Nat := 0` });
@@ -502,7 +535,7 @@ class DynamicCollaborationSession extends EventEmitter {
   async waitForSettled() {}
 
   async call(operation, payload = {}) {
-    this.rpcRecords.push({ type: 'tool_call', tool_name: 'swarmenv_call' });
+    this.rpcRecords.push({ type: 'tool_call', tool_name: namedTool(operation) });
     const response = await fetch(`${this.adapter.env.SWARMENV_BRIDGE_URL}/call`, {
       method: 'POST',
       headers: {
@@ -512,7 +545,7 @@ class DynamicCollaborationSession extends EventEmitter {
       body: JSON.stringify({ operation, payload }),
     });
     const body = await response.json();
-    this.rpcRecords.push({ type: 'tool_result', tool_name: 'swarmenv_call' });
+    this.rpcRecords.push({ type: 'tool_result', tool_name: namedTool(operation) });
     if (!body.ok) {
       const error = new Error(body.error?.message ?? `${operation} failed`);
       error.code = body.error?.code;
@@ -561,9 +594,9 @@ class DynamicCollaborationSession extends EventEmitter {
         : `def ${task.task_id.replaceAll('-', '_')} : Nat := 0`,
     });
     if (task.task_type === 'research') {
-      await this.call('request_wait', {
-        wait_condition: { type: 'parent_review' },
-        checkpoint: { phase: 'research-delivered', task_id: task.task_id },
+      await this.call('accept_task', {
+        target_task_id: task.task_id,
+        target_state_version: task.state_version,
       });
     } else {
       await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
@@ -612,16 +645,18 @@ class DynamicCollaborationSession extends EventEmitter {
           goal: `Perform the multi-step ${taskType} route for ${childTaskId}`,
           expected_output: taskType === 'research' ? 'A research result with intermediate context' : 'A checked proof artifact',
           acceptance_conditions: { scenario_task: childTaskId },
-          task_instructions: 'Inspect the locked Workspace, compare intermediate cases, record the route, and publish the result for parent review.',
+          task_instructions: 'Inspect the locked Workspace, compare intermediate cases, record the route, and publish the result for the parent Task.',
           completion_contract: taskType === 'proof' ? {
             required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
             required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: config.environment_ref },
-          } : undefined,
+          } : { required_materials: [{ kinds: ['fact'], scope: 'proof_relevant', min_count: 1 }] },
         });
       }
-      await this.call('request_wait', {
-        wait_condition: { type: 'children_all_terminal', child_task_ids: this.adapter.state.childTaskIds },
-        checkpoint: { phase: 'awaiting-all-dynamic-children' },
+      const firstChild = this.adapter.state.childTaskIds[0];
+      await this.call('task_block', {
+        reason: 'dynamic child work is still running',
+        dependency: { dependency_kind: 'TASK', prerequisite_task_id: firstChild },
+        checkpoint: { phase: 'dynamic-children-created', prerequisite_task_id: firstChild },
       });
       return { data: { disposition: 'handled' } };
     }
@@ -629,26 +664,18 @@ class DynamicCollaborationSession extends EventEmitter {
     await this.call('read_materials', {});
     const tasks = await this.call('list_tasks', {
       available_only: false,
-      states: ['OPEN', 'RUNNING', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
+      states: ['OPEN', 'RUNNING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
       limit: 100,
     });
-    if (!this.adapter.state.reworkRequested) {
-      const research = tasks.find((candidate) => candidate.task_type === 'research' && candidate.state === 'WAITING');
-      if (research) {
-        await this.call('request_rework', {
-          target_task_id: research.task_id,
-          instruction: 'Compare the intermediate cases again and publish the missing context.',
-        });
-        this.adapter.state.reworkRequested = true;
-        await this.call('request_wait', {
-          wait_condition: { type: 'children_all_terminal', child_task_ids: this.adapter.state.childTaskIds },
-          checkpoint: { phase: 'awaiting-reworked-child' },
-        });
-        return { data: { disposition: 'handled' } };
-      }
-    }
-    for (const research of tasks.filter((candidate) => candidate.task_type === 'research' && candidate.state === 'WAITING')) {
-      await this.call('accept_task', { target_task_id: research.task_id, target_state_version: research.state_version });
+    const pendingChild = tasks.find((candidate) => this.adapter.state.childTaskIds.includes(candidate.task_id) &&
+      !['SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'].includes(candidate.state));
+    if (pendingChild) {
+      await this.call('task_block', {
+        reason: 'dynamic child work is still running',
+        dependency: { dependency_kind: 'TASK', prerequisite_task_id: pendingChild.task_id },
+        checkpoint: { phase: 'awaiting-dynamic-child', prerequisite_task_id: pendingChild.task_id },
+      });
+      return { data: { disposition: 'handled' } };
     }
     const material = await this.call('publish_material', {
       kind: 'artifact',
@@ -683,7 +710,7 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = false }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -694,7 +721,7 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     watchdogTimeoutMs,
     watchdogIntervalMs,
     maxInfrastructureRetries,
-    ...(normalFlow === undefined ? {} : { normalFlow }),
+    normalFlow,
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
@@ -735,7 +762,7 @@ test('benchmark runtime publishes live core, execution, service, and completion 
   }
 });
 
-test('select_task keeps the selection Session through claim and Runtime bind', async () => {
+test('Selection Agent keeps its Session through claim and Runtime bind', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-selection-bind-experiment-');
   const reportDir = await mkdtemp('/tmp/swarmenv-selection-bind-report-');
   try {
@@ -851,7 +878,8 @@ test('benchmark project starts four isolated cores and redacts candidate content
     assert.ok(report.cores.some((core) => core.task_state === 'SATISFIED'));
     const claimedCores = report.cores.filter((core) => core.claims.length > 0);
     assert.ok(claimedCores.length > 0);
-    assert.ok(claimedCores.every((core) => core.tool_events.includes('swarmenv_call')));
+    assert.ok(claimedCores.every((core) => core.tool_events.every((tool) => tool.startsWith('swarmenv_'))));
+    assert.ok(claimedCores.every((core) => !core.tool_events.includes('swarmenv_call')));
     assert.equal(JSON.stringify(report).includes('formal_source'), false);
     assert.equal(JSON.stringify(report).includes('benchmarkArtifact'), false);
     assert.equal(JSON.stringify(report).includes('candidate contents'), false);
@@ -989,9 +1017,8 @@ test('checker infrastructure errors returned by submit_candidate retain actionab
     assert.ok(checks.every((check) => check.process_evidence.error_code === 'ENOENT'));
     assert.ok(report.run.checker_infrastructure_failure_count >= 1);
     assert.ok(report.run.checker_unassessed_count >= 1);
-    assert.ok(report.run.lifecycle_events.some((event) => event.wait_condition_type === 'checker_health'));
-    assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'block_task' && event.wait_condition_type === 'checker_health'));
-    assert.ok(report.cores.every((core) => core.execution_state === null || ['FAILED', 'FENCED', 'WAITING'].includes(core.execution_state)));
+    assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'block_task' && event.dependency_kind === 'CHECK_RESULT'));
+    assert.ok(report.cores.every((core) => core.execution_state === null || ['FAILED', 'FENCED'].includes(core.execution_state)));
     assert.equal(report.audit.invalid, false);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
@@ -1044,7 +1071,7 @@ test('benchmark submit_candidate returns Agent feedback separately from the reda
   }
 });
 
-test('short four-core collaboration proves root decomposition, parallel work, wait/resume, and parent review', async () => {
+test('short four-core collaboration proves root decomposition, parallel work, typed blocking, and task completion', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-collaboration-');
   const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-collaboration-report-');
   try {
@@ -1076,8 +1103,9 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.ok(report.parallelism.work_units.some((unit) => unit.progress_kind === 'child_task'));
     assert.ok(report.run.accept_count + report.run.rework_count > 0);
     assert.equal(report.parallelism.decomposition_available, true);
-    assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'request_wait' && event.dependency_ids.length > 0));
-    assert.ok(report.run.resumed_execution_count >= 1, 'a resumable WAITING Execution should return through claim and Scheduler');
+    assert.ok(report.run.lifecycle_events.some((event) => event.operation === 'block_task' && event.dependency_ids.length > 0));
+    assert.equal(report.run.wait_count, 0);
+    assert.equal(report.run.wake_count, 0);
     assert.ok(report.cores.some((core) => core.material_reads.some((read) => read.source_task_ids.includes('collab-research'))));
     const rootTaskId = report.project.task_tree.find((task) => task.parent_id === null).task_id;
     const rootNarratives = report.project.execution_narratives.filter((item) => item.task_id === rootTaskId);
@@ -1088,13 +1116,11 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
     assert.equal(report.project.task_tree.filter((task) => task.parent_id !== null).length, 3);
     assert.ok(report.run.claim_count >= 4, `expected root and three child claims, got ${report.run.claim_count}`);
     assert.ok(report.run.child_claim_count >= 3, `expected every child to be claimed, got ${report.run.child_claim_count}`);
-    assert.ok(report.run.root_claim_count >= 2, `expected root to be reclaimed after waiting, got ${report.run.root_claim_count}`);
-    assert.ok(report.run.resumed_execution_count >= 1, `expected at least one Execution to be resumed; root=${report.run.root_claim_count}, claims=${report.run.claim_count}, details=${JSON.stringify(report.project.execution_history)}`);
-    assert.ok(report.run.resumed_execution_count >= 1, `expected a Scheduler-mediated resumed Execution, got ${report.run.resumed_execution_count}`);
+    assert.ok(report.run.root_claim_count >= 2, `expected root to be reclaimed after typed blocking, got ${report.run.root_claim_count}`);
     const rootExecutionIds = new Set(report.cores.flatMap((core) => core.claims)
       .filter((claim) => claim.task_id === rootTaskId)
       .map((claim) => claim.execution_id));
-    assert.equal(rootExecutionIds.size, 1, 'root wait/resume must preserve one Execution lineage');
+    assert.ok(rootExecutionIds.size >= 2, 'typed blocking releases the root and a later claim starts a new Execution');
     assert.ok(report.run.progress_evidence.workspace_write_count >= 4);
     assert.ok(report.cores.filter((core) => core.workspace_writes.length > 0).length >= 2);
     assert.ok(report.cores.some((core) => core.claims.length >= 2), 'root core should reclaim after waiting');
@@ -1109,12 +1135,12 @@ test('short four-core collaboration proves root decomposition, parallel work, wa
   }
 });
 
-test('production queue dynamically reuses Cores across two waves and releases parent waits', async () => {
+test('production queue dynamically reuses Cores across typed blocking waves', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-dynamic-collaboration-');
   const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-dynamic-collaboration-report-');
   try {
     const adapters = [];
-    const state = { rootCreated: false, rootFinished: false, reworkRequested: false, childTaskIds: [], initialTaskCount: null };
+    const state = { rootCreated: false, rootFinished: false, childTaskIds: [], initialTaskCount: null };
     const report = await runBenchmarkProject(problem('putnam_dynamic_collaboration_test'), config, {
       experimentDir,
       reportDir,
@@ -1140,9 +1166,11 @@ test('production queue dynamically reuses Cores across two waves and releases pa
     assert.equal(childTasks.length, 8);
     assert.ok(childClaims.length >= 8, `expected all children to be claimed, got ${childClaims.length}`);
     assert.ok(coreTaskSets.some((tasks) => tasks.size >= 2), 'a Core must claim different Tasks across waves');
-    assert.ok(report.run.rework_count >= 1);
+    assert.equal(report.run.rework_count, 0);
     assert.ok(report.run.accept_count >= 4);
-    assert.ok(report.run.resumed_execution_count >= 2, 'two wait/reuse waves should resume durable Execution lineages through claim');
+    assert.equal(report.run.wait_count, 0);
+    assert.equal(report.run.wake_count, 0);
+    assert.equal(report.run.resumed_execution_count, 0);
     assert.ok(report.parallelism.eligible_window_ms > 0);
     assert.ok(report.cores.some((core) => core.material_reads.some((read) =>
       childTaskIds.size === new Set([...childTaskIds].filter((taskId) => read.source_task_ids.includes(taskId))).size)));

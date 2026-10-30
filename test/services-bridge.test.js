@@ -1,15 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { EventEmitter } from 'node:events';
 import {
   ContextService,
+  AGENT_ROLES,
   JudgeService,
+  ServiceRegistry,
   ServicesBridge,
   ServicesRouter,
   ServicesSDK,
   TaskService,
-  waitForResponseFlush,
+  createHttpJsonAdapter,
+  createServiceHost,
+  createServiceManifest,
 } from '../src/index.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
@@ -25,7 +28,7 @@ function fixture() {
   };
 }
 
-test('ServicesBridge exposes public SDK calls over a loopback token and keeps Runtime wait internal', async () => {
+test('ServicesBridge exposes public SDK calls over a loopback token and keeps Runtime lifecycle internal', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);
   const taskService = new TaskService(database, { contextService });
@@ -39,7 +42,7 @@ test('ServicesBridge exposes public SDK calls over a loopback token and keeps Ru
   owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
     execution_id: 'bridge-execution', claim_key: 'bridge:claim', owner_ref: 'agent:bridge', agent_prompt: 'bridge', input_material_refs: [],
   }, { operationId: 'bridge:claim' });
-  const runtime = { requestWait: async (executionId, payload) => ({ executionId, payload }) };
+  const runtime = {};
   const bridge = new ServicesBridge({ taskService, contextService, runtime, router, taskId: task.task_id, executionId: 'bridge-execution' });
   const environment = await bridge.start();
   try {
@@ -56,13 +59,8 @@ test('ServicesBridge exposes public SDK calls over a loopback token and keeps Ru
     const consumedBody = await consumed.json();
     assert.equal(consumed.status, 200);
     assert.deepEqual(consumedBody.result.material_ids, [publishedBody.result.material.material_id]);
-    const waited = await fetch(`${environment.SWARMENV_BRIDGE_URL}/call`, { method: 'POST', headers: { authorization: `Bearer ${environment.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'request_wait', payload: { waitCondition: { type: 'timer', deadline: new Date(Date.now() + 1_000).toISOString() }, checkpoint: { phase: 'bridge' }, files: {} } }) });
-    const waitedBody = await waited.json();
-    assert.equal(waited.status, 200);
-    assert.equal(waitedBody.result.executionId, 'bridge-execution');
-    assert.deepEqual(waitedBody.result.payload.checkpoint, { phase: 'bridge' });
-    assert.equal(bridge.taskId, null);
-    assert.equal(bridge.executionId, null);
+    assert.equal(bridge.taskId, task.task_id);
+    assert.equal(bridge.executionId, 'bridge-execution');
   } finally {
     await bridge.stop();
     taskService.close();
@@ -121,22 +119,100 @@ test('ServicesBridge returns structured tool errors and exposes them to audit ho
   }
 });
 
-test('ServicesBridge exposes only the bounded selection shortlist and never claims from select_task', async () => {
+test('ServicesBridge invokes a registered HTTP capability through its adapter', async () => {
+  const initial = createServiceManifest({
+    id: 'remote_math',
+    title: 'Remote Math Service',
+    purpose: 'Remote capability used by the bound Agent.',
+    provider_version: '1.0.0',
+    contract_version: '1',
+    endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' },
+    capabilities: [{
+      name: 'remote_echo', operation: 'remote_echo', description: 'Echo a bounded value.',
+      input_schema: { type: 'object', properties: { value: { type: 'string' } }, additionalProperties: false },
+      output_schema: { type: 'object', properties: { value: { type: 'string' } }, additionalProperties: false },
+      audience: ['bound'], side_effect: 'read', idempotent: true, context: ['task', 'execution'],
+      help: { when: 'Use for the remote capability smoke test.', ref: 'service://remote_math/remote_echo' },
+    }],
+  });
+  const host = createServiceHost({
+    manifest: initial,
+    token: 'remote-token',
+    handler: async ({ input, envelope }) => ({ value: input.value, operation_id: envelope.operation_id }),
+  });
+  const environment = await host.start();
+  const manifest = createServiceManifest({ ...initial, endpoint: { transport: 'http-json', url: environment.url } });
+  const registry = new ServiceRegistry();
+  registry.registerService({ manifest, adapter: createHttpJsonAdapter({ token: 'remote-token' }) });
+  const bridge = new ServicesBridge({
+    taskService: { getTask: () => null, getExecution: () => null },
+    contextService: {},
+    runtime: {},
+    registry,
+    taskId: 'task-remote',
+    executionId: 'execution-remote',
+  });
+  try {
+    const result = await bridge.call({ operation: 'remote_echo', payload: { value: 'through-http' } });
+    assert.deepEqual(result, { value: 'through-http', operation_id: result.operation_id });
+    assert.match(result.operation_id, /^bridge:remote_echo:/);
+  } finally {
+    await bridge.stop();
+    await host.stop();
+  }
+});
+
+test('ServicesBridge refreshes the profile when a Service is registered after startup', async () => {
+  const registry = new ServiceRegistry();
+  const bridge = new ServicesBridge({
+    taskService: { getTask: () => null, getExecution: () => null },
+    contextService: {},
+    runtime: {},
+    registry,
+    taskId: 'task-dynamic',
+    executionId: 'execution-dynamic',
+  });
+  try {
+    assert.equal(bridge.getCapabilityProfile().capabilities.some((capability) => capability.service_id === 'dynamic'), false);
+    registry.registerService({
+      manifest: createServiceManifest({
+        id: 'dynamic', title: 'Dynamic Service', purpose: 'Registered after the Bridge was created.',
+        provider_version: '1.0.0', contract_version: '1', endpoint: { transport: 'in-process' },
+        capabilities: [{
+          name: 'dynamic_read', operation: 'dynamic_read', description: 'Read dynamic state.',
+          input_schema: { type: 'object', properties: {}, additionalProperties: false },
+          output_schema: { type: 'object', properties: {}, additionalProperties: false },
+          audience: ['bound'], side_effect: 'read', idempotent: true, context: ['task', 'execution'],
+          help: { when: 'Use the dynamic provider.', ref: 'service://dynamic/dynamic_read' },
+        }],
+      }),
+      adapter: { invoke: async () => ({ ok: true }) },
+    });
+    assert.equal(bridge.getCapabilityProfile().capabilities.some((capability) => capability.service_id === 'dynamic'), true);
+  } finally {
+    await bridge.stop();
+  }
+});
+
+test('ServicesBridge exposes only the bounded selection shortlist and lets Selection claim exactly once', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);
   const taskService = new TaskService(database, { contextService });
   contextService.taskService = taskService;
-  const selected = [];
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:shortlist' });
+  const task = owner.proposeTask({
+    task_type: 'research', goal: 'bounded selection', expected_output: 'one task', acceptance_conditions: {}, owner_ref: 'owner:shortlist',
+  }, { operationId: 'shortlist:propose' }).task;
   const bridge = new ServicesBridge({
     taskService,
     contextService,
     runtime: {},
-    router: new ServicesRouter({ taskService, contextService }),
-    onSelectTask: async (candidate) => selected.push(candidate),
+    router,
   });
   try {
     bridge.setSelectionCandidates([{
-      task_id: 'task-shortlist',
+      task_id: task.task_id,
       goal: 'bounded selection',
       expected_output: 'one task',
       workspace: { secret: 'must not cross selection boundary' },
@@ -144,29 +220,139 @@ test('ServicesBridge exposes only the bounded selection shortlist and never clai
       selection_rank: 1,
     }]);
     const listed = await bridge.call({ operation: 'list_tasks', payload: { limit: 100 } });
-    assert.deepEqual(listed.map((task) => task.task_id), ['task-shortlist']);
+    assert.deepEqual(listed.map((candidate) => candidate.task_id), [task.task_id]);
     assert.equal(listed[0].workspace, undefined);
-    const result = await bridge.call({ operation: 'select_task', payload: { task_id: 'task-shortlist' } });
-    assert.deepEqual(result, { selected_task_id: 'task-shortlist' });
-    assert.equal(selected.length, 1);
-    assert.equal(selected[0].task_id, 'task-shortlist');
+    const viewed = await bridge.call({ operation: 'get_task', payload: { task_id: task.task_id } });
+    assert.equal(viewed.task_id, task.task_id);
+    assert.equal(viewed.workspace, undefined);
     await assert.rejects(
-      () => bridge.call({ operation: 'select_task', payload: { task_id: 'task-outside-shortlist' } }),
-      (error) => error.code === 'INVALID_CONTRACT',
-    );
-    await assert.rejects(
-      () => bridge.call({ operation: 'claim', payload: { task_id: 'task-outside-shortlist', claim_key: 'outside-shortlist' } }),
+      () => bridge.call({ operation: 'get_task', payload: { task_id: 'task-outside-shortlist' } }),
       (error) => error.code === 'INVALID_CONTRACT' && /bounded shortlist/.test(error.message),
     );
-    const bound = new ServicesBridge({ taskService, contextService, runtime: {}, taskId: 'task-shortlist', executionId: 'execution-bound' });
+    const result = await bridge.call({ operation: 'claim', payload: { task_id: task.task_id, claim_key: 'shortlist-claim' } });
+    assert.equal(result.task.task_id, task.task_id);
+    assert.equal(bridge.role, 'bound');
+    const outside = new ServicesBridge({ taskService, contextService, runtime: {} });
+    outside.setSelectionCandidates([{ task_id: task.task_id }]);
     await assert.rejects(
-      () => bound.call({ operation: 'select_task', payload: { task_id: 'task-shortlist' } }),
+      () => outside.call({ operation: 'claim', payload: { task_id: 'task-outside-shortlist', claim_key: 'outside-shortlist' } }),
+      (error) => error.code === 'INVALID_CONTRACT' && /bounded shortlist/.test(error.message),
+    );
+    await outside.stop();
+    const bound = new ServicesBridge({ taskService, contextService, runtime: {}, taskId: task.task_id, executionId: result.execution.execution_id });
+    await assert.rejects(
+      () => bound.call({ operation: 'claim', payload: { task_id: task.task_id, claim_key: 'second-claim' } }),
       (error) => error.code === 'NOT_ALLOWED',
     );
     await bound.stop();
   } finally {
     await bridge.stop();
     taskService.close();
+  }
+});
+
+test('Selection task discovery requires an injected bounded shortlist on every task discovery route', async () => {
+  const calls = [];
+  const taskDiscoveryCapabilities = [
+    'list_tasks',
+    'list_claimable_tasks',
+    'get_task',
+    'list_executions',
+    'get_task_structure',
+    'explain_task_readiness',
+  ].map((operation) => ({
+    id: `task.${operation}`,
+    name: operation,
+    operation,
+    service_id: 'task',
+    service_title: 'Task Service',
+    service_purpose: 'Task discovery',
+    description: `Discover through ${operation}`,
+    audience: ['selection'],
+    side_effect: 'read',
+    idempotent: true,
+    context: [],
+  }));
+  const registry = {
+    getRevision: () => 1,
+    getCapabilityProfile: () => ({ profile_version: 'test', profile_hash: 'selection-test', capabilities: taskDiscoveryCapabilities }),
+    invoke: async (request) => {
+      calls.push(request);
+      return [];
+    },
+  };
+  const bridge = new ServicesBridge({
+    taskService: { getTask: () => null, getExecution: () => null },
+    contextService: {},
+    runtime: {},
+    registry,
+    role: AGENT_ROLES.SELECTION,
+  });
+  try {
+    const payloads = {
+      list_tasks: {},
+      list_claimable_tasks: {},
+      get_task: { task_id: 'task-1' },
+      list_executions: { task_id: 'task-1' },
+      get_task_structure: { task_id: 'task-1' },
+      explain_task_readiness: { task_id: 'task-1' },
+    };
+    for (const operation of Object.keys(payloads)) {
+      await assert.rejects(
+        () => bridge.call({ operation, payload: payloads[operation] }),
+        (error) => error.code === 'NOT_ALLOWED' && /bounded shortlist/.test(error.message),
+        operation,
+      );
+    }
+    assert.equal(calls.length, 0);
+  } finally {
+    await bridge.stop();
+  }
+});
+
+test('Selection task discovery keeps every task id inside the injected shortlist', async () => {
+  const calls = [];
+  const operations = ['list_executions', 'get_task_structure', 'explain_task_readiness'];
+  const capabilities = operations.map((operation) => ({
+    id: `task.${operation}`,
+    name: operation,
+    operation,
+    service_id: 'task',
+    service_title: 'Task Service',
+    service_purpose: 'Task discovery',
+    description: `Discover through ${operation}`,
+    audience: ['selection'],
+    side_effect: 'read',
+    idempotent: true,
+    context: [],
+  }));
+  const registry = {
+    getRevision: () => 1,
+    getCapabilityProfile: () => ({ profile_hash: 'selection-membership-test', capabilities }),
+    invoke: async (request) => {
+      calls.push(request);
+      return { unexpected: true };
+    },
+  };
+  const bridge = new ServicesBridge({
+    taskService: { getTask: () => null, getExecution: () => null },
+    contextService: {},
+    runtime: {},
+    registry,
+    role: AGENT_ROLES.SELECTION,
+  });
+  bridge.setSelectionCandidates([{ task_id: 'task-in-shortlist', goal: 'bounded task' }]);
+  try {
+    for (const operation of operations) {
+      await assert.rejects(
+        () => bridge.call({ operation, payload: { task_id: 'task-outside-shortlist' } }),
+        (error) => error.code === 'INVALID_CONTRACT' && /bounded shortlist/.test(error.message),
+        operation,
+      );
+    }
+    assert.equal(calls.length, 0);
+  } finally {
+    await bridge.stop();
   }
 });
 
@@ -344,173 +530,70 @@ test('ServicesBridge keeps the same binding for a source failure so the Agent ca
   }
 });
 
-test('ServicesBridge releases checker-health waits only after the typed result is returned', async () => {
+test('ServicesBridge returns checker feedback before applying a deferred typed block', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);
   const taskService = new TaskService(database, { contextService });
   contextService.taskService = taskService;
   const router = new ServicesRouter({ taskService, contextService });
-  const owner = new ServicesSDK(router, { actorRef: 'owner:checker-health' });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:typed-block' });
   const task = owner.proposeTask({
-    task_type: 'proof', goal: 'checker health bridge', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:checker-health',
+    task_type: 'proof', goal: 'typed checker block', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:typed-block',
     completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixture().environment_ref } },
-  }, { operationId: 'bridge:checker-health:propose' }).task;
+  }, { operationId: 'bridge:typed-block:propose' }).task;
   const claim = owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
-    execution_id: 'bridge-checker-health-execution', claim_key: 'bridge:checker-health:claim', owner_ref: 'agent:checker-health', agent_prompt: 'bridge', input_material_refs: [],
-  }, { operationId: 'bridge:checker-health:claim' });
-  const agent = owner.withContext({
-    actorRef: 'agent:checker-health', taskId: task.task_id, executionId: claim.execution.execution_id,
-    specVersion: claim.execution.spec_version, stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
-  });
-  const material = agent.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: 'theorem checker_health : True := by trivial' }, { operationId: 'bridge:checker-health:material' }).material;
-  const released = [];
+    execution_id: 'bridge-typed-block-execution', claim_key: 'bridge:typed-block:claim', owner_ref: 'agent:typed-block', agent_prompt: 'bridge', input_material_refs: [],
+  }, { operationId: 'bridge:typed-block:claim' });
+  const started = taskService.dispatch('start_execution', {}, makeEnvelope({
+    operationId: 'bridge:typed-block:start', actorRef: 'runtime:test', taskId: task.task_id,
+    executionId: claim.execution.execution_id, specVersion: claim.execution.spec_version,
+    stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
+  }));
   const lifecycle = [];
+  const released = [];
   const bridge = new ServicesBridge({
     taskService,
     contextService,
     runtime: {
-      requestWait: async (executionId, payload) => {
-        lifecycle.push('request_wait');
-        return { execution: { ...claim.execution, execution_id: executionId, state: 'WAITING', resume_token: 'resume-checker-health' }, task };
+      blockExecution: async (executionId, block) => {
+        lifecycle.push({ executionId, block });
+        return {
+          execution: { ...started.execution, execution_id: executionId, state: 'FAILED' },
+          task: { ...task, state: 'BLOCKED' },
+        };
       },
     },
     router,
     taskId: task.task_id,
     executionId: claim.execution.execution_id,
-    onSubmitCandidate: async () => ({
-      check_result: { result_class: 'infrastructure_failure', checker_process_status: 'not_started', retryable: true, diagnostic_code: 'checker_unavailable' },
-      applied: { execution: { ...claim.execution, state: 'WAITING' }, task },
-      deferred_wait: {
-        waitCondition: { type: 'checker_health', preflight_key: 'preflight', health_fingerprint: 'health-1' },
-        checkpoint: { phase: 'checker_unavailable', check_result_id: 'check-1' },
+    onSubmitCandidate: async ({ executionId }) => ({
+      check_result: { result_class: 'infrastructure_failure', mathematical_outcome: 'unassessed', diagnostic_code: 'checker_unavailable' },
+      applied: { execution: taskService.getExecution(executionId), task: taskService.getTask(task.task_id) },
+      deferred_block: {
+        reason: 'checker health unavailable',
+        dependency: { dependency_kind: 'CHECK_RESULT', check_result_id: 'check-typed-block' },
+        checkpoint: { phase: 'checker_unavailable' },
+        terminal_state: 'FAILED',
       },
     }),
     onRelease: async (release) => released.push(release),
   });
   try {
+    const agent = owner.withContext({
+      actorRef: 'agent:typed-block', taskId: task.task_id, executionId: claim.execution.execution_id,
+      specVersion: started.execution.spec_version, stateVersion: started.execution.state_version, fencingVersion: started.execution.fencing_version,
+    });
+    const material = agent.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: 'candidate' }, { operationId: 'bridge:typed-block:material' }).material;
     const result = await bridge.call({ operation: 'submit_candidate', payload: { candidate_material_id: material.material_id } });
     assert.equal(result.check_result.result_class, 'infrastructure_failure');
-    assert.equal(result.check_result.diagnostic_code, 'checker_unavailable');
-    assert.deepEqual(lifecycle, []);
+    assert.equal(lifecycle.length, 0);
     assert.equal(bridge.taskId, task.task_id);
-    assert.equal(bridge.executionId, claim.execution.execution_id);
     await bridge.flushDeferredLifecycle();
-    assert.deepEqual(lifecycle, ['request_wait']);
+    assert.equal(lifecycle.length, 1);
+    assert.equal(lifecycle[0].block.dependency.dependency_kind, 'CHECK_RESULT');
     assert.equal(bridge.taskId, null);
     assert.equal(bridge.executionId, null);
     assert.equal(released.length, 1);
-    assert.equal(released[0].taskId, task.task_id);
-    assert.equal(released[0].executionId, claim.execution.execution_id);
-  } finally {
-    await bridge.stop();
-    taskService.close();
-  }
-});
-
-test('ServicesBridge writes the Agent response before flushing a deferred checker-health wait', async () => {
-  const database = new DatabaseSync(':memory:');
-  const contextService = new ContextService(database);
-  const taskService = new TaskService(database, { contextService });
-  contextService.taskService = taskService;
-  const router = new ServicesRouter({ taskService, contextService });
-  const owner = new ServicesSDK(router, { actorRef: 'owner:response-order' });
-  const task = owner.proposeTask({
-    task_type: 'proof', goal: 'response order', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:response-order',
-    completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixture().environment_ref } },
-  }, { operationId: 'bridge:response-order:propose' }).task;
-  const claim = owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
-    execution_id: 'bridge-response-order-execution', claim_key: 'bridge:response-order:claim', owner_ref: 'agent:response-order', agent_prompt: 'bridge', input_material_refs: [],
-  });
-  const agent = owner.withContext({
-    actorRef: 'agent:response-order', taskId: task.task_id, executionId: claim.execution.execution_id,
-    specVersion: claim.execution.spec_version, stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
-  });
-  const material = agent.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: 'candidate' }, { operationId: 'bridge:response-order:material' }).material;
-  const events = [];
-  const bridge = new ServicesBridge({
-    taskService,
-    contextService,
-    runtime: {
-      requestWait: async (executionId) => {
-        events.push('request_wait');
-        return { execution: { ...claim.execution, execution_id: executionId, state: 'WAITING' }, task };
-      },
-    },
-    router,
-    taskId: task.task_id,
-    executionId: claim.execution.execution_id,
-    onSubmitCandidate: async () => ({
-      check_result: { result_class: 'infrastructure_failure', mathematical_outcome: 'unassessed', checker_process_status: 'not_started', retryable: true, diagnostic_code: 'checker_unavailable' },
-      applied: { execution: { ...claim.execution, state: 'WAITING' }, task },
-      deferred_wait: { waitCondition: { type: 'checker_health', preflight_key: 'preflight', health_fingerprint: 'health-1' }, checkpoint: { phase: 'checker_unavailable' } },
-    }),
-    logger: { append: (event) => {
-      if (event.event === 'bridge.response_sent') events.push('response_sent');
-      if (event.event === 'bridge.response_flushed') events.push('response_flushed');
-    } },
-  });
-  const environment = await bridge.start();
-  try {
-    const response = await fetch(`${environment.SWARMENV_BRIDGE_URL}/call`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${environment.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ operation: 'submit_candidate', payload: { candidate_material_id: material.material_id } }),
-    });
-    const body = await response.json();
-    assert.equal(response.status, 200);
-    assert.equal(body.result.check_result.result_class, 'infrastructure_failure');
-    assert.ok(events.indexOf('response_sent') >= 0);
-    assert.ok(events.indexOf('response_flushed') > events.indexOf('response_sent'));
-    assert.ok(events.indexOf('request_wait') > events.indexOf('response_flushed'));
-    assert.equal(bridge.taskId, null);
-    assert.equal(bridge.executionId, null);
-  } finally {
-    await bridge.stop();
-    taskService.close();
-  }
-});
-
-test('ServicesBridge does not treat a disconnected response as delivered feedback', async () => {
-  const response = new EventEmitter();
-  response.writableFinished = false;
-  const pending = waitForResponseFlush(response);
-  response.emit('close');
-  assert.equal(await pending, false);
-});
-
-test('ServicesBridge rejects candidate-result waits because candidate checking is synchronous', async () => {
-  const database = new DatabaseSync(':memory:');
-  const contextService = new ContextService(database);
-  const taskService = new TaskService(database, { contextService });
-  contextService.taskService = taskService;
-  const router = new ServicesRouter({ taskService, contextService });
-  const owner = new ServicesSDK(router, { actorRef: 'owner:root' });
-  const task = owner.proposeTask({
-    task_type: 'proof', goal: 'bridge snake case wait', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:root',
-    completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixture().environment_ref } },
-  }, { operationId: 'bridge:snake:propose' }).task;
-  owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
-    execution_id: 'bridge-execution-snake', claim_key: 'bridge:snake:claim', owner_ref: 'agent:bridge', agent_prompt: 'bridge', input_material_refs: [],
-  }, { operationId: 'bridge:snake:claim' });
-  const runtime = { requestWait: async (executionId, payload) => ({ executionId, payload }) };
-  const bridge = new ServicesBridge({ taskService, contextService, runtime, router, taskId: task.task_id, executionId: 'bridge-execution-snake' });
-  const environment = await bridge.start();
-  try {
-    const response = await fetch(`${environment.SWARMENV_BRIDGE_URL}/call`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${environment.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ operation: 'request_wait', payload: {
-        wait_condition: { kind: 'judge_result' },
-        checkpoint: { phase: 'snake-case', candidate_material_id: 'candidate-for-judge-wait' },
-        files: {},
-      } }),
-    });
-    const body = await response.json();
-    assert.equal(response.status, 400);
-    assert.equal(body.error.code, 'NOT_ALLOWED');
-    assert.match(body.error.message, /synchronous submit_candidate/);
-    assert.equal(bridge.taskId, task.task_id);
-    assert.equal(bridge.executionId, 'bridge-execution-snake');
   } finally {
     await bridge.stop();
     taskService.close();
@@ -540,6 +623,7 @@ test('ServicesBridge binds an explicit claim to the bridge Agent and keeps the r
     onClaim: async (result) => { claimed = result; },
   });
   try {
+    bridge.setSelectionCandidates([{ task_id: task.task_id }]);
     const result = await bridge.call({ operation: 'claim', payload: {
       task_id: task.task_id,
       claim_key: 'bridge:identity:claim',
@@ -577,6 +661,7 @@ test('ServicesBridge rolls back a Task claim when Runtime handoff fails', async 
     onClaim: async () => { throw new Error('controlled handoff failure'); },
   });
   try {
+    bridge.setSelectionCandidates([{ task_id: task.task_id }]);
     await assert.rejects(() => bridge.call({ operation: 'claim', payload: { task_id: task.task_id, claim_key: 'bridge:rollback:claim', workspace_mode: 'clean' } }), /controlled handoff failure/);
     assert.equal(bridge.taskId, null);
     assert.equal(bridge.executionId, null);

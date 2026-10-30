@@ -1,4 +1,5 @@
-import { getServiceMetadata, listServices, listTools } from './service-catalog.js';
+import { createBuiltinServiceRegistry } from './builtin-registry.js';
+import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 const TASK_OPERATIONS = new Set([
   'abort', 'claim', 'create_child_task', 'fence_execution', 'get_execution', 'get_task', 'heartbeat', 'list_children', 'list_tasks', 'list_claimable_tasks', 'list_executions',
@@ -10,10 +11,11 @@ const CONTEXT_OPERATIONS = new Set(['publish_material', 'read_materials', 'consu
 const JUDGE_OPERATIONS = new Set(['get_check_result']);
 
 export class ServicesRouter {
-  constructor({ taskService, contextService, judgeService = null, logger = null }) {
+  constructor({ taskService, contextService, judgeService = null, registry = null, serviceEndpoints = {}, customServices = [], logger = null } = {}) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.judgeService = judgeService;
+    this.registry = registry ?? createBuiltinServiceRegistry({ taskService, contextService, judgeService, serviceEndpoints, customServices });
     this.logger = logger;
   }
 
@@ -26,19 +28,75 @@ export class ServicesRouter {
       execution_id: envelope?.execution_id ?? null,
     });
     try {
-      const result = operation === 'list_services'
-        ? { services: listServices() }
-        : operation === 'get_service_metadata'
-          ? getServiceMetadata(payload?.service ?? null)
-          : operation === 'list_tools'
-            ? { tools: listTools(payload?.service ?? null) }
-            : TASK_OPERATIONS.has(operation)
-        ? this.taskService.dispatch(operation, payload, envelope)
-        : CONTEXT_OPERATIONS.has(operation)
-          ? this.contextService.dispatch(operation, payload, envelope)
-          : JUDGE_OPERATIONS.has(operation) && this.judgeService
-            ? this.judgeService.dispatch(operation, payload, envelope)
-            : (() => { throw new Error(`no service route for operation: ${operation}`); })();
+      // ServicesSDK is intentionally synchronous because the local control
+      // plane performs Task/Context/Judge writes in one SQLite transaction.
+      // Remote HTTP providers are invoked asynchronously by ServicesBridge;
+      // never leak an HTTP Promise through this legacy-free local router.
+      const registered = this.registry?.listTools?.()
+        .filter((candidate) => candidate.operation === operation || candidate.name === operation) ?? [];
+      if (registered.length > 1) throw new Error(`ambiguous service route for operation: ${operation}`);
+      const result = registered.length === 1
+        ? (() => {
+          const entry = this.registry.getCapability(registered[0].service_id, registered[0].name);
+          if (entry.adapter?.kind === 'http-json') {
+            throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `HTTP Service ${registered[0].service_id} requires asynchronous dispatch`, {
+              service_id: registered[0].service_id,
+              capability: registered[0].name,
+              dispatch: 'dispatchAsync',
+            }, { retryable: true });
+          }
+          const localResult = this.registry.invokeSync({
+            serviceId: registered[0].service_id,
+            capability: registered[0].name,
+            input: payload,
+            envelope,
+          });
+          if (localResult && typeof localResult.then === 'function') {
+            throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `Service ${registered[0].service_id} returned an asynchronous result`, {
+              service_id: registered[0].service_id,
+              capability: registered[0].name,
+              dispatch: 'dispatchAsync',
+            }, { retryable: true });
+          }
+          return localResult;
+        })()
+        : TASK_OPERATIONS.has(operation)
+          ? this.taskService.dispatch(operation, payload, envelope)
+          : CONTEXT_OPERATIONS.has(operation)
+            ? this.contextService.dispatch(operation, payload, envelope)
+            : JUDGE_OPERATIONS.has(operation) && this.judgeService
+              ? this.judgeService.dispatch(operation, payload, envelope)
+              : (() => { throw new Error(`no service route for operation: ${operation}`); })();
+      this.logger?.append({ event: 'route.complete', operation, ok: true });
+      return result;
+    } catch (error) {
+      this.logger?.append({ event: 'route.complete', operation, ok: false, error: { name: error.name, code: error.code, message: error.message } });
+      throw error;
+    }
+  }
+
+  async dispatchAsync(operation, payload, envelope) {
+    this.logger?.append({
+      event: 'route.start',
+      operation,
+      actor_ref: envelope?.actor_ref ?? null,
+      task_id: envelope?.task_id ?? null,
+      execution_id: envelope?.execution_id ?? null,
+    });
+    try {
+      const registered = this.registry?.listTools?.().filter((candidate) => candidate.operation === operation || candidate.name === operation) ?? [];
+      if (registered.length > 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `ambiguous service route for operation: ${operation}`);
+      if (registered.length === 1) {
+        const result = await this.registry.invoke({
+          serviceId: registered[0].service_id,
+          capability: registered[0].name,
+          input: payload,
+          envelope,
+        });
+        this.logger?.append({ event: 'route.complete', operation, ok: true });
+        return result;
+      }
+      const result = this.dispatch(operation, payload, envelope);
       this.logger?.append({ event: 'route.complete', operation, ok: true });
       return result;
     } catch (error) {

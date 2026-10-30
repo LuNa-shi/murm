@@ -2,6 +2,40 @@
 
 SwarmEnv is a local-first runtime for durable, checkable agent swarm tasks.
 
+## Independently deployed Agent Services
+
+Agent-facing providers register one versioned Service Manifest and use either
+the in-process adapter for deterministic fixtures or the HTTP JSON adapter for
+an independent process/container. A registered provider is filtered into the
+Selection, Bound, or Recovery profile by its Manifest audience; the Pi
+extension exposes only those named capabilities, and the same profile is
+included in the initial prompt.
+
+The reference user-defined provider is Mathlib Search. Start its standalone
+HTTP process with a Loogle endpoint or a mounted Lean source root:
+
+```sh
+MATHLIB_SEARCH_UPSTREAM_URL=http://loogle:8080 \
+MATHLIB_REVISION=<locked-mathlib-revision> \
+LEAN_VERSION=<locked-lean-toolchain> \
+npm run service:mathlib-search
+```
+
+Configure `SWARMENV_MATHLIB_SEARCH_URL` and the optional token in the Agent
+runtime environment. Runtime registers the manifest through the same Registry
+seam used by a user-defined provider, so a Bound prompt contains the
+`swarmenv_mathlib_search` tool and Selection prompts do not. The deployment
+recipe and pinned-toolchain guidance are in
+[`services/mathlib-search/README.md`](services/mathlib-search/README.md) and
+[`docs/research/mathlib-search-service.md`](docs/research/mathlib-search-service.md).
+
+Task, Context, Judge, and Catalog can use the same host boundary. Run one
+`npm run service:builtin` process per service with `SWARMENV_SERVICE_ID` and a
+shared durable `SWARMENV_SERVICE_DATABASE` volume, then pass the resulting URLs
+to `createBuiltinServiceRegistry({ serviceEndpoints })`. Custom providers use
+`registerUserService(registry, { manifest, adapter })`; the benchmark accepts
+the same definitions through its `customServices` option.
+
 ## Experiment and observation runtime
 
 All live experiment evidence must be created below the repository's
