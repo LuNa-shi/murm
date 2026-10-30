@@ -44,6 +44,8 @@ const STRUCTURE_OPERATIONS = new Set([
   'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task',
 ]);
 const DEFAULT_FLAT_INITIAL_TASKS = 4;
+const DEFAULT_FLAT_DYNAMIC_TASKS = 2;
+const MAX_FLAT_DYNAMIC_TASKS = 3;
 const FLAT_RESEARCH_ROUTES = Object.freeze([
   {
     key: 'formalization-audit',
@@ -91,6 +93,14 @@ function flatInitialTaskCount(options = {}) {
   const value = options.flatInitialTaskCount ?? DEFAULT_FLAT_INITIAL_TASKS;
   if (!Number.isInteger(value) || value < 1 || value > FLAT_RESEARCH_ROUTES.length + 1) {
     throw new TypeError(`flatInitialTaskCount must be an integer between 1 and ${FLAT_RESEARCH_ROUTES.length + 1}`);
+  }
+  return value;
+}
+
+function flatDynamicTaskBudget(options = {}) {
+  const value = options.flatDynamicTaskBudget ?? DEFAULT_FLAT_DYNAMIC_TASKS;
+  if (!Number.isInteger(value) || value < 0 || value > MAX_FLAT_DYNAMIC_TASKS) {
+    throw new TypeError(`flatDynamicTaskBudget must be an integer between 0 and ${MAX_FLAT_DYNAMIC_TASKS}`);
   }
   return value;
 }
@@ -1087,7 +1097,53 @@ async function judgeCandidate(state, core, candidateMaterialId = null) {
     core: core.index,
     progress_kind: 'candidate_check',
   });
-  await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
+  const feedback = await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
+  // A source-level failure is a concrete route boundary. Keep the current
+  // proof Execution's feedback in place, then admit one bounded Mission Task
+  // for a genuinely new repair responsibility. The admission is idempotent
+  // by responsibility_key, so an Agent-created Task and this controller
+  // safety net cannot create duplicate work for the same CheckResult.
+  if (state.taskModel === 'flat' && persistedResult.result_class === 'source_failure' && feedback?.material_id) {
+    const dynamic = state.createFlatFeedbackTask?.({
+      taskId: pending.taskId,
+      executionId: pending.executionId,
+      feedback,
+      checkResult: persistedResult,
+    });
+    if (dynamic?.task) {
+      const event = {
+        task_id: dynamic.task.task_id,
+        source_task_id: pending.taskId,
+        source_execution_id: pending.executionId,
+        check_result_id: persistedResult.check_result_id,
+        material_id: feedback.material_id,
+        responsibility_key: dynamic.responsibility_key ?? null,
+        status: dynamic.created === false ? 'deduplicated' : 'created',
+      };
+      state.dynamicTaskEvents.push(event);
+      core.observe({
+        source: 'task-service', kind: 'dynamic_task_created', visibility: 'operator',
+        taskId: pending.taskId, executionId: pending.executionId, coreId: `core-${core.index}`,
+        payload: event,
+      });
+      core.parallelism.recordWorkUnit({
+        task_id: dynamic.task.task_id,
+        execution_id: pending.executionId,
+        core: core.index,
+        progress_kind: 'task_create',
+      });
+      state.requestDaemonWake?.('dynamic_task_created');
+    } else if (dynamic?.skipped) {
+      state.dynamicTaskEvents.push({
+        source_task_id: pending.taskId,
+        source_execution_id: pending.executionId,
+        check_result_id: persistedResult.check_result_id,
+        material_id: feedback.material_id,
+        status: 'skipped',
+        reason: dynamic.reason,
+      });
+    }
+  }
   let deferredWait = null;
   let deferredBlock = null;
   if (retryableInfrastructure) {
@@ -1521,6 +1577,7 @@ function projectReport(state, startedAt, deadline) {
       task_model: state.taskModel,
       mission_id: state.missionId,
       initial_task_count: state.initialTaskIds?.length ?? 1,
+      dynamic_task_budget: state.flatDynamicTaskBudget,
       execution_timeout_ms: state.executionTimeoutMs,
       handoff_reminder_ms: state.handoffReminderMs,
       input_policy: 'pinned formalization only; no candidate or solution input',
@@ -1568,6 +1625,7 @@ function projectReport(state, startedAt, deadline) {
         relations: task.relations ?? null,
         task_type: task.task_type,
         priority: task.priority,
+        responsibility_key: task.responsibility_key ?? null,
         state: task.state,
       })),
       structure,
@@ -1674,6 +1732,9 @@ function projectReport(state, startedAt, deadline) {
           .map((sample) => sample.condition_to_resumed_turn_ms).filter(Number.isFinite),
       },
       decomposition_available: decompositionAvailable,
+      dynamic_task_budget: state.flatDynamicTaskBudget,
+      dynamic_task_count: taskTree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length,
+      dynamic_task_events: state.dynamicTaskEvents,
       lifecycle_events: lifecycle,
       task_lifecycle_events: taskLifecycle,
       admission_events: admissionEvents,
@@ -1822,9 +1883,10 @@ async function createProjectState(problem, config, options) {
     runtimeCapabilities: role === AGENT_ROLES.SELECTION ? [] : runtimeCapabilityList(),
   }).capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`)))];
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
+  const selectedFlatDynamicTaskBudget = selectedTaskModel === 'flat' ? flatDynamicTaskBudget(options) : 0;
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const modeInstructions = selectedTaskModel === 'flat'
-    ? 'Search the Mission Task summaries and linked Materials before proposing substantial new work. The Mission starts with a bounded pool of independent research Tasks so idle Cores can work immediately; create another ordinary Task only when it covers a genuinely uncovered question, with a useful expected output, acceptance condition, and clear boundary. Creating a Task does not stop this Execution; continue the current Task while progress remains useful. Publish a Response or Experience Material as soon as a bounded finding is durable, link it to the producing Task, and use a Response link when the final proof Task should receive it. A proof Task must read and durably consume useful incoming Materials before integrating them into a candidate. Complete the current Task when its own contract is satisfied.'
+    ? `Search the Mission Task summaries and linked Materials before proposing substantial new work. The Mission starts with a bounded pool of independent research Tasks so idle Cores can work immediately. A source-level Judge FAIL is a route boundary: read the returned CheckResult and feedback Material, then create at most ${selectedFlatDynamicTaskBudget} bounded follow-up Task(s) with swarmenv_task_create, using the current mission_id, a concrete summary/goal, expected_output, acceptance_conditions, timebox_ms, spawned_from, input_material_refs, and a unique responsibility_key derived from the CheckResult ID. Call task_list first and do not duplicate an existing responsibility. A follow-up Task must cover a genuinely new repair question; if no distinct route exists, call task_block with a typed dependency instead. Creating a Task does not stop this Execution; continue the current Task while progress remains useful. Publish a Response or Experience Material as soon as a bounded finding is durable, link it to the producing Task, and use a Response link when the final proof Task should receive it. A proof Task must read and durably consume useful incoming Materials before integrating them into a candidate. Complete the current Task when its own contract is satisfied.`
     : selectedParallelMode === 'semantic'
       ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes. After child or branch Materials exist, the Root must read them with swarmenv_context_read, durably record the bounded handoff with swarmenv_context_consume using action integration, make a bounded Workspace integration note, and publish one root-owned Material with scope root_integration whose provenance names the consumed Material IDs before blocking or claiming the collaboration loop complete.'
       : selectedParallelMode === 'root-only'
@@ -1921,6 +1983,7 @@ async function createProjectState(problem, config, options) {
         expected_output: route.expected_output,
         acceptance_conditions: { project: problem.id, source_hash: problem.source_hash, route: route.key },
         priority: route.priority,
+        responsibility_key: `flat:seed:${route.key}`,
         task_instructions: responseInstruction,
         completion_contract: {
           ...(normalFlow ? { normal_flow: true } : {}),
@@ -2481,6 +2544,26 @@ async function createProjectState(problem, config, options) {
             progress_kind: 'child_task',
           });
           core.stateRef?.requestDaemonWake?.();
+        } else if (operation === 'task_create') {
+          const created = result?.task ?? result ?? {};
+          core.observe({
+            source: 'task-service', kind: 'task_created', visibility: 'operator',
+            taskId, executionId, coreId: `core-${core.index}`,
+            payload: {
+              task_id: created.task_id ?? null,
+              mission_id: created.mission_id ?? payload?.mission_id ?? null,
+              spawned_from: payload?.spawned_from ?? null,
+              responsibility_key: created.responsibility_key ?? payload?.responsibility_key ?? null,
+              deduplicated: result?.deduplicated === true,
+            },
+          });
+          core.parallelism.recordWorkUnit({
+            task_id: created.task_id ?? taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'task_create',
+          });
+          core.stateRef?.requestDaemonWake?.();
         } else if (materialPublishOperation) {
           const published = result?.material ?? result ?? {};
           core.observe({
@@ -2602,7 +2685,7 @@ async function createProjectState(problem, config, options) {
     taskService.close();
     throw error;
   }
-  return {
+  const state = {
     runId,
     problem,
     config,
@@ -2653,11 +2736,77 @@ async function createProjectState(problem, config, options) {
     parallelMode: selectedParallelMode,
     taskModel: selectedTaskModel,
     missionId: mission?.mission_id ?? null,
+    flatDynamicTaskBudget: selectedFlatDynamicTaskBudget,
+    flatDynamicTaskCount: 0,
+    dynamicTaskEvents: [],
     executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? 30 * 60_000 : 60 * 60_000),
     handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? 25 * 60_000 : 55 * 60_000),
     normalFlow,
     readinessSamples: [],
   };
+  if (selectedTaskModel === 'flat') {
+    state.createFlatFeedbackTask = ({ taskId, executionId, feedback, checkResult }) => {
+      const responsibilityKey = `flat:proof-feedback:${checkResult.check_result_id}`;
+      const allStates = ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'];
+      const missionTasks = state.taskService.listMissionTasks({
+        mission_id: mission.mission_id,
+        states: allStates,
+        limit: 500,
+      });
+      const dynamicTasks = missionTasks.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:'));
+      state.flatDynamicTaskCount = Math.max(state.flatDynamicTaskCount, dynamicTasks.length);
+      const existing = dynamicTasks.find((task) => task.responsibility_key === responsibilityKey);
+      if (existing) {
+        return { task: existing, created: false, deduplicated: true, responsibility_key: responsibilityKey };
+      }
+      if (state.flatDynamicTaskCount >= state.flatDynamicTaskBudget) {
+        return { skipped: true, reason: 'flat_dynamic_task_budget_exhausted' };
+      }
+      const created = owner.createTask({
+        mission_id: mission.mission_id,
+        spawned_from: taskId,
+        task_type: 'research',
+        task_type_version: '1.0',
+        summary: `Repair the proof route for ${problem.id} after a checked source failure without repeating the failed candidate.`,
+        goal: `Use the Judge feedback from ${checkResult.check_result_id} to find one distinct repair route for ${problem.id}.`,
+        expected_output: 'A bounded fact, conjecture, or failure Material that changes the next proof attempt.',
+        acceptance_conditions: {
+          project: problem.id,
+          source_hash: problem.source_hash,
+          trigger_check_result_id: checkResult.check_result_id,
+          distinct_route_required: true,
+        },
+        priority: 105,
+        responsibility_key: responsibilityKey,
+        input_material_refs: [feedback.material_id],
+        task_instructions: [
+          `Read the Judge feedback Material ${feedback.material_id} through the registered Context Service before proposing work.`,
+          'Treat the failed candidate as feedback, not as a route to repeat. Identify one distinct repair question, verify it against the locked Workspace, and preserve the boundary between observations and conjectures.',
+          'Publish exactly one bounded Material with the useful result or precise blocker, link it to this Task with role experience, link it to the final proof Task with role response, and complete this Task with that Material.',
+          `Final proof Task ID: ${root.task_id}.`,
+        ].join(' '),
+        completion_contract: {
+          normal_flow: true,
+          required_materials: [{
+            kinds: ['fact', 'experience', 'conjecture', 'artifact', 'failure'],
+            scope: 'proof_relevant',
+            min_count: 1,
+          }],
+        },
+        workspace: taskPayload.workspace,
+        timebox_ms: options.taskTimeboxMs ?? 30 * 60_000,
+      }, { operationId: `benchmark:task:create:${runId}:feedback:${checkResult.check_result_id}` });
+      if (created.created !== false) state.flatDynamicTaskCount += 1;
+      return {
+        task: created.task,
+        created: created.created,
+        deduplicated: created.deduplicated,
+        responsibility_key: responsibilityKey,
+        source_execution_id: executionId,
+      };
+    };
+  }
+  return state;
 }
 
 export async function runBenchmarkProject(problem, config, options = {}) {

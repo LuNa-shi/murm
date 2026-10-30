@@ -298,6 +298,74 @@ class FakeAdapter {
   }
 }
 
+class FlatFailureSession extends EventEmitter {
+  constructor(env, options) {
+    super();
+    this.env = env;
+    this.options = options;
+    this.bound = !String(options.executionId ?? '').startsWith('worker-');
+    this.closed = false;
+    this.finished = false;
+    this.rpcRecords = [];
+    this.manifest = { fake: true, pi_version: 'flat-failure' };
+  }
+
+  async waitForReady() {}
+
+  async call(operation, payload = {}) {
+    this.rpcRecords.push({ type: 'tool_call', tool_name: namedTool(operation) });
+    const response = await fetch(`${this.env.SWARMENV_BRIDGE_URL}/call`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${this.env.SWARMENV_BRIDGE_TOKEN}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ operation, payload }),
+    });
+    const body = await response.json();
+    if (!body.ok) throw Object.assign(new Error(body.error?.message ?? `${operation} failed`), { code: body.error?.code });
+    this.rpcRecords.push({ type: 'tool_result', tool_name: namedTool(operation) });
+    return body.result;
+  }
+
+  async prompt() {
+    if (!this.bound) {
+      const tasks = await this.call('list_tasks', { limit: 10 });
+      if (tasks[0]) await this.call('claim', { task_id: tasks[0].task_id, claim_key: `flat-failure-${this.options.executionId}`, workspace_mode: 'resume' });
+      return { data: { disposition: 'handled' } };
+    }
+    if (this.finished) return { data: { disposition: 'handled' } };
+    const view = await this.call('get_task', {});
+    const task = view.task ?? view;
+    if (task.task_type !== 'proof') return { data: { disposition: 'handled' } };
+    const material = await this.call('publish_material', {
+      kind: 'artifact', scope: 'proof_relevant', content: 'def flatFailureCandidate : Nat := 0',
+    });
+    await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
+    this.finished = true;
+    return { data: { disposition: 'handled' } };
+  }
+
+  stop() {
+    if (this.closed) return;
+    this.closed = true;
+    queueMicrotask(() => this.emit('close', { code: 0, signal: 'SIGTERM' }));
+  }
+}
+
+class FlatFailureAdapter {
+  constructor({ env }) {
+    this.env = env;
+    this.sessions = [];
+  }
+
+  async start(options = {}) {
+    const session = new FlatFailureSession(this.env, options);
+    this.sessions.push(session);
+    return session;
+  }
+}
+
 class PromptFailureSession extends EventEmitter {
   constructor() {
     super();
@@ -712,7 +780,7 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, taskModel = undefined, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, taskModel = undefined, flatInitialTaskCount = undefined, flatDynamicTaskBudget = undefined, agentAdapterFactory = null, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -725,11 +793,18 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     maxInfrastructureRetries,
     ...(normalFlow === undefined ? {} : { normalFlow }),
     ...(taskModel === undefined ? {} : { taskModel }),
+    ...(flatInitialTaskCount === undefined ? {} : { flatInitialTaskCount }),
+    ...(flatDynamicTaskBudget === undefined ? {} : { flatDynamicTaskBudget }),
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
     observationStore,
     agentAdapterFactory: ({ env, index }) => {
+      if (agentAdapterFactory) {
+        const adapter = agentAdapterFactory({ env, index });
+        onAdapter?.(adapter);
+        return adapter;
+      }
       const adapter = new FakeAdapter({ env, cheat, noWork: noWork || (invalidClaim && index !== 1), fileCandidate, invalidClaim: invalidClaim && index === 1, hardToolError: hardToolError && index === 1, selectionOnly });
       onAdapter?.(adapter);
       return adapter;
@@ -781,6 +856,7 @@ test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Ex
     assert.equal(report.protocol.task_model, 'flat');
     assert.equal(report.protocol.execution_timeout_ms, 30 * 60_000);
     assert.equal(report.protocol.handoff_reminder_ms, 25 * 60_000);
+    assert.equal(report.protocol.dynamic_task_budget, 2);
     assert.equal(report.project.task_count, 4);
     assert.ok(report.project.task_tree.every((task) => task.mission_id));
     assert.equal(report.project.task_tree.filter((task) => task.task_type === 'research').length, 3);
@@ -793,6 +869,8 @@ test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Ex
     assert.ok(boundPrompts.length > 0);
     const prompt = boundPrompts.join('\n');
     assert.match(prompt, /current Task/);
+    assert.match(prompt, /source-level Judge FAIL/);
+    assert.match(prompt, /swarmenv_task_create/);
     assert.doesNotMatch(prompt, /Branch Task|branch group|required subtask|parent review|root integration/i);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
@@ -1103,6 +1181,39 @@ test('benchmark submit_candidate returns Agent feedback separately from the reda
     assert.equal(check.stderr, undefined);
     assert.ok(report.cores.flatMap((core) => core.checks).some((row) => row.diagnostic_class === 'lean_proof_error'));
     assert.equal(report.audit.invalid, false);
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('flat Judge source failure admits one bounded feedback Task through the Task Service', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-flat-feedback-task-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-flat-feedback-task-report-');
+  try {
+    const report = await runFixture({
+      reportDir,
+      experimentDir,
+      id: 'putnam_flat_feedback_task_test',
+      taskModel: 'flat',
+      flatInitialTaskCount: 1,
+      flatDynamicTaskBudget: 1,
+      timeboxMs: 1_500,
+      agentAdapterFactory: ({ env }) => new FlatFailureAdapter({ env }),
+      checker: {
+        async check() {
+          return {
+            verdict: 'FAIL',
+            evidence: { checker_started: true, exit_code: 1, diagnostic: 'type mismatch' },
+          };
+        },
+      },
+    });
+    assert.equal(report.run.protocol_valid, true);
+    assert.equal(report.run.dynamic_task_count, 1);
+    assert.equal(report.project.task_count, 2);
+    assert.equal(report.project.task_tree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length, 1);
+    assert.equal(report.run.dynamic_task_events[0].status, 'created');
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });

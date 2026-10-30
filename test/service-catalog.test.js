@@ -13,6 +13,10 @@ test('Service catalog keeps internal ownership metadata and exposes the modern T
     assert.ok(task.tools.some((tool) => tool.name === name), `missing public semantic tool ${name}`);
   }
   assert.ok(task.tools.some((tool) => tool.name === 'task_list'));
+  const taskCreate = task.tools.find((tool) => tool.name === 'task_create');
+  assert.ok(taskCreate.parameters.properties.responsibility_key);
+  assert.ok(taskCreate.parameters.properties.completion_contract);
+  assert.ok(taskCreate.parameters.properties.input_material_refs);
   for (const operation of ['create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task']) {
     const tool = internalTask.tools.find((candidate) => candidate.operation === operation);
     assert.ok(tool, `missing internal catalog tool for ${operation}`);

@@ -677,7 +677,10 @@ export class ServicesBridge {
         case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
         case 'task_list': result = sdk.listMissionTasks(payload); break;
         case 'task_view': result = sdk.viewTask(payload.task_id ?? this.taskId); break;
-        case 'task_create': result = sdk.createTask(payload, options); break;
+        case 'task_create':
+          result = sdk.createTask(payload, options);
+          await this.onWorkUnit?.({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
+          break;
         case 'task_link_material': result = sdk.linkMaterial(payload, options); break;
         case 'task_complete':
           result = sdk.completeTask(payload, options);

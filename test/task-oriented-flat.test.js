@@ -66,6 +66,35 @@ test('ServicesSDK exposes the Mission-scoped Task seam without parent-specific m
   service.close();
 });
 
+test('Mission Task creation carries a bounded dynamic contract and deduplicates responsibility keys', () => {
+  const { service } = env();
+  const mission = createMission(service, 'mission:dynamic-contract');
+  const first = createTask(service, mission.mission_id, 'task:feedback-route', {
+    task_type: 'research',
+    task_instructions: 'Read the feedback Material and produce one bounded route result.',
+    completion_contract: { required_materials: [{ kinds: ['fact'], scope: 'proof_relevant', min_count: 1 }] },
+    input_material_refs: ['material:feedback'],
+    priority: 105,
+    responsibility_key: 'flat:proof-feedback:check-1',
+    timebox_ms: 30 * 60_000,
+  });
+  const duplicate = service.dispatch('task.create', {
+    mission_id: mission.mission_id,
+    task_id: 'task:duplicate-id',
+    summary: 'Investigate the same feedback route without duplicating responsibility.',
+    expected_output: 'A useful written result',
+    acceptance_conditions: ['result is documented'],
+    responsibility_key: 'flat:proof-feedback:check-1',
+  }, op('task:feedback-route:duplicate', 'agent:test'));
+
+  assert.equal(first.task_type, 'research');
+  assert.equal(first.responsibility_key, 'flat:proof-feedback:check-1');
+  assert.equal(first.timebox_ms, 30 * 60_000);
+  assert.equal(duplicate.task.task_id, first.task_id);
+  assert.equal(duplicate.deduplicated, true);
+  service.close();
+});
+
 test('only depends_on gates the flat claimable view and cycles are rejected', () => {
   const { service } = env();
   const mission = createMission(service, 'mission:claimability');

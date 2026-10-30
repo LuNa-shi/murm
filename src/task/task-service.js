@@ -920,6 +920,10 @@ export class TaskService {
     if (payload.summary.length > 4_000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'summary must be at most 4000 characters');
     const timebox = payload.timebox_ms ?? payload.timeboxMs ?? 60 * 60 * 1000;
     if (!Number.isInteger(timebox) || timebox <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timebox_ms must be a positive integer');
+    const responsibilityKey = payload.responsibility_key ?? payload.responsibilityKey ?? null;
+    if (responsibilityKey !== null && (typeof responsibilityKey !== 'string' || responsibilityKey.length === 0 || responsibilityKey.length > 256)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key must be a non-empty string of at most 256 characters');
+    }
     return { timebox_ms: timebox };
   }
 
@@ -976,6 +980,22 @@ export class TaskService {
     const taskId = payload.task_id ?? randomUUID();
     requireString(taskId, 'task_id');
     if (this.getTask(taskId)) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'task_id already exists', { task_id: taskId });
+    const responsibilityKey = payload.responsibility_key ?? payload.responsibilityKey ?? null;
+    if (responsibilityKey !== null) {
+      const existing = this.db.prepare(`SELECT t.task_id FROM tasks t
+        JOIN modern_task_records m ON m.task_id = t.task_id
+        WHERE m.mission_id = ? AND t.responsibility_key = ?
+        ORDER BY t.created_at, t.task_id LIMIT 1`).get(missionId, responsibilityKey);
+      if (existing) {
+        return {
+          task: this.getTask(existing.task_id),
+          created: false,
+          deduplicated: true,
+          responsibility_key: responsibilityKey,
+          created_from_execution_id: currentExecution?.execution_id ?? null,
+        };
+      }
+    }
     const spawnedFrom = payload.spawned_from ?? payload.spawnedFrom ?? null;
     if (spawnedFrom !== null) {
       requireString(spawnedFrom, 'spawned_from');
@@ -1014,7 +1034,7 @@ export class TaskService {
       task_id: taskId, mission_id: missionId, summary: payload.summary, task_type: taskType,
       task_type_version: taskTypeVersion, goal: payload.goal ?? payload.summary, expected_output: payload.expected_output,
       acceptance_conditions: payload.acceptance_conditions, completion_contract: completionContract,
-      timebox_ms: timeboxMs, owner_ref: ownerRef, priority,
+      timebox_ms: timeboxMs, owner_ref: ownerRef, priority, responsibility_key: responsibilityKey,
     };
     this.db.prepare(`INSERT INTO tasks (
       task_id, root_id, parent_id, owner_ref, task_type, task_type_version, goal, expected_output,
@@ -1029,6 +1049,7 @@ export class TaskService {
     this.db.prepare(`INSERT INTO modern_task_records
       (task_id, mission_id, summary, timebox_ms, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)`).run(taskId, missionId, payload.summary, timeboxMs, createdAt, createdAt);
+    this.db.prepare('UPDATE tasks SET responsibility_key = ? WHERE task_id = ?').run(responsibilityKey, taskId);
     const relationStatement = this.db.prepare(`INSERT INTO task_relations
       (relation_id, mission_id, task_id, relation_kind, related_task_id,
        created_by_task_id, created_by_execution_id, created_by, created_at)
