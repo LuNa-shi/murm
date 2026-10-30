@@ -10,6 +10,7 @@ import {
   ServicesRouter,
   ServicesSDK,
   TaskService,
+  createBuiltinServiceRegistry,
   createHttpJsonAdapter,
   createServiceHost,
   createServiceManifest,
@@ -159,6 +160,48 @@ test('ServicesBridge invokes a registered HTTP capability through its adapter', 
   } finally {
     await bridge.stop();
     await host.stop();
+  }
+});
+
+test('ServicesBridge invokes registered Task completion by capability ID after profile name disambiguation', async () => {
+  const calls = [];
+  const registry = createBuiltinServiceRegistry({
+    taskService: { dispatch: () => ({}) },
+    contextService: { dispatch: () => ({}) },
+    serviceEndpoints: {
+      task: {
+        endpoint: { transport: 'in-process' },
+        adapter: {
+      invoke: async ({ capability, envelope }) => {
+        calls.push({ name: capability.name, operation: capability.operation, task_id: envelope.task_id });
+        return { remote: true, task_id: envelope.task_id };
+      },
+        },
+      },
+    },
+  });
+  const released = [];
+  const bridge = new ServicesBridge({
+    taskService: {
+      getTask: () => ({ task_id: 'task-remote-complete', mission_id: 'mission-remote-complete' }),
+      getExecution: () => ({ execution_id: 'execution-remote-complete', task_id: 'task-remote-complete', state: 'RUNNING' }),
+    },
+    contextService: {},
+    runtime: {},
+    registry,
+    taskId: 'task-remote-complete',
+    executionId: 'execution-remote-complete',
+    onRelease: async (value) => released.push(value),
+  });
+  try {
+    const result = await bridge.call({ operation: 'task_complete', payload: {} });
+    assert.deepEqual(result, { remote: true, task_id: 'task-remote-complete' });
+    assert.deepEqual(calls, [{ name: 'task_complete', operation: 'task_complete', task_id: 'task-remote-complete' }]);
+    assert.equal(released.length, 1);
+    assert.equal(bridge.taskId, null);
+    assert.equal(bridge.executionId, null);
+  } finally {
+    await bridge.stop();
   }
 });
 

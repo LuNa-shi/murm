@@ -184,6 +184,12 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
     .sort((a, b) => a.id.localeCompare(b.id));
   const nameCounts = new Map();
   for (const capability of normalizedCapabilities) nameCounts.set(capability.name, (nameCounts.get(capability.name) ?? 0) + 1);
+  const preferredServices = new Map();
+  for (const capability of normalizedCapabilities) {
+    if (nameCounts.get(capability.name) > 1 && capability.service_id !== 'runtime' && !preferredServices.has(capability.name)) {
+      preferredServices.set(capability.name, capability.service_id);
+    }
+  }
   const usedNames = new Set();
   const capabilities = normalizedCapabilities.map((capability) => {
     // A Runtime-owned compatibility alias (for example accept_task) may
@@ -192,7 +198,10 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
     // profile metadata remains one-to-one while operation routing continues
     // to use the explicit operation field.
     let name = capability.name;
-    if (nameCounts.get(name) > 1 && usedNames.has(name)) name = `${capability.service_id}_${name}`;
+    if (nameCounts.get(name) > 1 && (usedNames.has(name) || (capability.service_id === 'runtime' && preferredServices.has(name)))) {
+      name = `${capability.service_id}_${name}`;
+    }
+    while (usedNames.has(name)) name = `${capability.service_id}_${name}`;
     usedNames.add(name);
     const toolName = nameCounts.get(capability.name) > 1
       ? safeToolName(capability.service_id, capability.name)

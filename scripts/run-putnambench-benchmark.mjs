@@ -127,6 +127,7 @@ function optionsFromArgs(argv) {
     model: process.env.NUROUTER_PI_MODEL,
     provider: process.env.NUROUTER_PI_PROVIDER,
     parallelMode: 'semantic',
+    taskModel: 'legacy',
     normalFlow: process.env.SWARMENV_NORMAL_FLOW === 'true',
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -154,6 +155,7 @@ function optionsFromArgs(argv) {
       '--model': 'model',
       '--provider': 'provider',
       '--parallel-mode': 'parallelMode',
+      '--task-model': 'taskModel',
       '--normal-flow': 'normalFlow',
     };
     if (!fields[key]) throw new Error(`unknown option: ${arg}`);
@@ -179,6 +181,7 @@ function usage() {
     '    --project-parallelism 3',
     '    --timebox-ms 3600000',
     '    --parallel-mode direct|semantic|root-only',
+    '    --task-model legacy|flat',
     '    --normal-flow',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
@@ -202,6 +205,7 @@ if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark p
 if (!Number.isInteger(options.projectParallelism) || options.projectParallelism < 1) throw new Error('--project-parallelism must be a positive integer');
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
 if (!['direct', 'semantic', 'root-only'].includes(options.parallelMode)) throw new Error('--parallel-mode must be direct, semantic, or root-only');
+if (!['legacy', 'flat'].includes(options.taskModel)) throw new Error('--task-model must be legacy or flat');
 if (!options.provider) throw new Error('NUROUTER_PI_PROVIDER is required; set it in .env or the environment');
 if (!options.model) throw new Error('NUROUTER_PI_MODEL is required; set it in .env or the environment');
 
@@ -249,6 +253,7 @@ const metadata = {
     project_parallelism: options.projectParallelism,
     timebox_ms: options.timeboxMs,
     parallel_mode: options.parallelMode,
+    task_model: options.taskModel,
     turn_timeout_ms: options.turnTimeoutMs,
     provider: options.provider,
     model: options.model,
@@ -315,6 +320,7 @@ const aggregate = {
     child_task_count: report.run?.progress_evidence?.child_task_count ?? null,
     child_claim_count: report.run?.child_claim_count ?? null,
     parallel_mode: report.protocol?.parallel_mode ?? options.parallelMode,
+    task_model: report.protocol?.task_model ?? options.taskModel,
     agent_structure_operation_count: report.project?.structure?.agent_operation_count ?? null,
     branch_group_count: report.project?.structure?.branch_group_count ?? null,
     required_subtask_group_count: report.project?.structure?.required_subtask_group_count ?? null,

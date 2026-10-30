@@ -9,21 +9,6 @@ import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
 import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-const AGENT_OPERATIONS = new Set([
-  // Issue #100 semantic Agent surface.  Claim and physical lifecycle remain
-  // below for the unbound Daemon/compatibility adapters, not the normal
-  // bound Task SOP.
-  'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
-  'context_search_materials', 'context_get_material', 'context_publish_material',
-  'get_task', 'get_execution', 'read_materials', 'consume_materials', 'publish_material', 'submit_candidate',
-  'heartbeat', 'create_child_task', 'request_wait', 'block_execution', 'claim', 'list_tasks', 'list_claimable_tasks', 'list_executions',
-  'select_task',
-  'accept_task', 'request_rework', 'get_check_result',
-  'create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task',
-  'list_services', 'get_service_metadata', 'list_tools', 'scheduler_status', 'get_workspace', 'list_workspace_revisions',
-  'list_workspace_files', 'read_workspace_file', 'write_workspace_file', 'workspace_diff',
-]);
-
 // The compatibility transport remains available to legacy fixtures and
 // internal adapters, but a Mission-scoped Task must use the semantic API.
 // Keeping this gate at the bridge (rather than only hiding catalog entries)
@@ -256,6 +241,7 @@ export class ServicesBridge {
     return this.registry.invoke({
       serviceId: capability.service_id,
       capability: capability.name,
+      capability_id: capability.id ?? `${capability.service_id}.${capability.name}`,
       input: payload,
       envelope: makeEnvelope({
         operationId,
@@ -551,7 +537,10 @@ export class ServicesBridge {
       // catch-all service call tool.
       let registeredService = null;
       if (this.registry?.getCapability && capability.service_id) {
-        try { registeredService = this.registry.getCapability(capability.service_id, capability.name); } catch { registeredService = null; }
+        try {
+          registeredService = this.registry.getCapabilityById?.(capability.id)
+            ?? this.registry.getCapability(capability.service_id, capability.operation ?? capability.name);
+        } catch { registeredService = null; }
       }
       if (registeredService && !capability.runtime_owned && capability.service_id !== 'runtime') {
         const requiresBinding = Array.isArray(capability.context) && capability.context.length > 0;
