@@ -186,7 +186,7 @@ function waitDependencyIds(condition) {
 }
 
 function lifecycleEvents(taskService) {
-  const rows = taskService.db.prepare("SELECT operation_id, operation, result_json, created_at FROM operations WHERE operation IN ('request_wait', 'wake_execution', 'resume_execution', 'block_task') ORDER BY created_at, operation_id").all();
+  const rows = taskService.db.prepare("SELECT operation_id, operation, result_json, created_at FROM operations WHERE operation IN ('request_wait', 'wake_execution', 'resume_execution', 'block_task', 'block_task_semantic') ORDER BY created_at, operation_id").all();
   return rows.map((row) => {
     let result = null;
     try { result = JSON.parse(row.result_json); } catch { /* sanitized event remains available without result details */ }
@@ -197,15 +197,20 @@ function lifecycleEvents(taskService) {
       try { dependencyRequirement = JSON.parse(result.dependency.requirement_json); } catch { dependencyRequirement = null; }
     }
     const dependencyCondition = dependencyRequirement?.checker_health ? { type: 'checker_health' } : null;
+    const dependencyIds = waitDependencyIds(condition).concat(result?.dependency?.dependency_id ?? []);
+    const prerequisiteTaskId = result?.dependency?.prerequisite_task_id ?? result?.dependency?.task_id ?? null;
+    if (prerequisiteTaskId && !dependencyIds.includes(prerequisiteTaskId)) dependencyIds.push(prerequisiteTaskId);
     return {
       operation_id: row.operation_id,
-      operation: row.operation,
+      // Keep the report's lifecycle vocabulary stable across the legacy
+      // execution_block path and the modern semantic Task block alias.
+      operation: row.operation === 'block_task_semantic' ? 'block_task' : row.operation,
       created_at: row.created_at,
       task_id: execution?.task_id ?? null,
       execution_id: execution?.execution_id ?? null,
       dependency_kind: result?.dependency?.dependency_kind ?? null,
       wait_condition_type: condition?.type ?? dependencyCondition?.type ?? null,
-      dependency_ids: waitDependencyIds(condition).concat(result?.dependency?.dependency_id ?? []),
+      dependency_ids: dependencyIds,
     };
   });
 }
@@ -1966,10 +1971,10 @@ async function createProjectState(problem, config, options) {
         `You own the independent ${route.label} responsibility for ${problem.id}.`,
         route.instructions,
         'Read the current Task and Mission Materials before starting. Keep the route bounded and do not spend the whole Execution repeating a final proof attempt owned by another Task.',
-        'When you have a useful finding, publish exactly one bounded Material through context_publish_material with role experience, scope proof_relevant, and kind fact, experience, conjecture, or failure. The content must state the finding, evidence boundary, open question, and next step without credentials or hidden answers.',
-        'Immediately link that Material to this Task with task_link_material using role experience, then link the same Material to the final proof Task with role response, task_id and receiving_task_id set to the final proof Task ID below. This produces a durable notification for the receiver.',
+        'When you have a useful finding, publish two bounded Materials through context_publish_material: an experience Material with role experience and a response Material with role response, both scoped to proof_relevant. State the finding, evidence boundary, open question, and next step without credentials or hidden answers.',
+        'Link the experience Material to this Task with task_link_material using role experience. Link the separate response Material to the final proof Task with role response, task_id and receiving_task_id set to the final proof Task ID below. The response link produces a durable notification for the receiver.',
         `Final proof Task ID: ${root.task_id}.`,
-        'After both links exist, call task_complete with the linked Material ID. If the route fails, publish a failure Material with the precise blocker and complete the research Task; do not hand off empty work.',
+        'After both links exist, call task_complete with both linked Material IDs. If the route fails, use the same role-correct pair to preserve the precise blocker and complete the research Task; do not hand off empty work.',
         dependencyInstruction,
       ].join(' ');
       const seeded = owner.createTask({
@@ -2481,8 +2486,10 @@ async function createProjectState(problem, config, options) {
             progress_kind: 'semantic_structure',
           });
           core.stateRef?.requestDaemonWake?.();
-        } else if (operation === 'read_materials') {
-          const materialsRead = Array.isArray(result) ? result : [];
+        } else if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
+          const materialsRead = operation === 'context_get_material'
+            ? [result?.material ?? result].filter(Boolean)
+            : Array.isArray(result) ? result : Array.isArray(result?.materials) ? result.materials : [];
           const materialRead = {
             read_at: new Date().toISOString(),
             reader_task_id: taskId,
@@ -2502,6 +2509,12 @@ async function createProjectState(problem, config, options) {
               source_task_ids: materialRead.source_task_ids,
               count: materialRead.material_ids.length,
             },
+          });
+          core.parallelism.recordWorkUnit({
+            task_id: taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'material_read',
           });
         } else if (operation === 'consume_materials') {
           const consumedIds = Array.isArray(result?.material_ids)
@@ -2622,6 +2635,29 @@ async function createProjectState(problem, config, options) {
             core: core.index,
             progress_kind: 'parent_review',
           });
+        } else if (operation === 'task_handoff' || operation === 'task_block') {
+          const lifecycleResult = result && typeof result === 'object' ? result : {};
+          const lifecycleEvidence = {
+            operation,
+            task_id: taskId,
+            execution_id: executionId,
+            disposition: lifecycleResult.disposition ?? (operation === 'task_block' ? 'blocked' : 'handed_off'),
+            task_state: lifecycleResult.task?.state ?? null,
+            execution_state: lifecycleResult.execution?.state ?? null,
+            dependency_kind: lifecycleResult.dependency?.dependency_kind ?? payload?.dependency?.dependency_kind ?? null,
+          };
+          core.observe({
+            source: 'runtime', kind: 'task_lifecycle_operation', visibility: 'operator',
+            taskId, executionId, coreId: `core-${core.index}`,
+            payload: lifecycleEvidence,
+          });
+          core.parallelism.recordWorkUnit({
+            task_id: taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'coordination',
+          });
+          core.stateRef?.requestDaemonWake?.();
         } else if (operation === 'submit_candidate') {
           const check = result?.check_result ?? result?.checkResult ?? {};
           core.observe({
@@ -2782,7 +2818,7 @@ async function createProjectState(problem, config, options) {
         task_instructions: [
           `Read the Judge feedback Material ${feedback.material_id} through the registered Context Service before proposing work.`,
           'Treat the failed candidate as feedback, not as a route to repeat. Identify one distinct repair question, verify it against the locked Workspace, and preserve the boundary between observations and conjectures.',
-          'Publish exactly one bounded Material with the useful result or precise blocker, link it to this Task with role experience, link it to the final proof Task with role response, and complete this Task with that Material.',
+          'Publish two bounded Materials with the useful result or precise blocker: an experience Material linked to this Task with role experience, and a separate response Material linked to the final proof Task with role response. Complete this Task with both Material IDs.',
           `Final proof Task ID: ${root.task_id}.`,
         ].join(' '),
         completion_contract: {

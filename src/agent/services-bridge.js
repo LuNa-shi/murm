@@ -217,6 +217,18 @@ export class ServicesBridge {
         return candidate.operation === 'task_view' || candidate.name === 'task_view';
       }));
     }
+    if (matches.length > 1 && operation === 'task_block') {
+      // The legacy Runtime typed block and the modern Task Service semantic
+      // block intentionally share the Agent operation. Resolve the boundary
+      // from the bound Task contract: Mission Tasks use the Service contract
+      // (which carries Handoff Material), while legacy records retain the
+      // Runtime checkpoint/block contract.
+      const boundTask = this.taskId ? this.taskService?.getTask?.(this.taskId) : null;
+      const preferred = boundTask?.mission_id
+        ? matches.find((candidate) => candidate.service_id === 'task')
+        : matches.find((candidate) => candidate.runtime_owned === true || candidate.service_id === 'runtime');
+      if (preferred) return preferred;
+    }
     if (matches.length > 1) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `ambiguous Agent capability: ${operation}`, {
         operation,
@@ -535,6 +547,39 @@ export class ServicesBridge {
       // adapter boundary. This keeps a remote HTTP provider on the same
       // Agent/Core path as a local provider and avoids reintroducing a generic
       // catch-all service call tool.
+      // Semantic handoff and typed block are Runtime lifecycle boundaries even
+      // when the Task Service is reached through the Registry. Route them
+      // through Runtime first so the durable Task transition and the physical
+      // Session/Core/Workspace release happen as one Agent-visible action.
+      if (this.registry?.invoke && capability.service_id === 'task' && (operation === 'task_handoff' || operation === 'task_block')) {
+        if (!this.taskId || !this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
+        const execution = this.taskService.getExecution(this.executionId);
+        if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${this.executionId}`, { execution_id: this.executionId });
+        if (execution.task_id !== this.taskId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'bridge execution does not match task', { task_id: this.taskId, execution_id: this.executionId });
+        const boundTaskId = this.taskId;
+        const boundExecutionId = this.executionId;
+        const currentTask = this.taskService.getTask(boundTaskId);
+        const modernTask = currentTask?.mission_id ? currentTask : null;
+        const legacyBlock = operation === 'task_block' && !modernTask;
+        const method = operation === 'task_handoff' ? 'handoffTask' : (legacyBlock ? 'blockExecution' : 'blockTask');
+        if (typeof this.runtime?.[method] !== 'function') {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime does not expose semantic ${operation} boundary`);
+        }
+        const result = await this.runtime[method](boundExecutionId, legacyBlock
+          ? {
+            ...payload,
+            reason: payload.reason ?? payload.block_reason,
+            dependency: payload.dependency,
+            checkpoint: payload.checkpoint ?? {},
+            files: payload.files ?? {},
+            terminalState: payload.terminal_state ?? 'FENCED',
+          }
+          : payload);
+        await this.onWorkUnit?.({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
+        await this.releaseClaim({ result });
+        this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
+        return result;
+      }
       let registeredService = null;
       if (this.registry?.getCapability && capability.service_id) {
         try {
@@ -575,7 +620,7 @@ export class ServicesBridge {
             };
           }
         }
-        if (this.onWorkUnit && (operation !== 'submit_candidate' || capability.service_id === 'judge') && ['read_materials', 'consume_materials', 'publish_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+        if (this.onWorkUnit && (operation !== 'submit_candidate' || capability.service_id === 'judge') && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_link_material', 'task_handoff', 'task_block', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
           await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
         }
         this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
@@ -754,7 +799,7 @@ export class ServicesBridge {
       if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {
         await this.onWorkspaceWrite({ taskId: boundTaskId, executionId: boundExecutionId, result });
       }
-      if (this.onWorkUnit && ['read_materials', 'consume_materials', 'publish_material', 'context_publish_material', 'task_link_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+      if (this.onWorkUnit && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_link_material', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
         await this.onWorkUnit({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });

@@ -326,13 +326,6 @@ const publicWorkspaceTools = TOOL_DEFINITIONS
   .map((tool) => ({ ...tool, service: 'task', capability: 'workspace' }));
 const publicJudgeTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge');
 const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'catalog');
-const PUBLIC_TOOL_DEFINITIONS = Object.freeze([
-  ...publicTaskTools,
-  ...publicWorkspaceTools,
-  ...publicContextTools,
-  ...publicJudgeTools,
-  ...publicCatalogTools,
-]);
 
 // These definitions remain available to internal Runtime/Task Service callers,
 // but they are not part of the Agent-facing fallback projection. Runtime owns
@@ -386,9 +379,17 @@ function normalizeCatalogOptions(options) {
   return { includeInternal: options.includeInternal === true };
 }
 
+function deduplicateNamedTools(tools) {
+  const byName = new Map();
+  for (const tool of tools) byName.set(tool.name, tool);
+  return [...byName.values()];
+}
+
 function toolsForService(service, options) {
   const { includeInternal } = normalizeCatalogOptions(options);
-  const tools = includeInternal ? service.tools : service.tools.filter((tool) => !isLegacyAgentSurface(tool));
+  const tools = includeInternal
+    ? service.tools
+    : deduplicateNamedTools(service.tools.filter((tool) => !isLegacyAgentSurface(tool)));
   return clone(tools);
 }
 
@@ -398,7 +399,9 @@ export function listServices(options = {}) {
     name,
     version,
     description,
-    tool_count: includeInternal ? tools.length : tools.filter((tool) => !isLegacyAgentSurface(tool)).length,
+    tool_count: includeInternal
+      ? tools.length
+      : deduplicateNamedTools(tools.filter((tool) => !isLegacyAgentSurface(tool))).length,
   })));
 }
 
@@ -412,7 +415,9 @@ export function listTools(service = null, options = {}) {
     ? SERVICE_DEFINITIONS.flatMap((definition) => definition.tools)
     : SERVICE_DEFINITIONS.find((definition) => definition.name === service)?.tools ?? [];
   const { includeInternal } = normalizeCatalogOptions(options);
-  return clone(includeInternal ? selected : selected.filter((tool) => !isLegacyAgentSurface(tool)));
+  return clone(includeInternal
+    ? selected
+    : deduplicateNamedTools(selected.filter((tool) => !isLegacyAgentSurface(tool))));
 }
 
 /** Internal adapters can inspect the full pre-#100 catalog explicitly. */

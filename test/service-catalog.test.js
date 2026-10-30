@@ -9,6 +9,7 @@ test('Service catalog keeps internal ownership metadata and exposes the modern T
   assert.deepEqual(services.map((service) => service.name), ['task', 'execution', 'workspace', 'context', 'judge', 'catalog']);
   const task = getServiceMetadata('task');
   const internalTask = getServiceMetadata('task', { includeInternal: true });
+  assert.equal(new Set(task.tools.map((tool) => tool.name)).size, task.tools.length);
   for (const name of ['task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close']) {
     assert.ok(task.tools.some((tool) => tool.name === name), `missing public semantic tool ${name}`);
   }
