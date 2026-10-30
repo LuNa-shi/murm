@@ -28,6 +28,7 @@ import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
 import { CoreDaemon, SELECTION_AGENT_PROMPT } from '../runtime/core-daemon.js';
 import { TaskController } from '../runtime/task-controller.js';
 import { CoreParallelismTracker } from './parallelism.js';
+import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 const execFileAsync = (command, args) => new Promise((resolvePromise, reject) => {
   execFile(command, args, { encoding: 'utf8' }, (error, stdout) => {
@@ -46,6 +47,7 @@ const STRUCTURE_OPERATIONS = new Set([
 const DEFAULT_FLAT_INITIAL_TASKS = 4;
 const DEFAULT_FLAT_DYNAMIC_TASKS = 2;
 const MAX_FLAT_DYNAMIC_TASKS = 3;
+const FLAT_TASK_STATES = Object.freeze(['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
 const FLAT_RESEARCH_ROUTES = Object.freeze([
   {
     key: 'formalization-audit',
@@ -1738,7 +1740,12 @@ function projectReport(state, startedAt, deadline) {
       },
       decomposition_available: decompositionAvailable,
       dynamic_task_budget: state.flatDynamicTaskBudget,
-      dynamic_task_count: taskTree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length,
+      // Count every Task admitted after Mission initialization.  The previous
+      // projection counted only controller-generated `flat:proof-feedback:*`
+      // Tasks and therefore hid Agent-created responsibilities from the
+      // benchmark report and budget accounting.
+      dynamic_task_count: taskTree.filter((task) => !state.initialTaskIds.includes(task.task_id)).length,
+      controller_dynamic_task_count: taskTree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length,
       dynamic_task_events: state.dynamicTaskEvents,
       lifecycle_events: lifecycle,
       task_lifecycle_events: taskLifecycle,
@@ -1891,7 +1898,7 @@ async function createProjectState(problem, config, options) {
   const selectedFlatDynamicTaskBudget = selectedTaskModel === 'flat' ? flatDynamicTaskBudget(options) : 0;
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const modeInstructions = selectedTaskModel === 'flat'
-    ? `Search the Mission Task summaries and linked Materials before proposing substantial new work. The Mission starts with a bounded pool of independent research Tasks so idle Cores can work immediately. A source-level Judge FAIL is a route boundary: read the returned CheckResult and feedback Material, then create at most ${selectedFlatDynamicTaskBudget} bounded follow-up Task(s) with swarmenv_task_create, using the current mission_id, a concrete summary/goal, expected_output, acceptance_conditions, timebox_ms, spawned_from, input_material_refs, and a unique responsibility_key derived from the CheckResult ID. Call task_list first and do not duplicate an existing responsibility. A follow-up Task must cover a genuinely new repair question; if no distinct route exists, call task_block with a typed dependency instead. Creating a Task does not stop this Execution; continue the current Task while progress remains useful. Publish a Response or Experience Material as soon as a bounded finding is durable, link it to the producing Task, and use a Response link when the final proof Task should receive it. A proof Task must read and durably consume useful incoming Materials before integrating them into a candidate. Complete the current Task when its own contract is satisfied.`
+    ? `Search the Mission Task summaries and linked Materials before proposing substantial new work. The Mission starts with a bounded pool of independent research Tasks so idle Cores can work immediately. A source-level Judge FAIL is a route boundary: read the returned CheckResult and feedback Material, then create at most ${selectedFlatDynamicTaskBudget} bounded follow-up Task(s) in total after initialization, counting both Agent-created Tasks and the controller safety-net Task. Use swarmenv_task_create with the current mission_id, a concrete summary/goal, expected_output, acceptance_conditions, timebox_ms, spawned_from, input_material_refs, and a unique responsibility_key. Call task_list first and do not duplicate an existing responsibility. A follow-up Task must cover a genuinely new repair question; if no distinct route exists, call task_block with a typed dependency instead. Creating a Task does not stop this Execution; continue the current Task while progress remains useful, but after a checked source failure do not submit the same proof route again until a newly completed follow-up Task has produced a Response Material that the proof Task has read and durably consumed with action integration. Publish a Response or Experience Material as soon as a bounded finding is durable, link it to the producing Task, and use a Response link when the final proof Task should receive it. A proof Task must read and durably consume useful incoming Materials before integrating them into a candidate. Complete the current Task when its own contract is satisfied.`
     : selectedParallelMode === 'semantic'
       ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes. After child or branch Materials exist, the Root must read them with swarmenv_context_read, durably record the bounded handoff with swarmenv_context_consume using action integration, make a bounded Workspace integration note, and publish one root-owned Material with scope root_integration whose provenance names the consumed Material IDs before blocking or claiming the collaboration loop complete.'
       : selectedParallelMode === 'root-only'
@@ -2151,6 +2158,31 @@ async function createProjectState(problem, config, options) {
       router,
       registry: capabilityRegistry,
       actorRef: `agent:core-${index}`,
+      onTaskCreate: async ({ payload }) => {
+        const state = core.stateRef;
+        if (state?.taskModel !== 'flat' || payload?.mission_id !== state.missionId) return;
+        const missionTasks = state.taskService.listMissionTasks({
+          mission_id: state.missionId,
+          states: FLAT_TASK_STATES,
+          limit: 500,
+        });
+        const initialTaskIds = new Set(state.initialTaskIds);
+        const dynamicTasks = missionTasks.filter((task) => !initialTaskIds.has(task.task_id));
+        state.flatDynamicTaskCount = dynamicTasks.length;
+        const responsibilityKey = payload.responsibility_key ?? null;
+        const duplicate = responsibilityKey && missionTasks.some((task) => task.responsibility_key === responsibilityKey);
+        if (!duplicate && dynamicTasks.length >= state.flatDynamicTaskBudget) {
+          throw new SwarmEnvError(
+            ERROR_CODES.INVALID_CONTRACT,
+            `flat dynamic Task budget exhausted (${state.flatDynamicTaskBudget})`,
+            {
+              mission_id: state.missionId,
+              dynamic_task_budget: state.flatDynamicTaskBudget,
+              dynamic_task_count: dynamicTasks.length,
+            },
+          );
+        }
+      },
       onClaim: async (claim) => {
         if (core.selectionActive) core.selectionClaim = claim;
         core.dispatchReserved = false;
@@ -2559,6 +2591,15 @@ async function createProjectState(problem, config, options) {
           core.stateRef?.requestDaemonWake?.();
         } else if (operation === 'task_create') {
           const created = result?.task ?? result ?? {};
+          const state = core.stateRef;
+          const dynamic = Boolean(state?.taskModel === 'flat' && created.task_id && !state.initialTaskIds.includes(created.task_id));
+          if (dynamic && state) {
+            state.flatDynamicTaskCount = state.taskService.listMissionTasks({
+              mission_id: state.missionId,
+              states: FLAT_TASK_STATES,
+              limit: 500,
+            }).filter((task) => !state.initialTaskIds.includes(task.task_id)).length;
+          }
           core.observe({
             source: 'task-service', kind: 'task_created', visibility: 'operator',
             taskId, executionId, coreId: `core-${core.index}`,
@@ -2568,6 +2609,7 @@ async function createProjectState(problem, config, options) {
               spawned_from: payload?.spawned_from ?? null,
               responsibility_key: created.responsibility_key ?? payload?.responsibility_key ?? null,
               deduplicated: result?.deduplicated === true,
+              dynamic,
             },
           });
           core.parallelism.recordWorkUnit({
@@ -2783,13 +2825,13 @@ async function createProjectState(problem, config, options) {
   if (selectedTaskModel === 'flat') {
     state.createFlatFeedbackTask = ({ taskId, executionId, feedback, checkResult }) => {
       const responsibilityKey = `flat:proof-feedback:${checkResult.check_result_id}`;
-      const allStates = ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'];
       const missionTasks = state.taskService.listMissionTasks({
         mission_id: mission.mission_id,
-        states: allStates,
+        states: FLAT_TASK_STATES,
         limit: 500,
       });
-      const dynamicTasks = missionTasks.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:'));
+      const initialTaskIds = new Set(state.initialTaskIds);
+      const dynamicTasks = missionTasks.filter((task) => !initialTaskIds.has(task.task_id));
       state.flatDynamicTaskCount = Math.max(state.flatDynamicTaskCount, dynamicTasks.length);
       const existing = dynamicTasks.find((task) => task.responsibility_key === responsibilityKey);
       if (existing) {

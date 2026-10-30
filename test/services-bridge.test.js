@@ -68,6 +68,72 @@ test('ServicesBridge exposes public SDK calls over a loopback token and keeps Ru
   }
 });
 
+test('ServicesBridge runs the Task-create guard before committing a Mission Task', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:root' });
+  const mission = owner.createMission({
+    mission_id: 'mission:bridge-task-guard',
+    goal: 'guard Task creation',
+    acceptance_conditions: { boundary: 'guarded Task proposal' },
+  }).mission;
+  const root = owner.createTask({
+    mission_id: mission.mission_id,
+    task_type: 'research',
+    summary: 'Guard the Mission Task creation boundary and preserve its ownership contract.',
+    goal: 'Verify that an Agent proposal is rejected before it can create an unbounded responsibility.',
+    expected_output: 'a bounded fact',
+    acceptance_conditions: { boundary: 'guarded Task proposal' },
+    owner_ref: 'owner:root',
+  }).task;
+  const claim = taskService.claimTask(root.task_id, {
+    execution_id: 'bridge-task-guard-execution',
+    claim_key: 'bridge-task-guard-claim',
+    owner_ref: 'agent:guard',
+    agent_prompt: 'guard',
+    input_material_refs: [],
+    workspace_mode: 'clean',
+  });
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router,
+    taskId: root.task_id,
+    executionId: claim.execution.execution_id,
+    onTaskCreate: async () => {
+      const error = new Error('Task-create guard rejected the proposal');
+      error.code = 'INVALID_CONTRACT';
+      throw error;
+    },
+  });
+  try {
+    await assert.rejects(
+      () => bridge.call({
+        operation: 'task_create',
+        payload: {
+          mission_id: mission.mission_id,
+          task_type: 'research',
+          summary: 'guarded proposal',
+          goal: 'guarded proposal',
+          expected_output: 'a bounded fact',
+          acceptance_conditions: { boundary: 'guarded Task proposal' },
+          owner_ref: 'agent:guard',
+          responsibility_key: 'guarded-proposal',
+        },
+      }),
+      (error) => error.code === 'INVALID_CONTRACT',
+    );
+    assert.equal(taskService.listMissionTasks({ mission_id: mission.mission_id, limit: 20 }).length, 1);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
 test('ServicesBridge releases the original binding when bindClaim handoff fails', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);

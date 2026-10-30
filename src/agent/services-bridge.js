@@ -87,7 +87,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -106,6 +106,7 @@ export class ServicesBridge {
     this.onRelease = onRelease;
     this.onWorkspaceWrite = onWorkspaceWrite;
     this.onWorkUnit = onWorkUnit;
+    this.onTaskCreate = onTaskCreate;
     this.onSubmitCandidate = onSubmitCandidate;
     this.onSchedulerStatus = onSchedulerStatus;
     this.onError = onError;
@@ -590,6 +591,9 @@ export class ServicesBridge {
       if (registeredService && !capability.runtime_owned && capability.service_id !== 'runtime') {
         const requiresBinding = Array.isArray(capability.context) && capability.context.length > 0;
         if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
+        if (operation === 'task_create') {
+          await this.onTaskCreate?.({ taskId: this.taskId, executionId: this.executionId, payload });
+        }
         let result = await this.#invokeRegistered(capability, payload, bridgeOperationId);
         if (operation === 'task_complete') {
           await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
@@ -723,6 +727,7 @@ export class ServicesBridge {
         case 'task_list': result = sdk.listMissionTasks(payload); break;
         case 'task_view': result = sdk.viewTask(payload.task_id ?? this.taskId); break;
         case 'task_create':
+          await this.onTaskCreate?.({ taskId: boundTaskId, executionId: boundExecutionId, payload });
           result = sdk.createTask(payload, options);
           await this.onWorkUnit?.({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
           break;
