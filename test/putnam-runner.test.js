@@ -871,6 +871,9 @@ test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Ex
     assert.match(prompt, /current Task/);
     assert.match(prompt, /source-level Judge FAIL/);
     assert.match(prompt, /swarmenv_task_create/);
+    assert.match(prompt, /one bounded Material for each distinct finding/);
+    assert.match(prompt, /do not publish duplicate copies/);
+    assert.doesNotMatch(prompt, /publish two bounded Materials/);
     assert.doesNotMatch(prompt, /Branch Task|branch group|required subtask|parent review|root integration/i);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
