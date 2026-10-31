@@ -5,6 +5,7 @@
 - Experiment: `exp-20261030-v010-putnam_2025_b1-2h-fb3bef5-clean-v2`
 - Implementation commit executed: `fb3bef54a8c317a05fdb03cfda441065bda69369`
 - Status: completed; solved=false; protocol_valid=true
+- Analysis date: `2026-10-31`
 - Analysis status: complete sanitized projection; evidence gaps and unknowns remain explicitly labeled below.
 - Published report path: `analysis/experiment-analysis.md`
 - Exact rerun command: see the adjacent `README.md`; it uses `$PUTNAMBENCH_ROOT` for the locked external fixture checkout.
@@ -129,6 +130,8 @@ The authoritative domain model keeps a durable Execution distinct from an Agent 
 
 The table summarizes observable Agent objectives, Workspace/Material/Judge changes, and lifecycle state. Supporting event counts are included for audit; low-level calls are not the narrative.
 
+Each row carries the four required work-window statements: **Target** is the Phase and semantic objective; **Action** is the visible route/tool/Workspace behavior; **Immediate result** is the durable change and recorded Result; **Next effect** is the Next state and handoff or blocker. Route, confidence, and evidence columns remain supporting references.
+
 | # | Time | Duration | Phase | Semantic summary | Route change | Durable changes / supporting counts | Result | Next state | Handoff/blocker | Confidence | Evidence |
 |---:|---|---:|---|---|---|---|---|---|---|---|---|
 | 1 | 2026-10-30T11:22:19.597Z<br>2026-10-30T11:25:24.386Z | 185 s | candidate construction and submission | The Agent was primarily engaged in candidate construction and submission. | no explicit route change observed | Execution assigned; Workspace revision 3; publish Material 0fc505e7-3105-44fc-9fc9-13f05e5fbb65; consume 1 Material(s)<br><small>database_operation=24, observation_event=8, session_started=1, agent_rpc_request=4, execution_assigned=1, execution_state_changed=1, workspace_revision=1, material_record=1, material_published=1, material_consumed=1</small> | Durable Material consumption was recorded for an action; downstream effect is checked separately. | RUNNING | Material published; consumer/effect must be established by later records (F-f8efac5d2465). | medium | <external>/observability.sqlite#observation_events.sequence=1000<br><external>/observability.sqlite#observation_events.sequence=1001<br><external>/observability.sqlite#observation_events.sequence=1002<br><external>/observability.sqlite#observation_events.sequence=1003 |
@@ -165,6 +168,8 @@ The table summarizes observable Agent objectives, Workspace/Material/Judge chang
 
 The table summarizes observable Agent objectives, Workspace/Material/Judge changes, and lifecycle state. Supporting event counts are included for audit; low-level calls are not the narrative.
 
+Each row carries the four required work-window statements: **Target** is the Phase and semantic objective; **Action** is the visible route/tool/Workspace behavior; **Immediate result** is the durable change and recorded Result; **Next effect** is the Next state and handoff or blocker. Route, confidence, and evidence columns remain supporting references.
+
 | # | Time | Duration | Phase | Semantic summary | Route change | Durable changes / supporting counts | Result | Next state | Handoff/blocker | Confidence | Evidence |
 |---:|---|---:|---|---|---|---|---|---|---|---|---|
 | 1 | 2026-10-30T11:28:53.886Z<br>2026-10-30T11:37:12.739Z | 499 s | research and collaboration handoff | The Agent was primarily engaged in research and collaboration handoff. The observable handoff involved shared Material or a child Task. | no explicit route change observed | Execution assigned; Workspace revision 3; publish Material a5b954b8-1dcc-4b48-a488-78a29769a43a<br><small>database_operation=57, observation_event=7, session_started=1, agent_rpc_request=4, execution_assigned=1, execution_state_changed=2, workspace_revision=1, material_record=1, material_published=1, execution_snapshot=1, task_snapshot=1, session_closed=1, execution_released=1</small> | Observed core_state_changed. | WAITING | Material published; consumer/effect must be established by later records (F-c327a6e0f762). | medium | <external>/observability.sqlite#observation_events.sequence=4432<br><external>/observability.sqlite#observation_events.sequence=4433<br><external>/observability.sqlite#observation_events.sequence=4466<br><external>/observability.sqlite#observation_events.sequence=4469 |
@@ -193,6 +198,8 @@ The table summarizes observable Agent objectives, Workspace/Material/Judge chang
 #### 10-minute semantic work windows
 
 The table summarizes observable Agent objectives, Workspace/Material/Judge changes, and lifecycle state. Supporting event counts are included for audit; low-level calls are not the narrative.
+
+Each row carries the four required work-window statements: **Target** is the Phase and semantic objective; **Action** is the visible route/tool/Workspace behavior; **Immediate result** is the durable change and recorded Result; **Next effect** is the Next state and handoff or blocker. Route, confidence, and evidence columns remain supporting references.
 
 | # | Time | Duration | Phase | Semantic summary | Route change | Durable changes / supporting counts | Result | Next state | Handoff/blocker | Confidence | Evidence |
 |---:|---|---:|---|---|---|---|---|---|---|---|---|
