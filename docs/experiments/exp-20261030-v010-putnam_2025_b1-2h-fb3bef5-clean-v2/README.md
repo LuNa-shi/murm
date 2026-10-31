@@ -26,6 +26,27 @@ The run recorded 3 Tasks, 3 durable Executions, 4 Materials, 1 Candidate
 check, and 2 child claims. The report records report_made_progress=true;
 that activity flag is not treated as mathematical success.
 
+## Exact rerun command
+
+Run from a clean checkout at `fb3bef54a8c317a05fdb03cfda441065bda69369`
+(the `v0.1.0` tag); keep the output directories ignored and choose a free
+observability port:
+
+```bash
+git checkout --detach fb3bef54a8c317a05fdb03cfda441065bda69369
+env NUROUTER_PI_PROVIDER=openai-codex NUROUTER_PI_MODEL=gpt-6.1-sol \
+  timeout 9000s node scripts/run-putnambench-benchmark.mjs \
+  --problems config/putnambench-12.json \
+  --putnambench-root /home/ubuntu/PutnamBench \
+  --problem putnam_2025_b1 --cores 4 --project-parallelism 1 \
+  --timebox-ms 7200000 --turn-timeout-ms 540000 \
+  --parallel-mode legacy \
+  --experiment-root experiments \
+  --experiment-dir experiments/exp-20261030-v010-putnam_2025_b1-2h-fb3bef5-clean-v2-rerun \
+  --report-dir reports/putnam_2025_b1-2h-fb3bef5-clean-v2-rerun \
+  --observability-host 127.0.0.1 --observability-port 8898
+```
+
 ## Published files
 
 - [Sanitized run summary](run-summary.json)
