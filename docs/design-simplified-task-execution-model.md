@@ -331,7 +331,10 @@ task.block(blocker, handoff_material_id)
 
 Both operations are release-and-takeover operations: they end the current
 Execution and return the Core to the Daemon. They require a Handoff Material
-linked to the current Task and Execution. The Material must contain the useful
+published by the current Task and Execution. Task Service validates its
+provenance and creates the Task link atomically during `task.handoff` or
+`task.block`; an explicit `task.link_material` call is optional and idempotent.
+The Material must contain the useful
 exploration, current reasoning, evidence, checkpoint reference when applicable,
 open questions, and a recommended next step. A bare release without this link
 is rejected.
@@ -536,8 +539,8 @@ task.list                 list Mission Tasks and search summaries
 task.view                 read one Task, status, relations, and Material links
 task.create               create a substantial Task with a short summary
 task.complete             self-complete the current Task
-task.handoff              publish-linked unfinished handoff and return to OPEN
-task.block                publish-linked handoff and record a typed blocker
+task.handoff              validate/link unfinished handoff and return to OPEN
+task.block                validate/link handoff and record a typed Task blocker
 task.close                receiving Task accepts a linked Response Material
 
 context.search_materials  search shared Materials

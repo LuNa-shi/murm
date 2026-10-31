@@ -242,6 +242,8 @@ test('built-in Task, Context, Judge, and Catalog providers can all be replaced b
 
     const registry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, serviceEndpoints: endpoints });
     assert.deepEqual(registry.listServices().map((service) => service.service_id), ['catalog', 'context', 'judge', 'task']);
+    const boundProfile = registry.getCapabilityProfile('bound');
+    assert.ok(boundProfile.capabilities.some((capability) => capability.service_id === 'task' && capability.operation === 'task_block'));
     for (const id of ['task', 'context', 'judge', 'catalog']) {
       assert.equal(registry.getService(id).adapter.kind, 'http-json');
       assert.equal((await registry.checkHealth(id)).ok, true);

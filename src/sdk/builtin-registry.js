@@ -11,14 +11,17 @@ const SERVICE_INFO = Object.freeze({
 });
 
 const ALL_ROLES = Object.freeze(['selection', 'bound', 'recovery']);
-const SELECTION_OPERATIONS = new Set(['list_claimable_tasks', 'claim']);
+const SELECTION_OPERATIONS = new Set(['list_claimable_tasks', 'claim', 'task_list', 'task_view']);
 // Selection can inspect only the bounded Task contract it is about to choose.
 // Execution-scoped projections (Materials, CheckResults, and prior Executions)
 // belong to the bound/recovery roles and must not leak into the selection turn.
 const SHARED_READ_OPERATIONS = new Set(['get_task']);
 const EXPOSED_OPERATIONS = Object.freeze({
-  task: new Set(['list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'claim', 'create_child_task', 'propose_task']),
-  context: new Set(['publish_material', 'read_materials', 'consume_materials']),
+  task: new Set([
+    'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'claim', 'create_child_task', 'propose_task',
+    'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
+  ]),
+  context: new Set(['publish_material', 'read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material']),
   judge: new Set(['submit_candidate', 'get_check_result']),
   catalog: new Set(['list_services', 'get_service_metadata', 'list_tools']),
 });
@@ -31,9 +34,20 @@ const TOOL_OVERRIDES = Object.freeze({
 });
 
 function publicTools(serviceId) {
-  return listTools(serviceId, { includeInternal: true })
-    .filter((tool) => EXPOSED_OPERATIONS[serviceId]?.has(tool.operation))
-    .map((tool) => ({ ...tool, ...(TOOL_OVERRIDES[tool.operation] ?? {}) }));
+  const selected = listTools(serviceId, { includeInternal: true })
+    .filter((tool) => EXPOSED_OPERATIONS[serviceId]?.has(tool.operation));
+  const modernNames = new Set(selected.filter((tool) => tool.operation === tool.name).map((tool) => tool.name));
+  const seen = new Set();
+  return selected.map((tool) => {
+    const override = TOOL_OVERRIDES[tool.operation] ?? {};
+    if (override.name && modernNames.has(override.name) && tool.operation !== override.name) return null;
+    return { ...tool, ...override };
+  }).filter((tool) => {
+    if (!tool || seen.has(tool.name) || seen.has(tool.operation)) return false;
+    seen.add(tool.name);
+    seen.add(tool.operation);
+    return true;
+  });
 }
 
 function strictInputSchema(parameters) {
@@ -52,8 +66,8 @@ function strictInputSchema(parameters) {
 }
 
 function audienceFor(tool) {
-  if (SELECTION_OPERATIONS.has(tool.operation)) return ['selection'];
-  if (tool.operation === 'list_tasks') return ALL_ROLES;
+  if (SELECTION_OPERATIONS.has(tool.operation) && !['task_list', 'task_view'].includes(tool.operation)) return ['selection'];
+  if (['list_tasks', 'task_list', 'task_view'].includes(tool.operation)) return ALL_ROLES;
   if (SHARED_READ_OPERATIONS.has(tool.operation)) return ALL_ROLES;
   if (tool.service === 'catalog' && tool.scope === 'public-read' && tool.side_effect === false) return ALL_ROLES;
   return ['bound', 'recovery'];

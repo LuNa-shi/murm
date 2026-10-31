@@ -38,6 +38,29 @@ test('TaskController reconciles claimability and signals each idle daemon once p
   assert.equal(events.some((event) => event.kind === 'controller_task_claimable'), true);
 });
 
+test('TaskController reserves one idle daemon per claimable Task', async () => {
+  const signals = [];
+  const daemons = [1, 2, 3].map((index) => ({ core_id: `core-${index}`, state: 'IDLE', healthy: true }));
+  const controller = new TaskController({
+    taskService: {
+      listTasks: ({ states, availableOnly }) => states.includes('OPEN') && availableOnly
+        ? [{ task_id: 'task-only', state: 'OPEN' }]
+        : [],
+    },
+    listDaemons: () => daemons,
+    signalIdleDaemon: (daemon) => {
+      signals.push(daemon.core_id);
+      daemon.state = 'DISCOVERING';
+    },
+  });
+
+  const result = await controller.reconcile({ reason: 'single-task' });
+
+  assert.equal(result.idle_daemon_count, 3);
+  assert.equal(result.signaled_daemon_count, 1);
+  assert.deepEqual(signals, ['core-1']);
+});
+
 test('TaskController re-arms an idle signal after an unseen completed attempt', async () => {
   const signals = [];
   let idleGeneration = 0;

@@ -10,6 +10,7 @@ import {
   ServicesRouter,
   ServicesSDK,
   TaskService,
+  createBuiltinServiceRegistry,
   createHttpJsonAdapter,
   createServiceHost,
   createServiceManifest,
@@ -61,6 +62,72 @@ test('ServicesBridge exposes public SDK calls over a loopback token and keeps Ru
     assert.deepEqual(consumedBody.result.material_ids, [publishedBody.result.material.material_id]);
     assert.equal(bridge.taskId, task.task_id);
     assert.equal(bridge.executionId, 'bridge-execution');
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
+test('ServicesBridge runs the Task-create guard before committing a Mission Task', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:root' });
+  const mission = owner.createMission({
+    mission_id: 'mission:bridge-task-guard',
+    goal: 'guard Task creation',
+    acceptance_conditions: { boundary: 'guarded Task proposal' },
+  }).mission;
+  const root = owner.createTask({
+    mission_id: mission.mission_id,
+    task_type: 'research',
+    summary: 'Guard the Mission Task creation boundary and preserve its ownership contract.',
+    goal: 'Verify that an Agent proposal is rejected before it can create an unbounded responsibility.',
+    expected_output: 'a bounded fact',
+    acceptance_conditions: { boundary: 'guarded Task proposal' },
+    owner_ref: 'owner:root',
+  }).task;
+  const claim = taskService.claimTask(root.task_id, {
+    execution_id: 'bridge-task-guard-execution',
+    claim_key: 'bridge-task-guard-claim',
+    owner_ref: 'agent:guard',
+    agent_prompt: 'guard',
+    input_material_refs: [],
+    workspace_mode: 'clean',
+  });
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router,
+    taskId: root.task_id,
+    executionId: claim.execution.execution_id,
+    onTaskCreate: async () => {
+      const error = new Error('Task-create guard rejected the proposal');
+      error.code = 'INVALID_CONTRACT';
+      throw error;
+    },
+  });
+  try {
+    await assert.rejects(
+      () => bridge.call({
+        operation: 'task_create',
+        payload: {
+          mission_id: mission.mission_id,
+          task_type: 'research',
+          summary: 'guarded proposal',
+          goal: 'guarded proposal',
+          expected_output: 'a bounded fact',
+          acceptance_conditions: { boundary: 'guarded Task proposal' },
+          owner_ref: 'agent:guard',
+          responsibility_key: 'guarded-proposal',
+        },
+      }),
+      (error) => error.code === 'INVALID_CONTRACT',
+    );
+    assert.equal(taskService.listMissionTasks({ mission_id: mission.mission_id, limit: 20 }).length, 1);
   } finally {
     await bridge.stop();
     taskService.close();
@@ -159,6 +226,123 @@ test('ServicesBridge invokes a registered HTTP capability through its adapter', 
   } finally {
     await bridge.stop();
     await host.stop();
+  }
+});
+
+test('ServicesBridge invokes registered Task completion by capability ID after profile name disambiguation', async () => {
+  const calls = [];
+  const registry = createBuiltinServiceRegistry({
+    taskService: { dispatch: () => ({}) },
+    contextService: { dispatch: () => ({}) },
+    serviceEndpoints: {
+      task: {
+        endpoint: { transport: 'in-process' },
+        adapter: {
+      invoke: async ({ capability, envelope }) => {
+        calls.push({ name: capability.name, operation: capability.operation, task_id: envelope.task_id });
+        return { remote: true, task_id: envelope.task_id };
+      },
+        },
+      },
+    },
+  });
+  const released = [];
+  const bridge = new ServicesBridge({
+    taskService: {
+      getTask: () => ({ task_id: 'task-remote-complete', mission_id: 'mission-remote-complete' }),
+      getExecution: () => ({ execution_id: 'execution-remote-complete', task_id: 'task-remote-complete', state: 'RUNNING' }),
+    },
+    contextService: {},
+    runtime: {},
+    registry,
+    taskId: 'task-remote-complete',
+    executionId: 'execution-remote-complete',
+    onRelease: async (value) => released.push(value),
+  });
+  try {
+    const result = await bridge.call({ operation: 'task_complete', payload: {} });
+    assert.deepEqual(result, { remote: true, task_id: 'task-remote-complete' });
+    assert.deepEqual(calls, [{ name: 'task_complete', operation: 'task_complete', task_id: 'task-remote-complete' }]);
+    assert.equal(released.length, 1);
+    assert.equal(bridge.taskId, null);
+    assert.equal(bridge.executionId, null);
+  } finally {
+    await bridge.stop();
+  }
+});
+
+test('ServicesBridge routes modern task_block through Runtime lifecycle cleanup', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:modern-block' });
+  const mission = owner.createMission({
+    mission_id: 'mission:modern-block',
+    goal: 'exercise modern typed blocking',
+    acceptance_conditions: { route: 'modern-block' },
+  }, { operationId: 'modern-block:mission' }).mission;
+  const task = owner.createTask({
+    mission_id: mission.mission_id,
+    summary: 'Coordinate a modern typed dependency block for the proof route',
+    task_type: 'research',
+    goal: 'wait for a prerequisite Task',
+    expected_output: 'a bounded route result',
+    acceptance_conditions: { route: 'modern-block-task' },
+    completion_contract: { normal_flow: true },
+  }, { operationId: 'modern-block:task' }).task;
+  const claim = owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
+    execution_id: 'modern-block-execution',
+    claim_key: 'modern-block:claim',
+    owner_ref: 'agent:modern-block',
+    agent_prompt: 'bridge',
+    input_material_refs: [],
+  }, { operationId: 'modern-block:claim' });
+  const started = taskService.dispatch('start_execution', {}, makeEnvelope({
+    operationId: 'modern-block:start', actorRef: 'runtime:test', taskId: task.task_id,
+    executionId: claim.execution.execution_id, specVersion: claim.execution.spec_version,
+    stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
+  }));
+  const agent = owner.withContext({
+    actorRef: 'agent:modern-block', taskId: task.task_id, executionId: claim.execution.execution_id,
+    specVersion: started.execution.spec_version, stateVersion: started.execution.state_version,
+    fencingVersion: started.execution.fencing_version,
+  });
+  const handoff = agent.publishCollaborationMaterial({
+    role: 'handoff', kind: 'failure', scope: 'proof_relevant', content: { blocker: 'prerequisite' },
+  }, { operationId: 'modern-block:handoff' }).material;
+  const lifecycle = [];
+  const released = [];
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {
+      blockTask: async (executionId, payload) => {
+        lifecycle.push({ executionId, payload });
+        return { execution: { ...started.execution, execution_id: executionId, state: 'HANDED_OFF' }, task: { ...task, state: 'BLOCKED' }, disposition: 'blocked', dependency: payload.dependency };
+      },
+    },
+    router,
+    taskId: task.task_id,
+    executionId: claim.execution.execution_id,
+    onRelease: async (release) => released.push(release),
+  });
+  try {
+    const result = await bridge.call({ operation: 'task_block', payload: {
+      blocker: { reason: 'prerequisite is still running' },
+      dependency: { dependency_kind: 'TASK', prerequisite_task_id: 'prerequisite-task' },
+      handoff_material_id: handoff.material_id,
+    } });
+    assert.equal(result.disposition, 'blocked');
+    assert.equal(lifecycle.length, 1);
+    assert.equal(lifecycle[0].payload.handoff_material_id, handoff.material_id);
+    assert.equal(released.length, 1);
+    assert.equal(bridge.taskId, null);
+    assert.equal(bridge.executionId, null);
+  } finally {
+    await bridge.stop();
+    taskService.close();
   }
 });
 

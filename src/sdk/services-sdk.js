@@ -37,6 +37,52 @@ export class ServicesSDK {
     return this.#read('list_tasks', filters);
   }
 
+  /** Create the shared Mission scope used by the flat Task Service surface. */
+  createMission(mission, options = {}) {
+    return this.#write('create_mission', mission, { ...options, taskId: null, executionId: null, fencingVersion: null });
+  }
+
+  getMission(missionId) {
+    return this.#read('get_mission', { mission_id: missionId });
+  }
+
+  /** Create an ordinary Mission Task; a bound Execution may propose work without releasing itself. */
+  createTask(task, options = {}) {
+    return this.#write('create_task', task, options);
+  }
+
+  listMissionTasks(filters = {}) {
+    return this.#read('list_task', filters);
+  }
+
+  viewTask(taskId = this.context.taskId) {
+    return this.#read('view_task', { task_id: taskId });
+  }
+
+  linkMaterial(payload = {}, options = {}) {
+    return this.#write('task_link_material', payload, options);
+  }
+
+  listTaskMaterials(taskId = this.context.taskId, filters = {}) {
+    return this.#read('list_task_materials', { ...filters, task_id: taskId });
+  }
+
+  completeTask(payload = {}, options = {}) {
+    return this.#write('task_complete', payload, options);
+  }
+
+  closeTask(payload = {}, options = {}) {
+    return this.#write('task_close', payload, options);
+  }
+
+  handoffTask(payload = {}, options = {}) {
+    return this.#write('task_handoff', payload, options);
+  }
+
+  blockTask(payload = {}, options = {}) {
+    return this.#write('task_block', payload, options);
+  }
+
   listClaimableTasks(filters = {}) {
     return this.#read('list_claimable_tasks', filters);
   }
@@ -59,6 +105,18 @@ export class ServicesSDK {
 
   readMaterials(filters = {}) {
     return this.#read('read_materials', filters);
+  }
+
+  searchMaterials(filters = {}) {
+    return this.#read('context_search_materials', filters);
+  }
+
+  getMaterial(materialId) {
+    return this.#read('context_get_material', { material_id: materialId });
+  }
+
+  publishCollaborationMaterial(material, options = {}) {
+    return this.#write('context_publish_material', material, options);
   }
 
   /** Record the bounded Material IDs this Execution actually used. */

@@ -41,13 +41,110 @@ PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL;
 
+-- Mission and modern Task records are deliberately additive.  The legacy
+-- Task tables remain readable while the Issue #100 public surface uses these
+-- small records for a flat Mission-scoped queue.
+CREATE TABLE IF NOT EXISTS missions (
+  mission_id TEXT PRIMARY KEY,
+  goal TEXT NOT NULL,
+  acceptance_conditions_json TEXT NOT NULL DEFAULT '{}',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS modern_task_records (
+  task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+  mission_id TEXT NOT NULL REFERENCES missions(mission_id),
+  summary TEXT NOT NULL,
+  timebox_ms INTEGER NOT NULL CHECK (timebox_ms > 0),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS modern_task_records_mission
+  ON modern_task_records(mission_id, created_at, task_id);
+
+CREATE TABLE IF NOT EXISTS task_relations (
+  relation_id TEXT PRIMARY KEY,
+  mission_id TEXT NOT NULL REFERENCES missions(mission_id),
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  relation_kind TEXT NOT NULL CHECK (relation_kind IN ('spawned_from', 'depends_on')),
+  related_task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  created_by_task_id TEXT REFERENCES tasks(task_id),
+  created_by_execution_id TEXT REFERENCES executions(execution_id),
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(task_id, relation_kind, related_task_id)
+);
+
+CREATE INDEX IF NOT EXISTS task_relations_task
+  ON task_relations(task_id, relation_kind, created_at);
+
+CREATE INDEX IF NOT EXISTS task_relations_related
+  ON task_relations(related_task_id, relation_kind, created_at);
+
+-- Notifications are durable, keyed lifecycle facts rather than a general
+-- Agent-to-Agent chat channel.  A delivery key makes retries idempotent while
+-- the nullable execution target lets an inactive Task receive the item on its
+-- next Execution.
+CREATE TABLE IF NOT EXISTS task_notifications (
+  notification_id TEXT PRIMARY KEY,
+  delivery_key TEXT NOT NULL UNIQUE,
+  mission_id TEXT NOT NULL REFERENCES missions(mission_id),
+  recipient_task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  recipient_execution_id TEXT REFERENCES executions(execution_id),
+  notification_type TEXT NOT NULL CHECK (notification_type IN ('handoff_warning', 'material_available', 'task_reopened')),
+  material_id TEXT,
+  source_task_id TEXT,
+  source_execution_id TEXT,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  delivery_attempts INTEGER NOT NULL DEFAULT 0 CHECK (delivery_attempts >= 0),
+  created_at TEXT NOT NULL,
+  delivered_at TEXT,
+  delivered_execution_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS task_notifications_pending
+  ON task_notifications(recipient_task_id, delivered_at, created_at);
+CREATE INDEX IF NOT EXISTS task_notifications_execution
+  ON task_notifications(recipient_execution_id, delivered_at, created_at);
+
+-- A Material link is an explicit delivery/knowledge edge.  It does not make
+-- the linked Task a parent or create a scheduling dependency.  role tells
+-- readers whether the edge is an input, response, handoff, or shared
+-- experience; producer provenance is copied from the immutable Material so a
+-- later reader can audit who produced it.
+CREATE TABLE IF NOT EXISTS task_material_links (
+  link_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  material_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('input', 'response', 'handoff', 'experience')),
+  receiving_task_id TEXT REFERENCES tasks(task_id),
+  producer_task_id TEXT,
+  producer_execution_id TEXT,
+  created_by_task_id TEXT REFERENCES tasks(task_id),
+  created_by_execution_id TEXT REFERENCES executions(execution_id),
+  accepted_at TEXT,
+  accepted_by_task_id TEXT REFERENCES tasks(task_id),
+  accepted_by_execution_id TEXT REFERENCES executions(execution_id),
+  created_at TEXT NOT NULL,
+  UNIQUE(task_id, material_id, role, receiving_task_id)
+);
+
+CREATE INDEX IF NOT EXISTS task_material_links_task
+  ON task_material_links(task_id, role, created_at, link_id);
+
+CREATE INDEX IF NOT EXISTS task_material_links_material
+  ON task_material_links(material_id, role, created_at, link_id);
+
 CREATE TABLE IF NOT EXISTS tasks ${TASKS_TABLE_DEFINITION};
 
 CREATE TABLE IF NOT EXISTS executions (
   execution_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   owner_ref TEXT NOT NULL,
-  state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'SUPERSEDED')),
+  state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED')),
   state_version INTEGER NOT NULL DEFAULT 0,
   attempt_no INTEGER NOT NULL,
   -- A Core binding is immutable for the lifetime of an Execution.  Legacy

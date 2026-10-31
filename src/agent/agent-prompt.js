@@ -20,8 +20,9 @@ const BOUND_SOP = [
   'This role cannot claim or select another Task. Lease extension, heartbeat, fencing, process control, and raw Execution lifecycle belong to Runtime.',
   'Read the Task contract, current Execution, and Workspace contract before editing. Use only registered capabilities shown below.',
   'When the Mathlib Search capability is present, use mathlib_search before proposing a proof or API research route; verify every returned declaration in the locked project before relying on it.',
-  'Create a child only for a genuinely independent, bounded responsibility with a verifiable result; the Task contract decides whether it is required.',
-  'Use the registered swarmenv_task_complete tool (logical operation task.complete) when the current completion contract is satisfied. Use swarmenv_task_block (logical operation task.block) with a non-empty typed dependency and checkpoint when external work prevents progress.',
+  'All executable work uses the same ordinary Task model. Search Mission Task summaries and shared Materials before proposing substantial new work; create a Task only for a genuinely independent responsibility with a useful output and acceptance condition, then continue the current Task while progress remains useful.',
+  'Publish durable Response, Handoff, or Experience Material as findings become useful. Before unfinished work leaves this Execution, publish Handoff Material with evidence, open questions, and a practical next step.',
+  'Use task.create for bounded additional work, task.complete when the current completion contract is satisfied, task.handoff to return unfinished work to the queue, task.block with a non-empty typed dependency and checkpoint when external work prevents progress, and task.close only when accepting a linked Response Material from another Task.',
   'Treat structured tool errors as feedback. Do not infer completion from prose or an unverified file.',
 ].join('\n');
 
@@ -30,7 +31,7 @@ const RECOVERY_SOP = [
   'Continue from the checkpoint and recovery facts supplied below. Re-read the current Task, Workspace revision, and dependency status before changing work.',
   'This role cannot claim or select another Task and cannot operate Runtime lifecycle controls.',
   'When the Mathlib Search capability is present, use mathlib_search to re-check declarations before revising the proof or API route.',
-  'Preserve useful evidence, repair the declared contract, and use swarmenv_task_complete or swarmenv_task_block with the current typed dependency when appropriate.',
+  'Preserve useful evidence, publish a Handoff Material when unfinished work must move, and use task.complete, task.handoff, or task.block with the current typed dependency when appropriate.',
 ].join('\n');
 
 function digest(value) {
@@ -89,26 +90,40 @@ function roleSop(role) {
   return BOUND_SOP;
 }
 
+function contextSection(title, value) {
+  if (value === undefined || value === null || value === '') return '';
+  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  return `\n\n## ${title}\n${text}`;
+}
+
 /**
  * Compose the deterministic initial prompt from static SOP, Registry profile,
  * Task contract, and Runtime context. The caller can persist the returned
  * hashes alongside Session lifecycle evidence.
  */
-export function composeAgentPrompt({ role = AGENT_ROLES.BOUND, profile, task = null, execution = null, workspace = null, recovery = null, staticSop = null } = {}) {
-  if (!profile || profile.role !== role) throw new TypeError('composeAgentPrompt requires a profile matching role');
+export function composeAgentPrompt({ role = AGENT_ROLES.BOUND, profile = null, task = null, tasks = [], mission = null, materials = [], notifications = [], deadline = null, services = [], execution = null, workspace = null, recovery = null, staticSop = null, staticPrompt = null } = {}) {
+  if (profile && profile.role !== role) throw new TypeError('composeAgentPrompt profile must match role');
   const sections = [
-    staticSop ?? roleSop(role),
+    staticSop ?? staticPrompt ?? roleSop(role),
     `\nCurrent role: ${role}`,
-    `Profile: ${profile.profile_version ?? '1'} / ${profile.profile_hash ?? 'unhashed'}`,
-    'Callable capability directory:',
-    capabilityDirectory(profile),
+    profile ? `Profile: ${profile.profile_version ?? '1'} / ${profile.profile_hash ?? 'unhashed'}` : null,
+    profile ? 'Callable capability directory:' : null,
+    profile ? capabilityDirectory(profile) : null,
   ];
   if (role !== AGENT_ROLES.SELECTION) {
     sections.push(taskSection(task), executionSection(execution), workspaceSection(workspace), recoverySection(recovery));
   } else if (task) {
     sections.push(taskSection(task));
   }
-  const prompt = sections.join('\n\n');
+  sections.push(
+    contextSection('Mission', mission),
+    contextSection('Mission Task summaries', tasks),
+    contextSection('Linked Materials', materials),
+    contextSection('Pending notifications', notifications),
+    contextSection('Execution deadline', deadline),
+    contextSection('Available Services', services),
+  );
+  const prompt = sections.filter(Boolean).join('\n\n');
   return prompt;
 }
 

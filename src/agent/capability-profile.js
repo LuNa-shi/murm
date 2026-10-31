@@ -20,7 +20,9 @@ const CURRENT_AGENT_OPERATIONS = new Set([
   'list_services', 'get_service_metadata', 'list_tools',
   'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'claim',
   'create_child_task', 'propose_task',
+  'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
   'publish_material', 'read_materials', 'consume_materials',
+  'context_search_materials', 'context_get_material', 'context_publish_material',
   'submit_candidate', 'get_check_result', 'get_execution',
   'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
   'read_workspace_file', 'write_workspace_file', 'workspace_diff',
@@ -76,10 +78,10 @@ function inferredAudience(capability) {
   if (service === 'workspace' || service === 'execution' || service === 'context' || service === 'judge' || capability.runtime_owned === true || operation === 'scheduler_status') {
     return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
-  if (operation === 'claim' || operation === 'list_claimable_tasks' || operation === 'list_tasks') {
+  if (operation === 'claim' || operation === 'list_claimable_tasks') {
     return [AGENT_ROLES.SELECTION];
   }
-  if (operation === 'get_task') {
+  if (operation === 'list_tasks' || operation === 'task_list' || operation === 'task_view' || operation === 'get_task') {
     return [AGENT_ROLES.SELECTION, AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
   if (scope === 'task-selection') {
@@ -182,11 +184,29 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
     .sort((a, b) => a.id.localeCompare(b.id));
   const nameCounts = new Map();
   for (const capability of normalizedCapabilities) nameCounts.set(capability.name, (nameCounts.get(capability.name) ?? 0) + 1);
+  const preferredServices = new Map();
+  for (const capability of normalizedCapabilities) {
+    if (nameCounts.get(capability.name) > 1 && capability.service_id !== 'runtime' && !preferredServices.has(capability.name)) {
+      preferredServices.set(capability.name, capability.service_id);
+    }
+  }
+  const usedNames = new Set();
   const capabilities = normalizedCapabilities.map((capability) => {
+    // A Runtime-owned compatibility alias (for example accept_task) may
+    // share the semantic name of a registered Task capability. Keep the
+    // first deterministic capability name stable and qualify later names so
+    // profile metadata remains one-to-one while operation routing continues
+    // to use the explicit operation field.
+    let name = capability.name;
+    if (nameCounts.get(name) > 1 && (usedNames.has(name) || (capability.service_id === 'runtime' && preferredServices.has(name)))) {
+      name = `${capability.service_id}_${name}`;
+    }
+    while (usedNames.has(name)) name = `${capability.service_id}_${name}`;
+    usedNames.add(name);
     const toolName = nameCounts.get(capability.name) > 1
       ? safeToolName(capability.service_id, capability.name)
       : (capability.tool_name ?? capability.name);
-    return { ...capability, tool_name: toolName };
+    return { ...capability, name, tool_name: toolName };
   });
   const services = normalizeServices(capabilities);
   const identity = {
