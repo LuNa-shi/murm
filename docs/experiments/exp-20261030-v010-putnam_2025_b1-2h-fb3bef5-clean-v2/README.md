@@ -30,7 +30,7 @@ that activity flag is not treated as mathematical success.
 
 Set `$PUTNAMBENCH_ROOT` to the locked PutnamBench checkout first. Run from
 a clean checkout at `fb3bef54a8c317a05fdb03cfda441065bda69369` (the `v0.1.0`
-tag); keep the output directories ignored and choose a free observability port:
+tag); keep the output directories untracked and choose a free observability port:
 
 ```bash
 git checkout --detach fb3bef54a8c317a05fdb03cfda441065bda69369

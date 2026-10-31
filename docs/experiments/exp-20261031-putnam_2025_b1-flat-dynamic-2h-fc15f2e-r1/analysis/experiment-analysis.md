@@ -87,6 +87,8 @@ This layer evaluates public-service availability, contract use, task supply, han
 | service-router | 71 | 71 | 0 | 0.0% | unknown | <external>/observability.sqlite#observation_events.sequence=1<br><external>/observability.sqlite#observation_events.sequence=4<br><external>/observability.sqlite#observation_events.sequence=5<br><external>/observability.sqlite#observation_events.sequence=8 |
 | task-service | 4917 | 4975 | 0 | 0.0% | unknown | <external>/observability.sqlite#observation_events.sequence=2<br><external>/observability.sqlite#observation_events.sequence=3<br><external>/observability.sqlite#observation_events.sequence=6<br><external>/observability.sqlite#observation_events.sequence=7 |
 
+> **Evidence warning:** task-service completion records exceed start records by 58 (`4,975` finished versus `4,917` started). Treat these as unpaired service evidence; the derived `0.0%` failure rate does not establish balanced call pairing or transport correctness.
+
 ### Task/Execution inventory
 
 ### Tasks
