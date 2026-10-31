@@ -28,16 +28,16 @@ that activity flag is not treated as mathematical success.
 
 ## Exact rerun command
 
-Run from a clean checkout at `fb3bef54a8c317a05fdb03cfda441065bda69369`
-(the `v0.1.0` tag); keep the output directories ignored and choose a free
-observability port:
+Set `$PUTNAMBENCH_ROOT` to the locked PutnamBench checkout first. Run from
+a clean checkout at `fb3bef54a8c317a05fdb03cfda441065bda69369` (the `v0.1.0`
+tag); keep the output directories ignored and choose a free observability port:
 
 ```bash
 git checkout --detach fb3bef54a8c317a05fdb03cfda441065bda69369
 env NUROUTER_PI_PROVIDER=openai-codex NUROUTER_PI_MODEL=gpt-6.1-sol \
   timeout 9000s node scripts/run-putnambench-benchmark.mjs \
   --problems config/putnambench-12.json \
-  --putnambench-root /home/ubuntu/PutnamBench \
+  --putnambench-root "$PUTNAMBENCH_ROOT" \
   --problem putnam_2025_b1 --cores 4 --project-parallelism 1 \
   --timebox-ms 7200000 --turn-timeout-ms 540000 \
   --parallel-mode legacy \
