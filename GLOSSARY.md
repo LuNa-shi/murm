@@ -1,110 +1,30 @@
-# SwarmEnv Glossary
+# SwarmEnv 术语表
 
-**Mission** is the shared objective scope for one problem or project. It
-contains a pool of ordinary Tasks and may contain final acceptance conditions.
+本表定义领域含义。运行约束见 [目标架构](docs/architecture.md)，实现差距见 [实现状态](docs/implementation-status.md)。
 
-**Task** is one durable responsibility in a Mission. Every Task has the same
-shape and lifecycle: summary, goal, expected output, acceptance conditions,
-optional relations, timebox, Material links, and state.
+| 术语 | 含义 |
+| --- | --- |
+| Mission | 用户给定的共同目标、原始验收要求和资源范围，不对应一个永久管理 Agent。 |
+| Task | 可独立推进、可交付、可由后续执行者接续的一份工作责任。 |
+| Task contract | Task 当前要解决的问题、交付范围与验收要求。方法变化未必改变合同。 |
+| Execution | 在确定 Task 版本和资源授权下开展的一次绑定研究执行。 |
+| Agent Session | 模型交互会话；未绑定任务的选择活动与绑定研究会话应分别记录。 |
+| Core | 可被先后使用的执行容量，不拥有研究责任。 |
+| Material | 带来源、版本、适用条件及证据说明的可共享阶段成果。 |
+| Response | 面向具体接收任务的交付用途；各接收者可以有不同处理结果。 |
+| Handoff | 为后续执行者保留同一未完成责任的状态与证据，并释放当前执行权。 |
+| Experience | 可被其他工作发现和使用的研究经验、事实或失败结果。 |
+| Workspace | 一次执行的私有工作面；对外共享通过版本化成果与引用进行。 |
+| Feedback | 面向 Task 的信息、证据或变更请求，不自动授予发送者修改权限。 |
+| Candidate | 待检查内容的确定版本；不是一种 Task 或必须另建的工作流。 |
+| CheckResult | 外部检查针对特定目标、内容和环境返回的结果及诊断。 |
+| Judge | Agent 可反复调用的检查能力；最终验收可以使用其满足原题要求的结果。 |
+| `spawned_from` | Task 提出的来源关系；不授予管理权。 |
+| `depends_on` | 真正影响任务可执行性的前置条件。 |
+| Work-in-progress / 在制任务 | 已承诺且尚未完成或取消的工作。与累计创建数量不同。 |
+| Safe point / 安全点 | 当前执行可以有序处理新反馈、检查版本或停止的时刻。 |
+| Fencing | 撤销旧执行写入资格的运行保护机制。 |
+| Claim | 在权威状态上取得当前任务的有效执行权。 |
+| Controller / Daemon | 实现运行维护或资源连接职责的组件名；不是新的领域责任或语义领导者。 |
 
-**Task summary** is the few-sentence description of the work and its boundary.
-Agents search existing summaries before proposing new work. The Service does
-not require a separate overlap form or an opaque semantic duplicate lock.
-
-**Task relation** has two target kinds. `spawned_from` records proposal
-provenance and does not grant ownership. `depends_on` records a prerequisite
-Task and is the only relation that affects Claimability.
-
-**Material** is immutable, versioned shared work published through Context
-Service. Every Agent-published Material carries producer Task/Execution
-provenance, even when it has no Task link. It can be linked to zero, one, or
-several Tasks.
-
-**Response Material** is a result intended for another Task. The link names the
-receiving Task. The receiving Task may explicitly accept it and close the
-producing Task when its own contract requires that acknowledgement.
-
-**Handoff Material** is the durable summary of unfinished work, evidence,
-checkpoint information, open questions, and a recommended next step. It is
-required before a voluntary handoff, release, or block.
-
-**Experience Material** is reusable knowledge that may help many Tasks. It
-does not require one receiving Task and may remain unlinked or gain links later.
-
-**Task Material link** is a durable reference from a Task to a Material. It
-records a role such as `input`, `response`, `handoff`, or `experience` and does
-not copy the Material content.
-
-**Task state** is one of `OPEN`, `RUNNING`, `BLOCKED`, `DONE`, `CLOSED`, or
-`CANCELED`. `DONE` is self-owned completion. `CLOSED` is explicit downstream
-acceptance of a linked Response Material and is used only when that acceptance
-matters. A task without a Response Material contract can remain `DONE`.
-
-**Execution** is one bounded attempt to work on one Task. Runtime binds it to a
-Core, Agent Session, and private Workspace, and assigns a handoff warning and
-execution deadline.
-
-**Handoff** ends an unfinished Execution after its Agent publishes and links
-Handoff Material. `task.handoff` and `task.block` use the same release protocol;
-normal handoff returns the Task to `OPEN`, while a blocked handoff leaves it
-`BLOCKED` with a typed dependency until reopening. Timeout cleanup does not
-create a system Handoff Material.
-
-**Notification** is a durable, keyed update addressed to a Task or Execution.
-Active Sessions receive it as a queued follow-up prompt; inactive Sessions see
-it in the next initial prompt.
-
-**Workspace** is the private, versioned working surface of an Execution. The
-Runtime creates a common scaffold and adds Task-specific inputs when provided.
-Workspace is not the shared collaboration store.
-
-**Execution fencing** is an internal Runtime mechanism that invalidates writes
-from an old Session after restart, timeout, or ownership transition. It is not
-an Agent-facing operation. The existing internal `FENCED` state is distinct
-from a normal Agent handoff.
-
-**Core slot** is reusable physical worker capacity. It has no semantic Task
-ownership.
-
-**Core Daemon** is the long-lived supervisor for one Core. It asks for a
-bounded `OPEN` Task shortlist only while the Core is idle, Claims one Task,
-starts its Execution, waits for terminal cleanup, and returns to discovery.
-
-**Task Controller** reconciles durable Task, dependency, Material-link, and
-notification facts. It reopens eligible blocked Tasks and signals idle Core
-Daemons; it does not select or Claim semantic work.
-
-**Judge** independently validates Candidate Material for Task contracts that
-require a checker.
-
-**Service** is an independently owned capability provider with a versioned
-interface, schemas, usage guidance, side-effect declarations, and structured
-errors. Issue #87 defines Service registration and dynamic capability
-discovery.
-
-**Lease** is the Runtime's bounded physical ownership record for an Execution.
-Heartbeat/liveness bookkeeping is internal Runtime behavior.
-
-**Experiment** is one observed run of one Mission, including Tasks,
-Executions, Materials, Workspaces, Judge results, notifications, and Service
-activity.
-
-**Core lane** is the timeline identity of one reusable Core slot over an
-Experiment.
-
-**Interaction** is one ordered Agent-facing exchange: a message, capability
-call, result, follow-up notification, lifecycle event, or diagnostic.
-
-**Observation Event** is append-only evidence for monitoring and diagnosis. It
-does not replace domain truth held by Task, Runtime, Context, Judge, or
-Workspace.
-
-**Diagnostic Finding** is an evidence-linked, typed conclusion about an
-Experiment or one of its parts.
-
-**Eligible window** is a reporting interval with enough independent unfinished
-work for the configured Core slots to execute concurrently.
-
-**Deterministic test scenario** is a bounded fixture used to exercise the
-production lifecycle with known inputs, calls, notification conditions, and
-acceptance states.
+任务完成、某个接收者接受成果、局部检查通过和 Mission 成功各自有独立含义。`DONE`、`CLOSED` 等存储枚举不代替这些定义。

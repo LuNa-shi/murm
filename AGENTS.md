@@ -1,81 +1,61 @@
-# SwarmEnv agent instructions
+# SwarmEnv：开发约束与设计准则
 
-SwarmEnv is a local-first runtime for durable, checkable Agent work. This file
-is a short map of repository rules. Read the linked source of truth before
-changing the corresponding area.
+状态：本 PR 是待审阅的文档草案。合并后确立第一阶段设计基线，不表示运行代码已满足要求。实际差距见 [实现状态](docs/implementation-status.md)。本次用户授权文档草稿 PR；代码修复、真实实验和 GitHub Issue 发布仍须按后续指令进行。
 
-## Work agreement
+## 阅读顺序与规范效力
 
-- Work from a GitHub Issue with explicit acceptance criteria.
-- Use one dedicated worktree and branch per Issue. Keep `main` free of feature development.
-- Run relevant tests, commit the work, open a separate PR, and review the PR against `main` before merge.
-- Use the repository's Matt Pocock skills when applicable: `to-tickets`, `implement`, `pr`, and `code-review`.
-- Do not commit credentials, tokens, raw Agent transcripts, proof contents, or unredacted experiment state.
-- When creating a worktree for a real-Agent or benchmark run, check the local
-  `main` checkout for `.env`. If it exists and the target worktree does not
-  have its own environment file, copy it into the target worktree before
-  launching the run (for example, `cp /home/ubuntu/SwarmEnv/.env <worktree>/.env`).
-  Keep `.env` ignored, never print or commit its values, and verify only that
-  required route variables such as `NUROUTER_PI_PROVIDER` and
-  `NUROUTER_PI_MODEL` are present.
+先读本文件，再读 [术语表](GLOSSARY.md)、[目标架构](docs/architecture.md) 与 [第一阶段计划](docs/plans/phase-1/README.md)，最后阅读相关 Issue 和代码。`CONTEXT.md` 只作导航。
 
-## Real-Agent experiment SOP
+本文件定义项目约束，架构文档展开运行约定，两者必须一致。Issue 细化行为与验收，不得默默覆盖原则。遇到冲突应指出受影响条款并提出设计变更，不自行选用有利于当前实现的旧文件。归档、旧 Issues、历史实验与 Notion 是来源或证据，不构成第二套当前规范。
 
-- Use `openai` with `gpt-6.1-sol` as the default local route unless the Issue
-  specifies another provider or model. Keep the route in `.env` or in the
-  process environment; never put credentials in this file.
-- Before launching, record the exact `git rev-parse HEAD` and
-  `git status --porcelain` result, PutnamBench commit, Lean project root
-  (normally `<PutnamBench>/lean4`), Core count, timebox, provider, and model.
-  Acceptance evidence must point at the exact clean implementation commit; a
-  dirty or different-commit run is diagnostic-only until rerun.
-- Run the real-agent probe first and require `READY_TO_LAUNCH`; a `BLOCKED`
-  probe is an environment result, not a failed Agent experiment. If the local
-  `main` checkout has no `.env`, provide the required route explicitly in the
-  process environment or stop with `BLOCKED`; do not silently use an
-  unverified default.
-- Use the locked fixture and its project root. Confirm that the local
-  PutnamBench checkout matches the fixture commit and that `lean`, `lake`,
-  `nurouter`, and `pi` are available before spending the experiment timebox.
-- Runtime sends the Execution's initial `agent_prompt` during
-  `startExecution`/`wakeExecution`. A harness must wait for that turn to
-  settle or explicitly queue a follow-up with `streamingBehavior: followUp` or
-  `steer`; never issue a second concurrent prompt.
-- Keep raw experiment output in an ignored experiment/temp directory. Inspect
-  only sanitized status, lifecycle, checker, and report fields in summaries;
-  never paste raw Agent transcripts, proof contents, credentials, stdout, or
-  stderr into GitHub, `AGENTS.md`, or a report.
-- Record the final experiment status, blocker or result, report path, and the
-  exact rerun command in the PR or experiment evidence document. The
-  sanitized report must repeat the exact implementation commit whose runtime
-  and harness code was executed. A later documentation-only commit that
-  records randomized task/check IDs does not change that implementation and
-  does not require another run; any later code or harness commit does require
-  fresh acceptance evidence.
+## 核心设计准则
 
-See [docs/agents/workflow.md](docs/agents/workflow.md) and [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+**P1 — Task 表达分工。** Task 是可独立推进、可接续的责任；Execution 是绑定该责任的一次执行；Core 是执行容量。创建来源不授予审批、调度或修改他人任务的权限。当前阶段每个 Task 保留一个有效写入者，不同并行工作使用不同 Task。
 
-## Repository map
+**P2 — 领域研究方向由 Agent 提出。** 默认启动只使用用户目标、初始材料和资源配置。不得预设几何、组合等研究路线、按题号写入解题策略，或要求创建固定数量的任务。把领域硬编码移入配置也不合规。通用工具说明、原题要求与资源限制可以固定；预设任务的确定性 fixture 必须与真实运行默认路径分开。
 
-- Domain vocabulary: `CONTEXT.md`
-- Architecture decisions: `docs/adr/`
-- Agent-generated documentation and reports: `docs/`
-- Human-provided documents: `documents/`
-- Runtime and service boundaries: `src/`
-- Deterministic and integration tests: `test/`
-- Benchmark entry points: `scripts/` and `src/benchmark/`
+**P3 — 机制与策略分离。** 公共服务校验身份、版本、依赖和资源，Runtime 管理有效执行权。Agent 判断工作价值、研究路线及是否派生任务。控制器不得根据 Judge 失败或空闲容量直接填入领域工作。可以保留有预算且可追踪的通用启动或重新观察入口，具体研究内容仍由 Agent 提出。
 
-Use `CONTEXT.md` and the relevant ADR before changing Task, Execution, Workspace, Material, Runtime, or Judge behavior.
+**P4 — Judge 是可迭代调用的外部能力。** Agent 可在同一 Execution 中检查 V1、读取诊断、修改并检查 V2。失败不自动创建 Task，不强制 handoff，不要求消费其他任务的 Response。工具可以内部保存不可变输入和 CheckResult，调用者无需完成额外的任务流程。有工具权限的研究 Task 不应仅因完成合同未要求 Judge 而被禁止检查；最终验收权限与日常检查权限分别规定。
 
-## Engineering rules
+**P5 — 检查范围与最终验收分开。** 局部引理通过只支持对应目标。完成整题须核对原始命题、实际内容版本和固定检查环境。不得放宽 checker、修改原题、隐藏失败、借用旧版本 PASS，或将服务故障记为数学失败。有效完整候选不因来源不是初始 Task 而被排除。
 
-- Task and Execution state transitions belong to Task Service and Runtime. Agents request transitions through registered Service tools.
-- `WAITING` requires a persisted checkpoint and a concrete typed condition. An empty queue is `IDLE` or bounded backoff, never semantic waiting.
-- A root Agent should create bounded direct child Tasks for genuinely separable work before waiting. Each child needs a goal, expected output, acceptance condition, and result delivery path.
-- Effective Agent Time counts only auditable Runtime `RUNNING` intervals. Keep `IDLE`, semantic `WAITING`, scheduler polling, Judge time, and turn occupancy separate.
-- Work unit evidence records Task, Execution, Core, and progress kind. Task and Execution identity, Workspace lineage, leases, fencing, and quota remain the ownership evidence; do not add semantic fingerprint or deduplication policy to benchmark progress.
-- Prefer integration tests for lifecycle and Agent behavior. Run `npm test` and `git diff --check` before opening a PR.
+**P6 — 派生、反馈与 handoff 含义明确。** 创建 Task 不自动结束创建者的 Execution。新证据可以在当前执行结束前处理。Handoff 接续同一未完成责任，定时换人不算新增并行。只有真实前置条件未满足才阻塞，空队列属于容量状态。取消前置任务也不得被解释为前置结果已成功完成。
 
-## Documentation ownership
+**P7 — 限制真实消耗和在制工作。** 分清运行总预算、Task 累计消耗、Execution 授权与未完成任务数量。任务完成或取消释放相应在制名额，已消耗成本不归零；换执行者不重置预算。禁止累计只允许创建两个任务的默认限制。不要求填满 Core，也不以制造任务掩盖供给不足。
 
-Files under `docs/` are generated or maintained engineering documentation. Files under `documents/` are supplied by humans and must not be rewritten by an Agent unless the Issue explicitly requests it.
+**P8 — 反馈属于 Task，变更遵守权限。** 研究反馈跨 Execution 保存，截止提醒只属于对应 Execution。投递、处理决定和实际变化分别记录。同伴提交证据和建议；当前负责人或显式授权者才能改变责任、撤销执行权。范围变化保存版本或明确的新旧任务关联。取消生效后拒绝旧执行的晚到写入。
+
+**P9 — Material 保留来源、版本与使用关系。** 同一成果可用于自己的接续和多个接收者，不为流程要求复制相同内容。发布、读取、实际使用与有效性是不同事实。内容的生产来源不可改变；引用用途和不同接收者的处理情况分别保存。自用检查点与跨任务交付分别分析，不规定材料产量。
+
+**P10 — 一个权威状态，操作含义一致。** Agent、Runtime 与报告必须使用同一 Task 身份。准入、认领和版本变更具有明确的一致性语义。相同请求重放可幂等，不同请求不能仅因相同字符串键而静默取得旧任务。列表必须如实表达筛选与截断，不能把未检查的后续任务当作不存在。不支持的部署组合在启动前拒绝。
+
+**P11 — 修复范围由准则审计决定。** 用户举例、旧报告和现有问题表都不是修复范围上限。每个第一阶段 Issue 必须沿相关完整调用链核对准则，覆盖工具声明、Bridge/SDK、权威服务、Runtime、benchmark 回调、配置、提示指令、分析与测试。新发现的同类确定偏差并入该 Issue；跨责任的偏差在[核对表](docs/reviews/phase-1-conformance-audit.md)中指定归属。未复现风险标为待验证，不能冒充已发生缺陷；不能用本轮没有触发来关闭已确认偏差。
+
+## 第一阶段范围
+
+只安排 [S1–S3](docs/plans/phase-1/README.md) 三项完整代码工作，继续使用现有数学、PutnamBench 和 Lean 环境。目标是设计符合性与真实运行现象改善，不开展任务价值评分、语义去重算法、向量检索、复杂分工策略、万级部署或模型/prompt 调优。
+
+删除旧 API 指令、统一工具帮助、移除硬编码路线等属于必要的一致性修正，可以随修复进行；比较提示措辞、增加领域示例或为分数搜索 prompt 属于后续优化。发现偏差时先修正确性，不借机大范围重命名、增加抽象层或另建服务。
+
+Daemon、窗口时长和选择策略可以替换，但不得自行将试验参数变为架构原则。每个新接口必须解释改变了哪项可观察行为。原则或验收口径需要改变时，先更新设计决定，不能让 coding agent 在实现中临时决定。
+
+## 开发与验收
+
+后续代码 Issue 在独立 worktree/分支实现，`main` 不直接开发。每项交付一个从 Agent 行为到持久状态、反馈和观察的完整闭环，不按数据库、API、测试拆成半成品。新发现问题按 P11 记录并归属，不无边界扩大 Issue。
+
+每项代码 sub-issue 同时通过设计符合性回归和[两小时真实验收](docs/validation/phase-1-acceptance.md)。实验前冻结对照、处理、资源、主指标和失败条件；缺事件记 `INCONCLUSIVE`，零分母不算通过。生产 prompt 不得知道验收数量门槛；不得刷任务、检查或材料。每项直接提供自己的 before/after 证据，不把观察与验收推到统一收尾 Issue。
+
+PR 分别检查 Spec 与 Standards。旧测试保护已撤销行为时应更正；执行权、fencing、检查版本绑定和隐私保护不能一起删除。提交前运行适用测试及 `git diff --check`，代码实现需运行 `npm test`；未运行的检查列明原因。
+
+文档 PR 检查规范、链接与归档，不声称改善真实运行指标。不创建/关闭 Issues、合并 PR 或启动付费模型实验，除非本次指令已授权对应操作。
+
+## 实验与数据保护
+
+真实运行前通过环境 probe，记录 clean 实现提交、fixture/Lean/Mathlib、provider/model、有效提示与工具 schema、Core 数、资源上限和精确命令。未就绪记 `BLOCKED`，不得悄悄换模型或检查环境。匹配对照允许的差异必须事先列明。
+
+需要 `.env` 时仅从获授权 checkout 安全复制到忽略位置，或使用进程环境，只检查变量是否存在，不打印值。文档不写入固定私人路径、主机地址和凭据。
+
+原始对话、候选源码、stdout/stderr 和状态库留在本地忽略的 `experiments/`；只发布脱敏结果与证据定位。私人写作语料和个人信息不迁入代码库。
+
+Runtime 管理初始与后续消息顺序，不同时启动相互竞争的 Agent turn。报告绑定实际运行提交，区分自然研究、受控干预、确定性 fixture 和静态代码核对。历史结果按原版本解释，不为了新规范改写历史。

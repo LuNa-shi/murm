@@ -1,13 +1,5 @@
-# Task state is a projection of execution and scheduling facts
+# 历史 ADR 入口
 
-Status: accepted. SwarmEnv keeps one `Task.state` and one optional `block_reason`. `WAITING` means an existing Execution deliberately retained responsibility while releasing physical resources, whereas `BLOCKED` means no Execution can currently claim the Task. The MVP does not expose a second Task status axis.
+本ADR原文保存在 [历史ADR目录](../archive/2026-11-01/docs/adr/) 的同名文件中，原始Git tree未改写。其历史语境见 [原提交](https://github.com/LuNa-shi/SwarmEnv/tree/75fca5aa647154a642d676c639c8770d1f7eb90a/docs/adr)。
 
-## Considered options
-
-- Merge waiting and blocking into one ambiguous status.
-- Persist two independent Task status axes and require every consumer to interpret their combinations.
-- Keep one Task state and use `block_reason` to explain why a blocked Task cannot run.
-
-## Consequences
-
-The MVP must reject impossible combinations such as `WAITING` with a blocking reason or a terminal Task with an active Execution. `block_reason` is meaningful only when no active Execution owns the Task; a wait condition belongs to the active Execution.
+当前决定见 [ADR索引](README.md) 与 [目标架构](../architecture.md)。归档保留旧设计理由，不表示对应能力已从代码删除。

@@ -1,122 +1,33 @@
 # SwarmEnv
 
-SwarmEnv is a local-first runtime for durable, checkable agent swarm tasks.
+SwarmEnv 研究以显式任务组织的 Agent Swarm。Agent 在工作中提出新的 Task，通过 Material 共享阶段成果，并根据反馈调整正在进行的任务。Runtime 提供可接续执行、资源限制与公共服务。
 
-## Independently deployed Agent Services
+## 当前状态
 
-Agent-facing providers register one versioned Service Manifest and use either
-the in-process adapter for deterministic fixtures or the HTTP JSON adapter for
-an independent process/container. A registered provider is filtered into the
-Selection, Bound, or Recovery profile by its Manifest audience; the Pi
-extension exposes only those named capabilities, and the same profile is
-included in the initial prompt.
+仓库已有 Task、Runtime、Workspace、Context、Judge 和观测实现。本 PR 提议确立 task-centric 第一阶段基线；**文档中的目标行为尚未全部实现**。当前已知限制包括预设研究方向、累计新增任务额度、Judge 重试门禁和不完整的运行中反馈。详见 [实现状态](docs/implementation-status.md)。
 
-The reference user-defined provider is Mathlib Search. Start its standalone
-HTTP process with a Loogle endpoint or a mounted Lean source root:
+近期继续使用现有 PutnamBench/Lean 数学环境验证任务机制，不另建非数学环境。
 
-```sh
-MATHLIB_SEARCH_UPSTREAM_URL=http://loogle:8080 \
-MATHLIB_REVISION=<locked-mathlib-revision> \
-LEAN_VERSION=<locked-lean-toolchain> \
-npm run service:mathlib-search
-```
+## 设计与开发入口
 
-Configure `SWARMENV_MATHLIB_SEARCH_URL` and the optional token in the Agent
-runtime environment. Runtime registers the manifest through the same Registry
-seam used by a user-defined provider, so a Bound prompt contains the
-`swarmenv_mathlib_search` tool and Selection prompts do not. The deployment
-recipe and pinned-toolchain guidance are in
-[`services/mathlib-search/README.md`](services/mathlib-search/README.md) and
-[`docs/research/mathlib-search-service.md`](docs/research/mathlib-search-service.md).
+| 入口 | 内容 |
+| --- | --- |
+| [AGENTS.md](AGENTS.md) | 项目约束、核心设计准则、开发与验收要求 |
+| [GLOSSARY.md](GLOSSARY.md) | 统一领域术语 |
+| [目标架构](docs/architecture.md) | 启动、分工、检查、反馈、接续与结束的完整流程 |
+| [架构复盘](docs/reviews/task-centric-baseline.md) | 固定代码和实验基线的发现与设计推导 |
+| [第一阶段计划](docs/plans/phase-1/README.md) | 三个完整代码 Issue 草案、依赖与范围 |
+| [两小时验收协议](docs/validation/phase-1-acceptance.md) | 匹配对照、指标定义、触发机会和失败条件 |
+| [文档索引](docs/README.md) | 当前规范、实现说明、历史证据与归档 |
 
-Task, Context, Judge, and Catalog can use the same host boundary. Run one
-`npm run service:builtin` process per service with `SWARMENV_SERVICE_ID` and a
-shared durable `SWARMENV_SERVICE_DATABASE` volume, then pass the resulting URLs
-to `createBuiltinServiceRegistry({ serviceEndpoints })`. Custom providers use
-`registerUserService(registry, { manifest, adapter })`; the benchmark accepts
-the same definitions through its `customServices` option.
+先阅读 [开发流程](docs/agents/workflow.md)。本次文档 PR 不修改程序或实验配置。具体运行参数使用当前脚本和 [环境说明](docs/benchmark-environment.md)，不要把尚未实现的设计接口当作已存在命令。
 
-## Experiment and observation runtime
+## 服务与观测
 
-All live experiment evidence must be created below the repository's
-`experiments/` directory. Use one child directory per experiment, for example:
+服务部署参考 [内置服务](services/builtin/README.md) 和 [Mathlib Search](services/mathlib-search/README.md)。观测运行参考 [观测文档](docs/observability.md)；它描述当前实现，不另行定义目标架构。
 
-```text
-experiments/
-  putnambench-runs/run-<id>/
-    metadata/
-    logs/
-    state/
-    workspaces/
-  .observability/
-    observability.sqlite
-    public-server.json
-```
+真实实验输出统一放在受忽略的 `experiments/<experiment-id>/`，共享观测数据放在 `experiments/.observability/`。脱敏历史报告保留于 [docs/experiments](docs/experiments/)，不得当作新版本已验收的证据。
 
-`experiments/.observability/` is reserved for the shared observation database
-and the persistent observation server metadata. Reports remain in the separate
-`reports/` directory. The benchmark runner reuses the healthy server described
-by `public-server.json` (with `server.json` retained as a legacy fallback)
-before creating the root Task and closes only its own database
-handle when the experiment ends. The observation server stays online for later
-runs; it is one fixed service and one fixed port for the whole experiment root.
+## 文档版本
 
-Start the server manually when no benchmark runner is active:
-
-```sh
-node scripts/serve-observability.mjs \
-  --root experiments \
-  --scan-root /home/ubuntu/SwarmEnv-worktrees \
-  --metadata experiments/.observability/public-server.json \
-  --host 0.0.0.0 \
-  --advertise-host "$(tailscale ip -4)" \
-  --port 8787
-```
-
-The normal benchmark command reuses the same persistent server automatically.
-If a runner is launched from another checkout, point it at the shared service
-metadata instead of allowing a second daemon to be started:
-
-```sh
-export SWARMENV_OBSERVABILITY_METADATA=/absolute/path/to/experiments/.observability/public-server.json
-```
-
-Use the same metadata path for the fixed public service (for example,
-`public-server.json`). A second server pointed at that metadata exits after
-reporting the healthy existing service instead of claiming another port.
-
-The dashboard opens one server-sent event stream for the Experiment registry.
-When a runner registers a new Experiment, the open page receives the new
-summary and keeps the current selection without a page reload or a browser
-polling loop. If an edge proxy buffers SSE, the browser switches to a long
-change request that waits for a registry revision or a 25-second timeout; it
-does not run a four-second polling timer. The server is read-only from the
-HTTP API; explicit process management or `SIGTERM` is required to stop it.
-
-Repeat `--root` for additional explicit experiment roots, or use
-`--scan-root` for a directory whose immediate worktree children each contain
-an `experiments/` directory. When `--root` points at `<repository>/experiments`,
-the server also discovers the conventional `<repository>/.worktrees` and
-`<repository>/.worktree` roots automatically; an explicit `--scan-root` remains
-useful for worktrees stored elsewhere. The server discovers each root's shared
-`.observability/observability.sqlite` and bounded nested per-experiment databases,
-then presents them through the same registry and detail routes.
-
-On the current server the daemon is installed as the user service
-`swarmenv-observability.service` with automatic restart and login persistence:
-
-```sh
-systemctl --user status swarmenv-observability.service
-```
-
-When the server and browser are on different machines in the same Tailscale
-network, open:
-
-```text
-http://<server-tailscale-ip>:8787/
-```
-
-For the current server host, `tailscale ip -4` reports `100.78.32.56`, so the
-current operator URL is `http://100.78.32.56:8787/` while the Tailscale node is
-online. Do not put credentials or provider tokens in experiment metadata,
-observation payloads, or reports.
+当前规范由 `AGENTS.md` 与目标架构共同定义。旧设计已保留到 [归档](docs/archive/README.md)，原路径只保留导航。Notion 用于讨论，获确认的实现要求通过仓库 PR 维护；新讨论不会自动改写已经合并的规范。
