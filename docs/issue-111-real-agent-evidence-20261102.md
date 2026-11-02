@@ -91,3 +91,13 @@ timeout 7500s node scripts/run-putnambench-benchmark.mjs \
 The follow-up implementation commit `ba006dd09ee81da2f1706b5a20f614132344ef10` requires a fresh readiness probe
 and real run before any acceptance claim. No mathematical solve, orchestration
 improvement, or real compaction rotation claim is made from the blocked probes.
+
+## Follow-up probe on the current implementation
+
+The exact clean commit `9088be769f40aa6c85cc2411417819e57224a027` (documentation
+only on top of implementation `ba006dd09ee81da2f1706b5a20f614132344ef10`) was
+probed with the command above after rebinding `SWARMENV_IMPLEMENTATION_COMMIT`.
+The preflight was **BLOCKED** because the local `pi --version` check exceeded
+the probe's bounded stderr buffer. NuRouter, Lean, Lake, the locked
+PutnamBench revision, and route variables were present; no Agent turn was
+started, and no Task, Execution, Material, or CheckResult was produced.
