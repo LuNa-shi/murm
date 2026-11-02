@@ -24,42 +24,6 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', properties: { root_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, task_type: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, available_only: { type: 'boolean' } }, additionalProperties: false },
   },
   {
-    name: 'task_list_claimable', service: 'task', operation: 'list_claimable_tasks', version: '1.0',
-    description: 'Return a bounded claimable shortlist with aging and fairness metadata for the Core Daemon selection turn.',
-    scope: 'public-read', side_effect: false,
-    parameters: { type: 'object', properties: { root_id: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, aging_threshold_ms: { type: 'integer', minimum: 0 }, now_ms: { type: 'integer', minimum: 0 } }, additionalProperties: false },
-  },
-  {
-    name: 'task_get', service: 'task', operation: 'get_task', version: '1.0',
-    description: 'Read the current Task specification and state.',
-    scope: 'task-read', side_effect: false,
-    parameters: { type: 'object', properties: { task_id: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'task_scheduler_status', service: 'task', operation: 'scheduler_status', version: '1.0',
-    description: 'Read current core capacity, active and waiting executions, and claimable Tasks for adaptive decomposition.',
-    scope: 'public-read', side_effect: false,
-    parameters: { type: 'object', properties: { root_id: { type: 'string' }, task_id: { type: 'string' }, execution_id: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, additionalProperties: false },
-  },
-  {
-    name: 'task_list_executions', service: 'task', operation: 'list_executions', version: '1.0',
-    description: 'List prior and active Executions for a Task so a worker can choose a Workspace lineage.',
-    scope: 'task-read', side_effect: false,
-    parameters: { type: 'object', properties: { task_id: { type: 'string' }, include_terminal: { type: 'boolean' } }, additionalProperties: false },
-  },
-  {
-    name: 'task_claim', service: 'task', operation: 'claim', version: '1.0',
-    description: 'Claim one explicitly selected Task and create its Execution.',
-    scope: 'task-claim', side_effect: true,
-    parameters: { type: 'object', required: ['task_id', 'claim_key'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, core_id: { type: 'string' }, owner_ref: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'task_select', service: 'task', operation: 'select_task', version: '1.0',
-    description: 'Return one task_id from the bounded shortlist supplied to this stateless Core Daemon selection turn. The Daemon performs the durable claim.',
-    scope: 'task-selection', side_effect: false,
-    parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' } }, additionalProperties: false },
-  },
-  {
     name: 'task_create_child', service: 'task', operation: 'create_child_task', version: '1.0',
     description: 'Create a bounded direct child Task for a genuinely separate responsibility.',
     scope: 'execution-write', side_effect: true,
@@ -370,6 +334,7 @@ const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'c
 // entries above and the Registry-backed profile.
 const LEGACY_AGENT_OPERATIONS = new Set([
   'abort', 'accept_task', 'apply_check_result', 'block_execution',
+  'claim', 'list_claimable_tasks', 'select_task',
   'create_rework_task', 'fence_execution', 'heartbeat', 'request_rework',
   'request_wait', 'resume_execution', 'start_execution', 'stop_execution',
   'wake', 'wake_execution',
@@ -384,7 +349,7 @@ const SERVICE_DEFINITIONS = Object.freeze([
   {
     name: 'task',
     version: '1.0',
-    description: 'Task goals, Mission-scoped Material links, semantic completion, alternative branches, explicit dependencies, and claim discovery.',
+    description: 'Task goals, Mission-scoped Material links, semantic completion, explicit dependencies, and canonical task_take.',
     tools: [...TOOL_DEFINITIONS.filter((tool) => tool.service === 'task'), ...publicTaskTools, ...publicWorkspaceTools],
   },
   { name: 'execution', version: '1.0', description: 'Internal Execution lease, heartbeat, wait, and lifecycle metadata.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'execution') },

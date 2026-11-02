@@ -1,10 +1,10 @@
 /**
- * Deterministic reconciliation for Task readiness and reusable Core Daemons.
+ * Deterministic reconciliation for Task readiness and reusable Core identity loops.
  *
  * TaskController observes durable Task Service state. It may ask an injected
  * reconciliation adapter to refresh a blocked Task and may wake an idle Core
- * Daemon, but it never chooses or claims a Task. Value selection belongs to a
- * CoreDaemon after it receives a bounded claimable view.
+ * identity loop, but it never chooses or claims a Task. Task choice belongs to
+ * the identity loop after it receives a bounded claimable view.
  */
 
 const DEFAULT_SHORTLIST_LIMIT = 16;
@@ -17,45 +17,45 @@ function asArray(value, keys = []) {
   return [];
 }
 
-function daemonId(daemon, index) {
-  return String(daemon?.core_id ?? daemon?.coreId ?? daemon?.id ?? daemon?.name ?? `core-${index + 1}`);
+function loopId(loop, index) {
+  return String(loop?.core_id ?? loop?.coreId ?? loop?.id ?? loop?.name ?? `core-${index + 1}`);
 }
 
-function daemonState(daemon) {
-  if (typeof daemon?.snapshot === 'function') {
+function loopState(loop) {
+  if (typeof loop?.snapshot === 'function') {
     try {
-      const snapshot = daemon.snapshot();
+      const snapshot = loop.snapshot();
       if (snapshot && typeof snapshot === 'object') return snapshot;
     } catch {
       // A health snapshot is advisory. The Controller still treats an
-      // uninspectable Daemon as unhealthy below.
+      // uninspectable identity loop as unhealthy below.
     }
   }
-  return daemon ?? {};
+  return loop ?? {};
 }
 
-function isIdle(daemon) {
-  const state = String(daemon?.state ?? '').toUpperCase();
-  return daemon?.idle === true || state === 'IDLE';
+function isIdle(loop) {
+  const state = String(loop?.state ?? '').toUpperCase();
+  return loop?.idle === true || state === 'IDLE';
 }
 
-function isHealthy(daemon) {
-  if (daemon?.healthy === false || daemon?.health === 'unhealthy' || daemon?.status === 'failed') return false;
-  const state = String(daemon?.state ?? '').toUpperCase();
+function isHealthy(loop) {
+  if (loop?.healthy === false || loop?.health === 'unhealthy' || loop?.status === 'failed') return false;
+  const state = String(loop?.state ?? '').toUpperCase();
   return !['FAILED', 'STOPPING', 'STOPPED'].includes(state);
 }
 
-function selectionRetryDeferred(daemon, at) {
-  if (daemon?.selection_exhausted !== true && daemon?.selectionExhausted !== true) return false;
-  const retryAt = daemon?.selection_retry_at ?? daemon?.selectionRetryAt;
+function takeRetryDeferred(loop, at) {
+  if (loop?.take_exhausted !== true && loop?.takeExhausted !== true) return false;
+  const retryAt = loop?.take_retry_at ?? loop?.takeRetryAt;
   return retryAt !== null && retryAt !== undefined && Number(retryAt) > at;
 }
 
-function idleGeneration(daemon) {
-  if (daemon?.idle_generation !== undefined) return daemon.idle_generation;
-  if (daemon?.idleGeneration !== undefined) return daemon.idleGeneration;
-  if (daemon?.last_event_at !== undefined) return daemon.last_event_at;
-  if (Array.isArray(daemon?.state_history)) return daemon.state_history.length;
+function idleGeneration(loop) {
+  if (loop?.idle_generation !== undefined) return loop.idle_generation;
+  if (loop?.idleGeneration !== undefined) return loop.idleGeneration;
+  if (loop?.last_event_at !== undefined) return loop.last_event_at;
+  if (Array.isArray(loop?.state_history)) return loop.state_history.length;
   return null;
 }
 
@@ -76,9 +76,9 @@ export class TaskController {
     listClaimableTasks = null,
     listBlockedTasks = null,
     reconcileTask = null,
-    listDaemons = () => [],
-    signalIdleDaemon = null,
-    requestDaemonRecovery = null,
+    listIdentityLoops = () => [],
+    signalIdleIdentity = null,
+    requestIdentityRecovery = null,
     shortlistLimit = DEFAULT_SHORTLIST_LIMIT,
     sweepIntervalMs = DEFAULT_SWEEP_INTERVAL_MS,
     now = () => Date.now(),
@@ -90,7 +90,7 @@ export class TaskController {
     if (typeof listClaimableTasks !== 'function' && typeof serviceListClaimable !== 'function' && typeof serviceList !== 'function') {
       throw new TypeError('TaskController requires listClaimableTasks or taskService.listTasks');
     }
-    if (typeof listDaemons !== 'function') throw new TypeError('TaskController requires listDaemons');
+    if (typeof listIdentityLoops !== 'function') throw new TypeError('TaskController requires listIdentityLoops');
     if (typeof now !== 'function') throw new TypeError('TaskController requires now');
     if (!Number.isInteger(shortlistLimit) || shortlistLimit < 1 || shortlistLimit > 100) {
       throw new TypeError('TaskController shortlistLimit must be an integer between 1 and 100');
@@ -114,9 +114,9 @@ export class TaskController {
     this.usesTaskServiceReconcile = reconcileTask === null && typeof taskService?.reconcileTask === 'function';
     this.reconcileTask = reconcileTask
       ?? (this.usesTaskServiceReconcile ? (taskId) => taskService.reconcileTask(taskId) : null);
-    this.listDaemons = listDaemons;
-    this.signalIdleDaemon = signalIdleDaemon;
-    this.requestDaemonRecovery = requestDaemonRecovery;
+    this.listIdentityLoops = listIdentityLoops;
+    this.signalIdleIdentity = signalIdleIdentity;
+    this.requestIdentityRecovery = requestIdentityRecovery;
     this.shortlistLimit = shortlistLimit;
     this.sweepIntervalMs = sweepIntervalMs;
     this.now = now;
@@ -126,7 +126,7 @@ export class TaskController {
     this.reconcilePromise = null;
     this.reconcileRequested = false;
     this.nextReason = null;
-    this.daemonSignals = new Map();
+    this.loopSignals = new Map();
     this.blockedSignals = new Map();
     this.lastSnapshot = {
       reason: null,
@@ -134,9 +134,9 @@ export class TaskController {
       claimable_task_ids: [],
       blocked_count: 0,
       blocked_task_ids: [],
-      healthy_daemon_count: 0,
-      idle_daemon_count: 0,
-      signaled_daemon_count: 0,
+      healthy_loop_count: 0,
+      idle_loop_count: 0,
+      signaled_loop_count: 0,
       recovery_requested_count: 0,
       reconciled_at: null,
       claim_count: 0,
@@ -225,61 +225,61 @@ export class TaskController {
     const blocked = asArray(await this.listBlockedTasks(), ['blocked_tasks', 'tasks'])
       .filter((task) => task?.state === undefined || task.state === 'BLOCKED');
     const claimable = asArray(await this.listClaimableTasks(), ['claimable_tasks', 'ready_tasks', 'tasks']).slice(0, this.shortlistLimit);
-    const daemons = asArray(await this.listDaemons(), ['daemons', 'cores']);
+    const identityLoops = asArray(await this.listIdentityLoops(), ['identity_loops', 'cores']);
     const idle = [];
     const healthy = [];
     const recovery = [];
-    for (let index = 0; index < daemons.length; index += 1) {
-      const daemon = daemons[index];
-      const view = daemonState(daemon);
-      const id = daemonId(view, index);
+    for (let index = 0; index < identityLoops.length; index += 1) {
+      const loop = identityLoops[index];
+      const view = loopState(loop);
+      const id = loopId(view, index);
       if (isHealthy(view)) healthy.push(id);
       else {
-        this.daemonSignals.delete(id);
+        this.loopSignals.delete(id);
         recovery.push(id);
-        if (typeof this.requestDaemonRecovery === 'function') {
-          await this.requestDaemonRecovery(daemon, { core_id: id, reason, at: reconciledAt });
-          this.#emit({ kind: 'controller_daemon_recovery_requested', core_id: id, reason, timestamp: this.now() });
+        if (typeof this.requestIdentityRecovery === 'function') {
+          await this.requestIdentityRecovery(loop, { core_id: id, reason, at: reconciledAt });
+          this.#emit({ kind: 'controller_loop_recovery_requested', core_id: id, reason, timestamp: this.now() });
         }
-        this.#emit({ kind: 'controller_daemon_unhealthy', core_id: id, reason, timestamp: this.now() });
+        this.#emit({ kind: 'controller_loop_unhealthy', core_id: id, reason, timestamp: this.now() });
         continue;
       }
-      if (isIdle(view) && !selectionRetryDeferred(view, reconciledAt)) idle.push({ daemon, view, id });
-      else this.daemonSignals.delete(id);
+      if (isIdle(view) && !takeRetryDeferred(view, reconciledAt)) idle.push({ loop, view, id });
+      else this.loopSignals.delete(id);
     }
     const signature = taskSignature(claimable);
     let signaled = 0;
-    if (claimable.length > 0 && typeof this.signalIdleDaemon === 'function') {
+    if (claimable.length > 0 && typeof this.signalIdleIdentity === 'function') {
       // A single claimable Task needs one selector. Waking every idle Core for
       // that same shortlist creates a thundering-herd of valid but losing
       // claim attempts. Keep one wake slot per distinct claimable Task so
       // multiple independent Tasks can still use the available Cores.
       let signalBudget = claimable.length;
-      for (const { daemon, view, id } of idle) {
+      for (const { loop, view, id } of idle) {
         if (signalBudget <= 0) break;
         signalBudget -= 1;
-        // Include the Daemon's idle epoch so a completed failed/invalid
-        // selection can be woken again even when the Controller never saw a
+        // Include the identity loop's idle epoch so a completed failed/invalid
+        // take attempt can be woken again even when the Controller never saw a
         // non-IDLE snapshot between attempts.  The task signature and state
         // still suppress duplicate signals for an untouched idle view.
         const signalKey = `${signature}:${String(view.state ?? 'IDLE')}:${String(idleGeneration(view))}`;
-        if (this.daemonSignals.get(id) === signalKey) continue;
-        await this.signalIdleDaemon(daemon, { core_id: id, reason, claimable_tasks: claimable, at: reconciledAt });
-        this.daemonSignals.set(id, signalKey);
+        if (this.loopSignals.get(id) === signalKey) continue;
+        await this.signalIdleIdentity(loop, { core_id: id, reason, claimable_tasks: claimable, at: reconciledAt });
+        this.loopSignals.set(id, signalKey);
         signaled += 1;
-        this.#emit({ kind: 'controller_daemon_signaled', core_id: id, reason, claimable_count: claimable.length, timestamp: this.now() });
+        this.#emit({ kind: 'controller_loop_signaled', core_id: id, reason, claimable_count: claimable.length, timestamp: this.now() });
       }
     }
-    for (const { id } of idle) if (claimable.length === 0) this.daemonSignals.delete(id);
+    for (const { id } of idle) if (claimable.length === 0) this.loopSignals.delete(id);
     const snapshot = {
       reason,
       claimable_count: claimable.length,
       claimable_task_ids: claimable.map(taskId).filter(Boolean),
       blocked_count: blocked.length,
       blocked_task_ids: blocked.map(taskId).filter(Boolean),
-      healthy_daemon_count: healthy.length,
-      idle_daemon_count: idle.length,
-      signaled_daemon_count: signaled,
+      healthy_loop_count: healthy.length,
+      idle_loop_count: idle.length,
+      signaled_loop_count: signaled,
       recovery_requested_count: recovery.length,
       repaired_task_count: repairs.length,
       reconciled_at: new Date(reconciledAt).toISOString(),

@@ -64,7 +64,7 @@ test('Service Manifest rejects open-ended schemas and duplicate capabilities', (
 test('Service Registry is the source for metadata, role profiles, and invocation', async () => {
   const registry = new ServiceRegistry();
   registry.registerService({
-    manifest: manifest({ audience: ['selection'] }),
+    manifest: manifest({ audience: ['recovery'] }),
     adapter: { invoke: async ({ input, envelope }) => ({ value: input.value, operation_id: envelope.operation_id }) },
   });
   registry.registerService({
@@ -74,22 +74,23 @@ test('Service Registry is the source for metadata, role profiles, and invocation
 
   assert.deepEqual(registry.listServices().map((service) => service.service_id), ['bound-only', 'fake']);
   assert.deepEqual(registry.listTools().map((tool) => `${tool.service_id}.${tool.name}`), ['bound-only.echo', 'fake.echo']);
-  const selection = registry.getCapabilityProfile('selection');
-  assert.equal(selection.capabilities.length, 1);
-  assert.equal(selection.capabilities[0].service_id, 'fake');
-  assert.equal(selection.profileHash, selection.profile_hash);
-  assert.equal(selection.profileHash, registry.getCapabilityProfile('selection').profileHash);
-  assert.equal(registry.getCapabilityProfile('bound').capabilities[0].service_id, 'bound-only');
-  const envelope = makeEnvelope({ operationId: 'echo-1', actorRef: 'agent:selection' });
-  assert.deepEqual(await registry.invoke({ serviceId: 'fake', capability: 'echo', input: { value: 'ok' }, envelope, role: 'selection' }), { value: 'ok', operation_id: 'echo-1' });
+  const boundProfile = registry.getCapabilityProfile('bound');
+  assert.equal(boundProfile.capabilities.length, 1);
+  assert.equal(boundProfile.capabilities[0].service_id, 'bound-only');
+  assert.equal(boundProfile.profileHash, boundProfile.profile_hash);
+  assert.equal(boundProfile.profileHash, registry.getCapabilityProfile('bound').profileHash);
+  const recoveryProfile = registry.getCapabilityProfile('recovery');
+  assert.deepEqual(recoveryProfile.capabilities.map((capability) => capability.service_id), ['bound-only', 'fake']);
+  const envelope = makeEnvelope({ operationId: 'echo-1', actorRef: 'agent:recovery' });
+  assert.deepEqual(await registry.invoke({ serviceId: 'fake', capability: 'echo', input: { value: 'ok' }, envelope, role: 'recovery' }), { value: 'ok', operation_id: 'echo-1' });
   await assert.rejects(
-    registry.invoke({ serviceId: 'fake', capability: 'echo', input: { value: 'no' }, envelope, role: 'bound' }),
+    registry.invoke({ serviceId: 'fake', capability: 'echo', input: { value: 'no' }, envelope: makeEnvelope({ operationId: 'echo-no', actorRef: 'agent:bound' }), role: 'bound' }),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED,
   );
 });
 
 test('HTTP ServiceHost and adapter expose manifest, health, readiness, and structured invocation', async () => {
-  const initial = manifest({ id: 'remote', endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' }, audience: ['selection'] });
+  const initial = manifest({ id: 'remote', endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' }, audience: ['bound'] });
   const host = createServiceHost({
     manifest: initial,
     token: 'test-token',
@@ -103,8 +104,8 @@ test('HTTP ServiceHost and adapter expose manifest, health, readiness, and struc
     registry.registerService({ manifest: remote, adapter });
     assert.deepEqual((await adapter.health(remote)).ok, true);
     assert.deepEqual((await adapter.readiness(remote)).ok, true);
-    const envelope = makeEnvelope({ operationId: 'remote-1', actorRef: 'agent:selection' });
-    assert.deepEqual(await registry.invoke({ serviceId: 'remote', capability: 'echo', input: { value: 'remote' }, envelope, role: 'selection' }), { capability: 'echo', value: 'remote', operation_id: 'remote-1' });
+    const envelope = makeEnvelope({ operationId: 'remote-1', actorRef: 'agent:bound' });
+    assert.deepEqual(await registry.invoke({ serviceId: 'remote', capability: 'echo', input: { value: 'remote' }, envelope, role: 'bound' }), { capability: 'echo', value: 'remote', operation_id: 'remote-1' });
     const router = new ServicesRouter({ registry });
     assert.throws(
       () => router.dispatch('echo', { value: 'sync-remote' }, envelope),
@@ -117,7 +118,7 @@ test('HTTP ServiceHost and adapter expose manifest, health, readiness, and struc
     assert.equal(manifestBody.result.service_id, 'remote');
     const unauthorized = await fetch(`${environment.url}/v1/echo`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ envelope, input: { value: 'no' } }) });
     assert.equal(unauthorized.status, 401);
-    const invalid = await fetch(`${environment.url}/v1/echo`, { method: 'POST', headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' }, body: JSON.stringify({ envelope: { actor_ref: 'missing-operation-id' }, input: {}, role: 'selection' }) });
+    const invalid = await fetch(`${environment.url}/v1/echo`, { method: 'POST', headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' }, body: JSON.stringify({ envelope: { actor_ref: 'missing-operation-id' }, input: {}, role: 'bound' }) });
     assert.equal(invalid.status, 400);
     const invalidBody = await invalid.json();
     assert.equal(invalidBody.error.code, ERROR_CODES.INVALID_CONTRACT);
@@ -133,7 +134,7 @@ test('HTTP ServiceHost and adapter expose manifest, health, readiness, and struc
     const mismatchedRole = await fetch(`${environment.url}/v1/echo`, {
       method: 'POST',
       headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
-      body: JSON.stringify({ envelope, input: { value: 'wrong-role' }, role: 'bound' }),
+      body: JSON.stringify({ envelope, input: { value: 'wrong-role' }, role: 'recovery' }),
     });
     assert.equal(mismatchedRole.status, 403);
     assert.equal((await mismatchedRole.json()).error.code, ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED);
@@ -143,7 +144,7 @@ test('HTTP ServiceHost and adapter expose manifest, health, readiness, and struc
 });
 
 test('Registry verifies a remote manifest and readiness before its first invocation', async () => {
-  const initial = manifest({ id: 'verified-remote', endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' }, audience: ['selection'] });
+  const initial = manifest({ id: 'verified-remote', endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' }, audience: ['bound'] });
   let ready = true;
   let calls = 0;
   const host = createServiceHost({
@@ -159,8 +160,8 @@ test('Registry verifies a remote manifest and readiness before its first invocat
     const expected = createServiceManifest({ ...initial, endpoint: { transport: 'http-json', url: environment.url } });
     const registry = new ServiceRegistry();
     registry.registerService({ manifest: expected, adapter: createHttpJsonAdapter() });
-    const envelope = makeEnvelope({ operationId: 'verified-remote-1', actorRef: 'agent:selection' });
-    assert.deepEqual(await registry.invoke({ serviceId: 'verified-remote', capability: 'echo', input: { value: 'ok' }, envelope, role: 'selection' }), { value: 'ok' });
+    const envelope = makeEnvelope({ operationId: 'verified-remote-1', actorRef: 'agent:bound' });
+    assert.deepEqual(await registry.invoke({ serviceId: 'verified-remote', capability: 'echo', input: { value: 'ok' }, envelope, role: 'bound' }), { value: 'ok' });
     assert.equal(calls, 1);
     assert.equal(registry.getService('verified-remote').ready, true);
 
@@ -175,7 +176,7 @@ test('Registry verifies a remote manifest and readiness before its first invocat
 });
 
 test('Registry refuses a remote provider whose advertised manifest differs from the registered contract', async () => {
-  const initial = manifest({ id: 'untruthful-remote', endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' }, audience: ['selection'] });
+  const initial = manifest({ id: 'untruthful-remote', endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' }, audience: ['bound'] });
   const host = createServiceHost({ manifest: initial, handler: async () => ({ ok: true }) });
   const environment = await host.start();
   try {
@@ -186,9 +187,9 @@ test('Registry refuses a remote provider whose advertised manifest differs from 
     });
     const registry = new ServiceRegistry();
     registry.registerService({ manifest: mismatched, adapter: createHttpJsonAdapter() });
-    const envelope = makeEnvelope({ operationId: 'untruthful-remote-1', actorRef: 'agent:selection' });
+    const envelope = makeEnvelope({ operationId: 'untruthful-remote-1', actorRef: 'agent:bound' });
     await assert.rejects(
-      registry.invoke({ serviceId: 'untruthful-remote', capability: 'echo', input: {}, envelope, role: 'selection' }),
+      registry.invoke({ serviceId: 'untruthful-remote', capability: 'echo', input: {}, envelope, role: 'bound' }),
       (error) => error instanceof SwarmEnvError
         && error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID
         && error.details?.expected_manifest_hash === mismatched.manifest_hash,
@@ -251,7 +252,7 @@ test('built-in Task, Context, Judge, and Catalog providers can all be replaced b
     }
     const taskResult = await registry.invoke({
       serviceId: 'task', capability: 'list_tasks', input: { limit: 1 },
-      envelope: makeEnvelope({ operationId: 'remote-task-list', actorRef: 'agent:selection' }), role: 'selection',
+      envelope: makeEnvelope({ operationId: 'remote-task-list', actorRef: 'agent:bound' }), role: 'bound',
     });
     assert.ok(Array.isArray(taskResult));
     const contextResult = await registry.invoke({
@@ -266,7 +267,7 @@ test('built-in Task, Context, Judge, and Catalog providers can all be replaced b
     assert.equal(judgeResult, null);
     const catalogResult = await registry.invoke({
       serviceId: 'catalog', capability: 'list_tools', input: {},
-      envelope: makeEnvelope({ operationId: 'remote-catalog-list', actorRef: 'agent:selection' }), role: 'selection',
+      envelope: makeEnvelope({ operationId: 'remote-catalog-list', actorRef: 'agent:bound' }), role: 'bound',
     });
     assert.deepEqual(catalogResult, { tools: [] });
   } finally {
@@ -279,7 +280,7 @@ test('built-in Task, Context, Judge, and Catalog providers can all be replaced b
 });
 
 test('capability IDs keep same-operation providers addressable without namespace guessing', async () => {
-  const alphaBase = manifest({ id: 'alpha', name: 'search', audience: ['selection'] });
+  const alphaBase = manifest({ id: 'alpha', name: 'search', audience: ['bound'] });
   const alpha = createServiceManifest({
     ...alphaBase,
     capabilities: [{ ...alphaBase.capabilities[0], operation: 'echo' }],
@@ -294,8 +295,29 @@ test('capability IDs keep same-operation providers addressable without namespace
   const registry = new ServiceRegistry();
   registry.registerService({ manifest: alpha, adapter: { invoke: async () => { calls.push('alpha'); return 'a'; } } });
   registry.registerService({ manifest: beta, adapter: { invoke: async () => { calls.push('beta'); return 'b'; } } });
-  const envelope = makeEnvelope({ operationId: 'capability-id', actorRef: 'agent:selection' });
-  assert.equal(await registry.invoke({ capability_id: 'beta.search_beta', input: {}, envelope, role: 'selection' }), 'b');
+  const envelope = makeEnvelope({ operationId: 'capability-id', actorRef: 'agent:bound' });
+  assert.equal(await registry.invoke({ capability_id: 'beta.search_beta', input: {}, envelope, role: 'bound' }), 'b');
   assert.deepEqual(calls, ['beta']);
   assert.deepEqual(registry.getCapabilityById('alpha.search').capability.name, 'search');
+});
+
+test('registry resolves bounded service help and rejects arbitrary paths', () => {
+  const serviceManifest = createServiceManifest({
+    id: 'doc-service', title: 'Documented service', purpose: 'A test capability',
+    provider_version: '1.2.3', endpoint: { transport: 'in-process' },
+    capabilities: [{
+      name: 'lookup', operation: 'lookup', description: 'Look up a value',
+      audience: ['bound'], side_effect: 'read', idempotent: true, context: ['task'],
+      help: { when: 'Use for lookup', ref: 'service://doc-service/lookup', text: 'Use the locked index; retry only on RETRYABLE.' },
+      input_schema: { type: 'object', properties: {}, additionalProperties: false },
+      output_schema: { type: 'object', properties: {}, additionalProperties: false },
+    }],
+  });
+  const registry = new ServiceRegistry();
+  registry.registerService({ manifest: serviceManifest, adapter: { invoke: async () => ({}) } });
+  const resolved = registry.resolveHelpRef('service://doc-service/lookup');
+  assert.equal(resolved.text, 'Use the locked index; retry only on RETRYABLE.');
+  assert.equal(resolved.provider_version, '1.2.3');
+  assert.throws(() => registry.resolveHelpRef('/etc/passwd'), /service:\/\//);
+  assert.throws(() => registry.resolveHelpRef('service://doc-service/../secret'), /invalid service resource path/);
 });

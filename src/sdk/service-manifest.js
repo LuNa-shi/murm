@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 export const SERVICE_MANIFEST_VERSION = '1';
-export const SERVICE_ROLES = Object.freeze(['selection', 'bound', 'recovery']);
+export const SERVICE_ROLES = Object.freeze(['bound', 'recovery']);
 export const SERVICE_TRANSPORTS = Object.freeze(['http-json', 'in-process']);
 
 const ID_PATTERN = /^[a-z][a-z0-9._-]*$/;
@@ -65,9 +65,14 @@ function normalizeEndpoint(endpoint, field = 'endpoint') {
 
 function normalizeHelp(help, index) {
   if (!isRecord(help)) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `capabilities[${index}].help is required`, { index });
+  const text = help.text ?? help.content ?? help.body ?? null;
+  if (text !== null && (typeof text !== 'string' || text.trim().length === 0 || text.length > 32 * 1024)) {
+    throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `capabilities[${index}].help.text must be a non-empty string no longer than 32 KiB`, { index });
+  }
   return {
     when: requiredString(help.when, `capabilities[${index}].help.when`),
     ref: requiredString(help.ref, `capabilities[${index}].help.ref`),
+    ...(text === null ? {} : { text }),
   };
 }
 
@@ -102,6 +107,11 @@ function normalizeCapability(capability, index, { allowOpenObjects = false } = {
     side_effect: sideEffect,
     idempotent: capability.idempotent,
     context: [...new Set(context)],
+    // Capabilities that perform costly or side-effecting domain work must
+    // declare that they only run for an authenticated, bound Execution. The
+    // declaration is enforced at both the Registry and the HTTP host, so a
+    // direct adapter/HTTP call cannot bypass the Agent Bridge gate.
+    requires_binding: capability.requires_binding === true,
     scope: capability.scope ?? null,
     help: normalizeHelp(capability.help, index),
     method,

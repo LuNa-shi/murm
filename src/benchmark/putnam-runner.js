@@ -25,7 +25,7 @@ import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builti
 import { createHttpJsonAdapter } from '../sdk/service-adapter.js';
 import { createMathlibSearchManifest } from '../services/mathlib-search-service.js';
 import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
-import { CoreDaemon, SELECTION_AGENT_PROMPT } from '../runtime/core-daemon.js';
+import { IdentityTaskLoop } from '../runtime/identity-task-loop.js';
 import { TaskController } from '../runtime/task-controller.js';
 import { CoreParallelismTracker } from './parallelism.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -623,7 +623,7 @@ async function startAgentSession(core) {
   core.bridge.actorRef = core.actorRef;
   // A Core owns one reusable Agent identity.  It discovers work and calls
   // task_take from this same Session; production must not create a detached
-  // Selection Agent/session that chooses on the identity's behalf.
+  // old selection transport/session that chooses on the identity's behalf.
   core.childEnv.SWARMENV_AGENT_ROLE = AGENT_ROLES.BOUND;
   core.sessionNumber += 1;
   const suffix = core.sessionNumber === 1 ? 'worker-session' : `worker-session-${core.sessionNumber}`;
@@ -639,9 +639,9 @@ async function startAgentSession(core) {
   core.sessionHistory.push(session);
   core.versionManifest = session.manifest ?? null;
   await session.waitForReady({ timeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000 });
-  // The Daemon supplies a bounded Task view to this reusable identity.  The
+  // The identity loop supplies a bounded Task view to this reusable identity.  The
   // first prompt is sent by the identity's task_take loop, not by a separate
-  // Selection Session.
+  // old selection transport.
   core.unboundSessionCount += 1;
   core.initialTurnPromise = null;
 }
@@ -694,7 +694,7 @@ function attachRecoveredSession(core, { execution, session }) {
           core.turnInFlight = false;
         }
       }
-      core.stateRef?.requestDaemonWake?.();
+      core.stateRef?.requestIdentityWake?.();
     }
   })();
 }
@@ -754,17 +754,21 @@ function selectionView(candidates) {
 /**
  * Run one bounded task-discovery turn on the reusable Core identity.  The
  * identity itself chooses a Task and calls the canonical `task_take` seam;
- * there is deliberately no separate Selection Agent/session in production.
- * CoreDaemon still owns the durable handoff bookkeeping, but it receives the
+ * there is deliberately no separate old selection transport/session in production.
+ * IdentityTaskLoop still owns the durable handoff bookkeeping, but it receives the
  * already-created claim from this same identity and never asks another
  * process to choose on its behalf.
  */
-async function selectTaskWithAgent(core, candidates, prompt) {
+async function takeTaskWithAgent(core, candidates, prompt) {
+  // An active Execution owns the identity. Never open a parallel discovery
+  // turn or ask the model to take a second responsibility.
+  if (core.taskId || core.executionId) return { take_deferred: true };
+  core.bridge.beginTakeAttempt?.();
   const session = await ensureAgentSession(core);
-  if (!session) return core.turnInFlight ? { selection_deferred: true } : null;
+  if (!session) return core.turnInFlight ? { take_deferred: true } : null;
   const sequence = session.rpcRecords?.length ?? 0;
-  core.selectionClaim = null;
-  core.selectionActive = true;
+  core.takeResult = null;
+  core.takeActive = true;
   core.dispatchReserved = true;
   core.turnInFlight = true;
   core.turnStartedAt = Date.now();
@@ -774,8 +778,7 @@ async function selectTaskWithAgent(core, candidates, prompt) {
     reason: 'task_discovery_and_take',
   }, core.turnStartedAt);
   core.agentTurnSession = session;
-  core.selectionTurnCount = (core.selectionTurnCount ?? 0) + 1;
-  core.bridge.setSelectionCandidates(candidates);
+  core.takeTurnCount = (core.takeTurnCount ?? 0) + 1;
   const message = [
     prompt,
     'You are the reusable identity for this Core. Continue on this same Session; do not delegate Task selection to another Agent/session.',
@@ -788,18 +791,23 @@ async function selectTaskWithAgent(core, candidates, prompt) {
     if (response?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
       await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: sequence });
     }
-    if (core.selectionClaim?.task?.task_id) return core.selectionClaim;
-    if (core.bridge.selectionClaimAttempted || Object.hasOwn(session, 'bound')) return { selection_deferred: true };
+    if (core.takeResult?.task?.task_id) return core.takeResult;
+    if (core.bridge.lastTakeOutcome?.attempted && !core.bridge.lastTakeOutcome.ok) {
+      return { take_failed: true, error: core.bridge.lastTakeOutcome };
+    }
+    if (core.taskId || core.executionId) return { take_deferred: true };
     return null;
   } catch (error) {
-    if (core.bridge.selectionClaimAttempted || Object.hasOwn(session, 'bound')) return { selection_deferred: true };
+    if (core.bridge.lastTakeOutcome?.attempted && !core.bridge.lastTakeOutcome.ok) {
+      return { take_failed: true, error: { code: error.code ?? null, message: error.message } };
+    }
+    if (core.taskId || core.executionId) return { take_deferred: true };
     core.sessionStartFailures = (core.sessionStartFailures ?? 0) + 1;
-    if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'selection_turn_error' });
+    if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'take_turn_error' });
     return null;
   } finally {
     collectToolEvents(core, session.rpcRecords?.slice(sequence) ?? []);
-    core.bridge.setSelectionCandidates(null);
-    core.selectionActive = false;
+    core.takeActive = false;
     if (core.agentTurnSession === session && !core.runtime.hasActiveExecution(core.executionId ?? '')) {
       core.parallelism.endAgentTurn(core.index, Date.now(), 'task_discovery_settled');
       core.agentTurnSession = null;
@@ -811,7 +819,7 @@ async function selectTaskWithAgent(core, candidates, prompt) {
     const handedOff = core.session !== session && Boolean(core.taskId && core.executionId);
     // Keep the Core reserved across the claim and Runtime handoff. Invalid or
     // empty selections do not reserve the Core.
-    const selectedTaskId = core.selectionClaim?.task?.task_id ?? null;
+    const selectedTaskId = core.takeResult?.task?.task_id ?? null;
     const handoffPending = !handedOff && typeof selectedTaskId === 'string' &&
       candidates.some((candidate) => String(candidate.task_id ?? candidate.taskId ?? candidate.id) === selectedTaskId);
     if (!handedOff && !handoffPending) {
@@ -828,14 +836,14 @@ async function selectTaskWithAgent(core, candidates, prompt) {
       // Empty, invalid, or failed selection turns have no claim to hand off;
       // release their transport so bounded startup retry accounting remains
       // meaningful. A valid claim takes the path above and is retained until
-      // CoreDaemon finishes the Runtime handoff boundary.
+      // IdentityTaskLoop finishes the Runtime handoff boundary.
       core.session = null;
       await Promise.resolve(session.stop?.()).catch(() => undefined);
     }
     // Keep the selection Session alive until its claim and Runtime handoff
     // have completed. The bound Session is started by the claim callback;
     // normal project cleanup stops both transports through stopCore.
-    core.stateRef?.requestDaemonWake?.();
+    core.stateRef?.requestIdentityWake?.();
   }
 }
 
@@ -1650,10 +1658,10 @@ function projectReport(state, startedAt, deadline) {
       tool_protocol_error_count: toolProtocolErrorCount,
       invalid_wait_attempt_count: invalidWaitAttemptCount,
       scheduler_status_count: state.schedulerStatusCount,
-      core_daemons: state.daemons?.map((daemon) => daemon.snapshot()) ?? [],
-      daemon_events: state.daemonEvents ?? [],
+      identity_loops: state.identityLoops?.map((loop) => loop.snapshot()) ?? [],
+      identity_loop_events: state.identityLoopEvents ?? [],
       // Kept as a compatibility projection for existing report consumers;
-      // production decisions are owned by Controller and CoreDaemon above.
+      // production decisions are owned by Controller and IdentityTaskLoop above.
       scheduler: state.scheduler?.snapshot() ?? null,
       scheduler_events: state.schedulerEvents,
       controller: state.controller?.snapshot() ?? null,
@@ -1823,13 +1831,12 @@ async function createProjectState(problem, config, options) {
   const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService });
   const router = new ServicesRouter({ taskService, contextService, judgeService, registry: routerRegistry, logger: routerLogger });
   const allowedAgentToolNames = [...new Set([
-    AGENT_ROLES.SELECTION,
     AGENT_ROLES.BOUND,
     AGENT_ROLES.RECOVERY,
   ].flatMap((role) => buildCapabilityProfile({
     role,
     registry: capabilityRegistry,
-    runtimeCapabilities: role === AGENT_ROLES.SELECTION ? [] : runtimeCapabilityList(),
+    runtimeCapabilities: runtimeCapabilityList(),
   }).capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`)))];
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const taskCreateMutex = selectedTaskModel === 'flat' ? new SerialTaskCreateAdmission() : null;
@@ -2044,10 +2051,10 @@ async function createProjectState(problem, config, options) {
       dispatchReserved: false,
       sessionStartAttempts: 0,
       sessionStartFailures: 0,
-      selectionActive: false,
-      selectionClaim: null,
-      selectionTurnCount: 0,
-      daemon: null,
+      takeActive: false,
+      takeResult: null,
+      takeTurnCount: 0,
+      identityLoop: null,
       unboundSessionCount: 0,
       parallelism,
       versionManifest: null,
@@ -2077,9 +2084,9 @@ async function createProjectState(problem, config, options) {
       // count quota or reject independent work after a fixed number of Tasks.
       onClaim: async (claim) => {
         // task_take is invoked by this Core's reusable identity. Keep the
-        // durable result available to CoreDaemon so it does not issue a
+        // durable result available to IdentityTaskLoop so it does not issue a
         // second claim or manufacture a separate selection handoff.
-        core.selectionClaim = claim;
+        core.takeResult = claim;
         core.dispatchReserved = false;
         const claimedAt = Date.now();
         const priorWaitingExecutionId = core.waitingExecutionId;
@@ -2153,7 +2160,7 @@ async function createProjectState(problem, config, options) {
               // Execution: source-level checker feedback, incremental edits,
               // and ordinary progress may leave the Task RUNNING. Continue
               // that same bound Session until Runtime observes a wait or a
-              // terminal Task state; CoreDaemon must not wait forever for a
+              // terminal Task state; IdentityTaskLoop must not wait forever for a
               // release that only a later turn can produce.
               while (!core.stopping && core.session === boundSession && core.executionId === boundExecutionId) {
                 const current = taskService.getExecution(boundExecutionId);
@@ -2178,7 +2185,7 @@ async function createProjectState(problem, config, options) {
                 core.turnInFlight = false;
                 core.nextTurnAt = Date.now();
               }
-              // CoreDaemon waits for the Runtime release boundary. Terminal
+              // IdentityTaskLoop waits for the Runtime release boundary. Terminal
               // Task transitions must therefore release the bridge binding
               // here, rather than relying on the benchmark's periodic repair
               // sweep to break a handoff wait.
@@ -2188,7 +2195,7 @@ async function createProjectState(problem, config, options) {
                   await releaseTerminalExecution(core);
                 }
               }
-              core.stateRef?.requestDaemonWake?.();
+              core.stateRef?.requestIdentityWake?.();
               if (core.boundTurnPromise === boundTurnPromise) core.boundTurnPromise = null;
             }
           })();
@@ -2271,7 +2278,7 @@ async function createProjectState(problem, config, options) {
             taskId: null, executionId: null, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
             payload: { state: 'IDLE', reason: 'unbound_or_duplicate_release' },
           });
-          core.stateRef?.requestDaemonWake?.();
+          core.stateRef?.requestIdentityWake?.();
           return;
         }
         const releaseLatency = core.latencyByExecution.get(executionId);
@@ -2321,10 +2328,10 @@ async function createProjectState(problem, config, options) {
           core.session = null;
           // Runtime has already removed and stopped the active process before
           // invoking this callback. The transport turn still owns the
-          // dispatch reservation until its promise settles, so another Daemon
+          // dispatch reservation until its promise settles, so another identity loop
           // cannot start a second worker against this Core during handoff.
         }
-        core.stateRef?.requestDaemonWake?.();
+        core.stateRef?.requestIdentityWake?.();
       },
       onWorkspaceWrite: async ({ taskId, executionId, result }) => {
         core.observe({
@@ -2358,7 +2365,7 @@ async function createProjectState(problem, config, options) {
       onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
         const materialPublishOperation = operation === 'publish_material' || operation === 'context_publish_material';
         if (materialPublishOperation || ['task_link_material', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
-          core.stateRef?.requestDaemonWake?.();
+          core.stateRef?.requestIdentityWake?.();
         }
         if (STRUCTURE_OPERATIONS.has(operation)) {
           const structureResult = result && typeof result === 'object' ? result : {};
@@ -2386,7 +2393,7 @@ async function createProjectState(problem, config, options) {
             core: core.index,
             progress_kind: 'semantic_structure',
           });
-          core.stateRef?.requestDaemonWake?.();
+          core.stateRef?.requestIdentityWake?.();
         } else if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
           const materialsRead = operation === 'context_get_material'
             ? [result?.material ?? result].filter(Boolean)
@@ -2458,7 +2465,7 @@ async function createProjectState(problem, config, options) {
             core: core.index,
             progress_kind: 'child_task',
           });
-          core.stateRef?.requestDaemonWake?.();
+          core.stateRef?.requestIdentityWake?.();
         } else if (operation === 'task_create') {
           const created = result?.task ?? result ?? {};
           const state = core.stateRef;
@@ -2491,7 +2498,7 @@ async function createProjectState(problem, config, options) {
             core: core.index,
             progress_kind: 'task_create',
           });
-          core.stateRef?.requestDaemonWake?.();
+          core.stateRef?.requestIdentityWake?.();
         } else if (materialPublishOperation) {
           const published = result?.material ?? result ?? {};
           core.observe({
@@ -2573,7 +2580,7 @@ async function createProjectState(problem, config, options) {
             core: core.index,
             progress_kind: 'coordination',
           });
-          core.stateRef?.requestDaemonWake?.();
+          core.stateRef?.requestIdentityWake?.();
         } else if (operation === 'submit_candidate') {
           const check = result?.check_result ?? result?.checkResult ?? {};
           core.observe({
@@ -2672,10 +2679,10 @@ async function createProjectState(problem, config, options) {
     executionTimeoutErrorCount: 0,
     schedulerStatusCount: 0,
     schedulerEvents: [],
-    daemonEvents: [],
-    daemons: [],
-    daemonRuns: [],
-    daemonAbortController: null,
+    identityLoopEvents: [],
+    identityLoops: [],
+    identityLoopRuns: [],
+    identityLoopAbortController: null,
     unsubscribeTaskEvents: null,
     controllerEvents: [],
     controller: null,
@@ -2709,27 +2716,27 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     // second five-second Controller timer would duplicate reconciliations and
     // wake attempts while the durable Task event path is quiet.
     sweepIntervalMs: options.controllerSweepIntervalMs ?? 0,
-    listDaemons: () => state.cores.map((core) => core.daemon?.snapshot?.() ?? {
+    listIdentityLoops: () => state.cores.map((core) => core.identityLoop?.snapshot?.() ?? {
       core_id: `core-${core.index}`,
-      state: core.taskId ? 'RUNNING' : (core.turnInFlight || core.dispatchReserved ? 'SELECTING' : 'IDLE'),
+      state: core.taskId ? 'RUNNING' : (core.turnInFlight || core.dispatchReserved ? 'TAKING' : 'IDLE'),
       healthy: !core.stopping,
     }),
-    signalIdleDaemon: (_daemon, payload) => {
+    signalIdleIdentity: (_loop, payload) => {
       // This callback runs inside a Controller reconciliation pass.  The
       // general wake helper also asks the Controller to reconcile, which would
       // queue another pass from this callback and self-trigger on an OPEN
-      // Task. Wake the selected Daemon directly; durable Task events and the
+      // Task. Wake the selected identity loop directly; durable Task events and the
       // periodic sweep remain the Controller re-entry paths.
       const reason = payload.reason ?? 'controller_signal';
-      state.daemonWakeRequested = true;
-      resolveDaemonWake?.();
-      const target = state.daemons?.find((daemon) => daemon.coreId === payload.core_id);
+      state.identityWakeRequested = true;
+      resolveIdentityWake?.();
+      const target = state.identityLoops?.find((loop) => loop.coreId === payload.core_id);
       target?.notify?.(reason);
     },
-    requestDaemonRecovery: async (daemon, payload) => {
+    requestIdentityRecovery: async (loop, payload) => {
       const core = state.cores.find((candidate) => `core-${candidate.index}` === payload.core_id);
       if (core && !core.stopping) await core.runtime.restart().catch(() => undefined);
-      state.controllerEvents.push({ kind: 'controller_daemon_recovery_requested', core_id: payload.core_id, reason: payload.reason ?? null, timestamp: Date.now() });
+      state.controllerEvents.push({ kind: 'controller_identity_loop_recovery_requested', core_id: payload.core_id, reason: payload.reason ?? null, timestamp: Date.now() });
     },
     onEvent: (event) => {
       const sanitized = {
@@ -2740,9 +2747,9 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         block_reason: event.block_reason ?? null,
         claimable_count: event.claimable_count ?? null,
         blocked_count: event.blocked_count ?? null,
-        healthy_daemon_count: event.healthy_daemon_count ?? null,
-        idle_daemon_count: event.idle_daemon_count ?? null,
-        signaled_daemon_count: event.signaled_daemon_count ?? null,
+        healthy_identity_loop_count: event.healthy_identity_loop_count ?? null,
+        idle_identity_loop_count: event.idle_identity_loop_count ?? null,
+        signaled_identity_loop_count: event.signaled_identity_loop_count ?? null,
         recovery_requested_count: event.recovery_requested_count ?? null,
         repaired_task_count: event.repaired_task_count ?? null,
         claim_count: event.claim_count ?? null,
@@ -2753,44 +2760,44 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     },
   });
   state.controller.start();
-  let resolveDaemonWake;
-  let daemonWake = new Promise((resolve) => { resolveDaemonWake = resolve; });
-  state.daemonWakeRequested = false;
+  let resolveIdentityWake;
+  let identityWake = new Promise((resolve) => { resolveIdentityWake = resolve; });
+  state.identityWakeRequested = false;
   const startedAt = Date.now();
   state.parallelism.start(startedAt);
   recordReadinessSnapshot(state, startedAt);
   const durationMs = options.timeboxMs ?? 60 * 60_000;
   const deadline = startedAt + durationMs;
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
-  // CoreDaemon waits for the whole Runtime Execution to release after a
+  // IdentityTaskLoop waits for the whole Runtime Execution to release after a
   // successful claim. Keep that ownership deadline at least as long as the
   // durable Runtime deadline; a turn timeout is only the per-prompt bound.
   const executionTimeoutMs = state.executionTimeoutMs;
   const basePrompt = (core) => core.taskId
       ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or blocking on a typed dependency.`
       : GENERIC_AGENT_PROMPT;
-  state.daemonEvents = state.daemonEvents ?? [];
-  state.daemons = state.cores.map((core) => {
-    const daemon = new CoreDaemon({
+  state.identityLoopEvents = state.identityLoopEvents ?? [];
+  state.identityLoops = state.cores.map((core) => {
+    const loop = new IdentityTaskLoop({
       coreId: `core-${core.index}`,
       // This is a bounded discovery prompt for the reusable identity, not a
-      // Selection Agent SOP.  The identity must call task_take itself.
-      selectionPrompt: `${BOUND_AGENT_PROMPT}\nUse task_status/task_take on this same Core identity; do not call task.claim or delegate selection to another Session.`,
+      // old selection transport SOP.  The identity must call task_take itself.
+      takePrompt: `${BOUND_AGENT_PROMPT}\nUse task_status/task_take on this same Core identity; do not call task.claim or delegate selection to another Session.`,
       shortlistLimit: options.controllerShortlistLimit ?? 16,
-      maxSelectionAttempts: options.maxStartupAttempts ?? 3,
-      maxClaimRescans: options.maxClaimRescans ?? 1,
-      // Controller/task events wake an idle Daemon immediately.  Keep the
+      maxTakeAttempts: options.maxStartupAttempts ?? 3,
+      maxTakeRescans: options.maxTakeRescans ?? 1,
+      // Controller/task events wake an idle identity loop immediately.  Keep the
       // fallback long enough to be a repair path rather than a 10Hz empty
       // queue poll when an event source is quiet or unavailable.
-      idleBackoffMs: options.daemonIdleBackoffMs ?? 5_000,
+      idleBackoffMs: options.identityLoopIdleBackoffMs ?? 5_000,
       taskService: state.taskService,
       listClaimableTasks: () => projectClaimableTasks(state, { limit: options.controllerShortlistLimit ?? 16 }),
-      selectTask: ({ candidates, prompt }) => selectTaskWithAgent(core, candidates, prompt),
+      takeTask: ({ candidates, prompt }) => takeTaskWithAgent(core, candidates, prompt),
       claimTask: async (selectedTaskId, context) => {
-        // The Selection Agent may already have claimed the Task. Reuse that
+        // The old selection transport may already have claimed the Task. Reuse that
         // durable result rather than creating a second Execution.
-        if (core.selectionClaim?.task?.task_id === selectedTaskId) {
-          return core.selectionClaim;
+        if (core.takeResult?.task?.task_id === selectedTaskId) {
+          return core.takeResult;
         }
         const selectedTask = state.taskService.getTask(selectedTaskId);
         if (!selectedTask) {
@@ -2809,7 +2816,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           });
         } catch (error) {
           // A lost race or admission rejection must release the provisional
-          // Core reservation before the Daemon returns to its bounded idle loop.
+          // Core reservation before the identity loop returns to its bounded idle loop.
           core.turnInFlight = false;
           core.dispatchReserved = false;
           core.nextTurnAt = Date.now();
@@ -2818,7 +2825,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       },
       runtime: core.runtime,
       runExecution: async (claim) => {
-        if (core.selectionClaim?.execution?.execution_id === claim.execution.execution_id) {
+        if (core.takeResult?.execution?.execution_id === claim.execution.execution_id) {
           return { execution: state.taskService.getExecution(claim.execution.execution_id) };
         }
         try {
@@ -2827,7 +2834,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         } catch (error) {
           // ServicesBridge invokes its release hook for a failed bind, but the
           // Core's provisional selection reservation still belongs to this
-          // failed handoff. Clear it before CoreDaemon rescan/backoff.
+          // failed handoff. Clear it before IdentityTaskLoop rescan/backoff.
           core.turnInFlight = false;
           core.dispatchReserved = false;
           core.nextTurnAt = Date.now();
@@ -2862,8 +2869,8 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           task_ids: event.task_ids ?? null,
           timestamp: event.timestamp ?? Date.now(),
         };
-        state.daemonEvents.push(sanitized);
-        if (sanitized.kind === 'daemon_claim_conflict') {
+        state.identityLoopEvents.push(sanitized);
+        if (sanitized.kind === 'identity_loop_claim_conflict') {
           const conflictKey = [
             sanitized.core_id,
             sanitized.task_id,
@@ -2871,11 +2878,11 @@ export async function runBenchmarkProject(problem, config, options = {}) {
             sanitized.rescan,
             sanitized.timestamp,
           ].join(':');
-          state.parallelism.recordClaimConflict(`daemon:${conflictKey}`);
+          state.parallelism.recordClaimConflict(`identity:${conflictKey}`);
         }
         state.observationStore.append({
           experimentId: state.runId,
-          source: 'core-daemon',
+          source: 'identity-task-loop',
           kind: sanitized.kind,
           taskId: sanitized.task_id,
           executionId: sanitized.execution_id,
@@ -2883,58 +2890,58 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           visibility: 'operator',
           payload: sanitized,
         });
-        if (sanitized.kind === 'daemon_state_changed' && sanitized.changed === true && sanitized.state === 'IDLE' &&
-          ['execution_released', 'runtime_failed', 'selection_failed', 'selection_invalid', 'claim_conflict', 'claim_failed', 'claim_invalid'].includes(sanitized.reason)) {
-          // The release event can arrive while CoreDaemon is still inside its
-          // handoff. Wake this Daemon once it has actually returned to IDLE,
+        if (sanitized.kind === 'identity_loop_state_changed' && sanitized.changed === true && sanitized.state === 'IDLE' &&
+          ['execution_released', 'runtime_failed', 'take_failed', 'take_invalid', 'claim_conflict', 'claim_failed', 'claim_invalid'].includes(sanitized.reason)) {
+          // The release event can arrive while IdentityTaskLoop is still inside its
+          // handoff. Wake this identity loop once it has actually returned to IDLE,
           // then reconcile for durable projections. The direct wake avoids a
           // same-signature Controller signal being incorrectly deduplicated
           // after a fast handoff that the Controller never observed as RUNNING.
           queueMicrotask(() => {
-            daemon.notify('daemon_idle');
-            void state.controller?.notify('daemon_idle').catch(() => undefined);
+            loop.notify('identity_loop_idle');
+            void state.controller?.notify('identity_loop_idle').catch(() => undefined);
           });
         }
       },
     });
-    core.daemon = daemon;
-    return daemon;
+    core.identityLoop = loop;
+    return loop;
   });
-  state.requestDaemonWake = (reason = 'event') => {
-    state.daemonWakeRequested = true;
-    resolveDaemonWake();
+  state.requestIdentityWake = (reason = 'event') => {
+    state.identityWakeRequested = true;
+    resolveIdentityWake();
     void state.controller.notify(reason).catch(() => undefined);
   };
   state.unsubscribeTaskEvents = state.taskService.subscribeTaskEvents((event) => {
     // Task Service emits only after its mutation transaction commits. This is
     // the low-latency path; the Controller's periodic sweep remains the
     // repair path for missed notifications or a restarted process.
-    state.requestDaemonWake(event?.kind ?? 'task_event');
+    state.requestIdentityWake(event?.kind ?? 'task_event');
   });
   // Compatibility metrics keep the old report field readable while the
   // production composition has no Scheduler instance or Scheduler decision
-  // maker. Every value is derived from CoreDaemon lifecycle counters.
+  // maker. Every value is derived from IdentityTaskLoop lifecycle counters.
   state.scheduler = { snapshot: () => ({
     ready_count: projectClaimableTasks(state, { limit: 100 }).length,
-    dispatch_count: state.daemons.reduce((count, daemon) => count + daemon.snapshot().claim_count, 0),
+    dispatch_count: state.identityLoops.reduce((count, loop) => count + loop.snapshot().claim_count, 0),
     startup_attempt_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartAttempts ?? 0), 0),
     startup_failure_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartFailures ?? 0), 0),
-    bounded_startup_exhausted_count: state.daemons.filter((daemon) => daemon.snapshot().selection_exhausted).length,
+    bounded_startup_exhausted_count: state.identityLoops.filter((loop) => loop.snapshot().take_exhausted).length,
     duplicate_suppression_count: 0,
     dispatch_latencies_ms: [],
-    in_flight_core_ids: state.daemons.filter((daemon) => daemon.snapshot().state !== 'IDLE').map((daemon) => daemon.coreId),
-    stopped: state.daemons.every((daemon) => daemon.snapshot().stopped),
+    in_flight_core_ids: state.identityLoops.filter((loop) => loop.snapshot().state !== 'IDLE').map((loop) => loop.coreId),
+    stopped: state.identityLoops.every((loop) => loop.snapshot().stopped),
   }) };
   try {
     // Demand-driven startup observes the queue before touching Pi/provider
     // capacity. A root-only queue starts one unbound session; an empty queue
     // starts none.
     await state.controller.reconcile({ reason: 'initial' });
-    // Each physical Core owns one long-lived Daemon supervisor. The
+    // Each physical Core owns one long-lived identity loop supervisor. The
     // Controller only reconciles durable readiness and wakes these loops; it
     // never performs a selection or claim itself.
-    state.daemonAbortController = new AbortController();
-    state.daemonRuns = state.daemons.map((daemon) => daemon.run({ signal: state.daemonAbortController.signal }));
+    state.identityLoopAbortController = new AbortController();
+    state.identityLoopRuns = state.identityLoops.map((loop) => loop.run({ signal: state.identityLoopAbortController.signal }));
     for (const core of state.cores) core.nextTurnAt = Date.now();
     const heartbeat = setInterval(() => {
       for (const core of state.cores) {
@@ -2961,7 +2968,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         const sweep = core.runtime.sweepWatchdog()
           .then((recovered) => {
             state.watchdogRecoveryCount += recovered.length;
-            if (recovered.length > 0) state.requestDaemonWake?.();
+            if (recovered.length > 0) state.requestIdentityWake?.();
           })
           .catch((error) => {
             state.watchdogErrorCount += 1;
@@ -2990,7 +2997,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
               state.executionTimeoutErrorCount += 1;
               core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'execution_timeout_error' });
             } else if (events.length > 0) {
-              state.requestDaemonWake?.();
+              state.requestIdentityWake?.();
             }
           }
         })
@@ -3000,12 +3007,12 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     }, options.executionTimeoutSweepMs ?? 10_000);
     try {
       while (Date.now() < deadline && (!state.stopOnSolved || state.solvedAt === null)) {
-        if (!state.daemonWakeRequested) {
-          await Promise.race([sleep(options.pollMs ?? 5_000), daemonWake]);
+        if (!state.identityWakeRequested) {
+          await Promise.race([sleep(options.pollMs ?? 5_000), identityWake]);
         }
-        const reconcileReason = state.daemonWakeRequested ? 'event' : 'poll';
-        state.daemonWakeRequested = false;
-        daemonWake = new Promise((resolve) => { resolveDaemonWake = resolve; });
+        const reconcileReason = state.identityWakeRequested ? 'event' : 'poll';
+        state.identityWakeRequested = false;
+        identityWake = new Promise((resolve) => { resolveIdentityWake = resolve; });
         const readyStartedAt = Date.now();
         const readyTasks = projectTasks(state, {
           states: ['OPEN', 'RUNNING', 'WAITING'],
@@ -3022,8 +3029,8 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         for (const core of state.cores) {
           if (state.solvedAt === null) await releaseTerminalExecution(core);
         }
-        // The Controller owns reconciliation and signals each idle Daemon;
-        // each long-lived Daemon owns its bounded selection/claim loop. The
+        // The Controller owns reconciliation and signals each idle identity loop;
+        // each long-lived identity loop owns its bounded take/claim loop. The
         // main loop is only the periodic repair and observability sweep.
         await state.controller.reconcile({ reason: reconcileReason });
         for (const core of state.cores) {
@@ -3045,9 +3052,9 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     const cleanupStartedAt = Date.now();
     state.unsubscribeTaskEvents?.();
     await state.controller?.stop?.();
-    state.daemonAbortController?.abort();
-    for (const daemon of state.daemons ?? []) daemon.stop();
-    await Promise.all(state.daemonRuns ?? []);
+    state.identityLoopAbortController?.abort();
+    for (const loop of state.identityLoops ?? []) loop.stop();
+    await Promise.all(state.identityLoopRuns ?? []);
     for (const core of state.cores) await stopCore(state, core);
     state.cleanupElapsedMs = Date.now() - cleanupStartedAt;
   }

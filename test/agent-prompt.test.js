@@ -28,11 +28,13 @@ test('static prompts describe bounded decomposition without fixed fanout', () =>
   assert.doesNotMatch(prompt, /four reusable|two child|three child|select_task|swarmenv_call|request_wait|execution_wait/i);
 });
 
-test('selection and execution static prompts express opposite ownership boundaries', () => {
-  assert.match(GENERIC_AGENT_PROMPT, /claim exactly one/);
-  assert.match(GENERIC_AGENT_PROMPT, /task\.claim/);
-  assert.match(BOUND_AGENT_PROMPT, /cannot claim or select/);
-  assert.match(RECOVERY_AGENT_PROMPT, /cannot claim or select/);
+test('all prompt aliases describe one reusable identity contract', () => {
+  for (const prompt of [GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT]) {
+    assert.match(prompt, /task_take/);
+    assert.match(prompt, /same Session/i);
+    assert.match(prompt, /cannot claim or select/);
+    assert.doesNotMatch(prompt, /Selection Agent|Selection Session|task\.claim/i);
+  }
 });
 
 test('prompt snapshot records the profile hash before the first turn', () => {
@@ -70,4 +72,20 @@ test('dynamic prompt includes only the bounded execution context supplied by Run
   assert.match(prompt, /2030-01-01T00:30:00.000Z/);
   assert.match(prompt, /task_create/);
   assert.match(prompt, /workspace-1/);
+});
+
+test('authorized service documentation is injected and hashed with the profile snapshot', () => {
+  const services = [{
+    service_id: 'mathlib-search', provider_version: '2.1.0', manifest_hash: 'manifest-hash',
+    capabilities: [{
+      name: 'mathlib_search',
+      help: { text: 'Search the locked Mathlib index; verify every declaration in the fixture.' },
+    }],
+  }];
+  const prompt = composeAgentPrompt({ role: AGENT_ROLES.BOUND, services });
+  assert.match(prompt, /Authorized Service Documentation/);
+  assert.match(prompt, /locked Mathlib index/);
+  const snapshot = buildPromptSnapshot({ role: AGENT_ROLES.BOUND, services });
+  assert.equal(snapshot.service_doc_hashes.length, 1);
+  assert.equal(snapshot.service_doc_hashes[0].service_id, 'mathlib-search');
 });

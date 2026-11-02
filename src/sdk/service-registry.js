@@ -32,6 +32,7 @@ function capabilityView(manifest, capability) {
     scope: capability.scope ?? null,
     idempotent: capability.idempotent,
     context: [...capability.context],
+    requires_binding: capability.requires_binding === true,
     help: clone(capability.help),
     method: capability.method,
     path: capability.path,
@@ -190,6 +191,7 @@ export class ServiceRegistry {
 
   help(serviceId, capabilityName) {
     const { manifest, capability } = this.getCapability(serviceId, capabilityName);
+    const helpText = capability.help?.text ?? null;
     return {
       service_id: manifest.service_id,
       capability: capability.name,
@@ -197,9 +199,30 @@ export class ServiceRegistry {
       purpose: manifest.purpose,
       description: capability.description,
       help: clone(capability.help),
+      help_text: helpText,
       input_schema: clone(capability.input_schema),
       output_schema: clone(capability.output_schema),
       errors: clone(capability.errors),
+    };
+  }
+
+  /**
+   * Resolve only registry-owned service:// references.  A model-supplied
+   * filesystem path, URL, or traversal segment is never fetched here.
+   */
+  resolveHelpRef(ref) {
+    if (typeof ref !== 'string' || !ref.startsWith('service://')) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'help.ref must be a registry-owned service:// reference');
+    }
+    const match = /^service:\/\/([a-z][a-z0-9._-]*)\/([a-z][a-z0-9._-]*)$/.exec(ref);
+    if (!match) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'help.ref has an invalid service resource path');
+    const result = this.help(match[1], match[2]);
+    return {
+      service_id: result.service_id,
+      capability: result.capability,
+      provider_version: this.getService(match[1]).manifest.provider_version,
+      manifest_hash: this.getService(match[1]).manifest.manifest_hash,
+      text: result.help_text,
     };
   }
 
@@ -209,7 +232,7 @@ export class ServiceRegistry {
     const entry = capabilityId
       ? this.getCapabilityById(capabilityId)
       : this.getCapability(id, name);
-    const actorRole = /^agent:(selection|bound|recovery)$/.exec(envelope?.actor_ref ?? '')?.[1] ?? null;
+    const actorRole = /^agent:(bound|recovery)$/.exec(envelope?.actor_ref ?? '')?.[1] ?? null;
     if (actorRole && role !== null && actorRole !== role) {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, 'service role does not match the Agent envelope', { service_id: entry.manifest.service_id, capability: entry.capability.name, role, actor_role: actorRole });
     }
@@ -218,6 +241,18 @@ export class ServiceRegistry {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `capability ${id}.${name} is not available to role ${effectiveRole}`, { service_id: id, capability: name, role: effectiveRole });
     }
     if (!envelope || typeof envelope !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'service invocation envelope is required');
+    // Mandatory Execution binding is a server-side property of the
+    // capability, not a Bridge-only convention. A caller reaching the
+    // Registry directly (an old adapter, a stale token, or a replay) cannot
+    // invoke binding-required research work without the authenticated
+    // Task/Execution identity.
+    if (entry.capability.requires_binding === true && (!envelope.task_id || !envelope.execution_id)) {
+      throw new SwarmEnvError(
+        ERROR_CODES.NOT_ALLOWED,
+        `capability ${entry.manifest.service_id}.${entry.capability.name} requires a bound Task and Execution`,
+        { service_id: entry.manifest.service_id, capability: entry.capability.name, requires: ['task', 'execution'] },
+      );
+    }
     return entry.adapter.invoke({ manifest: entry.manifest, capability: entry.capability, input: payload ?? input, envelope, role: effectiveRole, signal });
   }
 

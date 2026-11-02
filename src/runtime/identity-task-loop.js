@@ -1,22 +1,16 @@
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 
-export const CORE_DAEMON_STATES = Object.freeze({
+export const IDENTITY_LOOP_STATES = Object.freeze({
   IDLE: 'IDLE',
   DISCOVERING: 'DISCOVERING',
-  SELECTING: 'SELECTING',
+  TAKING: 'TAKING',
   RUNNING: 'RUNNING',
   STOPPING: 'STOPPING',
   FAILED: 'FAILED',
 });
 
-export const SELECTION_AGENT_PROMPT = [
-  'You are a stateless Task selection turn for one reusable Core.',
-  'Use the bounded list_tasks result as your complete candidate set.',
-  'Call the registered swarmenv_task_claim tool (logical operation task.claim) exactly once for the one task_id you choose from that result. The Selection role may claim; a bound Task Agent cannot claim another Task.',
-  'Never guess an ID, issue concurrent claims, or read claimed-only state during this selection turn.',
-  'A claim conflict means another Core won; end this turn so the Daemon can rescan once.',
-].join('\n');
+export const IDENTITY_TAKE_PROMPT = 'Use the bounded task view and call canonical task_take on this same Core identity. Continue in the same Session after a successful take.';
 
 const CONFLICT_CODE = ERROR_CODES.CONFLICT ?? 'CONFLICT';
 
@@ -35,7 +29,7 @@ function isConflict(error) {
   return error?.code === CONFLICT_CODE || error?.code === 'CONFLICT' || error?.code === 'CLAIM_CONFLICT' || error?.code === 'FAIRNESS_REQUIRED';
 }
 
-function normalizeSelection(value) {
+function normalizeTake(value) {
   if (typeof value === 'string') return value;
   if (!value || typeof value !== 'object') return null;
   return value.task_id ?? value.taskId ?? value.id ?? value.selected_task_id ?? null;
@@ -58,26 +52,26 @@ function errorView(error) {
 /**
  * Long-lived supervisor for one reusable Core slot.
  *
- * CoreDaemon owns the discovery/selection/claim loop. Task Service remains the
+ * IdentityTaskLoop owns the discovery/take/claim loop. Task Service remains the
  * claim authority, while Runtime is invoked only after a successful claim.
- * The daemon keeps no durable responsibility for a Task and never exposes a
+ * The identity loop keeps no durable responsibility for a Task and never exposes a
  * semantic blocked Core state; typed dependencies release the Core to IDLE.
  */
-export class CoreDaemon {
+export class IdentityTaskLoop {
   constructor({
     coreId,
     taskService = null,
     listClaimableTasks = null,
     shortlistLimit = 8,
-    selectTask,
-    selectionPrompt = SELECTION_AGENT_PROMPT,
+    takeTask,
+    takePrompt = IDENTITY_TAKE_PROMPT,
     claimTask = null,
     runtime = null,
     runExecution = null,
     releaseExecution = null,
     maxClaimRescans = 1,
-    maxSelectionAttempts = 3,
-    selectionRetryCooldownMs = 30_000,
+    maxTakeAttempts = 3,
+    takeRetryCooldownMs = 30_000,
     handoffTimeoutMs = Number.POSITIVE_INFINITY,
     handoffPollMs = 25,
     idleBackoffMs = 5_000,
@@ -85,25 +79,25 @@ export class CoreDaemon {
     now = () => Date.now(),
     onEvent = null,
   } = {}) {
-    if (typeof coreId !== 'string' || coreId.length === 0) throw new TypeError('CoreDaemon requires coreId');
+    if (typeof coreId !== 'string' || coreId.length === 0) throw new TypeError('IdentityTaskLoop requires coreId');
     const serviceList = taskService?.listClaimableTasks?.bind(taskService)
       ?? taskService?.listTasks?.bind(taskService);
     if (typeof listClaimableTasks !== 'function' && typeof serviceList !== 'function') {
-      throw new TypeError('CoreDaemon requires listClaimableTasks or taskService queue API');
+      throw new TypeError('IdentityTaskLoop requires listClaimableTasks or taskService queue API');
     }
-    if (typeof selectTask !== 'function') throw new TypeError('CoreDaemon requires selectTask');
+    if (typeof takeTask !== 'function') throw new TypeError('IdentityTaskLoop requires takeTask');
     const serviceClaim = taskService?.claimTask?.bind(taskService);
     if (typeof claimTask !== 'function' && typeof serviceClaim !== 'function') {
-      throw new TypeError('CoreDaemon requires claimTask or taskService.claimTask');
+      throw new TypeError('IdentityTaskLoop requires claimTask or taskService.claimTask');
     }
     if (!Number.isInteger(shortlistLimit) || shortlistLimit < 1 || shortlistLimit > 100) throw new TypeError('shortlistLimit must be an integer between 1 and 100');
     if (!Number.isInteger(maxClaimRescans) || maxClaimRescans < 0 || maxClaimRescans > 10) throw new TypeError('maxClaimRescans must be an integer between 0 and 10');
-    if (!Number.isInteger(maxSelectionAttempts) || maxSelectionAttempts < 1 || maxSelectionAttempts > 10) throw new TypeError('maxSelectionAttempts must be an integer between 1 and 10');
-    if (!Number.isFinite(selectionRetryCooldownMs) || selectionRetryCooldownMs < 0) throw new TypeError('selectionRetryCooldownMs must be non-negative');
+    if (!Number.isInteger(maxTakeAttempts) || maxTakeAttempts < 1 || maxTakeAttempts > 10) throw new TypeError('maxTakeAttempts must be an integer between 1 and 10');
+    if (!Number.isFinite(takeRetryCooldownMs) || takeRetryCooldownMs < 0) throw new TypeError('takeRetryCooldownMs must be non-negative');
     if (!Number.isFinite(idleBackoffMs) || idleBackoffMs < 0) throw new TypeError('idleBackoffMs must be non-negative');
     if (handoffTimeoutMs !== Number.POSITIVE_INFINITY && (!Number.isFinite(handoffTimeoutMs) || handoffTimeoutMs < 0)) throw new TypeError('handoffTimeoutMs must be non-negative or Infinity');
     if (!Number.isFinite(handoffPollMs) || handoffPollMs <= 0) throw new TypeError('handoffPollMs must be positive');
-    if (typeof now !== 'function') throw new TypeError('CoreDaemon requires now');
+    if (typeof now !== 'function') throw new TypeError('IdentityTaskLoop requires now');
     this.coreId = coreId;
     this.taskService = taskService;
     this.listClaimableTasks = listClaimableTasks ?? (async () => {
@@ -111,15 +105,15 @@ export class CoreDaemon {
       return asArray(result, ['claimable_tasks', 'ready_tasks', 'tasks']);
     });
     this.shortlistLimit = shortlistLimit;
-    this.selectTask = selectTask;
-    this.selectionPrompt = selectionPrompt;
+    this.takeTask = takeTask;
+    this.takePrompt = takePrompt;
     this.claimTask = claimTask ?? ((selectedTaskId, context) => serviceClaim(selectedTaskId, context));
     this.runtime = runtime;
     this.runExecution = runExecution;
     this.releaseExecution = releaseExecution;
     this.maxClaimRescans = maxClaimRescans;
-    this.maxSelectionAttempts = maxSelectionAttempts;
-    this.selectionRetryCooldownMs = selectionRetryCooldownMs;
+    this.maxTakeAttempts = maxTakeAttempts;
+    this.takeRetryCooldownMs = takeRetryCooldownMs;
     this.handoffTimeoutMs = handoffTimeoutMs;
     this.handoffPollMs = handoffPollMs;
     this.idleBackoffMs = idleBackoffMs;
@@ -131,26 +125,26 @@ export class CoreDaemon {
     this.turnPromise = null;
     this.waiters = new Set();
     this.pendingWake = false;
-    this.state = CORE_DAEMON_STATES.IDLE;
+    this.state = IDENTITY_LOOP_STATES.IDLE;
     this.executionId = null;
     this.taskId = null;
-    this.selectionTurnCount = 0;
+    this.takeTurnCount = 0;
     this.discoveryCount = 0;
     this.claimAttemptCount = 0;
     this.claimKeySequence = this.#initialClaimKeySequence();
     this.claimCount = 0;
     this.claimConflictCount = 0;
     this.rescanCount = 0;
-    this.selectionFailureCount = 0;
-    this.selectionExhausted = false;
-    this.selectionRetryAt = null;
+    this.takeFailureCount = 0;
+    this.takeExhausted = false;
+    this.takeRetryAt = null;
     this.lastError = null;
     this.lastEventAt = this.now();
     // Monotonic identity for completed retryable idle attempts.  A Core can
     // return to IDLE without the Controller observing the intermediate
-    // SELECTING or RUNNING state; the Controller uses this value to
+    // TAKING or RUNNING state; the Controller uses this value to
     // distinguish that new retry from an untouched idle view. A deferred
-    // selection is a handoff race, not a retry, and must remain deduplicated.
+    // take is a handoff race, not a retry, and must remain deduplicated.
     this.idleGeneration = 0;
     this.stateHistory = [{ state: this.state, at: this.lastEventAt }];
     this.handoffAbortController = null;
@@ -162,15 +156,15 @@ export class CoreDaemon {
       state: this.state,
       task_id: this.taskId,
       execution_id: this.executionId,
-      selection_turn_count: this.selectionTurnCount,
+      take_turn_count: this.takeTurnCount,
       discovery_count: this.discoveryCount,
       claim_attempt_count: this.claimAttemptCount,
       claim_count: this.claimCount,
       claim_conflict_count: this.claimConflictCount,
       rescan_count: this.rescanCount,
-      selection_failure_count: this.selectionFailureCount,
-      selection_exhausted: this.selectionExhausted,
-      selection_retry_at: this.selectionRetryAt,
+      take_failure_count: this.takeFailureCount,
+      take_exhausted: this.takeExhausted,
+      take_retry_at: this.takeRetryAt,
       idle_backoff_ms: this.idleBackoffMs,
       idle_generation: this.idleGeneration,
       last_error: this.lastError,
@@ -180,35 +174,35 @@ export class CoreDaemon {
     };
   }
 
-  /** Wake an idle Daemon after Task Controller observes new claimable work. */
+  /** Wake an idle identity loop after Task Controller observes new claimable work. */
   notify(reason = 'event') {
-    this.#rearmSelectionIfDue(reason);
-    // A bounded selection retry cooldown is an intentional backoff.  A wake
+    this.#rearmTakeIfDue(reason);
+    // A bounded take retry cooldown is an intentional backoff.  A wake
     // delivered after the final failed attempt must not turn that cooldown
     // into a tight loop of exhausted turns; a later signal after the deadline
     // will re-arm the selector above.
-    if (this.selectionExhausted) {
+    if (this.takeExhausted) {
       this.pendingWake = false;
-      this.#emit({ kind: 'daemon_wake_deferred', core_id: this.coreId, reason, retry_at: this.selectionRetryAt, timestamp: this.now() });
+      this.#emit({ kind: 'identity_loop_wake_deferred', core_id: this.coreId, reason, retry_at: this.takeRetryAt, timestamp: this.now() });
       return this.snapshot();
     }
-    // A wake received while a selection or handoff is already in flight is
-    // already covered by that turn. Remember it only for an idle Daemon,
+    // A wake received while a take or handoff is already in flight is
+    // already covered by that turn. Remember it only for an idle identity loop,
     // where the signal can otherwise land just before #wait registers.
-    if (this.state === CORE_DAEMON_STATES.IDLE) this.pendingWake = true;
-    this.#emit({ kind: 'daemon_wake_requested', core_id: this.coreId, reason, timestamp: this.now() });
+    if (this.state === IDENTITY_LOOP_STATES.IDLE) this.pendingWake = true;
+    this.#emit({ kind: 'identity_loop_wake_requested', core_id: this.coreId, reason, timestamp: this.now() });
     for (const resolve of this.waiters) resolve(reason);
     this.waiters.clear();
     return this.snapshot();
   }
 
-  #rearmSelectionIfDue(reason) {
-    if (this.selectionExhausted && (this.selectionRetryAt === null || this.now() >= this.selectionRetryAt)) {
-      this.selectionExhausted = false;
-      this.selectionFailureCount = 0;
+  #rearmTakeIfDue(reason) {
+    if (this.takeExhausted && (this.takeRetryAt === null || this.now() >= this.takeRetryAt)) {
+      this.takeExhausted = false;
+      this.takeFailureCount = 0;
       this.lastError = null;
-      this.selectionRetryAt = null;
-      this.#emit({ kind: 'daemon_selection_rearmed', core_id: this.coreId, reason, timestamp: this.now() });
+      this.takeRetryAt = null;
+      this.#emit({ kind: 'identity_loop_take_rearmed', core_id: this.coreId, reason, timestamp: this.now() });
     }
   }
 
@@ -228,7 +222,7 @@ export class CoreDaemon {
     } catch {
       // Older stores may not have the claim-key table during composition.
       // A fresh sequence still works because the first persisted claim will
-      // be visible to a later daemon instance.
+      // be visible to a later identity loop instance.
       return 0;
     }
   }
@@ -237,7 +231,12 @@ export class CoreDaemon {
     if (this.stopped) return this.snapshot();
     this.stopped = true;
     this.handoffAbortController?.abort();
-    this.#setState(CORE_DAEMON_STATES.STOPPING, { reason: 'stop' });
+    // Stopping a loop must not leave an operating-system/runtime Execution
+    // alive merely because its wait hook had not been installed yet.
+    if (this.executionId && typeof this.runtime?.fenceExecution === 'function') {
+      void Promise.resolve(this.runtime.fenceExecution(this.executionId, { reason: 'identity_loop_stopped' })).catch(() => undefined);
+    }
+    this.#setState(IDENTITY_LOOP_STATES.STOPPING, { reason: 'stop' });
     for (const resolve of this.waiters) resolve('stopped');
     this.waiters.clear();
     return this.snapshot();
@@ -269,73 +268,87 @@ export class CoreDaemon {
         // races the parent-review wake path.
         await this.#wait(signal);
       }
-      if (!this.stopped && signal?.aborted) this.#emit({ kind: 'daemon_run_aborted', core_id: this.coreId, timestamp: this.now() });
+      if (!this.stopped && signal?.aborted) this.#emit({ kind: 'identity_loop_run_aborted', core_id: this.coreId, timestamp: this.now() });
       return { disposition: this.stopped ? 'stopped' : 'complete', turns, last, snapshot: this.snapshot() };
     })().finally(() => { this.loopPromise = null; });
     return this.loopPromise;
   }
 
   async #runOnce(reason) {
-    this.#rearmSelectionIfDue(reason);
-    if (this.selectionExhausted) {
-      this.#setIdle({ reason: 'selection_attempts_exhausted' });
-      return { disposition: 'selection_exhausted', snapshot: this.snapshot() };
+    this.#rearmTakeIfDue(reason);
+    if (this.takeExhausted) {
+      this.#setIdle({ reason: 'take_attempts_exhausted' });
+      return { disposition: 'take_exhausted', snapshot: this.snapshot() };
     }
     let rescans = 0;
     while (!this.stopped) {
-      this.#setState(CORE_DAEMON_STATES.DISCOVERING, { reason });
+      this.#setState(IDENTITY_LOOP_STATES.DISCOVERING, { reason });
       this.discoveryCount += 1;
       const discovered = asArray(await this.listClaimableTasks({ core_id: this.coreId, limit: this.shortlistLimit, reason }), ['claimable_tasks', 'ready_tasks', 'tasks']);
       const candidates = discovered.slice(0, this.shortlistLimit);
-      this.#emit({ kind: 'daemon_discovery', core_id: this.coreId, reason, candidate_count: candidates.length, task_ids: candidates.map(taskId).filter(Boolean), timestamp: this.now() });
+      this.#emit({ kind: 'identity_loop_discovery', core_id: this.coreId, reason, candidate_count: candidates.length, task_ids: candidates.map(taskId).filter(Boolean), timestamp: this.now() });
       if (candidates.length === 0) {
         this.#setIdle({ reason: 'no_claimable_task' });
         return { disposition: 'idle', reason, candidates: [], snapshot: this.snapshot() };
       }
-      this.#setState(CORE_DAEMON_STATES.SELECTING, { reason });
-      this.selectionTurnCount += 1;
+      this.#setState(IDENTITY_LOOP_STATES.TAKING, { reason });
+      this.takeTurnCount += 1;
       const candidateView = candidates.map((candidate) => Object.freeze({ ...candidate }));
-      let selection;
+      let take;
       try {
-        selection = await this.selectTask({
+        take = await this.takeTask({
           core_id: this.coreId,
           candidates: Object.freeze(candidateView),
-          prompt: this.selectionPrompt,
+          prompt: this.takePrompt,
           reason,
           rescan: rescans,
         });
       } catch (error) {
-        this.selectionFailureCount += 1;
+        this.takeFailureCount += 1;
         this.lastError = errorView(error);
-        this.#emit({ kind: 'daemon_selection_failed', core_id: this.coreId, reason, error: this.lastError, timestamp: this.now() });
-        this.#setIdle({ reason: 'selection_failed' });
-        if (this.selectionFailureCount >= this.maxSelectionAttempts) {
-          this.selectionExhausted = true;
-          this.selectionRetryAt = this.now() + this.selectionRetryCooldownMs;
+        this.#emit({ kind: 'identity_loop_take_failed', core_id: this.coreId, reason, error: this.lastError, timestamp: this.now() });
+        this.#setIdle({ reason: 'take_failed' });
+        if (this.takeFailureCount >= this.maxTakeAttempts) {
+          this.takeExhausted = true;
+          this.takeRetryAt = this.now() + this.takeRetryCooldownMs;
         }
-        return { disposition: 'selection_failed', error: this.lastError, snapshot: this.snapshot() };
+        return { disposition: 'take_failed', error: this.lastError, snapshot: this.snapshot() };
       }
-      const claimed = directClaim(selection);
-      const selectedId = claimed?.task?.task_id ?? normalizeSelection(selection);
-      if (selection && typeof selection === 'object' && selection.selection_deferred === true) {
-        this.#setIdle({ reason: 'selection_deferred' });
-        return { disposition: 'selection_deferred', snapshot: this.snapshot() };
+      const claimed = directClaim(take);
+      const selectedId = claimed?.task?.task_id ?? normalizeTake(take);
+      if (take && typeof take === 'object' && take.take_deferred === true) {
+        this.#setIdle({ reason: 'take_deferred' });
+        return { disposition: 'take_deferred', snapshot: this.snapshot() };
+      }
+      // A failed take is a normal claim race: the Agent chose a real Task but
+      // another identity won it, or the Task became unavailable. It is not an
+      // invalid model choice and must not consume the bounded take attempts.
+      if (take && typeof take === 'object' && take.take_failed === true) {
+        this.claimConflictCount += 1;
+        this.#emit({ kind: 'identity_loop_take_conflict', core_id: this.coreId, reason, rescan: rescans, error: errorView(take.error) });
+        if (rescans >= this.maxClaimRescans) {
+          this.#setIdle({ reason: 'take_conflict' });
+          return { disposition: 'take_conflict', rescans, snapshot: this.snapshot() };
+        }
+        rescans += 1;
+        this.rescanCount += 1;
+        continue;
       }
       const selected = candidates.find((candidate) => String(taskId(candidate)) === String(selectedId));
       if (!selected) {
-        this.selectionFailureCount += 1;
-        const error = new SwarmEnvError('SELECTION_INVALID', 'selection must choose one task_id from the bounded shortlist', { task_id: selectedId, candidate_task_ids: candidates.map(taskId) });
+        this.takeFailureCount += 1;
+        const error = new SwarmEnvError('TAKE_INVALID', 'take must choose one task_id from the bounded shortlist', { task_id: selectedId, candidate_task_ids: candidates.map(taskId) });
         this.lastError = errorView(error);
-        this.#emit({ kind: 'daemon_selection_invalid', core_id: this.coreId, reason, error: this.lastError, timestamp: this.now() });
-        this.#setIdle({ reason: 'selection_invalid' });
-        if (this.selectionFailureCount >= this.maxSelectionAttempts) {
-          this.selectionExhausted = true;
-          this.selectionRetryAt = this.now() + this.selectionRetryCooldownMs;
+        this.#emit({ kind: 'identity_loop_take_invalid', core_id: this.coreId, reason, error: this.lastError, timestamp: this.now() });
+        this.#setIdle({ reason: 'take_invalid' });
+        if (this.takeFailureCount >= this.maxTakeAttempts) {
+          this.takeExhausted = true;
+          this.takeRetryAt = this.now() + this.takeRetryCooldownMs;
         }
-        return { disposition: 'selection_invalid', error: this.lastError, snapshot: this.snapshot() };
+        return { disposition: 'take_invalid', error: this.lastError, snapshot: this.snapshot() };
       }
       this.claimAttemptCount += 1;
-      this.#emit({ kind: 'daemon_claim_started', core_id: this.coreId, task_id: taskId(selected), reason, rescan: rescans, timestamp: this.now() });
+      this.#emit({ kind: 'identity_loop_claim_started', core_id: this.coreId, task_id: taskId(selected), reason, rescan: rescans, timestamp: this.now() });
       let claim = claimed;
       try {
         if (!claim) {
@@ -346,10 +359,10 @@ export class CoreDaemon {
             task_id: selectedTaskId,
             core_id: this.coreId,
             // A rescan counter only identifies attempts within one handoff.
-            // Include a daemon-wide sequence so a later reclaim of the same
+            // Include a identity-loop-wide sequence so a later reclaim of the same
             // Task gets a fresh idempotency key and can create a new Execution.
             claim_key: `${this.coreId}:${selectedTaskId}:${claimSequence}`,
-            owner_ref: `daemon:${this.coreId}`,
+            owner_ref: `identity:${this.coreId}`,
             task: selected,
             candidates: candidateView,
             reason,
@@ -359,7 +372,7 @@ export class CoreDaemon {
       } catch (error) {
         if (isConflict(error)) {
           this.claimConflictCount += 1;
-          this.#emit({ kind: 'daemon_claim_conflict', core_id: this.coreId, task_id: taskId(selected), reason, rescan: rescans, error: errorView(error), timestamp: this.now() });
+          this.#emit({ kind: 'identity_loop_claim_conflict', core_id: this.coreId, task_id: taskId(selected), reason, rescan: rescans, error: errorView(error), timestamp: this.now() });
           if (rescans >= this.maxClaimRescans) {
             this.#setIdle({ reason: 'claim_conflict' });
             return { disposition: 'claim_conflict', task_id: taskId(selected), rescans, snapshot: this.snapshot() };
@@ -369,7 +382,7 @@ export class CoreDaemon {
           continue;
         }
         this.lastError = errorView(error);
-        this.#emit({ kind: 'daemon_claim_failed', core_id: this.coreId, task_id: taskId(selected), reason, error: this.lastError, timestamp: this.now() });
+        this.#emit({ kind: 'identity_loop_claim_failed', core_id: this.coreId, task_id: taskId(selected), reason, error: this.lastError, timestamp: this.now() });
         this.#setIdle({ reason: 'claim_failed' });
         return { disposition: 'claim_failed', task_id: taskId(selected), error: this.lastError, snapshot: this.snapshot() };
       }
@@ -377,18 +390,18 @@ export class CoreDaemon {
       if (!execution?.execution_id) {
         const error = new SwarmEnvError('CLAIM_INVALID', 'claim must return an Execution identity');
         this.lastError = errorView(error);
-        this.#emit({ kind: 'daemon_claim_invalid', core_id: this.coreId, task_id: taskId(selected), error: this.lastError, timestamp: this.now() });
+        this.#emit({ kind: 'identity_loop_claim_invalid', core_id: this.coreId, task_id: taskId(selected), error: this.lastError, timestamp: this.now() });
         this.#setIdle({ reason: 'claim_invalid' });
         return { disposition: 'claim_invalid', task_id: taskId(selected), error: this.lastError, snapshot: this.snapshot() };
       }
       this.claimCount += 1;
-      this.selectionFailureCount = 0;
-      this.selectionExhausted = false;
-      this.selectionRetryAt = null;
+      this.takeFailureCount = 0;
+      this.takeExhausted = false;
+      this.takeRetryAt = null;
       this.taskId = taskId(selected);
       this.executionId = execution.execution_id;
-      this.#setState(CORE_DAEMON_STATES.RUNNING, { task_id: this.taskId, execution_id: this.executionId, reason });
-      this.#emit({ kind: 'daemon_claim_succeeded', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, reason, timestamp: this.now() });
+      this.#setState(IDENTITY_LOOP_STATES.RUNNING, { task_id: this.taskId, execution_id: this.executionId, reason });
+      this.#emit({ kind: 'identity_loop_claim_succeeded', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, reason, timestamp: this.now() });
       let runtimeResult = null;
       try {
         runtimeResult = await this.#handoff(claim, { task: selected, reason });
@@ -396,10 +409,10 @@ export class CoreDaemon {
         const release = await this.#releaseFailedClaim(claim, error);
         this.lastError = errorView(error);
         const releaseView = release instanceof Error ? errorView(release) : release?.error ? errorView(release.error) : release ? { disposition: release.disposition ?? null, execution_id: release.execution?.execution_id ?? claim.execution.execution_id } : null;
-        this.#emit({ kind: 'daemon_runtime_failed', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, error: this.lastError, release: releaseView, timestamp: this.now() });
+        this.#emit({ kind: 'identity_loop_runtime_failed', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, error: this.lastError, release: releaseView, timestamp: this.now() });
         const releasedExecution = release?.execution ?? release?.result?.execution ?? release;
         this.#emit({
-          kind: 'daemon_execution_released',
+          kind: 'identity_loop_execution_released',
           core_id: this.coreId,
           task_id: this.taskId,
           execution_id: this.executionId,
@@ -410,7 +423,7 @@ export class CoreDaemon {
         this.#setIdle({ reason: 'runtime_failed' });
         return { disposition: 'runtime_failed', claim, error: this.lastError, release, snapshot: this.snapshot() };
       }
-      this.#emit({ kind: 'daemon_execution_released', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, execution_state: runtimeResult?.execution?.state ?? execution.state ?? null, timestamp: this.now() });
+      this.#emit({ kind: 'identity_loop_execution_released', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, execution_state: runtimeResult?.execution?.state ?? execution.state ?? null, timestamp: this.now() });
       const result = { disposition: 'completed', claim, runtime: runtimeResult, rescans, snapshot: null };
       this.#setIdle({ reason: 'execution_released' });
       result.snapshot = this.snapshot();
@@ -425,10 +438,14 @@ export class CoreDaemon {
     if (typeof this.runExecution === 'function') result = await this.runExecution(claim, { ...context, core_id: this.coreId });
     else if (typeof this.runtime?.runClaimedExecution === 'function') result = await this.runtime.runClaimedExecution(claim.execution, { ...context, coreId: this.coreId });
     else if (typeof this.runtime?.startClaimedExecution === 'function') result = await this.runtime.startClaimedExecution(claim.execution, { ...context, coreId: this.coreId });
-    else if (typeof this.runtime?.startExecution === 'function') result = await this.runtime.startExecution(claim.execution.execution_id, { coreId: this.coreId, sessionReason: 'daemon_claim' });
-    else throw new SwarmEnvError(ERROR_CODES.RUNTIME_HANDOFF_REQUIRED, 'CoreDaemon requires a Runtime handoff after claim');
+    else if (typeof this.runtime?.startExecution === 'function') result = await this.runtime.startExecution(claim.execution.execution_id, { coreId: this.coreId, sessionReason: 'identity_loop_claim' });
+    else throw new SwarmEnvError(ERROR_CODES.RUNTIME_HANDOFF_REQUIRED, 'IdentityTaskLoop requires a Runtime handoff after claim');
     if (typeof this.runtime?.waitForExecutionRelease === 'function' && claim.execution?.execution_id) {
       this.handoffAbortController = new AbortController();
+      // stop() may land between a successful claim and this wait. Abort here
+      // as well so a late-arriving shutdown cannot leave the loop awaiting an
+      // Execution that Runtime is already tearing down.
+      if (this.stopped) this.handoffAbortController.abort();
       const settled = await this.runtime.waitForExecutionRelease(claim.execution.execution_id, {
         timeoutMs: this.handoffTimeoutMs,
         pollMs: this.handoffPollMs,
@@ -458,7 +475,7 @@ export class CoreDaemon {
           runtime_generation: execution.runtime_generation ?? 1,
           terminal_reason: terminalReason,
         }, makeEnvelope({
-          actorRef: `daemon:${this.coreId}`,
+          actorRef: `identity:${this.coreId}`,
           taskId: execution.task_id,
           executionId: execution.execution_id,
           specVersion: execution.spec_version,
@@ -468,7 +485,7 @@ export class CoreDaemon {
       }
       return null;
     } catch (error) {
-      this.#emit({ kind: 'daemon_claim_release_failed', core_id: this.coreId, execution_id: execution.execution_id, error: errorView(error), timestamp: this.now() });
+      this.#emit({ kind: 'identity_loop_claim_release_failed', core_id: this.coreId, execution_id: execution.execution_id, error: errorView(error), timestamp: this.now() });
       return error;
     }
   }
@@ -476,7 +493,7 @@ export class CoreDaemon {
   async #wait(signal) {
     if (this.stopped || signal?.aborted) return;
     // A Controller signal can arrive in the small handoff window after the
-    // Daemon returned IDLE but before this loop registered its waiter. Keep a
+    // identity loop returned IDLE but before this loop registered its waiter. Keep a
     // one-shot pending bit so that wake is not lost in that race.
     if (this.pendingWake) {
       this.pendingWake = false;
@@ -500,8 +517,8 @@ export class CoreDaemon {
     }
     // Prefer an explicit wake over polling while retaining a bounded repair
     // interval for callers that do not have an event source.  The previous
-    // sleep-only path meant notify() could not wake an idle Daemon until the
-    // backoff elapsed, while the runner also notified every Daemon on each
+    // sleep-only path meant notify() could not wake an idle identity loop until the
+    // backoff elapsed, while the runner also notified every identity loop on each
     // poll.  Registering the waiter here makes the Controller signal the
     // single low-latency path without allowing an empty queue to spin.
     let resolveWake;
@@ -540,8 +557,8 @@ export class CoreDaemon {
     this.taskId = null;
     this.executionId = null;
     if (!this.stopped) {
-      if (!['selection_deferred', 'selection_attempts_exhausted', 'no_claimable_task', 'stopped'].includes(reason)) this.idleGeneration += 1;
-      this.#setState(CORE_DAEMON_STATES.IDLE, { reason });
+      if (!['take_deferred', 'take_attempts_exhausted', 'no_claimable_task', 'stopped'].includes(reason)) this.idleGeneration += 1;
+      this.#setState(IDENTITY_LOOP_STATES.IDLE, { reason });
     }
   }
 
@@ -552,7 +569,7 @@ export class CoreDaemon {
       this.lastEventAt = this.now();
       this.stateHistory.push({ state, at: this.lastEventAt });
     }
-    this.#emit({ kind: 'daemon_state_changed', core_id: this.coreId, state, changed, ...payload, timestamp: this.now() });
+    this.#emit({ kind: 'identity_loop_state_changed', core_id: this.coreId, state, changed, ...payload, timestamp: this.now() });
   }
 
   #emit(event) {

@@ -215,8 +215,8 @@ test('Mathlib Search Service crosses the independent HTTP Host and Registry adap
     assert.equal(result.backend, 'source-index');
     assert.equal(result.results[0].name, 'distance_nonneg_demo');
     await assert.rejects(
-      registry.invoke({ serviceId: 'mathlib-search', capability: 'mathlib_search', input: { query: 'x' }, envelope: makeEnvelope({ operationId: 'mathlib-selection-1', actorRef: 'agent:selection' }), role: AGENT_ROLES.SELECTION }),
-      /not available to role selection/,
+      registry.invoke({ serviceId: 'mathlib-search', capability: 'mathlib_search', input: { query: 'x' }, envelope: makeEnvelope({ operationId: 'mathlib-unbound-1', actorRef: 'agent:bound' }), role: AGENT_ROLES.BOUND }),
+      /task|execution|context/i,
     );
     const manifestResponse = await fetch(`${environment.url}/v1/manifest`);
     assert.equal(manifestResponse.status, 200);
@@ -282,7 +282,7 @@ test('A registered HTTP Mathlib capability is visible in the Bound prompt and ex
     });
     assert.match(prompt, /swarmenv_mathlib_search/);
     assert.match(prompt, /mathlib_search/);
-    assert.match(prompt, /before proposing a proof or API research route/);
+    assert.match(prompt, /before proposing a proof or API research Task/);
     assert.doesNotMatch(prompt, /swarmenv_call|request_wait|execution_wait|parent_review/i);
 
     const registeredTools = [];
@@ -421,12 +421,7 @@ test('Built-in Registry exposes the current Task contract without legacy lifecyc
   assert.ok(!names.some((name) => /wait|wake|rework|select_task/i.test(name)));
   assert.doesNotMatch(JSON.stringify(profile), /WAITING|request_wait|parent_review|wake_execution/i);
 
-  const selectionProfile = buildCapabilityProfile({ role: AGENT_ROLES.SELECTION, registry });
-  const selectionNames = selectionProfile.capabilities.map((capability) => capability.name);
-  assert.ok(selectionNames.includes('task_discover'));
-  assert.ok(selectionNames.includes('task_view'));
-  assert.ok(selectionNames.includes('task_claim'));
-  assert.ok(!selectionNames.includes('task_list_executions'));
-  assert.ok(!selectionNames.includes('context_read'));
-  assert.ok(!selectionNames.includes('judge_get_check_result'));
+  const reusableNames = profile.capabilities.map((capability) => capability.name);
+  assert.ok(reusableNames.includes('task_take'));
+  assert.ok(!reusableNames.includes('task_claim'));
 });

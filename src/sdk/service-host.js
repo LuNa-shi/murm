@@ -162,12 +162,15 @@ export class ServiceHost {
       if (role !== null && !SERVICE_ROLES.includes(role)) {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `unsupported Agent role: ${role}`, { service_id: this.manifest.service_id, capability: capability.name, role, supported: SERVICE_ROLES });
       }
-      const actorRole = /^agent:(selection|bound|recovery)$/.exec(body.envelope.actor_ref ?? '')?.[1] ?? null;
+      const actorRole = /^agent:(bound|recovery)$/.exec(body.envelope.actor_ref ?? '')?.[1] ?? null;
       if (actorRole && actorRole !== role) {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, 'service role does not match the Agent envelope', { service_id: this.manifest.service_id, capability: capability.name, role, actor_role: actorRole });
       }
       if (role !== null && !capability.audience.includes(role)) {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `capability ${capability.name} is not available to role ${role}`, { service_id: this.manifest.service_id, capability: capability.name, role });
+      }
+      if (capability.requires_binding === true && (!body.envelope.task_id || !body.envelope.execution_id)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `capability ${capability.name} requires a bound Task and Execution`, { service_id: this.manifest.service_id, capability: capability.name, requires: ['task', 'execution'] });
       }
       const result = await this.handler({ manifest: this.manifest, capability, input, envelope: body.envelope, role, request });
       this.logger?.({ event: 'service.host.complete', service_id: this.manifest.service_id, capability: capability.name, ok: true });

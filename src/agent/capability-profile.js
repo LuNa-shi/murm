@@ -3,7 +3,6 @@ import { isLegacyAgentSurface, listTools } from '../sdk/service-catalog.js';
 import { stableStringify } from '../protocol/envelope.js';
 
 export const AGENT_ROLES = Object.freeze({
-  SELECTION: 'selection',
   BOUND: 'bound',
   RECOVERY: 'recovery',
 });
@@ -18,7 +17,7 @@ const INTERNAL_AUDIENCES = new Set(['runtime', 'daemon', 'internal']);
 // contract while callers migrate to a Registry.
 const CURRENT_AGENT_OPERATIONS = new Set([
   'list_services', 'get_service_metadata', 'list_tools',
-  'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'claim',
+  'list_tasks', 'get_task', 'list_executions',
   'create_child_task', 'propose_task',
   'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
   'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
@@ -44,7 +43,7 @@ function asList(value) {
 }
 
 function canonicalRole(role) {
-  if (role === AGENT_ROLES.SELECTION || role === AGENT_ROLES.BOUND || role === AGENT_ROLES.RECOVERY) return role;
+  if (role === AGENT_ROLES.BOUND || role === AGENT_ROLES.RECOVERY) return role;
   throw new TypeError(`unknown Agent role: ${role}`);
 }
 
@@ -79,17 +78,11 @@ function inferredAudience(capability) {
   if (service === 'workspace' || service === 'execution' || service === 'context' || service === 'judge' || capability.runtime_owned === true || operation === 'scheduler_status') {
     return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
-  if (operation === 'claim' || operation === 'list_claimable_tasks') {
-    return [AGENT_ROLES.SELECTION];
-  }
   if (operation === 'list_tasks' || operation === 'task_list' || operation === 'task_view' || operation === 'get_task' || operation === 'task_status') {
-    return [AGENT_ROLES.SELECTION, AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
-  }
-  if (scope === 'task-selection') {
-    return ['runtime'];
+    return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
   if (scope === 'public-read' && sideEffect === false) {
-    return [AGENT_ROLES.SELECTION, AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
+    return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
   return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
 }
