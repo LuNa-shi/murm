@@ -6,7 +6,7 @@
 
 用户提供原题、初始材料、工具环境与资源上限。Agent 自主决定具体研究方向，公共服务保存工作责任与证据。Mission 为这些工作提供共同目标及最终验收范围；它不需要一个永久负责所有分工和审批的主 Agent。
 
-Task 保存一份明确责任，Execution 记录某次执行，Material 保留成果。当前阶段每个 Task 只有一个有效写入者。不同路线、可独立处理的引理和明确的独立验证使用不同的普通 Task，创建者不会因此获得对方的管理权。
+Task 保存一份明确责任，Execution 记录某次执行，Material 保留成果。Core 是可复用的物理执行容量，Agent identity 是可轮换的 Pi 进程/Session 身份；四 Core 默认对应四个可工作的 Agent identity，但 Core 与 identity 不绑定为永久关系。每个 Agent identity 可以顺序认领多个 Execution，同一时刻每个 Task 只有一个有效写入者。不同路线、可独立处理的引理和明确的独立验证使用不同的普通 Task，创建者不会因此获得对方的管理权。
 
 任务说明应使接手者理解：已有何种依据，当前问题是什么，工作范围止于哪里，什么结果可以交付。结果可以是证明、可检查的反例或有证据的路线否定。Task 完成不等于原题已解决。
 
@@ -14,22 +14,31 @@ Task 保存一份明确责任，Execution 记录某次执行，Material 保留�
 
 ## 2. 从输入开始形成工作
 
-默认启动登记用户目标，产生最小的普通求解入口，不预设研究路线。初始执行阅读题目和材料，尝试推进，发现可独立处理的问题时创建 Task。创建后它可以继续自己的工作，空闲 Core 认领新任务。
+默认启动登记用户目标，产生最小的普通求解入口，不预设研究路线。Agent 在开展任何新的独立工作前，必须先向 Task Service 登记一个完整 Task；它可以立即自己认领，也可以将 Task 留在 `OPEN` 队列交给其他 Agent。Task 必须有独立问题、交付物、验收条件，并说明为什么需要另一个 Agent/Core 协助；微任务、纯搬运、重复工作和空材料不应进入队列。
 
-这一启动责任没有长期分派权。后续所有有效执行者都可以基于新证据提出任务。提案先检索已有摘要，说明与现有覆盖的差异；是否有研究价值由 Agent 判断，服务仅保证形式、引用、权限和资源合法。不能用精确字符串或摘要长度冒充语义去重。
+Agent-facing 的核心循环是 `task_status → task_register → task_take（或留在队列）→ 执行 → execution_progress → 完成/交接/阻塞 → 再次 task_status`。`task_status` 返回权威的开放任务数、可认领任务数、空闲 Core 数和分页候选；`task_take` 内部完成资格校验、Execution 建立、Core 分配和工作上下文准备。Agent 不直接管理 Core、lease、fencing、Pi 进程或 Workspace 路径。
 
-供给不足时，需要有限的重新观察入口。第一阶段建议在出现新成果、任务结束等外部进展且存在空闲容量时，允许一个普通 Agent 重新检查现有工作。系统只触发通用观察责任，不填写新的数学任务。相同状态版本不重复触发，检查自己的完成不触发自身，预算耗尽或判断无可行方向时允许停止。启动数量和触发阈值作为显式策略配置，不承诺始终填满 Core。
+提案先检索已有摘要和 Material，说明与现有覆盖的差异；是否有研究价值由 Agent 判断，服务仅保证合同、引用、权限、版本和资源合法。不能用精确字符串、摘要长度或任务数量冒充语义去重。完整接口与身份轮换见[Agent Task运行契约](20261102-agent-task-runtime-contract.md)。
+
+供给不足时可以有限重新观察，但系统只能触发通用观察责任，不能填写新的数学任务。相同状态版本不重复触发，检查自己的完成不触发自身，预算耗尽或判断无可行方向时允许停止。启动数量、Execution 窗口、compaction 上限和触发阈值都是显式策略配置，不承诺始终填满 Core。
 
 ## 3. 每个执行者的局部循环
 
+一个 Agent identity 可以顺序工作于多个 Task，但同一时刻只持有一个有效 Execution：
+
 ```text
-读取 Task 当前版本、已有成果、待处理反馈与剩余授权
+查看权威队列和容量
+  → 登记一个足够完整且需要协作的 Task
+  → 自己 task_take，或将 Task 留在 OPEN 队列
+  → 读取 Task、Material、Feedback 和可选 Git Workspace lineage
   → 研究、调用工具或进行局部验证
-  → 获得可保存结果，按需要发布 Material
+  → 在 compaction 后或阶段性完成时保存 Progress Material checkpoint
   → 继续当前研究，同时提出独立 Task 或向相关 Task 反馈
-  → 处理到达的新证据，调整方法或提出责任变更
-  → 完成交付、交接、因真实条件阻塞，或有依据地停止
+  → 完成、handoff、因真实条件阻塞，或有依据地停止
+  → 释放当前 Execution 后再次查看队列
 ```
+
+Agent Session 不是长期权威记忆。达到 compaction 预算或上下文压力阈值后，Runtime 在安全点要求 Handoff Material，结束当前 Pi Session，并由新的 Agent identity 从 checkpoint、Material 和 Git commit 继续。
 
 这些循环异步进行。Agent A 发布引理后可以继续研究；B 无须等 A 完成即可使用；B 的新发现也可以在 A 尚未结束时返回。
 
@@ -70,15 +79,19 @@ Material 保存具体结论、适用条件、证据来源和版本。一份成�
 
 ## 7. 接续、时间窗口与资源
 
-Task 的累计投入跨 Execution 保存。Execution 时间盒限制单次运行，提醒须留出真实交接窗口；改变时长时必须同步计算提醒提前量。模型与工具的小范围重试不产生新的研究责任。旧 Session 已终止后重新启动研究时，应明确新的执行尝试及其前驱，避免多个独立 Session 被展示为同一次连续研究。
+Task 的累计投入跨 Execution 保存。Execution 时间盒限制单次运行，第一阶段可从约 30 分钟开始，实际值必须登记并同步计算提醒提前量。一个 Agent identity 可以认领和释放多个 Execution；identity 的 compaction 次数另行累计，达到上限后应保存 Handoff Material 并轮换 Pi Session。新 identity 可以使用任意可用 Core 接续同一 Task，必须明确记录 identity、Session generation、Execution 前驱和轮换原因。
 
-自愿交接保存已做工作、有效成果、开放问题和工作面引用。强制超时可能没有交接材料；系统如实记录缺失和最后持久化状态，不能伪造成功 handoff。
+模型与工具的小范围重试不产生新的研究责任。旧 Session 已终止后重新启动研究时，应明确新的 identity 和执行尝试及其前驱，避免多个独立 Session 被展示为同一次连续研究。
+
+自愿交接保存已做工作、有效成果、开放问题、下一步和 Git Workspace commit 引用。Checkpoint 是当前 Execution 内的可重复进度材料；Handoff 是最后一个接续材料，会 fence 旧 Execution 并释放 Core。强制超时可能没有完整交接材料；系统如实记录缺失和最后持久化状态，不能伪造成功 handoff。Workspace 不再从空目录默认开始，需要文件工作的 Execution 从明确的输入或上一次 Handoff commit 创建独立 Git worktree。
 
 资源区分总消耗上限、Task 累计账目、当前 Execution 授权与在制数量。完成/取消释放在制名额，已经消耗的成本不归零。创建与完成在同一权威服务上实现一致的准入，不能仅依赖 runner 的内存计数。可观测不到的 token 项标记未知；第一阶段可先可靠限制时间和调用授权，不声称实现未经验证的精确费用预留。
 
 长期责任不等于持续占用 Core。缺少真实前置结果时记录 blocker；无值得继续的方向时结束或取消责任并保留结论；不要虚构依赖或无限续跑来保持 RUNNING。高级续期和抢占策略不在本阶段。
 
 ## 8. 一致性、完成与收束
+
+目标架构不再让 Core Daemon 替 Agent 做语义选择。Runtime 仍可作为物理进程和 Core 生命周期管理器，但 Agent 必须能直接读取队列/容量、登记 Task 并主动认领；旧 Selection Agent/Daemon 回路属于待移除的实现路径。
 
 Agent 工具、认领、Runtime 和报告使用同一 Task 权威状态。不支持的部署组合在启动前失败。已认领工作应能完成、交接、阻塞或取消，并在物理清理结束后释放 Core。旧执行权与新执行权不能重叠。
 
@@ -97,7 +110,7 @@ Agent 工具、认领、Runtime 和报告使用同一 Task 权威状态。不支
 | Agent | 提案、研究、使用结果、解释反馈并调整工作 | 绕过资源授权或降低原题验收标准 |
 | Benchmark/报告 | 锁定输入、预算、结果与观测证据 | 为通过指标偷偷改变提示或协作路径 |
 
-上述是逻辑职责，不要求新增六个部署服务。Daemon 和选择 Session 可以保留或替换，但替代实现须遵守相同的任务和权限约定。
+上述是逻辑职责，不要求新增六个部署服务。Runtime 内部可以保留物理 Core/进程监督，但不得继续让 Daemon 或独立 Selection Session 替 Agent 做语义选择；替代实现须遵守相同的任务和权限约定。
 
 本阶段由 [三个完整 Issue](plans/phase-1/README.md) 完成：S1 检查迭代，S2 自主持续分工，S3 反馈与接续。先取得行为正确的真实运行，再研究更优 prompting、任务价值与大规模调度。
 
@@ -105,4 +118,4 @@ Agent 工具、认领、Runtime 和报告使用同一 Task 权威状态。不支
 
 来源是 Notion 的《目标架构》及《架构复盘》，以及本轮用户关于 Judge、禁止领域硬编码、第一阶段范围和两小时验收的修正。未经决定的方案保留为提议：通用重新观察入口的具体触发、单次窗口时长、队列容量和紧急反馈上限。它们在各 Issue 启动前冻结，不能由 coding agent 在实现过程中擅自改变。
 
-原始页面：[目标架构](https://app.notion.com/p/40b4e07aa023819e9c19f077205f8cd5)、[架构复盘](https://app.notion.com/p/40b4e07aa023818f97ade56d43c32c8f)。本文是为仓库重组的规范草稿，不是逐字导出；私人写作语料未迁入仓库。
+原始页面：[目标架构](https://app.notion.com/p/40b4e07aa023819e9c19f077205f8cd5)、[架构复盘](https://app.notion.com/p/40b4e07aa023818f97ade56d43c32c8f)。已确认的四 Core/Agent identity、Progress Material、compaction 轮换和 Git Workspace 细节见[Agent Task运行契约](20261102-agent-task-runtime-contract.md)。本文是为仓库重组的规范草稿，不是逐字导出；私人写作语料未迁入仓库。

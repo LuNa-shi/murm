@@ -2,7 +2,7 @@
 
 ## 当前设计与实现
 
-[AGENTS.md](../AGENTS.md)直接定义项目约束和核心设计准则。[GLOSSARY.md](../GLOSSARY.md)定义术语，[目标架构](architecture.md)说明完整运行流程。[实现状态](implementation-status.md)单独记录实际能力，不能把文档目标误读成已经完成。
+[AGENTS.md](../AGENTS.md)直接定义项目约束和核心设计准则。[GLOSSARY.md](../GLOSSARY.md)定义术语，[目标架构](architecture.md)说明完整运行流程。[Agent Task运行契约](20261102-agent-task-runtime-contract.md)记录四 Core、主动登记/认领、Progress Material、compaction 轮换和 Git Workspace 的已确认设计。[实现状态](implementation-status.md)单独记录实际能力，不能把文档目标误读成已经完成。
 
 [架构复盘](reviews/task-centric-baseline.md)还原固定基线的任务轨迹；[第一阶段符合性核对表](reviews/phase-1-conformance-audit.md)按准则登记代码偏差、待复现风险与保留能力。核对范围不限于用户举例。
 
@@ -18,4 +18,4 @@
 
 [归档索引](archive/README.md)保存旧设计原文，旧入口保留导航。[ADR索引](adr/README.md)说明新旧决定效力。[实验目录](experiments/)保持固定提交证据，历史结果不改写。原始人类材料见[documents说明](../documents/README.md)。
 
-每条规则有一个权威定义。旧issue笔记、research、examples与报告只作历史/参考，不与当前规范竞争。此次检查的范围与限制见[文档验证记录](reviews/documentation-draft-validation.md)。
+每条规则有一个权威定义。新建或新版本工程文档使用 `YYYYMMDD-标题短名.md`，例如 `20261102-agent-task-runtime-contract.md`；稳定入口文件保留原路径以避免破坏工具和链接，过时版本移入日期归档目录。旧issue笔记、research、examples与报告只作历史/参考，不与当前规范竞争。此次检查的范围与限制见[文档验证记录](reviews/documentation-draft-validation.md)。

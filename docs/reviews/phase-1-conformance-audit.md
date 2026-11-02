@@ -33,9 +33,9 @@
 | T5 | available_only在LIMIT后过滤，前面的阻塞任务可掩盖后面的可认领工作 | 代码确认：#listModernTasks；是否被当前选择路径调用须测试 | 资格筛选先于有效结果截断，或分页直到填足；报告截断与剩余信息，禁止虚假空队列 |
 | T6 | 动态准入从最多500项列表推算总量，缺统一事务边界 | 代码确认：runner.onTaskCreate；上限移除后不能沿用这种计数 | 从权威状态原子计数/预留，重放与重启不绕过；不以列表投影作为额度真相 |
 | T7 | spawned_from可省略，创建Execution身份主要在返回值；任务行仅保留可复用actor | 代码确认：#createModernTask只在可选关系写created_by_execution_id | 独立保存每项Agent提案的创建Task/Execution，不把可选来源关系作为唯一审计依据；旧数据未知不伪补 |
-| T8 | 后半程缺少持续工作发现入口；完全空队列时只有bound执行者能创建工作 | 前者见实验；后者需结合启动与selection能力复核 | 有预算的通用重新观察并明确停止条件，不让Controller代写数学任务 |
+| T8 | 后半程缺少持续工作发现入口；当前由 Selection/Core Daemon 负责选择，bound Agent 不能直接查看权威容量并主动登记/认领；完全空队列时只有bound执行者能创建工作 | 前者见实验；后者需结合启动、Agent-facing status、主动 task_register/task_take 和 selection 能力复核 | 四 Core 对应可工作的 Agent identity；Agent 读取 open/claimable/idle-core 状态，登记足够完整且需要协作的 Task，自己认领或留队列；有预算的通用重新观察必须可停止，不让Controller代写数学任务 |
 
-代码：[TaskService](https://github.com/LuNa-shi/SwarmEnv/blob/75fca5aa647154a642d676c639c8770d1f7eb90a/src/task/task-service.js)、[runner](https://github.com/LuNa-shi/SwarmEnv/blob/75fca5aa647154a642d676c639c8770d1f7eb90a/src/benchmark/putnam-runner.js)、[Bridge](https://github.com/LuNa-shi/SwarmEnv/blob/75fca5aa647154a642d676c639c8770d1f7eb90a/src/agent/services-bridge.js)、[现存#107](https://github.com/LuNa-shi/SwarmEnv/issues/107)。T5是返回语义正确性问题；不包含大规模索引优化。
+代码：[TaskService](https://github.com/LuNa-shi/SwarmEnv/blob/75fca5aa647154a642d676c639c8770d1f7eb90a/src/task/task-service.js)、[runner](https://github.com/LuNa-shi/SwarmEnv/blob/75fca5aa647154a642d676c639c8770d1f7eb90a/src/benchmark/putnam-runner.js)、[Bridge](https://github.com/LuNa-shi/SwarmEnv/blob/75fca5aa647154a642d676c639c8770d1f7eb90a/src/agent/services-bridge.js)、[现存#107](https://github.com/LuNa-shi/SwarmEnv/issues/107)。T5是返回语义正确性问题；不包含大规模索引优化。主动 Agent、Progress Material、compaction 轮换和 Git Workspace 的目标接口见[Agent Task运行契约](../20261102-agent-task-runtime-contract.md)。
 
 ## S3：成果、更新和接续
 

@@ -1,35 +1,50 @@
 # S2｜从自主提案到持续执行形成完整分工
 
-状态：Issue草案，未发布。依赖：S1作为验收前置。规范：P1–P3、P6–P7、P10–P11。负责[核对表](../../reviews/phase-1-conformance-audit.md)T1–T8及新增同类偏差。
+状态：Issue草案，未发布。依赖：S1作为验收前置。规范：P1–P3、P6–P7、P10–P11。负责[核对表](../../reviews/phase-1-conformance-audit.md)T1–T8及新增同类偏差。目标接口见[Agent Task运行契约](../../20261102-agent-task-runtime-contract.md)。
 
 ## 交付行为
 
-从用户目标和初始材料开始，Agent形成明确Task；任务经过一致的准入与认领进入执行。前一批工作结束后仍能提出下一批，后半程不因累计创建上限或状态错配退化为仅轮换同一责任。
+四个 Core 默认对应四个可工作的 Agent identity。每个 Agent 在开展新的独立工作前必须向 Task Service 登记 Task；登记后可以自己认领，也可以留在 `OPEN` 队列交给其他 Agent。一个 Agent identity 可以顺序认领和释放多个 Execution，但同一时刻只持有一个有效 Execution。Agent 应能看见权威的开放任务数、可认领任务数和空闲 Core 数，并主动选择是否提出或认领工作。
 
-## 为什么是一个Issue
+Task 必须有独立问题、交付边界、预期结果、验收条件和协作理由。任务不能是微任务、纯搬运、改名重复或空材料。系统鼓励 Agent 在发现真正需要并行协助的工作时尽早登记，而不是为了保持单个长任务运行而独立耗尽时间。
 
-移除初始模板不能独自交付自主分工：准入、重放、任务列表与Runtime可能继续阻止工作。统一服务身份也不能只修task.create，后续claim、handoff/block和报告必须仍指向同一对象。上述内容按完整路径验收，不另拆基础设施小票。
+## 为什么是一个 Issue
+
+移除初始模板不能独自交付自主分工：准入、重放、任务列表、主动认领和 Runtime 资源分配可能继续阻止工作。统一服务身份也不能只修 `task_register`，后续 `task_take`、handoff/block、Workspace lineage 和报告必须仍指向同一对象。上述内容按完整路径验收，不另拆基础设施小票。
 
 ## 必须完成的修复
 
-默认移除固定研究方向及任务级解题提示，保留最小普通求解入口和必要通用工具说明。Agent可在执行中提出独立任务，不被要求先handoff。供给不足时提供有预算、去重且能停止的通用重新观察；系统不代写数学任务。
+默认移除固定研究方向及任务级解题提示，保留最小普通求解入口和明确的通用工具说明。Agent-facing 工具应形成小而深的循环：
 
-用权威服务上的在制上限和总资源控制替换累计新增2/3限制；完成/取消释放名额，消耗不返还。准入不再依赖截断列表或单进程内存。请求重放保持幂等，同键不同内容不能静默复用旧任务。修正available_only筛选与截断次序，保留完整提案来源而不依赖可选spawned_from。
+```text
+task_status → task_register → task_take（或留在队列）
+  → Execution 工作 → execution_progress → complete/handoff/block
+  → 再次 task_status
+```
 
-审计工具、Registry/Bridge与Runtime的服务身份，所有支持配置端到端一致；无法支持的组合启动前拒绝。旧操作过滤已有保障继续保留，不因兼容别名泄漏父子审批语义。
+`task_status` 返回权威的 `open_task_count`、`claimable_task_count`、`idle_core_count`、`active_core_count` 和分页候选；不能从截断列表推算数量。`task_register` 只要求目标、交付物、验收条件和协作理由；服务默认填充其余调度字段。`task_take` 原子完成资格检查、Execution 建立、空闲 Core 分配和工作上下文准备；Agent 不直接管理 Core、lease、fencing 或 Workspace 路径。没有任务时可以进行有预算、可停止的通用重新观察，但系统不得代写数学任务。
+
+用权威服务上的在制上限和总资源控制替换累计新增2/3限制；完成/取消/交接释放名额，消耗不返还。请求重放保持幂等，同键不同内容不能静默复用旧任务。修正 available-only 筛选与截断次序，保留完整提案来源和 Agent identity/Execution provenance。所有支持配置的 Task Service、Registry、Bridge、SDK、Runtime、报告和 Agent capability profile 必须使用同一身份和 Task 语义。
+
+每个 Execution 的时间盒是可登记的实验参数，第一阶段可从约 30 分钟开始。Agent identity 可以在多个 Execution 间复用；compaction 次数在 identity 上累计。达到 identity 的 compaction 上限并出现高上下文压力时，Runtime 必须要求 Progress/Handoff Material，结束当前 Pi Session，由新 identity 接续。需要文件工作的 Execution 使用 Git worktree 和 commit lineage；不支持 Git 的部署组合在启动前拒绝。
 
 ## 两小时真实验收
 
 S1 clean合并实现与S2处理实现做匹配对照；保持题目、模型、工具环境、4 Core与预算一致，启动/准入是明确允许的处理差异。
 
-暂定最低覆盖：至少4项合格Agent派生任务被实际执行，至少2项在第60分钟后提出；至少一项在较早任务完成释放额度后获准。后60分钟不同合格任务累计有效重叠执行至少10分钟。每项须有独立问题、提出依据及实际研究产物；系统通用观察责任、改名重复或空产物不计数。
+不再把固定 Task 数量、固定后半程分钟数或固定 50% 改善率作为硬门槛。实验前应根据直接父实现记录基线，并登记目标区间或方向性目标，至少观察：
 
-对照与处理均计算后半程“有空闲Core且仅一项责任在执行”的累计时长，并指出其中存在可独立工作机会的区间。暂定改善门槛：在对照有充分该类停滞时，处理运行减少至少50%，且没有一段有明确可执行独立工作却持续30分钟无人处理的区间。阈值须事前批准，不能向Agent透露或据此制造工作。若机会不足或两侧不可比，INCONCLUSIVE，不把合理串行判为框架错误。
+- **有效 Task 率**：非重复、非微任务、实际进入 Execution 并产生可审阅成果的 Task 比例；
+- **有效并行率**：不同有效 Task 的 Execution 实际研究区间重叠情况；
+- **有效 Core 利用率**：有效研究执行时间占可用 Core 时间的比例；
+- **机会调整后的空闲率**：存在合格可认领工作时仍未执行的 Core 时间。
 
-默认领域模板Task为0；所有已接受任务都能在同一权威状态中定位；无旧累计额度拒绝、无资源超限或静默丢提案。总成本和整题候选结果一并报告，更多并行不等于token效率提高。
+只有在有效 Task 质量和独立性成立时，Core 利用率才算正向信号。没有足够可拆分工作时，低利用率不能单独判失败；为了提高利用率创建微任务则属于失败。目标区间必须事前登记，不能向 Agent 暴露为数量指令，也不能看完结果后修改。
+
+对照与处理均报告原始容量、Task 提案、认领、Execution 重叠、有效成果、总成本和未观测项。供给停滞只在存在具体、可独立执行的合格工作证据而系统没有及时准入或执行时记录；单纯 Core 空闲不等于供给停滞。
 
 ## 回归与关闭条件
 
-测试完整创建认领路径、完成回收后继续超过旧累计上限、并发准入、同请求重放和同键不同请求、阻塞记录挤在列表前部、来源省略与身份保留、远程一致或启动拒绝，以及供给检查无自激发。
+测试完整 `task_status → task_register → task_take → Execution` 路径、完成/交接释放额度后继续工作、并发准入、同请求重放和同键不同请求、阻塞记录挤在列表前部、来源与 Agent identity/Execution 身份保留、远程一致或启动拒绝，以及供给检查无自激发。补充测试 Execution 时间盒、identity compaction 预算、compaction 后 checkpoint follow-up、handoff 后新 identity 接续和 Git commit/worktree lineage。
 
-T1–T8与新增同类偏差完成核对，匹配2小时运行达到持续分工与改善门槛，才能关闭。实际提案不足时要诊断，不以删掉模板便宣布自主形成成功。新算法、prompt调优、语义去重、N–2N强制下限与中心LLM审批均不做。
+T1–T8与新增同类偏差完成核对，匹配运行显示有效 Task、真实独立执行和机会调整后的并行改善，才能关闭。实际提案不足时要诊断，不以删掉模板或提高 Core 占用率宣布自主形成成功。新算法、prompt 搜索、语义去重、中心 LLM 审批和固定 N–2N 任务下限均不做。

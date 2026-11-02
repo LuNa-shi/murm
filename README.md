@@ -15,6 +15,7 @@ SwarmEnv 研究以显式任务组织的 Agent Swarm。Agent 在工作中提出�
 | [AGENTS.md](AGENTS.md) | 项目约束、核心设计准则、开发与验收要求 |
 | [GLOSSARY.md](GLOSSARY.md) | 统一领域术语 |
 | [目标架构](docs/architecture.md) | 启动、分工、检查、反馈、接续与结束的完整流程 |
+| [Agent Task运行契约](docs/20261102-agent-task-runtime-contract.md) | 四 Core、主动登记/认领、Progress Material、compaction 轮换与 Git Workspace lineage |
 | [架构复盘](docs/reviews/task-centric-baseline.md) | 固定代码和实验基线的发现与设计推导 |
 | [第一阶段计划](docs/plans/phase-1/README.md) | 三个完整代码 Issue 草案、依赖与范围 |
 | [两小时验收协议](docs/validation/phase-1-acceptance.md) | 匹配对照、指标定义、触发机会和失败条件 |
@@ -30,4 +31,4 @@ SwarmEnv 研究以显式任务组织的 Agent Swarm。Agent 在工作中提出�
 
 ## 文档版本
 
-当前规范由 `AGENTS.md` 与目标架构共同定义。旧设计已保留到 [归档](docs/archive/README.md)，原路径只保留导航。Notion 用于讨论，获确认的实现要求通过仓库 PR 维护；新讨论不会自动改写已经合并的规范。
+当前规范由 `AGENTS.md`、目标架构和日期化的 Agent Task 运行契约共同定义。新建或新版本工程文档使用 `YYYYMMDD-标题短名.md`；稳定入口保留原路径，过时版本移入日期归档。旧设计已保留到 [归档](docs/archive/README.md)，原路径只保留导航。Notion 用于讨论，获确认的实现要求通过仓库 PR 维护；新讨论不会自动改写已经合并的规范。

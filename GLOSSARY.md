@@ -9,12 +9,18 @@
 | Task contract | Task 当前要解决的问题、交付范围与验收要求。方法变化未必改变合同。 |
 | Execution | 在确定 Task 版本和资源授权下开展的一次绑定研究执行。 |
 | Agent Session | 模型交互会话；未绑定任务的选择活动与绑定研究会话应分别记录。 |
-| Core | 可被先后使用的执行容量，不拥有研究责任。 |
+| Core | 可被先后使用的执行容量，不拥有研究责任；一个 Core lane 可先后承载多个 Agent identity。 |
+| Agent identity | 一个可轮换的 Pi 进程/Session 身份；可以顺序认领多个 Execution，但同一时刻只拥有一个有效 Execution。 |
+| Core lane | 一个 Core 的物理时间线；它可以在不同时间承载不同 Agent identity，不等于 Agent identity。 |
 | Material | 带来源、版本、适用条件及证据说明的可共享阶段成果。 |
+| Progress Material | 记录当前工作、发现、开放问题、下一步和可选 Workspace lineage 的进度成果；可作为 checkpoint 或 handoff。 |
 | Response | 面向具体接收任务的交付用途；各接收者可以有不同处理结果。 |
 | Handoff | 为后续执行者保留同一未完成责任的状态与证据，并释放当前执行权。 |
+| Checkpoint | 当前 Execution 内可反复保存的 Progress Material；不会释放 Execution。 |
+| Session rotation | 结束一个 Pi Session 并启动新的 Agent identity；可以保持同一 Task，也不自动产生新的并行责任。 |
 | Experience | 可被其他工作发现和使用的研究经验、事实或失败结果。 |
-| Workspace | 一次执行的私有工作面；对外共享通过版本化成果与引用进行。 |
+| Workspace | 一次执行的私有、可版本化工作面；目标实现使用 Git worktree 和 commit 表达接续，对外共享通过版本化成果与引用进行。 |
+| Workspace lineage | 从输入 commit/ref 到后续 Workspace commit 的可验证来源链。 |
 | Feedback | 面向 Task 的信息、证据或变更请求，不自动授予发送者修改权限。 |
 | Candidate | 待检查内容的确定版本；不是一种 Task 或必须另建的工作流。 |
 | CheckResult | 外部检查针对特定目标、内容和环境返回的结果及诊断。 |
