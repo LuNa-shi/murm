@@ -6,7 +6,9 @@ credential, stdout, or stderr.
 
 ## Fixed inputs
 
-- Implementation commit: `1aca2651cda88926f2d4732ad769c7ba1bda242c`
+- Latest implementation commit: `ba006dd` (the blocked probe below was run
+  against the prior `1aca2651cda88926f2d4732ad769c7ba1bda242c` commit and is
+  not acceptance evidence for this follow-up code).
 - Worktree: `/home/ubuntu/SwarmEnv/.worktrees/issue-111-task-centric-phase1`
 - Worktree state at launch: clean (`git status --porcelain` was empty)
 - PutnamBench commit: `a635813f5edf297d928f9bd5ef8324a26bdde09c`
@@ -56,7 +58,7 @@ evidence for the two-hour benchmark.
    two-hour benchmark was started, so the real acceptance gate is **BLOCKED**
    by the local Agent route/turn availability.
 
-The corrected controlled probe command is:
+The corrected controlled probe command for the prior implementation was:
 
 ```sh
 set -a; source .env; set +a
@@ -86,5 +88,6 @@ timeout 7500s node scripts/run-putnambench-benchmark.mjs \
   --observability-host 127.0.0.1 --observability-port 8894
 ```
 
-No mathematical solve, orchestration improvement, or real compaction
-rotation claim is made from the blocked probes.
+The follow-up implementation commit `ba006dd` requires a fresh readiness probe
+and real run before any acceptance claim. No mathematical solve, orchestration
+improvement, or real compaction rotation claim is made from the blocked probes.
