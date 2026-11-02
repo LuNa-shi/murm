@@ -733,7 +733,7 @@ export class Runtime {
       wait_condition: waitCondition,
       wait_deadline: deadline ?? waitCondition?.deadline ?? null,
     }, this.#executionEnvelope(current, operationId('wait')));
-    await Promise.resolve(active.session.stop()).catch(() => undefined);
+    await this.#releaseSessionBinding(active, executionId);
     await this.#stopSandbox(executionId);
     await this.workspaceManager.releaseWorkspace({ workspaceRef: workspace.workspace_ref, executionId, fencingVersion: execution.fencing_version });
     this.activeProcesses.delete(executionId);
@@ -807,7 +807,7 @@ export class Runtime {
       newFencingVersion: result.execution.fencing_version,
       event: 'runtime.block_workspace_fence_error',
     });
-    await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+    await this.#releaseSessionBinding(active, executionId);
     if (workspaceFenced && result.execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({
         workspaceRef: result.execution.workspace_ref,
@@ -856,9 +856,7 @@ export class Runtime {
     });
     if (active) {
       active.closing = true;
-      await Promise.resolve(active.session.stop?.()).catch((error) => {
-        this.logger?.append({ event: `runtime.${operation}_stop_error`, execution_id: id, error_class: error?.code ?? error?.name ?? 'session_stop_error' });
-      });
+      await this.#releaseSessionBinding(active, id);
       this.activeProcesses.delete(id);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
@@ -1183,9 +1181,7 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (active) {
       active.closing = true;
-      await Promise.resolve(active.session.stop?.()).catch((error) => {
-        this.logger?.append({ event: 'runtime.handoff_stop_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'session_stop_error' });
-      });
+      await this.#releaseSessionBinding(active, executionId);
       this.activeProcesses.delete(executionId);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
@@ -1307,7 +1303,7 @@ export class Runtime {
       await this.#drainCompactionCheckpoint(active);
       execution = this.#getExecution(executionId);
       this.activeProcesses.delete(executionId);
-      await Promise.resolve(active.session.stop()).catch(() => undefined);
+      await this.#releaseSessionBinding(active, executionId);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
     const result = this.taskService.dispatch('stop_execution', {
@@ -1334,7 +1330,7 @@ export class Runtime {
       await this.#drainCompactionCheckpoint(active);
       execution = this.#getExecution(id);
       this.activeProcesses.delete(id);
-      await Promise.resolve(active.session.stop()).catch(() => undefined);
+      await this.#releaseSessionBinding(active, id);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
     await this.#stopSandbox(id);
@@ -1366,7 +1362,7 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (active) {
       this.activeProcesses.delete(executionId);
-      await Promise.resolve(active.session.stop()).catch(() => undefined);
+      await this.#releaseSessionBinding(active, executionId);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
     if (workspaceFenced && result.execution.workspace_ref) {
@@ -1398,7 +1394,7 @@ export class Runtime {
       const active = this.activeProcesses.get(execution.execution_id);
       if (active) {
         this.activeProcesses.delete(execution.execution_id);
-        await Promise.resolve(active.session.stop()).catch(() => undefined);
+        await this.#releaseSessionBinding(active, execution.execution_id);
         this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       }
       if (workspaceFenced && result.execution.workspace_ref) {
@@ -1773,6 +1769,19 @@ export class Runtime {
     return coreId ?? execution?.core_id ?? execution?.owner_ref ?? execution?.execution_id ?? 'identity';
   }
 
+  /**
+   * Release one Execution's claim on a reusable identity Session. The
+   * Session survives a normal completion/handoff/block so the same identity
+   * can take the next responsibility; only explicit rotation, process
+   * failure, or shutdown stops it.
+   */
+  async #releaseSessionBinding(active, executionId) {
+    if (!active?.session) return;
+    if (active.session.boundExecutionId === executionId) active.session.boundExecutionId = null;
+    if (active.session.identitySession === true) return;
+    await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+  }
+
   #registerActiveProcess(execution, workspace, session, { sessionReason = 'start', coreId = null } = {}) {
     const nowMs = this.clock();
     const active = {
@@ -1805,15 +1814,26 @@ export class Runtime {
       task_id: execution.task_id,
       session_id: session.sessionId ?? null,
     });
-    session.on('rpc', (record) => {
-      void this.#handleSessionEvent(execution.execution_id, record);
-    });
-    session.on('processError', () => {
-      void this.#handleSessionFailure(execution.execution_id, 'process_error');
-    });
-    session.on('close', () => {
-      void this.#processExit(execution.execution_id);
-    });
+    // A reusable identity Session can be bound to several Executions over its
+    // lifetime. Attach one listener set and read the current binding at event
+    // time; re-binding must not multiply handlers or route late events to the
+    // previous Execution.
+    session.boundExecutionId = execution.execution_id;
+    if (session.__swarmenvRuntimeBound !== true) {
+      session.__swarmenvRuntimeBound = true;
+      session.on('rpc', (record) => {
+        const boundId = session.boundExecutionId;
+        if (boundId) void this.#handleSessionEvent(boundId, record);
+      });
+      session.on('processError', () => {
+        const boundId = session.boundExecutionId;
+        if (boundId) void this.#handleSessionFailure(boundId, 'process_error');
+      });
+      session.on('close', () => {
+        const boundId = session.boundExecutionId;
+        if (boundId) void this.#processExit(boundId);
+      });
+    }
     this.#notifySessionStarted({ execution, workspace, session, sessionReason });
   }
 
@@ -1865,7 +1885,7 @@ export class Runtime {
     this.activeProcesses.delete(executionId);
     await this.#stopSandbox(executionId);
     const execution = this.taskService.getExecution(executionId);
-    await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+    await this.#releaseSessionBinding(active, executionId);
     if (execution?.workspace_ref) {
       const oldFence = Math.max(0, execution.fencing_version - 1);
       await this.workspaceManager.fenceWorkspace({

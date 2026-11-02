@@ -640,6 +640,10 @@ async function startAgentSession(core) {
     observation: core.observe,
     observationContext: { coreId: `core-${core.index}`, taskId: null, executionId: null },
   });
+  // This Session is the durable identity for the Core lane. It survives
+  // ordinary Execution completion/handoff and is replaced only by explicit
+  // recovery or identity rotation.
+  session.identitySession = true;
   core.session = session;
   core.sessionHistory.push(session);
   core.versionManifest = session.manifest ?? null;
@@ -659,6 +663,7 @@ function attachRecoveredSession(core, { execution, session }) {
   // Agent-time interval is currently open before assigning the replacement.
   // endAgentTurn is idempotent when no interval is open.
   core.parallelism.endAgentTurn(core.index, turnStartedAt, 'session_recovery');
+  session.identitySession = true;
   core.session = session;
   core.sessionHistory.push(session);
   core.sessionRecoveryCount = (core.sessionRecoveryCount ?? 0) + 1;
@@ -837,17 +842,9 @@ async function takeTaskWithAgent(core, candidates, prompt) {
       core.dispatchReserved = true;
       core.nextTurnAt = Date.now();
     }
-    if (!handedOff && !handoffPending && !core.taskId && core.session === session) {
-      // Empty, invalid, or failed selection turns have no claim to hand off;
-      // release their transport so bounded startup retry accounting remains
-      // meaningful. A valid claim takes the path above and is retained until
-      // IdentityTaskLoop finishes the Runtime handoff boundary.
-      core.session = null;
-      await Promise.resolve(session.stop?.()).catch(() => undefined);
-    }
-    // Keep the selection Session alive until its claim and Runtime handoff
-    // have completed. The bound Session is started by the claim callback;
-    // normal project cleanup stops both transports through stopCore.
+    // An empty or failed take turn does not retire the identity. Keep the
+    // Session for the next wake; only explicit recovery/rotation replaces it.
+    // A valid claim stays reserved until Runtime finishes the handoff.
     core.stateRef?.requestIdentityWake?.();
   }
 }
@@ -1241,6 +1238,9 @@ async function stopCore(state, core) {
     ]);
   }
   if (core.boundTurnPromise) await core.boundTurnPromise.catch(() => undefined);
+  // Drain recovery/fence/rotation handlers before the caller removes the
+  // experiment directory; a late workspace revision must not race cleanup.
+  await core.runtime.waitForSettled?.().catch(() => undefined);
   const current = core.executionId ? state.taskService.getExecution(core.executionId) : null;
   if (core.parallelism) core.parallelism.transition(core.index, 'IDLE', {
     task_id: current?.task_id ?? null,
@@ -2047,7 +2047,39 @@ async function createProjectState(problem, config, options) {
       logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
       onSessionStarted: ({ execution, session, recovery }) => {
-        if (recovery) attachRecoveredSession(core, { execution, session });
+        if (recovery) {
+          attachRecoveredSession(core, { execution, session });
+          return;
+        }
+        if (core.executionId !== execution.execution_id || core.session === session) return;
+        // Explicit identity rotation replaced the Session in the same
+        // Execution. Runtime has already sent the initial prompt; track the
+        // replacement so the next idle wake does not start a competing turn.
+        session.identitySession = true;
+        core.session = session;
+        core.sessionHistory.push(session);
+        core.versionManifest = session.manifest ?? core.versionManifest;
+        core.turnInFlight = true;
+        core.agentTurnSession = session;
+        core.sessionRotationCount = (core.sessionRotationCount ?? 0) + 1;
+        void (async () => {
+          try {
+            await session.waitForSettled?.({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
+          } catch (error) {
+            const expected = session.expectedStop || core.session !== session || core.stopping;
+            if (!expected) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'rotation_turn_error' });
+          } finally {
+            if (core.agentTurnSession === session) {
+              core.parallelism.endAgentTurn(core.index, Date.now(), 'identity_rotation_settled');
+              core.agentTurnSession = null;
+            }
+            if (core.session === session) {
+              core.turnInFlight = false;
+              core.nextTurnAt = Date.now();
+            }
+            core.stateRef?.requestIdentityWake?.();
+          }
+        })();
       },
     });
     const core = {
@@ -2370,16 +2402,18 @@ async function createProjectState(problem, config, options) {
           reason: legacyWaiting ? releasedExecution.wait_condition?.type ?? 'request_wait' : releasedExecution?.state?.toLowerCase() ?? 'claim_released',
         });
         if (core.taskId === taskId && core.executionId === executionId) {
-          core.releasedSession = core.session;
           core.waitingExecutionId = legacyWaiting ? executionId : null;
           core.taskId = null;
           core.executionId = null;
           core.claim = null;
-          core.session = null;
-          // Runtime has already removed and stopped the active process before
-          // invoking this callback. The transport turn still owns the
-          // dispatch reservation until its promise settles, so another identity loop
-          // cannot start a second worker against this Core during handoff.
+          // Keep the identity Session alive. Runtime detached it from the
+          // released Execution; the next take re-binds this same Session.
+          // Deterministic adapters use `bound` to choose their scripted path.
+          if (core.session && 'bound' in core.session) core.session.bound = false;
+          // Runtime has already detached the process before invoking this
+          // callback. The transport turn still owns the dispatch reservation
+          // until its promise settles, so another identity loop cannot start a
+          // second worker against this Core during handoff.
         }
         core.stateRef?.requestIdentityWake?.();
       },

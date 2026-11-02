@@ -970,8 +970,13 @@ test('benchmark bounds retries after an unbound prompt startup failure', async (
     });
     assert.ok(adapter.starts >= 2);
     assert.ok(adapter.starts <= 8);
-    assert.equal(report.run.scheduler.startup_attempt_count, adapter.starts);
-    assert.equal(report.run.scheduler.startup_failure_count, adapter.starts);
+    // A failed unbound prompt is retried on the same identity Session, so turn
+    // attempts can exceed process starts; both counts must still be bounded.
+    assert.ok(report.run.scheduler.startup_attempt_count >= adapter.starts);
+    // A failed prompt on an existing Session is a turn failure, not a new
+    // process start, so failures can exceed starts. Both remain bounded.
+    assert.ok(report.run.scheduler.startup_failure_count >= report.run.scheduler.startup_attempt_count);
+    assert.ok(report.run.scheduler.startup_failure_count <= 8);
     assert.ok(report.run.scheduler.bounded_startup_exhausted_count >= 1);
     assert.ok(report.run.scheduler.bounded_startup_exhausted_count <= 4);
     assert.equal(report.run.scheduler.dispatch_count, 0);
@@ -1331,7 +1336,8 @@ test('short four-core collaboration proves root decomposition, parallel work, ty
     assert.ok(report.run.candidate_check_count >= 3, 'two child candidates and one root candidate should be checked');
     assert.equal(report.audit.invalid, false);
     assert.ok(adapters.every((adapter) => adapter.starts.length >= 1), JSON.stringify(adapters.map((adapter) => adapter.starts.length)));
-    assert.ok(adapters.some((adapter) => adapter.starts.length >= 2));
+    // The same identity Session continues across the Tasks it takes.
+    assert.ok(adapters.every((adapter) => adapter.starts.length === 1));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
@@ -1462,7 +1468,9 @@ test('production queue consumes pre-existing independent Tasks without Root synt
     assert.ok(coreTaskSets.some((tasks) => tasks.size >= 2), 'a Core must claim different pre-existing Tasks across waves');
     assert.ok(report.run.candidate_check_count >= 8);
     assert.ok(report.parallelism.eligible_window_ms > 0);
-    assert.ok(adapters.every((adapter) => adapter.starts.length >= 2));
+    // The same identity Session takes subsequent Tasks; a Core does not start a
+    // replacement Session merely because an Execution completed.
+    assert.ok(adapters.every((adapter) => adapter.starts.length === 1), `starts=${adapters.map((adapter) => adapter.starts.length).join(',')}`);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });

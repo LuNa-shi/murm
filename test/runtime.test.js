@@ -455,11 +455,13 @@ test('compaction failure is classified and recovered with a fresh Session', asyn
     await runtime.startExecution(claimed.execution.execution_id);
     adapter.sessions[0].emit('rpc', { type: 'compaction_end', reason: 'overflow', aborted: false, errorMessage: 'summary provider failed' });
     await new Promise((resolve) => setTimeout(resolve, 25));
+    await runtime.waitForSettled();
     assert.equal(adapter.sessions.length, 2);
     assert.equal(adapter.sessions[1].prompts[0].includes('compaction_failure'), true);
     assert.equal(taskService.listExecutions(fixtureData.task.task_id).filter((execution) => execution.state === 'RUNNING').length, 1);
     await runtime.stopExecution(taskService.listActiveExecutions()[0].execution_id);
   } finally {
+    await runtime.waitForSettled().catch(() => undefined);
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
   }
