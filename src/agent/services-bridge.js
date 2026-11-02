@@ -26,11 +26,6 @@ const WORKSPACE_OPERATIONS = new Set([
   'read_workspace_file', 'write_workspace_file', 'workspace_diff',
 ]);
 
-function requiresJudge(task) {
-  const contract = task?.completion_contract ?? {};
-  return Boolean(contract.required_candidate || contract.required_check || task?.task_type === 'proof');
-}
-
 function usesWorkspace(task) {
   const workspace = task?.workspace;
   const contract = task?.completion_contract ?? {};
@@ -367,9 +362,6 @@ export class ServicesBridge {
       }
       if (modernBoundTask && WORKSPACE_OPERATIONS.has(operation) && !usesWorkspace(modernBoundTask)) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
-      }
-      if (modernBoundTask && ['submit_candidate', 'get_check_result'].includes(operation) && !requiresJudge(modernBoundTask)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
       }
       const service = this.router ?? { dispatch: (name, body, envelope) => {
         if (['get_task', 'get_execution', 'list_tasks', 'list_claimable_tasks', 'list_executions'].includes(name)) return this.taskService.dispatch(name, body, envelope);

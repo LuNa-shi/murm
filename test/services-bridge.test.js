@@ -636,6 +636,52 @@ test('ServicesBridge routes Judge feedback through the named Judge Service tool'
   }
 });
 
+test('ServicesBridge allows a research Mission Task to use Judge without a completion check contract', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:research-judge' });
+  const mission = owner.createMission({
+    mission_id: 'mission:research-judge', goal: 'allow diagnostic checks', acceptance_conditions: {},
+  }).mission;
+  const task = owner.createTask({
+    mission_id: mission.mission_id, task_type: 'research', summary: 'Inspect a candidate and record the diagnostic boundary.',
+    goal: 'Inspect a candidate diagnostically while preserving the research result boundary.', expected_output: 'diagnostic material',
+    acceptance_conditions: { boundary: 'diagnostic' }, owner_ref: 'owner:research-judge',
+    completion_contract: { required_materials: [{ kind: 'fact', min_count: 1 }] },
+  }).task;
+  const claim = taskService.claimTask(task.task_id, {
+    execution_id: 'research-judge-execution', claim_key: 'research-judge-claim',
+    owner_ref: 'agent:research-judge', agent_prompt: 'research', input_material_refs: [],
+  });
+  taskService.dispatch('start_execution', {}, makeEnvelope({
+    operationId: 'research-judge-start', actorRef: 'runtime:test', taskId: task.task_id,
+    executionId: claim.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
+  }));
+  let submissions = 0;
+  const bridge = new ServicesBridge({
+    taskService, contextService, runtime: {}, router,
+    taskId: task.task_id, executionId: claim.execution.execution_id,
+    onSubmitCandidate: async ({ executionId, payload }) => {
+      submissions += 1;
+      return { check_result: { result_class: 'source_failure', diagnostic_code: 'source_failure' }, execution_id: executionId, candidate_material_id: payload.candidate_material_id };
+    },
+  });
+  try {
+    const materialResult = await bridge.call({ operation: 'publish_material', payload: { kind: 'artifact', scope: 'proof_relevant', content: 'diagnostic candidate' } });
+    const result = await bridge.call({ operation: 'submit_candidate', payload: { candidate_material_id: materialResult.material.material_id } });
+    assert.equal(submissions, 1);
+    assert.equal(result.check_result.result_class, 'source_failure');
+    assert.equal(taskService.getExecution(claim.execution.execution_id).state, 'RUNNING');
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
 test('ServicesBridge keeps the same binding for a source failure so the Agent can revise synchronously', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);
