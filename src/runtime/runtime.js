@@ -1759,7 +1759,10 @@ export class Runtime {
     }
     if (record.type === 'compaction_end' && record.result && !record.aborted) {
       active.compactionCount += 1;
-      const postCompactionUsage = usage ?? contextWindowRatio(record.result, active.session);
+      const estimatedTokensAfter = record.result?.estimatedTokensAfter ?? record.result?.estimated_tokens_after ?? null;
+      const postCompactionUsage = estimatedTokensAfter !== null && estimatedTokensAfter !== undefined
+        ? contextWindowRatio({ ...record, tokens: estimatedTokensAfter, result: { ...record.result, tokensBefore: undefined, tokens_before: undefined } }, active.session)
+        : usage ?? contextWindowRatio(record.result, active.session);
       this.logger?.append({
         event: 'runtime.compaction_completed', execution_id: executionId, identity_id: active.identityId,
         compaction_count: active.compactionCount, max_compactions: this.maxCompactions,

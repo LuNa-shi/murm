@@ -165,7 +165,7 @@ test('third compaction continues below threshold then rotates before a fourth', 
   try {
     await runtime.startExecution(claimed.execution_id, { coreId: 'core-s3' });
     for (let count = 1; count <= 3; count += 1) {
-      sessions[0].emit('rpc', { type: 'compaction_end', reason: `c${count}`, result: { tokensBefore: 100 }, aborted: false });
+      sessions[0].emit('rpc', { type: 'compaction_end', reason: `c${count}`, result: { tokensBefore: 490, estimatedTokensAfter: 100 }, aborted: false });
       await settle();
     }
     assert.equal(sessions.length, 1, 'third compaction below 80% does not retire the identity');
