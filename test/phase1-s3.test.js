@@ -172,7 +172,7 @@ test('third compaction continues below threshold then rotates before a fourth', 
     assert.equal(events.filter((event) => event.event === 'runtime.compaction_checkpoint_saved').length, 3);
 
     sessions[0].emit('rpc', { type: 'turn_end', usage: { tokens: 450, total_tokens: 450 } , contextWindow: 500 });
-    await settle();
+    await waitFor(() => events.filter((event) => event.event === 'runtime.identity_rotation_completed').length === 1);
     assert.equal(sessions.length, 2, '80% usage after the third compaction rotates the identity');
     assert.equal(events.filter((event) => event.event === 'runtime.identity_rotation_completed').at(-1).new_compaction_count, 0);
 
@@ -181,7 +181,7 @@ test('third compaction continues below threshold then rotates before a fourth', 
       await settle();
     }
     sessions[1].emit('rpc', { type: 'compaction_start', reason: 'would-be-fourth', contextWindow: 500, usage: { tokens: 490 } });
-    await settle();
+    await waitFor(() => events.filter((event) => event.event === 'runtime.identity_rotation_completed').length === 2);
     assert.equal(sessions.length, 3, 'fourth compaction is intercepted by identity rotation');
     assert.equal(events.some((event) => event.event === 'runtime.compaction_completed' && event.compaction_count === 4), false);
     await runtime.stopExecution(taskService.listActiveExecutions()[0].execution_id);
