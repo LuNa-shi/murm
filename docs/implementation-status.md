@@ -1,6 +1,6 @@
 # 目标与实现状态
 
-代码核对基线为 Issue #111 后续实现提交 `ba006dd`（基于 PR #112 的 `1aca2651cda88926f2d4732ad769c7ba1bda242c`）。核心确定性回归（除依赖旧 Selection Agent 语义的 benchmark compatibility tests 和本地 Pi stop smoke 外）为 271/271；此前 `1aca265` 的完整基线为 301/301。最终真实 Agent probe 的 preflight 为 `READY_TO_LAUNCH`，但在可用 Agent turn 前以 `RPC_ERROR / timeout` 结束，因此真实长跑仍为 BLOCKED；不能把确定性测试写成真实验收结论。
+代码核对基线为 Issue #111 后续实现提交 `ba006dd09ee81da2f1706b5a20f614132344ef10`（基于 PR #112 的 `1aca2651cda88926f2d4732ad769c7ba1bda242c`）。核心确定性回归（除依赖旧 Selection Agent 语义的 benchmark compatibility tests 和本地 Pi stop smoke 外）为 271/271；此前 `1aca265` 的完整基线为 301/301。最终真实 Agent probe 的 preflight 为 `READY_TO_LAUNCH`，但在可用 Agent turn 前以 `RPC_ERROR / timeout` 结束，因此真实长跑仍为 BLOCKED；不能把确定性测试写成真实验收结论。
 
 | 目标 | 已有情况/尚待实现 | 归属与验收 |
 | --- | --- | --- |

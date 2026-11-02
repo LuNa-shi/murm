@@ -6,7 +6,7 @@ credential, stdout, or stderr.
 
 ## Fixed inputs
 
-- Latest implementation commit: `ba006dd` (the blocked probe below was run
+- Latest implementation commit: `ba006dd09ee81da2f1706b5a20f614132344ef10` (the blocked probe below was run
   against the prior `1aca2651cda88926f2d4732ad769c7ba1bda242c` commit and is
   not acceptance evidence for this follow-up code).
 - Worktree: `/home/ubuntu/SwarmEnv/.worktrees/issue-111-task-centric-phase1`
@@ -88,6 +88,6 @@ timeout 7500s node scripts/run-putnambench-benchmark.mjs \
   --observability-host 127.0.0.1 --observability-port 8894
 ```
 
-The follow-up implementation commit `ba006dd` requires a fresh readiness probe
+The follow-up implementation commit `ba006dd09ee81da2f1706b5a20f614132344ef10` requires a fresh readiness probe
 and real run before any acceptance claim. No mathematical solve, orchestration
 improvement, or real compaction rotation claim is made from the blocked probes.
