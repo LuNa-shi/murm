@@ -1,121 +1,78 @@
 # Task-oriented Swarm：第一阶段目标架构
 
-状态：**设计基线草案，待本 PR 审阅合并**。本文由两篇 Notion 讨论整理，并纳入后续关于 Judge 与第一阶段范围的明确修正。它规定目标行为，不宣称当前代码已完成；差距见 [实现状态](implementation-status.md)。项目约束的权威定义在 [AGENTS.md](../AGENTS.md)。
+状态：PR #110 设计草案，尚非已实现能力。本文说明整体流程，详细契约见[Agent Task运行契约](20261102-agent-task-runtime-contract.md)，约束见[AGENTS](../AGENTS.md)，差距见[实现状态](implementation-status.md)。本次根据用户澄清修订，不再采用单一执行者的Mission入口或任务数量配额。
 
-## 1. 系统边界与基本对象
+## 1. 同一个目标，两种工作范围
 
-用户提供原题、初始材料、工具环境与资源上限。Agent 自主决定具体研究方向，公共服务保存工作责任与证据。Mission 为这些工作提供共同目标及最终验收范围；它不需要一个永久负责所有分工和审批的主 Agent。
+所有Agent共同面对Mission。Mission保存原题、初始材料、最终验收和运行资源；一个共享Mission Task使所有身份的整体研究都有显式归属。多个Execution可以同时推进它，实际数量由Core和总预算限制，不额外设任务级并行上限。
 
-Task 保存一份明确责任，Execution 记录某次执行，Material 保留成果。Core 是可复用的物理执行容量，Agent identity 是可轮换的 Pi 进程/Session 身份；四 Core 默认对应四个可工作的 Agent identity，但 Core 与 identity 不绑定为永久关系。每个 Agent identity 可以顺序认领多个 Execution，同一时刻每个 Task 只有一个有效写入者。不同路线、可独立处理的引理和明确的独立验证使用不同的普通 Task，创建者不会因此获得对方的管理权。
+具体问题适合独立推进时，Agent登记普通Task，说明目标、交付、验收和分工理由。普通Task保持一个有效执行者，已有参与者继续其他工作。来源关系只追溯问题从哪里产生，不授予父级调度或审批权。
 
-任务说明应使接手者理解：已有何种依据，当前问题是什么，工作范围止于哪里，什么结果可以交付。结果可以是证明、可检查的反例或有证据的路线否定。Task 完成不等于原题已解决。
+因此，默认启动无需预置领域路线，也无需先让一个planner为所有人生成任务。没有普通Task可领时，Agent继续共享Mission；不把队列空当作Mission完成或identity退休。继续整体研究、尝试集成成果和提出具体问题，都可以在Mission Execution中进行，不强制拆成微任务。
 
-创建来源、真实前置依赖和材料使用关系分别表达。需要多个引理共同成立或存在竞争路线时，可先用版本化路线说明与引用展示 AND/OR 含义，不恢复父任务审批树。
-
-## 2. 从输入开始形成工作
-
-默认启动登记用户目标，产生最小的普通求解入口，不预设研究路线。Agent 在开展任何新的独立工作前，必须先向 Task Service 登记一个完整 Task；它可以立即自己认领，也可以将 Task 留在 `OPEN` 队列交给其他 Agent。Task 必须有独立问题、交付物、验收条件，并说明为什么需要另一个 Agent/Core 协助；微任务、纯搬运、重复工作和空材料不应进入队列。
-
-Agent-facing 的核心循环是 `task_status → task_register → task_take（或留在队列）→ 执行 → execution_progress → 完成/交接/阻塞 → 再次 task_status`。`task_status` 返回权威的开放任务数、可认领任务数、空闲 Core 数和分页候选；`task_take` 内部完成资格校验、Execution 建立、Core 分配和工作上下文准备。Agent 不直接管理 Core、lease、fencing、Pi 进程或 Workspace 路径。
-
-提案先检索已有摘要和 Material，说明与现有覆盖的差异；是否有研究价值由 Agent 判断，服务仅保证合同、引用、权限、版本和资源合法。不能用精确字符串、摘要长度或任务数量冒充语义去重。完整接口与身份轮换见[Agent Task运行契约](20261102-agent-task-runtime-contract.md)。
-
-供给不足时可以有限重新观察，但系统只能触发通用观察责任，不能填写新的数学任务。相同状态版本不重复触发，检查自己的完成不触发自身，预算耗尽或判断无可行方向时允许停止。启动数量、Execution 窗口、compaction 上限和触发阈值都是显式策略配置，不承诺始终填满 Core。
-
-## 3. 每个执行者的局部循环
-
-一个 Agent identity 可以顺序工作于多个 Task，但同一时刻只持有一个有效 Execution：
+## 2. Agent的连续工作循环
 
 ```text
-查看权威队列和容量
-  → 登记一个足够完整且需要协作的 Task
-  → 自己 task_take，或将 Task 留在 OPEN 队列
-  → 读取 Task、Material、Feedback 和可选 Git Workspace lineage
-  → 研究、调用工具或进行局部验证
-  → 在 compaction 后或阶段性完成时保存 Progress Material checkpoint
-  → 继续当前研究，同时提出独立 Task 或向相关 Task 反馈
-  → 完成、handoff、因真实条件阻塞，或有依据地停止
-  → 释放当前 Execution 后再次查看队列
+同一个identity、自己的Core lane
+  → 读取Mission目标和工作状态
+  → task_take：共享Mission或已有独立Task
+  → 得到该Execution的Workspace与相关context，按需读取更多Material
+  → 研究、检查、保存阶段结果
+  → 需要分工时task_register，当前Execution可以继续
+  → 处理新反馈、完成或handoff
+  → 继续认领普通Task；无合适分工则回到共享Mission
 ```
 
-Agent Session 不是长期权威记忆。达到 compaction 预算或上下文压力阈值后，Runtime 在安全点要求 Handoff Material，结束当前 Pi Session，并由新的 Agent identity 从 checkpoint、Material 和 Git commit 继续。
+Agent不需要每轮先注册任务，直接认领已有任务即可。认领不申请第二个Core；释放Execution后identity可留在原lane继续。短暂任务发现与切换记录成本，正式研究绑定到Mission或普通Task。
 
-这些循环异步进行。Agent A 发布引理后可以继续研究；B 无须等 A 完成即可使用；B 的新发现也可以在 A 尚未结束时返回。
+task_take保证责任与执行资格不冲突，工作面准备失败时撤销该次未完成绑定。Runtime仍维护物理进程、lease、fencing和工具调用次序，不负责数学方向选择。多个执行者的Workspace独立；不因共享Mission而共用可写目录。
 
-新增 Task 表达并行分工；反馈改变正在进行的工作；handoff 接续同一责任。不得用定时轮换 Execution 代替并行研究。
+## 3. 任务创建、反馈与handoff
 
-## 4. Judge 的检查循环与最终完成
+新的独立Task增加明确分工。发布Material积累知识，反馈可以在当前执行结束前影响研究。Handoff结束当前Execution但不完成责任；普通Task回到OPEN，共享Mission还有其他执行者时保持RUNNING并继续可认领。
 
-Judge 是工具可调用的外部能力。Agent 可以将当前文件或内容提交检查，获得结果并继续修改。工具内部可以保存不可变输入快照、来源与 CheckResult；不要求 Agent 手工创建检查 Task、发布多份 Material 或完成消费者验收仪式。
+本阶段没有累计新增、在制或OPEN队列数量上限，也不存在任务名额回收。任务数仍然记录，分页和请求幂等仍然正确。资源只约束实际计算：总预算、Core/模型并发、工具调用及Execution窗口。是否需要任务数量策略留到后续，不在本轮偷偷换一个上限。
 
-```text
-Execution E：编写 V1 → check(V1) → FAIL 与诊断
-             → 修改为 V2 → check(V2) → 返回新结果
-```
+共享Mission的局部handoff只撤销当前Execution，其他人继续。一个人完成阶段研究不代表原题完成；普通Task完成也不自动取消它派生的工作。
 
-失败不自动创建 follow-up Task，不触发强制 handoff，也不阻止下一次合法检查。服务故障单独报告；限流、超时和预算属于资源保护，不得伪装成研究路线门禁。长检查可以采用异步请求和可恢复结果获取；检查任务的排队对象是工具请求，不是新的领域 Task。
+## 4. Judge和最终验收
 
-每份结果绑定检查目标、实际内容哈希、环境/检查器版本和生产来源。并发请求或晚到结果不能覆盖较新版本的状态。局部编译与引理检查保留各自范围，不能计成整题候选 PASS。
+Agent直接检查当前版本，读取诊断，修正后在同一Execution再次检查。工具内部记录输入和结果，失败不自动生成研究Task，不要求先读其他任务的Response，不强制换执行者。
 
-完整原题候选可以由任何符合权限和合同的 Task 提交。最终验收读取原题与指定版本的有效检查依据，不依赖固定 root Task ID。检查通过后仍可继续研究；将一次交付声明为完成时，Task/验收边界核对所引用的证据。不得为证明系统成功而修改 fixture、题目或 checker。
+局部引理、编译检查和完整原题结果分别报告。最终成功必须由固定原题与环境对确定候选版本验收；任一有权限的执行者可以提交，不限于最初身份。服务错误与数学失败分开，旧PASS不能验收新内容。
 
-## 5. Material、交付和知识修正
+## 5. 阶段成果与简单接续
 
-Material 保存具体结论、适用条件、证据来源和版本。一份成果可以支持自己的下一次 Execution，也可以被多个其他任务使用。内容不因接收者不同而重复复制。
+Material保留生产来源、版本、证据和适用条件。相同内容可以用于自用接续和多个接收者，不为流程复制。接收、阅读、实际使用和结论可信度分别表达；不建立在线全局共识或价值评分。
 
-发布、读取、使用和有效性分开记录。各接收者可以分别接受、质疑或请求补充同一结果；生产者完成自己的责任不等于所有接收者已经接受。现有 `CLOSED` 语义的迁移在 S3 中显式处理，禁止静默改写历史记录。
+Progress Material记录已完成工作、发现、开放问题和下一步。有文件工作时，Runtime将允许的文件保存为本地Git commit，Material引用该commit；下一Execution从对应快照创建新worktree。文本任务直接保存Material。共享Mission按Execution保存快照和来源，禁止全体覆盖一个最新指针。
 
-错误或过时结论保留原版本，以新的反例/修正关联到它。通知实际使用者或订阅者，不要求所有 Agent 阅读全部历史。第一阶段只提供可操作的引用与反馈路径，不建设全局共识算法、语义向量检索或自动材料价值评分。
+保存失败允许丢弃本次未保存状态并继续结束旧执行；最后成功的材料和commit仍保留。记录失败阶段与恢复来源，不假报成功，不引入无限重试或通用分布式快照协议。普通checkpoint失败可以返回错误并继续工作，handoff失败不阻塞释放。
 
-## 6. 运行中的任务调整
+## 6. 上下文保存与identity轮换
 
-反馈以 Task 为持久收件对象，当前 Execution 仅是投递位置。研究消息跨执行保留，截止时间提醒随对应执行失效。传输完成、明确处理和后续行为不是同一个事实。
+采用明确的计数和比例，不使用未定义的形容词。identity最多完成三次compaction；第三次完成后可继续研究，当前上下文token/模型窗口再次达到80%时handoff并结束旧identity，不允许第四次compaction。具体事件、数值不可用和超限保护按运行契约处理。
 
-普通补充信息有序排队；影响当前假设的纠正应在约定安全点进入执行。执行者核对证据后，可以修改自己的方法、验证质疑或说明不适用。若交付范围发生实质变化，第一阶段优先显式结束/取消原责任并关联后续 Task；不要求先实现任意在线合同编辑。
+Runtime在compaction后有序提醒保存checkpoint，不能并发发送Agent turn。轮换后新identity从最后成功的Material/commit接着做，Task和Mission费用继续累计。没有普通Task时继续Mission，不因任务队列空而退休；满足轮换条件时换掉旧Session并补充新Session，研究责任保留。
 
-同伴有权提出证据和建议，无权据此任意取消他人研究。当前责任方和显式授权的运行规则执行变更。取消或预算撤销生效时，Runtime 撤销执行权；晚到写入和过期提交不得进入有效状态。
+## 7. 运行中反馈与权限
 
-没有当前执行者时，待处理反馈留在 Task，下一次接手先读取。若服务/进程失败，恢复必须保留这些信息，而非依赖已消失的 Session。
+反馈属于任务而非易消失的Session。普通Task在接续后仍能处理已投递未处理的证据；Execution截止提醒过期即失效。共享Mission的相关反馈对每个受影响Execution分别记录投递和决定，一人处理不替全体确认。
 
-## 7. 接续、时间窗口与资源
+收到证据后，当前执行者改变方法、核验质疑或说明不适用；范围显著变化时可结束原独立Task并关联后续Task，不先建设复杂合同编辑器。同伴没有任意取消他人或Mission的权限。撤销一个Execution只使其旧写入失效。
 
-Task 的累计投入跨 Execution 保存。Execution 时间盒限制单次运行，第一阶段可从约 30 分钟开始，实际值必须登记并同步计算提醒提前量。一个 Agent identity 可以认领和释放多个 Execution；identity 的 compaction 次数另行累计，达到上限后应保存 Handoff Material 并轮换 Pi Session。新 identity 可以使用任意可用 Core 接续同一 Task，必须明确记录 identity、Session generation、Execution 前驱和轮换原因。
+## 8. 可观察性、验收与收束
 
-模型与工具的小范围重试不产生新的研究责任。旧 Session 已终止后重新启动研究时，应明确新的 identity 和执行尝试及其前驱，避免多个独立 Session 被展示为同一次连续研究。
+从Task看来源、全部Execution、Progress/Material和反馈，再按identity/Core展开执行时间。共享Mission多Execution与普通Task分工分别展示；多个Agent执行同一任务不自动被报告为非重复分工。活动时间不直接等同有效研究，未知证据不补零。
 
-自愿交接保存已做工作、有效成果、开放问题、下一步和 Git Workspace commit 引用。Checkpoint 是当前 Execution 内的可重复进度材料；Handoff 是最后一个接续材料，会 fence 旧 Execution 并释放 Core。强制超时可能没有完整交接材料；系统如实记录缺失和最后持久化状态，不能伪造成功 handoff。Workspace 不再从空目录默认开始，需要文件工作的 Execution 从明确的输入或上一次 Handoff commit 创建独立 Git worktree。
+每项实现对应正常路径、可失败的反例和证据，见[行为验收表](validation/20261102-phase-1-behavior-acceptance.md)。每个Issue既有真实两小时的主要改善现象，也有逐项回归/受控验证，不能只验一个总指标。
 
-资源区分总消耗上限、Task 累计账目、当前 Execution 授权与在制数量。完成/取消释放在制名额，已经消耗的成本不归零。创建与完成在同一权威服务上实现一致的准入，不能仅依赖 runner 的内存计数。可观测不到的 token 项标记未知；第一阶段可先可靠限制时间和调用授权，不声称实现未经验证的精确费用预留。
+Mission成功、总时间/资源耗尽、授权停止或环境不可用分别记录。结束时停止新工作，尽力保存已有成果，有界释放资源；保存失败不无限拖延收束。排队任务未完成如实保留，不能因收束被解释为数学上无价值。
 
-长期责任不等于持续占用 Core。缺少真实前置结果时记录 blocker；无值得继续的方向时结束或取消责任并保留结论；不要虚构依赖或无限续跑来保持 RUNNING。高级续期和抢占策略不在本阶段。
+## 9. 第一阶段范围和来源
 
-## 8. 一致性、完成与收束
+S1恢复直接检查。S2交付共享Mission、主动认领/分工及最小可用Git/Progress接续。S3增加执行中反馈、三次compaction后80%轮换和异常恢复。每项在前项上独立验收，不将S3作为S2的隐藏前置。
 
-目标架构不再让 Core Daemon 替 Agent 做语义选择。Runtime 仍可作为物理进程和 Core 生命周期管理器，但 Agent 必须能直接读取队列/容量、登记 Task 并主动认领；旧 Selection Agent/Daemon 回路属于待移除的实现路径。
+近期继续数学环境，不做prompt调优、任务配额、语义去重、智能调度、万级部署和复杂Git同步。既有23项代码核对不是范围上限，但新增工作必须解释对应哪条约定、如何观察；不以审计为由无限扩大实现。
 
-Agent 工具、认领、Runtime 和报告使用同一 Task 权威状态。不支持的部署组合在启动前失败。已认领工作应能完成、交接、阻塞或取消，并在物理清理结束后释放 Core。旧执行权与新执行权不能重叠。
-
-队列为空时仍需检查运行中工作、在途工具结果和待处理反馈。有资源且存在新的观察依据时，可进行一次有限重新观察；没有可执行方向则记录当前停止原因。原题 PASS、预算耗尽、外部不可用和当前搜索停滞分别报告。
-
-成功或预算终止后不再接纳普通新工作，收束资源保存真实已有成果。清理产生的终态必须带原因，不能把实验结束时的取消都解释成研究失败。
-
-## 9. 组件职责与第一阶段实施
-
-| 边界 | 必须保证 | 不应承担 |
-| --- | --- | --- |
-| Task/资源服务 | 责任、版本、准入、有效认领及累计使用一致 | 判断数学路线的价值、预设研究分工 |
-| Runtime | Session/Workspace 启停、反馈投递、恢复、fencing | 把每次失败变成另一项研究任务 |
-| Context | 保存成果、来源与使用/修正引用 | 用读取率或发布数量宣布团队共识 |
-| Judge | 对指定版本返回检查结果与诊断 | 生成 follow-up、强制消费 Response 后才重试 |
-| Agent | 提案、研究、使用结果、解释反馈并调整工作 | 绕过资源授权或降低原题验收标准 |
-| Benchmark/报告 | 锁定输入、预算、结果与观测证据 | 为通过指标偷偷改变提示或协作路径 |
-
-上述是逻辑职责，不要求新增六个部署服务。Runtime 内部可以保留物理 Core/进程监督，但不得继续让 Daemon 或独立 Selection Session 替 Agent 做语义选择；替代实现须遵守相同的任务和权限约定。
-
-本阶段由 [三个完整 Issue](plans/phase-1/README.md) 完成：S1 检查迭代，S2 自主持续分工，S3 反馈与接续。先取得行为正确的真实运行，再研究更优 prompting、任务价值与大规模调度。
-
-## 来源与决策边界
-
-来源是 Notion 的《目标架构》及《架构复盘》，以及本轮用户关于 Judge、禁止领域硬编码、第一阶段范围和两小时验收的修正。未经决定的方案保留为提议：通用重新观察入口的具体触发、单次窗口时长、队列容量和紧急反馈上限。它们在各 Issue 启动前冻结，不能由 coding agent 在实现过程中擅自改变。
-
-原始页面：[目标架构](https://app.notion.com/p/40b4e07aa023819e9c19f077205f8cd5)、[架构复盘](https://app.notion.com/p/40b4e07aa023818f97ade56d43c32c8f)。已确认的四 Core/Agent identity、Progress Material、compaction 轮换和 Git Workspace 细节见[Agent Task运行契约](20261102-agent-task-runtime-contract.md)。本文是为仓库重组的规范草稿，不是逐字导出；私人写作语料未迁入仓库。
+来源：[Notion目标架构](https://app.notion.com/p/40b4e07aa023819e9c19f077205f8cd5)、[Notion架构复盘](https://app.notion.com/p/40b4e07aa023818f97ade56d43c32c8f)，以及用户对Judge、共同Mission、无任务配额、identity和保存失败的后续决定。本文重组为仓库约定，不是私人语料导出。

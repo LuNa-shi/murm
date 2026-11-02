@@ -1,41 +1,41 @@
 # 第一阶段：三个完整修复 Issue 草案
 
-状态：待审阅；不创建GitHub Issues，不标ready-for-agent。文档 PR 是先行设计交付，代码阶段只设以下三个sub-issues。本轮不安排后续优化阶段。
+状态：PR #110 中的更新草案；尚未创建正式Issues或标记ready-for-agent。文档PR不改变运行代码。仅安排第一阶段，不开展prompt、价值评分和高级调度优化。
 
-## 范围从设计准则推导
+## 范围和最新决定
 
-第一阶段要让现有实现尽可能完整地遵守[AGENTS中的准则](../../../AGENTS.md)。用户举例和旧复盘不构成范围上限。[符合性核对表](../../reviews/phase-1-conformance-audit.md)覆盖目前发现的23个偏差/核对点，并区分代码确认、实际观察及待复现风险。实现者继续检查相关入口、别名、回调、配置和测试，新发现的同类问题并入对应Issue。
+[AGENTS](../../../AGENTS.md)与[运行契约](../../20261102-agent-task-runtime-contract.md)是依据。用户举例和[已有审计](../../reviews/phase-1-conformance-audit.md)不是范围上限；沿真实调用链修复确定偏差，并明确新问题归属。
 
-只修正行为错误、协议缺口与设计偏离，不扩展到prompt调优、任务价值算法或更优调度研究。删除旧指令、暴露正确工具说明是必要的一致性修复，不是提示优化项目。
+本轮取消所有任务数量配额设计，不做累计新增上限、在制上限或额度回收。共同Mission Task允许多个Execution，普通子任务保持清晰独占分工。identity认领Task复用自己的Core。最多三次compaction，第三次后继续工作，下一轮窗口达到80%时轮换。Git仅实现本地commit/worktree接续，保存失败允许丢弃本次未保存状态并停止。
 
-## 三个端到端交付
+## 三个Issue的边界
 
-| 草案 | 完整交付 | 两小时真实验收主现象 | 核对范围 |
-| --- | --- | --- | --- |
-| [S1：检查—修正](01-iterative-judge.md) | 工具授权、检查调用、诊断返回、版本绑定和最终验收贯通 | 至少两条真实FAIL→修改→重检链；无需新Task/Response/强制handoff | J1–J5 |
-| [S2：自主持续分工](02-autonomous-task-supply.md) | 四 Core/Agent identity 主动查看状态、登记 Task、自己认领或留队列，并形成持续有效分工 | 有效 Task、有效并行和机会调整后的 Core 利用率相对父实现改善；不靠微任务填充 | T1–T8 |
-| [S3：反馈与接续](03-feedback-and-continuity.md) | 证据送达、当前任务调整、材料复用、执行交接与恢复贯通 | 有运行中处理和跨执行处理的证据链；纠正落到行为，恢复利用旧成果 | F1–F10 |
+| 草案 | 本项完整交付 | 不依赖后项的验收对象 |
+| --- | --- | --- |
+| [S1](01-iterative-judge.md) | 检查权限、直接检查、诊断修正、版本绑定及严格最终验收 | 同一Execution实际失败—修正—重检，不等待新Task/Response |
+| [S2](02-autonomous-task-supply.md) | 共享Mission与独立子任务、主动登记/认领、identity复用自己的Core、去除任务配额、基本Progress/Git保存和主动接续 | 多个identity可共同推进Mission；真实子任务分工；完成后继续Mission；保存成果可被下一Execution恢复 |
+| [S3](03-feedback-and-continuity.md) | 运行中反馈、共享Mission各执行者分别处理、compaction计数与80%轮换、消息跨identity保留、异常接续 | 证据及时改变工作；第三次compact后仍可工作、第四次前交接；新identity实际继承成果 |
 
-每项包含自己需要的接口、状态、必要提示一致性修正、观察和回归，并独立做匹配两小时真实验收。不存在单独的schema Issue或最后才补测试的收尾Issue。
+顺序为S1→S2→S3。S2交付基本checkpoint/handoff和Git恢复，S3使用它们实现自动轮换和反馈接续；不再要求S2先通过S3的compaction轮换测试。每项同步自己的工具说明、状态、测试和报告，不另拆schema/接口/观察票。
 
-建议合并顺序S1→S2→S3。S1只依赖文档基线；S2以S1作为固定前置实现，避免旧失败回调继续污染任务来源；S3以S2作为前置实现，保证能取得真实跨任务反馈。依赖不等于半成品：每项在其前置基线上必须能够单独演示、审阅和关闭。
+三个Issue少，不代表实现范围小。每项内部可以用多个小提交或顺序PR展开，但主Issue只有在自身完整路径可运行且验证完成后关闭。不为减少票数把尚未决定的高级功能塞进本阶段。
 
-## 每项必须同时通过两类检查
+## 减少本轮复杂度
 
-**设计符合性：**逐项核对本Issue负责的原则和调用链。已确认的在范围内违例全部修复；待复现项取得可重复反例或说明未复现；新增问题明确归属。权限、身份、幂等和竞态用确定性/集成测试验证，不要求罕见故障在两小时中自然发生。
+保留一个可工作方案：Runtime本地Git快照、每Execution私有worktree、失败即记录并放弃未保存变化；无分布式快照事务、跨Task自动merge和无限重试。无普通工作时直接继续共享Mission，不增加一个周期生成任务的中央planner。任务范围变化先使用结束旧责任并关联后续Task，不建设任意在线合同编辑器。
 
-**真实现象：**每项的两小时运行须证明自身关键现象改善，而不只是代码存在或工具无错误。对照为直接父实现，处理为待验收clean提交；统一题目、环境、模型、资源与观测口径。某个聚合指标达标，不能掩盖另一项仍存在的原则违例。
+现有不一致仍须修复，包括别名/Bridge绕过、幂等错误、列表遗漏、多接收者状态、旧执行写入和误报。符合性修复可以修改必需的工具帮助和错误旧指令，但不进行prompt搜索。
 
-完整定义与暂定数值见[验收协议](../../validation/phase-1-acceptance.md)。数值需在实现前批准并冻结，不是生产策略，更不能告诉Agent按数造任务。零事件或缺证据记INCONCLUSIVE；实际触发而仍错误记FAIL。
+## 验收组织
 
-## 第一轮门槛草案
+每个Issue同时提交：其审计项的处理结论；[逐项行为表](../../validation/20261102-phase-1-behavior-acceptance.md)中对应行的代码/测试/观察证据；[两小时匹配实验](../../validation/phase-1-acceptance.md)中的主要改善现象。
 
-S1要求至少两次有内容变化的反馈修正，至少一项诊断被实质处理；新版本不再等待附加任务。S2不预先规定 Task 数量或固定并行分钟数，而是事前登记有效 Task 率、有效并行率、有效 Core 利用率和机会调整后的空闲率目标区间；不得用微任务填充。S3要求两条不同反馈链及一次实际接续，暂定处理不超过两个安全点且120秒、具备恢复资格后300秒内恢复依赖旧成果的工作；compaction identity 轮换和 Git Workspace 接续属于 S3 的实现闭环。
+每项功能都需要可观察结果，但不要求单次自然运行碰到所有稀有失败。正常研究、真实受控probe和确定性故障测试分别报告；有预期事件却失败为FAIL，没有覆盖为INCONCLUSIVE。总利用率提升不能掩盖handoff、Git或反馈失败。
 
-这些下限检验第一阶段行为是否出现，不是token效率结论。队列填充、调用数量、材料读取都不能独立证明改进。需保留实际研究内容的脱敏审阅依据、总成本和最终数学结果。
+共同Mission的并发与不同子任务的分工分开统计。没有子任务时回到Mission可以说明活性恢复，不能单凭Core变忙声称协作效率提高。两小时指标事前登记，阈值不写入Agent prompt，任务数量不是阶段目标。
 
-## 承接旧问题
+## 旧工作承接
 
-此前分散的Judge、服务身份、准入、启动、接续、反馈与报告工作分别并入上述三项。#107的Response门禁持久化要求由S1删除门禁来替代，服务一致性/准入问题并入S2，材料及反馈分类并入S3。当前只记录映射，不修改已有Issues。
+S1承接J1–J5，删除#107的Response门禁加固要求。S2承接T1–T8和本轮共享Mission、Core绑定、基本Progress/Git接续；T2/T6不再建设任务额度系统。S3承接F1–F10中反馈/接续问题及compaction轮换，基本身份/截止修复与S2共用，不重复实现。现有Issues及历史报告保持不变，正式发布时再明确承接关系。
 
-Matt Pocock的[to-tickets](https://github.com/mattpocock/skills/blob/main/skills/engineering/to-tickets/SKILL.md)用于完整纵向切片与显式依赖；[domain-modeling](https://github.com/mattpocock/skills/blob/main/skills/engineering/domain-modeling/SKILL.md)用于术语和模型核对；[code-review](https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md)用于分别审查Spec与Standards。方法服务于本项目验收，不要求照搬额外框架。
+工程方法仍采用Matt Pocock的纵向完整切片、显式依赖和Spec/Standards双重审阅。这里是计划草案，不是代码已实现或验收已通过的声明。
