@@ -1,12 +1,12 @@
 # Issue #111 evidence index
 
-Implementation commit: `d5214b5493e952a197d00375a7260d54a197f897`
+Implementation commit: `0bc87896236a6a221c67afba434d13591306bf81`
 (clean worktree). This index was written after that commit; later
 documentation-only commits do not change the implementation under test.
 
 Shorthand: **R** = real Agent event, **I** = deterministic/integration test.
 The sanitized real-Agent report is
-`experiments/issue-111-probe-d5214b5/analysis/report.json` (ignored local
+`experiments/issue-111-probe-0bc8789/analysis/report.json` (ignored local
 evidence). Raw transcripts, proof text, and credentials are not published.
 
 | Item | Implementation | Regression/integration | Real evidence | Result / gap |
@@ -18,7 +18,7 @@ evidence). Raw transcripts, proof text, and credentials are not published.
 | A05 failure/cost classification | `src/judge/check-result.js`, runner projections | `test/putnam-runner.test.js` (checker infrastructure) | R: probe classified source failure, not infrastructure | PASS (controlled) |
 | B01 shared Mission concurrency | `src/task/task-service.js`, `src/runtime/identity-task-loop.js` | `test/orchestration-roles.test.js`, `test/task-service.test.js` | none natural | I; four-Core R pending |
 | B02 exclusive ordinary Task | Task Service claim guards | `test/services-bridge.test.js`, `test/putnam-runner.test.js` | none natural | I; R pending |
-| B03 same identity/Core across Tasks | `src/benchmark/putnam-runner.js`, `identity-task-loop.js` | `test/putnam-runner.test.js` ("production queue dynamically reuses…") | probe used one Session for the whole candidate flow | I + limited R; long-run R pending |
+| B03 same identity/Core across Tasks | `src/benchmark/putnam-runner.js`, `identity-task-loop.js`, Runtime release paths | `test/putnam-runner.test.js` ("production queue dynamically reuses…", same-Session assertions) | probe used one Session for FAIL→PASS; multi-Task reuse is deterministic | I + limited R; long-run R pending |
 | B04 empty child queue returns to Mission | runner/base prompt, identity loop | `test/putnam-runner.test.js` | none natural | I; R pending |
 | B05 no task-count quota | `src/task/task-service.js`, runner | `test/putnam-runner.test.js`, `test/task-service.test.js` | none natural | I; R pending |
 | B06 authoritative state/provenance/pagination | Task Service | `test/task-service.test.js`, `test/services-bridge.test.js` | probe Task/Execution IDs agree across reports | I + limited R |

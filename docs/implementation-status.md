@@ -1,6 +1,6 @@
 # 目标与实现状态
 
-代码核对基线为 Issue #111 后续实现提交 `d5214b5493e952a197d00375a7260d54a197f897`（基于 PR #112 的 `1aca2651cda88926f2d4732ad769c7ba1bda242c`）。完整确定性回归为 313/313。真实 Agent 受控 probe 在同一 clean 实现上返回 **SUCCEEDED**：同一 Session/Execution 内完成 source-level FAIL → 读取诊断 → 修订并 supersede → 第二次检查 PASS。两小时四 Core 对照运行尚未执行，仍是本阶段关闭前的缺口；不能用受控 probe 替代。
+代码核对基线为 Issue #111 后续实现提交 `0bc87896236a6a221c67afba434d13591306bf81`（基于 PR #112 的 `1aca2651cda88926f2d4732ad769c7ba1bda242c`）。完整确定性回归为 313/313。真实 Agent 受控 probe 在同一 clean 实现上返回 **SUCCEEDED**：同一 Session/Execution 内完成 source-level FAIL → 读取诊断 → 修订并 supersede → 第二次检查 PASS。两小时四 Core 对照运行尚未执行，仍是本阶段关闭前的缺口；不能用受控 probe 替代。
 
 | 目标 | 已有情况/尚待实现 | 归属与验收 |
 | --- | --- | --- |
@@ -8,7 +8,7 @@
 | 同Execution直接检查与修正 | 已移除研究 Task 的 Judge 合同门禁；FAIL 反馈在同一 Task/Execution 内继续迭代。真实 probe 展示一次完整 FAIL→修订→PASS 同 Session 链 | S1，J1–J5，A01–A05；真实单 Execution 证据已取得 |
 | 完整候选不绑定初始身份 | 非 root 候选入口已保留；原题、环境和版本绑定仍保留 | S1；真实 A04 尚无长跑证据 |
 | 多identity共同推进Mission、普通Task独占 | 共享 Mission Task 与普通 Task 的并发语义已有确定性覆盖；`task_complete` 对声明了 Mission-level final-candidate acceptance 的共享入口会再次核对原题级条件 | S2，B01/B02/B07；四 Core 的真实并发尚未验收 |
-| identity复用自己Core并连续工作 | 生产 runner 每个 Core 一个可复用 Bound identity；同一 Session 通过 canonical `task_take` 取得责任并继续；独立 Selection Session 与 `claim`/`select_task` 生产分支已删除 | S2，B03/B04；确定性路径已覆盖，真实长跑仍待 |
+| identity复用自己Core并连续工作 | 生产 runner 每个 Core 一个可复用 Bound identity；同一 Session 在 Execution 完成/交接后保留并通过 canonical `task_take` 取得下一责任；Runtime 只在显式 rotation、恢复失败或 shutdown 时停止它。独立 Selection Session 与 `claim`/`select_task` 生产分支已删除 | S2，B03/B04；确定性路径已覆盖，真实长跑仍待 |
 | 没有任务数量配额 | 已删除固定研究路线、初始任务数和动态任务预算；资源容量与工具超时仍保留 | S2，T2/T6、B05 |
 | 同权威身份、幂等、分页和创建来源 | 注册 provenance、协作原因、同键不同内容冲突和 available-after-filter 分页已实现 | S2，B06；仍需完整真实轨迹 |
 | Service bundle 与使用文档 | `service.json` + `SKILL.md` + `references/` 加载/校验；`service://` 受限资源解析；必需文档 hash 绑定 manifest；Registry profile 注入初始上下文；mathlib-search 已有真实 bundle | 新增范围；确定性测试覆盖，真实 provider 响应仍待长跑 |

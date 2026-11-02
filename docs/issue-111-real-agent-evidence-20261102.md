@@ -135,3 +135,17 @@ Two earlier diagnostic probes on `947d555` and `8be429a` produced one
 FAIL-only turn and one provider timeout respectively; they are not acceptance
 evidence. The two-hour four-Core comparison has not yet been run and remains
 **BLOCKED / not yet executed**.
+
+## Re-probe after identity Session reuse (`0bc87896236a6a221c67afba434d13591306bf81`)
+
+The reusable-Session change was validated again with the same controlled
+command on clean commit `0bc87896236a6a221c67afba434d13591306bf81`:
+
+- Preflight **READY_TO_LAUNCH**; Pi 1.4.0 / NuRouter 0.2.16 / Node v24.21.0,
+  Lean 4.33.1, Lake 5.0.0.
+- Result **SUCCEEDED**: two Materials, two CheckResults, first `source_failure`
+  followed by a superseding revision and `PASS` in the same Session/Execution.
+- Sanitized record: `experiments/issue-111-probe-0bc8789/analysis/report.json`.
+
+This supersedes the `d5214b5` probe as the current implementation evidence; the
+`d5214b5` result remains a valid record of that earlier commit.

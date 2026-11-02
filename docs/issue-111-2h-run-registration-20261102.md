@@ -4,9 +4,9 @@ Registered before launch.
 
 ## Exact implementation
 
-- Run HEAD: `586448cf660204724b216cbe3b1b20fb24818ffa`
-- Code implementation under test: identical to
-  `d5214b5493e952a197d00375a7260d54a197f897`; the only delta is documentation.
+- Run HEAD: the documentation commit immediately above `0bc87896236a6a221c67afba434d13591306bf81` (recorded at launch in the report)
+- Code implementation under test: `0bc87896236a6a221c67afba434d13591306bf81`;
+  later commits in this run are documentation-only.
 - Worktree: `/home/ubuntu/SwarmEnv/.worktrees/issue-111-task-centric-phase1`
 - Worktree status at registration: clean (`git status --porcelain` empty).
 - Deterministic baseline: `npm test` 313/313 at the implementation commit.
@@ -36,7 +36,7 @@ Registered before launch.
 set -a; source .env; set +a
 export PATH="/home/ubuntu/.elan/bin:$PATH" \
   SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 \
-  SWARMENV_IMPLEMENTATION_COMMIT=586448cf660204724b216cbe3b1b20fb24818ffa \
+  SWARMENV_IMPLEMENTATION_COMMIT=$(git rev-parse HEAD) \
   SWARMENV_WORKTREE_DIRTY=false SWARMENV_WORKTREE_STATUS=clean
 timeout 7500s node scripts/run-putnambench-benchmark.mjs \
   --problems config/putnambench-12.json \
