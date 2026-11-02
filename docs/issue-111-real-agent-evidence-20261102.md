@@ -101,3 +101,37 @@ The preflight was **BLOCKED** because the local `pi --version` check exceeded
 the probe's bounded stderr buffer. NuRouter, Lean, Lake, the locked
 PutnamBench revision, and route variables were present; no Agent turn was
 started, and no Task, Execution, Material, or CheckResult was produced.
+
+## Real-Agent probe on implementation `d5214b5493e952a197d00375a7260d54a197f897`
+
+After the local Pi route recovered, the controlled probe was rerun on the clean
+implementation commit `d5214b5493e952a197d00375a7260d54a197f897`
+(`SWARMENV_WORKTREE_DIRTY=false`, worktree clean):
+
+```sh
+set -a; source .env; set +a
+export PATH="/home/ubuntu/.elan/bin:$PATH" \
+  SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 \
+  SWARMENV_IMPLEMENTATION_COMMIT=d5214b5493e952a197d00375a7260d54a197f897 \
+  SWARMENV_WORKTREE_DIRTY=false SWARMENV_WORKTREE_STATUS=clean
+timeout 600s node scripts/run-mvp-fixture.mjs --real-agent --keep
+```
+
+- Preflight: **READY_TO_LAUNCH**; Node v24.21.0, NuRouter 0.2.16, Pi 1.4.0,
+  Lean 4.33.1, Lake 5.0.0; locked PutnamBench commit
+  `a635813f5edf297d928f9bd5ef8324a26bdde09c`; route `openai-codex` /
+  `gpt-6.1-sol` from the local ignored `.env`.
+- Result: **SUCCEEDED**. The real Agent submitted a first candidate, received
+  the synchronous source-level FAIL with its diagnostic, published a revised
+  artifact that supersedes the failed material, and submitted it for a second
+  check that returned PASS, all in the same Agent Session and Execution.
+- Sanitized record: `experiments/issue-111-probe-d5214b5/analysis/report.json`
+  (ignored raw-evidence directory; no transcript, proof text, or credentials).
+- The real Pi session format contains a leading system `addendum` section with
+  the stable identity contract; the dynamic candidate instruction remains the
+  user turn. This verifies the system-role injection path on Pi 1.4.0.
+
+Two earlier diagnostic probes on `947d555` and `8be429a` produced one
+FAIL-only turn and one provider timeout respectively; they are not acceptance
+evidence. The two-hour four-Core comparison has not yet been run and remains
+**BLOCKED / not yet executed**.

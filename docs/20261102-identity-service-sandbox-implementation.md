@@ -2,8 +2,8 @@
 
 Status: implementation record and design boundary for Issue #111. This document
 translates the discussion draft into the current repository language. Items
-marked **proposed** are not architectural approval and must not be advertised
-as available capabilities.
+marked **proposed** remain open design decisions; everything else below is
+implemented and covered by deterministic tests on the recorded commit.
 
 ## Current operating model
 
@@ -26,6 +26,12 @@ longer instructs a separate Selection Agent to stop and wait for a second
 Session. `GENERIC_AGENT_PROMPT`, `IDLE_AGENT_PROMPT`, and
 `RECOVERY_AGENT_PROMPT` are compatibility exports of the same reusable-identity
 contract; they are not separate operating modes.
+
+`AgentCoreAdapter` delivers that contract through Pi's real system role using
+`--append-system-prompt` (a file, so argv stays bounded). `buildInitialPromptBundle`
+records separate `system_prompt_hash`, `dynamic_prompt_hash`, profile hash, and
+service-document hashes. A real Pi 1.4.0 probe confirmed the session's leading
+system message carries an `addendum` section with the identity contract.
 
 ## Stable identity contract (English)
 
@@ -53,50 +59,59 @@ the real file commit and source identity; never invent a commit or claim a
 failed save succeeded. Handoff ends the current Execution, not a healthy
 identity. Rotation is explicit and must leave a durable successor trail.
 
-## Service documentation boundary (proposed)
+## Service documentation boundary (implemented)
 
-The intended bundle shape is `services/<id>/service.json`, `SKILL.md`, and
-optional `references/`. `service.json` must identify a versioned capability
-schema, reviewed documentation resources, adapter and authorization scope.
-Secrets come only from deployment secret references. `SKILL.md` describes real
-inputs, outputs, errors, retries and limits. `help.ref` must resolve through a
-constrained service-resource resolver; it must not accept arbitrary host paths
-or model-supplied URLs. A service document cannot override system permissions
-or Mission acceptance.
+Bundles use `services/<id>/service.json`, `SKILL.md`, and optional
+`references/`. `service.json` identifies the versioned capability schema,
+documentation resources, adapter endpoint and `secret_refs` (only `env:NAME`
+references are accepted; embedded credential fields are rejected). `SKILL.md`
+describes real inputs, outputs, errors, retries and limits. The loader
+(`src/sdk/service-bundle.js`) confines every path to the bundle root, rejects
+traversal and symlink escapes, loads and hashes required documents before
+registration, and includes those hashes in the manifest metadata.
 
-The existing Manifest → Registry → capability profile → Bridge/adapter chain is
-the source of truth. A new service should require a bundle and adapter/config,
-not Core or Runner edits. Full bundle validation and resource injection remain
-an implementation item; until then, the capability must not be described as
-installed merely because a URL is present.
+`help.ref` resolves only through `service://<service>/<resource>`; the Registry
+resolver falls back to inline capability help text for programmatic services
+and never accepts host paths or arbitrary URLs. Registry profiles carry the
+documents, and `composeAgentPrompt` injects them with version/hash binding. A
+new service needs a bundle plus adapter/config; the mathlib-search bundle is a
+worked example. Capabilities may declare `requires_binding`, enforced at both
+the Registry and the HTTP host so a direct adapter/HTTP call cannot bypass the
+Agent binding gate.
 
-## Sandbox boundary (proposed)
+## Sandbox boundary (implemented)
 
 Workspace persistence and command isolation are distinct responsibilities.
-The proposed first backend is a local, non-root container with a stable
-`/workspace`, fixed image/toolchain digest, bounded CPU/memory/processes,
-timeouts and cancellation. No host-sensitive mounts, Docker socket, credentials
-or unrestricted internal network are allowed. Commands would enter through a
-Runtime-authorized `workspace.exec`/`sandbox.exec` capability; jobs would be
-bound to Execution and binding version and stopped or frozen before handoff.
+`src/runtime/sandbox-manager.js` provides the first local container backend: a
+non-root user, read-only root filesystem, private Workspace at `/workspace`,
+validated read-only input mounts, no host-sensitive mounts or Docker socket,
+`--cap-drop ALL`, `no-new-privileges`, bounded CPU/memory/pids, explicit
+network mode, and bounded command timeout/output. `sandbox_exec` and
+`sandbox_job` are Runtime capabilities bound to the active Execution; commands
+and jobs are rejected without a valid binding, and the container/jobs are
+removed on handoff, fence, release, rotation failure, or shutdown.
 
-The current Git-backed WorkspaceManager is not a Sandbox and its host-side Git
-child process is not Agent shell access. Local compilation is research feedback;
-the trusted Judge remains authoritative. Container implementation, image
-attestation and hostile-workload limits are **not yet complete**.
+The Git-backed WorkspaceManager remains the file/commit authority. Shell edits
+share the same `/workspace`; they become a durable revision only when
+`execution_progress` commits them. Local compilation is research feedback; the
+trusted Judge remains authoritative. Image attestation is enforced when a
+digest is configured. Hostile multi-tenant workload isolation is outside this
+phase.
 
 ## Evidence and cleanup matrix
 
 | Area | Current evidence | State |
 |---|---|---|
-| Same-identity `task_take` | deterministic bridge/runtime tests; production runner path updated | implemented, real-Agent probe blocked |
-| Git Workspace lineage | exact commit save/restore smoke and runtime tests | implemented |
+| Same-identity `task_take` | deterministic bridge/runtime tests; production runner path updated | implemented |
+| Git Workspace lineage | exact commit save/restore smoke and runtime tests; Progress records `workspace_commit` | implemented |
 | Mission-level completion guard | Task Service tests | implemented for declared final-candidate contracts |
-| Service bundle/resource resolver | Registry/adapter only; no complete bundle contract | proposed / pending acceptance |
-| Isolated Sandbox execution | no production container backend | not implemented |
-| True Pi system-role injection and compaction fence | not observed in a successful real turn | blocked / pending probe |
-| Two-hour four-Core comparison | no run; prior probe timed out before Agent turn | blocked |
-| Legacy Selection/daemon code | prompt wording removed, compatibility paths and daemon orchestration remain reachable | cleanup in progress |
+| Service bundle/resource resolver | bundle loader, constrained resolver, profile injection, mathlib bundle, bundle tests | implemented; real provider长跑 pending |
+| Isolated Sandbox execution | local container backend + fake-docker tests; binding/cleanup gates | implemented; real-image long run pending |
+| True Pi system-role injection | real Pi 1.4.0 session `sections.addendum`; controlled probe SUCCEEDED | verified on the probe |
+| Real FAIL→revision→PASS | controlled probe `d5214b5`, same Session/Execution, superseding artifact | verified |
+| Compaction fence on real Pi | deterministic tests; no real threshold probe yet | pending real probe |
+| Two-hour four-Core comparison | not yet run | pending |
+| Legacy Selection/daemon code | Selection/claim/select_task production branches removed; compatibility read filters retained | cleanup complete for the Agent surface |
 
 Retain lifecycle, fencing, idempotency, path and Mission-acceptance tests.
 Migrate tests that assert a second Selection Session to same-identity

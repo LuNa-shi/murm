@@ -1,6 +1,6 @@
 # Agent Task 生命周期与上下文接续契约
 
-本文件接续20261102草案，依据用户最新决定修订：不设置任务数量上限；共同Mission可并行；identity认领时复用自身Core；最多compact三次，之后窗口再次达到80%时交接；保存失败允许丢弃本次未保存工作。实现仍未完成，PR保持设计审阅状态。原则见[AGENTS](../AGENTS.md)，验收见[逐项行为表](validation/20261102-phase-1-behavior-acceptance.md)。
+本文件接续20261102草案，依据用户最新决定修订：不设置任务数量上限；共同Mission可并行；identity认领时复用自身Core；最多compact三次，之后窗口再次达到80%时交接；保存失败允许丢弃本次未保存工作。实现状态见[实现状态](implementation-status.md)和[Issue #111证据索引](issue-111-evidence-index-20261102.md)：确定性路径与受控真实 probe 已覆盖，两小时四 Core 验收与真实 compaction 阈值 probe 仍未完成。原则见[AGENTS](../AGENTS.md)，验收见[逐项行为表](validation/20261102-phase-1-behavior-acceptance.md)。
 
 ## 1. 共同Mission与独立分工
 
