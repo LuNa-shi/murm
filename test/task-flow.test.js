@@ -133,6 +133,78 @@ test('research child review accepts delivered Material and never invokes Judge',
   close(env);
 });
 
+test('a research Task can run diagnostic Judge iterations without requiring a check contract', async () => {
+  let checks = 0;
+  const env = environment({ checker: {
+    check: async () => {
+      checks += 1;
+      return checks === 1
+        ? { verdict: 'FAIL', evidence: { diagnostic: 'candidate needs a revision' } }
+        : { verdict: 'PASS', evidence: { exit_code: 0 } };
+    },
+  } });
+  const task = env.sdk.proposeTask({
+    ...researchInput({ goal: 'diagnostically check a candidate', expected_output: 'candidate diagnostics' }),
+    completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' } },
+  }, { operationId: 'research-diagnostic-propose' }).task;
+  const run = claimTask(env, task, { executionId: 'research-diagnostic-execution', actorRef: 'researcher:one' });
+  const started = env.taskService.dispatch('start_execution', {}, makeEnvelope({
+    operationId: 'research-diagnostic-start', actorRef: 'runtime:test', taskId: task.task_id,
+    executionId: run.claim.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: run.claim.execution.state_version, fencingVersion: run.claim.execution.fencing_version,
+  }));
+  const first = run.sdk.withContext({ stateVersion: started.execution.state_version }).publishMaterial({
+    kind: 'artifact', scope: 'proof_relevant', content: 'first candidate',
+  }, { operationId: 'research-diagnostic-candidate-1' }).material;
+  const submittedFirst = run.sdk.withContext({ stateVersion: env.taskService.getExecution(run.claim.execution.execution_id).state_version }).submitCandidate({
+    candidate_material_id: first.material_id,
+  }, { operationId: 'research-diagnostic-submit-1' });
+  const firstResult = await env.judgeService.judgeCandidate({
+    request_key: 'research-diagnostic-check-1', candidate_material_id: first.material_id,
+    target_task_id: task.task_id, target_spec_version: task.spec_version,
+    input_snapshot_hash: submittedFirst.execution.input_snapshot_hash,
+    checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    environment_ref: fixtureManifest.environment_ref, execution_id: submittedFirst.execution.execution_id,
+    state_version: submittedFirst.execution.state_version,
+    candidate: { material_id: first.material_id, content: 'first candidate' }, target_task: env.taskService.getTask(task.task_id),
+    workspace: { task_id: task.task_id, execution_id: submittedFirst.execution.execution_id, input_snapshot_hash: submittedFirst.execution.input_snapshot_hash },
+    fixture_manifest: fixtureManifest,
+  });
+  const afterFirst = run.sdk.withContext({ stateVersion: submittedFirst.execution.state_version }).applyCheckResult({
+    check_result_id: firstResult.check_result_id,
+  }, { operationId: 'research-diagnostic-apply-1' });
+  assert.equal(afterFirst.check_result.verdict, 'FAIL');
+  assert.equal(afterFirst.execution.state, 'RUNNING');
+  assert.equal(afterFirst.task.state, 'RUNNING');
+
+  const current = env.taskService.getExecution(run.claim.execution.execution_id);
+  const second = run.sdk.withContext({ stateVersion: current.state_version }).publishMaterial({
+    kind: 'artifact', scope: 'proof_relevant', content: 'revised candidate', supersedes: first.material_id,
+  }, { operationId: 'research-diagnostic-candidate-2' }).material;
+  const submittedSecond = run.sdk.withContext({ stateVersion: env.taskService.getExecution(current.execution_id).state_version }).submitCandidate({
+    candidate_material_id: second.material_id,
+  }, { operationId: 'research-diagnostic-submit-2' });
+  const secondResult = await env.judgeService.judgeCandidate({
+    request_key: 'research-diagnostic-check-2', candidate_material_id: second.material_id,
+    target_task_id: task.task_id, target_spec_version: task.spec_version,
+    input_snapshot_hash: submittedSecond.execution.input_snapshot_hash,
+    checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    environment_ref: fixtureManifest.environment_ref, execution_id: submittedSecond.execution.execution_id,
+    state_version: submittedSecond.execution.state_version,
+    candidate: { material_id: second.material_id, content: 'revised candidate' }, target_task: env.taskService.getTask(task.task_id),
+    workspace: { task_id: task.task_id, execution_id: submittedSecond.execution.execution_id, input_snapshot_hash: submittedSecond.execution.input_snapshot_hash },
+    fixture_manifest: fixtureManifest,
+  });
+  const afterSecond = run.sdk.withContext({ stateVersion: submittedSecond.execution.state_version }).applyCheckResult({
+    check_result_id: secondResult.check_result_id,
+  }, { operationId: 'research-diagnostic-apply-2' });
+  assert.equal(afterSecond.check_result.verdict, 'PASS');
+  assert.equal(afterSecond.execution.state, 'RUNNING', 'diagnostic PASS must not auto-complete a Task without required_check');
+  assert.equal(afterSecond.task.state, 'RUNNING');
+  assert.equal(checks, 2);
+  close(env);
+});
+
 test('Task completion can require a durable Material consumption edge', () => {
   const env = environment();
   const task = env.sdk.proposeTask({

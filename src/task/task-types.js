@@ -13,7 +13,7 @@ export const TERMINAL_EXECUTION_STATES = Object.freeze(['SUCCEEDED', 'FAILED', '
 
 const CONTRACT_KEYS = new Set([
   'required_children', 'required_materials', 'required_response', 'required_candidate', 'required_check', 'parent_review', 'normal_flow',
-  'required_branch_groups', 'required_subtask_groups',
+  'required_branch_groups', 'required_subtask_groups', 'final_candidate',
 ]);
 const CHECK_KEYS = new Set(['checker_ref', 'checker_version', 'environment_ref', 'input_snapshot_hash']);
 const MATERIAL_KEYS = new Set(['kind', 'kinds', 'scope', 'min_count', 'requires_consumption', 'action', 'consumption_action']);
@@ -148,6 +148,12 @@ export function validateCompletionContract(contract, { taskType, parentId = null
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'normal_flow must be boolean');
     }
     normalized.normal_flow = contract.normal_flow;
+  }
+  if (contract.final_candidate !== undefined) {
+    if (typeof contract.final_candidate !== 'boolean') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'final_candidate must be boolean');
+    }
+    normalized.final_candidate = contract.final_candidate;
   }
   if (normalized.normal_flow === true && normalized.parent_review === true) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'normal_flow Tasks cannot require parent_review');

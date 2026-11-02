@@ -341,7 +341,13 @@ class FlatFailureSession extends EventEmitter {
     const material = await this.call('publish_material', {
       kind: 'artifact', scope: 'proof_relevant', content: 'def flatFailureCandidate : Nat := 0',
     });
-    await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
+    const first = await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
+    if (first.check_result?.result_class === 'source_failure') {
+      const revised = await this.call('publish_material', {
+        kind: 'artifact', scope: 'proof_relevant', content: 'def revisedFlatFailureCandidate : Nat := 1',
+      });
+      await this.call('submit_candidate', { candidate_material_id: revised.material.material_id });
+    }
     this.finished = true;
     return { data: { disposition: 'handled' } };
   }
@@ -870,7 +876,8 @@ test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Ex
     const prompt = boundPrompts.join('\n');
     assert.match(prompt, /current Task/);
     assert.match(prompt, /source-level Judge FAIL/);
-    assert.match(prompt, /swarmenv_task_create/);
+    assert.match(prompt, /submit_candidate again/);
+    assert.doesNotMatch(prompt, /required Response handoff/);
     assert.match(prompt, /one bounded Material for each distinct finding/);
     assert.match(prompt, /do not publish duplicate copies/);
     assert.doesNotMatch(prompt, /publish two bounded Materials/);
@@ -1190,7 +1197,7 @@ test('benchmark submit_candidate returns Agent feedback separately from the reda
   }
 });
 
-test('flat Judge source failure admits one bounded feedback Task through the Task Service', async () => {
+test('flat Judge source failure stays on the same Task and Execution for revision', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-flat-feedback-task-experiment-');
   const reportDir = await mkdtemp('/tmp/swarmenv-flat-feedback-task-report-');
   try {
@@ -1204,19 +1211,19 @@ test('flat Judge source failure admits one bounded feedback Task through the Tas
       timeboxMs: 1_500,
       agentAdapterFactory: ({ env }) => new FlatFailureAdapter({ env }),
       checker: {
-        async check() {
+        async check({ candidate }) {
           return {
-            verdict: 'FAIL',
-            evidence: { checker_started: true, exit_code: 1, diagnostic: 'type mismatch' },
+            verdict: candidate.content.includes('revised') ? 'PASS' : 'FAIL',
+            evidence: { checker_started: true, exit_code: candidate.content.includes('revised') ? 0 : 1, diagnostic: candidate.content.includes('revised') ? 'checked' : 'type mismatch' },
           };
         },
       },
     });
     assert.equal(report.run.protocol_valid, true);
-    assert.equal(report.run.dynamic_task_count, 1);
-    assert.equal(report.project.task_count, 2);
-    assert.equal(report.project.task_tree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length, 1);
-    assert.equal(report.run.dynamic_task_events[0].status, 'created');
+    assert.equal(report.run.dynamic_task_count, 0);
+    assert.equal(report.project.task_count, 1);
+    assert.equal(report.project.task_tree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length, 0);
+    assert.equal(report.run.candidate_check_count, 2);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });

@@ -3219,8 +3219,12 @@ export class TaskService {
       this.db.prepare("UPDATE check_results SET status = 'IGNORED', updated_at = ? WHERE check_result_id = ?").run(updatedAt, checkResultId);
       return { task, check_result: this.getCheckResult(checkResultId), execution: this.#latestExecution(task.task_id) };
     }
-    const requiredCheck = task.completion_contract.required_check;
-    if (!requiredCheck) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task completion_contract does not require a CheckResult');
+    // A CheckResult is also a synchronous diagnostic for Tasks whose own
+    // completion contract is material- or coordination-based.  Keep the
+    // contract requirement for automatic completion below, but do not turn it
+    // into a capability gate: authorized Executions may ask Judge to inspect
+    // an intermediate candidate and continue iterating in place.
+    const requiredCheck = task.completion_contract.required_check ?? null;
     let execution;
     if (envelope.execution_id !== null) {
       execution = this.#executionForWrite(envelope);
@@ -3232,10 +3236,16 @@ export class TaskService {
     if (result.execution_id && result.execution_id !== execution.execution_id) {
       throw new SwarmEnvError(ERROR_CODES.FENCED, 'CheckResult belongs to another Execution');
     }
+    const inputMetadata = task.workspace?.input_metadata ?? {};
+    const expectedCheckerRef = requiredCheck?.checker_ref ?? inputMetadata.checker_ref ?? null;
+    const expectedCheckerVersion = requiredCheck?.checker_version ?? inputMetadata.checker_version ?? null;
+    const expectedEnvironmentRef = requiredCheck?.environment_ref ?? inputMetadata.environment_ref ?? null;
+    const expectedInputSnapshotHash = requiredCheck?.input_snapshot_hash ?? inputMetadata.input_snapshot_hash ?? null;
     if (result.target_spec_version !== task.spec_version || result.input_snapshot_hash !== execution.input_snapshot_hash ||
-      result.checker_ref !== requiredCheck.checker_ref || result.checker_version !== requiredCheck.checker_version ||
-      (requiredCheck.environment_ref && result.environment_ref !== requiredCheck.environment_ref) ||
-      (requiredCheck.input_snapshot_hash && result.input_snapshot_hash !== requiredCheck.input_snapshot_hash)) {
+      (expectedCheckerRef && result.checker_ref !== expectedCheckerRef) ||
+      (expectedCheckerVersion && result.checker_version !== expectedCheckerVersion) ||
+      (expectedEnvironmentRef && result.environment_ref !== expectedEnvironmentRef) ||
+      (expectedInputSnapshotHash && result.input_snapshot_hash !== expectedInputSnapshotHash)) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'CheckResult binding does not match the current Task contract or Execution input');
     }
     if (execution.candidate_material_id !== result.candidate_material_id) {
@@ -3244,7 +3254,11 @@ export class TaskService {
     const updatedAt = now();
     this.db.prepare("UPDATE check_results SET status = 'APPLIED', applied_task_state_version = ?, applied_at = ?, updated_at = ? WHERE check_result_id = ?")
       .run(task.state_version + 1, updatedAt, updatedAt, checkResultId);
-    if (result.result_class === 'infrastructure_failure') {
+    if (result.result_class === 'infrastructure_failure' && !requiredCheck) {
+      // Diagnostic checker/service failures are data for a research or
+      // coordination Task.  They must not manufacture a dependency block or
+      // a repair Task when the Task did not ask Judge to establish completion.
+    } else if (result.result_class === 'infrastructure_failure') {
       const deferInfrastructureBlock = payload.defer_execution_block === true;
       if (task.completion_contract?.normal_flow === true && !deferInfrastructureBlock) {
         const blockReason = `checker_unavailable:${result.diagnostic_code ?? 'unknown'}`;
@@ -3284,7 +3298,7 @@ export class TaskService {
           .run(waitCondition ? json(waitCondition) : null, randomUUID(), updatedAt, execution.execution_id);
         this.#refreshTaskState(task.task_id, { updatedAt });
       }
-    } else if (result.verdict === 'PASS') {
+    } else if (result.verdict === 'PASS' && requiredCheck) {
       const completion = this.#completion(task, execution, checkResultId);
       if (completion.satisfied) {
         this.db.prepare("UPDATE executions SET state = 'SUCCEEDED', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
