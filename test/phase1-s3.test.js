@@ -258,8 +258,10 @@ test('shutdown drains a compaction checkpoint before releasing its Workspace', a
     const shutdownPromise = runtime.shutdown().then(() => { shutdownSettled = true; });
     await settle();
     assert.equal(shutdownSettled, false, 'shutdown waits for the in-flight checkpoint');
+    sessions[0].emit('rpc', { type: 'compaction_end', reason: 'late-after-stop', result: { tokensBefore: 90 }, aborted: false });
     unblockSave();
     await shutdownPromise;
+    assert.equal(fixture.events.filter((event) => event.event === 'runtime.compaction_checkpoint_saved').length, 1, 'late compaction events are ignored after shutdown begins');
 
     await assert.rejects(
       runtime.workspaceManager.saveWorkspaceRevision({

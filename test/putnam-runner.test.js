@@ -875,7 +875,7 @@ test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Ex
     assert.match(prompt, /source-level Judge FAIL/);
     assert.match(prompt, /submit_candidate again/);
     assert.doesNotMatch(prompt, /required Response handoff/);
-    assert.match(prompt, /one bounded Material for each distinct finding/);
+    assert.match(prompt, /bounded Materials for distinct findings or checkpoints/);
     assert.match(prompt, /do not publish duplicate copies/);
     assert.doesNotMatch(prompt, /publish two bounded Materials/);
     assert.doesNotMatch(prompt, /Branch Task|branch group|required subtask|parent review|root integration/i);

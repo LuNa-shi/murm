@@ -401,16 +401,20 @@ export class Runtime {
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
     const selectedCoreId = this.#resolveCoreId(execution, coreId);
     this.#assertCoreAvailable(selectedCoreId, execution.execution_id);
-    const workspace = await this.#prepareWorkspace(execution);
-    // A recovery start restores the already persisted revision. Rewriting that
-    // same revision would violate the Workspace Manager's monotonic CAS rule.
-    let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
-    const started = this.taskService.dispatch('start_execution', {
-      ...this.#executionTimingPayload(this.clock(), current),
-      ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
-    }, this.#executionEnvelope(current, operationId('start')));
-    current = started.execution;
+    let workspace = null;
+    let current = execution;
+    let startedDurably = false;
     try {
+      workspace = await this.#prepareWorkspace(execution);
+      // A recovery start restores the already persisted revision. Rewriting
+      // that same revision would violate the Workspace Manager's monotonic
+      // CAS rule.
+      current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
+      current = this.taskService.dispatch('start_execution', {
+        ...this.#executionTimingPayload(this.clock(), current),
+        ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
+      }, this.#executionEnvelope(current, operationId('start'))).execution;
+      startedDurably = true;
       return await this.#launch(current, workspace, { sessionReason, coreId: selectedCoreId });
     } catch (error) {
       const active = this.activeProcesses.get(executionId);
@@ -419,7 +423,9 @@ export class Runtime {
       await Promise.resolve(active?.session.stop?.()).catch(() => undefined);
       if (this.stopping) throw error;
       const failed = this.#getExecution(executionId);
-      if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
+      if (!startedDurably && ['CREATED', 'RUNNING'].includes(failed.state)) {
+        await this.fenceExecution(executionId, { reason: 'startup_prepare_failed' }).catch(() => undefined);
+      } else if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', {
           terminal_state: 'FAILED',
           terminal_reason: 'startup_failed',
@@ -455,58 +461,54 @@ export class Runtime {
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
     const selectedCoreId = this.#resolveCoreId(execution, coreId);
     this.#assertCoreAvailable(selectedCoreId, execution.execution_id);
-    const workspace = await this.#prepareWorkspace(execution, workspaceRef);
-    let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
+    let workspace = null;
+    let current = execution;
     let initialPrompt = agentPrompt;
     let initialPromptSnapshot = promptSnapshot;
-    if (!initialPromptSnapshot && capabilityProfile) {
-      const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
-      const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
-      const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
-        ? agentPrompt
-        : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
-      initialPromptSnapshot = buildPromptSnapshot({
-        role,
-        profile: capabilityProfile,
-        staticSop,
-        task: this.taskService.getTask(current.task_id),
-        execution: current,
-        workspace,
-        recovery: promptContext.recovery ?? null,
-      });
-      initialPrompt = initialPromptSnapshot.prompt;
-    } else if (initialPromptSnapshot?.prompt) {
-      initialPrompt = initialPromptSnapshot.prompt;
-    }
-    if (!capabilityProfile && this.capabilityRegistry) {
-      const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
-      const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
-      const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
-        ? agentPrompt
-        : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
-      const profile = buildCapabilityProfile({ role, registry: this.capabilityRegistry, runtimeCapabilities: this.runtimeCapabilities, context: { task_id: current.task_id, execution_id: current.execution_id } });
-      initialPromptSnapshot = buildPromptSnapshot({
-        role, profile, staticSop, task: this.taskService.getTask(current.task_id), execution: current, workspace, recovery: promptContext.recovery ?? null,
-      });
-      initialPrompt = initialPromptSnapshot.prompt;
-    }
-    if (initialPromptSnapshot) {
-      this.logger?.append({
-        event: 'runtime.initial_prompt_composed',
-        execution_id: current.execution_id,
-        role: initialPromptSnapshot.role,
-        prompt_version: initialPromptSnapshot.prompt_version,
-        prompt_hash: initialPromptSnapshot.prompt_hash,
-        profile_version: initialPromptSnapshot.profile_version,
-        profile_hash: initialPromptSnapshot.profile_hash,
-      });
-    }
-    current = this.taskService.dispatch('start_execution', {
-      ...this.#executionTimingPayload(this.clock(), current),
-      ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
-    }, this.#executionEnvelope(current, operationId('bind'))).execution;
     let boundSession = session;
+    let startedDurably = false;
     try {
+      workspace = await this.#prepareWorkspace(execution, workspaceRef);
+      current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
+      if (!initialPromptSnapshot && capabilityProfile) {
+        const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
+        const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
+        const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
+          ? agentPrompt
+          : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
+        initialPromptSnapshot = buildPromptSnapshot({
+          role, profile: capabilityProfile, staticSop, task: this.taskService.getTask(current.task_id), execution: current, workspace,
+          recovery: promptContext.recovery ?? null,
+        });
+        initialPrompt = initialPromptSnapshot.prompt;
+      } else if (initialPromptSnapshot?.prompt) {
+        initialPrompt = initialPromptSnapshot.prompt;
+      }
+      if (!capabilityProfile && this.capabilityRegistry) {
+        const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
+        const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
+        const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
+          ? agentPrompt
+          : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
+        const profile = buildCapabilityProfile({ role, registry: this.capabilityRegistry, runtimeCapabilities: this.runtimeCapabilities, context: { task_id: current.task_id, execution_id: current.execution_id } });
+        initialPromptSnapshot = buildPromptSnapshot({
+          role, profile, staticSop, task: this.taskService.getTask(current.task_id), execution: current, workspace, recovery: promptContext.recovery ?? null,
+        });
+        initialPrompt = initialPromptSnapshot.prompt;
+      }
+      if (initialPromptSnapshot) {
+        this.logger?.append({
+          event: 'runtime.initial_prompt_composed', execution_id: current.execution_id,
+          role: initialPromptSnapshot.role, prompt_version: initialPromptSnapshot.prompt_version,
+          prompt_hash: initialPromptSnapshot.prompt_hash, profile_version: initialPromptSnapshot.profile_version,
+          profile_hash: initialPromptSnapshot.profile_hash,
+        });
+      }
+      current = this.taskService.dispatch('start_execution', {
+        ...this.#executionTimingPayload(this.clock(), current),
+        ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
+      }, this.#executionEnvelope(current, operationId('bind'))).execution;
+      startedDurably = true;
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
       if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
       this.#registerActiveProcess(current, workspace, boundSession, { sessionReason, coreId: selectedCoreId });
@@ -517,7 +519,9 @@ export class Runtime {
       this.#setCoreState(selectedCoreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       await Promise.resolve(boundSession?.stop?.()).catch(() => undefined);
       const failed = this.#getExecution(executionId);
-      if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
+      if (!startedDurably && ['CREATED', 'RUNNING'].includes(failed.state)) {
+        await this.fenceExecution(executionId, { reason: 'bind_prepare_failed' }).catch(() => undefined);
+      } else if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', {
           terminal_state: 'FAILED',
           terminal_reason: 'bind_failed',
@@ -1012,7 +1016,9 @@ export class Runtime {
       requested_at: new Date(at instanceof Date ? at.getTime() : at).toISOString(),
     };
     let current = started;
-    await this.#drainCompactionCheckpoint(this.activeProcesses.get(executionId));
+    const activeBeforeHandoff = this.activeProcesses.get(executionId);
+    if (activeBeforeHandoff) activeBeforeHandoff.closing = true;
+    await this.#drainCompactionCheckpoint(activeBeforeHandoff);
     current = this.#getExecution(executionId);
     let workspace = null;
     let checkpointResult = null;
@@ -1172,6 +1178,7 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (active) {
       // Drain ownership writes before fencing/releasing the Workspace.
+      active.closing = true;
       await this.#drainCompactionCheckpoint(active);
       execution = this.#getExecution(executionId);
       this.activeProcesses.delete(executionId);
@@ -1197,6 +1204,7 @@ export class Runtime {
     let execution = this.#getExecution(id);
     const active = this.activeProcesses.get(id);
     if (active) {
+      active.closing = true;
       await this.#drainCompactionCheckpoint(active);
       execution = this.#getExecution(id);
       this.activeProcesses.delete(id);
@@ -1216,7 +1224,9 @@ export class Runtime {
   async fenceExecution(executionId, { reason = 'fenced' } = {}) {
     this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId, terminal_reason: reason });
     let execution = this.#getExecution(executionId);
-    await this.#drainCompactionCheckpoint(this.activeProcesses.get(executionId));
+    const activeBeforeFence = this.activeProcesses.get(executionId);
+    if (activeBeforeFence) activeBeforeFence.closing = true;
+    await this.#drainCompactionCheckpoint(activeBeforeFence);
     execution = this.#getExecution(executionId);
     const result = this.taskService.dispatch('fence_execution', {
       runtime_generation: this.runtimeGeneration,
@@ -1634,6 +1644,7 @@ export class Runtime {
       lastProductiveAt: nowMs,
       lastFailureClass: null,
       failurePromise: null,
+      closing: false,
       identityId: session.sessionId ?? randomUUID(),
       compactionCount: 0,
       compactionCheckpointPromise: null,
@@ -1705,6 +1716,7 @@ export class Runtime {
   async #releaseFencedProcess(executionId) {
     const active = this.activeProcesses.get(executionId);
     if (!active) return;
+    active.closing = true;
     await this.#drainCompactionCheckpoint(active);
     this.activeProcesses.delete(executionId);
     const execution = this.taskService.getExecution(executionId);
@@ -1733,7 +1745,7 @@ export class Runtime {
   async #handleSessionEvent(executionId, record) {
     if (this.stopping) return;
     const active = this.activeProcesses.get(executionId);
-    if (!active) return;
+    if (!active || active.closing) return;
     active.lastEventAt = this.clock();
     this.logger?.append({ event: 'runtime.agent_event', execution_id: executionId, record_type: record.type, phase: active.phase });
     const usage = contextWindowRatio(record, active.session);

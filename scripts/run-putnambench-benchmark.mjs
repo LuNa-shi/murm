@@ -182,7 +182,6 @@ function usage() {
     '    --timebox-ms 3600000',
     '    --parallel-mode direct|semantic|root-only',
     '    --task-model legacy|flat',
-    '    --flat-initial-tasks 1..6',
     '    --normal-flow',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
