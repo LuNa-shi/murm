@@ -1,12 +1,12 @@
 # Issue #111 evidence index
 
-Implementation commit: `0bc87896236a6a221c67afba434d13591306bf81`
+Implementation commit: `f359e4f45cd52868d4d7ee11cba5077069401b5d`
 (clean worktree). This index was written after that commit; later
 documentation-only commits do not change the implementation under test.
 
 Shorthand: **R** = real Agent event, **I** = deterministic/integration test.
 The sanitized real-Agent report is
-`experiments/issue-111-probe-0bc8789/analysis/report.json` (ignored local
+`experiments/issue-111-probe-f359e4f/analysis/report.json` (ignored local
 evidence). Raw transcripts, proof text, and credentials are not published.
 
 | Item | Implementation | Regression/integration | Real evidence | Result / gap |
@@ -35,7 +35,7 @@ evidence). Raw transcripts, proof text, and credentials are not published.
 | D01 conformance audit items | see `docs/reviews/phase-1-conformance-audit.md` | suite-wide | probe covers A01–A03/C01 | partial |
 | D02 adjacent boundaries | bridge/Runtime/Task Service | suite-wide | none natural | partial |
 | D03 docs/code consistency | this commit | `npm test`, `git diff --check` | not applicable | updated |
-| D04 engineering validation/privacy | all tests | 313/313 at the implementation commit | sanitized report only | passed deterministic checks; long run pending |
+| D04 engineering validation/privacy | all tests | 315/315 at the implementation commit | sanitized report only | passed deterministic checks; long run pending |
 
 ## Explicit gaps
 

@@ -4,12 +4,12 @@ Registered before launch.
 
 ## Exact implementation
 
-- Run HEAD: the documentation commit immediately above `0bc87896236a6a221c67afba434d13591306bf81` (recorded at launch in the report)
-- Code implementation under test: `0bc87896236a6a221c67afba434d13591306bf81`;
+- Run HEAD: the documentation commit immediately above `f359e4f45cd52868d4d7ee11cba5077069401b5d` (recorded at launch in the report)
+- Code implementation under test: `f359e4f45cd52868d4d7ee11cba5077069401b5d`;
   later commits in this run are documentation-only.
 - Worktree: `/home/ubuntu/SwarmEnv/.worktrees/issue-111-task-centric-phase1`
 - Worktree status at registration: clean (`git status --porcelain` empty).
-- Deterministic baseline: `npm test` 313/313 at the implementation commit.
+- Deterministic baseline: `npm test` 315/315 at the implementation commit.
 
 ## Fixed inputs and environment
 

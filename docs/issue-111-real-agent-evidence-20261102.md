@@ -152,3 +152,17 @@ command on clean commit `0bc87896236a6a221c67afba434d13591306bf81`:
 
 This supersedes the `d5214b5` probe as the current implementation evidence; the
 `d5214b5` result remains a valid record of that earlier commit.
+
+
+## Re-probe after review fixes (`f359e4f45cd52868d4d7ee11cba5077069401b5d`)
+
+The final implementation commit was probed again after the code review fixes
+(durable bind rollback, identity-Session shutdown cleanup, Sandbox close
+ordering, recovery compaction reset, and authenticated lane selection):
+
+- Preflight **READY_TO_LAUNCH**; worktree clean; `implementation_commit`
+  recorded as `f359e4f45cd52868d4d7ee11cba5077069401b5d`.
+- Result **SUCCEEDED**: two Materials, two CheckResults, source FAIL followed
+  by a superseding revision and PASS in the same Session/Execution.
+- Sanitized record: `experiments/issue-111-probe-f359e4f/analysis/report.json`.
+- Deterministic suite at this commit: 315/315.
