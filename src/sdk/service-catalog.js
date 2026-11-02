@@ -221,6 +221,24 @@ const TOOL_DEFINITIONS = Object.freeze([
 // name even when an adapter temporarily maps them to an older implementation.
 const publicTaskTools = [
   {
+    name: 'task_status', service: 'task', operation: 'task_status', version: '1.0',
+    description: 'Read the authoritative Mission, Task counts, claimable work, and observation timestamp.',
+    scope: 'task-read', side_effect: false,
+    parameters: { type: 'object', required: ['mission_id'], properties: { mission_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false },
+  },
+  {
+    name: 'task_register', service: 'task', operation: 'task_register', version: '1.0',
+    description: 'Register one independent Task with a goal, output, acceptance condition, and collaboration reason.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['mission_id', 'goal', 'expected_output', 'acceptance_conditions'], properties: { mission_id: { type: 'string' }, task_id: { type: 'string' }, summary: { type: 'string' }, goal: { type: 'string' }, task_type: { type: 'string' }, task_instructions: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] }, collaboration_reason: { type: 'string' }, responsibility_key: { type: 'string' }, spawned_from: { type: 'string' }, depends_on: { type: 'array', items: { type: 'string' } }, timebox_ms: { type: 'integer', minimum: 1 } }, additionalProperties: false },
+  },
+  {
+    name: 'task_take', service: 'task', operation: 'task_take', version: '1.0',
+    description: 'Take an existing Mission or ordinary Task using the caller identity and Core lane.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, core_id: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' }, input_material_refs: { type: 'array', items: { type: 'string' } } }, additionalProperties: false },
+  },
+  {
     name: 'task_list', service: 'task', operation: 'task_list', version: '1.0',
     description: 'List Mission Tasks and search their short summaries before proposing new work.',
     scope: 'task-read', side_effect: false,

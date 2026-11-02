@@ -21,6 +21,7 @@ const CURRENT_AGENT_OPERATIONS = new Set([
   'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'claim',
   'create_child_task', 'propose_task',
   'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
+  'task_status', 'task_register', 'task_take',
   'publish_material', 'read_materials', 'consume_materials',
   'context_search_materials', 'context_get_material', 'context_publish_material',
   'submit_candidate', 'get_check_result', 'get_execution',
@@ -81,7 +82,7 @@ function inferredAudience(capability) {
   if (operation === 'claim' || operation === 'list_claimable_tasks') {
     return [AGENT_ROLES.SELECTION];
   }
-  if (operation === 'list_tasks' || operation === 'task_list' || operation === 'task_view' || operation === 'get_task') {
+  if (operation === 'list_tasks' || operation === 'task_list' || operation === 'task_view' || operation === 'get_task' || operation === 'task_status') {
     return [AGENT_ROLES.SELECTION, AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
   if (scope === 'task-selection') {

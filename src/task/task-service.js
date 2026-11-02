@@ -36,6 +36,12 @@ const MODERN_OPERATION_ALIASES = Object.freeze({
   task_handoff: 'handoff_task',
   'task.block': 'block_task_semantic',
   task_block: 'block_task_semantic',
+  'task.status': 'task_status',
+  task_status: 'task_status',
+  'task.register': 'task_register',
+  task_register: 'task_register',
+  'task.take': 'task_take',
+  task_take: 'task_take',
 });
 const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic']);
 const MODERN_READ_OPERATIONS = new Set(['get_mission', 'list_task', 'view_task', 'list_task_materials']);
@@ -45,6 +51,7 @@ const TASK_MUTATING_OPERATIONS = new Set([
   'propose_task', 'reconcile_task', 'reopen_task', 'request_rework', 'submit_candidate',
   'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic',
   ...MODERN_MUTATING_OPERATIONS,
+  'task_register', 'task_take',
 ]);
 const TASK_EVENT_OPERATIONS = new Set([
   'accept_task', 'apply_check_result', 'abort', 'block_task', 'claim', 'create_branch_group',
@@ -58,6 +65,7 @@ const TASK_READ_OPERATIONS = new Set([
   'get_task', 'get_execution', 'get_task_structure', 'explain_task_readiness',
   'list_children', 'list_tasks', 'list_claimable_tasks', 'list_executions',
   ...MODERN_READ_OPERATIONS,
+  'task_status',
 ]);
 
 const TASK_TABLE_COLUMNS = Object.freeze([
@@ -571,6 +579,10 @@ export class TaskService {
     return this.dispatch('list_task', filters, envelope);
   }
 
+  taskStatus(filters = {}, envelope = makeEnvelope({ actorRef: 'unknown' })) {
+    return this.dispatch('task_status', filters, envelope);
+  }
+
   viewModernTask(taskId, envelope = makeEnvelope({ actorRef: 'unknown', taskId })) {
     return this.dispatch('view_task', { task_id: taskId }, envelope);
   }
@@ -597,6 +609,10 @@ export class TaskService {
 
   blockTaskSemantic(payload = {}, envelope) {
     return this.dispatch('block_task_semantic', payload, envelope);
+  }
+
+  taskRegister(input, envelope = makeEnvelope({ actorRef: input?.owner_ref ?? 'unknown' })) {
+    return this.dispatch('task_register', input, envelope);
   }
 
   getExecution(executionId) {
@@ -770,6 +786,26 @@ export class TaskService {
     return this.dispatch('claim', payload, { ...claimEnvelope, task_id: id, execution_id: null,
       spec_version: claimEnvelope.spec_version ?? task.spec_version,
       state_version: claimEnvelope.state_version ?? task.state_version });
+  }
+
+  /** Canonical Agent-facing task take; legacy claim remains the internal adapter. */
+  taskTake(taskId, payload = {}, envelope = null) {
+    const id = requireString(taskId, 'task_id');
+    const task = this.getTask(id);
+    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${id}`);
+    const takeEnvelope = envelope ?? makeEnvelope({
+      actorRef: payload.owner_ref ?? 'agent',
+      taskId: id,
+      specVersion: task.spec_version,
+      stateVersion: task.state_version,
+    });
+    return this.dispatch('task_take', { ...payload, task_id: id }, {
+      ...takeEnvelope,
+      task_id: id,
+      execution_id: null,
+      spec_version: takeEnvelope.spec_version ?? task.spec_version,
+      state_version: takeEnvelope.state_version ?? task.state_version,
+    });
   }
 
   listExecutions(taskId, { includeTerminal = true } = {}) {
@@ -1394,8 +1430,102 @@ export class TaskService {
     return { ...blocked, dependency: normalizedDependency, handoff: { material, link }, disposition: 'blocked' };
   }
 
+  #taskStatus(payload = {}) {
+    const missionId = requireString(payload.mission_id ?? payload.missionId, 'mission_id');
+    const mission = this.#getMission(missionId);
+    if (!mission) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown mission: ${missionId}`);
+    const states = payload.states ?? ['OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'DONE', 'CLOSED', 'CANCELED'];
+    const limit = payload.limit ?? 100;
+    const tasks = this.#listModernTasks({ mission_id: missionId, states, limit, available_only: false });
+    const claimable = tasks.filter((task) => task.state === 'OPEN' && this.#modernDependencyBlockers(task.task_id).length === 0);
+    const counts = this.db.prepare(`SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN t.state = 'OPEN' THEN 1 ELSE 0 END) AS open,
+      SUM(CASE WHEN t.state = 'RUNNING' THEN 1 ELSE 0 END) AS running,
+      SUM(CASE WHEN t.state = 'WAITING' THEN 1 ELSE 0 END) AS waiting,
+      SUM(CASE WHEN t.state IN ('DONE', 'CLOSED', 'CANCELED', 'SATISFIED') THEN 1 ELSE 0 END) AS terminal,
+      SUM(CASE WHEN t.state = 'OPEN' AND NOT EXISTS (
+        SELECT 1 FROM task_relations r
+        JOIN tasks prerequisite ON prerequisite.task_id = r.related_task_id
+        WHERE r.task_id = t.task_id AND r.relation_kind = 'depends_on'
+          AND prerequisite.state NOT IN ('DONE', 'CLOSED')
+      ) THEN 1 ELSE 0 END) AS claimable
+      FROM tasks t JOIN modern_task_records m ON m.task_id = t.task_id WHERE m.mission_id = ?`).get(missionId);
+    const lanes = this.db.prepare(`SELECT core_id, task_id, execution_id, state, owner_ref, updated_at
+      FROM executions WHERE core_id IS NOT NULL AND state IN ('CREATED', 'RUNNING', 'WAITING')
+      ORDER BY core_id, updated_at, execution_id`).all().reduce((byCore, row) => {
+      const lane = byCore.get(row.core_id) ?? { core_id: row.core_id, state: 'IDLE', task_id: null, execution_id: null, owner_ref: null, updated_at: null };
+      if (lane.state === 'IDLE' || row.state === 'RUNNING' || (row.state === 'CREATED' && lane.state !== 'RUNNING')) {
+        lane.state = row.state;
+        lane.task_id = row.task_id;
+        lane.execution_id = row.execution_id;
+        lane.owner_ref = row.owner_ref;
+        lane.updated_at = row.updated_at;
+      }
+      byCore.set(row.core_id, lane);
+      return byCore;
+    }, new Map());
+    return {
+      mission,
+      tasks,
+      claimable_tasks: claimable,
+      lanes: [...lanes.values()],
+      counts: {
+        total: Number(counts.total ?? 0),
+        open: Number(counts.open ?? 0),
+        running: Number(counts.running ?? 0),
+        waiting: Number(counts.waiting ?? 0),
+        terminal: Number(counts.terminal ?? 0),
+        claimable: Number(counts.claimable ?? 0),
+      },
+      page: { limit, returned: tasks.length, complete: tasks.length < limit },
+      observed_at: now(),
+    };
+  }
+
+  #taskRegister(payload, envelope) {
+    const goal = payload.goal ?? payload.summary;
+    const result = this.#createModernTask({
+      ...payload,
+      summary: payload.summary ?? goal,
+      goal,
+      // The operation envelope is the identity boundary. A caller may choose
+      // a Task owner in the internal create adapter, but the canonical Agent
+      // registration records the current actor as its proposer/owner.
+      owner_ref: envelope.actor_ref,
+    }, envelope);
+    return {
+      ...result,
+      provenance: {
+        actor_ref: envelope.actor_ref,
+        task_id: envelope.task_id ?? null,
+        execution_id: envelope.execution_id ?? null,
+        collaboration_reason: payload.collaboration_reason ?? null,
+      },
+    };
+  }
+
+  #taskTake(payload, envelope) {
+    const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
+    const task = this.getTask(taskId);
+    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`);
+    const claimEnvelope = {
+      ...envelope,
+      task_id: taskId,
+      execution_id: null,
+      spec_version: envelope.spec_version ?? task.spec_version,
+      state_version: envelope.state_version ?? task.state_version,
+    };
+    return this.#claimTask(task, {
+      ...payload,
+      claim_key: payload.claim_key ?? payload.request_key ?? envelope.operation_id,
+      owner_ref: envelope.actor_ref,
+    }, claimEnvelope);
+  }
+
   #read(operation, payload, envelope) {
     if (operation === 'get_mission') return this.#getMission(requireString(payload.mission_id, 'mission_id'));
+    if (operation === 'task_status') return this.#taskStatus(payload);
     if (operation === 'list_task') return this.#listModernTasks(payload);
     if (operation === 'view_task') return this.#viewModernTask(requireString(payload.task_id ?? envelope.task_id, 'task_id'));
     if (operation === 'list_task_materials') {
@@ -1447,6 +1577,8 @@ export class TaskService {
       case 'close_task': return this.#closeTask(payload, envelope);
       case 'handoff_task': return this.#handoffTask(payload, envelope);
       case 'block_task_semantic': return this.#blockTaskSemantic(payload, envelope);
+      case 'task_register': return this.#taskRegister(payload, envelope);
+      case 'task_take': return this.#taskTake(payload, envelope);
       case 'propose_task': return this.#proposeTask(payload, envelope);
       case 'create_child_task': return this.#createChildTask(payload, envelope);
       case 'create_branch_group': return this.#createBranchGroup(payload, envelope);

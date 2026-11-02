@@ -66,6 +66,43 @@ test('ServicesSDK exposes the Mission-scoped Task seam without parent-specific m
   service.close();
 });
 
+test('canonical task supply seam reports status, registers work, and takes it', () => {
+  const { service } = env();
+  const sdk = new ServicesSDK(service, { actorRef: 'agent:canonical', coreId: 'core:canonical' });
+  const mission = sdk.createMission({ mission_id: 'mission:canonical', goal: 'canonical task supply' }, { operationId: 'canonical:mission' }).mission;
+
+  const initial = sdk.taskStatus({ mission_id: mission.mission_id });
+  assert.equal(initial.mission.mission_id, mission.mission_id);
+  assert.equal(initial.counts.total, 0);
+  assert.deepEqual(initial.tasks, []);
+
+  const registered = sdk.taskRegister({
+    mission_id: mission.mission_id,
+    task_id: 'task:canonical',
+    goal: 'find one independent route',
+    expected_output: 'a route note',
+    acceptance_conditions: ['note exists'],
+    collaboration_reason: 'another identity can verify this route',
+  }, { operationId: 'canonical:register' });
+  assert.equal(registered.task.task_id, 'task:canonical');
+  assert.equal(registered.provenance.actor_ref, 'agent:canonical');
+
+  const status = sdk.taskStatus({ mission_id: mission.mission_id });
+  assert.equal(status.counts.total, 1);
+  assert.equal(status.counts.claimable, 1);
+  assert.equal(status.tasks[0].task_id, 'task:canonical');
+
+  const taken = sdk.taskTake({
+    task_id: registered.task.task_id,
+    claim_key: 'canonical:take',
+    core_id: 'core:canonical',
+  }, { operationId: 'canonical:take' });
+  assert.equal(taken.task.task_id, registered.task.task_id);
+  assert.equal(taken.execution.owner_ref, 'agent:canonical');
+  assert.equal(taken.execution.core_id, 'core:canonical');
+  service.close();
+});
+
 test('Mission Task creation carries a bounded dynamic contract and deduplicates responsibility keys', () => {
   const { service } = env();
   const mission = createMission(service, 'mission:dynamic-contract');

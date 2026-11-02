@@ -82,13 +82,14 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onBeforeSubmitCandidate = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onBeforeSubmitCandidate = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
     this.runtime = runtime;
     this.router = router;
     this.actorRef = actorRef;
+    this.coreId = coreId;
     this.taskId = taskId;
     this.executionId = executionId;
     this.role = role ?? (taskId || executionId ? AGENT_ROLES.BOUND : AGENT_ROLES.SELECTION);
@@ -136,6 +137,7 @@ export class ServicesBridge {
     if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'bridge already has a claimed binding');
     this.taskId = result.task.task_id;
     this.executionId = result.execution.execution_id;
+    this.coreId = this.coreId ?? result.execution.core_id ?? null;
     this.role = AGENT_ROLES.BOUND;
     this.capabilityProfile = null;
     this.capabilityProfileRegistryRevision = null;
@@ -190,7 +192,7 @@ export class ServicesBridge {
         role: this.role,
         registry: this.registry,
         runtimeCapabilities: this.runtimeCapabilities,
-        context: { task_id: this.taskId, execution_id: this.executionId },
+        context: { task_id: this.taskId, execution_id: this.executionId, core_id: this.coreId },
       });
       this.capabilityProfileRegistryRevision = registryRevision;
     }
@@ -364,7 +366,7 @@ export class ServicesBridge {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
       }
       const service = this.router ?? { dispatch: (name, body, envelope) => {
-        if (['get_task', 'get_execution', 'list_tasks', 'list_claimable_tasks', 'list_executions'].includes(name)) return this.taskService.dispatch(name, body, envelope);
+        if (['get_task', 'get_execution', 'list_tasks', 'list_claimable_tasks', 'list_executions', 'task_status', 'task_register', 'task_take'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
       } };
       const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
@@ -383,10 +385,11 @@ export class ServicesBridge {
       const isCatalogDiscovery = capability.service_id === 'catalog' && ['list_services', 'get_service_metadata', 'list_tools'].includes(operation);
       const isTaskDiscovery = capability.service_id === 'task' && [
         'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions',
-        'get_task_structure', 'explain_task_readiness', 'task_list', 'task_view',
+        'get_task_structure', 'explain_task_readiness', 'task_list', 'task_view', 'task_status',
       ].includes(operation);
       if (isCatalogDiscovery || isTaskDiscovery || (capability.service_id === 'task' && operation === 'scheduler_status')) {
-        if (this.role === AGENT_ROLES.SELECTION && isTaskDiscovery && !Array.isArray(this.selectionCandidates)) {
+        const shortlistRequired = isTaskDiscovery && operation !== 'task_status';
+        if (this.role === AGENT_ROLES.SELECTION && shortlistRequired && !Array.isArray(this.selectionCandidates)) {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Selection task discovery requires a bounded shortlist', {
             operation,
             role: this.role,
@@ -402,7 +405,9 @@ export class ServicesBridge {
           this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
-        const discoveryPayload = (operation === 'list_tasks' || operation === 'list_claimable_tasks' || operation === 'task_list') && this.taskId === null && payload.available_only !== false
+        const discoveryPayload = operation === 'task_status' && payload.mission_id === undefined && modernBoundTask?.mission_id
+          ? { ...payload, mission_id: modernBoundTask.mission_id }
+          : (operation === 'list_tasks' || operation === 'list_claimable_tasks' || operation === 'task_list') && this.taskId === null && payload.available_only !== false
           ? { ...payload, states: ['OPEN', 'RUNNING', 'WAITING'] }
           : ((operation === 'get_task' || operation === 'task_view' || ['get_task_structure', 'explain_task_readiness'].includes(operation)) && payload.task_id === undefined && this.taskId
             ? { ...payload, task_id: this.taskId }
@@ -583,22 +588,39 @@ export class ServicesBridge {
         } catch { registeredService = null; }
       }
       if (registeredService && !capability.runtime_owned && capability.service_id !== 'runtime') {
-        const requiresBinding = Array.isArray(capability.context) && capability.context.length > 0;
+        if (operation === 'task_take' && this.role === AGENT_ROLES.SELECTION) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_take requires a bound or recovery identity; Selection must not choose a Task', { role: this.role });
+        }
+        if (operation === 'task_take' && (this.taskId || this.executionId)) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_take requires the current Execution binding to be released', { task_id: this.taskId, execution_id: this.executionId });
+        }
+        const requiresBinding = operation !== 'task_take' && Array.isArray(capability.context) && capability.context.length > 0;
         if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
         if (operation === 'submit_candidate') {
           const guard = this.onBeforeSubmitCandidate?.({ taskId: this.taskId, executionId: this.executionId, payload });
           if (guard && typeof guard.then === 'function') await guard;
         }
+        const currentExecution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
+        const invocationPayload = operation === 'task_take'
+          ? {
+            ...payload,
+            owner_ref: this.actorRef,
+            core_id: this.coreId ?? currentExecution?.core_id ?? payload.core_id ?? null,
+          }
+          : payload;
         const invoke = async () => {
           if (operation === 'task_create') {
             const guard = this.onTaskCreate?.({ taskId: this.taskId, executionId: this.executionId, payload });
             if (guard && typeof guard.then === 'function') await guard;
           }
-          return this.#invokeRegistered(capability, payload, bridgeOperationId);
+          return this.#invokeRegistered(capability, invocationPayload, bridgeOperationId);
         };
         let result = operation === 'task_create' && this.taskCreateMutex
           ? await this.taskCreateMutex.run(invoke)
           : await invoke();
+        if (operation === 'task_take') {
+          await this.bindClaim(result);
+        }
         if (operation === 'task_complete') {
           await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
           // The Task Service commits the semantic completion; Runtime owns the
@@ -628,17 +650,18 @@ export class ServicesBridge {
             };
           }
         }
-        if (this.onWorkUnit && (operation !== 'submit_candidate' || capability.service_id === 'judge') && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_link_material', 'task_handoff', 'task_block', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+        if (this.onWorkUnit && (operation !== 'submit_candidate' || capability.service_id === 'judge') && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_register', 'task_take', 'task_link_material', 'task_handoff', 'task_block', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
           await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
         }
         this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
         return result;
       }
 
-      if (!this.taskId || !this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
-      const execution = this.taskService.getExecution(this.executionId);
-      if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${this.executionId}`, { execution_id: this.executionId });
-      if (execution.task_id !== this.taskId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'bridge execution does not match task', { task_id: this.taskId, execution_id: this.executionId });
+      const unboundCanonicalTake = operation === 'task_take' && this.role !== AGENT_ROLES.SELECTION && !this.taskId && !this.executionId;
+      if ((!this.taskId || !this.executionId) && !unboundCanonicalTake) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
+      const execution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
+      if (!unboundCanonicalTake && !execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${this.executionId}`, { execution_id: this.executionId });
+      if (!unboundCanonicalTake && execution.task_id !== this.taskId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'bridge execution does not match task', { task_id: this.taskId, execution_id: this.executionId });
       const boundTaskId = this.taskId;
       const boundExecutionId = this.executionId;
       if (operation === 'task_handoff' || operation === 'task_block') {
@@ -712,12 +735,13 @@ export class ServicesBridge {
       }
       const sdk = new ServicesSDK(service, {
         actorRef: this.actorRef,
+        coreId: this.coreId ?? execution?.core_id ?? null,
         taskId: this.taskId,
         executionId: this.executionId,
-        specVersion: execution.spec_version,
-        stateVersion: execution.state_version,
-        taskStateVersion: this.taskService.getTask(this.taskId)?.state_version ?? execution.state_version,
-        fencingVersion: execution.fencing_version,
+        specVersion: execution?.spec_version ?? null,
+        stateVersion: execution?.state_version ?? null,
+        taskStateVersion: this.taskService.getTask(this.taskId)?.state_version ?? execution?.state_version ?? null,
+        fencingVersion: execution?.fencing_version ?? null,
       });
       const options = { operationId: bridgeOperationId };
       let result;
@@ -729,6 +753,7 @@ export class ServicesBridge {
           break;
         case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
         case 'task_list': result = sdk.listMissionTasks(payload); break;
+        case 'task_status': result = sdk.taskStatus(payload); break;
         case 'task_view': result = sdk.viewTask(payload.task_id ?? this.taskId); break;
         case 'task_create':
           {
@@ -741,6 +766,11 @@ export class ServicesBridge {
               ? await this.taskCreateMutex.run(createTask)
               : await createTask();
           }
+          break;
+        case 'task_register': result = sdk.taskRegister(payload, options); break;
+        case 'task_take':
+          result = sdk.taskTake(payload, options);
+          await this.bindClaim(result);
           break;
         case 'task_link_material': result = sdk.linkMaterial(payload, options); break;
         case 'task_complete':

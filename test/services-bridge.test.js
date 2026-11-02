@@ -68,6 +68,102 @@ test('ServicesBridge exposes public SDK calls over a loopback token and keeps Ru
   }
 });
 
+test('ServicesBridge exposes canonical task status/register/take through the bound profile', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:canonical' });
+  const mission = owner.createMission({
+    mission_id: 'mission:bridge-canonical',
+    goal: 'exercise the canonical task supply seam',
+    acceptance_conditions: ['a task is registered and taken'],
+  }, { operationId: 'bridge:canonical:mission' }).mission;
+  const root = owner.createTask({
+    mission_id: mission.mission_id,
+    task_id: 'task:bridge-canonical-root',
+    summary: 'Keep the canonical bridge registration test bounded and independently verifiable.',
+    goal: 'Provide a current Execution for provenance assertions.',
+    expected_output: 'a provenance record',
+    acceptance_conditions: ['the registered Task carries actor and Execution provenance'],
+  }, { operationId: 'bridge:canonical:root' }).task;
+  const claim = owner.withContext({
+    taskId: root.task_id,
+    specVersion: root.spec_version,
+    stateVersion: root.state_version,
+  }).claim({
+    execution_id: 'execution:bridge-canonical-root',
+    claim_key: 'bridge:canonical:root:claim',
+    owner_ref: 'agent:canonical',
+    core_id: 'core:canonical',
+    agent_prompt: 'canonical bridge test',
+    input_material_refs: [],
+  }, { operationId: 'bridge:canonical:claim' });
+  const bound = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router,
+    actorRef: 'agent:canonical',
+    coreId: 'core:canonical',
+    taskId: root.task_id,
+    executionId: claim.execution.execution_id,
+  });
+  const taker = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router,
+    actorRef: 'agent:taker',
+    coreId: 'core:taker',
+    role: AGENT_ROLES.BOUND,
+  });
+  try {
+    const profileNames = bound.getCapabilityProfile().capabilities
+      .filter((capability) => capability.service_id === 'task')
+      .map((capability) => capability.operation);
+    assert.ok(profileNames.includes('task_status'));
+    assert.ok(profileNames.includes('task_register'));
+    assert.ok(profileNames.includes('task_take'));
+    const initial = await bound.call({ operation: 'task_status', payload: { mission_id: mission.mission_id } });
+    assert.equal(initial.counts.total, 1);
+    const registered = await bound.call({
+      operation: 'task_register',
+      payload: {
+        mission_id: mission.mission_id,
+        task_id: 'task:bridge-canonical-child',
+        goal: 'Register one independently checkable route through the canonical Agent seam.',
+        expected_output: 'a route note',
+        acceptance_conditions: ['the route note is durable'],
+        collaboration_reason: 'a second identity can verify this route',
+      },
+    });
+    assert.equal(registered.provenance.actor_ref, 'agent:canonical');
+    assert.equal(registered.provenance.task_id, root.task_id);
+    assert.equal(registered.provenance.execution_id, claim.execution.execution_id);
+    assert.equal(registered.task.owner_ref, 'agent:canonical');
+
+    const taken = await taker.call({
+      operation: 'task_take',
+      payload: { task_id: registered.task.task_id, claim_key: 'bridge:canonical:take' },
+    });
+    assert.equal(taken.execution.owner_ref, 'agent:taker');
+    assert.equal(taken.execution.core_id, 'core:taker');
+    assert.equal(taker.taskId, registered.task.task_id);
+    assert.equal(taker.executionId, taken.execution.execution_id);
+    await assert.rejects(
+      () => new ServicesBridge({ taskService, contextService, runtime: {}, router, role: AGENT_ROLES.SELECTION })
+        .call({ operation: 'task_take', payload: { task_id: registered.task.task_id, claim_key: 'bridge:canonical:selection' } }),
+      (error) => error.code === 'NOT_ALLOWED',
+    );
+  } finally {
+    await bound.stop();
+    await taker.stop();
+    taskService.close();
+  }
+});
+
 test('ServicesBridge runs the Task-create guard before committing a Mission Task', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);

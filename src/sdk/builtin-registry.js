@@ -15,11 +15,12 @@ const SELECTION_OPERATIONS = new Set(['list_claimable_tasks', 'claim', 'task_lis
 // Selection can inspect only the bounded Task contract it is about to choose.
 // Execution-scoped projections (Materials, CheckResults, and prior Executions)
 // belong to the bound/recovery roles and must not leak into the selection turn.
-const SHARED_READ_OPERATIONS = new Set(['get_task']);
+const SHARED_READ_OPERATIONS = new Set(['get_task', 'task_status']);
 const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
     'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'claim', 'create_child_task', 'propose_task',
     'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
+    'task_status', 'task_register', 'task_take',
   ]),
   context: new Set(['publish_material', 'read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material']),
   judge: new Set(['submit_candidate', 'get_check_result']),

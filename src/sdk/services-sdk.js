@@ -55,6 +55,11 @@ export class ServicesSDK {
     return this.#read('list_task', filters);
   }
 
+  /** Read the authoritative Mission/task view used by an active identity. */
+  taskStatus(filters = {}) {
+    return this.#read('task_status', filters);
+  }
+
   viewTask(taskId = this.context.taskId) {
     return this.#read('view_task', { task_id: taskId });
   }
@@ -136,6 +141,11 @@ export class ServicesSDK {
     return this.#write('propose_task', task, { ...options, taskId: null, executionId: null, fencingVersion: null });
   }
 
+  /** Register one independent responsibility with the current identity provenance. */
+  taskRegister(task, options = {}) {
+    return this.#write('task_register', task, options);
+  }
+
   createChildTask(task, options = {}) {
     return this.#write('create_child_task', task, {
       ...options,
@@ -191,6 +201,19 @@ export class ServicesSDK {
 
   claim(payload = {}, options = {}) {
     return this.#write('claim', payload, options);
+  }
+
+  /** Take an existing Mission/ordinary Task through the canonical Agent seam. */
+  taskTake(payload = {}, options = {}) {
+    const contextCoreId = this.context.coreId ?? this.context.core_id ?? null;
+    return this.#write('task_take', {
+      ...payload,
+      // Agent identity and Core lane come from the bound SDK context. Keep
+      // payload fields as a compatibility fallback only for unbound local
+      // callers that have no lane context yet.
+      owner_ref: this.context.actorRef,
+      ...(contextCoreId !== null ? { core_id: contextCoreId } : {}),
+    }, options);
   }
 
   heartbeat(payload = {}, options = {}) {

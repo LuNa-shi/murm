@@ -7,6 +7,7 @@ const TASK_OPERATIONS = new Set([
   'accept_task', 'request_rework', 'apply_check_result', 'wake_execution',
   'create_branch_group', 'add_required_subtask', 'get_task_structure', 'propose_structure_change', 'explain_task_readiness', 'create_rework_task',
   'create_mission', 'get_mission', 'create_task', 'list_task', 'view_task', 'task_list', 'task_view', 'task_create',
+  'task_status', 'task_register', 'task_take',
   'link_material', 'task_link_material', 'list_task_materials', 'task_materials', 'complete_task', 'task_complete', 'close_task', 'task_close', 'handoff_task', 'task_handoff', 'block_task_semantic', 'task_block',
 ]);
 const CONTEXT_OPERATIONS = new Set([
