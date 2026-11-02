@@ -216,6 +216,11 @@ export class ServicesSDK {
     }, options);
   }
 
+  /** Save Progress Material and checkpoint or hand off the current Execution. */
+  executionProgress(payload = {}, options = {}) {
+    return this.#write('execution_progress', payload, options);
+  }
+
   heartbeat(payload = {}, options = {}) {
     return this.#write('heartbeat', payload, options);
   }

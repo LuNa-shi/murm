@@ -366,10 +366,23 @@ export class ServicesBridge {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
       }
       const service = this.router ?? { dispatch: (name, body, envelope) => {
-        if (['get_task', 'get_execution', 'list_tasks', 'list_claimable_tasks', 'list_executions', 'task_status', 'task_register', 'task_take'].includes(name)) return this.taskService.dispatch(name, body, envelope);
+        if (['get_task', 'get_execution', 'list_tasks', 'list_claimable_tasks', 'list_executions', 'task_status', 'task_register', 'task_take', 'execution_progress'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
       } };
       const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
+      if (operation === 'execution_progress') {
+        if (!this.taskId || !this.executionId || ![AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY].includes(this.role)) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'execution_progress requires a bound Task Execution', { role: this.role });
+        }
+        if (typeof this.runtime?.executionProgress !== 'function') {
+          throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Runtime does not expose execution_progress');
+        }
+        const result = await this.runtime.executionProgress(this.executionId, { ...payload, actorRef: this.actorRef });
+        await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
+        if (payload.kind === 'handoff') await this.releaseClaim({ result });
+        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+        return result;
+      }
       if (operation === 'select_task') {
         if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'select_task is only available to an unbound selection Session');
         if (!Array.isArray(this.selectionCandidates)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'select_task is only available during a Core Daemon selection turn');

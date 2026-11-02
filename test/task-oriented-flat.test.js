@@ -103,6 +103,55 @@ test('canonical task supply seam reports status, registers work, and takes it', 
   service.close();
 });
 
+test('the first Mission Task is a shared entry and may have multiple Core-bound Executions', () => {
+  const { service } = env();
+  const mission = createMission(service, 'mission:shared-entry');
+  const shared = createTask(service, mission.mission_id, 'task:shared-entry');
+  const first = service.dispatch('task_take', {
+    task_id: shared.task_id, claim_key: 'shared:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
+  }, op('shared:one', 'agent:one', { taskId: shared.task_id, specVersion: shared.spec_version, stateVersion: shared.state_version })).execution;
+  const current = service.getTask(shared.task_id);
+  const second = service.dispatch('task_take', {
+    task_id: shared.task_id, claim_key: 'shared:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
+  }, op('shared:two', 'agent:two', { taskId: shared.task_id, specVersion: current.spec_version, stateVersion: current.state_version })).execution;
+
+  assert.notEqual(first.execution_id, second.execution_id);
+  assert.equal(service.listExecutions(shared.task_id, { includeTerminal: false }).length, 2);
+  const status = service.taskStatus({ mission_id: mission.mission_id, limit: 1 });
+  assert.equal(status.counts.total, 1);
+  assert.equal(status.counts.running, 1);
+  assert.equal(status.counts.claimable, 1);
+  assert.equal(status.claimable_tasks[0].task_id, shared.task_id);
+  service.close();
+});
+
+test('ordinary Mission Tasks stay exclusive while registration has no queue-size cap', () => {
+  const { service } = env();
+  const mission = createMission(service, 'mission:ordinary-exclusive');
+  const first = createTask(service, mission.mission_id, 'task:first-ordinary');
+  const second = createTask(service, mission.mission_id, 'task:second-ordinary');
+  const taken = service.dispatch('task_take', {
+    task_id: second.task_id, claim_key: 'ordinary:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
+  }, op('ordinary:one', 'agent:one', { taskId: second.task_id, specVersion: second.spec_version, stateVersion: second.state_version }));
+  const current = service.getTask(second.task_id);
+  assert.throws(() => service.dispatch('task_take', {
+    task_id: second.task_id, claim_key: 'ordinary:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
+  }, op('ordinary:two', 'agent:two', { taskId: second.task_id, specVersion: current.spec_version, stateVersion: current.state_version })), /active Execution quota/);
+  for (let index = 0; index < 12; index += 1) {
+    const registered = service.taskRegister({
+      mission_id: mission.mission_id,
+      task_id: `task:unbounded-${index}`,
+      summary: `Register independent responsibility ${index} without a queue quota.`,
+      goal: `Explore route ${index}`,
+      expected_output: 'a bounded note',
+      acceptance_conditions: ['the note is durable'],
+    }, op(`register:unbounded:${index}`, 'agent:one', { taskId: second.task_id, executionId: taken.execution.execution_id, specVersion: taken.execution.spec_version, stateVersion: taken.execution.state_version, fencingVersion: taken.execution.fencing_version }));
+    assert.equal(registered.task.owner_ref, 'agent:one');
+  }
+  assert.equal(service.taskStatus({ mission_id: mission.mission_id }).counts.total, 14);
+  service.close();
+});
+
 test('Mission Task creation carries a bounded dynamic contract and deduplicates responsibility keys', () => {
   const { service } = env();
   const mission = createMission(service, 'mission:dynamic-contract');

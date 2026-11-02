@@ -50,6 +50,21 @@ function normalizeWaitFiles(files) {
   }));
 }
 
+function normalizeProgress(progress) {
+  if (!progress || typeof progress !== 'object' || Array.isArray(progress)) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'progress must be an object');
+  }
+  for (const field of ['completed_work', 'findings', 'open_questions', 'next_step']) {
+    if (!Object.hasOwn(progress, field)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `progress.${field} is required`);
+  }
+  return {
+    completed_work: progress.completed_work,
+    findings: progress.findings,
+    open_questions: progress.open_questions,
+    next_step: progress.next_step,
+  };
+}
+
 function taskUsesJudge(task) {
   const contract = task?.completion_contract ?? {};
   return Boolean(contract.required_candidate || contract.required_check || task?.task_type === 'proof');
@@ -790,6 +805,108 @@ export class Runtime {
   }
 
   /**
+   * Agent-facing progress boundary. Filesystem/checkpoint persistence is
+   * attempted once, then one Progress Material records the exact handoff
+   * state. A checkpoint failure leaves the Execution alive; a handoff failure
+   * is recorded and still releases the old Execution so it cannot strand a
+   * Core or claim that unsaved work was persisted.
+   */
+  async executionProgress(executionId, {
+    kind = 'checkpoint', progress, checkpoint = {}, files = {}, reason = 'progress_handoff', summary = null,
+  } = {}) {
+    const id = requireString(executionId, 'execution_id');
+    if (!['checkpoint', 'handoff'].includes(kind)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'execution_progress kind must be checkpoint or handoff');
+    const normalizedProgress = normalizeProgress(progress);
+    let current = this.#getExecution(id);
+    if (!['CREATED', 'RUNNING'].includes(current.state)) {
+      return { execution: current, task: this.taskService.getTask(current.task_id), kind, disposition: 'already_terminal', save_status: 'not_applicable' };
+    }
+    const normalizedFiles = normalizeWaitFiles(files);
+    let workspace = null;
+    let checkpointResult = null;
+    let saveStatus = 'not_applicable';
+    let saveFailure = null;
+    const lastValidSnapshot = current.workspace_ref ? {
+      workspace_ref: current.workspace_ref,
+      workspace_revision: current.workspace_revision,
+      workspace_content_hash: current.workspace_content_hash,
+      checkpoint_ref: current.checkpoint_ref,
+      checkpoint_hash: current.checkpoint_hash,
+    } : null;
+    try {
+      if (current.workspace_ref) {
+        workspace = await this.workspaceManager.saveWorkspaceRevision({
+          workspaceRef: current.workspace_ref,
+          executionId: id,
+          fencingVersion: current.fencing_version,
+          files: normalizedFiles,
+        });
+        current = this.#saveWorkspaceReference(current, workspace, `runtime:progress-workspace:${id}:${current.state_version}`);
+        checkpointResult = await this.workspaceManager.saveCheckpoint({
+          workspaceRef: workspace.workspace_ref,
+          executionId: id,
+          fencingVersion: current.fencing_version,
+          checkpoint: { ...checkpoint, progress: normalizedProgress },
+        });
+        current = this.taskService.dispatch('save_checkpoint', checkpointResult, this.#executionEnvelope(current, `runtime:progress-checkpoint:${id}:${current.state_version}`)).execution;
+        saveStatus = 'saved';
+      }
+    } catch (error) {
+      saveStatus = 'save_failed';
+      saveFailure = { phase: workspace ? 'checkpoint' : 'workspace', error_class: error?.code ?? error?.name ?? 'save_failed' };
+      this.logger?.append({ event: 'runtime.progress_save_failed', execution_id: id, phase: saveFailure.phase, error_class: saveFailure.error_class });
+    }
+
+    let progressMaterial = null;
+    let progressLink = null;
+    try {
+      const envelope = this.#executionEnvelope(current, `runtime:progress-material:${id}:${current.state_version}`, current.owner_ref);
+      progressMaterial = this.contextService?.publishMaterialForTask
+        ? this.contextService.publishMaterialForTask({
+          kind: 'experience', role: 'experience', scope: 'execution_progress', evidence_state: 'observed',
+          content: normalizedProgress,
+          provenance: { actor_ref: envelope.actor_ref, source_execution: id, save_status: saveStatus },
+        }, envelope).material
+        : null;
+      if (progressMaterial) {
+        progressLink = this.taskService.dispatch('link_material', {
+          task_id: current.task_id, material_id: progressMaterial.material_id, role: 'experience',
+        }, envelope).link;
+      }
+    } catch (error) {
+      this.logger?.append({ event: 'runtime.progress_material_failed', execution_id: id, error_class: error?.code ?? error?.name ?? 'material_save_failed' });
+      if (saveStatus === 'saved') saveStatus = 'save_failed';
+      saveFailure ??= { phase: 'material', error_class: error?.code ?? error?.name ?? 'material_save_failed' };
+    }
+
+    const result = {
+      kind,
+      progress_material: progressMaterial,
+      progress_link: progressLink,
+      workspace: workspace ?? null,
+      checkpoint: checkpointResult,
+      save_status: saveStatus,
+      last_valid_snapshot: lastValidSnapshot,
+      loss: saveFailure ? { unsaved_progress: true, ...saveFailure } : { unsaved_progress: false },
+    };
+    if (kind === 'checkpoint') {
+      return { ...result, execution: current, task: this.taskService.getTask(current.task_id), disposition: 'continued' };
+    }
+    const handed = await this.handoffExecution(id, {
+      checkpoint: {}, files: {}, reason, summary,
+      handoffMetadata: {
+        summary,
+        progress_material_id: progressMaterial?.material_id ?? null,
+        save_status: saveStatus,
+        last_valid_snapshot: lastValidSnapshot,
+        loss: result.loss,
+      },
+      skipWorkspaceSave: true,
+    });
+    return { ...result, ...handed, save_status: saveStatus, last_valid_snapshot: lastValidSnapshot, loss: result.loss };
+  }
+
+  /**
    * End one unfinished Execution attempt and return its Task to the OPEN
    * (claimable/READY) projection. Checkpoint and Workspace writes happen
    * before the fence; the fence is durable before the old session is stopped.
@@ -803,6 +920,7 @@ export class Runtime {
     terminalState = 'FENCED',
     handoffKey = null,
     at = new Date(this.clock()),
+    skipWorkspaceSave = false,
   } = {}) {
     const id = requireString(executionId, 'execution_id');
     const existing = this.#getExecution(id);
@@ -823,6 +941,7 @@ export class Runtime {
       terminalState,
       handoffKey,
       at,
+      skipWorkspaceSave,
     });
     this.handoffPromises.set(id, promise);
     try {
@@ -841,7 +960,7 @@ export class Runtime {
       (link.producer_execution_id ?? link.material?.source_execution) === execution.execution_id);
   }
 
-  async #performHandoff(executionId, { checkpoint, files, handoffMetadata, summary, reason, terminalState, handoffKey, at }) {
+  async #performHandoff(executionId, { checkpoint, files, handoffMetadata, summary, reason, terminalState, handoffKey, at, skipWorkspaceSave = false }) {
     const started = this.#getExecution(executionId);
     if (!['CREATED', 'RUNNING'].includes(started.state)) {
       return { execution: started, task: this.taskService.getTask(started.task_id), disposition: started.state === 'WAITING' ? 'already_waiting' : 'already_terminal' };
@@ -866,7 +985,7 @@ export class Runtime {
     let current = started;
     let workspace = null;
     let checkpointResult = null;
-    if (current.workspace_ref) {
+    if (current.workspace_ref && !skipWorkspaceSave) {
       workspace = await this.workspaceManager.saveWorkspaceRevision({
         workspaceRef: current.workspace_ref,
         executionId,
@@ -1673,10 +1792,10 @@ export class Runtime {
     ].join('\n');
   }
 
-  #executionEnvelope(execution, id) {
+  #executionEnvelope(execution, id, actorRef = this.actorRef) {
     return makeEnvelope({
       operationId: id,
-      actorRef: this.actorRef,
+      actorRef,
       taskId: execution.task_id,
       executionId: execution.execution_id,
       specVersion: execution.spec_version,

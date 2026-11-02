@@ -1197,7 +1197,7 @@ test('benchmark submit_candidate returns Agent feedback separately from the reda
   }
 });
 
-test('flat Judge source failure stays on the same Task and Execution for revision', async () => {
+test('flat Judge source failure stays on the same Task and each Execution can revise in place', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-flat-feedback-task-experiment-');
   const reportDir = await mkdtemp('/tmp/swarmenv-flat-feedback-task-report-');
   try {
@@ -1223,7 +1223,11 @@ test('flat Judge source failure stays on the same Task and Execution for revisio
     assert.equal(report.run.dynamic_task_count, 0);
     assert.equal(report.project.task_count, 1);
     assert.equal(report.project.task_tree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length, 0);
-    assert.equal(report.run.candidate_check_count, 2);
+    // The Mission entry is intentionally shareable after Issue #111.  Each
+    // reusable Core may therefore run its own FAIL -> revision chain on the
+    // same logical Task; the invariant is that no repair Task or response
+    // gate is created, and each chain stays on its bound Execution.
+    assert.ok(report.run.candidate_check_count >= 2);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });

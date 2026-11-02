@@ -11,7 +11,7 @@ import {
   validateTaskProposal,
 } from './task-types.js';
 
-const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'block_task', 'block_task_semantic', 'close_task', 'complete_task', 'expire_execution', 'fence_execution', 'handoff_execution', 'handoff_task', 'heartbeat', 'link_material', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
+const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'block_task', 'block_task_semantic', 'close_task', 'complete_task', 'execution_progress', 'expire_execution', 'fence_execution', 'handoff_execution', 'handoff_task', 'heartbeat', 'link_material', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
 const CLAIM_OPERATION = 'claim';
 const MODERN_OPERATION_ALIASES = Object.freeze({
   'mission.create': 'create_mission',
@@ -42,6 +42,7 @@ const MODERN_OPERATION_ALIASES = Object.freeze({
   task_register: 'task_register',
   'task.take': 'task_take',
   task_take: 'task_take',
+  'execution.progress': 'execution_progress',
 });
 const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic']);
 const MODERN_READ_OPERATIONS = new Set(['get_mission', 'list_task', 'view_task', 'list_task_materials']);
@@ -52,6 +53,7 @@ const TASK_MUTATING_OPERATIONS = new Set([
   'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic',
   ...MODERN_MUTATING_OPERATIONS,
   'task_register', 'task_take',
+  'execution_progress',
 ]);
 const TASK_EVENT_OPERATIONS = new Set([
   'accept_task', 'apply_check_result', 'abort', 'block_task', 'claim', 'create_branch_group',
@@ -59,7 +61,7 @@ const TASK_EVENT_OPERATIONS = new Set([
   'handoff_execution', 'reconcile_task', 'recover_execution', 'reopen_task', 'request_rework',
   'request_wait', 'resume_execution', 'stop_execution', 'submit_candidate', 'wake_execution',
   'propose_structure_change', 'propose_task', 'create_task', 'expire_execution',
-  'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic',
+  'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic', 'execution_progress',
 ]);
 const TASK_READ_OPERATIONS = new Set([
   'get_task', 'get_execution', 'get_task_structure', 'explain_task_readiness',
@@ -678,8 +680,13 @@ export class TaskService {
       if (this.#dependencyBlockers(task.task_id).length > 0) return false;
       const executions = this.listExecutions(task.task_id, { includeTerminal: false });
       const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
-      if (active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
+      // The shared Mission entry is a collaboration surface: a RUNNING
+      // Execution does not make it disappear from the claimable view.  Every
+      // independent Task still honours its explicit single-owner quota.
+      const sharedMission = this.#isSharedMissionTask(task);
+      if (!sharedMission && active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
       const waiting = executions.filter((execution) => execution.state === 'WAITING');
+      if (sharedMission) return task.state === 'OPEN' || task.state === 'RUNNING';
       if (waiting.length === 0) return true;
       const resumableWaiting = waiting.some((execution) => this.#isWaitingResumable(execution, nowMs));
       return resumableWaiting || active.length + waiting.length < task.parallel_quota;
@@ -713,6 +720,8 @@ export class TaskService {
         const executions = this.listExecutions(task.task_id, { includeTerminal: false });
         const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
         const waiting = executions.filter((execution) => execution.state === 'WAITING');
+        const sharedMission = this.#isSharedMissionTask(task);
+        if (sharedMission) return task.state === 'OPEN' || task.state === 'RUNNING';
         const rework = active.length === 1 && active[0].state === 'CREATED' && active[0].instruction_version > 1 && task.parallel_quota === 1;
         if (rework) return true;
         if (active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
@@ -895,6 +904,24 @@ export class TaskService {
     if (modern) return modern.mission_id;
     const task = rowToTask(this.db.prepare('SELECT * FROM tasks WHERE task_id = ?').get(taskId));
     return task?.root_id ?? null;
+  }
+
+  /**
+   * The first flat Task registered for a Mission is its shared Mission
+   * responsibility.  Later Tasks are independent responsibilities even when
+   * the caller does not provide a spawned_from relation.  Keeping this
+   * distinction in the Service makes the admission rule authoritative for
+   * every adapter (legacy claim, canonical task_take, and Runtime recovery).
+   */
+  #isSharedMissionTask(taskOrId) {
+    const taskId = typeof taskOrId === 'string' ? taskOrId : taskOrId?.task_id;
+    if (!taskId) return false;
+    const task = typeof taskOrId === 'string' ? this.getTask(taskId) : taskOrId;
+    const modern = this.#modernTaskRecord(taskId);
+    if (!modern || !task) return false;
+    const first = this.db.prepare(`SELECT task_id FROM modern_task_records
+      WHERE mission_id = ? ORDER BY created_at, task_id LIMIT 1`).get(modern.mission_id);
+    return first?.task_id === taskId;
   }
 
   #decorateModernTask(task) {
@@ -1092,6 +1119,14 @@ export class TaskService {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     if (spawnedFrom !== null) relationStatement.run(randomUUID(), missionId, taskId, 'spawned_from', spawnedFrom, envelope.task_id ?? null, envelope.execution_id ?? null, envelope.actor_ref, createdAt);
     for (const prerequisiteId of uniqueDependsOn) relationStatement.run(randomUUID(), missionId, taskId, 'depends_on', prerequisiteId, envelope.task_id ?? null, envelope.execution_id ?? null, envelope.actor_ref, createdAt);
+    this.#recordCreationProvenance({
+      taskId,
+      creatorTaskId: envelope.task_id ?? null,
+      creatorExecutionId: envelope.execution_id ?? null,
+      creatorActorRef: envelope.actor_ref,
+      creationKind: spawnedFrom === null ? 'ROOT' : 'CHILD',
+      createdAt,
+    });
     return {
       task: this.#decorateModernTask(rowToTask(this.db.prepare('SELECT * FROM tasks WHERE task_id = ?').get(taskId))),
       created_from_execution_id: currentExecution?.execution_id ?? null,
@@ -1119,7 +1154,7 @@ export class TaskService {
     const availableOnly = payload.available_only ?? payload.availableOnly ?? false;
     return rows.map((row) => this.#decorateModernTask(rowToTask(row))).filter((task) => {
       if (!availableOnly) return true;
-      if (task.state !== 'OPEN') return false;
+      if (task.state !== 'OPEN' && !(task.state === 'RUNNING' && this.#isSharedMissionTask(task))) return false;
       return this.#modernDependencyBlockers(task.task_id).length === 0;
     });
   }
@@ -1367,9 +1402,18 @@ export class TaskService {
       updated_at = ? WHERE execution_id = ?`).run(
       payload.reason ?? 'voluntary_handoff', json(metadata), updatedAt, execution.execution_id,
     );
-    this.db.prepare(`UPDATE tasks SET state = 'OPEN', block_reason = NULL,
-      claimable_at = ?, state_version = state_version + 1, updated_at = ?
-      WHERE task_id = ? AND state NOT IN ('DONE', 'CLOSED', 'CANCELED')`).run(updatedAt, updatedAt, execution.task_id);
+    const task = this.getTask(execution.task_id);
+    if (this.#isSharedMissionTask(task)) {
+      // A shared Mission has one logical Task and many independent
+      // Executions.  Releasing one branch must not make siblings stale or
+      // hide their active work; refreshTaskState derives RUNNING/OPEN from
+      // the remaining durable Executions.
+      this.#refreshTaskState(execution.task_id, { updatedAt });
+    } else {
+      this.db.prepare(`UPDATE tasks SET state = 'OPEN', block_reason = NULL,
+        claimable_at = ?, state_version = state_version + 1, updated_at = ?
+        WHERE task_id = ? AND state NOT IN ('DONE', 'CLOSED', 'CANCELED')`).run(updatedAt, updatedAt, execution.task_id);
+    }
     return {
       task: this.getTask(execution.task_id),
       execution: this.getExecution(execution.execution_id),
@@ -1437,14 +1481,23 @@ export class TaskService {
     const states = payload.states ?? ['OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'DONE', 'CLOSED', 'CANCELED'];
     const limit = payload.limit ?? 100;
     const tasks = this.#listModernTasks({ mission_id: missionId, states, limit, available_only: false });
-    const claimable = tasks.filter((task) => task.state === 'OPEN' && this.#modernDependencyBlockers(task.task_id).length === 0);
+    const claimable = this.#listModernTasks({
+      mission_id: missionId,
+      states: ['OPEN', 'RUNNING'],
+      limit,
+      available_only: true,
+    });
     const counts = this.db.prepare(`SELECT
       COUNT(*) AS total,
       SUM(CASE WHEN t.state = 'OPEN' THEN 1 ELSE 0 END) AS open,
       SUM(CASE WHEN t.state = 'RUNNING' THEN 1 ELSE 0 END) AS running,
       SUM(CASE WHEN t.state = 'WAITING' THEN 1 ELSE 0 END) AS waiting,
       SUM(CASE WHEN t.state IN ('DONE', 'CLOSED', 'CANCELED', 'SATISFIED') THEN 1 ELSE 0 END) AS terminal,
-      SUM(CASE WHEN t.state = 'OPEN' AND NOT EXISTS (
+      SUM(CASE WHEN (t.state = 'OPEN' OR (t.state = 'RUNNING' AND t.task_id = (
+        SELECT first_task.task_id FROM modern_task_records first_task
+        WHERE first_task.mission_id = m.mission_id
+        ORDER BY first_task.created_at, first_task.task_id LIMIT 1
+      ))) AND NOT EXISTS (
         SELECT 1 FROM task_relations r
         JOIN tasks prerequisite ON prerequisite.task_id = r.related_task_id
         WHERE r.task_id = t.task_id AND r.relation_kind = 'depends_on'
@@ -1523,6 +1576,83 @@ export class TaskService {
     }, claimEnvelope);
   }
 
+  #executionProgress(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    const kind = payload.kind ?? 'checkpoint';
+    if (!['checkpoint', 'handoff'].includes(kind)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'execution_progress kind must be checkpoint or handoff');
+    }
+    const progress = payload.progress;
+    if (!progress || typeof progress !== 'object' || Array.isArray(progress)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'execution_progress progress must be an object');
+    }
+    for (const field of ['completed_work', 'findings', 'open_questions', 'next_step']) {
+      if (!Object.hasOwn(progress, field)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `progress.${field} is required`);
+    }
+    let progressMaterial = null;
+    let link = null;
+    if (this.contextService?.publishMaterialForTask) {
+      progressMaterial = this.contextService.publishMaterialForTask({
+        kind: 'experience',
+        role: 'experience',
+        scope: 'execution_progress',
+        evidence_state: 'observed',
+        content: progress,
+        provenance: {
+          actor_ref: envelope.actor_ref,
+          source_execution: execution.execution_id,
+          progress_kind: kind,
+        },
+      }, envelope).material;
+      link = this.#linkMaterial({
+        task_id: execution.task_id,
+        material_id: progressMaterial.material_id,
+        role: 'experience',
+      }, envelope).link;
+    }
+    let current = execution;
+    if (payload.checkpoint_ref || payload.checkpoint_hash) {
+      if (!payload.checkpoint_ref || !payload.checkpoint_hash) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'checkpoint_ref and checkpoint_hash must be provided together');
+      }
+      current = this.#saveCheckpoint({
+        checkpoint_ref: payload.checkpoint_ref,
+        checkpoint_hash: payload.checkpoint_hash,
+        workspace_revision: payload.workspace_revision ?? null,
+      }, envelope).execution;
+    }
+    if (kind === 'handoff') {
+      const handoffEnvelope = {
+        ...envelope,
+        state_version: current.state_version,
+        fencing_version: current.fencing_version,
+      };
+      const handed = this.#handoffExecution({
+        terminal_state: 'FENCED',
+        terminal_reason: payload.reason ?? 'progress_handoff',
+        checkpoint_ref: current.checkpoint_ref,
+        checkpoint_hash: current.checkpoint_hash,
+        workspace_ref: payload.workspace_ref ?? current.workspace_ref,
+        workspace_revision: payload.workspace_revision ?? current.workspace_revision,
+        workspace_content_hash: payload.workspace_content_hash ?? current.workspace_content_hash,
+        handoff_metadata: {
+          summary: payload.summary ?? null,
+          progress_material_id: progressMaterial?.material_id ?? null,
+          save_status: payload.save_status ?? 'not_applicable',
+        },
+      }, handoffEnvelope);
+      return { ...handed, kind, progress_material: progressMaterial, progress_link: link, save_status: payload.save_status ?? 'not_applicable' };
+    }
+    return {
+      execution: current,
+      task: this.getTask(execution.task_id),
+      kind,
+      progress_material: progressMaterial,
+      progress_link: link,
+      save_status: payload.save_status ?? (current.checkpoint_ref ? 'saved' : 'not_applicable'),
+    };
+  }
+
   #read(operation, payload, envelope) {
     if (operation === 'get_mission') return this.#getMission(requireString(payload.mission_id, 'mission_id'));
     if (operation === 'task_status') return this.#taskStatus(payload);
@@ -1579,6 +1709,7 @@ export class TaskService {
       case 'block_task_semantic': return this.#blockTaskSemantic(payload, envelope);
       case 'task_register': return this.#taskRegister(payload, envelope);
       case 'task_take': return this.#taskTake(payload, envelope);
+      case 'execution_progress': return this.#executionProgress(payload, envelope);
       case 'propose_task': return this.#proposeTask(payload, envelope);
       case 'create_child_task': return this.#createChildTask(payload, envelope);
       case 'create_branch_group': return this.#createBranchGroup(payload, envelope);
@@ -2730,17 +2861,34 @@ export class TaskService {
       updatedAt,
       execution.execution_id,
     );
-    // A dependency block releases the whole Task responsibility.  Parallel
-    // attempts are durable owners too; leaving one CREATED/RUNNING row behind
-    // would make BLOCKED both claimable-in-the-future and currently occupied.
-    const otherExecutionIds = this.db.prepare("SELECT execution_id FROM executions WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')")
+    const sharedMission = this.#isSharedMissionTask(task);
+    // A dependency block on an ordinary Task releases its whole responsibility.
+    // A shared Mission is different: one branch may be blocked while sibling
+    // Executions continue to own the shared problem, so only the current
+    // Execution is fenced and aggregate state is refreshed from the survivors.
+    const otherExecutionIds = sharedMission ? [] : this.db.prepare("SELECT execution_id FROM executions WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')")
       .all(execution.task_id, execution.execution_id).map((row) => row.execution_id);
-    const fencedOthers = this.db.prepare(`UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1,
+    const fencedOthers = sharedMission ? 0 : this.db.prepare(`UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1,
       terminal_reason = ?, state_version = state_version + 1, updated_at = ?
       WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')`)
       .run(`dependency_blocked:${blockReason}`, updatedAt, execution.task_id, execution.execution_id).changes;
-    this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
-      .run(blockReason, updatedAt, execution.task_id);
+    if (sharedMission) {
+      const survivingExecutions = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'WAITING')").get(execution.task_id).count;
+      if (survivingExecutions > 0) {
+        this.#refreshTaskState(execution.task_id, { updatedAt });
+      } else {
+        // A shared Mission keeps sibling branches alive, but when the last
+        // branch records a typed blocker the aggregate Task must remain
+        // durably blocked until that dependency is satisfied.  OPEN would
+        // make the blocked responsibility appear claimable and would lose
+        // the reason needed by reconciliation.
+        this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ? AND state NOT IN ('DONE', 'CLOSED', 'CANCELED')")
+          .run(blockReason, updatedAt, execution.task_id);
+      }
+    } else {
+      this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+        .run(blockReason, updatedAt, execution.task_id);
+    }
     this.#emitExecutionState({
       kind: 'executions_fenced',
       task_id: execution.task_id,
@@ -2753,6 +2901,7 @@ export class TaskService {
 
   #claimTask(task, payload, envelope) {
     if (TERMINAL_TASK_STATES.includes(task.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be claimed');
+    const sharedMission = this.#isSharedMissionTask(task);
     const dependencyBlockers = this.#dependencyBlockers(task.task_id);
     if (dependencyBlockers.length > 0) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task is blocked by an explicit execution dependency', { blockers: dependencyBlockers });
@@ -2826,7 +2975,7 @@ export class TaskService {
     const reworkLeaseExpired = reworkExecution && (!reworkExecution.lease_expires_at || Date.parse(reworkExecution.lease_expires_at) <= Date.now());
     const sameReworkWorkspace = reworkExecution && sourceExecutionId === reworkExecution.execution_id &&
       (payload.workspace_revision === undefined || payload.workspace_revision === reworkExecution.workspace_revision);
-    if (reworkExecution && reworkExecution.instruction_version > 1 && reworkLeaseExpired && !waitingExecution && activeCount === 1 && task.parallel_quota === 1 &&
+    if (!sharedMission && reworkExecution && reworkExecution.instruction_version > 1 && reworkLeaseExpired && !waitingExecution && activeCount === 1 && task.parallel_quota === 1 &&
       workspaceMode === 'resume' && ((!sourceExecutionId && !sourceWorkspaceRef) || sameReworkWorkspace) &&
       (payload.workspace_revision === undefined || payload.workspace_revision === reworkExecution.workspace_revision)) {
       const updatedAt = now();
@@ -2843,13 +2992,13 @@ export class TaskService {
       return { task: this.getTask(task.task_id), execution: this.getExecution(reworkExecution.execution_id) };
     }
     const resumableWaiting = waitingExecution && this.#isWaitingResumable(rowToExecution(waitingExecution));
-    const canContinueCurrentWaiting = Boolean(waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting &&
+    const canContinueCurrentWaiting = Boolean(!sharedMission && waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting &&
       (payload.workspace_revision === undefined || payload.workspace_revision === waitingExecution.workspace_revision) &&
       !(coreId !== null && waitingExecution.core_id !== null && waitingExecution.core_id !== coreId));
     if (workspaceMode === 'resume' && payload.workspace_revision !== undefined && !sourceWorkspaceRef && !canContinueCurrentWaiting) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'resume Workspace selection with a revision requires a source Workspace or the current waiting Workspace revision');
     }
-    if (waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting) {
+    if (!sharedMission && waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting) {
       const continueExisting = workspaceMode === 'resume' && !sourceExecutionId && !sourceWorkspaceRef && canContinueCurrentWaiting;
       if (!continueExisting) {
         // A worker may explicitly choose a clean start or a Workspace fork.
@@ -2873,7 +3022,7 @@ export class TaskService {
       return { task: this.getTask(task.task_id), execution: this.getExecution(waitingExecution.execution_id) };
       }
     }
-    if (activeCount + (waitingExecution ? 1 : 0) >= task.parallel_quota) {
+    if (!sharedMission && activeCount + (waitingExecution ? 1 : 0) >= task.parallel_quota) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Task has reached its active Execution quota', { parallel_quota: task.parallel_quota });
     }
     if (task.state === 'BLOCKED') {

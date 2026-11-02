@@ -239,6 +239,19 @@ const publicTaskTools = [
     parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, core_id: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' }, input_material_refs: { type: 'array', items: { type: 'string' } } }, additionalProperties: false },
   },
   {
+    name: 'execution_progress', service: 'task', operation: 'execution_progress', version: '1.0',
+    description: 'Save a bounded Progress Material and either continue the current Execution or hand it off.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['kind', 'progress'], properties: {
+      kind: { type: 'string', enum: ['checkpoint', 'handoff'] },
+      progress: { type: 'object', required: ['completed_work', 'findings', 'open_questions', 'next_step'] },
+      checkpoint: { type: 'object' },
+      files: { type: 'object' },
+      reason: { type: 'string' },
+      summary: { type: 'string' },
+    }, additionalProperties: false },
+  },
+  {
     name: 'task_list', service: 'task', operation: 'task_list', version: '1.0',
     description: 'List Mission Tasks and search their short summaries before proposing new work.',
     scope: 'task-read', side_effect: false,
