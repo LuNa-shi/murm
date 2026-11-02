@@ -1,6 +1,6 @@
 # 目标与实现状态
 
-代码核对基线为 Issue #111 实现提交 `d20363c6f1814e09615402d369abbfb2e176cbb6`（PR #112；随后只有证据文档提交）。`npm test` 在该实现上为 301/301。最终真实 Agent probe 的 preflight 为 `READY_TO_LAUNCH`，但在可用 Agent turn 前以 `RPC_ERROR / timeout` 结束，因此真实长跑仍为 BLOCKED；不能把确定性测试写成真实验收结论。
+代码核对基线为 Issue #111 实现提交 `1aca2651cda88926f2d4732ad769c7ba1bda242c`（PR #112；随后只有证据/status 文档提交）。`npm test` 在该实现上为 301/301。最终真实 Agent probe 的 preflight 为 `READY_TO_LAUNCH`，但在可用 Agent turn 前以 `RPC_ERROR / timeout` 结束，因此真实长跑仍为 BLOCKED；不能把确定性测试写成真实验收结论。
 
 | 目标 | 已有情况/尚待实现 | 归属与验收 |
 | --- | --- | --- |

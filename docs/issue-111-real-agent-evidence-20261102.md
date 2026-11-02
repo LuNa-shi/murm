@@ -6,7 +6,7 @@ credential, stdout, or stderr.
 
 ## Fixed inputs
 
-- Implementation commit: `d20363c6f1814e09615402d369abbfb2e176cbb6`
+- Implementation commit: `1aca2651cda88926f2d4732ad769c7ba1bda242c`
 - Worktree: `/home/ubuntu/SwarmEnv/.worktrees/issue-111-task-centric-phase1`
 - Worktree state at launch: clean (`git status --porcelain` was empty)
 - PutnamBench commit: `a635813f5edf297d928f9bd5ef8324a26bdde09c`
@@ -61,7 +61,7 @@ The corrected controlled probe command is:
 ```sh
 set -a; source .env; set +a
 export SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 \
-  SWARMENV_IMPLEMENTATION_COMMIT=d20363c6f1814e09615402d369abbfb2e176cbb6 \
+  SWARMENV_IMPLEMENTATION_COMMIT=1aca2651cda88926f2d4732ad769c7ba1bda242c \
   SWARMENV_WORKTREE_DIRTY=false SWARMENV_WORKTREE_STATUS=clean
 timeout 420s node scripts/run-mvp-fixture.mjs --real-agent
 ```
@@ -73,7 +73,7 @@ same provider/model, and the locked checker. The canonical benchmark shape is:
 ```sh
 set -a; source .env; set +a
 export SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 \
-  SWARMENV_IMPLEMENTATION_COMMIT=d20363c6f1814e09615402d369abbfb2e176cbb6 \
+  SWARMENV_IMPLEMENTATION_COMMIT=1aca2651cda88926f2d4732ad769c7ba1bda242c \
   SWARMENV_WORKTREE_DIRTY=false SWARMENV_WORKTREE_STATUS=clean
 timeout 7500s node scripts/run-putnambench-benchmark.mjs \
   --problems config/putnambench-12.json \
