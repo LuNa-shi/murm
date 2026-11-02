@@ -198,7 +198,7 @@ test('unknown context usage after the compaction limit takes the conservative ro
   try {
     await runtime.startExecution(claimed.execution_id, { coreId: 'core-s3' });
     sessions[0].emit('rpc', { type: 'compaction_end', reason: 'unknown-window', result: { tokensBefore: 100 }, aborted: false });
-    await waitFor(() => sessions.length === 2);
+    await waitFor(() => events.some((event) => event.event === 'runtime.identity_rotation_completed'));
     assert.equal(sessions.length, 2);
     assert.equal(events.some((event) => event.event === 'runtime.identity_rotation_started' && event.reason === 'compaction_window_unknown'), true);
     await runtime.stopExecution(taskService.listActiveExecutions()[0].execution_id);
