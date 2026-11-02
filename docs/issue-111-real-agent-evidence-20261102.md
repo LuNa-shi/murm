@@ -166,3 +166,16 @@ ordering, recovery compaction reset, and authenticated lane selection):
   by a superseding revision and PASS in the same Session/Execution.
 - Sanitized record: `experiments/issue-111-probe-f359e4f/analysis/report.json`.
 - Deterministic suite at this commit: 315/315.
+
+
+## Re-probe after tool-surface cleanup (`e81082c0082410685d7786d6c3ba771bec563f3d`)
+
+The final tool-surface cleanup (Sandbox hidden without a manager, legacy
+`task_handoff` removed from the Agent profile, structured candidate-reference
+errors) was probed on clean `e81082c0082410685d7786d6c3ba771bec563f3d`:
+
+- Preflight **READY_TO_LAUNCH**; worktree clean; implementation commit recorded.
+- Result **SUCCEEDED**: two Materials, two CheckResults, source FAIL followed
+  by a superseding revision and PASS in the same Session/Execution.
+- Sanitized record: `experiments/issue-111-probe-e81082c/analysis/report.json`.
+- Deterministic suite: 316/316.
