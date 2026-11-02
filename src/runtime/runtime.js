@@ -1806,7 +1806,6 @@ export class Runtime {
   }
 
   #queueCompactionCheckpoint(active, record) {
-    if (active.compactionCheckpointPromise) return active.compactionCheckpointPromise;
     const executionId = active.execution.execution_id;
     const checkpoint = {
       kind: 'compaction',
@@ -1816,7 +1815,11 @@ export class Runtime {
       tokens_before: record.result?.tokensBefore ?? record.result?.tokens_before ?? record.tokensBefore ?? null,
       estimated_tokens_after: record.result?.estimatedTokensAfter ?? record.result?.estimated_tokens_after ?? null,
     };
-    const run = (async () => {
+    // Pi can emit the next compaction event before the previous checkpoint
+    // has finished saving. Queue every successful compaction in arrival order
+    // instead of dropping events while one save is in flight.
+    const previous = active.compactionCheckpointPromise ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(async () => {
       try {
         if (typeof active.session.waitForSettled === 'function') {
           await active.session.waitForSettled({ timeoutMs: 30_000 });
@@ -1843,11 +1846,12 @@ export class Runtime {
         this.logger?.append({ event: 'runtime.compaction_checkpoint_failed', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, error_class: error?.code ?? error?.name ?? 'checkpoint_failed' });
         return { status: 'save_failed', error_class: error?.code ?? error?.name ?? 'checkpoint_failed' };
       }
-    })();
-    active.compactionCheckpointPromise = run.finally(() => {
-      active.compactionCheckpointPromise = null;
     });
-    return active.compactionCheckpointPromise;
+    const queued = run.finally(() => {
+      if (active.compactionCheckpointPromise === queued) active.compactionCheckpointPromise = null;
+    });
+    active.compactionCheckpointPromise = queued;
+    return queued;
   }
 
   async #rotateIdentity(executionId, { reason, windowRatio = null, usageSource = 'unknown' } = {}) {

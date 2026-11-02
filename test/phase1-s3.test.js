@@ -168,6 +168,7 @@ test('third compaction continues below threshold then rotates before a fourth', 
       sessions[0].emit('rpc', { type: 'compaction_end', reason: `c${count}`, result: { tokensBefore: 490, estimatedTokensAfter: 100 }, aborted: false });
       await settle();
     }
+    await waitFor(() => events.filter((event) => event.event === 'runtime.compaction_checkpoint_saved').length === 3);
     assert.equal(sessions.length, 1, 'third compaction below 80% does not retire the identity');
     assert.equal(events.filter((event) => event.event === 'runtime.compaction_checkpoint_saved').length, 3);
 
