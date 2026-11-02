@@ -429,7 +429,10 @@ export class TaskService {
             WHERE addressed.execution_id = task_notifications.recipient_execution_id
               AND addressed.state IN ('CREATED', 'RUNNING', 'WAITING')
           ))
-      ORDER BY created_at, notification_id`).all(taskId, executionId).map(rowToNotification);
+        AND (notification_type != 'handoff_warning'
+          OR recipient_execution_id IS NULL
+          OR recipient_execution_id = ?)
+      ORDER BY created_at, notification_id`).all(taskId, executionId, executionId).map(rowToNotification);
   }
 
   /**
@@ -457,7 +460,10 @@ export class TaskService {
           WHERE r.notification_id = n.notification_id
             AND r.execution_id = ? AND r.handled_at IS NOT NULL
         ))
-      ORDER BY n.created_at, n.notification_id`).all(taskId, executionId, executionId, executionId);
+        AND (n.notification_type != 'handoff_warning'
+          OR n.recipient_execution_id IS NULL
+          OR n.recipient_execution_id = ?)
+      ORDER BY n.created_at, n.notification_id`).all(taskId, executionId, executionId, executionId, executionId);
     return rows.map((row) => {
       const notification = rowToNotification(row);
       if (executionId === null) return notification;

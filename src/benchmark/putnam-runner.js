@@ -19,13 +19,15 @@ import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
-import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
+import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, SYSTEM_IDENTITY_PROMPT } from '../agent/agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
 import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
 import { createHttpJsonAdapter } from '../sdk/service-adapter.js';
+import { loadServiceBundle } from '../sdk/service-bundle.js';
 import { createMathlibSearchManifest } from '../services/mathlib-search-service.js';
 import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
 import { IdentityTaskLoop } from '../runtime/identity-task-loop.js';
+import { ContainerSandboxManager } from '../runtime/sandbox-manager.js';
 import { TaskController } from '../runtime/task-controller.js';
 import { CoreParallelismTracker } from './parallelism.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -473,12 +475,15 @@ export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
     const tools = this.allowedToolNames ?? [
       'swarmenv_catalog_get_service_metadata', 'swarmenv_catalog_list_services', 'swarmenv_catalog_list_tools',
       'swarmenv_context_consume', 'swarmenv_context_publish', 'swarmenv_context_read',
+      'swarmenv_context_search_materials', 'swarmenv_context_get_material',
       'swarmenv_judge_get_check_result', 'swarmenv_judge_submit_candidate',
-      'swarmenv_execution_get', 'swarmenv_task_block', 'swarmenv_task_claim', 'swarmenv_task_complete',
-      'swarmenv_task_create_child', 'swarmenv_task_discover', 'swarmenv_task_list_claimable',
-      'swarmenv_task_list_executions', 'swarmenv_task_view',
+      'swarmenv_execution_get', 'swarmenv_task_status', 'swarmenv_task_register', 'swarmenv_task_take',
+      'swarmenv_task_feedback', 'swarmenv_execution_progress', 'swarmenv_task_list', 'swarmenv_task_view',
+      'swarmenv_task_create', 'swarmenv_task_link_material', 'swarmenv_task_complete',
+      'swarmenv_task_handoff', 'swarmenv_task_block', 'swarmenv_task_close',
       'swarmenv_workspace_diff', 'swarmenv_workspace_get', 'swarmenv_workspace_list_files',
       'swarmenv_workspace_read_file', 'swarmenv_workspace_write_file',
+      'swarmenv_sandbox_exec', 'swarmenv_sandbox_job',
     ];
     args.push('--tools', tools.join(','));
     // Pi exposes its `parallel` coordinator even when built-in tools are
@@ -1612,6 +1617,7 @@ function projectReport(state, startedAt, deadline) {
       solved: state.solvedAt !== null && !invalid && madeProgress,
       solved_by_core: invalid || !madeProgress ? null : state.solvedBy,
       solved_at_ms: state.solvedAt === null ? null : state.solvedAt - startedAt,
+      sandbox: state.sandboxManager?.snapshot() ?? null,
       material_count: materials.length,
       material_consumption_count: materialConsumptions.length,
       material_consumptions: materialConsumptions.map((row) => ({
@@ -1747,6 +1753,23 @@ async function createProjectState(problem, config, options) {
   const projectDir = join(experimentRoot, 'state', 'projects', problem.id);
   const reportProjectDir = join(reportRoot, problem.id);
   const workspaceRoot = join(experimentRoot, 'workspaces', 'projects', problem.id);
+  const sandboxManager = options.sandbox?.enabled === true
+    ? new ContainerSandboxManager({
+      image: options.sandbox.image,
+      imageDigest: options.sandbox.imageDigest ?? null,
+      workspaceRoot,
+      allowedReadOnlyRoots: options.sandbox.allowedReadOnlyRoots ?? [],
+      network: options.sandbox.network ?? 'none',
+      user: options.sandbox.user ?? '1000:1000',
+      memory: options.sandbox.memory ?? '2g',
+      cpus: options.sandbox.cpus ?? 2,
+      pidsLimit: options.sandbox.pidsLimit ?? 256,
+      commandTimeoutMs: options.sandbox.commandTimeoutMs,
+      maxOutputBytes: options.sandbox.maxOutputBytes,
+      logger: (event) => observationStore.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_event', payload: event }),
+    })
+    : null;
+  if (sandboxManager) await sandboxManager.preflight({ timeoutMs: options.sandbox.preflightTimeoutMs ?? 20_000 });
   const logRoot = join(experimentRoot, 'logs', 'projects', problem.id);
   await Promise.all([
     mkdir(projectDir, { recursive: true }),
@@ -1814,7 +1837,29 @@ async function createProjectState(problem, config, options) {
     serviceEndpoints,
     customServices: options.customServices ?? [],
   });
-  if (!options.serviceRegistry && mathlibSearchUrl) {
+  if (!options.serviceRegistry && Array.isArray(options.serviceBundles) && options.serviceBundles.length > 0) {
+    for (const bundleDir of options.serviceBundles) {
+      const loaded = await loadServiceBundle(bundleDir, { rootDir: options.serviceBundleRoot ?? undefined });
+      const configured = options.serviceBundleEndpoints?.[loaded.service_id] ?? null;
+      const endpoint = configured
+        ? { transport: 'http-json', url: typeof configured === 'string' ? configured : configured.url }
+        : null;
+      const bundle = endpoint
+        ? await loadServiceBundle(bundleDir, { rootDir: options.serviceBundleRoot ?? undefined, manifestOverrides: { endpoint } })
+        : loaded;
+      if (capabilityRegistry.listServices().some((service) => service.service_id === bundle.service_id)) continue;
+      let adapter = options.serviceBundleAdapters?.[bundle.service_id] ?? null;
+      if (!adapter && bundle.manifest.endpoint.transport === 'http-json') {
+        const tokenRef = bundle.secret_refs?.token ?? null;
+        const token = tokenRef ? process.env[tokenRef.slice('env:'.length)] ?? null : null;
+        adapter = createHttpJsonAdapter({ token });
+      }
+      if (!adapter) throw new TypeError(`service bundle ${bundle.service_id} requires an adapter for ${bundle.manifest.endpoint.transport}`);
+      await capabilityRegistry.registerBundle({ bundle, adapter });
+      if (bundle.manifest.endpoint.transport === 'http-json') await capabilityRegistry.checkReadiness(bundle.service_id);
+    }
+  }
+  if (!options.serviceRegistry && mathlibSearchUrl && !capabilityRegistry.listServices().some((service) => service.service_id === 'mathlib-search')) {
     registerUserService(capabilityRegistry, {
       manifest: createMathlibSearchManifest({
         endpoint: { transport: 'http-json', url: mathlibSearchUrl },
@@ -1974,6 +2019,10 @@ async function createProjectState(problem, config, options) {
         sessionDir: join(coreDir, '.swarm', 'pi-session'),
         env: childEnv,
         allowedToolNames: allowedAgentToolNames,
+        // Stable identity rules are a system-role addendum, not a user
+        // prompt. Dynamic Mission/Task context is still sent per turn by the
+        // identity loop.
+        systemPrompt: SYSTEM_IDENTITY_PROMPT,
       });
     // All reusable slots must be able to resume an Execution created by any
     // other slot. The physical Workspace is execution-owned and unique, but
@@ -1984,6 +2033,7 @@ async function createProjectState(problem, config, options) {
       contextService,
       workspaceManager,
       agentAdapter: adapter,
+      sandboxManager,
       capabilityRegistry,
       maxWorkers: 1,
       coreIds: [`core-${index}`],
@@ -2665,6 +2715,7 @@ async function createProjectState(problem, config, options) {
     capabilityRegistry,
     allowedAgentToolNames,
     judgeService,
+    sandboxManager,
     cores,
     solvedAt: null,
     solvedBy: null,

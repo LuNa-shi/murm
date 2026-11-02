@@ -116,6 +116,9 @@ function normalizeCapability(capability, role) {
     service_id: serviceId,
     service_title: capability.service_title ?? capability.serviceTitle ?? capability.title ?? serviceId,
     service_purpose: capability.service_purpose ?? capability.servicePurpose ?? capability.purpose ?? '',
+    provider_version: capability.provider_version ?? capability.providerVersion ?? null,
+    contract_version: capability.contract_version ?? capability.contractVersion ?? null,
+    manifest_hash: capability.manifest_hash ?? capability.manifestHash ?? null,
     description: capability.description ?? '',
     input_schema: clone(capability.input_schema ?? capability.inputSchema ?? capability.parameters ?? { type: 'object' }),
     output_schema: clone(capability.output_schema ?? capability.outputSchema ?? null),
@@ -145,17 +148,33 @@ function sourceCapabilities({ registry, role, context, tools }) {
   return { profile: null, capabilities: catalog.filter((capability) => CURRENT_AGENT_OPERATIONS.has(operationOf(capability))) };
 }
 
-function normalizeServices(capabilities) {
+function normalizeServices(capabilities, profileServices = []) {
   const grouped = new Map();
   for (const capability of capabilities) {
     const service = grouped.get(capability.service_id) ?? {
       id: capability.service_id,
+      service_id: capability.service_id,
       title: capability.service_title,
       purpose: capability.service_purpose,
+      provider_version: capability.provider_version ?? null,
+      contract_version: capability.contract_version ?? null,
+      manifest_hash: capability.manifest_hash ?? null,
+      documentation: [],
       capabilities: [],
     };
     service.capabilities.push(capability.tool_name ?? capability.name);
     grouped.set(capability.service_id, service);
+  }
+  for (const service of grouped.values()) {
+    const source = Array.isArray(profileServices)
+      ? profileServices.find((candidate) => (candidate.service_id ?? candidate.id) === service.id)
+      : null;
+    if (!source) continue;
+    if (source.purpose) service.purpose = source.purpose;
+    if (source.provider_version) service.provider_version = source.provider_version;
+    if (source.contract_version) service.contract_version = source.contract_version;
+    if (source.manifest_hash) service.manifest_hash = source.manifest_hash;
+    if (Array.isArray(source.documentation)) service.documentation = clone(source.documentation);
   }
   return [...grouped.values()]
     .map((service) => ({ ...service, capabilities: [...service.capabilities].sort() }))
@@ -202,7 +221,7 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
       : (capability.tool_name ?? capability.name);
     return { ...capability, name, tool_name: toolName };
   });
-  const services = normalizeServices(capabilities);
+  const services = normalizeServices(capabilities, source.profile?.services);
   const identity = {
     profile_version: source.profile?.profile_version ?? source.profile?.profileVersion ?? PROFILE_VERSION,
     role: canonical,
@@ -217,7 +236,7 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
     usedToolNames.add(toolName);
     return { ...capability, tool_name: toolName };
   });
-  const finalIdentity = { ...identity, capabilities: disambiguatedCapabilities, services: normalizeServices(disambiguatedCapabilities) };
+  const finalIdentity = { ...identity, capabilities: disambiguatedCapabilities, services: normalizeServices(disambiguatedCapabilities, source.profile?.services) };
   const profileHash = generatedNames || disambiguatedCapabilities.some((capability, index) => capability.tool_name !== capabilities[index].tool_name)
     ? digest(finalIdentity)
     : (source.profile?.profile_hash ?? source.profile?.profileHash ?? digest(identity));
@@ -226,7 +245,7 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
     profile_version: identity.profile_version,
     profile_hash: profileHash,
     capabilities: disambiguatedCapabilities,
-    services: normalizeServices(disambiguatedCapabilities),
+    services: normalizeServices(disambiguatedCapabilities, source.profile?.services),
   };
 }
 

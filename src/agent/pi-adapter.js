@@ -1,4 +1,5 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { spawn as defaultSpawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter, once } from 'node:events';
@@ -117,6 +118,13 @@ export class AgentCoreSession extends EventEmitter {
 
   setAutoRetry(enabled = true) {
     return this.sendCommand({ type: 'set_auto_retry', enabled });
+  }
+
+  async getSessionStats({ timeoutMs = 5_000 } = {}) {
+    const response = await this.sendCommand({ type: 'get_session_stats' }, { timeoutMs });
+    // Pi returns the stats object directly in `data`; tolerate a nested
+    // `result` for adapters that wrap it.
+    return response?.data ?? response?.result ?? null;
   }
 
   prompt(message, { timeoutMs = 30_000, images, streamingBehavior } = {}) {
@@ -280,11 +288,25 @@ export class AgentCoreAdapter {
     env = process.env,
     spawnProcess = defaultSpawn,
     manifestVersions = {},
+    // Stable identity instructions. Pi 1.3.0 exposes a genuine system-role
+    // addendum via --append-system-prompt. Pass the text through a file so
+    // argv/version manifests stay bounded and the text is not duplicated in
+    // every process listing.
+    systemPrompt = null,
+    systemPromptPath = null,
   } = {}) {
     this.command = command;
-    this.config = { provider, model, account, group, sessionDir, extensionPath, cwd, env };
+    this.config = { provider, model, account, group, sessionDir, extensionPath, cwd, env, systemPrompt, systemPromptPath };
     this.spawnProcess = spawnProcess;
     this.manifestVersions = manifestVersions;
+  }
+
+  #systemPromptFile(sessionDir) {
+    if (this.config.systemPromptPath) return this.config.systemPromptPath;
+    if (typeof this.config.systemPrompt === 'string' && this.config.systemPrompt.trim().length > 0) {
+      return join(sessionDir, 'identity-system-prompt.md');
+    }
+    return null;
   }
 
   buildLaunchArgs({ executionId, sessionId = executionId, sessionDir = this.config.sessionDir } = {}) {
@@ -313,6 +335,7 @@ export class AgentCoreAdapter {
       '--no-skills',
       '--no-prompt-templates',
       '--no-context-files',
+      ...(this.#systemPromptFile(sessionDir) ? ['--append-system-prompt', this.#systemPromptFile(sessionDir)] : []),
       ...piModelArgs,
     );
     return args;
@@ -321,6 +344,10 @@ export class AgentCoreAdapter {
   async start({ executionId, sessionDir = this.config.sessionDir, cwd = this.config.cwd, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = executionId } = {}) {
     const launchArgs = this.buildLaunchArgs({ executionId, sessionId, sessionDir });
     await mkdir(sessionDir, { recursive: true });
+    const systemPromptFile = this.#systemPromptFile(sessionDir);
+    if (systemPromptFile && typeof this.config.systemPrompt === 'string' && this.config.systemPrompt.trim().length > 0) {
+      await writeFile(systemPromptFile, this.config.systemPrompt, { mode: 0o600 });
+    }
     // A real run must record the exact locally installed versions without
     // contacting npm during startup. Operators can pin them in the process
     // environment after the readiness probe; explicit constructor values win.

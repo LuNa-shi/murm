@@ -6,8 +6,11 @@ import {
   GENERIC_AGENT_PROMPT,
   IDLE_AGENT_PROMPT,
   RECOVERY_AGENT_PROMPT,
+  SYSTEM_IDENTITY_PROMPT,
+  buildInitialPromptBundle,
   buildPromptSnapshot,
   composeAgentPrompt,
+  composeDynamicAgentPrompt,
 } from '../src/agent/agent-prompt.js';
 
 const profile = (role) => buildCapabilityProfile({
@@ -42,6 +45,53 @@ test('prompt snapshot records the profile hash before the first turn', () => {
   assert.equal(snapshot.profile_hash, 'hash-bound');
   assert.equal(snapshot.prompt_hash.length, 64);
   assert.match(snapshot.prompt, /Profile: 1 \/ hash-bound/);
+});
+
+test('initial bundle separates the system identity contract from dynamic context', () => {
+  const snapshot = buildInitialPromptBundle({
+    role: AGENT_ROLES.BOUND,
+    profile: profile(AGENT_ROLES.BOUND),
+    task: { task_id: 'task-system-1', goal: 'prove the locked theorem' },
+  });
+  assert.equal(snapshot.system_prompt, SYSTEM_IDENTITY_PROMPT);
+  assert.match(snapshot.system_prompt, /continuous SwarmEnv research identity/);
+  assert.match(snapshot.system_prompt, /task_take/);
+  assert.ok(snapshot.system_prompt_hash.length === 64);
+  assert.ok(snapshot.prompt_hash.length === 64);
+  assert.notEqual(snapshot.prompt_hash, snapshot.system_prompt_hash);
+  assert.doesNotMatch(snapshot.prompt, /continuous SwarmEnv research identity/);
+  assert.match(snapshot.prompt, /task-system-1/);
+  assert.deepEqual(snapshot.initial_context, ['task_contract']);
+});
+
+test('profile capability documents are injected even when services expose only names', () => {
+  const bound = buildCapabilityProfile({
+    role: AGENT_ROLES.BOUND,
+    registry: {
+      getCapabilityProfile(role) {
+        return {
+          role,
+          profileVersion: '1',
+          profileHash: 'hash-docs',
+          capabilities: [{
+            id: 'research.search', name: 'research_search', operation: 'search',
+            service_id: 'research', service_title: 'Research Provider', provider_version: '1.2.3',
+            manifest_hash: 'manifest-1', description: 'Search a locked index.',
+            audience: ['bound'], side_effect: 'read',
+            help: { when: 'Before proposing a route', ref: 'service://research/search', text: 'Search the locked index and verify each hit.' },
+            input_schema: { type: 'object', additionalProperties: false },
+          }],
+        };
+      },
+    },
+  });
+  const prompt = composeAgentPrompt({ role: AGENT_ROLES.BOUND, profile: bound });
+  assert.match(prompt, /Authorized Service Documentation/);
+  assert.match(prompt, /verify each hit/);
+  const snapshot = buildPromptSnapshot({ role: AGENT_ROLES.BOUND, profile: bound });
+  assert.equal(snapshot.service_doc_hashes.length, 1);
+  assert.equal(snapshot.service_doc_hashes[0].manifest_hash, 'manifest-1');
+  assert.equal(snapshot.service_doc_hashes[0].service_version, '1.2.3');
 });
 
 test('normal Agent prompts do not expose retired structural or lease vocabulary', () => {

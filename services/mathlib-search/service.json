@@ -1,0 +1,64 @@
+{
+  "id": "mathlib-search",
+  "title": "Mathlib Search",
+  "purpose": "Search Lean and Mathlib declarations before selecting a proof or API route.",
+  "provider_version": "1.0.0",
+  "contract_version": "1",
+  "endpoint": { "transport": "in-process" },
+  "documentation": {
+    "skill": "SKILL.md",
+    "references": ["references/loogle.md"]
+  },
+  "secret_refs": {
+    "token": "env:SWARMENV_MATHLIB_SEARCH_TOKEN"
+  },
+  "metadata": {
+    "backend": "loogle-compatible"
+  },
+  "capabilities": [
+    {
+      "name": "mathlib_search",
+      "operation": "mathlib_search",
+      "description": "Search Mathlib declarations by Lean type, name, or query text.",
+      "audience": ["bound", "recovery"],
+      "side_effect": "read",
+      "idempotent": true,
+      "context": ["task", "execution"],
+      "requires_binding": true,
+      "help": {
+        "when": "Use before proposing a proof or API research Task; search by a declaration name or Lean type pattern and verify the result in the locked project.",
+        "ref": "service://mathlib-search/skill"
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "module": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "path": { "type": "string", "minLength": 1, "maxLength": 1000 },
+          "max_results": { "type": "integer", "minimum": 1, "maximum": 50 }
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string" },
+          "results": { "type": "array" },
+          "result_count": { "type": "integer", "minimum": 0 },
+          "truncated": { "type": "boolean" },
+          "backend": { "type": "string" },
+          "mathlib_revision": { "type": ["string", "null"] },
+          "lean_version": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      },
+      "path": "/v1/mathlib_search",
+      "errors": [
+        { "code": "INVALID_CONTRACT", "retryable": false },
+        { "code": "SERVICE_TIMEOUT", "retryable": true },
+        { "code": "SERVICE_UNAVAILABLE", "retryable": true }
+      ]
+    }
+  ]
+}

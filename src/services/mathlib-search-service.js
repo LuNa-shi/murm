@@ -187,7 +187,15 @@ export function createMathlibSearchManifest({
       requires_binding: true,
       help: {
         when: 'Use before proposing a proof or API research Task; search by a declaration name or Lean type pattern and verify the result in the locked project.',
-        ref: 'https://github.com/nomeata/loogle#usage',
+        ref: 'service://mathlib-search/skill',
+        text: [
+          'Purpose: find Lean/Mathlib declarations in the locked project.',
+          'Inputs: query (declaration name or Lean type pattern); optional module, path, max_results.',
+          'Output: the query, a bounded results array ({name, type, module, source, score}), result_count, truncated, backend, mathlib_revision, lean_version.',
+          'Errors: INVALID_CONTRACT (bad scope or input), SERVICE_TIMEOUT and SERVICE_UNAVAILABLE are retryable within the configured bound.',
+          'Limits: the result list is bounded; module/path scopes must remain inside the configured source boundary.',
+          'Verify every returned declaration in the locked project before relying on it. A hit is evidence for a route, not a proof.',
+        ].join('\n'),
       },
       input_schema: objectSchema({
         query: { type: 'string', minLength: 1, maxLength: MAX_QUERY_LENGTH },

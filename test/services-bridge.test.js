@@ -14,6 +14,7 @@ import {
   createHttpJsonAdapter,
   createServiceHost,
   createServiceManifest,
+  runtimeCapabilityList,
 } from '../src/index.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
@@ -169,6 +170,56 @@ test('ServicesBridge exposes canonical task status/register/take through the bou
     await bound.stop();
     await taker.stop();
     taskService.close();
+  }
+});
+
+test('ServicesBridge gates sandbox commands on the active Execution binding', async () => {
+  const task = { task_id: 'task-sandbox', mission_id: 'mission-sandbox', workspace: { required_inputs: ['README.md'] }, spec_version: 1, state_version: 2 };
+  const execution = { execution_id: 'execution-sandbox', task_id: task.task_id, state: 'RUNNING', spec_version: 1, state_version: 2, fencing_version: 1 };
+  const calls = [];
+  const taskService = {
+    getTask: () => task,
+    getExecution: () => execution,
+    dispatch: () => { throw new Error('unexpected dispatch'); },
+  };
+  const runtime = {
+    sandboxExec: async (executionId, payload) => {
+      calls.push({ executionId, payload });
+      return { execution_id: executionId, job_id: 'job-1', exit_code: 0, stdout: 'ok\n', stderr: '', timed_out: false, truncated: false };
+    },
+  };
+  const bound = new ServicesBridge({
+    taskService,
+    contextService: {},
+    runtime,
+    router: { dispatch: () => { throw new Error('unexpected router'); } },
+    runtimeCapabilities: runtimeCapabilityList(),
+    taskId: task.task_id,
+    executionId: execution.execution_id,
+    actorRef: 'agent:sandbox',
+  });
+  try {
+    const result = await bound.call({ operation: 'sandbox_exec', payload: { command: 'rg theorem .' } });
+    assert.equal(result.exit_code, 0);
+    assert.deepEqual(calls, [{ executionId: execution.execution_id, payload: { command: 'rg theorem .', cwd: undefined, timeout_ms: undefined, env: undefined, background: undefined } }]);
+  } finally {
+    await bound.stop();
+  }
+  const unbound = new ServicesBridge({
+    taskService,
+    contextService: {},
+    runtime,
+    router: { dispatch: () => { throw new Error('unexpected router'); } },
+    runtimeCapabilities: runtimeCapabilityList(),
+    actorRef: 'agent:unbound',
+  });
+  try {
+    await assert.rejects(
+      () => unbound.call({ operation: 'sandbox_exec', payload: { command: 'ls' } }),
+      (error) => error.code === 'NOT_ALLOWED',
+    );
+  } finally {
+    await unbound.stop();
   }
 });
 

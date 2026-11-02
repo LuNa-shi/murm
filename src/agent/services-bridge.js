@@ -24,6 +24,7 @@ const MODERN_RETIRED_OPERATIONS = new Set([
 const WORKSPACE_OPERATIONS = new Set([
   'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
   'read_workspace_file', 'write_workspace_file', 'workspace_diff',
+  'sandbox_exec', 'sandbox_job',
 ]);
 
 function usesWorkspace(task) {
@@ -724,6 +725,17 @@ export class ServicesBridge {
         case 'workspace_diff': result = await this.runtime.workspaceDiff(this.executionId, {
           fromRevision: payload.from_revision,
           toRevision: payload.to_revision,
+        }); break;
+        case 'sandbox_exec': result = await this.runtime.sandboxExec(this.executionId, {
+          command: payload.command,
+          cwd: payload.cwd,
+          timeout_ms: payload.timeout_ms,
+          env: payload.env,
+          background: payload.background,
+        }); break;
+        case 'sandbox_job': result = await this.runtime.sandboxJob(this.executionId, {
+          action: payload.action ?? 'status',
+          job_id: payload.job_id,
         }); break;
         case 'accept_task': result = sdk.acceptTask(payload, options); break;
         case 'request_rework': result = sdk.requestRework(payload, options); break;
