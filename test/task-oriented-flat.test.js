@@ -167,9 +167,16 @@ test('Mission Task creation carries a bounded dynamic contract and deduplicates 
   const duplicate = service.dispatch('task.create', {
     mission_id: mission.mission_id,
     task_id: 'task:duplicate-id',
-    summary: 'Investigate the same feedback route without duplicating responsibility.',
+    summary: 'Investigate task:feedback-route without duplicating other work.',
+    task_type: 'research',
+    task_instructions: 'Read the feedback Material and produce one bounded route result.',
+    goal: 'Answer task:feedback-route',
     expected_output: 'A useful written result',
     acceptance_conditions: ['result is documented'],
+    completion_contract: { required_materials: [{ kinds: ['fact'], scope: 'proof_relevant', min_count: 1 }] },
+    input_material_refs: ['material:feedback'],
+    priority: 105,
+    timebox_ms: 30 * 60_000,
     responsibility_key: 'flat:proof-feedback:check-1',
   }, op('task:feedback-route:duplicate', 'agent:test'));
 

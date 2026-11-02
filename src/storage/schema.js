@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS modern_task_records (
   mission_id TEXT NOT NULL REFERENCES missions(mission_id),
   summary TEXT NOT NULL,
   timebox_ms INTEGER NOT NULL CHECK (timebox_ms > 0),
+  registration_hash TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -237,6 +238,7 @@ CREATE TABLE IF NOT EXISTS task_creation_provenance (
   source_material_refs_json TEXT NOT NULL DEFAULT '[]',
   feedback_json TEXT,
   workspace_lineage_json TEXT,
+  collaboration_reason_json TEXT,
   created_at TEXT NOT NULL
 );
 

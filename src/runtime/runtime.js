@@ -585,6 +585,11 @@ export class Runtime {
       ...(wakeCoreId ? { core_id: wakeCoreId } : {}),
     }, this.#executionEnvelope(waiting, operationId('wake'))).execution;
     try {
+      await this.workspaceManager.reopenWorkspace?.({
+        workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'),
+        executionId,
+        fencingVersion: resumed.fencing_version,
+      });
       const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'), executionId, fencingVersion: resumed.fencing_version });
       const coreId = this.#resolveCoreId(resumed, wakeCoreId);
       this.#assertCoreAvailable(coreId, executionId);
@@ -1007,6 +1012,8 @@ export class Runtime {
       requested_at: new Date(at instanceof Date ? at.getTime() : at).toISOString(),
     };
     let current = started;
+    await this.#drainCompactionCheckpoint(this.activeProcesses.get(executionId));
+    current = this.#getExecution(executionId);
     let workspace = null;
     let checkpointResult = null;
     if (current.workspace_ref && !skipWorkspaceSave) {
@@ -1161,9 +1168,12 @@ export class Runtime {
   async stopExecution(executionId, terminalState = 'CANCELLED', terminalReason = null) {
     const reason = terminalReason ?? terminalState.toLowerCase();
     this.logger?.append({ event: 'runtime.stop_execution', execution_id: executionId, terminal_state: terminalState, terminal_reason: reason });
-    const execution = this.#getExecution(executionId);
+    let execution = this.#getExecution(executionId);
     const active = this.activeProcesses.get(executionId);
     if (active) {
+      // Drain ownership writes before fencing/releasing the Workspace.
+      await this.#drainCompactionCheckpoint(active);
+      execution = this.#getExecution(executionId);
       this.activeProcesses.delete(executionId);
       await Promise.resolve(active.session.stop()).catch(() => undefined);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
@@ -1184,9 +1194,11 @@ export class Runtime {
    */
   async releaseExecution(executionId) {
     const id = requireString(executionId, 'execution_id');
-    const execution = this.#getExecution(id);
+    let execution = this.#getExecution(id);
     const active = this.activeProcesses.get(id);
     if (active) {
+      await this.#drainCompactionCheckpoint(active);
+      execution = this.#getExecution(id);
       this.activeProcesses.delete(id);
       await Promise.resolve(active.session.stop()).catch(() => undefined);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
@@ -1203,7 +1215,9 @@ export class Runtime {
 
   async fenceExecution(executionId, { reason = 'fenced' } = {}) {
     this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId, terminal_reason: reason });
-    const execution = this.#getExecution(executionId);
+    let execution = this.#getExecution(executionId);
+    await this.#drainCompactionCheckpoint(this.activeProcesses.get(executionId));
+    execution = this.#getExecution(executionId);
     const result = this.taskService.dispatch('fence_execution', {
       runtime_generation: this.runtimeGeneration,
       terminal_reason: reason,
@@ -1691,6 +1705,7 @@ export class Runtime {
   async #releaseFencedProcess(executionId) {
     const active = this.activeProcesses.get(executionId);
     if (!active) return;
+    await this.#drainCompactionCheckpoint(active);
     this.activeProcesses.delete(executionId);
     const execution = this.taskService.getExecution(executionId);
     await Promise.resolve(active.session.stop?.()).catch(() => undefined);
@@ -1852,6 +1867,11 @@ export class Runtime {
     });
     active.compactionCheckpointPromise = queued;
     return queued;
+  }
+
+  async #drainCompactionCheckpoint(active) {
+    if (!active?.compactionCheckpointPromise) return;
+    await active.compactionCheckpointPromise.catch(() => undefined);
   }
 
   async #rotateIdentity(executionId, { reason, windowRatio = null, usageSource = 'unknown' } = {}) {

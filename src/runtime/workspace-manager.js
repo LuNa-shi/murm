@@ -395,6 +395,20 @@ export class WorkspaceManager {
     return this.#publicMetadata(next);
   }
 
+  /** Reopen a released Workspace only when its durable owner wakes the same
+   * WAITING Execution with the same fence.  Late writers stay rejected while
+   * the Execution is waiting, but the checkpoint lineage can be resumed. */
+  async reopenWorkspace({ workspaceRef, executionId, fencingVersion }) {
+    const metadata = await this.#readMetadata(workspaceRef);
+    if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
+    if (metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace fence is stale');
+    if (!metadata.released_at) return this.#publicMetadata(metadata);
+    const next = { ...metadata, released_at: null, updated_at: new Date().toISOString() };
+    await this.#writeMetadata(workspaceRef, next);
+    await this.#writeRevisionMetadata(workspaceRef, next);
+    return this.#publicMetadata(next);
+  }
+
   async fenceWorkspace({ workspaceRef, executionId, fencingVersion, newFencingVersion }) {
     const metadata = await this.#readMetadata(workspaceRef);
     if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
@@ -410,6 +424,7 @@ export class WorkspaceManager {
     const metadata = await this.#readMetadata(workspaceRef);
     if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
     if (metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace write uses an old fencing version');
+    if (metadata.released_at) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace has been released');
     return metadata;
   }
 

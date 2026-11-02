@@ -128,8 +128,6 @@ function optionsFromArgs(argv) {
     provider: process.env.NUROUTER_PI_PROVIDER,
     parallelMode: 'semantic',
     taskModel: 'legacy',
-    flatInitialTaskCount: 4,
-    flatDynamicTaskBudget: 2,
     normalFlow: process.env.SWARMENV_NORMAL_FLOW === 'true',
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -158,8 +156,6 @@ function optionsFromArgs(argv) {
       '--provider': 'provider',
       '--parallel-mode': 'parallelMode',
       '--task-model': 'taskModel',
-      '--flat-initial-tasks': 'flatInitialTaskCount',
-      '--flat-dynamic-tasks': 'flatDynamicTaskBudget',
       '--normal-flow': 'normalFlow',
     };
     if (!fields[key]) throw new Error(`unknown option: ${arg}`);
@@ -168,7 +164,7 @@ function optionsFromArgs(argv) {
       continue;
     }
     const value = inline ?? argv[++index];
-    options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'turnTimeoutMs', 'observabilityPort', 'flatInitialTaskCount', 'flatDynamicTaskBudget'].includes(fields[key])
+    options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'turnTimeoutMs', 'observabilityPort'].includes(fields[key])
       ? Number(value)
       : value;
   }
@@ -187,7 +183,6 @@ function usage() {
     '    --parallel-mode direct|semantic|root-only',
     '    --task-model legacy|flat',
     '    --flat-initial-tasks 1..6',
-    '    --flat-dynamic-tasks 0..3',
     '    --normal-flow',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
@@ -212,8 +207,6 @@ if (!Number.isInteger(options.projectParallelism) || options.projectParallelism 
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
 if (!['direct', 'semantic', 'root-only'].includes(options.parallelMode)) throw new Error('--parallel-mode must be direct, semantic, or root-only');
 if (!['legacy', 'flat'].includes(options.taskModel)) throw new Error('--task-model must be legacy or flat');
-if (!Number.isInteger(options.flatInitialTaskCount) || options.flatInitialTaskCount < 1 || options.flatInitialTaskCount > 6) throw new Error('--flat-initial-tasks must be an integer between 1 and 6');
-if (!Number.isInteger(options.flatDynamicTaskBudget) || options.flatDynamicTaskBudget < 0 || options.flatDynamicTaskBudget > 3) throw new Error('--flat-dynamic-tasks must be an integer between 0 and 3');
 if (!options.provider) throw new Error('NUROUTER_PI_PROVIDER is required; set it in .env or the environment');
 if (!options.model) throw new Error('NUROUTER_PI_MODEL is required; set it in .env or the environment');
 
@@ -262,8 +255,8 @@ const metadata = {
     timebox_ms: options.timeboxMs,
     parallel_mode: options.parallelMode,
     task_model: options.taskModel,
-    initial_task_count: options.flatInitialTaskCount,
-    dynamic_task_budget: options.flatDynamicTaskBudget,
+    initial_task_count: null,
+    dynamic_task_budget: null,
     turn_timeout_ms: options.turnTimeoutMs,
     provider: options.provider,
     model: options.model,
@@ -331,8 +324,8 @@ const aggregate = {
     child_claim_count: report.run?.child_claim_count ?? null,
     parallel_mode: report.protocol?.parallel_mode ?? options.parallelMode,
     task_model: report.protocol?.task_model ?? options.taskModel,
-    initial_task_count: report.protocol?.initial_task_count ?? options.flatInitialTaskCount,
-    dynamic_task_budget: report.protocol?.dynamic_task_budget ?? options.flatDynamicTaskBudget,
+    initial_task_count: null,
+    dynamic_task_budget: null,
     dynamic_task_count: report.run?.dynamic_task_count ?? 0,
     agent_structure_operation_count: report.project?.structure?.agent_operation_count ?? null,
     branch_group_count: report.project?.structure?.branch_group_count ?? null,

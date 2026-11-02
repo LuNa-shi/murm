@@ -232,3 +232,49 @@ test('compaction checkpoint failure does not strand the active Execution', async
     await rm(rootDir, { recursive: true, force: true });
   }
 });
+
+test('shutdown drains a compaction checkpoint before releasing its Workspace', async () => {
+  const fixture = await runtimeFixture();
+  const { runtime, taskService, claimed, sessions, rootDir } = fixture;
+  let saveStarted;
+  let unblockSave;
+  const saveStartedPromise = new Promise((resolve) => { saveStarted = resolve; });
+  const saveGate = new Promise((resolve) => { unblockSave = resolve; });
+  const originalSave = runtime.workspaceManager.saveWorkspaceRevision.bind(runtime.workspaceManager);
+  runtime.workspaceManager.saveWorkspaceRevision = async (...args) => {
+    if (args[0]?.files && Object.keys(args[0].files).length === 0) {
+      saveStarted();
+      await saveGate;
+    }
+    return originalSave(...args);
+  };
+  try {
+    await runtime.startExecution(claimed.execution_id, { coreId: 'core-s3' });
+    const running = taskService.getExecution(claimed.execution_id);
+    sessions[0].emit('rpc', { type: 'compaction_end', reason: 'shutdown-drain', result: { tokensBefore: 100 }, aborted: false });
+    await saveStartedPromise;
+
+    let shutdownSettled = false;
+    const shutdownPromise = runtime.shutdown().then(() => { shutdownSettled = true; });
+    await settle();
+    assert.equal(shutdownSettled, false, 'shutdown waits for the in-flight checkpoint');
+    unblockSave();
+    await shutdownPromise;
+
+    await assert.rejects(
+      runtime.workspaceManager.saveWorkspaceRevision({
+        workspaceRef: running.workspace_ref,
+        executionId: claimed.execution_id,
+        fencingVersion: running.fencing_version,
+        files: { late: 'write' },
+      }),
+      (error) => error?.code === 'FENCED',
+      'released Workspaces reject late writes with the old execution fence',
+    );
+  } finally {
+    unblockSave();
+    await runtime.shutdown().catch(() => undefined);
+    taskService.close();
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});

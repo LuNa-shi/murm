@@ -44,10 +44,6 @@ const TASK_MODELS = new Set(['legacy', 'flat']);
 const STRUCTURE_OPERATIONS = new Set([
   'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task',
 ]);
-const DEFAULT_FLAT_INITIAL_TASKS = 4;
-const DEFAULT_FLAT_DYNAMIC_TASKS = 2;
-const MAX_FLAT_DYNAMIC_TASKS = 3;
-const FLAT_TASK_STATES = Object.freeze(['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
 
 class SerialTaskCreateAdmission {
   constructor() {
@@ -61,65 +57,6 @@ class SerialTaskCreateAdmission {
     return previous.then(work).finally(() => release());
   }
 }
-const FLAT_RESEARCH_ROUTES = Object.freeze([
-  {
-    key: 'formalization-audit',
-    label: 'formalization audit',
-    goal: 'Audit the locked formal statement, definitions, and proof obligations before proposing a proof route.',
-    expected_output: 'A bounded fact or failure Material describing the formalization invariants and the next useful proof step.',
-    priority: 100,
-    instructions: 'Check the theorem statement, definitions, hypotheses, and existing imports. Record which obligations are genuinely available in the locked formalization and which tempting shortcuts are invalid.',
-  },
-  {
-    key: 'geometry-route',
-    label: 'geometry route',
-    goal: 'Develop a distinct geometric or coordinate route for the locked problem.',
-    expected_output: 'A bounded fact, conjecture, or failure Material containing a concrete geometric route and its formalization boundary.',
-    priority: 100,
-    instructions: 'Explore a geometric, coordinate, or invariant route that another Agent can turn into Lean lemmas. Separate proved observations from conjectures and identify the smallest next lemma.',
-  },
-  {
-    key: 'combinatorics-route',
-    label: 'combinatorics route',
-    goal: 'Develop a distinct combinatorial, algebraic, or extremal route for the locked problem.',
-    expected_output: 'A bounded fact, conjecture, or failure Material containing a distinct route and a concrete verification plan.',
-    priority: 100,
-    instructions: 'Search for a combinatorial, algebraic, counting, or extremal invariant that is independent of the geometry route. State the exact claim to verify and the obstacle if the route fails.',
-  },
-  {
-    key: 'lean-route',
-    label: 'Lean implementation route',
-    goal: 'Map the useful proof obligations to the locked Lean and Mathlib environment.',
-    expected_output: 'A bounded experience or failure Material with verified API names, module boundaries, and an implementation sequence.',
-    priority: 100,
-    instructions: 'Inspect the locked project and available registered services, verify any declaration before relying on it, and outline a small compilable lemma sequence. Do not submit the input formalization as a candidate.',
-  },
-  {
-    key: 'validation-route',
-    label: 'validation and counterexample route',
-    goal: 'Stress-test the current proof obligations and identify counterexamples or missing hypotheses.',
-    expected_output: 'A bounded fact, conjecture, or failure Material that narrows the proof search and prevents repeated invalid attempts.',
-    priority: 90,
-    instructions: 'Try to falsify weak intermediate claims, check edge cases, and compare the resulting constraints with the formal statement. Preserve a useful correction or a precise reason a route cannot proceed.',
-  },
-]);
-
-function flatInitialTaskCount(options = {}) {
-  const value = options.flatInitialTaskCount ?? DEFAULT_FLAT_INITIAL_TASKS;
-  if (!Number.isInteger(value) || value < 1 || value > FLAT_RESEARCH_ROUTES.length + 1) {
-    throw new TypeError(`flatInitialTaskCount must be an integer between 1 and ${FLAT_RESEARCH_ROUTES.length + 1}`);
-  }
-  return value;
-}
-
-function flatDynamicTaskBudget(options = {}) {
-  const value = options.flatDynamicTaskBudget ?? DEFAULT_FLAT_DYNAMIC_TASKS;
-  if (!Number.isInteger(value) || value < 0 || value > MAX_FLAT_DYNAMIC_TASKS) {
-    throw new TypeError(`flatDynamicTaskBudget must be an integer between 0 and ${MAX_FLAT_DYNAMIC_TASKS}`);
-  }
-  return value;
-}
-
 function completedTaskState(state) {
   return state === 'DONE' || state === 'SATISFIED';
 }
@@ -166,7 +103,7 @@ function modePrompt(mode, prompt, selectedTaskModel = 'legacy') {
   if (selectedTaskModel === 'flat') return prompt;
   if (mode === 'semantic') {
     return [
-      'This run is the Issue #56 semantic-structure treatment. Before doing proof work on a root Task, use the registered swarmenv_task_create_branch_group tool to create at least two genuinely different ordinary alternative Tasks. When a Branch Task is bound, its Agent must use swarmenv_task_add_required_subtask at least twice to create one jointly required group before finishing either route. Give every Task a concrete goal, expected output, acceptance condition, and real Workspace or Material result. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each mutation. Do not replace these relations with generic child creation. Continue useful root and Branch work after the structure is created; the shared queue must keep the resulting Tasks claimable by other Cores.',
+      'This run uses the semantic-structure treatment. Create ordinary alternative or required work only when the current research reveals a genuinely separable responsibility; do not use a fixed fanout or create placeholder Tasks. Give each Task a concrete goal, expected output, acceptance condition, and real Workspace or Material result. Read task structure and readiness after each mutation. Continue useful root and branch work after the structure is created; the shared queue must keep resulting Tasks claimable by other Cores.',
       'The semantic run also requires an observable delivery loop: after child or branch Materials exist, the Root must read them through swarmenv_context_read, call swarmenv_context_consume with the bounded Material IDs and action integration, write a bounded integration note in its own Workspace, and publish one root-owned Material with scope root_integration whose provenance names exactly those consumed Material IDs. A proof failure does not excuse skipping this integration step; preserve the integration evidence and then block on the typed proof/check dependency if needed.',
       prompt,
     ].join('\n');
@@ -1556,7 +1493,7 @@ function projectReport(state, startedAt, deadline) {
       task_model: state.taskModel,
       mission_id: state.missionId,
       initial_task_count: state.initialTaskIds?.length ?? 1,
-      dynamic_task_budget: state.flatDynamicTaskBudget,
+      dynamic_task_budget: null,
       execution_timeout_ms: state.executionTimeoutMs,
       handoff_reminder_ms: state.handoffReminderMs,
       input_policy: 'pinned formalization only; no candidate or solution input',
@@ -1711,7 +1648,7 @@ function projectReport(state, startedAt, deadline) {
           .map((sample) => sample.condition_to_resumed_turn_ms).filter(Number.isFinite),
       },
       decomposition_available: decompositionAvailable,
-      dynamic_task_budget: state.flatDynamicTaskBudget,
+      dynamic_task_budget: null,
       // Count every Task admitted after Mission initialization.  The previous
       // projection counted only controller-generated `flat:proof-feedback:*`
       // Tasks and therefore hid Agent-created responsibilities from the
@@ -1870,13 +1807,12 @@ async function createProjectState(problem, config, options) {
     runtimeCapabilities: role === AGENT_ROLES.SELECTION ? [] : runtimeCapabilityList(),
   }).capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`)))];
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
-  const selectedFlatDynamicTaskBudget = selectedTaskModel === 'flat' ? flatDynamicTaskBudget(options) : 0;
   const taskCreateMutex = selectedTaskModel === 'flat' ? new SerialTaskCreateAdmission() : null;
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const modeInstructions = selectedTaskModel === 'flat'
-    ? 'Search the Mission Task summaries and linked Materials before proposing substantial new work. The current Task may call the Judge directly whenever a candidate is ready. A source-level Judge FAIL is diagnostic feedback: read the returned CheckResult, revise the candidate in this same Execution, and call submit_candidate again without creating a repair Task or waiting for a Response handoff. Create a separate Task only for genuinely independent work. Publish one bounded Material for each distinct finding and link it to its producer; do not publish duplicate copies of the same finding or require another Task before continuing the current candidate route. Complete the current Task when its own contract is satisfied.'
+    ? 'Search the Mission Task summaries and linked Materials before proposing substantial new work. The current Task may call the Judge directly whenever a candidate is ready. A source-level Judge FAIL is diagnostic feedback: read the returned CheckResult, revise the candidate in this same Execution, and call submit_candidate again without creating a repair Task or waiting for a Response handoff. Create a separate Task only for genuinely independent work. Publish one bounded Material for each distinct finding or checkpoint, link it to its producer, and do not publish duplicate copies or require another Task before continuing the current candidate route. Complete the current Task when its own contract is satisfied.'
     : selectedParallelMode === 'semantic'
-      ? 'This is the semantic-structure treatment. Before proof work, call swarmenv_task_create_branch_group with at least two genuinely different ordinary Tasks. If this Task is a Branch member, call swarmenv_task_add_required_subtask at least twice for one separable required group before finishing either route. Read swarmenv_task_get_structure and swarmenv_task_explain_readiness after each change. These must be real claimable responsibilities with concrete outputs; do not use generic child creation for these routes. After child or branch Materials exist, the Root must read them with swarmenv_context_read, durably record the bounded handoff with swarmenv_context_consume using action integration, make a bounded Workspace integration note, and publish one root-owned Material with scope root_integration whose provenance names the consumed Material IDs before blocking or claiming the collaboration loop complete.'
+      ? 'This is the semantic-structure treatment. Create branch or required-subtask structure only for genuinely separable responsibilities discovered during research, with concrete outputs and no fixed count. Read task structure and readiness after each change. These must be real claimable responsibilities; do not create placeholder Tasks. After child or branch Materials exist, the Root must read them through Context Service, durably record the bounded handoff using action integration, make a bounded Workspace integration note, and publish one root-owned Material with scope root_integration whose provenance names the consumed Material IDs before blocking or claiming the collaboration loop complete.'
       : selectedParallelMode === 'root-only'
         ? 'This is the Root-only control. Keep all work on this root Task and do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks. Do not call the semantic structure mutation tools. Keep all proof work and checking on the root responsibility.'
         : 'Use direct child Tasks only when a genuinely separable route emerges.';
@@ -1886,7 +1822,7 @@ async function createProjectState(problem, config, options) {
       : 'When a real external dependency blocks progress, preserve useful Workspace and Materials and call execution_block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.')
     : 'Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency.';
   const taskSpecificInstruction = selectedTaskModel === 'flat'
-    ? 'The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition. Research Tasks must publish and link one bounded Material before completion; the proof Task must consume at least one linked research Material with action integration before completing.'
+    ? 'The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition. Publish and link durable evidence when the Task has a result; consume useful linked research Material with an explicit integration action when it informs the proof.'
     : 'Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge.';
   const taskPayload = {
     task_type: 'proof',
@@ -1897,7 +1833,7 @@ async function createProjectState(problem, config, options) {
     // when the pool is larger than the Core count; research routes remain
     // independently available instead of starving the integration lane.
     priority: selectedTaskModel === 'flat' ? 110 : 0,
-    task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. If no honest candidate is ready, preserve useful evidence and block on a concrete dependency instead of submitting the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish one bounded Material only when a distinct finding or checkpoint is durable; do not repeatedly publish or consume the same finding.`,
+    task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. If no honest candidate is ready, preserve useful evidence and block on a concrete dependency instead of submitting the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.`,
     completion_contract: {
       ...(normalFlow ? { normal_flow: true } : {}),
       ...(selectedParallelMode === 'semantic' && selectedTaskModel !== 'flat' ? {
@@ -1952,47 +1888,6 @@ async function createProjectState(problem, config, options) {
     }, { operationId: `benchmark:task:create:${runId}` }).task
     : owner.proposeTask(taskPayload, { operationId: `benchmark:root:propose:${runId}` }).task;
   const initialTasks = [root];
-  if (selectedTaskModel === 'flat') {
-    const seedCount = flatInitialTaskCount(options);
-    for (const route of FLAT_RESEARCH_ROUTES.slice(0, Math.max(0, seedCount - 1))) {
-      const responseInstruction = [
-        `You own the independent ${route.label} responsibility for ${problem.id}.`,
-        route.instructions,
-        'Read the current Task and Mission Materials before starting. Keep the route bounded and do not spend the whole Execution repeating a final proof attempt owned by another Task.',
-        'When you have a useful finding, publish one bounded primary Material through context_publish_material with role experience (or fact/failure when that is the clearest kind) and scope proof_relevant. State the finding, evidence boundary, open question, and next step without credentials or hidden answers, then link that Material to this Task with task_link_material using the matching role.',
-        'Keep one bounded Material for the finding. After the primary link exists, call task_complete with the linked Material ID. If the route fails, preserve the precise blocker in that same bounded Material and complete the research Task; do not hand off empty work or repeatedly publish the same failure.',
-        dependencyInstruction,
-      ].join(' ');
-      const seeded = owner.createTask({
-        task_id: randomUUID(),
-        mission_id: mission.mission_id,
-        spawned_from: root.task_id,
-        task_type: 'research',
-        task_type_version: '1.0',
-        summary: `${route.label}: ${route.goal}`,
-        goal: route.goal,
-        expected_output: route.expected_output,
-        acceptance_conditions: { project: problem.id, source_hash: problem.source_hash, route: route.key },
-        priority: route.priority,
-        responsibility_key: `flat:seed:${route.key}`,
-        task_instructions: responseInstruction,
-        completion_contract: {
-          ...(normalFlow ? { normal_flow: true } : {}),
-          required_materials: [{
-            kinds: ['fact', 'experience', 'conjecture', 'artifact', 'failure'],
-            scope: 'proof_relevant',
-            min_count: 1,
-          }],
-        },
-        owner_ref: 'owner:benchmark',
-        workspace: taskPayload.workspace,
-        max_children: 8,
-        max_depth: 3,
-        timebox_ms: options.taskTimeboxMs ?? 30 * 60_000,
-      }, { operationId: `benchmark:task:create:${runId}:${route.key}` }).task;
-      initialTasks.push(seeded);
-    }
-  }
   observationStore.registerExperiment({ experimentId: runId, rootTaskId: root.task_id, status: 'RUNNING', metadata: {
     problem_id: problem.id,
     task_model: selectedTaskModel,
@@ -2138,31 +2033,9 @@ async function createProjectState(problem, config, options) {
       registry: capabilityRegistry,
       actorRef: `agent:core-${index}`,
       taskCreateMutex,
-      onTaskCreate: ({ payload }) => {
-        const state = core.stateRef;
-        if (state?.taskModel !== 'flat' || payload?.mission_id !== state.missionId) return;
-        const missionTasks = state.taskService.listMissionTasks({
-          mission_id: state.missionId,
-          states: FLAT_TASK_STATES,
-          limit: 500,
-        });
-        const initialTaskIds = new Set(state.initialTaskIds);
-        const dynamicTasks = missionTasks.filter((task) => !initialTaskIds.has(task.task_id));
-        state.flatDynamicTaskCount = dynamicTasks.length;
-        const responsibilityKey = payload.responsibility_key ?? null;
-        const duplicate = responsibilityKey && missionTasks.some((task) => task.responsibility_key === responsibilityKey);
-        if (!duplicate && dynamicTasks.length >= state.flatDynamicTaskBudget) {
-          throw new SwarmEnvError(
-            ERROR_CODES.INVALID_CONTRACT,
-            `flat dynamic Task budget exhausted (${state.flatDynamicTaskBudget})`,
-            {
-              mission_id: state.missionId,
-              dynamic_task_budget: state.flatDynamicTaskBudget,
-              dynamic_task_count: dynamicTasks.length,
-            },
-          );
-        }
-      },
+      // Mission Task creation is governed by the Task Service contract and
+      // responsibility-key idempotency. The benchmark must not add a hidden
+      // count quota or reject independent work after a fixed number of Tasks.
       onClaim: async (claim) => {
         if (core.selectionActive) core.selectionClaim = claim;
         core.dispatchReserved = false;
@@ -2575,11 +2448,6 @@ async function createProjectState(problem, config, options) {
           const state = core.stateRef;
           const dynamic = Boolean(state?.taskModel === 'flat' && created.task_id && !state.initialTaskIds.includes(created.task_id));
           if (dynamic && state) {
-            state.flatDynamicTaskCount = state.taskService.listMissionTasks({
-              mission_id: state.missionId,
-              states: FLAT_TASK_STATES,
-              limit: 500,
-            }).filter((task) => !state.initialTaskIds.includes(task.task_id)).length;
             state.dynamicTaskEvents.push({
               task_id: created.task_id ?? null,
               source_task_id: taskId,
@@ -2804,8 +2672,6 @@ async function createProjectState(problem, config, options) {
     parallelMode: selectedParallelMode,
     taskModel: selectedTaskModel,
     missionId: mission?.mission_id ?? null,
-    flatDynamicTaskBudget: selectedFlatDynamicTaskBudget,
-    flatDynamicTaskCount: 0,
     taskCreateMutex,
     dynamicTaskEvents: [],
     executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? 30 * 60_000 : 60 * 60_000),

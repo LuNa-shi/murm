@@ -216,6 +216,10 @@ export class TaskService {
       PRIMARY KEY (notification_id, execution_id)
     )`);
     this.db.exec('CREATE INDEX IF NOT EXISTS task_notification_receipts_execution ON task_notification_receipts(execution_id, handled_at, delivered_at)');
+    const provenanceColumns = new Set(this.db.prepare('PRAGMA table_info(task_creation_provenance)').all().map((column) => column.name));
+    if (!provenanceColumns.has('collaboration_reason_json')) this.db.exec('ALTER TABLE task_creation_provenance ADD COLUMN collaboration_reason_json TEXT');
+    const modernTaskColumns = new Set(this.db.prepare('PRAGMA table_info(modern_task_records)').all().map((column) => column.name));
+    if (!modernTaskColumns.has('registration_hash')) this.db.exec('ALTER TABLE modern_task_records ADD COLUMN registration_hash TEXT');
     const taskTableSql = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get()?.sql ?? '';
     const needsTaskStateMigration = !taskTableSql.includes("'DONE'") || !taskTableSql.includes("'CLOSED'") || !taskTableSql.includes("'CANCELED'");
     // Older MVP databases made execution_id unique in claim_keys. A waiting
@@ -1175,21 +1179,6 @@ export class TaskService {
     requireString(taskId, 'task_id');
     if (this.getTask(taskId)) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'task_id already exists', { task_id: taskId });
     const responsibilityKey = payload.responsibility_key ?? payload.responsibilityKey ?? null;
-    if (responsibilityKey !== null) {
-      const existing = this.db.prepare(`SELECT t.task_id FROM tasks t
-        JOIN modern_task_records m ON m.task_id = t.task_id
-        WHERE m.mission_id = ? AND t.responsibility_key = ?
-        ORDER BY t.created_at, t.task_id LIMIT 1`).get(missionId, responsibilityKey);
-      if (existing) {
-        return {
-          task: this.getTask(existing.task_id),
-          created: false,
-          deduplicated: true,
-          responsibility_key: responsibilityKey,
-          created_from_execution_id: currentExecution?.execution_id ?? null,
-        };
-      }
-    }
     const spawnedFrom = payload.spawned_from ?? payload.spawnedFrom ?? null;
     if (spawnedFrom !== null) {
       requireString(spawnedFrom, 'spawned_from');
@@ -1229,7 +1218,31 @@ export class TaskService {
       task_type_version: taskTypeVersion, goal: payload.goal ?? payload.summary, expected_output: payload.expected_output,
       acceptance_conditions: payload.acceptance_conditions, completion_contract: completionContract,
       timebox_ms: timeboxMs, owner_ref: ownerRef, priority, responsibility_key: responsibilityKey,
+      collaboration_reason: payload.collaboration_reason ?? payload.collaborationReason ?? null,
     };
+    if (responsibilityKey !== null) {
+      const existing = this.db.prepare(`SELECT t.task_id, t.spec_hash, m.registration_hash FROM tasks t
+        JOIN modern_task_records m ON m.task_id = t.task_id
+        WHERE m.mission_id = ? AND t.responsibility_key = ?
+        ORDER BY t.created_at, t.task_id LIMIT 1`).get(missionId, responsibilityKey);
+      if (existing) {
+        const requestedHash = hash({ ...spec, task_id: null });
+        if (existing.registration_hash && existing.registration_hash !== requestedHash) {
+          throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'responsibility_key already identifies different Task content', {
+            mission_id: missionId,
+            responsibility_key: responsibilityKey,
+            existing_task_id: existing.task_id,
+          });
+        }
+        return {
+          task: this.getTask(existing.task_id),
+          created: false,
+          deduplicated: true,
+          responsibility_key: responsibilityKey,
+          created_from_execution_id: currentExecution?.execution_id ?? null,
+        };
+      }
+    }
     this.db.prepare(`INSERT INTO tasks (
       task_id, root_id, parent_id, owner_ref, task_type, task_type_version, goal, expected_output,
       priority, task_instructions, workspace_json, acceptance_conditions_json, input_material_refs_json,
@@ -1241,8 +1254,8 @@ export class TaskService {
       priority, payload.task_instructions ?? '', json(payload.workspace ?? {}), json(payload.acceptance_conditions),
         json(payload.input_material_refs ?? []), 1, hash(spec), json(completionContract), createdAt, envelope.actor_ref, createdAt, createdAt);
     this.db.prepare(`INSERT INTO modern_task_records
-      (task_id, mission_id, summary, timebox_ms, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)`).run(taskId, missionId, payload.summary, timeboxMs, createdAt, createdAt);
+      (task_id, mission_id, summary, timebox_ms, registration_hash, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(taskId, missionId, payload.summary, timeboxMs, hash({ ...spec, task_id: null }), createdAt, createdAt);
     this.db.prepare('UPDATE tasks SET responsibility_key = ? WHERE task_id = ?').run(responsibilityKey, taskId);
     const relationStatement = this.db.prepare(`INSERT INTO task_relations
       (relation_id, mission_id, task_id, relation_kind, related_task_id,
@@ -1256,6 +1269,7 @@ export class TaskService {
       creatorExecutionId: envelope.execution_id ?? null,
       creatorActorRef: envelope.actor_ref,
       creationKind: spawnedFrom === null ? 'ROOT' : 'CHILD',
+      collaborationReason: payload.collaboration_reason ?? payload.collaborationReason ?? null,
       createdAt,
     });
     return {
@@ -1280,14 +1294,19 @@ export class TaskService {
     const params = [...states];
     if (missionId !== null) { where.push('m.mission_id = ?'); params.push(missionId); }
     if (search !== null) { where.push('(m.summary LIKE ? OR t.goal LIKE ? OR t.expected_output LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
-    const rows = this.db.prepare(`SELECT t.* FROM tasks t JOIN modern_task_records m ON m.task_id = t.task_id
-      WHERE ${where.join(' AND ')} ORDER BY t.priority DESC, t.created_at, t.task_id LIMIT ?`).all(...params, limit);
+    // Apply the page after availability filtering. Limiting the SQL rows
+    // first can hide later claimable Tasks behind blocked or occupied rows and
+    // make a bounded page look like an empty/complete queue.
     const availableOnly = payload.available_only ?? payload.availableOnly ?? false;
-    return rows.map((row) => this.#decorateModernTask(rowToTask(row))).filter((task) => {
+    const queryLimit = availableOnly ? -1 : limit;
+    const rows = this.db.prepare(`SELECT t.* FROM tasks t JOIN modern_task_records m ON m.task_id = t.task_id
+      WHERE ${where.join(' AND ')} ORDER BY t.priority DESC, t.created_at, t.task_id LIMIT ?`).all(...params, queryLimit);
+    const filtered = rows.map((row) => this.#decorateModernTask(rowToTask(row))).filter((task) => {
       if (!availableOnly) return true;
       if (task.state !== 'OPEN' && !(task.state === 'RUNNING' && this.#isSharedMissionTask(task))) return false;
       return this.#modernDependencyBlockers(task.task_id).length === 0;
     });
+    return filtered.slice(0, limit);
   }
 
   #viewModernTask(taskId) {
@@ -1618,6 +1637,10 @@ export class TaskService {
       limit,
       available_only: true,
     });
+    const statePlaceholders = states.map(() => '?').join(', ');
+    const pageTotal = Number(this.db.prepare(`SELECT COUNT(*) AS count FROM tasks t
+      JOIN modern_task_records m ON m.task_id = t.task_id
+      WHERE m.mission_id = ? AND t.state IN (${statePlaceholders})`).get(missionId, ...states).count ?? 0);
     const counts = this.db.prepare(`SELECT
       COUNT(*) AS total,
       SUM(CASE WHEN t.state = 'OPEN' THEN 1 ELSE 0 END) AS open,
@@ -1662,29 +1685,38 @@ export class TaskService {
         terminal: Number(counts.terminal ?? 0),
         claimable: Number(counts.claimable ?? 0),
       },
-      page: { limit, returned: tasks.length, complete: tasks.length < limit },
+      page: { limit, returned: tasks.length, total: pageTotal, complete: tasks.length >= pageTotal },
       observed_at: now(),
     };
   }
 
   #taskRegister(payload, envelope) {
     const goal = payload.goal ?? payload.summary;
+    // Older Agent callers do not send the optional explanation yet. Keep the
+    // canonical registration seam compatible while persisting an explicit
+    // provenance value for every registration.
+    const collaborationReason = payload.collaboration_reason ?? payload.collaborationReason ?? 'unspecified';
+    requireString(collaborationReason, 'collaboration_reason');
     const result = this.#createModernTask({
       ...payload,
       summary: payload.summary ?? goal,
       goal,
+      collaboration_reason: collaborationReason,
       // The operation envelope is the identity boundary. A caller may choose
       // a Task owner in the internal create adapter, but the canonical Agent
       // registration records the current actor as its proposer/owner.
       owner_ref: envelope.actor_ref,
     }, envelope);
+    const persisted = result.task
+      ? this.db.prepare('SELECT creator_task_id, creator_execution_id, creator_actor_ref, collaboration_reason_json FROM task_creation_provenance WHERE task_id = ?').get(result.task.task_id)
+      : null;
     return {
       ...result,
       provenance: {
-        actor_ref: envelope.actor_ref,
-        task_id: envelope.task_id ?? null,
-        execution_id: envelope.execution_id ?? null,
-        collaboration_reason: payload.collaboration_reason ?? null,
+        actor_ref: persisted?.creator_actor_ref ?? envelope.actor_ref,
+        task_id: persisted?.creator_task_id ?? envelope.task_id ?? null,
+        execution_id: persisted?.creator_execution_id ?? envelope.execution_id ?? null,
+        collaboration_reason: parse(persisted?.collaboration_reason_json) ?? collaborationReason,
       },
     };
   }
@@ -1910,12 +1942,12 @@ export class TaskService {
       VALUES (?, 1, ?) ON CONFLICT(task_id) DO NOTHING`).run(taskId, updatedAt);
   }
 
-  #recordCreationProvenance({ taskId, creatorTaskId = null, creatorExecutionId = null, creatorActorRef, creationKind, priorTaskId = null, sourceMaterialRefs = [], feedback = null, workspaceLineage = null, createdAt = now() }) {
+  #recordCreationProvenance({ taskId, creatorTaskId = null, creatorExecutionId = null, creatorActorRef, creationKind, priorTaskId = null, sourceMaterialRefs = [], feedback = null, workspaceLineage = null, collaborationReason = null, createdAt = now() }) {
     this.db.prepare(`INSERT INTO task_creation_provenance
-      (task_id, creator_task_id, creator_execution_id, creator_actor_ref, creation_kind, prior_task_id, source_material_refs_json, feedback_json, workspace_lineage_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(task_id) DO NOTHING`)
+      (task_id, creator_task_id, creator_execution_id, creator_actor_ref, creation_kind, prior_task_id, source_material_refs_json, feedback_json, workspace_lineage_json, collaboration_reason_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(task_id) DO NOTHING`)
       .run(taskId, creatorTaskId, creatorExecutionId, requireString(creatorActorRef, 'creator_actor_ref'), creationKind,
-        priorTaskId, json(sourceMaterialRefs), feedback === null ? null : json(feedback), workspaceLineage === null ? null : json(workspaceLineage), createdAt);
+        priorTaskId, json(sourceMaterialRefs), feedback === null ? null : json(feedback), workspaceLineage === null ? null : json(workspaceLineage), collaborationReason === null ? null : json(collaborationReason), createdAt);
   }
 
   #structureVersion(taskId) {
@@ -2412,6 +2444,7 @@ export class TaskService {
       source_material_refs: parse(provenanceRow.source_material_refs_json) ?? [],
       feedback: parse(provenanceRow.feedback_json),
       workspace_lineage: parse(provenanceRow.workspace_lineage_json),
+      collaboration_reason: parse(provenanceRow.collaboration_reason_json),
       created_at: provenanceRow.created_at,
     } : null;
     const dependencies = this.#taskDependencyRows(taskId).map((dependency) => ({

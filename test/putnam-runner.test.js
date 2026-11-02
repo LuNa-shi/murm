@@ -786,7 +786,7 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, taskModel = undefined, flatInitialTaskCount = undefined, flatDynamicTaskBudget = undefined, agentAdapterFactory = null, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, taskModel = undefined, agentAdapterFactory = null, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -799,8 +799,6 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     maxInfrastructureRetries,
     ...(normalFlow === undefined ? {} : { normalFlow }),
     ...(taskModel === undefined ? {} : { taskModel }),
-    ...(flatInitialTaskCount === undefined ? {} : { flatInitialTaskCount }),
-    ...(flatDynamicTaskBudget === undefined ? {} : { flatDynamicTaskBudget }),
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
@@ -862,13 +860,12 @@ test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Ex
     assert.equal(report.protocol.task_model, 'flat');
     assert.equal(report.protocol.execution_timeout_ms, 30 * 60_000);
     assert.equal(report.protocol.handoff_reminder_ms, 25 * 60_000);
-    assert.equal(report.protocol.dynamic_task_budget, 2);
-    assert.equal(report.project.task_count, 4);
+    assert.equal(report.protocol.dynamic_task_budget, null);
+    assert.equal(report.project.task_count, 1);
     assert.ok(report.project.task_tree.every((task) => task.mission_id));
-    assert.equal(report.project.task_tree.filter((task) => task.task_type === 'research').length, 3);
+    assert.equal(report.project.task_tree.filter((task) => task.task_type === 'research').length, 0);
     const proofTask = report.project.task_tree.find((task) => task.task_type === 'proof');
     assert.ok(proofTask);
-    assert.ok(report.project.task_tree.filter((task) => task.task_type === 'research').every((task) => task.priority < proofTask.priority));
     assert.equal(report.project.task_tree[0].parent_id, null);
     assert.equal(report.run.protocol_valid, true);
     const boundPrompts = adapters.flatMap((adapter) => adapter.sessions.flatMap((session) => session.promptMessages));
@@ -1206,8 +1203,6 @@ test('flat Judge source failure stays on the same Task and each Execution can re
       experimentDir,
       id: 'putnam_flat_feedback_task_test',
       taskModel: 'flat',
-      flatInitialTaskCount: 1,
-      flatDynamicTaskBudget: 1,
       timeboxMs: 1_500,
       agentAdapterFactory: ({ env }) => new FlatFailureAdapter({ env }),
       checker: {
