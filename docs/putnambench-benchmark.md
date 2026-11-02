@@ -1,7 +1,5 @@
-# PutnamBench benchmark
+# 历史设计入口
 
-一个问题对应一个隔离项目目录、一个 SQLite 数据库、一个 Root Task 和最多四个可复用 Agent Core slot。项目开始时不创建固定 proof child。Agent 通过 Task list 发现工作并主动创建所需的子 Task。
+本文件已归档，不再定义当前开发要求。原文保存在 [归档索引](archive/README.md) 所列同名文件中，也可在 [原提交](https://github.com/LuNa-shi/SwarmEnv/tree/75fca5aa647154a642d676c639c8770d1f7eb90a/docs) 中阅读。
 
-题目文件来自锁定的 PutnamBench checkout。题目和 Lean/Mathlib/checker 元数据写入 Root Workspace；答案和 solution-derived input 不进入初始化 Workspace。Context Service 只保存运行中产生的 Material。
-
-实验报告保存项目 hash、Task/Execution/Workspace lineage、Judge verdict、版本、计时和审计分类。原始 evidence 留在实验目录，报告不输出 candidate source、proof text、raw transcript、stdout 或 stderr。
+当前设计见 [Task-centric架构](architecture.md)；目标与实现的差距见 [实现状态](implementation-status.md)。历史实验仍按原提交解释。

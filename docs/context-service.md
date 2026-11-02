@@ -1,14 +1,5 @@
-# Context Service and shared Materials
+# 历史设计入口
 
-Context Service owns immutable shared Materials. A Material has a kind, scope,
-evidence state, content reference and hash, source Task and Execution,
-provenance, version, and optional supersession link.
+本文件已归档，不再定义当前开发要求。原文保存在 [归档索引](archive/README.md) 所列同名文件中，也可在 [原提交](https://github.com/LuNa-shi/SwarmEnv/tree/75fca5aa647154a642d676c639c8770d1f7eb90a/docs) 中阅读。
 
-Agents use the named `context_read` and `context_publish` tools to exchange
-observations, conjectures, artifacts, and Judge feedback. The formal problem
-input remains in the Task's Workspace. Publishing a Material does not rewrite a
-Workspace or change the input snapshot used by an existing Execution.
-
-Context Service rejects secret-bearing fields and keeps Task claims,
-Execution state, process capacity, and Workspace filesystem authority in their
-respective Services and Runtime components.
+当前设计见 [Task-centric架构](architecture.md)；目标与实现的差距见 [实现状态](implementation-status.md)。历史实验仍按原提交解释。

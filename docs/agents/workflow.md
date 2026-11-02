@@ -1,22 +1,13 @@
-# Agent workflow
+# 开发流程
 
-## Issue and PR lifecycle
+先读 [AGENTS.md](../../AGENTS.md)、[目标架构](../architecture.md) 与对应 Issue，再改实现。每个代码 Issue 是一条可验收的完整行为，具有范围、依赖、反例、测试和两小时真实实验条件。
 
-Every implementation starts from a GitHub Issue that states the problem, scope, dependencies, and executable acceptance criteria. The implementation uses a worktree named for that Issue and a branch named `codex/issue-<number>-<slug>`.
+本次文档草稿由用户直接授权，可以先建立草稿 PR，不创建 Issues。后续代码工作按已批准 Issue 建立独立分支/worktree；`main` 不直接开发。无法使用本地 checkout 时可通过 GitHub Git-data API 在固定父提交上建立独立文档分支，但必须记录限制，不声称运行了本地完整测试。
 
-The worktree must be clean before the acceptance run. Record the exact commit, repository dirty state, model/provider route, timebox, fixture, and output report path. After tests and the experiment are complete, commit the work and open a separate PR. The PR describes the behavior, evidence, and merge risk; it is reviewed against `main` before merge.
+修改顺序为：定位基线行为，补回归，完成行为，执行相关测试，提交 clean实现，再进行登记的真实实验。文档-only提交不改变原实验的实现身份；运行或harness代码改变则需要重新验证。
 
-## Document ownership
+PR 同时接受 Spec 与 Standards 审阅。代码符合风格但违背目标，不算完成；本来就是错误设计的旧测试应按新规范更新，而非绕开安全测试。未解决的原则冲突写明并暂停该部分实现。
 
-`docs/` contains Agent-generated architecture decisions, research, benchmark reports, and operational guidance. `documents/` contains documents supplied by humans. An Agent may read human documents as inputs but does not rewrite them as part of routine implementation.
+文档管理以 [索引](../README.md) 为准。人类原稿保存来源，日常编码不得改写；这次归档得到用户明确授权，旧正文按原blob保存。Notion讨论不会自动覆盖已合并规范。
 
-## Runtime lifecycle vocabulary
-
-- `RUNNING`: the Runtime owns an active Agent process for the Execution.
-- `WAITING`: the Execution has a checkpoint and a concrete condition. Runtime stops the process and releases physical capacity. Only a matching wake or explicit resumable claim can restore it.
-- `IDLE`: a Core has no assignment. An empty task queue produces IDLE/backoff, not WAITING.
-- `yield`: a future cooperative scheduling operation may release a Core with no dependency condition. It must not create a second owner for the same responsibility and must not be reported as semantic WAITING. It is not an Agent tool until its ownership and resume contract is implemented.
-
-## Progress evidence
-
-Hard utilization metrics come from Runtime state intervals and Service events. They do not call an LLM to summarize work. Each work unit records Task, Execution, Core, and progress-kind provenance. Task and Execution identity, Workspace lineage, leases, fencing, and quota remain the ownership evidence; the benchmark does not apply a semantic duplicate detector to work units.
+验收适用 [测试要求](testing.md) 与 [第一阶段协议](../validation/phase-1-acceptance.md)。环境、隐私和资源要求直接遵循AGENTS，不在多处维护不同版本。

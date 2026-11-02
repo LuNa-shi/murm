@@ -1,12 +1,5 @@
-# MVP task scheduling follows the parent-child tree
+# 历史 ADR 入口
 
-Status: accepted. In the MVP, a Task may wait for and require only its direct child Tasks; nested task trees propagate completion one parent-child edge at a time. Cross-tree support, dependency, and weaving relationships remain descriptive metadata or Material references until a later version defines their lifecycle, cycle handling, and recovery semantics. This keeps the first scheduler a strict tree while preserving the relationships as future domain information.
+本ADR原文保存在 [历史ADR目录](../archive/2026-11-01/docs/adr/) 的同名文件中，原始Git tree未改写。其历史语境见 [原提交](https://github.com/LuNa-shi/SwarmEnv/tree/75fca5aa647154a642d676c639c8770d1f7eb90a/docs/adr)。
 
-## Considered options
-
-- Allow arbitrary Tasks to block or wake one another through cross-tree dependencies.
-- Restrict scheduling conditions to direct child Tasks and let each child recursively manage its own children.
-
-## Consequences
-
-`required_children` and `child_task_terminal` have a precise MVP meaning, and `BLOCKED` does not imply an undeclared graph scheduler. A parent that needs a grandchild's result waits for the intermediate child to satisfy its own contract. Cross-tree relationships cannot independently trigger scheduling in this version.
+当前决定见 [ADR索引](README.md) 与 [目标架构](../architecture.md)。归档保留旧设计理由，不表示对应能力已从代码删除。

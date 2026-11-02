@@ -1,24 +1,5 @@
-# ADR 0008: PutnamBench uses one root Task and reusable workers
+# 历史 ADR 入口
 
-Status: accepted. Each PutnamBench problem is one isolated SwarmEnv project
-with one root Task and up to four reusable Agent Core slots.
+本ADR原文保存在 [历史ADR目录](../archive/2026-11-01/docs/adr/) 的同名文件中，原始Git tree未改写。其历史语境见 [原提交](https://github.com/LuNa-shi/SwarmEnv/tree/75fca5aa647154a642d676c639c8770d1f7eb90a/docs/adr)。
 
-## Decision
-
-The root Task goal is exactly to prove the selected problem. The runner does
-not create four proof children and does not claim work on behalf of Agents.
-Each worker starts with the reusable Agent prompt, lists the highest-priority
-Tasks, explicitly claims one Task, and may create bounded child Tasks when its
-route needs decomposition.
-
-The root Workspace contains the pinned formalization and environment metadata.
-Materials carry later observations, artifacts, and Judge feedback. A claimed
-Execution chooses a clean Workspace or a selected prior revision. Reports
-audit the actual Task tree, claims, Workspace lineage, tool calls, candidate
-provenance, and report redaction.
-
-## Consequences
-
-Parallelism comes from reusable slots and explicit Task claims. A project can
-begin with only the root Task and grow its queue during the run. Unclaimed
-worker slots are valid when the current Task list has no available work.
+当前决定见 [ADR索引](README.md) 与 [目标架构](../architecture.md)。归档保留旧设计理由，不表示对应能力已从代码删除。

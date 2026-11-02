@@ -1,12 +1,5 @@
-# Execution keeps a small lifecycle state; verification is optional
+# 历史 ADR 入口
 
-Status: accepted. The MVP keeps one simple `Execution.state` rather than exposing separate claim, runtime, and protocol axes. `WAITING` covers any durable wait condition, including a child Task, a parent review, a timer, or a requested CheckResult. Judge participation belongs to the Task's completion contract, so research Tasks use parent review rather than entering a verification state.
+本ADR原文保存在 [历史ADR目录](../archive/2026-11-01/docs/adr/) 的同名文件中，原始Git tree未改写。其历史语境见 [原提交](https://github.com/LuNa-shi/SwarmEnv/tree/75fca5aa647154a642d676c639c8770d1f7eb90a/docs/adr)。
 
-## Considered options
-
-- Add separate claim, runtime, and protocol state axes to the MVP.
-- Keep one small Execution lifecycle state and treat process start and stop as Runtime internals.
-
-## Consequences
-
-`WAITING` retains the Task's logical responsibility while releasing physical resources, regardless of what caused the wait. A pending CheckResult is represented as a wait condition rather than a second Execution state. Heartbeats and process observations cannot by themselves complete or fail a Task; they only drive the existing lease and fencing rules.
+当前决定见 [ADR索引](README.md) 与 [目标架构](../architecture.md)。归档保留旧设计理由，不表示对应能力已从代码删除。

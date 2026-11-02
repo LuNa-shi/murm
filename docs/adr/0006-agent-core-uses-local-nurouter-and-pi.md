@@ -1,13 +1,5 @@
-# Agent Core uses local NuRouter and Pi
+# 历史 ADR 入口
 
-Status: accepted. Every real MVP Agent Core runs Pi through the local NuRouter entry point. NuRouter owns provider, account, group, and model routing; Pi owns the model and tool loop; Runtime owns the process, lease, workspace, checkpoint, and fencing lifecycle. A deterministic ScriptExecutor may replace the Agent Core only in protocol tests so model quality does not obscure lifecycle verification.
+本ADR原文保存在 [历史ADR目录](../archive/2026-11-01/docs/adr/) 的同名文件中，原始Git tree未改写。其历史语境见 [原提交](https://github.com/LuNa-shi/SwarmEnv/tree/75fca5aa647154a642d676c639c8770d1f7eb90a/docs/adr)。
 
-## Decision
-
-The adapter always starts Pi through the local NuRouter entry point, with Pi session storage and session ID bound to the Execution. NuRouter 0.2.12 accepts managed Kimi selection as `nurouter pi --provider kimi --model <model> [--account <account>] [--group <group>] -- --mode rpc`; its OpenAI route accepts `nurouter pi [--account <account> | --group <group>] -- --mode rpc --provider openai --model <model>`, with both selectors omitted when the local route supplies defaults. The adapter supports these two provider forms explicitly, rejects unknown providers, and rejects both OpenAI selectors together before spawning. Credentials and routing configuration remain local Runtime configuration and never enter Task, Material, CheckResult, or public checkpoint content.
-
-The Pi package is `@earendil-works/pi-coding-agent`. Each MVP build or release resolves the stable npm `latest` tag to an exact version and records that `pi_version`, the NuRouter version, the Node version, and the launch arguments in the runtime manifest. A running Execution never upgrades its Pi process. A Pi session is a recovery aid only; after fencing or takeover, the new Agent Core follows the persisted Task specification, input snapshot, checkpoint lineage, and steer Materials.
-
-## Consequences
-
-The Agent Core Adapter is the seam between Runtime and Pi. It translates an Execution into a local NuRouter/Pi process and translates Pi output into the public operations for Task Flow and Context Store. Pi session files are replaceable execution artifacts, while the four core objects remain authoritative. The MVP must test both the deterministic protocol adapter and the real NuRouter/Pi startup path.
+当前决定见 [ADR索引](README.md) 与 [目标架构](../architecture.md)。归档保留旧设计理由，不表示对应能力已从代码删除。

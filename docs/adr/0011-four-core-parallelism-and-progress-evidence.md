@@ -1,35 +1,5 @@
-# ADR 0011: Measure reusable Core utilization from audited state intervals
+# 历史 ADR 入口
 
-Status: accepted. A PutnamBench project has four reusable Core slots, and its
-parallelism report must distinguish active Agent work from transport, polling,
-waiting, and Judge time.
+本ADR原文保存在 [历史ADR目录](../archive/2026-11-01/docs/adr/) 的同名文件中，原始Git tree未改写。其历史语境见 [原提交](https://github.com/LuNa-shi/SwarmEnv/tree/75fca5aa647154a642d676c639c8770d1f7eb90a/docs/adr)。
 
-## Decision
-
-The benchmark runner records one non-overlapping state interval per Core using
-`IDLE`, `ASSIGNED`, `RUNNING`, `WAITING`, and `STOPPING`. `RUNNING` intervals
-are the only input to `agent_time_ms` and
-`agent_time_utilization_v0`; the denominator is four times the measured
-experiment elapsed time. Judge and raw turn occupancy are reported separately.
-
-Unbound discovery turns use a shared admission gate so a group of reusable
-slots cannot claim the same stale Task snapshot at once. A successful claim
-releases the gate as soon as Task Service ownership is durable, allowing the
-bound Agent sessions to run concurrently. Empty slots remain available for a
-later ready-work dispatch.
-
-The sanitized report records work units with Task, Execution, Core, and
-progress-kind provenance. Existing input snapshot hashes remain part of the
-Execution and CheckResult consistency contract; the report does not infer
-semantic duplicates or link work units through `duplicate_of`.
-
-## Consequences
-
-- A Core that is waiting or only discovering Tasks does not inflate effective
-  Agent Time.
-- Four simultaneous `RUNNING` intervals produce utilization `1.0`; two produce
-  `0.5`; one Core handing work to itself produces `0.25`.
-- Reports can be independently checked from `core_state_intervals` without
-  exporting candidate source, proof text, or raw transcripts.
-- The scheduler may still use bounded polling for readiness, but polling,
-  claim conflicts, and Judge time remain separate diagnostics.
+当前决定见 [ADR索引](README.md) 与 [目标架构](../architecture.md)。归档保留旧设计理由，不表示对应能力已从代码删除。

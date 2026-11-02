@@ -1,31 +1,7 @@
-# Domain Docs
+# 领域文档使用方式
 
-How the engineering skills should consume this repository's domain documentation.
+术语以 [GLOSSARY.md](../../GLOSSARY.md) 为准，运行约定以 [architecture.md](../architecture.md) 为准；项目约束见 [AGENTS.md](../../AGENTS.md)。`CONTEXT.md` 只是阅读地图，不再维护另一份术语定义。
 
-## Before exploring, read these
+设计讨论中明确区分Task责任、Execution尝试、Agent Session和Core容量。若新用法与规范矛盾，提出明确的模型变更；不能因为旧代码仍有某字段就把它作为新含义。
 
-- `CONTEXT.md` at the repository root, or `CONTEXT-MAP.md` if it exists.
-- `docs/adr/` for architecture decisions that touch the area being changed.
-
-If these files do not exist, proceed silently. The `/domain-modeling` skill creates them lazily when terms or decisions are resolved.
-
-## File structure
-
-This is a single-context repository:
-
-```
-/
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-example-decision.md
-│   └── 0002-example-decision.md
-└── src/
-```
-
-## Use the glossary's vocabulary
-
-When output names a domain concept, use the term as defined in `CONTEXT.md`. If the needed concept is not defined there, treat that as a signal to clarify the domain model or record the gap through `/domain-modeling`.
-
-## Flag ADR conflicts
-
-If output contradicts an existing ADR, surface it explicitly rather than silently overriding it.
+[ADR](../adr/README.md) 只记录需要解释的重要取舍。历史ADR已归档，保留事实和理由，不与当前准则同时生效。术语表不包含实现方案或实验参数。
