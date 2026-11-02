@@ -1479,8 +1479,16 @@ function projectReport(state, startedAt, deadline) {
   // is not a protocol violation and must not invalidate the whole project.
   const toolProtocolErrorCount = cores.reduce((count, core) => count + core.tool_errors.filter((error) => error.protocol === true).length, 0);
   const claimedExecutionIds = [...new Set(claimHistory.map((claim) => claim.execution_id))];
-  const workspaceRefs = claimedExecutionIds.map((executionId) => state.taskService.getExecution(executionId)?.workspace_ref).filter(Boolean);
-  const workspaceBoundaryViolation = workspaceRefs.length !== claimedExecutionIds.length || new Set(workspaceRefs).size !== workspaceRefs.length;
+  const claimedExecutions = claimedExecutionIds.map((executionId) => state.taskService.getExecution(executionId));
+  const workspaceRefs = claimedExecutions.map((execution) => execution?.workspace_ref).filter(Boolean);
+  // A preparation/bind failure is allowed to end before a Workspace exists
+  // (B09). It is not a boundary violation; every Execution that actually
+  // materialized a Workspace must still have a unique one.
+  const preparationFailure = (execution) => execution?.state === 'FAILED'
+    && ['task_take_bind_failed', 'startup_prepare_failed', 'bind_prepare_failed', 'startup_failed'].includes(execution.terminal_reason);
+  const workspaceBoundaryViolation = claimedExecutions.some((execution) => !execution
+    || (!execution.workspace_ref && !preparationFailure(execution)))
+    || new Set(workspaceRefs).size !== workspaceRefs.length;
   const candidateBoundaryViolation = claimHistory.some((claim) => {
     const execution = state.taskService.getExecution(claim.execution_id);
     if (!execution?.candidate_material_id) return false;
