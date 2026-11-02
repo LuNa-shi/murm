@@ -314,6 +314,9 @@ const publicContextTools = [
       scope: { type: 'string', description: 'The bounded collaboration or proof scope for the Material.' },
       evidence_state: { type: 'string', enum: ['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale'] },
       content: {}, summary: { type: 'string' }, receiving_task_id: { type: 'string' },
+      // A revised artifact must be able to identify the failed candidate it
+      // replaces; without this field the Agent cannot record repair lineage.
+      supersedes: { type: 'string' },
     }, additionalProperties: false },
   },
 ];
