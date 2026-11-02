@@ -166,6 +166,9 @@ export class Runtime {
     // Execution. An ordinary Task handoff keeps the count; an explicit
     // identity rotation resets it.
     this.identityCompactionCounts = new Map();
+    // Reusable identity Sessions remain owned by Runtime even while no
+    // Execution is bound. Shutdown/restart must stop them too.
+    this.identitySessions = new Set();
     const configuredCoreIds = Array.isArray(coreIds)
       ? coreIds
       : Array.from({ length: Math.max(0, maxWorkers) }, (_, index) => `core-${index + 1}`);
@@ -285,6 +288,11 @@ export class Runtime {
     this.notificationUnsubscribe?.();
     this.notificationUnsubscribe = null;
     const executionIds = [...this.activeProcesses.keys()];
+    // A reusable identity Session is intentionally preserved on a normal
+    // release, but shutdown owns every live process. Capture them before the
+    // release path detaches the Execution binding.
+    const ownedSessions = new Set([...this.activeProcesses.values()].map((active) => active.session).filter(Boolean));
+    for (const session of this.identitySessions) ownedSessions.add(session);
     for (const executionId of executionIds) {
       const execution = this.taskService.getExecution(executionId);
       if (execution && ['CREATED', 'RUNNING'].includes(execution.state)) {
@@ -296,6 +304,10 @@ export class Runtime {
         this.#setCoreState(active?.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
         await Promise.resolve(active?.session?.stop?.()).catch(() => undefined);
       }
+    }
+    for (const session of ownedSessions) {
+      await Promise.resolve(session.stop?.()).catch(() => undefined);
+      this.identitySessions.delete(session);
     }
     await this.waitForSettled();
     return { active_process_count: this.activeProcesses.size };
@@ -419,7 +431,8 @@ export class Runtime {
   async sandboxExec(executionId, { command, cwd = '/workspace', timeout_ms: timeoutMs = undefined, env = {}, background = false } = {}) {
     const execution = this.#getExecution(executionId);
     if (!this.sandboxManager) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox execution is not enabled');
-    if (!this.activeProcesses.has(executionId) || !['CREATED', 'RUNNING'].includes(execution.state)) {
+    const active = this.activeProcesses.get(executionId);
+    if (!active || active.closing || !['CREATED', 'RUNNING'].includes(execution.state)) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Sandbox commands require an active Execution binding');
     }
     if (!execution.workspace_ref) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution has no materialized Workspace');
@@ -434,7 +447,8 @@ export class Runtime {
   async sandboxJob(executionId, { action, job_id: jobId } = {}) {
     const execution = this.#getExecution(executionId);
     if (!this.sandboxManager) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox execution is not enabled');
-    if (!this.activeProcesses.has(executionId) || !['CREATED', 'RUNNING'].includes(execution.state)) {
+    const active = this.activeProcesses.get(executionId);
+    if (!active || active.closing || !['CREATED', 'RUNNING'].includes(execution.state)) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Sandbox jobs require an active Execution binding');
     }
     if (typeof jobId !== 'string' || jobId.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'sandbox job_id is required');
@@ -622,6 +636,7 @@ export class Runtime {
     if (active) {
       this.activeProcesses.delete(executionId);
       await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+      this.identitySessions.delete(active.session);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
     let current = this.#getExecution(executionId);
@@ -689,6 +704,10 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     const execution = this.#getExecution(executionId);
     if (!active || execution.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime process can request wait');
+    // Freeze shell/job writes before taking the wait snapshot. Otherwise a
+    // background Sandbox job could write after the saved revision.
+    active.closing = true;
+    await this.#stopSandbox(executionId);
     let validatedWait;
     try {
       validatedWait = this.taskService.validateWaitCondition?.(executionId, {
@@ -760,6 +779,8 @@ export class Runtime {
     if (!active || !['CREATED', 'RUNNING'].includes(execution.state)) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime Execution can be blocked');
     }
+    active.closing = true;
+    await this.#stopSandbox(executionId);
     requireString(reason, 'block_reason');
     const task = this.taskService.getTask(execution.task_id);
     if (task?.completion_contract?.normal_flow === true && dependency === undefined) {
@@ -843,6 +864,12 @@ export class Runtime {
     if (!['CREATED', 'RUNNING'].includes(current.state)) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `only an active Runtime Execution can ${operation === 'handoff_task' ? 'hand off' : 'block'} a Task`);
     }
+    // Stop shell/job writes before the durable handoff/block snapshot so a
+    // late Sandbox process cannot change the Workspace after the recorded
+    // revision/fence.
+    const activeBeforeRelease = this.activeProcesses.get(id);
+    if (activeBeforeRelease) activeBeforeRelease.closing = true;
+    await this.#stopSandbox(id);
     const result = this.taskService.dispatch(operation, payload, this.#executionEnvelope(current, operationId(operation)));
     const active = this.activeProcesses.get(id);
     const workspaceRef = result.execution.workspace_ref ?? current.workspace_ref;
@@ -1108,6 +1135,8 @@ export class Runtime {
     const activeBeforeHandoff = this.activeProcesses.get(executionId);
     if (activeBeforeHandoff) activeBeforeHandoff.closing = true;
     await this.#drainCompactionCheckpoint(activeBeforeHandoff);
+    // Freeze the Sandbox before saving the handoff snapshot.
+    await this.#stopSandbox(executionId);
     current = this.#getExecution(executionId);
     let workspace = null;
     let checkpointResult = null;
@@ -1350,6 +1379,7 @@ export class Runtime {
     const activeBeforeFence = this.activeProcesses.get(executionId);
     if (activeBeforeFence) activeBeforeFence.closing = true;
     await this.#drainCompactionCheckpoint(activeBeforeFence);
+    await this.#stopSandbox(executionId);
     execution = this.#getExecution(executionId);
     const result = this.taskService.dispatch('fence_execution', {
       runtime_generation: this.runtimeGeneration,
@@ -1414,12 +1444,17 @@ export class Runtime {
 
   async restart() {
     this.runtimeGeneration += 1;
+    // Capture reusable identity Sessions before fenceExecution detaches them;
+    // an explicit Runtime restart must actually replace the processes.
+    const ownedSessions = new Set([...this.activeProcesses.values()].map((active) => active.session).filter(Boolean));
+    for (const session of this.identitySessions) ownedSessions.add(session);
     for (const execution of this.taskService.listActiveExecutions()) {
       if (execution.state === 'RUNNING' || execution.state === 'CREATED') {
         await this.fenceExecution(execution.execution_id, { reason: 'runtime_restart' });
       }
     }
-    await Promise.all([...this.activeProcesses.values()].map((active) => Promise.resolve(active.session.stop()).catch(() => undefined)));
+    await Promise.all([...ownedSessions].map((session) => Promise.resolve(session.stop?.()).catch(() => undefined)));
+    for (const session of ownedSessions) this.identitySessions.delete(session);
     this.activeProcesses.clear();
     return { runtime_generation: this.runtimeGeneration, active_executions: this.taskService.listActiveExecutions() };
   }
@@ -1778,7 +1813,10 @@ export class Runtime {
   async #releaseSessionBinding(active, executionId) {
     if (!active?.session) return;
     if (active.session.boundExecutionId === executionId) active.session.boundExecutionId = null;
-    if (active.session.identitySession === true) return;
+    if (active.session.identitySession === true) {
+      this.identitySessions.add(active.session);
+      return;
+    }
     await Promise.resolve(active.session.stop?.()).catch(() => undefined);
   }
 
@@ -1819,6 +1857,7 @@ export class Runtime {
     // time; re-binding must not multiply handlers or route late events to the
     // previous Execution.
     session.boundExecutionId = execution.execution_id;
+    if (session.identitySession === true) this.identitySessions.add(session);
     if (session.__swarmenvRuntimeBound !== true) {
       session.__swarmenvRuntimeBound = true;
       session.on('rpc', (record) => {
@@ -2123,6 +2162,8 @@ export class Runtime {
   }
 
   async #processExit(executionId) {
+    const closedActive = this.activeProcesses.get(executionId);
+    if (closedActive?.session) this.identitySessions.delete(closedActive.session);
     if (this.stopping) {
       this.activeProcesses.delete(executionId);
       await this.#stopSandbox(executionId);
@@ -2157,6 +2198,7 @@ export class Runtime {
       const execution = this.#getExecution(executionId);
       if (execution.state !== 'RUNNING') return { execution };
       await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+      this.identitySessions.delete(active.session);
       if (this.stopping) return { execution, disposition: 'stopping' };
       const recoveryAttempt = (this.recoveryAttempts.get(execution.task_id) ?? 0) + 1;
       this.recoveryAttempts.set(execution.task_id, recoveryAttempt);
@@ -2189,6 +2231,10 @@ export class Runtime {
         runtime_generation: this.runtimeGeneration,
         agent_prompt: recoveryPrompt,
       }, this.#executionEnvelope(execution, operationId('recover')));
+      // A recovered process is a fresh identity Session. Do not inherit the
+      // failed Session's compaction count; only an ordinary handoff carries
+      // the lane's count forward.
+      this.identityCompactionCounts.delete(this.#identityKey(coreId, execution));
       const replacement = await this.startExecution(recovered.execution.execution_id, { sessionReason: 'recovery' });
       return { execution: execution, recovery: replacement.execution, disposition: 'recovered' };
     })();

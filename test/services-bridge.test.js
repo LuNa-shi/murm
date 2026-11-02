@@ -147,7 +147,8 @@ test('ServicesBridge exposes canonical task status/register/take through the bou
 
     const taken = await taker.call({
       operation: 'task_take',
-      payload: { task_id: registered.task.task_id, claim_key: 'bridge:canonical:take' },
+      // A model-supplied lane must not override the authenticated bridge lane.
+      payload: { task_id: registered.task.task_id, claim_key: 'bridge:canonical:take', core_id: 'core:foreign' },
     });
     assert.equal(taken.execution.owner_ref, 'agent:taker');
     assert.equal(taken.execution.core_id, 'core:taker');
@@ -220,6 +221,56 @@ test('ServicesBridge gates sandbox commands on the active Execution binding', as
     );
   } finally {
     await unbound.stop();
+  }
+});
+
+test('ServicesBridge durably stops a provisional claim when Runtime bind fails', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:root' });
+  const task = owner.proposeTask({
+    task_type: 'proof', goal: 'rollback durable stop', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:root',
+    completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixture().environment_ref } },
+  }, { operationId: 'bridge:rollback-stop:propose' }).task;
+  const stopped = [];
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    router,
+    actorRef: 'agent:rollback-stop',
+    runtime: {
+      stopExecution: async (executionId, terminalState, reason) => {
+        stopped.push({ executionId, terminalState, reason });
+        const execution = taskService.getExecution(executionId);
+        const currentTask = taskService.getTask(execution.task_id);
+        taskService.dispatch('stop_execution', { terminal_state: terminalState, terminal_reason: reason }, makeEnvelope({
+          operationId: `rollback-stop:${executionId}`,
+          actorRef: 'runtime:test',
+          taskId: currentTask.task_id,
+          executionId,
+          specVersion: execution.spec_version,
+          stateVersion: execution.state_version,
+          fencingVersion: execution.fencing_version,
+        }));
+      },
+    },
+    onClaim: async () => { throw new Error('controlled bind failure'); },
+  });
+  try {
+    await assert.rejects(
+      () => bridge.call({ operation: 'task_take', payload: { task_id: task.task_id, claim_key: 'bridge:rollback-stop:take', workspace_mode: 'clean' } }),
+      /controlled bind failure/,
+    );
+    assert.equal(stopped.length, 1);
+    assert.equal(stopped[0].terminalState, 'FAILED');
+    assert.equal(taskService.listActiveExecutions().length, 0);
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+  } finally {
+    await bridge.stop();
+    taskService.close();
   }
 });
 

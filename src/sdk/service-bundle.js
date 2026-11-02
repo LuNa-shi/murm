@@ -88,8 +88,12 @@ function validateSecretReferences(secretRefs) {
 }
 
 function rejectInlineSecrets(manifest) {
-  const forbidden = /(^|_)(token|secret|passwd|password|api_?key|credential|private_?key)($|_)/i;
+  const forbidden = /(^|_)(token|secret|passwd|password|api_?key|credential|private_?key|authorization|auth|cookie|access_?key|session_?key|client_?secret)($|_)/i;
+  const credentialValue = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----/;
   const walk = (value, path = '') => {
+    if (typeof value === 'string' && credentialValue.test(value)) {
+      throw invalid('service bundle must not embed a credential; use secret_refs instead', { field: path || 'value' });
+    }
     if (!isRecord(value)) return;
     for (const [key, entry] of Object.entries(value)) {
       if (key === 'secret_refs' || key === 'documentation') continue;
@@ -97,6 +101,8 @@ function rejectInlineSecrets(manifest) {
         throw invalid(`service bundle must not embed a credential; use secret_refs instead`, { field: path ? `${path}.${key}` : key });
       }
       if (isRecord(entry)) walk(entry, path ? `${path}.${key}` : key);
+      else if (Array.isArray(entry)) entry.forEach((item, index) => walk(item, `${path ? `${path}.` : ''}${key}[${index}]`));
+      else walk(entry, path ? `${path}.${key}` : key);
     }
   };
   walk(manifest);

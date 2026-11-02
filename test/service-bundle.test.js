@@ -97,6 +97,9 @@ test('service bundle rejects missing docs, traversal, and embedded credentials',
 
     const credential = await bundleDir(root, { endpoint: { transport: 'in-process', token: 'literal-secret' } });
     await assert.rejects(loadServiceBundle(credential, { rootDir: root }), (error) => error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID);
+
+    const metadataCredential = await bundleDir(root, { metadata: { headers: { Authorization: 'Bearer abcdefghijklmnop' } } });
+    await assert.rejects(loadServiceBundle(metadataCredential, { rootDir: root }), (error) => error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

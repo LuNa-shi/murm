@@ -448,6 +448,24 @@ test('watchdog recovers a heartbeat-only stalled Session but not an active turn'
   }
 });
 
+test('Runtime shutdown stops a released reusable identity Session', async () => {
+  const fixtureData = await fixture();
+  const { runtime, adapter, claimed, rootDir, taskService } = fixtureData;
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    const session = adapter.sessions[0];
+    session.identitySession = true;
+    // A normal release detaches the Execution but keeps the identity Session.
+    await runtime.releaseExecution(claimed.execution.execution_id);
+    assert.equal(session.closed, false);
+    await runtime.shutdown();
+    assert.equal(session.closed, true);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('compaction failure is classified and recovered with a fresh Session', async () => {
   const fixtureData = await fixture();
   const { runtime, adapter, claimed, rootDir, taskService } = fixtureData;

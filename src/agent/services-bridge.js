@@ -138,9 +138,16 @@ export class ServicesBridge {
       // owner before clearing the in-memory identity so it cannot remain
       // claimable through a stale bridge.
       try {
-        if (typeof this.runtime?.releaseExecution === 'function') {
-          await this.runtime.releaseExecution(this.executionId);
-        } else if (typeof this.taskService?.dispatch === 'function') {
+        let rolledBack = false;
+        // releaseExecution only removes a process/Workspace for an Execution
+        // that is already terminal. A provisional task_take binding is still
+        // CREATED/RUNNING, so it must be stopped durably; otherwise the Task
+        // stays RUNNING with no valid owner and becomes unclaimable.
+        if (typeof this.runtime?.stopExecution === 'function') {
+          await this.runtime.stopExecution(this.executionId, 'FAILED', 'task_take_bind_failed');
+          rolledBack = true;
+        }
+        if (!rolledBack && typeof this.taskService?.dispatch === 'function') {
           const execution = this.taskService.getExecution?.(this.executionId);
           this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED', reason: 'task_take_bind_failed' }, makeEnvelope({
             operationId: `bridge:task-take-rollback:${this.executionId}`,
@@ -151,6 +158,10 @@ export class ServicesBridge {
             stateVersion: execution?.state_version ?? null,
             fencingVersion: execution?.fencing_version ?? null,
           }));
+          rolledBack = true;
+        }
+        if (!rolledBack && typeof this.runtime?.fenceExecution === 'function') {
+          await this.runtime.fenceExecution(this.executionId, { reason: 'task_take_bind_failed' });
         }
       } catch { /* preserve the original bind failure; cleanup is best effort */ }
       this.taskId = null;
@@ -486,7 +497,8 @@ export class ServicesBridge {
             ...Object.fromEntries(Object.entries(payload).filter(([key]) => !['owner_ref', 'agent_prompt', 'initial_prompt'].includes(key))),
             owner_ref: this.actorRef,
             agent_prompt: this.agentPrompt,
-            core_id: this.coreId ?? currentExecution?.core_id ?? payload.core_id ?? null,
+            // The lane is authenticated runtime state, never a model choice.
+            core_id: this.coreId ?? currentExecution?.core_id ?? null,
           }
           : payload;
         const invoke = async () => {

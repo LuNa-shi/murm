@@ -2156,6 +2156,8 @@ async function createProjectState(problem, config, options) {
       router,
       registry: capabilityRegistry,
       actorRef: `agent:core-${index}`,
+      // The bridge, not the model payload, owns the lane identity.
+      coreId: `core-${index}`,
       // This is an active reusable identity even while it has no current
       // Execution.  BOUND is intentional: it exposes task_status/task_take
       // and prevents the legacy Selection role from becoming a second Agent.
@@ -2832,9 +2834,9 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         block_reason: event.block_reason ?? null,
         claimable_count: event.claimable_count ?? null,
         blocked_count: event.blocked_count ?? null,
-        healthy_identity_loop_count: event.healthy_identity_loop_count ?? null,
-        idle_identity_loop_count: event.idle_identity_loop_count ?? null,
-        signaled_identity_loop_count: event.signaled_identity_loop_count ?? null,
+        healthy_identity_loop_count: event.healthy_loop_count ?? event.healthy_identity_loop_count ?? null,
+        idle_identity_loop_count: event.idle_loop_count ?? event.idle_identity_loop_count ?? null,
+        signaled_identity_loop_count: event.signaled_loop_count ?? event.signaled_identity_loop_count ?? null,
         recovery_requested_count: event.recovery_requested_count ?? null,
         repaired_task_count: event.repaired_task_count ?? null,
         claim_count: event.claim_count ?? null,
