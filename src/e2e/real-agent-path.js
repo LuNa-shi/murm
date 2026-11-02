@@ -2,6 +2,7 @@ import { execFile as defaultExecFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { AgentCoreAdapter, resolveAgentCoreRoute } from '../agent/pi-adapter.js';
+import { SYSTEM_IDENTITY_PROMPT } from '../agent/agent-prompt.js';
 import { ContextService } from '../context/context-service.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
 import { ServicesRouter } from '../sdk/service-router.js';
@@ -560,6 +561,9 @@ export async function runRealAgentPath({
     group: env.NUROUTER_PI_GROUP,
     extensionPath,
     env: childEnv,
+    // Stable identity rules enter through Pi's system-role addendum; the
+    // controlled first-candidate instructions remain the user turn.
+    systemPrompt: SYSTEM_IDENTITY_PROMPT,
   });
   const runtimeLifecycleEvents = [];
   const runtime = new Runtime({

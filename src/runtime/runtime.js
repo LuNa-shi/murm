@@ -1584,10 +1584,15 @@ export class Runtime {
         runtimeCapabilities: this.runtimeCapabilities,
         context: { task_id: current.task_id, execution_id: current.execution_id },
       });
-      const staticSop = [
-        role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT,
-        execution.agent_prompt,
-      ].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
+      const adapterHasSystemPrompt = Boolean(
+        this.agentAdapter?.config?.systemPrompt || this.agentAdapter?.config?.systemPromptPath,
+      );
+      const staticSop = adapterHasSystemPrompt
+        ? (execution.agent_prompt ?? '')
+        : [
+          role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT,
+          execution.agent_prompt,
+        ].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
       const promptSnapshot = buildPromptSnapshot({
         role,
         profile,
