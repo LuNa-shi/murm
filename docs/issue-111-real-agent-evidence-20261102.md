@@ -146,6 +146,9 @@ command on clean commit `0bc87896236a6a221c67afba434d13591306bf81`:
 - Result **SUCCEEDED**: two Materials, two CheckResults, first `source_failure`
   followed by a superseding revision and `PASS` in the same Session/Execution.
 - Sanitized record: `experiments/issue-111-probe-0bc8789/analysis/report.json`.
+- Session inspection: the identity contract is present in the leading system
+  `addendum` section and absent from the user turn, confirming the stable /
+  dynamic separation on the real Pi version.
 
 This supersedes the `d5214b5` probe as the current implementation evidence; the
 `d5214b5` result remains a valid record of that earlier commit.
