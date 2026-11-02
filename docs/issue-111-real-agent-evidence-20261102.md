@@ -179,3 +179,12 @@ errors) was probed on clean `e81082c0082410685d7786d6c3ba771bec563f3d`:
   by a superseding revision and PASS in the same Session/Execution.
 - Sanitized record: `experiments/issue-111-probe-e81082c/analysis/report.json`.
 - Deterministic suite: 316/316.
+
+
+## Final probe after audit classification fix (`1e418a29fc0fef8ba58516d38cb6b6148049c9c2`)
+
+- Preflight **READY_TO_LAUNCH**, clean worktree, implementation commit recorded.
+- Result **SUCCEEDED**: two Materials, two CheckResults, source FAIL → superseding
+  revision → PASS in one Session/Execution.
+- Sanitized record: `experiments/issue-111-probe-1e418a2/analysis/report.json`.
+- Deterministic suite: 316/316.

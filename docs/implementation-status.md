@@ -1,6 +1,6 @@
 # 目标与实现状态
 
-代码核对基线为 Issue #111 后续实现提交 `e81082c0082410685d7786d6c3ba771bec563f3d`（基于 PR #112 的 `1aca2651cda88926f2d4732ad769c7ba1bda242c`）。完整确定性回归为 316/316。真实 Agent 受控 probe 在同一 clean 实现上返回 **SUCCEEDED**：同一 Session/Execution 内完成 source-level FAIL → 读取诊断 → 修订并 supersede → 第二次检查 PASS。两小时四 Core 对照运行尚未执行，仍是本阶段关闭前的缺口；不能用受控 probe 替代。
+代码核对基线为 Issue #111 后续实现提交 `1e418a29fc0fef8ba58516d38cb6b6148049c9c2`（基于 PR #112 的 `1aca2651cda88926f2d4732ad769c7ba1bda242c`）。完整确定性回归为 316/316。真实 Agent 受控 probe 在同一 clean 实现上返回 **SUCCEEDED**：同一 Session/Execution 内完成 source-level FAIL → 读取诊断 → 修订并 supersede → 第二次检查 PASS。两小时四 Core 对照运行尚未执行，仍是本阶段关闭前的缺口；不能用受控 probe 替代。
 
 | 目标 | 已有情况/尚待实现 | 归属与验收 |
 | --- | --- | --- |

@@ -1,12 +1,12 @@
 # Issue #111 evidence index
 
-Implementation commit: `e81082c0082410685d7786d6c3ba771bec563f3d`
+Implementation commit: `1e418a29fc0fef8ba58516d38cb6b6148049c9c2`
 (clean worktree). This index was written after that commit; later
 documentation-only commits do not change the implementation under test.
 
 Shorthand: **R** = real Agent event, **I** = deterministic/integration test.
 The sanitized real-Agent report is
-`experiments/issue-111-probe-e81082c/analysis/report.json` (ignored local
+`experiments/issue-111-probe-1e418a2/analysis/report.json` (ignored local
 evidence). Raw transcripts, proof text, and credentials are not published.
 
 | Item | Implementation | Regression/integration | Real evidence | Result / gap |
