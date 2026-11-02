@@ -21,6 +21,7 @@ Registered before launch.
 | Provider / model | local ignored `.env`: `openai-codex` / `gpt-6.1-sol` |
 | Cores / project parallelism | 4 / 1 |
 | Timebox | 7,200,000 ms |
+| Task model | `flat` (Task-centric Mission queue) |
 | Parallel mode | `semantic`, `--normal-flow` |
 | Compaction | max 3 successful compactions; handoff at current window ratio >= 0.8 |
 | Window measurement | Pi `get_state` / `get_session_stats` `contextUsage`; never cumulative tokens |
@@ -42,7 +43,7 @@ timeout 7500s node scripts/run-putnambench-benchmark.mjs \
   --problems config/putnambench-12.json \
   --putnambench-root /home/ubuntu/PutnamBench \
   --problem putnam_2025_b1 --cores 4 --project-parallelism 1 \
-  --timebox-ms 7200000 --parallel-mode semantic --normal-flow \
+  --task-model flat --timebox-ms 7200000 --parallel-mode semantic --normal-flow \
   --experiment-root experiments \
   --experiment-dir experiments/issue-111-2h-20261102 \
   --report-dir experiments/issue-111-2h-20261102/analysis/runner-report \
