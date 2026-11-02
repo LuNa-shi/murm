@@ -809,6 +809,9 @@ export async function runRealAgentPath({
       await Promise.resolve(active.session.stop?.()).catch(() => undefined);
     }
     await bridge.stop();
+    // Drain process-exit/failure handlers before closing the durable store;
+    // a late Pi close event must not race recovery bookkeeping.
+    await runtime.waitForSettled().catch(() => undefined);
     taskService.close();
   }
 }

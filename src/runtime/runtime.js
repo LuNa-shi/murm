@@ -2141,7 +2141,15 @@ export class Runtime {
         this.logger?.append({ event: 'runtime.recovery_exhausted', execution_id: executionId, failure_class: failureClass, recovery_attempt: recoveryAttempt });
         return { execution: fenced.execution, recovery: null, disposition: 'exhausted' };
       }
-      const task = this.taskService.getTask(execution.task_id);
+      let task;
+      try {
+        task = this.taskService.getTask(execution.task_id);
+      } catch (error) {
+        // A shutdown may close the durable store while a process-exit event is
+        // still being handled. Never keep recovery alive against a closed DB.
+        if (this.stopping || error?.code === 'ERR_INVALID_STATE') return { execution, disposition: 'stopping' };
+        throw error;
+      }
       const recoveryPrompt = this.#recoveryPrompt(task, execution, failureClass, recoveryAttempt);
       const nextFencingVersion = execution.fencing_version + 1;
       if (execution.workspace_ref) {
