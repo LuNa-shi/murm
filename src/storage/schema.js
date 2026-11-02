@@ -102,13 +102,36 @@ CREATE TABLE IF NOT EXISTS task_notifications (
   delivery_attempts INTEGER NOT NULL DEFAULT 0 CHECK (delivery_attempts >= 0),
   created_at TEXT NOT NULL,
   delivered_at TEXT,
-  delivered_execution_id TEXT
+  delivered_execution_id TEXT,
+  handled_at TEXT,
+  handled_execution_id TEXT,
+  handling_decision TEXT,
+  handling_action TEXT,
+  handling_json TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE INDEX IF NOT EXISTS task_notifications_pending
   ON task_notifications(recipient_task_id, delivered_at, created_at);
 CREATE INDEX IF NOT EXISTS task_notifications_execution
   ON task_notifications(recipient_execution_id, delivered_at, created_at);
+
+-- Delivery and handling are separate facts.  A Task-level notification may
+-- be delivered to more than one active Execution, and each recipient must
+-- acknowledge/act on it independently before it is considered handled.
+CREATE TABLE IF NOT EXISTS task_notification_receipts (
+  notification_id TEXT NOT NULL REFERENCES task_notifications(notification_id),
+  execution_id TEXT NOT NULL REFERENCES executions(execution_id),
+  delivery_attempts INTEGER NOT NULL DEFAULT 0 CHECK (delivery_attempts >= 0),
+  delivered_at TEXT,
+  handled_at TEXT,
+  handling_decision TEXT,
+  handling_action TEXT,
+  handling_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (notification_id, execution_id)
+);
+
+CREATE INDEX IF NOT EXISTS task_notification_receipts_execution
+  ON task_notification_receipts(execution_id, handled_at, delivered_at);
 
 -- A Material link is an explicit delivery/knowledge edge.  It does not make
 -- the linked Task a parent or create a scheduling dependency.  role tells

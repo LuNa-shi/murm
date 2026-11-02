@@ -239,6 +239,12 @@ const publicTaskTools = [
     parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, core_id: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' }, input_material_refs: { type: 'array', items: { type: 'string' } } }, additionalProperties: false },
   },
   {
+    name: 'task_feedback', service: 'task', operation: 'task_feedback', version: '1.0',
+    description: 'Record this Execution\'s durable decision and action for delivered feedback; another Execution may retain its own handling state.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['notification_id', 'decision', 'action'], properties: { notification_id: { type: 'string' }, decision: { type: 'string' }, action: { type: 'string' }, details: { type: 'object' } }, additionalProperties: false },
+  },
+  {
     name: 'execution_progress', service: 'task', operation: 'execution_progress', version: '1.0',
     description: 'Save a bounded Progress Material and either continue the current Execution or hand it off.',
     scope: 'execution-write', side_effect: true,

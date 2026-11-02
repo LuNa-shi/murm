@@ -366,7 +366,7 @@ export class ServicesBridge {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
       }
       const service = this.router ?? { dispatch: (name, body, envelope) => {
-        if (['get_task', 'get_execution', 'list_tasks', 'list_claimable_tasks', 'list_executions', 'task_status', 'task_register', 'task_take', 'execution_progress'].includes(name)) return this.taskService.dispatch(name, body, envelope);
+        if (['get_task', 'get_execution', 'list_tasks', 'list_claimable_tasks', 'list_executions', 'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
       } };
       const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;

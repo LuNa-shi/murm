@@ -21,7 +21,7 @@ const CURRENT_AGENT_OPERATIONS = new Set([
   'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'claim',
   'create_child_task', 'propose_task',
   'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
-  'task_status', 'task_register', 'task_take', 'execution_progress',
+  'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
   'publish_material', 'read_materials', 'consume_materials',
   'context_search_materials', 'context_get_material', 'context_publish_material',
   'submit_candidate', 'get_check_result', 'get_execution',

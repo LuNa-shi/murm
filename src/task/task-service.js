@@ -11,7 +11,7 @@ import {
   validateTaskProposal,
 } from './task-types.js';
 
-const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'block_task', 'block_task_semantic', 'close_task', 'complete_task', 'execution_progress', 'expire_execution', 'fence_execution', 'handoff_execution', 'handoff_task', 'heartbeat', 'link_material', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'wake_execution']);
+const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'block_task', 'block_task_semantic', 'close_task', 'complete_task', 'execution_progress', 'expire_execution', 'fence_execution', 'handoff_execution', 'handoff_task', 'heartbeat', 'link_material', 'record_handoff_reminder', 'recover_execution', 'request_rework', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'task_feedback', 'wake_execution']);
 const CLAIM_OPERATION = 'claim';
 const MODERN_OPERATION_ALIASES = Object.freeze({
   'mission.create': 'create_mission',
@@ -42,9 +42,11 @@ const MODERN_OPERATION_ALIASES = Object.freeze({
   task_register: 'task_register',
   'task.take': 'task_take',
   task_take: 'task_take',
+  'task.feedback': 'task_feedback',
+  task_feedback: 'task_feedback',
   'execution.progress': 'execution_progress',
 });
-const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic']);
+const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic', 'task_feedback']);
 const MODERN_READ_OPERATIONS = new Set(['get_mission', 'list_task', 'view_task', 'list_task_materials']);
 const TASK_MUTATING_OPERATIONS = new Set([
   'accept_task', 'apply_check_result', 'create_branch_group', 'create_child_task',
@@ -61,7 +63,9 @@ const TASK_EVENT_OPERATIONS = new Set([
   'handoff_execution', 'reconcile_task', 'recover_execution', 'reopen_task', 'request_rework',
   'request_wait', 'resume_execution', 'stop_execution', 'submit_candidate', 'wake_execution',
   'propose_structure_change', 'propose_task', 'create_task', 'expire_execution',
-  'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic', 'execution_progress',
+  'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic',
+  'task_feedback',
+  'execution_progress',
 ]);
 const TASK_READ_OPERATIONS = new Set([
   'get_task', 'get_execution', 'get_task_structure', 'explain_task_readiness',
@@ -168,6 +172,8 @@ function rowToNotification(row) {
     ...row,
     payload: parse(row.payload_json) ?? {},
     delivered: row.delivered_at !== null && row.delivered_at !== undefined,
+    handled: row.handled_at !== null && row.handled_at !== undefined,
+    handling: parse(row.handling_json) ?? {},
   };
 }
 
@@ -188,6 +194,28 @@ export class TaskService {
   constructor(database = ':memory:', { contextService = null, checkerHealthReader = null, logger = null, admission = {} } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(SCHEMA_SQL);
+    // Notifications gained per-recipient handling state after the initial
+    // lifecycle schema.  Keep old persistent stores readable while allowing
+    // a shared Mission notification to be delivered and handled independently
+    // by each active Execution.
+    const notificationColumns = new Set(this.db.prepare('PRAGMA table_info(task_notifications)').all().map((column) => column.name));
+    if (!notificationColumns.has('handled_at')) this.db.exec('ALTER TABLE task_notifications ADD COLUMN handled_at TEXT');
+    if (!notificationColumns.has('handled_execution_id')) this.db.exec('ALTER TABLE task_notifications ADD COLUMN handled_execution_id TEXT');
+    if (!notificationColumns.has('handling_decision')) this.db.exec('ALTER TABLE task_notifications ADD COLUMN handling_decision TEXT');
+    if (!notificationColumns.has('handling_action')) this.db.exec('ALTER TABLE task_notifications ADD COLUMN handling_action TEXT');
+    if (!notificationColumns.has('handling_json')) this.db.exec("ALTER TABLE task_notifications ADD COLUMN handling_json TEXT NOT NULL DEFAULT '{}'");
+    this.db.exec(`CREATE TABLE IF NOT EXISTS task_notification_receipts (
+      notification_id TEXT NOT NULL REFERENCES task_notifications(notification_id),
+      execution_id TEXT NOT NULL REFERENCES executions(execution_id),
+      delivery_attempts INTEGER NOT NULL DEFAULT 0 CHECK (delivery_attempts >= 0),
+      delivered_at TEXT,
+      handled_at TEXT,
+      handling_decision TEXT,
+      handling_action TEXT,
+      handling_json TEXT NOT NULL DEFAULT '{}',
+      PRIMARY KEY (notification_id, execution_id)
+    )`);
+    this.db.exec('CREATE INDEX IF NOT EXISTS task_notification_receipts_execution ON task_notification_receipts(execution_id, handled_at, delivered_at)');
     const taskTableSql = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get()?.sql ?? '';
     const needsTaskStateMigration = !taskTableSql.includes("'DONE'") || !taskTableSql.includes("'CLOSED'") || !taskTableSql.includes("'CANCELED'");
     // Older MVP databases made execution_id unique in claim_keys. A waiting
@@ -390,7 +418,7 @@ export class TaskService {
     requireString(taskId, 'task_id');
     if (executionId !== null) requireString(executionId, 'execution_id');
     return this.db.prepare(`SELECT * FROM task_notifications
-      WHERE recipient_task_id = ? AND delivered_at IS NULL
+      WHERE recipient_task_id = ? AND delivered_at IS NULL AND handled_at IS NULL
         AND (recipient_execution_id IS NULL OR recipient_execution_id = ?
           OR NOT EXISTS (
             SELECT 1 FROM executions addressed
@@ -398,6 +426,51 @@ export class TaskService {
               AND addressed.state IN ('CREATED', 'RUNNING', 'WAITING')
           ))
       ORDER BY created_at, notification_id`).all(taskId, executionId).map(rowToNotification);
+  }
+
+  /**
+   * Return feedback that this particular Execution has not handled yet.
+   *
+   * `listPendingNotifications` intentionally preserves the old undelivered
+   * queue projection.  This per-Execution view is the continuation boundary:
+   * a notification may already have been delivered to a fenced predecessor,
+   * yet remains available to the successor until that successor records a
+   * decision and action.
+   */
+  listUnprocessedNotifications(taskId, executionId = null) {
+    requireString(taskId, 'task_id');
+    if (executionId !== null) requireString(executionId, 'execution_id');
+    const rows = this.db.prepare(`SELECT n.* FROM task_notifications n
+      WHERE n.recipient_task_id = ? AND n.handled_at IS NULL
+        AND (n.recipient_execution_id IS NULL OR n.recipient_execution_id = ?
+          OR NOT EXISTS (
+            SELECT 1 FROM executions addressed
+            WHERE addressed.execution_id = n.recipient_execution_id
+              AND addressed.state IN ('CREATED', 'RUNNING', 'WAITING')
+          ))
+        AND (? IS NULL OR NOT EXISTS (
+          SELECT 1 FROM task_notification_receipts r
+          WHERE r.notification_id = n.notification_id
+            AND r.execution_id = ? AND r.handled_at IS NOT NULL
+        ))
+      ORDER BY n.created_at, n.notification_id`).all(taskId, executionId, executionId, executionId);
+    return rows.map((row) => {
+      const notification = rowToNotification(row);
+      if (executionId === null) return notification;
+      const receipt = this.db.prepare(`SELECT * FROM task_notification_receipts
+        WHERE notification_id = ? AND execution_id = ?`).get(row.notification_id, executionId);
+      return {
+        ...notification,
+        recipient_delivery: receipt ? {
+          delivered_at: receipt.delivered_at ?? null,
+          delivery_attempts: receipt.delivery_attempts ?? 0,
+          handled_at: receipt.handled_at ?? null,
+          handling_decision: receipt.handling_decision ?? null,
+          handling_action: receipt.handling_action ?? null,
+          handling: parse(receipt.handling_json) ?? {},
+        } : null,
+      };
+    });
   }
 
   /** Return the durable notification projection used by sanitized reports. */
@@ -422,6 +495,15 @@ export class TaskService {
       }
     }
     const updatedAt = now();
+    this.db.prepare(`INSERT INTO task_notification_receipts
+      (notification_id, execution_id, delivery_attempts, delivered_at, handled_at,
+       handling_decision, handling_action, handling_json)
+      VALUES (?, ?, 1, ?, NULL, NULL, NULL, '{}')
+      ON CONFLICT(notification_id, execution_id) DO UPDATE SET
+        delivery_attempts = task_notification_receipts.delivery_attempts + 1,
+        delivered_at = COALESCE(task_notification_receipts.delivered_at, excluded.delivered_at)`).run(
+      notificationId, executionId, updatedAt,
+    );
     this.db.prepare(`UPDATE task_notifications
       SET delivered_at = ?, delivered_execution_id = ?, delivery_attempts = delivery_attempts + 1
       WHERE notification_id = ? AND delivered_at IS NULL`).run(updatedAt, executionId, notificationId);
@@ -433,6 +515,55 @@ export class TaskService {
     requireString(notificationId, 'notification_id');
     this.db.prepare('UPDATE task_notifications SET delivery_attempts = delivery_attempts + 1 WHERE notification_id = ? AND delivered_at IS NULL').run(notificationId);
     return rowToNotification(this.db.prepare('SELECT * FROM task_notifications WHERE notification_id = ?').get(notificationId));
+  }
+
+  /** Record the recipient Execution's durable decision and resulting action. */
+  markNotificationHandled(notificationId, executionId, { decision, action, details = {} } = {}) {
+    requireString(notificationId, 'notification_id');
+    requireString(executionId, 'execution_id');
+    requireString(decision, 'handling_decision');
+    requireString(action, 'handling_action');
+    if (!details || typeof details !== 'object' || Array.isArray(details)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handling details must be an object');
+    }
+    const existing = this.db.prepare('SELECT * FROM task_notifications WHERE notification_id = ?').get(notificationId);
+    if (!existing) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown notification: ${notificationId}`);
+    if (existing.recipient_execution_id && existing.recipient_execution_id !== executionId) {
+      const addressed = this.getExecution(existing.recipient_execution_id);
+      if (addressed && ['CREATED', 'RUNNING', 'WAITING'].includes(addressed.state)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `notification is addressed to another active Execution: ${existing.recipient_execution_id}`);
+      }
+    }
+    const handledAt = now();
+    this.db.prepare(`INSERT INTO task_notification_receipts
+      (notification_id, execution_id, delivery_attempts, delivered_at, handled_at,
+       handling_decision, handling_action, handling_json)
+      VALUES (?, ?, 1, ?, ?, ?, ?, ?)
+      ON CONFLICT(notification_id, execution_id) DO UPDATE SET
+        delivered_at = COALESCE(task_notification_receipts.delivered_at, excluded.delivered_at),
+        handled_at = excluded.handled_at,
+        handling_decision = excluded.handling_decision,
+        handling_action = excluded.handling_action,
+        handling_json = excluded.handling_json`).run(
+      notificationId, executionId, handledAt, handledAt, decision, action, json(details),
+    );
+    // Specific Execution notifications have one authoritative recipient and
+    // retain the legacy row-level projection. Task-level notifications stay
+    // open at the row level until each recipient's receipt is handled.
+    if (existing.recipient_execution_id === executionId) {
+      this.db.prepare(`UPDATE task_notifications SET
+        delivered_at = COALESCE(delivered_at, ?), delivered_execution_id = COALESCE(delivered_execution_id, ?),
+        handled_at = ?, handled_execution_id = ?, handling_decision = ?, handling_action = ?, handling_json = ?
+        WHERE notification_id = ?`).run(
+        handledAt, executionId, handledAt, executionId, decision, action, json(details), notificationId,
+      );
+    }
+    const row = this.db.prepare('SELECT * FROM task_notifications WHERE notification_id = ?').get(notificationId);
+    return {
+      notification: rowToNotification(row),
+      receipt: this.db.prepare(`SELECT * FROM task_notification_receipts
+        WHERE notification_id = ? AND execution_id = ?`).get(notificationId, executionId),
+    };
   }
 
   /** Wake reconciliation when a dependency-owned service commits a fact. */
@@ -1576,6 +1707,21 @@ export class TaskService {
     }, claimEnvelope);
   }
 
+  #taskFeedback(payload, envelope) {
+    const execution = this.#executionForWrite(envelope);
+    const notificationId = requireString(payload.notification_id ?? payload.notificationId, 'notification_id');
+    const handled = this.markNotificationHandled(notificationId, execution.execution_id, {
+      decision: payload.decision,
+      action: payload.action,
+      details: payload.details ?? payload.basis ?? {},
+    });
+    return {
+      ...handled,
+      task: this.getTask(execution.task_id),
+      execution: this.getExecution(execution.execution_id),
+    };
+  }
+
   #executionProgress(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     const kind = payload.kind ?? 'checkpoint';
@@ -1709,6 +1855,7 @@ export class TaskService {
       case 'block_task_semantic': return this.#blockTaskSemantic(payload, envelope);
       case 'task_register': return this.#taskRegister(payload, envelope);
       case 'task_take': return this.#taskTake(payload, envelope);
+      case 'task_feedback': return this.#taskFeedback(payload, envelope);
       case 'execution_progress': return this.#executionProgress(payload, envelope);
       case 'propose_task': return this.#proposeTask(payload, envelope);
       case 'create_child_task': return this.#createChildTask(payload, envelope);

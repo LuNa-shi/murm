@@ -216,6 +216,11 @@ export class ServicesSDK {
     }, options);
   }
 
+  /** Record the current Execution's decision and action for delivered feedback. */
+  taskFeedback(payload = {}, options = {}) {
+    return this.#write('task_feedback', payload, options);
+  }
+
   /** Save Progress Material and checkpoint or hand off the current Execution. */
   executionProgress(payload = {}, options = {}) {
     return this.#write('execution_progress', payload, options);

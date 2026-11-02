@@ -38,6 +38,26 @@ function classifySessionFailure(record) {
   return null;
 }
 
+function finitePositive(value) {
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function contextWindowRatio(record, session) {
+  const usage = record?.usage ?? record?.result?.usage ?? record?.data?.usage ?? {};
+  const contextWindow = finitePositive(
+    record?.context_window ?? record?.contextWindow ?? record?.model?.contextWindow ??
+    record?.data?.model?.contextWindow ?? session?.contextWindow,
+  );
+  const tokens = finitePositive(
+    record?.tokens ?? record?.token_count ?? record?.context_tokens ??
+    record?.input_tokens ?? record?.result?.tokensBefore ?? record?.result?.tokens_before ??
+    record?.tokensBefore ?? record?.tokens_before ?? usage.tokens ?? usage.total_tokens ??
+    usage.input_tokens ?? usage.prompt_tokens,
+  );
+  if (contextWindow === null || tokens === null) return null;
+  return { ratio: tokens / contextWindow, tokens, context_window: contextWindow };
+}
+
 function normalizeWaitFiles(files) {
   if (files === undefined || files === null) return {};
   if (!files || typeof files !== 'object' || Array.isArray(files)) {
@@ -104,7 +124,7 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -117,6 +137,10 @@ export class Runtime {
     this.capabilityRegistry = capabilityRegistry;
     this.runtimeCapabilities = runtimeCapabilities;
     this.maxRecoveryAttempts = maxRecoveryAttempts;
+    if (!Number.isInteger(maxCompactions) || maxCompactions < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'maxCompactions must be a non-negative integer');
+    if (!Number.isFinite(handoffWindowRatio) || handoffWindowRatio <= 0 || handoffWindowRatio > 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffWindowRatio must be greater than 0 and at most 1');
+    this.maxCompactions = maxCompactions;
+    this.handoffWindowRatio = handoffWindowRatio;
     this.watchdogTimeoutMs = watchdogTimeoutMs;
     if (!Number.isFinite(executionTimeoutMs) || executionTimeoutMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'executionTimeoutMs must be positive');
     if (!Number.isFinite(handoffReminderMs) || handoffReminderMs <= 0 || handoffReminderMs >= executionTimeoutMs) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffReminderMs must be positive and less than executionTimeoutMs');
@@ -1461,7 +1485,10 @@ export class Runtime {
       expected_output: candidate.expected_output,
       relations: candidate.relations,
     })) ?? [];
-    const notifications = this.taskService.listPendingNotifications?.(task.task_id, execution.execution_id) ?? [];
+    const notificationReader = typeof this.taskService.listUnprocessedNotifications === 'function'
+      ? this.taskService.listUnprocessedNotifications.bind(this.taskService)
+      : this.taskService.listPendingNotifications?.bind(this.taskService);
+    const notifications = notificationReader?.(task.task_id, execution.execution_id) ?? [];
     const role = execution.session_reason === 'recovery' || execution.session_reason === 'session_recovery'
       ? AGENT_ROLES.RECOVERY
       : AGENT_ROLES.BOUND;
@@ -1593,6 +1620,10 @@ export class Runtime {
       lastProductiveAt: nowMs,
       lastFailureClass: null,
       failurePromise: null,
+      identityId: session.sessionId ?? randomUUID(),
+      compactionCount: 0,
+      compactionCheckpointPromise: null,
+      rotationPromise: null,
       // Initial and follow-up prompts share one queue.  Pi can accept a
       // follow-up while a turn is active, but two concurrent prompt calls
       // would reorder lifecycle notifications and Agent work.
@@ -1690,8 +1721,29 @@ export class Runtime {
     if (!active) return;
     active.lastEventAt = this.clock();
     this.logger?.append({ event: 'runtime.agent_event', execution_id: executionId, record_type: record.type, phase: active.phase });
+    const usage = contextWindowRatio(record, active.session);
     if (record.type === 'turn_start' || record.type === 'auto_retry_start' || record.type === 'compaction_start') {
       active.phase = record.type === 'turn_start' ? 'turn' : record.type === 'auto_retry_start' ? 'provider_retry' : 'compaction';
+    }
+    if (record.type === 'compaction_start') {
+      this.logger?.append({
+        event: 'runtime.compaction_started', execution_id: executionId, identity_id: active.identityId,
+        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
+        context_window: usage?.context_window ?? active.session.contextWindow ?? null,
+        window_ratio: usage?.ratio ?? null, usage_source: usage ? 'event' : 'unknown',
+      });
+      // The fourth compaction is prohibited at the adapter boundary.  A
+      // start record is the earliest portable signal before Pi mutates its
+      // context; fence/restart the identity immediately instead of waiting
+      // for a later report to discover that the limit was crossed.
+      if (active.compactionCount >= this.maxCompactions) {
+        await this.#rotateIdentity(executionId, {
+          reason: 'compaction_limit',
+          windowRatio: usage?.ratio ?? null,
+          usageSource: usage ? 'event' : 'unknown',
+        });
+        return;
+      }
     }
     if (record.type === 'turn_end') active.lastCompletedTurnAt = this.clock();
     if (record.type === 'tool_execution_end' && record.isError !== true && String(record.toolName ?? '').startsWith('swarmenv_')) {
@@ -1705,10 +1757,128 @@ export class Runtime {
       active.lastProductiveAt = this.clock();
       active.phase = 'idle';
     }
+    if (record.type === 'compaction_end' && record.result && !record.aborted) {
+      active.compactionCount += 1;
+      const postCompactionUsage = usage ?? contextWindowRatio(record.result, active.session);
+      this.logger?.append({
+        event: 'runtime.compaction_completed', execution_id: executionId, identity_id: active.identityId,
+        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
+        context_window: postCompactionUsage?.context_window ?? active.session.contextWindow ?? null,
+        window_ratio: postCompactionUsage?.ratio ?? null,
+        usage_source: postCompactionUsage ? 'event' : 'unknown',
+      });
+      // Save exactly once for each successful compaction.  The helper waits
+      // for the current turn to settle when the adapter exposes that signal;
+      // it never starts a concurrent prompt or blocks identity rotation on a
+      // failed filesystem/checkpoint write.
+      this.#queueCompactionCheckpoint(active, record);
+      if (active.compactionCount >= this.maxCompactions && !postCompactionUsage) {
+        await this.#rotateIdentity(executionId, {
+          reason: 'compaction_window_unknown', usageSource: 'unknown', windowRatio: null,
+        });
+        return;
+      }
+      if (active.compactionCount >= this.maxCompactions && postCompactionUsage?.ratio >= this.handoffWindowRatio) {
+        await this.#rotateIdentity(executionId, {
+          reason: 'compaction_window_threshold', usageSource: 'event', windowRatio: postCompactionUsage.ratio,
+        });
+        return;
+      }
+    }
+    if (record.type === 'turn_end' && active.compactionCount >= this.maxCompactions) {
+      if (!usage) {
+        this.logger?.append({ event: 'runtime.compaction_window_unknown', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, action: 'continue_until_boundary' });
+      } else if (usage.ratio >= this.handoffWindowRatio) {
+        await this.#rotateIdentity(executionId, {
+          reason: 'compaction_window_threshold', usageSource: 'event', windowRatio: usage.ratio,
+        });
+        return;
+      }
+    }
     const failureClass = classifySessionFailure(record);
     if (failureClass) {
       active.lastFailureClass = failureClass;
       await this.#handleSessionFailure(executionId, failureClass);
+    }
+  }
+
+  #queueCompactionCheckpoint(active, record) {
+    if (active.compactionCheckpointPromise) return active.compactionCheckpointPromise;
+    const executionId = active.execution.execution_id;
+    const checkpoint = {
+      kind: 'compaction',
+      reason: record.reason ?? 'compaction',
+      compaction_count: active.compactionCount,
+      identity_id: active.identityId,
+      tokens_before: record.result?.tokensBefore ?? record.result?.tokens_before ?? record.tokensBefore ?? null,
+      estimated_tokens_after: record.result?.estimatedTokensAfter ?? record.result?.estimated_tokens_after ?? null,
+    };
+    const run = (async () => {
+      try {
+        if (typeof active.session.waitForSettled === 'function') {
+          await active.session.waitForSettled({ timeoutMs: 30_000 });
+        }
+        const current = this.#getExecution(executionId);
+        if (!['CREATED', 'RUNNING'].includes(current.state)) return { status: 'not_applicable', execution: current };
+        if (!current.workspace_ref) {
+          this.logger?.append({ event: 'runtime.compaction_checkpoint_skipped', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, reason: 'no_workspace' });
+          return { status: 'not_applicable', execution: current };
+        }
+        const workspace = await this.workspaceManager.saveWorkspaceRevision({
+          workspaceRef: current.workspace_ref, executionId, fencingVersion: current.fencing_version, files: {},
+        });
+        const savedExecution = this.#saveWorkspaceReference(current, workspace, operationId('compaction-workspace'));
+        const savedCheckpoint = await this.workspaceManager.saveCheckpoint({
+          workspaceRef: workspace.workspace_ref, executionId, fencingVersion: savedExecution.fencing_version, checkpoint,
+        });
+        const checkpointResult = this.taskService.dispatch('save_checkpoint', savedCheckpoint, this.#executionEnvelope(savedExecution, operationId('compaction-checkpoint')));
+        active.execution = checkpointResult.execution;
+        active.workspace = workspace;
+        this.logger?.append({ event: 'runtime.compaction_checkpoint_saved', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, workspace_revision: workspace.workspace_revision, checkpoint_ref: savedCheckpoint.checkpoint_ref });
+        return { status: 'saved', execution: checkpointResult.execution, workspace, checkpoint: savedCheckpoint };
+      } catch (error) {
+        this.logger?.append({ event: 'runtime.compaction_checkpoint_failed', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, error_class: error?.code ?? error?.name ?? 'checkpoint_failed' });
+        return { status: 'save_failed', error_class: error?.code ?? error?.name ?? 'checkpoint_failed' };
+      }
+    })();
+    active.compactionCheckpointPromise = run.finally(() => {
+      active.compactionCheckpointPromise = null;
+    });
+    return active.compactionCheckpointPromise;
+  }
+
+  async #rotateIdentity(executionId, { reason, windowRatio = null, usageSource = 'unknown' } = {}) {
+    const active = this.activeProcesses.get(executionId);
+    if (!active) return null;
+    if (active.rotationPromise) return active.rotationPromise;
+    const previousIdentity = active.identityId;
+    const previousCompactions = active.compactionCount;
+    const rotation = (async () => {
+      // A rotation raised at compaction_start must stop promptly; do not wait
+      // for a new `agent_settled` event from the compaction that is being
+      // aborted.  A successful compaction already queued its one checkpoint,
+      // and that in-flight save is the only save we await here.
+      if (active.compactionCheckpointPromise) await active.compactionCheckpointPromise.catch(() => undefined);
+      this.logger?.append({
+        event: 'runtime.identity_rotation_started', execution_id: executionId,
+        old_identity_id: previousIdentity, compaction_count: previousCompactions,
+        reason, window_ratio: windowRatio, usage_source: usageSource,
+      });
+      const restarted = await this.restartSession(executionId, { reason: 'compaction_rotation' });
+      const replacement = this.activeProcesses.get(executionId);
+      this.logger?.append({
+        event: 'runtime.identity_rotation_completed', execution_id: executionId,
+        old_identity_id: previousIdentity, new_identity_id: replacement?.identityId ?? restarted.session?.sessionId ?? null,
+        old_compaction_count: previousCompactions, new_compaction_count: replacement?.compactionCount ?? 0,
+        reason,
+      });
+      return restarted;
+    })();
+    active.rotationPromise = rotation;
+    try {
+      return await rotation;
+    } finally {
+      active.rotationPromise = null;
     }
   }
 
