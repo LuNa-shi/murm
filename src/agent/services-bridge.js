@@ -83,7 +83,10 @@ export class ServicesBridge {
     this.capabilityProfile = capabilityProfile;
     this.capabilityProfileRegistryRevision = null;
     this.registry = registry ?? router?.registry ?? null;
-    this.runtimeCapabilities = runtimeCapabilities ?? runtimeCapabilityList();
+    // An explicit capability list is authoritative. The default Runtime list
+    // must not advertise a tool this deployment cannot execute.
+    this.runtimeCapabilities = runtimeCapabilities ?? runtimeCapabilityList()
+      .filter((capability) => runtime?.sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
     this.taskCreateMutex = taskCreateMutex;
     this.onClaim = onClaim;
     this.onClaimAccepted = onClaimAccepted;

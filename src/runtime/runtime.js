@@ -145,7 +145,10 @@ export class Runtime {
     this.logger = logger;
     this.agentLogger = agentLogger;
     this.capabilityRegistry = capabilityRegistry;
-    this.runtimeCapabilities = runtimeCapabilities;
+    // Never advertise a capability the deployment cannot execute. Sandbox
+    // tools are visible only when a Sandbox manager is bound.
+    this.runtimeCapabilities = (runtimeCapabilities ?? runtimeCapabilityList())
+      .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
     this.maxRecoveryAttempts = maxRecoveryAttempts;
     if (!Number.isInteger(maxCompactions) || maxCompactions < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'maxCompactions must be a non-negative integer');
     if (!Number.isFinite(handoffWindowRatio) || handoffWindowRatio <= 0 || handoffWindowRatio > 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffWindowRatio must be greater than 0 and at most 1');

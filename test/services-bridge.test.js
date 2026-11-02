@@ -30,6 +30,27 @@ function fixture() {
   };
 }
 
+test('ServicesBridge advertises Sandbox tools only when a Sandbox is bound', async () => {
+  const base = {
+    taskService: { getTask: () => null, getExecution: () => null },
+    contextService: {},
+    router: { dispatch: () => { throw new Error('unexpected router'); } },
+  };
+  const withoutSandbox = new ServicesBridge({ ...base, runtime: {} });
+  const withSandbox = new ServicesBridge({ ...base, runtime: { sandboxManager: {} } });
+  try {
+    const plain = withoutSandbox.getCapabilityProfile().capabilities.map((capability) => capability.operation);
+    assert.ok(!plain.includes('sandbox_exec'));
+    assert.ok(!plain.includes('sandbox_job'));
+    const sandboxed = withSandbox.getCapabilityProfile().capabilities.map((capability) => capability.operation);
+    assert.ok(sandboxed.includes('sandbox_exec'));
+    assert.ok(sandboxed.includes('sandbox_job'));
+  } finally {
+    await withoutSandbox.stop();
+    await withSandbox.stop();
+  }
+});
+
 test('ServicesBridge exposes public SDK calls over a loopback token and keeps Runtime lifecycle internal', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);

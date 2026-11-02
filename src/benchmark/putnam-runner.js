@@ -344,17 +344,33 @@ async function resolveCandidateSource(runtime, material, execution) {
   }
   const reference = material.content;
   if (!reference || typeof reference !== 'object' || Array.isArray(reference) || typeof reference.path !== 'string') {
-    throw new TypeError('candidate artifact must contain a Workspace file path or direct source text');
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate artifact must contain a Workspace file path or direct source text', {
+      remediation: 'Publish the candidate as one artifact Material whose content is the complete source text, or a {path, workspace_revision, content_hash} reference to a Workspace file.',
+    });
   }
   if (reference.workspace_revision !== undefined && reference.workspace_revision !== execution.workspace_revision) {
-    throw new TypeError(`candidate Workspace revision ${reference.workspace_revision} does not match Execution revision ${execution.workspace_revision}`);
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `candidate Workspace revision ${reference.workspace_revision} does not match Execution revision ${execution.workspace_revision}`, {
+      expected_revision: execution.workspace_revision,
+      supplied_revision: reference.workspace_revision,
+      remediation: 'Read the current Workspace revision and re-publish the candidate reference.',
+    });
   }
   const file = await runtime.readWorkspaceFile(execution.execution_id, { path: reference.path });
   if (reference.workspace_revision !== undefined && reference.workspace_revision !== file.workspace_revision) {
-    throw new TypeError(`candidate Workspace revision ${reference.workspace_revision} does not match readable revision ${file.workspace_revision}`);
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `candidate Workspace revision ${reference.workspace_revision} does not match readable revision ${file.workspace_revision}`, {
+      expected_revision: file.workspace_revision,
+      supplied_revision: reference.workspace_revision,
+      path: reference.path,
+      remediation: 'Re-read the Workspace file after saving and use its current revision/hash.',
+    });
   }
   if (reference.content_hash !== undefined && reference.content_hash !== file.content_hash) {
-    throw new TypeError(`candidate Workspace file hash does not match ${reference.path}`);
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `candidate Workspace file hash does not match ${reference.path}`, {
+      path: reference.path,
+      expected_hash: file.content_hash,
+      supplied_hash: reference.content_hash,
+      remediation: 'The Workspace file changed after the reference was created. Re-read the file and publish a fresh artifact Material with its current hash.',
+    });
   }
   return { content: file.content, contentHash: file.content_hash };
 }
@@ -1529,6 +1545,9 @@ function projectReport(state, startedAt, deadline) {
       parallel_mode: state.parallelMode,
       normal_flow: state.normalFlow,
       task_model: state.taskModel,
+      provider: state.provider ?? null,
+      model: state.model ?? null,
+      timebox_ms: state.timeboxMs ?? null,
       mission_id: state.missionId,
       initial_task_count: state.initialTaskIds?.length ?? 1,
       dynamic_task_budget: null,
@@ -1875,13 +1894,15 @@ async function createProjectState(problem, config, options) {
   // ServicesBridge uses capabilityRegistry for the named HTTP calls.
   const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService });
   const router = new ServicesRouter({ taskService, contextService, judgeService, registry: routerRegistry, logger: routerLogger });
+  const runtimeCapabilities = runtimeCapabilityList()
+    .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
   const allowedAgentToolNames = [...new Set([
     AGENT_ROLES.BOUND,
     AGENT_ROLES.RECOVERY,
   ].flatMap((role) => buildCapabilityProfile({
     role,
     registry: capabilityRegistry,
-    runtimeCapabilities: runtimeCapabilityList(),
+    runtimeCapabilities,
   }).capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`)))];
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const taskCreateMutex = selectedTaskModel === 'flat' ? new SerialTaskCreateAdmission() : null;
@@ -2734,6 +2755,9 @@ async function createProjectState(problem, config, options) {
     runId,
     problem,
     config,
+    provider: options.provider ?? process.env.NUROUTER_PI_PROVIDER ?? null,
+    model: options.model ?? process.env.NUROUTER_PI_MODEL ?? null,
+    timeboxMs: options.timeboxMs ?? 60 * 60_000,
     fixtureManifest: fixture,
     databasePath,
     projectDir,

@@ -424,4 +424,7 @@ test('Built-in Registry exposes the current Task contract without legacy lifecyc
   const reusableNames = profile.capabilities.map((capability) => capability.name);
   assert.ok(reusableNames.includes('task_take'));
   assert.ok(!reusableNames.includes('task_claim'));
+  // Unified execution_progress is the only handoff surface; the legacy
+  // task_handoff tool must not be advertised alongside it.
+  assert.ok(!reusableNames.includes('task_handoff'));
 });

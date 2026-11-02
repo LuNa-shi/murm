@@ -378,6 +378,7 @@ test('final provider retry failure starts a fresh Session from the durable Works
     const oldAgent = fixtureData.sdk.withContext({ actorRef: 'agent:old', taskId: fixtureData.task.task_id, executionId: claimed.execution.execution_id, specVersion: 1, stateVersion: started.execution.state_version, fencingVersion: started.execution.fencing_version });
     oldSession.emit('rpc', { type: 'auto_retry_end', success: false, attempt: 15, finalError: 'provider unavailable' });
     await new Promise((resolve) => setTimeout(resolve, 25));
+    await runtime.waitForSettled();
     assert.equal(oldSession.closed, true);
     assert.equal(runtime.getActiveProcessCount(), 1);
     assert.equal(adapter.sessions.length, 2);
@@ -397,6 +398,7 @@ test('final provider retry failure starts a fresh Session from the durable Works
     );
     await runtime.stopExecution(replacement.execution_id);
   } finally {
+    await runtime.waitForSettled().catch(() => undefined);
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
   }

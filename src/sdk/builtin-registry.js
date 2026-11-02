@@ -15,7 +15,7 @@ const SHARED_READ_OPERATIONS = new Set(['get_task', 'task_status']);
 const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
     'list_tasks', 'get_task', 'list_executions', 'create_child_task', 'propose_task',
-    'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
+    'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_block', 'task_close',
     'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
   ]),
   context: new Set(['publish_material', 'read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material']),
