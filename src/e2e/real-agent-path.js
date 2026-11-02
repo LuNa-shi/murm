@@ -206,6 +206,8 @@ function reportWorkspace(workspace) {
     workspace_ref: workspace.workspace_ref ?? null,
     workspace_revision: workspace.workspace_revision ?? null,
     content_hash: workspace.content_hash ?? null,
+    git_commit: workspace.git_commit ?? null,
+    git_worktree: workspace.git_worktree ?? workspace.workspace_ref ?? null,
     execution_id: workspace.execution_id ?? null,
     fencing_version: workspace.fencing_version ?? null,
     parent_workspace_ref: workspace.parent_workspace_ref ?? null,

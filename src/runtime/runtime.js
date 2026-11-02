@@ -451,7 +451,7 @@ export class Runtime {
     return this.startClaimedExecution(executionOrId, options);
   }
 
-  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null, promptSnapshot = null, capabilityProfile = null, promptContext = {}, coreId = null, sessionReason = 'bound' } = {}) {
+  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null, promptSnapshot = null, capabilityProfile = null, promptContext = {}, coreId = null, sessionReason = 'bound', sendInitialPrompt = true } = {}) {
     this.logger?.append({ event: 'runtime.bind_execution', execution_id: executionId });
     if ((!session || typeof session.stop !== 'function') && typeof startSession !== 'function') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Agent session or startSession is required');
@@ -512,7 +512,9 @@ export class Runtime {
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
       if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
       this.#registerActiveProcess(current, workspace, boundSession, { sessionReason, coreId: selectedCoreId });
-      await this.#sendInitialPrompt(boundSession, initialPrompt, current, workspace);
+      if (sendInitialPrompt !== false) {
+        await this.#sendInitialPrompt(boundSession, initialPrompt, current, workspace);
+      }
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
       this.activeProcesses.delete(executionId);

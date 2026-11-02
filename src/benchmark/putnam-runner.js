@@ -621,7 +621,10 @@ function scheduleTurn(core, prompt, timeoutMs) {
 
 async function startAgentSession(core) {
   core.bridge.actorRef = core.actorRef;
-  core.childEnv.SWARMENV_AGENT_ROLE = AGENT_ROLES.SELECTION;
+  // A Core owns one reusable Agent identity.  It discovers work and calls
+  // task_take from this same Session; production must not create a detached
+  // Selection Agent/session that chooses on the identity's behalf.
+  core.childEnv.SWARMENV_AGENT_ROLE = AGENT_ROLES.BOUND;
   core.sessionNumber += 1;
   const suffix = core.sessionNumber === 1 ? 'worker-session' : `worker-session-${core.sessionNumber}`;
   const session = await core.adapter.start({
@@ -636,9 +639,9 @@ async function startAgentSession(core) {
   core.sessionHistory.push(session);
   core.versionManifest = session.manifest ?? null;
   await session.waitForReady({ timeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000 });
-  // Selection is now a separate CoreDaemon turn. Starting the process must
-  // not itself ask the Agent to inspect or claim work; the Daemon supplies a
-  // bounded shortlist and owns the subsequent durable claim.
+  // The Daemon supplies a bounded Task view to this reusable identity.  The
+  // first prompt is sent by the identity's task_take loop, not by a separate
+  // Selection Session.
   core.unboundSessionCount += 1;
   core.initialTurnPromise = null;
 }
@@ -749,9 +752,12 @@ function selectionView(candidates) {
 }
 
 /**
- * Run one stateless selection turn. The Selection Agent owns the bounded
- * choice and durable claim. CoreDaemon accepts the returned claim and owns
- * only the Runtime handoff; a bound Agent never receives the claim surface.
+ * Run one bounded task-discovery turn on the reusable Core identity.  The
+ * identity itself chooses a Task and calls the canonical `task_take` seam;
+ * there is deliberately no separate Selection Agent/session in production.
+ * CoreDaemon still owns the durable handoff bookkeeping, but it receives the
+ * already-created claim from this same identity and never asks another
+ * process to choose on its behalf.
  */
 async function selectTaskWithAgent(core, candidates, prompt) {
   const session = await ensureAgentSession(core);
@@ -762,9 +768,21 @@ async function selectTaskWithAgent(core, candidates, prompt) {
   core.dispatchReserved = true;
   core.turnInFlight = true;
   core.turnStartedAt = Date.now();
+  core.parallelism.beginAgentTurn(core.index, {
+    task_id: null,
+    execution_id: null,
+    reason: 'task_discovery_and_take',
+  }, core.turnStartedAt);
+  core.agentTurnSession = session;
   core.selectionTurnCount = (core.selectionTurnCount ?? 0) + 1;
   core.bridge.setSelectionCandidates(candidates);
-  const message = `${prompt}\n\nBounded shortlist (call task.claim exactly once for one listed task):\n${JSON.stringify(selectionView(candidates))}`;
+  const message = [
+    prompt,
+    'You are the reusable identity for this Core. Continue on this same Session; do not delegate Task selection to another Agent/session.',
+    'Inspect the bounded Task view below and call task_take exactly once for one listed task_id. The task_take result binds this same Core lane to the Task; after it succeeds, continue the Task in this Session.',
+    'If the list is empty, end this turn without claiming work.',
+    `Bounded Task view (complete candidate set):\n${JSON.stringify(selectionView(candidates))}`,
+  ].join('\n\n');
   try {
     const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });
     if (response?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
@@ -782,6 +800,10 @@ async function selectTaskWithAgent(core, candidates, prompt) {
     collectToolEvents(core, session.rpcRecords?.slice(sequence) ?? []);
     core.bridge.setSelectionCandidates(null);
     core.selectionActive = false;
+    if (core.agentTurnSession === session && !core.runtime.hasActiveExecution(core.executionId ?? '')) {
+      core.parallelism.endAgentTurn(core.index, Date.now(), 'task_discovery_settled');
+      core.agentTurnSession = null;
+    }
     core.turns += 1;
     const duration = Date.now() - core.turnStartedAt;
     core.turnDurationsMs.push(duration);
@@ -821,6 +843,9 @@ async function releaseTerminalExecution(core) {
   if (!core.executionId) return;
   const execution = core.runtime.taskService.getExecution(core.executionId);
   if (!execution || !['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(execution.state)) return;
+  const activeWorkspace = core.runtime.activeProcesses?.get?.(core.executionId)?.workspace;
+  const latestClaim = core.latencyByExecution?.get?.(core.executionId);
+  if (latestClaim && activeWorkspace?.git_commit) latestClaim.workspace_git_commit_end = activeWorkspace.git_commit;
   core.parallelism.transition(core.index, 'IDLE', {
     task_id: execution.task_id,
     execution_id: execution.execution_id,
@@ -1876,7 +1901,17 @@ async function createProjectState(problem, config, options) {
     ? owner.createMission({
       mission_id: `mission:${problem.id}:${runId}`,
       goal: `Solve ${problem.id} through independent, shared Task work.`,
-      acceptance_conditions: { project: problem.id, source_hash: problem.source_hash },
+      acceptance_conditions: {
+        project: problem.id,
+        source_hash: problem.source_hash,
+        final_candidate: true,
+        required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
+        required_check: {
+          checker_ref: fixture.checker_ref,
+          checker_version: fixture.checker_version,
+          environment_ref: fixture.environment_ref,
+        },
+      },
     }, { operationId: `benchmark:mission:create:${runId}` }).mission
     : null;
   const root = selectedTaskModel === 'flat'
@@ -2032,12 +2067,19 @@ async function createProjectState(problem, config, options) {
       router,
       registry: capabilityRegistry,
       actorRef: `agent:core-${index}`,
+      // This is an active reusable identity even while it has no current
+      // Execution.  BOUND is intentional: it exposes task_status/task_take
+      // and prevents the legacy Selection role from becoming a second Agent.
+      role: AGENT_ROLES.BOUND,
       taskCreateMutex,
       // Mission Task creation is governed by the Task Service contract and
       // responsibility-key idempotency. The benchmark must not add a hidden
       // count quota or reject independent work after a fixed number of Tasks.
       onClaim: async (claim) => {
-        if (core.selectionActive) core.selectionClaim = claim;
+        // task_take is invoked by this Core's reusable identity. Keep the
+        // durable result available to CoreDaemon so it does not issue a
+        // second claim or manufacture a separate selection handoff.
+        core.selectionClaim = claim;
         core.dispatchReserved = false;
         const claimedAt = Date.now();
         const priorWaitingExecutionId = core.waitingExecutionId;
@@ -2052,10 +2094,16 @@ async function createProjectState(problem, config, options) {
         core.claim = claim;
         const workerSession = core.session;
         if (!workerSession) throw new Error('Agent claimed a Task before its session was registered');
+        // Deterministic compatibility adapters expose a `bound` marker to
+        // choose their scripted prompt path.  The real Pi Session has no such
+        // field; updating it here preserves the same-identity transition
+        // without creating a second Session.
+        if ('bound' in workerSession) workerSession.bound = true;
         const claimRecord = {
           task_id: claim.task.task_id,
           execution_id: claim.execution.execution_id,
           workspace_revision_start: null,
+        workspace_git_commit_start: null,
           claimed_at: new Date(claimedAt).toISOString(),
           ready_observed_at: core.stateRef?.readyObservedAt.get(claim.task.task_id)
             ? new Date(core.stateRef.readyObservedAt.get(claim.task.task_id)).toISOString()
@@ -2068,66 +2116,33 @@ async function createProjectState(problem, config, options) {
         core.latencySamples.push(claimRecord);
         core.latencyByExecution.set(claim.execution.execution_id, claimRecord);
         core.claimHistory.push(claimRecord);
-        const bound = await runtime.bindAgentExecution(claim.execution.execution_id, null, {
+        const bound = await runtime.bindAgentExecution(claim.execution.execution_id, workerSession, {
           workspaceRef: join(workspaceRoot, claim.execution.execution_id),
-          startSession: async ({ execution, workspace }) => {
-            core.childEnv.SWARMENV_AGENT_ROLE = AGENT_ROLES.BOUND;
-            const session = await core.adapter.start({
-              executionId: execution.execution_id,
-              sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
-              cwd: workspace.workspace_ref,
-              logger: new DurableEventLog(join(logRoot, 'agents', `core-${core.index}.ndjson`), { raw: true, scope: `agent:core-${core.index}` }),
-              observation: core.observe,
-              observationContext: { coreId: `core-${core.index}`, taskId: execution.task_id, executionId: execution.execution_id },
-            });
-            // Deterministic compatibility adapters may attach a one-shot
-            // fault policy to the reusable worker Session. Preserve that
-            // policy when the Daemon hands the claim to the fresh bound
-            // Session; real Pi sessions do not expose these fields.
-            for (const field of ['hardToolError', 'invalidClaim']) {
-              if (field in workerSession && field in session) session[field] = workerSession[field];
-            }
-            core.session = session;
-            core.sessionHistory.push(session);
-            core.versionManifest = session.manifest ?? null;
-            if (core.agentTurnSession) {
-              // The unbound discovery turn is still awaiting its transport
-              // settlement when claim handoff starts this bound session. End
-              // that interval before opening the bound Agent interval; the
-              // Runtime process is already registered at this point, so an
-              // active-process count cannot distinguish the two turns.
-              core.parallelism.endAgentTurn(core.index, Date.now(), 'claim_handoff');
-              core.agentTurnSession = null;
-            }
-            core.parallelism.transition(core.index, 'RUNNING', {
-              task_id: execution.task_id,
-              execution_id: execution.execution_id,
-              reason: 'execution_started',
-            });
-            core.parallelism.beginAgentTurn(core.index, {
-              task_id: execution.task_id,
-              execution_id: execution.execution_id,
-              reason: 'initial_bound_turn',
-            });
-            core.agentTurnSession = session;
-            const latency = core.latencyByExecution.get(execution.execution_id);
-            if (latency && !latency.first_turn_started_at) {
-              const firstTurnAt = Date.now();
-              latency.first_turn_started_at = new Date(firstTurnAt).toISOString();
-              latency.claim_to_first_turn_ms = Math.max(0, firstTurnAt - Date.parse(latency.claimed_at));
-              const eligibilityAt = core.stateRef?.waitEligibilityAt.get(execution.execution_id);
-              if (eligibilityAt !== undefined) {
-                latency.condition_satisfied_observed_at = new Date(eligibilityAt).toISOString();
-                latency.resume_eligible_at = new Date(eligibilityAt).toISOString();
-                latency.condition_to_resumed_turn_ms = Math.max(0, firstTurnAt - eligibilityAt);
-              }
-            }
-            return session;
-          },
+          // The current Agent turn is already the first bound turn.  Sending
+          // another initial prompt from inside task_take would race the
+          // in-flight RPC and violate the single-turn ordering contract.
+          sendInitialPrompt: false,
           agentPrompt: modePrompt(selectedParallelMode, BOUND_AGENT_PROMPT, selectedTaskModel),
         });
         const boundSession = core.session;
         const boundExecutionId = claim.execution.execution_id;
+        core.parallelism.transition(core.index, 'RUNNING', {
+          task_id: claim.task.task_id,
+          execution_id: boundExecutionId,
+          reason: 'execution_started_same_identity',
+        });
+        const latency = core.latencyByExecution.get(boundExecutionId);
+        if (latency && !latency.first_turn_started_at) {
+          const firstTurnAt = Date.now();
+          latency.first_turn_started_at = new Date(firstTurnAt).toISOString();
+          latency.claim_to_first_turn_ms = Math.max(0, firstTurnAt - Date.parse(latency.claimed_at));
+          const eligibilityAt = core.stateRef?.waitEligibilityAt.get(boundExecutionId);
+          if (eligibilityAt !== undefined) {
+            latency.condition_satisfied_observed_at = new Date(eligibilityAt).toISOString();
+            latency.resume_eligible_at = new Date(eligibilityAt).toISOString();
+            latency.condition_to_resumed_turn_ms = Math.max(0, firstTurnAt - eligibilityAt);
+          }
+        }
         if (boundSession && core.runtime.hasActiveExecution(claim.execution.execution_id)) {
           core.turnInFlight = true;
           let boundTurnPromise;
@@ -2180,6 +2195,7 @@ async function createProjectState(problem, config, options) {
           core.boundTurnPromise = boundTurnPromise;
         }
         claimRecord.workspace_revision_start = bound.workspace.workspace_revision;
+        claimRecord.workspace_git_commit_start = bound.workspace.git_commit ?? null;
         core.observe({
           source: 'runtime', kind: 'execution_assigned', visibility: 'operator',
           taskId: claim.task.task_id, executionId: claim.execution.execution_id,
@@ -2757,6 +2773,9 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   state.daemons = state.cores.map((core) => {
     const daemon = new CoreDaemon({
       coreId: `core-${core.index}`,
+      // This is a bounded discovery prompt for the reusable identity, not a
+      // Selection Agent SOP.  The identity must call task_take itself.
+      selectionPrompt: `${BOUND_AGENT_PROMPT}\nUse task_status/task_take on this same Core identity; do not call task.claim or delegate selection to another Session.`,
       shortlistLimit: options.controllerShortlistLimit ?? 16,
       maxSelectionAttempts: options.maxStartupAttempts ?? 3,
       maxClaimRescans: options.maxClaimRescans ?? 1,

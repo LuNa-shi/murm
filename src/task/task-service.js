@@ -1437,6 +1437,17 @@ export class TaskService {
     if (!completion.satisfied) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'completion_contract is not satisfied', { missing: completion.missing });
     }
+    // The shared Mission entry is a collaboration surface, not an ordinary
+    // subtask.  A local material/check must never let a research branch close
+    // the Mission unless it explicitly carries the complete-candidate
+    // contract and satisfies the Mission's own acceptance conditions.
+    if (this.#isSharedMissionTask(task)) {
+      const mission = this.#getMission(task.mission_id);
+      const missionCompletion = this.#missionCompletion(mission, task, execution, payload.check_result_id ?? null);
+      if (!missionCompletion.satisfied) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Mission acceptance conditions are not satisfied', { missing: missionCompletion.missing });
+      }
+    }
     const updatedAt = now();
     this.db.prepare(`UPDATE executions
       SET state = 'SUCCEEDED', wait_condition_json = NULL, wait_deadline = NULL,
@@ -4064,6 +4075,39 @@ export class TaskService {
           AND status = 'APPLIED' AND verdict = 'PASS' ORDER BY applied_at DESC LIMIT 1`)
         .get(task.task_id, task.spec_version, execution?.input_snapshot_hash ?? '', contract.required_check.checker_ref, contract.required_check.checker_version);
       if (!check || check.status !== 'APPLIED' || check.verdict !== 'PASS') missing.push('required_check');
+    }
+    return { satisfied: missing.length === 0, missing };
+  }
+
+  #missionCompletion(mission, task, execution, appliedCheckResultId = null) {
+    const acceptance = mission?.acceptance_conditions && typeof mission.acceptance_conditions === 'object'
+      ? mission.acceptance_conditions
+      : {};
+    const missing = [];
+    // Missions that declare final-candidate acceptance opt into the stronger
+    // project-level gate.  Older coordination Missions intentionally keep
+    // their own material contracts and remain compatible when no such
+    // project-level condition was declared.
+    const requiresFinalCandidate = acceptance.final_candidate === true ||
+      Boolean(acceptance.required_candidate || acceptance.required_check || acceptance.required_task_id);
+    if (requiresFinalCandidate && task?.completion_contract?.final_candidate !== true) missing.push('mission:final_candidate');
+    if (acceptance.required_task_id && acceptance.required_task_id !== task.task_id) {
+      missing.push(`mission:task:${acceptance.required_task_id}`);
+    }
+    if (acceptance.required_candidate) {
+      const candidate = execution?.candidate_material_id && this.contextService?.getMaterial(execution.candidate_material_id);
+      const requirement = acceptance.required_candidate;
+      if (!candidate || (requirement.kind && candidate.kind !== requirement.kind) || (requirement.scope && candidate.scope !== requirement.scope)) {
+        missing.push('mission:required_candidate');
+      }
+    }
+    if (acceptance.required_check) {
+      const requirement = acceptance.required_check;
+      const check = appliedCheckResultId ? this.getCheckResult(appliedCheckResultId) : this.db.prepare(`SELECT * FROM check_results
+        WHERE target_task_id = ? AND target_spec_version = ? AND input_snapshot_hash = ? AND checker_ref = ? AND checker_version = ?
+          AND status = 'APPLIED' AND verdict = 'PASS' ORDER BY applied_at DESC LIMIT 1`)
+        .get(task.task_id, task.spec_version, execution?.input_snapshot_hash ?? '', requirement.checker_ref, requirement.checker_version);
+      if (!check || check.status !== 'APPLIED' || check.verdict !== 'PASS') missing.push('mission:required_check');
     }
     return { satisfied: missing.length === 0, missing };
   }

@@ -237,6 +237,15 @@ export class ServicesBridge {
         matches: matches.map((candidate) => candidate.id ?? `${candidate.service_id}.${candidate.name}`),
       });
     }
+    // Compatibility adapters from the pre-task_take benchmark may still
+    // emit `claim` from the reusable, unbound identity.  Keep this transport
+    // alias private to that unbound BOUND bridge; production prompts use the
+    // canonical task_take capability and the public profile never advertises
+    // this fallback.
+    if (matches.length === 0 && operation === 'claim' && this.role === AGENT_ROLES.BOUND && !this.taskId && !this.executionId) {
+      const legacy = this.registry?.getCapability?.('task', 'claim');
+      if (legacy) matches.push(legacy);
+    }
     return matches[0] ?? null;
   }
 
@@ -467,7 +476,8 @@ export class ServicesBridge {
         return result;
       }
       if (capability.service_id === 'task' && operation === 'claim') {
-        if (this.role !== AGENT_ROLES.SELECTION || this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claim is only available to a Selection Session', { role: this.role, task_id: this.taskId, execution_id: this.executionId });
+        const legacyBoundClaim = this.role === AGENT_ROLES.BOUND && !this.taskId && !this.executionId;
+        if ((this.role !== AGENT_ROLES.SELECTION && !legacyBoundClaim) || this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'claim is only available to an unbound Core identity', { role: this.role, task_id: this.taskId, execution_id: this.executionId });
         const taskId = payload.task_id;
         if (typeof taskId !== 'string' || taskId.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim requires payload.task_id');
         if (!Array.isArray(this.selectionCandidates)) {
