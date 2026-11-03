@@ -102,7 +102,7 @@ test('normal-flow blocking requires a typed dependency', () => {
   taskService.close();
 });
 
-test('semantic blocking records an external capability and removes the Task from claims', () => {
+test('semantic blocking rejects an external capability and points Agent to admission', () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);
   const taskService = new TaskService(database, { contextService });
@@ -127,7 +127,7 @@ test('semantic blocking records an external capability and removes the Task from
     specVersion: task.spec_version, stateVersion: claim.execution.state_version,
     fencingVersion: claim.execution.fencing_version,
   }).publishMaterial({ kind: 'failure', role: 'handoff', scope: 'proof_relevant', content: { blocker: 'mathlib_search' } }, { operationId: 'capability-block:handoff' }).material;
-  const blocked = taskService.blockTaskSemantic({
+  assert.throws(() => taskService.blockTaskSemantic({
     blocker: { kind: 'capability', capability_id: 'mathlib_search', reason: 'no registered locked-project search service' },
     dependency: { dependency_kind: 'CAPABILITY', capability_id: 'mathlib_search', scope: 'locked-project', retryable: false },
     handoff_material_id: handoff.material_id,
@@ -135,17 +135,9 @@ test('semantic blocking records an external capability and removes the Task from
     operationId: 'capability-block:block', actorRef: 'agent:research', taskId: task.task_id,
     executionId: claim.execution.execution_id, specVersion: task.spec_version,
     stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
-  }));
-  assert.equal(blocked.task.state, 'BLOCKED');
-  assert.equal(blocked.execution.state, 'HANDED_OFF');
-  assert.deepEqual(blocked.dependency, {
-    dependency_kind: 'CAPABILITY', capability_id: 'mathlib_search', scope: 'locked-project', retryable: false, resolution: 'explicit_reopen',
-  });
-  assert.equal(taskService.listClaimableTasks({ missionId: mission.mission_id }).length, 0);
-  assert.throws(
-    () => taskService.claimTask(task.task_id, { claim_key: 'capability-block:retry', owner_ref: 'agent:other' }),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED,
-  );
+  })), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_TASK_CONTRACT &&
+    error.details?.condition === 'task_creation_admission' && error.details?.action === 'modify_task_contract_or_register_capability');
+  assert.equal(taskService.getTask(task.task_id).state, 'RUNNING');
   taskService.close();
 });
 

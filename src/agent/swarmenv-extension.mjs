@@ -25,9 +25,15 @@ async function bridgeFetch(path, { method = 'GET', body, signal } = {}) {
   });
   const payload = await response.json();
   if (!response.ok || payload.ok === false) {
-    const error = new Error(payload?.error?.message ?? `SwarmEnv bridge request failed (${response.status})`);
-    error.code = payload?.error?.code ?? 'BRIDGE_ERROR';
-    error.details = payload?.error?.details;
+    const structured = payload?.error ?? {};
+    const details = structured.details && typeof structured.details === 'object'
+      ? ` details=${JSON.stringify(structured.details)}`
+      : '';
+    const retryable = structured.retryable === true ? ' retryable=true' : ' retryable=false';
+    const error = new Error(`${structured.message ?? `SwarmEnv bridge request failed (${response.status})`} [code=${structured.code ?? 'BRIDGE_ERROR'}${retryable}${details}]`);
+    error.code = structured.code ?? 'BRIDGE_ERROR';
+    error.details = structured.details;
+    error.retryable = structured.retryable === true;
     throw error;
   }
   return payload;

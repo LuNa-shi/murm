@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { cpus, freemem, totalmem } from 'node:os';
 import { join, resolve, relative } from 'node:path';
@@ -22,9 +22,9 @@ import { ObservationStore } from '../observability/observation-store.js';
 import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, SYSTEM_IDENTITY_PROMPT } from '../agent/agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
 import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
-import { createHttpJsonAdapter } from '../sdk/service-adapter.js';
+import { createHttpJsonAdapter, createInProcessAdapter } from '../sdk/service-adapter.js';
 import { loadServiceBundle } from '../sdk/service-bundle.js';
-import { createMathlibSearchManifest } from '../services/mathlib-search-service.js';
+import { createMathlibSearchManifest, createMathlibSearchService } from '../services/mathlib-search-service.js';
 import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
 import { IdentityTaskLoop } from '../runtime/identity-task-loop.js';
 import { ContainerSandboxManager } from '../runtime/sandbox-manager.js';
@@ -1897,6 +1897,33 @@ async function createProjectState(problem, config, options) {
     });
     await capabilityRegistry.checkReadiness('mathlib-search');
   }
+  if (!options.serviceRegistry && !mathlibSearchUrl && !capabilityRegistry.listServices().some((service) => service.service_id === 'mathlib-search')) {
+    // The locked PutnamBench checkout already contains the Mathlib source
+    // used by Lean. Register the local provider in-process when no external
+    // endpoint was configured, so research admission and Agent search use the
+    // same pinned project rather than silently exposing no mathlib capability.
+    const sourceRoot = options.mathlibSearchSourceRoot
+      ?? process.env.MATHLIB_SEARCH_SOURCE_ROOT
+      ?? join(config.lean_project_root, '.lake', 'packages', 'mathlib', 'Mathlib');
+    try {
+      await access(sourceRoot);
+      const provider = createMathlibSearchService({
+        endpoint: { transport: 'in-process' },
+        sourceRoot,
+        projectRoot: config.lean_project_root,
+        mathlibRevision: options.mathlibRevision ?? fixture.mathlib_version ?? null,
+        leanVersion: options.leanVersion ?? fixture.lean_toolchain ?? null,
+      });
+      registerUserService(capabilityRegistry, {
+        manifest: provider.manifest,
+        adapter: createInProcessAdapter({ invoke: provider.handler, readiness: provider.readiness }),
+      });
+    } catch (error) {
+      if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error;
+      // A synthetic/unit fixture may not ship Mathlib. The capability remains
+      // absent and Task admission will return a structured, actionable error.
+    }
+  }
   // Owner/controller SDK calls are synchronous local transactions. Keep that
   // control-plane registry local even when Agent-facing providers are remote;
   // ServicesBridge uses capabilityRegistry for the named HTTP calls.
@@ -2736,7 +2763,7 @@ async function createProjectState(problem, config, options) {
           // retry. It is not a protocol violation by itself. Multiple
           // unbound slots may also observe the same OPEN Task before one
           // claim commits; that scheduling contention is recoverable too.
-          recoverable: error.code === 'INVALID_CONTRACT' || (error.code === 'CONFLICT' && operation === 'claim'),
+          recoverable: ['INVALID_CONTRACT', 'INVALID_TASK_CONTRACT'].includes(error.code) || (error.code === 'CONFLICT' && operation === 'claim'),
           protocol: false,
         });
         if (error.code === 'CONFLICT' && operation === 'claim') {

@@ -73,6 +73,9 @@ function assertTaskCapabilityAdmission(payload, profile) {
         missing_capabilities: missing,
         required_capabilities: required,
         admission: 'rejected',
+        condition: 'task_creation_admission',
+        action: 'modify_task_contract_or_register_capability',
+        hint: 'Declare only capabilities exposed by this Session, or register and verify the required Service before creating the Task.',
       });
   }
 }
@@ -88,6 +91,7 @@ function errorBody(error) {
     code: error?.code ?? 'BRIDGE_ERROR',
     message: error?.message ?? String(error),
     details: error?.details,
+    retryable: Boolean(error?.retryable),
   };
 }
 

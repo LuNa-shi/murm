@@ -1,6 +1,8 @@
 import { execFile as defaultExecFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { access } from 'node:fs/promises';
+import { join } from 'node:path';
 import { AgentCoreAdapter, resolveAgentCoreRoute } from '../agent/pi-adapter.js';
 import { SYSTEM_IDENTITY_PROMPT } from '../agent/agent-prompt.js';
 import { ContextService } from '../context/context-service.js';
@@ -16,8 +18,8 @@ import { agentCheckResult } from '../judge/check-result.js';
 import { validateFixtureManifest } from '../judge/fixture.js';
 import { DatabaseSync } from 'node:sqlite';
 import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
-import { createHttpJsonAdapter } from '../sdk/service-adapter.js';
-import { createMathlibSearchManifest } from '../services/mathlib-search-service.js';
+import { createHttpJsonAdapter, createInProcessAdapter } from '../sdk/service-adapter.js';
+import { createMathlibSearchManifest, createMathlibSearchService } from '../services/mathlib-search-service.js';
 
 const execFile = promisify(defaultExecFile);
 const extensionPath = fileURLToPath(new URL('../agent/swarmenv-extension.mjs', import.meta.url));
@@ -520,6 +522,25 @@ export async function runRealAgentPath({
       adapter: createHttpJsonAdapter({ token: env.SWARMENV_MATHLIB_SEARCH_TOKEN ?? null }),
     });
     await capabilityRegistry.checkReadiness('mathlib-search');
+  }
+  if (!serviceRegistry && !present(env.SWARMENV_MATHLIB_SEARCH_URL) && !capabilityRegistry.listServices().some((service) => service.service_id === 'mathlib-search')) {
+    const sourceRoot = env.MATHLIB_SEARCH_SOURCE_ROOT ?? join(lockedFixture.project_root, '.lake', 'packages', 'mathlib', 'Mathlib');
+    try {
+      await access(sourceRoot);
+      const provider = createMathlibSearchService({
+        endpoint: { transport: 'in-process' },
+        sourceRoot,
+        projectRoot: lockedFixture.project_root,
+        mathlibRevision: env.MATHLIB_REVISION ?? lockedFixture.mathlib_version ?? null,
+        leanVersion: env.LEAN_VERSION ?? lockedFixture.lean_toolchain ?? null,
+      });
+      registerUserService(capabilityRegistry, {
+        manifest: provider.manifest,
+        adapter: createInProcessAdapter({ invoke: provider.handler, readiness: provider.readiness }),
+      });
+    } catch (error) {
+      if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error;
+    }
   }
   const ownerSdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const task = ownerSdk.proposeTask({
