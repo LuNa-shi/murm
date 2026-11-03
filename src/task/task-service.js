@@ -3160,7 +3160,7 @@ export class TaskService {
     if (payload.workspace_revision !== undefined && (!Number.isInteger(payload.workspace_revision) || payload.workspace_revision < 1)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_revision must be a positive integer');
     }
-    const sourceExecutionId = payload.workspace_source_execution_id ?? null;
+    let sourceExecutionId = payload.workspace_source_execution_id ?? null;
     let sourceWorkspaceRef = payload.workspace_source_ref ?? null;
     if (sourceExecutionId) {
       const source = this.getExecution(sourceExecutionId);
@@ -3176,6 +3176,24 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'clean Workspace selection cannot include a source or revision');
     }
     let waitingExecution = this.db.prepare("SELECT * FROM executions WHERE task_id = ? AND state = 'WAITING' ORDER BY updated_at DESC, execution_id DESC LIMIT 1").get(task.task_id);
+    const queuedRework = this.db.prepare("SELECT 1 FROM executions WHERE task_id = ? AND state = 'CREATED' LIMIT 1").get(task.task_id);
+    if (workspaceMode === 'resume' && !sourceExecutionId && sourceWorkspaceRef === null && !waitingExecution && !queuedRework) {
+      // A successor claim after a fenced/handed-off Execution should carry
+      // explicit Workspace lineage even when the Agent only asks for the
+      // default resume mode. This makes the source Execution/revision
+      // auditable and prevents a successor from silently starting from an
+      // ambiguous task-level snapshot.
+      const previous = this.db.prepare(`SELECT execution_id, workspace_ref, workspace_revision
+        FROM executions WHERE task_id = ? AND state IN ('HANDED_OFF', 'FENCED', 'EXPIRED', 'FAILED')
+          AND workspace_ref IS NOT NULL ORDER BY updated_at DESC, execution_id DESC LIMIT 1`).get(task.task_id);
+      if (previous) {
+        sourceExecutionId = previous.execution_id;
+        sourceWorkspaceRef = previous.workspace_ref;
+        if (payload.workspace_revision === undefined && Number.isInteger(previous.workspace_revision)) {
+          payload = { ...payload, workspace_revision: previous.workspace_revision };
+        }
+      }
+    }
     const inputSnapshotHash = payload.input_snapshot_hash ?? hash({
       task_id: task.task_id,
       spec_hash: task.spec_hash,
