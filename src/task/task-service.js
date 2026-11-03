@@ -1420,6 +1420,7 @@ export class TaskService {
             producer_task_id: producerTaskId,
             producer_execution_id: producerExecutionId,
             receiving_task_id: targetTaskId,
+            action: 'inspect_material_and_record_task_feedback',
           },
         });
       }
@@ -4112,10 +4113,8 @@ export class TaskService {
           continue;
         }
         const consumptionAction = normalizedRequirement.action ?? normalizedRequirement.consumption_action;
-        const linkedMaterials = this.#modernTaskRecord(task.task_id)
-          ? this.#taskMaterialLinks(task.task_id).map((link) => link.material).filter(Boolean)
-          : null;
-        const materials = (linkedMaterials ?? this.contextService.readMaterials({ source_task: task.task_id })).filter((material) =>
+        const linkedMaterials = this.#taskMaterialLinks(task.task_id).map((link) => link.material).filter(Boolean);
+        const materials = (linkedMaterials.length > 0 ? linkedMaterials : this.contextService.readMaterials({ source_task: task.task_id })).filter((material) =>
           kinds.includes(material.kind) && (!normalizedRequirement.scope || normalizedRequirement.scope === material.scope) &&
           (!normalizedRequirement.role || normalizedRequirement.role === material.role) &&
           // A cross-task integration requirement cannot be satisfied by a
@@ -4123,7 +4122,7 @@ export class TaskService {
           // later Execution of that same Task). Self-consumption remains
           // valid evidence for ordinary local work, but it is not proof that
           // a collaborator's result changed the completion state.
-          (!normalizedRequirement.cross_task || material.source_task !== task.task_id));
+          (!normalizedRequirement.cross_task || (material.source_task ?? material.producer_task_id) !== task.task_id));
         let count = materials.length;
         if (normalizedRequirement.requires_consumption) {
           const consumptionRows = typeof this.contextService.listMaterialConsumptions === 'function'

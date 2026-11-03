@@ -230,6 +230,43 @@ test('Task completion can require a durable Material consumption edge', () => {
   close(env);
 });
 
+test('cross-task Material completion cannot be satisfied by the receiver own scratchpad', () => {
+  const env = environment();
+  const parent = env.sdk.proposeTask({
+    task_type: 'default', goal: 'integrate an independent fact', expected_output: 'integration note',
+    acceptance_conditions: {}, owner_ref: 'owner:root',
+    completion_contract: { required_materials: [{ kind: 'fact', scope: 'proof_relevant', min_count: 1, cross_task: true }] },
+  }, { operationId: 'cross-task-completion-parent' }).task;
+  const parentRun = claimTask(env, parent, { executionId: 'cross-task-parent-execution', actorRef: 'owner:root' });
+  const child = parentRun.sdk.withContext({ stateVersion: parentRun.claim.task.state_version }).createChildTask({
+    child_creation_key: 'cross-task-completion-child', ...researchInput({ goal: 'produce an independent fact' }), owner_ref: 'researcher:one',
+  }, { operationId: 'cross-task-completion-child-create' }).task;
+  const childRun = claimTask(env, child, { executionId: 'cross-task-child-execution', actorRef: 'researcher:one' });
+  const parentExecution = env.taskService.getExecution(parentRun.claim.execution.execution_id);
+  const own = parentRun.sdk.withContext({ stateVersion: parentExecution.state_version }).publishMaterial({
+    kind: 'fact', scope: 'proof_relevant', content: { source: 'receiver scratchpad' },
+  }, { operationId: 'cross-task-own-material' }).material;
+  const parentWithOwn = env.sdk.withContext({
+    actorRef: 'owner:root', taskId: parent.task_id, executionId: parentRun.claim.execution.execution_id,
+    specVersion: parent.spec_version, stateVersion: env.taskService.getExecution(parentRun.claim.execution.execution_id).state_version,
+    fencingVersion: env.taskService.getExecution(parentRun.claim.execution.execution_id).fencing_version,
+  });
+  parentWithOwn.linkMaterial({ task_id: parent.task_id, material_id: own.material_id, role: 'experience' }, { operationId: 'cross-task-own-link' });
+  assert.throws(
+    () => parentWithOwn.completeTask({}, { operationId: 'cross-task-completion-before' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT && error.details?.missing?.some((item) => item.startsWith('materials:')),
+  );
+  const external = childRun.sdk.publishMaterial({ kind: 'fact', scope: 'proof_relevant', content: { source: 'independent researcher' } }, { operationId: 'cross-task-external-material' }).material;
+  childRun.sdk.linkMaterial({ task_id: parent.task_id, receiving_task_id: parent.task_id, material_id: external.material_id, role: 'experience' }, { operationId: 'cross-task-external-link' });
+  const currentExecution = env.taskService.getExecution(parentRun.claim.execution.execution_id);
+  const accepted = env.sdk.withContext({
+    actorRef: 'owner:root', taskId: parent.task_id, executionId: currentExecution.execution_id,
+    specVersion: parent.spec_version, stateVersion: currentExecution.state_version, fencingVersion: currentExecution.fencing_version,
+  }).completeTask({}, { operationId: 'cross-task-completion-after' });
+  assert.equal(accepted.task.state, 'DONE');
+  close(env);
+});
+
 test('normal-flow child validates its own contract and reaches DONE without parent review', () => {
   const env = environment();
   const parent = env.sdk.proposeTask({

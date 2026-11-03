@@ -280,6 +280,39 @@ export class JudgeService {
         if (existing.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
         return { result: existing, shouldCheck: false };
       }
+      // request_key is the transport idempotency key, but it is not a license
+      // to rerun an unchanged candidate under a fresh key.  A candidate and
+      // its locked checker/input binding define the durable check identity;
+      // only retryable infrastructure failures may be checked again after a
+      // new request.  This also closes the cross-Core duplicate path where
+      // each Agent invents a different request key for the same Material.
+      const equivalent = this.db.prepare(`SELECT * FROM check_results
+        WHERE candidate_material_id = ? AND target_task_id = ? AND target_spec_version = ?
+          AND input_snapshot_hash = ? AND checker_ref = ? AND checker_version = ? AND environment_ref = ?
+        ORDER BY created_at, check_result_id LIMIT 1`).get(
+        normalized.candidate_material_id,
+        normalized.target_task_id,
+        normalized.target_spec_version,
+        normalized.input_snapshot_hash,
+        normalized.checker_ref,
+        normalized.checker_version,
+        normalized.environment_ref,
+      );
+      if (equivalent) {
+        const existingResult = resultFromRow(equivalent);
+        const retryableInfrastructure = existingResult.result_class === 'infrastructure_failure' &&
+          existingResult.retryable && !existingResult.evidence?.retry_exhausted;
+        if (!retryableInfrastructure) {
+          return {
+            result: {
+              ...existingResult,
+              deduplicated: true,
+              duplicate_of_request_key: existingResult.request_key,
+            },
+            shouldCheck: false,
+          };
+        }
+      }
       const checkResultId = randomUUID();
       const createdAt = now();
       this.db.prepare(`INSERT INTO check_results (

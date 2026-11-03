@@ -156,6 +156,9 @@ test('Response Material notification is keyed, provenance-aware, and at-least-on
     const pending = taskService.listPendingNotifications(receiver.task_id, receiverExecution.execution_id);
     assert.equal(pending.length, 1);
     assert.equal(pending[0].notification_type, 'material_available');
+    assert.equal(pending[0].payload.action, 'inspect_material_and_record_task_feedback');
+    assert.equal(pending[0].payload.producer_task_id, producer.task_id);
+    assert.equal(pending[0].payload.material_id, material.material.material_id);
     assert.equal(taskService.markNotificationDelivered(pending[0].notification_id, receiverExecution.execution_id).delivered, true);
     assert.equal(taskService.listPendingNotifications(receiver.task_id, receiverExecution.execution_id).length, 0);
     assert.equal(taskService.markNotificationDelivered(pending[0].notification_id, receiverExecution.execution_id).delivered, true);
