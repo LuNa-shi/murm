@@ -224,6 +224,7 @@ export class JudgeService {
     return {
       request_key: requestKey,
       candidate_material_id: input.candidate_material_id,
+      candidate_content_hash: contentHash(input.candidate.content),
       target_task_id: input.target_task_id,
       target_spec_version: input.target_spec_version,
       input_snapshot_hash: input.input_snapshot_hash,
@@ -287,10 +288,10 @@ export class JudgeService {
       // new request.  This also closes the cross-Core duplicate path where
       // each Agent invents a different request key for the same Material.
       const equivalent = this.db.prepare(`SELECT * FROM check_results
-        WHERE candidate_material_id = ? AND target_task_id = ? AND target_spec_version = ?
+        WHERE candidate_content_hash = ? AND target_task_id = ? AND target_spec_version = ?
           AND input_snapshot_hash = ? AND checker_ref = ? AND checker_version = ? AND environment_ref = ?
         ORDER BY created_at, check_result_id LIMIT 1`).get(
-        normalized.candidate_material_id,
+        normalized.candidate_content_hash,
         normalized.target_task_id,
         normalized.target_spec_version,
         normalized.input_snapshot_hash,
@@ -316,12 +317,12 @@ export class JudgeService {
       const checkResultId = randomUUID();
       const createdAt = now();
       this.db.prepare(`INSERT INTO check_results (
-        check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
+        check_result_id, request_key, request_hash, candidate_material_id, candidate_content_hash, target_task_id, target_spec_version,
         execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict,
         judge_operation_status, checker_process_status, result_class, retryable, diagnostic_code, evidence_json,
         applied_task_state_version, applied_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', NULL, 'accepted', 'not_started', 'unassessed', 0, NULL, ?, NULL, NULL, ?, ?)`)
-        .run(checkResultId, normalized.request_key, requestHash, normalized.candidate_material_id, normalized.target_task_id, normalized.target_spec_version,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', NULL, 'accepted', 'not_started', 'unassessed', 0, NULL, ?, NULL, NULL, ?, ?)`).run(
+        checkResultId, normalized.request_key, requestHash, normalized.candidate_material_id, normalized.candidate_content_hash, normalized.target_task_id, normalized.target_spec_version,
           normalized.execution_id, normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref,
           json({}), createdAt, createdAt);
       return { result: this.getCheckResult(checkResultId), shouldCheck: true };

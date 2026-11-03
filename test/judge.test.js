@@ -510,7 +510,7 @@ test('JudgeService deduplicates an unchanged candidate across request keys', asy
     workspace, fixture_manifest: fixtureManifest,
   };
   const first = await judge.judgeCandidate(input, { operationId: 'candidate-duplicate-op-1' });
-  const duplicate = await judge.judgeCandidate({ ...input, request_key: 'candidate-duplicate-2' }, { operationId: 'candidate-duplicate-op-2' });
+  const duplicate = await judge.judgeCandidate({ ...input, request_key: 'candidate-duplicate-2', candidate_material_id: 'different-material', candidate: candidate('theorem duplicate : True := by trivial', 'different-material') }, { operationId: 'candidate-duplicate-op-2' });
   assert.equal(checks, 1);
   assert.equal(duplicate.check_result_id, first.check_result_id);
   assert.equal(duplicate.deduplicated, true);

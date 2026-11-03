@@ -637,6 +637,11 @@ function scheduleTurn(core, prompt, timeoutMs) {
   if (core.turnInFlight || core.boundTurnPromise || Date.now() < core.nextTurnAt) return false;
   core.turnStartedAt = Date.now();
   core.turnPromise = runTurn(core, prompt, timeoutMs);
+  // Install a rejection handler at creation time. Cleanup may stop the Pi
+  // process before the main loop gets a chance to await this turn; an already
+  // handled promise must not surface a late PROCESS_EXITED as an unhandled
+  // rejection during report finalization.
+  void core.turnPromise.catch(() => undefined);
   return true;
 }
 
@@ -1236,6 +1241,17 @@ async function stopCore(state, core) {
     core.session,
     core.releasedSession,
   ].filter(Boolean));
+  // Let an in-flight turn observe the normal stopping boundary before
+  // Runtime closes its Session. Stopping the Session first can reject a
+  // pending Pi RPC and leave the durable Execution RUNNING while cleanup is
+  // still waiting on the turn promise.
+  if (core.turnPromise) {
+    await Promise.race([
+      core.turnPromise.catch(() => undefined),
+      sleep(5_000),
+    ]);
+  }
+  if (core.boundTurnPromise) await core.boundTurnPromise.catch(() => undefined);
   // Flush any post-response Judge lifecycle (for example a typed checker
   // health block) while Runtime is still live. Closing the Bridge only after
   // Runtime shutdown lets that deferred callback race report-directory
@@ -1252,13 +1268,11 @@ async function stopCore(state, core) {
       // released even when one Agent process exits with an error.
     }
   }));
-  if (core.turnPromise) {
-    await Promise.race([
-      core.turnPromise.catch(() => undefined),
-      sleep(5_000),
-    ]);
-  }
-  if (core.boundTurnPromise) await core.boundTurnPromise.catch(() => undefined);
+  // A turn that exceeded the grace period above now has an attached rejection
+  // handler; drain it once more after Session termination so state cleanup can
+  // finish without an unhandled Pi PROCESS_EXITED.
+  await core.turnPromise?.catch(() => undefined);
+  await core.boundTurnPromise?.catch(() => undefined);
   // Drain recovery/fence/rotation handlers before the caller removes the
   // experiment directory; a late workspace revision must not race cleanup.
   await core.runtime.waitForSettled?.().catch(() => undefined);
@@ -2345,6 +2359,7 @@ async function createProjectState(problem, config, options) {
             }
           })();
           core.boundTurnPromise = boundTurnPromise;
+          void boundTurnPromise.catch(() => undefined);
         }
         claimRecord.workspace_revision_start = bound.workspace.workspace_revision;
         claimRecord.workspace_git_commit_start = bound.workspace.git_commit ?? null;
