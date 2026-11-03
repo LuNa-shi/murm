@@ -1241,17 +1241,6 @@ async function stopCore(state, core) {
     core.session,
     core.releasedSession,
   ].filter(Boolean));
-  // Let an in-flight turn observe the normal stopping boundary before
-  // Runtime closes its Session. Stopping the Session first can reject a
-  // pending Pi RPC and leave the durable Execution RUNNING while cleanup is
-  // still waiting on the turn promise.
-  if (core.turnPromise) {
-    await Promise.race([
-      core.turnPromise.catch(() => undefined),
-      sleep(5_000),
-    ]);
-  }
-  if (core.boundTurnPromise) await core.boundTurnPromise.catch(() => undefined);
   // Flush any post-response Judge lifecycle (for example a typed checker
   // health block) while Runtime is still live. Closing the Bridge only after
   // Runtime shutdown lets that deferred callback race report-directory
@@ -1268,11 +1257,22 @@ async function stopCore(state, core) {
       // released even when one Agent process exits with an error.
     }
   }));
-  // A turn that exceeded the grace period above now has an attached rejection
-  // handler; drain it once more after Session termination so state cleanup can
-  // finish without an unhandled Pi PROCESS_EXITED.
-  await core.turnPromise?.catch(() => undefined);
-  await core.boundTurnPromise?.catch(() => undefined);
+  // Runtime shutdown above owns the durable fence/release boundary. Agent
+  // turns are transport cleanup and may be stuck in a provider wait; drain
+  // each with a bounded grace period so one Pi session cannot prevent the
+  // report and observability terminalization indefinitely.
+  if (core.turnPromise) {
+    await Promise.race([
+      core.turnPromise.catch(() => undefined),
+      sleep(5_000),
+    ]);
+  }
+  if (core.boundTurnPromise) {
+    await Promise.race([
+      core.boundTurnPromise.catch(() => undefined),
+      sleep(5_000),
+    ]);
+  }
   // Drain recovery/fence/rotation handlers before the caller removes the
   // experiment directory; a late workspace revision must not race cleanup.
   await core.runtime.waitForSettled?.().catch(() => undefined);
