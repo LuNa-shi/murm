@@ -102,6 +102,53 @@ test('normal-flow blocking requires a typed dependency', () => {
   taskService.close();
 });
 
+test('semantic blocking records an external capability and removes the Task from claims', () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const owner = new ServicesSDK(taskService, { actorRef: 'owner:root' });
+  const mission = owner.createMission({
+    mission_id: 'mission:capability-block',
+    goal: 'record a missing research capability',
+    acceptance_conditions: { blocker: true },
+  }, { operationId: 'capability-block:mission' }).mission;
+  const task = owner.createTask({
+    mission_id: mission.mission_id,
+    summary: 'Record a typed external capability blocker for the research route.',
+    task_type: 'research',
+    expected_output: 'a durable capability handoff',
+    acceptance_conditions: { blocker: true },
+    completion_contract: { normal_flow: true },
+  }, { operationId: 'capability-block:task' }).task;
+  const claim = taskService.claimTask(task.task_id, { claim_key: 'capability-block:claim', owner_ref: 'agent:research', core_id: 'core-capability' });
+  const handoff = new ServicesSDK(contextService, {
+    actorRef: 'agent:research', taskId: task.task_id, executionId: claim.execution.execution_id,
+    specVersion: task.spec_version, stateVersion: claim.execution.state_version,
+    fencingVersion: claim.execution.fencing_version,
+  }).publishMaterial({ kind: 'failure', role: 'handoff', scope: 'proof_relevant', content: { blocker: 'mathlib_search' } }, { operationId: 'capability-block:handoff' }).material;
+  const blocked = taskService.blockTaskSemantic({
+    blocker: { kind: 'capability', capability_id: 'mathlib_search', reason: 'no registered locked-project search service' },
+    dependency: { dependency_kind: 'CAPABILITY', capability_id: 'mathlib_search', scope: 'locked-project', retryable: false },
+    handoff_material_id: handoff.material_id,
+  }, makeEnvelope({
+    operationId: 'capability-block:block', actorRef: 'agent:research', taskId: task.task_id,
+    executionId: claim.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
+  }));
+  assert.equal(blocked.task.state, 'BLOCKED');
+  assert.equal(blocked.execution.state, 'HANDED_OFF');
+  assert.deepEqual(blocked.dependency, {
+    dependency_kind: 'CAPABILITY', capability_id: 'mathlib_search', scope: 'locked-project', retryable: false, resolution: 'explicit_reopen',
+  });
+  assert.equal(taskService.listClaimableTasks({ missionId: mission.mission_id }).length, 0);
+  assert.throws(
+    () => taskService.claimTask(task.task_id, { claim_key: 'capability-block:retry', owner_ref: 'agent:other' }),
+    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.NOT_ALLOWED,
+  );
+  taskService.close();
+});
+
 test('typed dependency blocking records the condition and reopens only after satisfaction', () => {
   const { taskService, sdk } = service();
   const prerequisite = sdk.proposeTask(rootInput({ goal: 'finish prerequisite' }), { operationId: 'typed-block-prerequisite' }).task;

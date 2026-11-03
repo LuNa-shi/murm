@@ -33,6 +33,49 @@ function usesWorkspace(task) {
   return Boolean((workspace && typeof workspace === 'object' && Object.keys(workspace).length > 0) ||
     contract.requires_workspace === true || contract.required_candidate?.workspace === true);
 }
+
+function requiredTaskCapabilities(payload = {}) {
+  const explicit = payload.required_capabilities ?? payload.requiredCapabilities ??
+    payload.capability_requirements ?? payload.capabilityRequirements ?? [];
+  const required = Array.isArray(explicit)
+    ? explicit.filter((value) => typeof value === 'string' && value.length > 0)
+    : [];
+  const conditions = payload.acceptance_conditions;
+  // These acceptance keys are intentionally narrow, stable Task contract
+  // vocabulary. They describe a result that cannot be verified by the
+  // generic Task/Workspace surface; admission must fail before creating a
+  // claimable Task when the corresponding registered capability is absent.
+  if (conditions && typeof conditions === 'object' && !Array.isArray(conditions) &&
+    (conditions.requires_exact_declarations === true || conditions.requires_verified_usage === true)) {
+    required.push('mathlib_search');
+  }
+  return [...new Set(required)];
+}
+
+function availableTaskCapabilities(profile) {
+  return new Set((profile?.capabilities ?? []).flatMap((capability) => [
+    capability.id,
+    capability.name,
+    capability.operation,
+    capability.tool_name,
+    capability.toolName,
+  ]).filter((value) => typeof value === 'string' && value.length > 0));
+}
+
+function assertTaskCapabilityAdmission(payload, profile) {
+  const required = requiredTaskCapabilities(payload);
+  if (required.length === 0) return;
+  const available = availableTaskCapabilities(profile);
+  const missing = required.filter((capability) => !available.has(capability));
+  if (missing.length > 0) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT,
+      `Task requires capabilities unavailable to this Session: ${missing.join(', ')}`, {
+        missing_capabilities: missing,
+        required_capabilities: required,
+        admission: 'rejected',
+      });
+  }
+}
 function json(value) {
   return JSON.stringify(value ?? null);
 }
@@ -505,12 +548,16 @@ export class ServicesBridge {
           }
           : payload;
         const invoke = async () => {
-          if (operation === 'task_create') {
+          if (operation === 'task_create' || operation === 'task_register') {
             const guard = this.onTaskCreate?.({ taskId: this.taskId, executionId: this.executionId, payload });
             if (guard && typeof guard.then === 'function') await guard;
+            assertTaskCapabilityAdmission(payload, profile);
           }
           if (operation === 'task_take') this.lastTakeOutcome = { attempted: true, ok: false, task_id: invocationPayload.task_id ?? null };
-          return this.#invokeRegistered(capability, invocationPayload, bridgeOperationId);
+          const registeredPayload = operation === 'task_create' || operation === 'task_register'
+            ? { ...invocationPayload, required_capabilities: requiredTaskCapabilities(payload) }
+            : invocationPayload;
+          return this.#invokeRegistered(capability, registeredPayload, bridgeOperationId);
         };
         let result = operation === 'task_create' && this.taskCreateMutex
           ? await this.taskCreateMutex.run(invoke)
@@ -658,6 +705,7 @@ export class ServicesBridge {
             const createTask = async () => {
               const guard = this.onTaskCreate?.({ taskId: boundTaskId, executionId: boundExecutionId, payload });
               if (guard && typeof guard.then === 'function') await guard;
+              assertTaskCapabilityAdmission(payload, profile);
               return sdk.createTask(payload, options);
             };
             result = this.taskCreateMutex

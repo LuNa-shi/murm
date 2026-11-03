@@ -64,7 +64,7 @@ class FakeAgentAdapter {
   }
 }
 
-async function fixture({ stopDelayMs = 0, runtimeOptions = {}, parallelQuota = 1 } = {}) {
+async function fixture({ stopDelayMs = 0, runtimeOptions = {}, parallelQuota = 1, claimOwnerRef = 'runtime:local', runtimeActorRef = 'runtime:local' } = {}) {
   const database = new DatabaseSync(':memory:');
   const taskService = new TaskService(database);
   const contextService = new ContextService(database, { taskService });
@@ -72,11 +72,11 @@ async function fixture({ stopDelayMs = 0, runtimeOptions = {}, parallelQuota = 1
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const task = sdk.proposeTask({ task_type: 'proof', goal: 'runtime fixture', expected_output: 'proof', acceptance_conditions: { fixture: true }, owner_ref: 'owner:root', parallel_quota: parallelQuota }, { operationId: 'runtime-proposal' }).task;
   const claimed = sdk.withContext({ taskId: task.task_id, specVersion: 1, stateVersion: 0 }).claim({
-    execution_id: 'execution-runtime', claim_key: 'runtime-claim', owner_ref: 'runtime:local', agent_prompt: 'run the fixture', input_material_refs: [],
+    execution_id: 'execution-runtime', claim_key: 'runtime-claim', owner_ref: claimOwnerRef, agent_prompt: 'run the fixture', input_material_refs: [],
   }, { operationId: 'runtime-claim-op' });
   const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-workspace-'));
   const adapter = new FakeAgentAdapter({ stopDelayMs });
-  const runtime = new Runtime({ taskService, contextService, workspaceManager: new WorkspaceManager({ rootDir }), agentAdapter: adapter, actorRef: 'runtime:local', ...runtimeOptions });
+  const runtime = new Runtime({ taskService, contextService, workspaceManager: new WorkspaceManager({ rootDir }), agentAdapter: adapter, actorRef: runtimeActorRef, ...runtimeOptions });
   return { taskService, contextService, sdk, task, claimed, rootDir, adapter, runtime };
 }
 
@@ -825,6 +825,31 @@ test('Runtime handoff checkpoints metadata, fences stale writers, and releases t
     assert.equal(replay.disposition, 'already_terminal');
     assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
   } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('semantic handoff uses the authenticated Execution owner when Runtime actor differs', async () => {
+  const fixtureData = await fixture({ claimOwnerRef: 'agent:core-1', runtimeActorRef: 'runtime:core-1' });
+  const { runtime, taskService, contextService, claimed, rootDir, task } = fixtureData;
+  try {
+    taskService.contextService = contextService;
+    contextService.taskService = taskService;
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const material = new ServicesSDK(contextService, {
+      actorRef: 'agent:core-1', taskId: task.task_id, executionId: claimed.execution.execution_id,
+      specVersion: started.execution.spec_version, stateVersion: started.execution.state_version,
+      fencingVersion: started.execution.fencing_version,
+    }).publishMaterial({ role: 'handoff', kind: 'failure', scope: 'proof_relevant', content: { blocker: 'external capability' } }, { operationId: 'semantic-owner-handoff:material' }).material;
+    const handedOff = await runtime.handoffTask(claimed.execution.execution_id, {
+      reason: 'external_capability', handoff_material_id: material.material_id,
+    });
+    assert.equal(handedOff.disposition, 'handed_off');
+    assert.equal(handedOff.execution.state, 'HANDED_OFF');
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+  } finally {
+    await runtime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
   }

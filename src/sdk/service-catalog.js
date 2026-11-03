@@ -194,7 +194,7 @@ const publicTaskTools = [
     name: 'task_register', service: 'task', operation: 'task_register', version: '1.0',
     description: 'Register one independent Task with a goal, output, acceptance condition, and collaboration reason.',
     scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['mission_id', 'goal', 'expected_output', 'acceptance_conditions'], properties: { mission_id: { type: 'string' }, task_id: { type: 'string' }, summary: { type: 'string' }, goal: { type: 'string' }, task_type: { type: 'string' }, task_instructions: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] }, collaboration_reason: { type: 'string' }, responsibility_key: { type: 'string' }, spawned_from: { type: 'string' }, depends_on: { type: 'array', items: { type: 'string' } }, timebox_ms: { type: 'integer', minimum: 1 } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['mission_id', 'goal', 'expected_output', 'acceptance_conditions'], properties: { mission_id: { type: 'string' }, task_id: { type: 'string' }, summary: { type: 'string' }, goal: { type: 'string' }, task_type: { type: 'string' }, task_instructions: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] }, required_capabilities: { type: 'array', items: { type: 'string', minLength: 1 } }, collaboration_reason: { type: 'string' }, responsibility_key: { type: 'string' }, spawned_from: { type: 'string' }, depends_on: { type: 'array', items: { type: 'string' } }, timebox_ms: { type: 'integer', minimum: 1 } }, additionalProperties: false },
   },
   {
     name: 'task_take', service: 'task', operation: 'task_take', version: '1.0',
@@ -248,6 +248,7 @@ const publicTaskTools = [
         task_instructions: { type: 'string' },
         expected_output: { type: 'string' },
         acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] },
+        required_capabilities: { type: 'array', items: { type: 'string', minLength: 1 } },
         completion_contract: { type: 'object' },
         input_material_refs: { type: 'array', items: { type: 'string' } },
         responsibility_key: { type: 'string', minLength: 1, maxLength: 256 },

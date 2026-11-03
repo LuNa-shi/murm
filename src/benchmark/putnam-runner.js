@@ -1943,7 +1943,7 @@ async function createProjectState(problem, config, options) {
     completion_contract: {
       ...(normalFlow ? { normal_flow: true } : {}),
       ...(selectedParallelMode === 'semantic' && selectedTaskModel !== 'flat' ? {
-        required_materials: [{ kinds: ['artifact', 'fact', 'experience', 'failure'], scope: 'root_integration', min_count: 1, requires_consumption: true, action: 'integration' }],
+        required_materials: [{ kinds: ['artifact', 'fact', 'experience', 'failure'], scope: 'root_integration', min_count: 1, requires_consumption: true, cross_task: true, action: 'integration' }],
       } : {}),
       ...(selectedTaskModel === 'flat' ? {
         required_materials: [{
@@ -1951,6 +1951,7 @@ async function createProjectState(problem, config, options) {
           scope: 'proof_relevant',
           min_count: 1,
           requires_consumption: true,
+          cross_task: true,
           action: 'integration',
         }],
       } : {}),

@@ -195,6 +195,49 @@ test('ServicesBridge exposes canonical task status/register/take through the bou
   }
 });
 
+test('ServicesBridge rejects a capability-infeasible research Task before admission', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:admission' });
+  const mission = owner.createMission({
+    mission_id: 'mission:admission',
+    goal: 'reject impossible research work',
+    acceptance_conditions: { no_unbound_research: true },
+  }, { operationId: 'admission:mission' }).mission;
+  const root = owner.createTask({
+    mission_id: mission.mission_id,
+    summary: 'Provide a bound owner for the capability admission test.',
+    expected_output: 'a bounded execution',
+    acceptance_conditions: { bound: true },
+  }, { operationId: 'admission:root' }).task;
+  const claim = owner.withContext({ taskId: root.task_id, specVersion: root.spec_version, stateVersion: root.state_version }).claim({
+    execution_id: 'execution:admission-root', claim_key: 'admission:root:claim', owner_ref: 'agent:admission', input_material_refs: [],
+  }, { operationId: 'admission:root:claim' });
+  const bridge = new ServicesBridge({ taskService, contextService, runtime: {}, router, actorRef: 'agent:admission', taskId: root.task_id, executionId: claim.execution.execution_id });
+  try {
+    await assert.rejects(
+      () => bridge.call({
+        operation: 'task_create',
+        payload: {
+          mission_id: mission.mission_id,
+          summary: 'Verify locked Mathlib declarations before starting a proof route.',
+          task_type: 'research',
+          expected_output: 'verified declarations',
+          acceptance_conditions: { requires_exact_declarations: true, requires_verified_usage: true },
+        },
+      }),
+      (error) => error.code === 'INVALID_TASK_CONTRACT' && error.details?.admission === 'rejected' && error.details.missing_capabilities.includes('mathlib_search'),
+    );
+    assert.equal(taskService.listMissionTasks({ mission_id: mission.mission_id }).length, 1);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
 test('ServicesBridge gates sandbox commands on the active Execution binding', async () => {
   const task = { task_id: 'task-sandbox', mission_id: 'mission-sandbox', workspace: { required_inputs: ['README.md'] }, spec_version: 1, state_version: 2 };
   const execution = { execution_id: 'execution-sandbox', task_id: task.task_id, state: 'RUNNING', spec_version: 1, state_version: 2, fencing_version: 1 };

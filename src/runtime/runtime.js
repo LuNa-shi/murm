@@ -873,7 +873,13 @@ export class Runtime {
     const activeBeforeRelease = this.activeProcesses.get(id);
     if (activeBeforeRelease) activeBeforeRelease.closing = true;
     await this.#stopSandbox(id);
-    const result = this.taskService.dispatch(operation, payload, this.#executionEnvelope(current, operationId(operation)));
+    // The semantic Task transition is requested on behalf of the bound Agent.
+    // Runtime still owns the physical Session/Workspace release below, but it
+    // must not present its daemon actor as the Task owner.  Claims bind the
+    // Execution to `owner_ref` (for example `agent:core-2`); using
+    // `runtime:core-2` here made every normal handoff/block fail the Task
+    // Service ownership check before Runtime could release the Core.
+    const result = this.taskService.dispatch(operation, payload, this.#executionEnvelope(current, operationId(operation), current.owner_ref));
     const active = this.activeProcesses.get(id);
     const workspaceRef = result.execution.workspace_ref ?? current.workspace_ref;
     const workspaceFenced = await this.#fenceWorkspaceBestEffort({
