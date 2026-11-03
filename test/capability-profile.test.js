@@ -46,6 +46,7 @@ test('capability profiles are role-scoped, deterministic, and hashable', () => {
   assert.deepEqual(profileToolNames(recovery), profileToolNames(bound));
   assert.equal(buildCapabilityProfile({ role: AGENT_ROLES.BOUND, registry: registry() }).profile_hash, bound.profile_hash);
   assert.match(capabilityDirectory(bound), /Geometry Research/);
+  assert.match(capabilityDirectory(bound), /task_take.*inputs required=\[task_id\]/);
 });
 
 test('initial prompt snapshot composes profile, contract, workspace, and recovery context', () => {

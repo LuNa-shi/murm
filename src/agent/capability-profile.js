@@ -265,7 +265,15 @@ export function capabilityDirectory(profile) {
       if (!capability) continue;
       const guidance = capability.help?.when ?? capability.help?.usage ?? capability.help?.summary ?? null;
       const effect = capability.side_effect === false || capability.side_effect === 'read' ? 'read-only' : 'writes state';
-      lines.push(`  - swarmenv_${name}: ${capability.description || 'Use the registered capability.'} (logical operation ${capability.service_id}.${capability.operation}; ${effect}${guidance ? `; ${guidance}` : ''})`);
+      const schema = capability.input_schema && typeof capability.input_schema === 'object' && !Array.isArray(capability.input_schema)
+        ? capability.input_schema
+        : {};
+      const required = Array.isArray(schema.required) ? schema.required : [];
+      const properties = schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)
+        ? Object.keys(schema.properties).sort()
+        : [];
+      const inputSummary = `inputs required=[${required.join(',') || 'none'}] fields=[${properties.join(',') || 'none'}]`;
+      lines.push(`  - swarmenv_${name}: ${capability.description || 'Use the registered capability.'} (logical operation ${capability.service_id}.${capability.operation}; ${effect}; ${inputSummary}${guidance ? `; ${guidance}` : ''})`);
     }
   }
   return lines.length > 0 ? lines.join('\n') : '- No callable provider capabilities are available in this Session.';

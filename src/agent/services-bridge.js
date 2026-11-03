@@ -419,8 +419,20 @@ export class ServicesBridge {
     try {
       const profile = this.getCapabilityProfile();
       const capability = this.#profileCapability(profile, operation, { serviceId, capabilityId });
-      if (!capability) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Agent capability is not available for this Session: ${operation}`, { operation, role: this.role, profile_hash: profile.profile_hash });
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bridge payload must be an object');
+      if (!capability) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Agent capability is not available for this Session: ${operation}`, {
+        operation,
+        role: this.role,
+        profile_hash: profile.profile_hash,
+        action: 'call_list_tools_or_get_service_metadata',
+        available_capabilities: profile.capabilities.map((candidate) => candidate.tool_name ?? candidate.name),
+      });
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bridge payload must be an object', {
+          operation,
+          expected: 'object',
+          action: 'retry_with_the_registered_input_schema',
+        });
+      }
       const boundTask = this.taskId ? this.taskService.getTask(this.taskId) : null;
       const modernBoundTask = boundTask?.mission_id ? boundTask : null;
       if (modernBoundTask && MODERN_RETIRED_OPERATIONS.has(operation)) {

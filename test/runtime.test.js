@@ -301,6 +301,8 @@ test('Runtime bind composes the supplied mode prompt with the live Service profi
     assert.match(prompt, /TASK_INSTRUCTIONS_SENTINEL/);
     assert.match(prompt, /Mathlib Search/);
     assert.match(prompt, /swarmenv_mathlib_search/);
+    assert.match(prompt, /explicit decomposition decision/);
+    assert.match(prompt, /substantive increment/);
     assert.doesNotMatch(prompt, /swarmenv_call|request_wait/);
     await runtime.stopExecution(claimed.execution.execution_id);
   } finally {

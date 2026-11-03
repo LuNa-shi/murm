@@ -450,6 +450,8 @@ test('ServicesBridge returns structured tool errors and exposes them to audit ho
     assert.equal(errors.length, 1);
     assert.equal(errors[0].operation, 'host_shell');
     assert.equal(errors[0].error.code, 'NOT_ALLOWED');
+    assert.equal(errors[0].error.details.action, 'call_list_tools_or_get_service_metadata');
+    assert.ok(Array.isArray(errors[0].error.details.available_capabilities));
   } finally {
     await bridge.stop();
     taskService.close();
