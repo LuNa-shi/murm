@@ -16,10 +16,10 @@ evidence). Raw transcripts, proof text, and credentials are not published.
 | A03 version/environment binding | `src/judge/*`, `src/task/task-service.js` | `test/judge*.test.js`, `test/task-service.test.js` | R: probe CheckResults carry candidate/execution/checker identity | PASS (controlled) |
 | A04 final acceptance independent of first identity | `src/task/task-service.js`, runner candidate path | `test/putnam-runner.test.js`, `test/task-service.test.js` | none natural | I only; long-run R pending |
 | A05 failure/cost classification | `src/judge/check-result.js`, runner projections | `test/putnam-runner.test.js` (checker infrastructure) | R: probe classified source failure, not infrastructure | PASS (controlled) |
-| B01 shared Mission concurrency | `src/task/task-service.js`, `src/runtime/identity-task-loop.js` | `test/orchestration-roles.test.js`, `test/task-service.test.js` | none natural | I; four-Core R pending |
-| B02 exclusive ordinary Task | Task Service claim guards | `test/services-bridge.test.js`, `test/putnam-runner.test.js` | none natural | I; R pending |
+| B01 shared Mission concurrency | `src/task/task-service.js`, `src/runtime/identity-task-loop.js` | `test/orchestration-roles.test.js`, `test/task-service.test.js` | R: final run, same Mission Task with 4 Core Executions (80 Mission claims) | PASS (real trajectory) |
+| B02 exclusive ordinary Task | Task Service claim guards | `test/services-bridge.test.js`, `test/putnam-runner.test.js` | R: final run created a peer research Task and 55 claims targeted it; it remained OPEN | PARTIAL (creation + claim; independent completion/output not shown) |
 | B03 same identity/Core across Tasks | `src/benchmark/putnam-runner.js`, `identity-task-loop.js`, Runtime release paths | `test/putnam-runner.test.js` ("production queue dynamically reuses…", same-Session assertions) | probe used one Session for FAIL→PASS; multi-Task reuse is deterministic | I + limited R; long-run R pending |
-| B04 empty child queue returns to Mission | runner/base prompt, identity loop | `test/putnam-runner.test.js` | none natural | I; R pending |
+| B04 empty child queue returns to Mission | runner/base prompt, identity loop | `test/putnam-runner.test.js` | R: final run repeatedly returned to the shared Mission after handoffs (80 Mission claims) | PASS (real trajectory) |
 | B05 no task-count quota | `src/task/task-service.js`, runner | `test/putnam-runner.test.js`, `test/task-service.test.js` | none natural | I; R pending |
 | B06 authoritative state/provenance/pagination | Task Service | `test/task-service.test.js`, `test/services-bridge.test.js` | probe Task/Execution IDs agree across reports | I + limited R |
 | B07 local Mission lifecycle | Task Service/Runtime | `test/runtime.test.js`, `test/phase1-progress.test.js` | none natural | I; R pending |
@@ -39,9 +39,9 @@ evidence). Raw transcripts, proof text, and credentials are not published.
 
 ## Explicit gaps
 
-- No two-hour four-Core matched baseline/treatment run yet.
+- Two-hour four-Core flat treatment run completed on `34d04b3`/`1e418a2`; matched pre-Issue baseline is still missing.
 - No real compaction-threshold rotation probe yet.
-- The Sandbox backend has deterministic fake-docker coverage but no real-image
-  long run yet.
-- Shared-Mission multi-Execution isolation has deterministic coverage but no
-  four-Core natural run in this evidence set.
+- The Sandbox backend has deterministic fake-docker coverage but was not enabled
+  in the two-hour run; a real-image long run is still missing.
+- Shared-Mission multi-Execution isolation is now covered by the final four-Core
+  run; B02 independent output completion remains open.

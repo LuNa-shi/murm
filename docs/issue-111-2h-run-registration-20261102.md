@@ -4,7 +4,7 @@ Registered before launch.
 
 ## Exact implementation
 
-- Run HEAD: the documentation commit immediately above `1e418a29fc0fef8ba58516d38cb6b6148049c9c2` (recorded at launch in the report)
+- Run HEAD: `34d04b3393f099c5a3225fafe8bfe86f205c8fcc`
 - Code implementation under test: `1e418a29fc0fef8ba58516d38cb6b6148049c9c2`;
   later commits in this run are documentation-only.
 - Worktree: `/home/ubuntu/SwarmEnv/.worktrees/issue-111-task-centric-phase1`

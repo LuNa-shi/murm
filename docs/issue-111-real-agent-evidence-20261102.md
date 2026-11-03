@@ -188,3 +188,40 @@ errors) was probed on clean `e81082c0082410685d7786d6c3ba771bec563f3d`:
   revision → PASS in one Session/Execution.
 - Sanitized record: `experiments/issue-111-probe-1e418a2/analysis/report.json`.
 - Deterministic suite: 316/316.
+
+## Final two-hour four-Core run (`34d04b3393f099c5a3225fafe8bfe86f205c8fcc`)
+
+Run HEAD `34d04b3393f099c5a3225fafe8bfe86f205c8fcc`; implementation code
+`1e418a29fc0fef8ba58516d38cb6b6148049c9c2` plus the run registration docs.
+Clean worktree, `--task-model flat`, 4 Cores, 7200 s, `openai-codex` /
+`gpt-6.1-sol`, locked PutnamBench `a635813…`.
+
+| Observation | Result |
+|---|---|
+| Protocol validity | **valid**, `audit.invalid=false` |
+| Wall clock | 7,304,003 ms |
+| Mission | 1 shared Mission Task; 1 Agent-created peer research Task |
+| Claims | 80 on the Mission Task, 55 on the research Task; all 4 Cores claimed |
+| Candidate checks | 4, all `source_failure` (no PASS in this run) |
+| Materials / consumptions | 302 / 147 |
+| Wait / wake / rework / accept | 0 / 0 / 0 / 0 |
+| Solve | no (deadline reached; not a mechanism failure) |
+| Sessions | 3-5 per Core, 1-2 recoveries per Core |
+| Tool errors | 131 total: `get_workspace` 47, `task_block` 46, `task_take` 20 (11 NOT_ALLOWED + 9 CONFLICT), other validation feedback |
+
+The run demonstrates shared-Mission concurrency with four real identities, an
+Agent-initiated independent peer Task that another identity claimed, repeated
+same-Core continuation, durable Materials, and real checker feedback. It did
+not produce a same-Execution FAIL→revision→PASS chain; that path is evidenced
+by the controlled probe above. The peer research Task was still OPEN at the
+end, so B02's independent-output completion remains uncovered.
+
+The previous `1235bb7` run is diagnostic only: it produced one PASS but was
+marked invalid by a false `workspace_boundary_violation` caused by an allowed
+`task_take_bind_failed` rollback without a Workspace. That classification was
+fixed in `1e418a2`; the false-positive run is not acceptance evidence.
+
+Remaining gaps: no matched pre-Issue baseline comparison; no real
+compaction-threshold rotation; the Sandbox backend was not enabled in this run;
+the eligibility metric (`eligible_window_ms`) stayed 0 and is not used as
+acceptance evidence.
