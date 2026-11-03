@@ -879,7 +879,24 @@ export class Runtime {
     // Execution to `owner_ref` (for example `agent:core-2`); using
     // `runtime:core-2` here made every normal handoff/block fail the Task
     // Service ownership check before Runtime could release the Core.
-    const result = this.taskService.dispatch(operation, payload, this.#executionEnvelope(current, operationId(operation), current.owner_ref));
+    let result;
+    try {
+      result = this.taskService.dispatch(operation, payload, this.#executionEnvelope(current, operationId(operation), current.owner_ref));
+    } catch (error) {
+      // Stopping Sandbox writes is a preparation step, not a committed
+      // lifecycle transition. If Task Service rejects the semantic request
+      // (missing handoff Material, duplicate dependency, stale version, ...),
+      // keep the still-running Execution usable for a corrected retry. Leaving
+      // `closing=true` here silently drops later Session events and strands a
+      // RUNNING owner behind a failed handoff attempt.
+      const stillActive = this.activeProcesses.get(id) === activeBeforeRelease;
+      const latest = this.taskService.getExecution(id);
+      if (activeBeforeRelease && stillActive && latest && ['CREATED', 'RUNNING'].includes(latest.state)) {
+        activeBeforeRelease.closing = false;
+        this.logger?.append({ event: 'runtime.semantic_release_rejected', execution_id: id, operation, error_class: error?.code ?? error?.name ?? 'semantic_release_rejected' });
+      }
+      throw error;
+    }
     const active = this.activeProcesses.get(id);
     const workspaceRef = result.execution.workspace_ref ?? current.workspace_ref;
     const workspaceFenced = await this.#fenceWorkspaceBestEffort({

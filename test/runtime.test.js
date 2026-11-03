@@ -855,6 +855,44 @@ test('semantic handoff uses the authenticated Execution owner when Runtime actor
   }
 });
 
+test('rejected semantic handoff restores the active Runtime binding for a corrected retry', async () => {
+  const fixtureData = await fixture({ claimOwnerRef: 'agent:core-retry', runtimeActorRef: 'runtime:core-retry' });
+  const { runtime, taskService, contextService, claimed, rootDir, task } = fixtureData;
+  taskService.contextService = contextService;
+  contextService.taskService = taskService;
+  const originalDispatch = taskService.dispatch.bind(taskService);
+  let rejectOnce = true;
+  taskService.dispatch = (operation, payload, envelope) => {
+    if (operation === 'handoff_task' && rejectOnce) {
+      rejectOnce = false;
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'controlled missing handoff material');
+    }
+    return originalDispatch(operation, payload, envelope);
+  };
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const material = new ServicesSDK(contextService, {
+      actorRef: 'agent:core-retry', taskId: task.task_id, executionId: claimed.execution.execution_id,
+      specVersion: started.execution.spec_version, stateVersion: started.execution.state_version,
+      fencingVersion: started.execution.fencing_version,
+    }).publishMaterial({ role: 'handoff', kind: 'failure', scope: 'proof_relevant', content: { blocker: 'retryable contract rejection' } }, { operationId: 'semantic-retry:material' }).material;
+    await assert.rejects(() => runtime.handoffTask(claimed.execution.execution_id, {
+      reason: 'controlled_rejection', handoff_material_id: 'missing-material',
+    }), (error) => error.code === ERROR_CODES.INVALID_CONTRACT);
+    assert.equal(runtime.getActiveProcessCount(), 1);
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
+    const handedOff = await runtime.handoffTask(claimed.execution.execution_id, {
+      reason: 'corrected_retry', handoff_material_id: material.material_id,
+    });
+    assert.equal(handedOff.disposition, 'handed_off');
+    assert.equal(handedOff.execution.state, 'HANDED_OFF');
+  } finally {
+    await runtime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('Runtime completes a handoff when physical Workspace fencing fails', async () => {
   const fixtureData = await fixture();
   const { runtime, taskService, claimed, rootDir, adapter, task } = fixtureData;
