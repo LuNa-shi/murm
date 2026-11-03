@@ -1236,6 +1236,11 @@ async function stopCore(state, core) {
     core.session,
     core.releasedSession,
   ].filter(Boolean));
+  // Flush any post-response Judge lifecycle (for example a typed checker
+  // health block) while Runtime is still live. Closing the Bridge only after
+  // Runtime shutdown lets that deferred callback race report-directory
+  // cleanup and write an unhandled late log event.
+  await core.bridge.stop().catch(() => undefined);
   // Runtime owns process termination, capacity release, fencing, and recovery
   // suppression. Keep those effects behind its public shutdown seam.
   await core.runtime.shutdown({ terminalState: 'FAILED', terminalReason: 'benchmark_deadline_cleanup' });
@@ -1263,7 +1268,6 @@ async function stopCore(state, core) {
     execution_id: current?.execution_id ?? null,
     reason: 'benchmark_cleanup_complete',
   });
-  await core.bridge.stop().catch(() => undefined);
 }
 
 function structureEvidence(taskService, taskTree, cores, mode) {

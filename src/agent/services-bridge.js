@@ -155,6 +155,7 @@ export class ServicesBridge {
     // failure may then stage a typed Task block, which is applied only after
     // the HTTP response has been handed to the Agent.
     this.deferredLifecycle = null;
+    this.deferredLifecyclePromise = null;
     // The most recent task_take attempt made through this identity, used by
     // the Core loop to distinguish "invalid choice" from "lost a claim race".
     // It is reset by the Runner at the start of each discovery turn.
@@ -367,6 +368,19 @@ export class ServicesBridge {
   }
 
   async stop() {
+    // A synchronous Judge response may stage a typed block to run after the
+    // HTTP response is sent. Drain that lifecycle work before the caller
+    // tears down Runtime/log directories; otherwise the setImmediate
+    // callback can write after experiment cleanup and surface an unhandled
+    // ENOENT instead of a durable Task transition.
+    if (this.deferredLifecycle) {
+      try {
+        await this.flushDeferredLifecycle();
+      } catch (error) {
+        this.logger?.append({ event: 'bridge.lifecycle_error', operation: 'deferred_block', ok: false, error: { name: error.name, code: error.code, message: error.message } });
+      }
+    }
+    if (this.deferredLifecyclePromise) await this.deferredLifecyclePromise.catch(() => undefined);
     if (!this.server) return;
     const server = this.server;
     this.server = null;
@@ -401,12 +415,13 @@ export class ServicesBridge {
       const result = await this.call(input);
       send(response, 200, { ok: true, result });
       this.logger?.append({ event: 'bridge.response_sent', operation: input.operation });
-      if (this.deferredLifecycle) {
-        setImmediate(() => {
-          void this.flushDeferredLifecycle().catch((error) => {
-            this.logger?.append({ event: 'bridge.lifecycle_error', operation: 'deferred_block', ok: false, error: { name: error.name, code: error.code, message: error.message } });
-          });
+      if (this.deferredLifecycle && !this.deferredLifecyclePromise) {
+        const deferredPromise = Promise.resolve().then(() => this.flushDeferredLifecycle()).catch((error) => {
+          this.logger?.append({ event: 'bridge.lifecycle_error', operation: 'deferred_block', ok: false, error: { name: error.name, code: error.code, message: error.message } });
+        }).finally(() => {
+          if (this.deferredLifecyclePromise === deferredPromise) this.deferredLifecyclePromise = null;
         });
+        this.deferredLifecyclePromise = deferredPromise;
       }
     } catch (error) {
       if (!response.writableEnded) send(response, 400, { ok: false, error: errorBody(error) });
