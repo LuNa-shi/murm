@@ -173,6 +173,8 @@ class NotificationSession extends EventEmitter {
 
   async waitForReady() {}
 
+  async waitForSettled() {}
+
   async prompt(message, options = {}) {
     this.prompts.push({ message, options });
   }
@@ -232,6 +234,45 @@ test('Runtime delivers active notifications in order and inactive notifications 
     await runtime.startExecution(inactiveExecution.execution_id, { coreId: 'core-test' });
     assert.match(sessions[1].prompts[0].message, /test:inactive:one|material:y/);
     assert.equal(taskService.listPendingNotifications(inactiveTask.task_id, inactiveExecution.execution_id).length, 0);
+  } finally {
+    await runtime.shutdown().catch(() => undefined);
+    taskService.close();
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('Runtime delivers pending Task notifications after a reusable binding skips the initial prompt', async () => {
+  const { taskService, contextService } = setup();
+  const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-issue113-rebind-notify-'));
+  const session = new NotificationSession();
+  const runtime = new Runtime({
+    taskService,
+    contextService,
+    workspaceManager: new WorkspaceManager({ rootDir }),
+    agentAdapter: { async start() { return session; } },
+    actorRef: 'runtime:rebind-notify',
+    coreIds: ['core-rebind-notify'],
+  });
+  try {
+    taskService.dispatch('mission.create', { mission_id: 'mission:rebind-notify', goal: 'rebind notification' }, env('rebind:mission', 'operator:test'));
+    const task = makeTask(taskService, 'mission:rebind-notify', 'task:rebind-notify');
+    const execution = claim(taskService, task, 'execution:rebind-notify', 'agent:rebind-notify');
+    taskService.enqueueNotification({
+      deliveryKey: 'rebind:pending', missionId: 'mission:rebind-notify', recipientTaskId: task.task_id,
+      type: 'material_available', materialId: 'material:pending', payload: { material_id: 'material:pending' },
+    });
+    await runtime.bindAgentExecution(execution.execution_id, session, {
+      workspaceRef: join(rootDir, execution.execution_id),
+      coreId: 'core-rebind-notify',
+      sendInitialPrompt: false,
+      agentPrompt: 'current bound turn already owns the first prompt',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(session.prompts.length, 1);
+    assert.equal(session.prompts[0].options.streamingBehavior, 'followUp');
+    assert.match(session.prompts[0].message, /material:pending/);
+    assert.equal(taskService.listPendingNotifications(task.task_id, execution.execution_id).length, 0);
   } finally {
     await runtime.shutdown().catch(() => undefined);
     taskService.close();

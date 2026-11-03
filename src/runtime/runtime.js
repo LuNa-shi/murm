@@ -605,6 +605,13 @@ export class Runtime {
       await this.#ensureSandbox(current, workspace);
       if (sendInitialPrompt !== false) {
         await this.#sendInitialPrompt(boundSession, initialPrompt, current, workspace);
+      } else {
+        // The benchmark's reusable identity path deliberately does not send a
+        // second initial prompt while the current Agent turn is still active.
+        // Task-level notifications created while this identity was unbound
+        // still need a delivery opportunity. Queue them behind the Session's
+        // settled boundary instead of losing them until a future restart.
+        this.#queuePendingNotifications(this.activeProcesses.get(current.execution_id));
       }
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
@@ -1811,6 +1818,9 @@ export class Runtime {
     active.promptChain = active.promptChain.catch(() => undefined).then(async () => {
       const current = this.taskService.getExecution(active.execution.execution_id);
       if (!current || !['CREATED', 'RUNNING'].includes(current.state)) return;
+      if (typeof active.session.waitForSettled === 'function') {
+        await active.session.waitForSettled({ timeoutMs: 30_000 });
+      }
       this.taskService.recordNotificationAttempt?.(notification.notification_id);
       try {
         await active.session.prompt?.(this.#notificationText(notification), {
@@ -1824,6 +1834,15 @@ export class Runtime {
       }
     });
     return active.promptChain;
+  }
+
+  #queuePendingNotifications(active) {
+    if (!active) return;
+    const notifications = this.taskService.listUnprocessedNotifications?.(
+      active.execution.task_id,
+      active.execution.execution_id,
+    ) ?? [];
+    for (const notification of notifications) this.#deliverNotification(active, notification);
   }
 
   #identityKey(coreId, execution) {
