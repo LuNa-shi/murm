@@ -102,7 +102,7 @@ test('normal-flow blocking requires a typed dependency', () => {
   taskService.close();
 });
 
-test('semantic blocking rejects an external capability and points Agent to admission', () => {
+test('semantic blocking persists an external capability condition for explicit recovery', () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);
   const taskService = new TaskService(database, { contextService });
@@ -127,7 +127,7 @@ test('semantic blocking rejects an external capability and points Agent to admis
     specVersion: task.spec_version, stateVersion: claim.execution.state_version,
     fencingVersion: claim.execution.fencing_version,
   }).publishMaterial({ kind: 'failure', role: 'handoff', scope: 'proof_relevant', content: { blocker: 'mathlib_search' } }, { operationId: 'capability-block:handoff' }).material;
-  assert.throws(() => taskService.blockTaskSemantic({
+  const blocked = taskService.blockTaskSemantic({
     blocker: { kind: 'capability', capability_id: 'mathlib_search', reason: 'no registered locked-project search service' },
     dependency: { dependency_kind: 'CAPABILITY', capability_id: 'mathlib_search', scope: 'locked-project', retryable: false },
     handoff_material_id: handoff.material_id,
@@ -135,8 +135,41 @@ test('semantic blocking rejects an external capability and points Agent to admis
     operationId: 'capability-block:block', actorRef: 'agent:research', taskId: task.task_id,
     executionId: claim.execution.execution_id, specVersion: task.spec_version,
     stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
-  })), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_TASK_CONTRACT &&
-    error.details?.condition === 'task_creation_admission' && error.details?.action === 'modify_task_contract_or_register_capability');
+  }));
+  assert.equal(blocked.task.state, 'BLOCKED');
+  assert.equal(blocked.execution.state, 'HANDED_OFF');
+  assert.equal(blocked.dependency.dependency_kind, 'CAPABILITY');
+  assert.equal(blocked.dependency.capability_id, 'mathlib_search');
+  assert.equal(blocked.task.block_reason, 'external:mathlib_search');
+  assert.equal(taskService.listTasks({ states: ['OPEN'], availableOnly: true }).some((candidate) => candidate.task_id === task.task_id), false);
+  const reopened = taskService.reopenTask(task.task_id);
+  assert.equal(reopened.changed, true);
+  assert.equal(reopened.task.state, 'OPEN');
+  taskService.close();
+});
+
+test('semantic blocking rejects an untyped external condition with an actionable error', () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const owner = new ServicesSDK(taskService, { actorRef: 'owner:root' });
+  const task = owner.proposeTask(rootInput({ normal_flow: true }), { operationId: 'untyped-capability-task' }).task;
+  const claim = taskService.claimTask(task.task_id, { claim_key: 'untyped-capability-claim', owner_ref: 'agent:research' });
+  const handoff = new ServicesSDK(contextService, {
+    actorRef: 'agent:research', taskId: task.task_id, executionId: claim.execution.execution_id,
+    specVersion: task.spec_version, stateVersion: claim.execution.state_version,
+    fencingVersion: claim.execution.fencing_version,
+  }).publishMaterial({ kind: 'failure', role: 'handoff', scope: 'proof_relevant', content: { blocker: 'unknown' } }, { operationId: 'untyped-capability:handoff' }).material;
+  assert.throws(() => taskService.blockTaskSemantic({
+    blocker: 'missing service',
+    dependency: { dependency_kind: 'EXTERNAL' },
+    handoff_material_id: handoff.material_id,
+  }, makeEnvelope({
+    operationId: 'untyped-capability:block', actorRef: 'agent:research', taskId: task.task_id,
+    executionId: claim.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
+  })), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT && /capability_id/.test(error.message));
   assert.equal(taskService.getTask(task.task_id).state, 'RUNNING');
   taskService.close();
 });

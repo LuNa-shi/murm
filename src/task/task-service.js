@@ -1620,14 +1620,32 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.block requires a typed Task dependency');
     }
     const dependencyKind = String(dependency.dependency_kind ?? dependency.dependencyKind ?? dependency.kind ?? 'TASK').toUpperCase();
-    if (dependencyKind !== 'TASK') {
+    if (['CAPABILITY', 'EXTERNAL_CAPABILITY', 'EXTERNAL'].includes(dependencyKind)) {
       const capabilityId = dependency.capability_id ?? dependency.capabilityId ?? dependency.required_capability ?? null;
-      throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT,
-        'Capability blockers must be resolved during Task admission; create or modify the Task with an exposed capability before claiming it.', {
-          condition: 'task_creation_admission',
-          action: 'modify_task_contract_or_register_capability',
+      if (typeof capabilityId !== 'string' || capabilityId.length === 0) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'capability blockers require dependency.capability_id');
+      }
+      const normalizedDependency = {
+        dependency_kind: 'CAPABILITY',
+        capability_id: capabilityId,
+        scope: dependency.scope ?? null,
+        retryable: dependency.retryable !== false,
+        recovery_condition: dependency.recovery_condition ?? dependency.recoveryCondition ?? dependency.resolution ?? 'explicit_reopen',
+      };
+      const blocked = this.#blockTask({
+        block_reason: typeof blocker === 'string' ? blocker : (blocker.reason ?? blocker.kind ?? `capability:${capabilityId}`),
+        external_dependency: normalizedDependency,
+        terminal_state: 'HANDED_OFF',
+        terminal_reason: typeof blocker === 'string' ? blocker : (blocker.reason ?? 'capability_blocked'),
+        handoff_metadata: { handoff_material_id: material.material_id, blocker, dependency: normalizedDependency },
+      }, envelope);
+      return { ...blocked, dependency: normalizedDependency, handoff: { material, link }, disposition: 'blocked' };
+    }
+    if (dependencyKind !== 'TASK') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT,
+        'task.block requires a TASK dependency or a capability dependency with capability_id', {
           dependency_kind: dependencyKind,
-          capability_id: capabilityId,
+          action: 'use_dependency_kind_TASK_or_CAPABILITY',
           retryable: false,
         });
     }
@@ -3040,6 +3058,7 @@ export class TaskService {
     }
     const reason = requireString(payload.block_reason ?? payload.reason, 'block_reason');
     let dependency = null;
+    let externalDependency = null;
     if (payload.dependency !== undefined) {
       dependency = this.#insertDependency(execution.task_id, payload.dependency, envelope);
       this.#bumpStructure(execution.task_id, {
@@ -3048,11 +3067,35 @@ export class TaskService {
         envelope,
       });
     }
+    if (payload.external_dependency !== undefined) {
+      const candidate = payload.external_dependency;
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'external_dependency must be an object');
+      }
+      const capabilityId = candidate.capability_id ?? candidate.capabilityId ?? candidate.required_capability ?? null;
+      if (typeof capabilityId !== 'string' || capabilityId.length === 0) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'external_dependency.capability_id is required');
+      }
+      if (dependency) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'a block may have either a Task dependency or an external dependency, not both');
+      }
+      externalDependency = {
+        dependency_kind: 'CAPABILITY',
+        capability_id: capabilityId,
+        scope: candidate.scope ?? null,
+        retryable: candidate.retryable !== false,
+        recovery_condition: candidate.recovery_condition ?? candidate.recoveryCondition ?? candidate.resolution ?? 'explicit_reopen',
+      };
+    }
     const task = this.getTask(execution.task_id);
-    if (task?.completion_contract?.normal_flow === true && !dependency) {
+    if (task?.completion_contract?.normal_flow === true && !dependency && !externalDependency) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'normal_flow Tasks require execution_block with a typed dependency');
     }
-    const blockReason = dependency?.dependency_id ? `dependency:${dependency.dependency_id}` : reason;
+    const blockReason = dependency?.dependency_id
+      ? `dependency:${dependency.dependency_id}`
+      : externalDependency
+        ? `external:${externalDependency.capability_id}`
+        : reason;
     const terminalState = payload.terminal_state ?? 'FENCED';
     if (!TERMINAL_EXECUTION_STATES.includes(terminalState)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_state must be an Execution terminal state');
@@ -3113,7 +3156,14 @@ export class TaskService {
       excluded_execution_id: execution.execution_id,
       reason,
     });
-    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id), blocked: true, dependency, fenced_execution_count: fencedOthers };
+    return {
+      execution: this.getExecution(execution.execution_id),
+      task: this.getTask(execution.task_id),
+      blocked: true,
+      dependency: dependency ?? externalDependency,
+      external_dependency: externalDependency,
+      fenced_execution_count: fencedOthers,
+    };
   }
 
   #claimTask(task, payload, envelope) {

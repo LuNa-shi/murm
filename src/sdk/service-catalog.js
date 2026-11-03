@@ -280,9 +280,24 @@ const publicTaskTools = [
   },
   {
     name: 'task_block', service: 'task', operation: 'task_block', version: '1.0',
-    description: 'Publish and link Handoff Material, record a typed dependency, and stop unfinished work as BLOCKED.',
+    description: 'Publish and link Handoff Material, record a typed Task or capability dependency, and stop unfinished work as BLOCKED.',
     scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['blocker', 'dependency', 'handoff_material_id'], properties: { blocker: { type: 'object' }, dependency: { type: 'object', description: 'A real prerequisite Task; this first version does not block on Material or CheckResult.' }, handoff_material_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['blocker', 'dependency', 'handoff_material_id'], properties: {
+      blocker: { type: 'object' },
+      dependency: {
+        type: 'object', minProperties: 1,
+        description: 'Use dependency_kind TASK with prerequisite_task_id for a Task prerequisite, or CAPABILITY with capability_id for a missing runtime/external capability. Capability blockers remain durably BLOCKED until an explicit reopen after the recovery condition is met.',
+        properties: {
+          dependency_kind: { type: 'string', enum: ['TASK', 'CAPABILITY'] },
+          prerequisite_task_id: { type: 'string' },
+          capability_id: { type: 'string' },
+          scope: { type: 'string' },
+          retryable: { type: 'boolean' },
+          recovery_condition: { type: 'string' },
+        },
+      },
+      handoff_material_id: { type: 'string' },
+    }, additionalProperties: false },
   },
   {
     name: 'task_close', service: 'task', operation: 'task_close', version: '1.0',
