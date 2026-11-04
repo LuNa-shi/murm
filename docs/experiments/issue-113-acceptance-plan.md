@@ -1,5 +1,34 @@
 # Issue 113 验收计划
 
+## r10/r12 final validation update (2026-11-04)
+
+The original r5 checklist below is historical. The clean real-Agent evidence
+for the current implementation is now:
+
+- **r10, 1h, commit `6f7420f`: PASS for decomposition and downstream work.**
+  The Agent created two distinct ordinary Mission Tasks, one reached CLOSED,
+  and a child Response was consumed and accepted by the root. The run completed
+  with a valid report and no RUNNING Execution left behind.
+- **r12, 2h, commit `b494af4`: PASS for high-churn finalization and repeatable
+  decomposition.** Two ordinary Tasks were created from the shared Mission;
+  one reached CLOSED and one BLOCKED with bounded evidence. The child Response
+  was accepted by root. The report reached `completed`, `cleanup_errors=[]`,
+  and all Executions were terminal after 7,200,000 ms.
+- **Notification delivery remains open.** r12 persisted two notifications for
+  the accepted child response/reopen path, but both had zero delivery attempts
+  and no receipt/handled decision because the root remained BLOCKED without a
+  claimable recipient Execution. Deterministic Runtime tests cover pending
+  notification delivery after a later binding; this natural run does not prove
+  the receipt path. Keep this as a separate acceptance item rather than treating
+  Material consumption or acceptance as a notification receipt.
+- **Mathematical outcome is separate.** Both runs remained `solved=false` with
+  source-level checker failures. This does not invalidate the lifecycle,
+  decomposition, cross-Task acceptance, or finalization evidence.
+
+Detailed sanitized reports are kept in the ignored experiment directories:
+`experiments/issue-113-1h-20261104-r10-finalization/analysis/experiment-analysis.md`
+and `experiments/issue-113-2h-20261104-r12-finalization/analysis/experiment-analysis.md`.
+
 > **r5 复核校正（2026-11-03）**：r5 运行提前因 Pi `agent_settled` timeout 结束，full analysis 已写入实验目录，判定为 INCONCLUSIVE。当前 Task contract 为 `max_children=0/max_depth=0`，因此不能用“child Task 数为 0”直接判定 prompt FAIL；后续验证必须针对 flat ordinary Task proposal。
 
 > 日期：2026-11-03  
