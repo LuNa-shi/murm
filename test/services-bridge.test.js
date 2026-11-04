@@ -14,6 +14,7 @@ import {
   createHttpJsonAdapter,
   createServiceHost,
   createServiceManifest,
+  runtimeCapabilityList,
 } from '../src/index.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
@@ -28,6 +29,27 @@ function fixture() {
     checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: 'putnambench-lean4@a635813f5edf297d928f9bd5ef8324a26bdde09c',
   };
 }
+
+test('ServicesBridge advertises Sandbox tools only when a Sandbox is bound', async () => {
+  const base = {
+    taskService: { getTask: () => null, getExecution: () => null },
+    contextService: {},
+    router: { dispatch: () => { throw new Error('unexpected router'); } },
+  };
+  const withoutSandbox = new ServicesBridge({ ...base, runtime: {} });
+  const withSandbox = new ServicesBridge({ ...base, runtime: { sandboxManager: {} } });
+  try {
+    const plain = withoutSandbox.getCapabilityProfile().capabilities.map((capability) => capability.operation);
+    assert.ok(!plain.includes('sandbox_exec'));
+    assert.ok(!plain.includes('sandbox_job'));
+    const sandboxed = withSandbox.getCapabilityProfile().capabilities.map((capability) => capability.operation);
+    assert.ok(sandboxed.includes('sandbox_exec'));
+    assert.ok(sandboxed.includes('sandbox_job'));
+  } finally {
+    await withoutSandbox.stop();
+    await withSandbox.stop();
+  }
+});
 
 test('ServicesBridge exposes public SDK calls over a loopback token and keeps Runtime lifecycle internal', async () => {
   const database = new DatabaseSync(':memory:');
@@ -62,6 +84,257 @@ test('ServicesBridge exposes public SDK calls over a loopback token and keeps Ru
     assert.deepEqual(consumedBody.result.material_ids, [publishedBody.result.material.material_id]);
     assert.equal(bridge.taskId, task.task_id);
     assert.equal(bridge.executionId, 'bridge-execution');
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
+test('ServicesBridge exposes canonical task status/register/take through the bound profile', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:canonical' });
+  const mission = owner.createMission({
+    mission_id: 'mission:bridge-canonical',
+    goal: 'exercise the canonical task supply seam',
+    acceptance_conditions: ['a task is registered and taken'],
+  }, { operationId: 'bridge:canonical:mission' }).mission;
+  const root = owner.createTask({
+    mission_id: mission.mission_id,
+    task_id: 'task:bridge-canonical-root',
+    summary: 'Keep the canonical bridge registration test bounded and independently verifiable.',
+    goal: 'Provide a current Execution for provenance assertions.',
+    expected_output: 'a provenance record',
+    acceptance_conditions: ['the registered Task carries actor and Execution provenance'],
+  }, { operationId: 'bridge:canonical:root' }).task;
+  const claim = owner.withContext({
+    taskId: root.task_id,
+    specVersion: root.spec_version,
+    stateVersion: root.state_version,
+  }).claim({
+    execution_id: 'execution:bridge-canonical-root',
+    claim_key: 'bridge:canonical:root:claim',
+    owner_ref: 'agent:canonical',
+    core_id: 'core:canonical',
+    agent_prompt: 'canonical bridge test',
+    input_material_refs: [],
+  }, { operationId: 'bridge:canonical:claim' });
+  const bound = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router,
+    actorRef: 'agent:canonical',
+    coreId: 'core:canonical',
+    taskId: root.task_id,
+    executionId: claim.execution.execution_id,
+  });
+  const taker = new ServicesBridge({
+    taskService,
+    contextService,
+    runtime: {},
+    router,
+    actorRef: 'agent:taker',
+    coreId: 'core:taker',
+    role: AGENT_ROLES.BOUND,
+  });
+  try {
+    const profileNames = bound.getCapabilityProfile().capabilities
+      .filter((capability) => capability.service_id === 'task')
+      .map((capability) => capability.operation);
+    assert.ok(profileNames.includes('task_status'));
+    assert.ok(profileNames.includes('task_register'));
+    assert.ok(profileNames.includes('task_take'));
+    const initial = await bound.call({ operation: 'task_status', payload: { mission_id: mission.mission_id } });
+    assert.equal(initial.counts.total, 1);
+    const registered = await bound.call({
+      operation: 'task_register',
+      payload: {
+        mission_id: mission.mission_id,
+        task_id: 'task:bridge-canonical-child',
+        goal: 'Register one independently checkable route through the canonical Agent seam.',
+        expected_output: 'a route note',
+        acceptance_conditions: ['the route note is durable'],
+        collaboration_reason: 'a second identity can verify this route',
+      },
+    });
+    assert.equal(registered.provenance.actor_ref, 'agent:canonical');
+    assert.equal(registered.provenance.task_id, root.task_id);
+    assert.equal(registered.provenance.execution_id, claim.execution.execution_id);
+    assert.equal(registered.task.owner_ref, 'agent:canonical');
+
+    const taken = await taker.call({
+      operation: 'task_take',
+      // A model-supplied lane must not override the authenticated bridge lane.
+      payload: { task_id: registered.task.task_id, claim_key: 'bridge:canonical:take', core_id: 'core:foreign' },
+    });
+    assert.equal(taken.execution.owner_ref, 'agent:taker');
+    assert.equal(taken.execution.core_id, 'core:taker');
+    assert.equal(taker.taskId, registered.task.task_id);
+    assert.equal(taker.executionId, taken.execution.execution_id);
+    // An ordinary Task is exclusive: a second identity cannot create another
+    // active Execution for the same Task. The conflict is authoritative Task
+    // Service feedback, not a client-side selection rule.
+    await assert.rejects(
+      () => new ServicesBridge({ taskService, contextService, runtime: {}, router, role: AGENT_ROLES.BOUND })
+        .call({ operation: 'task_take', payload: { task_id: registered.task.task_id, claim_key: 'bridge:canonical:second-take' } }),
+      (error) => error.code === 'CONFLICT',
+    );
+    // While an Execution is active the same identity cannot take another Task.
+    await assert.rejects(
+      () => taker.call({ operation: 'task_take', payload: { task_id: root.task_id, claim_key: 'bridge:canonical:bound-second' } }),
+      (error) => error.code === 'NOT_ALLOWED',
+    );
+  } finally {
+    await bound.stop();
+    await taker.stop();
+    taskService.close();
+  }
+});
+
+test('ServicesBridge rejects a capability-infeasible research Task before admission', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:admission' });
+  const mission = owner.createMission({
+    mission_id: 'mission:admission',
+    goal: 'reject impossible research work',
+    acceptance_conditions: { no_unbound_research: true },
+  }, { operationId: 'admission:mission' }).mission;
+  const root = owner.createTask({
+    mission_id: mission.mission_id,
+    summary: 'Provide a bound owner for the capability admission test.',
+    expected_output: 'a bounded execution',
+    acceptance_conditions: { bound: true },
+  }, { operationId: 'admission:root' }).task;
+  const claim = owner.withContext({ taskId: root.task_id, specVersion: root.spec_version, stateVersion: root.state_version }).claim({
+    execution_id: 'execution:admission-root', claim_key: 'admission:root:claim', owner_ref: 'agent:admission', input_material_refs: [],
+  }, { operationId: 'admission:root:claim' });
+  const bridge = new ServicesBridge({ taskService, contextService, runtime: {}, router, actorRef: 'agent:admission', taskId: root.task_id, executionId: claim.execution.execution_id });
+  try {
+    await assert.rejects(
+      () => bridge.call({
+        operation: 'task_create',
+        payload: {
+          mission_id: mission.mission_id,
+          summary: 'Verify locked Mathlib declarations before starting a proof route.',
+          task_type: 'research',
+          expected_output: 'verified declarations',
+          acceptance_conditions: { requires_exact_declarations: true, requires_verified_usage: true },
+        },
+      }),
+      (error) => error.code === 'INVALID_TASK_CONTRACT' && error.details?.admission === 'rejected' &&
+        error.details.missing_capabilities.includes('mathlib_search') &&
+        Array.isArray(error.details.available_capabilities) &&
+        error.details.hint.includes('exact capability IDs'),
+    );
+    assert.equal(taskService.listMissionTasks({ mission_id: mission.mission_id }).length, 1);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
+test('ServicesBridge gates sandbox commands on the active Execution binding', async () => {
+  const task = { task_id: 'task-sandbox', mission_id: 'mission-sandbox', workspace: { required_inputs: ['README.md'] }, spec_version: 1, state_version: 2 };
+  const execution = { execution_id: 'execution-sandbox', task_id: task.task_id, state: 'RUNNING', spec_version: 1, state_version: 2, fencing_version: 1 };
+  const calls = [];
+  const taskService = {
+    getTask: () => task,
+    getExecution: () => execution,
+    dispatch: () => { throw new Error('unexpected dispatch'); },
+  };
+  const runtime = {
+    sandboxExec: async (executionId, payload) => {
+      calls.push({ executionId, payload });
+      return { execution_id: executionId, job_id: 'job-1', exit_code: 0, stdout: 'ok\n', stderr: '', timed_out: false, truncated: false };
+    },
+  };
+  const bound = new ServicesBridge({
+    taskService,
+    contextService: {},
+    runtime,
+    router: { dispatch: () => { throw new Error('unexpected router'); } },
+    runtimeCapabilities: runtimeCapabilityList(),
+    taskId: task.task_id,
+    executionId: execution.execution_id,
+    actorRef: 'agent:sandbox',
+  });
+  try {
+    const result = await bound.call({ operation: 'sandbox_exec', payload: { command: 'rg theorem .' } });
+    assert.equal(result.exit_code, 0);
+    assert.deepEqual(calls, [{ executionId: execution.execution_id, payload: { command: 'rg theorem .', cwd: undefined, timeout_ms: undefined, env: undefined, background: undefined } }]);
+  } finally {
+    await bound.stop();
+  }
+  const unbound = new ServicesBridge({
+    taskService,
+    contextService: {},
+    runtime,
+    router: { dispatch: () => { throw new Error('unexpected router'); } },
+    runtimeCapabilities: runtimeCapabilityList(),
+    actorRef: 'agent:unbound',
+  });
+  try {
+    await assert.rejects(
+      () => unbound.call({ operation: 'sandbox_exec', payload: { command: 'ls' } }),
+      (error) => error.code === 'NOT_ALLOWED',
+    );
+  } finally {
+    await unbound.stop();
+  }
+});
+
+test('ServicesBridge durably stops a provisional claim when Runtime bind fails', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:root' });
+  const task = owner.proposeTask({
+    task_type: 'proof', goal: 'rollback durable stop', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:root',
+    completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixture().environment_ref } },
+  }, { operationId: 'bridge:rollback-stop:propose' }).task;
+  const stopped = [];
+  const bridge = new ServicesBridge({
+    taskService,
+    contextService,
+    router,
+    actorRef: 'agent:rollback-stop',
+    runtime: {
+      stopExecution: async (executionId, terminalState, reason) => {
+        stopped.push({ executionId, terminalState, reason });
+        const execution = taskService.getExecution(executionId);
+        const currentTask = taskService.getTask(execution.task_id);
+        taskService.dispatch('stop_execution', { terminal_state: terminalState, terminal_reason: reason }, makeEnvelope({
+          operationId: `rollback-stop:${executionId}`,
+          actorRef: 'runtime:test',
+          taskId: currentTask.task_id,
+          executionId,
+          specVersion: execution.spec_version,
+          stateVersion: execution.state_version,
+          fencingVersion: execution.fencing_version,
+        }));
+      },
+    },
+    onClaim: async () => { throw new Error('controlled bind failure'); },
+  });
+  try {
+    await assert.rejects(
+      () => bridge.call({ operation: 'task_take', payload: { task_id: task.task_id, claim_key: 'bridge:rollback-stop:take', workspace_mode: 'clean' } }),
+      /controlled bind failure/,
+    );
+    assert.equal(stopped.length, 1);
+    assert.equal(stopped[0].terminalState, 'FAILED');
+    assert.equal(taskService.listActiveExecutions().length, 0);
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
   } finally {
     await bridge.stop();
     taskService.close();
@@ -180,6 +453,8 @@ test('ServicesBridge returns structured tool errors and exposes them to audit ho
     assert.equal(errors.length, 1);
     assert.equal(errors[0].operation, 'host_shell');
     assert.equal(errors[0].error.code, 'NOT_ALLOWED');
+    assert.equal(errors[0].error.details.action, 'call_list_tools_or_get_service_metadata');
+    assert.ok(Array.isArray(errors[0].error.details.available_capabilities));
   } finally {
     await bridge.stop();
     taskService.close();
@@ -378,168 +653,6 @@ test('ServicesBridge refreshes the profile when a Service is registered after st
   }
 });
 
-test('ServicesBridge exposes only the bounded selection shortlist and lets Selection claim exactly once', async () => {
-  const database = new DatabaseSync(':memory:');
-  const contextService = new ContextService(database);
-  const taskService = new TaskService(database, { contextService });
-  contextService.taskService = taskService;
-  const router = new ServicesRouter({ taskService, contextService });
-  const owner = new ServicesSDK(router, { actorRef: 'owner:shortlist' });
-  const task = owner.proposeTask({
-    task_type: 'research', goal: 'bounded selection', expected_output: 'one task', acceptance_conditions: {}, owner_ref: 'owner:shortlist',
-  }, { operationId: 'shortlist:propose' }).task;
-  const bridge = new ServicesBridge({
-    taskService,
-    contextService,
-    runtime: {},
-    router,
-  });
-  try {
-    bridge.setSelectionCandidates([{
-      task_id: task.task_id,
-      goal: 'bounded selection',
-      expected_output: 'one task',
-      workspace: { secret: 'must not cross selection boundary' },
-      completion_contract: { normal_flow: true },
-      selection_rank: 1,
-    }]);
-    const listed = await bridge.call({ operation: 'list_tasks', payload: { limit: 100 } });
-    assert.deepEqual(listed.map((candidate) => candidate.task_id), [task.task_id]);
-    assert.equal(listed[0].workspace, undefined);
-    const viewed = await bridge.call({ operation: 'get_task', payload: { task_id: task.task_id } });
-    assert.equal(viewed.task_id, task.task_id);
-    assert.equal(viewed.workspace, undefined);
-    await assert.rejects(
-      () => bridge.call({ operation: 'get_task', payload: { task_id: 'task-outside-shortlist' } }),
-      (error) => error.code === 'INVALID_CONTRACT' && /bounded shortlist/.test(error.message),
-    );
-    const result = await bridge.call({ operation: 'claim', payload: { task_id: task.task_id, claim_key: 'shortlist-claim' } });
-    assert.equal(result.task.task_id, task.task_id);
-    assert.equal(bridge.role, 'bound');
-    const outside = new ServicesBridge({ taskService, contextService, runtime: {} });
-    outside.setSelectionCandidates([{ task_id: task.task_id }]);
-    await assert.rejects(
-      () => outside.call({ operation: 'claim', payload: { task_id: 'task-outside-shortlist', claim_key: 'outside-shortlist' } }),
-      (error) => error.code === 'INVALID_CONTRACT' && /bounded shortlist/.test(error.message),
-    );
-    await outside.stop();
-    const bound = new ServicesBridge({ taskService, contextService, runtime: {}, taskId: task.task_id, executionId: result.execution.execution_id });
-    await assert.rejects(
-      () => bound.call({ operation: 'claim', payload: { task_id: task.task_id, claim_key: 'second-claim' } }),
-      (error) => error.code === 'NOT_ALLOWED',
-    );
-    await bound.stop();
-  } finally {
-    await bridge.stop();
-    taskService.close();
-  }
-});
-
-test('Selection task discovery requires an injected bounded shortlist on every task discovery route', async () => {
-  const calls = [];
-  const taskDiscoveryCapabilities = [
-    'list_tasks',
-    'list_claimable_tasks',
-    'get_task',
-    'list_executions',
-    'get_task_structure',
-    'explain_task_readiness',
-  ].map((operation) => ({
-    id: `task.${operation}`,
-    name: operation,
-    operation,
-    service_id: 'task',
-    service_title: 'Task Service',
-    service_purpose: 'Task discovery',
-    description: `Discover through ${operation}`,
-    audience: ['selection'],
-    side_effect: 'read',
-    idempotent: true,
-    context: [],
-  }));
-  const registry = {
-    getRevision: () => 1,
-    getCapabilityProfile: () => ({ profile_version: 'test', profile_hash: 'selection-test', capabilities: taskDiscoveryCapabilities }),
-    invoke: async (request) => {
-      calls.push(request);
-      return [];
-    },
-  };
-  const bridge = new ServicesBridge({
-    taskService: { getTask: () => null, getExecution: () => null },
-    contextService: {},
-    runtime: {},
-    registry,
-    role: AGENT_ROLES.SELECTION,
-  });
-  try {
-    const payloads = {
-      list_tasks: {},
-      list_claimable_tasks: {},
-      get_task: { task_id: 'task-1' },
-      list_executions: { task_id: 'task-1' },
-      get_task_structure: { task_id: 'task-1' },
-      explain_task_readiness: { task_id: 'task-1' },
-    };
-    for (const operation of Object.keys(payloads)) {
-      await assert.rejects(
-        () => bridge.call({ operation, payload: payloads[operation] }),
-        (error) => error.code === 'NOT_ALLOWED' && /bounded shortlist/.test(error.message),
-        operation,
-      );
-    }
-    assert.equal(calls.length, 0);
-  } finally {
-    await bridge.stop();
-  }
-});
-
-test('Selection task discovery keeps every task id inside the injected shortlist', async () => {
-  const calls = [];
-  const operations = ['list_executions', 'get_task_structure', 'explain_task_readiness'];
-  const capabilities = operations.map((operation) => ({
-    id: `task.${operation}`,
-    name: operation,
-    operation,
-    service_id: 'task',
-    service_title: 'Task Service',
-    service_purpose: 'Task discovery',
-    description: `Discover through ${operation}`,
-    audience: ['selection'],
-    side_effect: 'read',
-    idempotent: true,
-    context: [],
-  }));
-  const registry = {
-    getRevision: () => 1,
-    getCapabilityProfile: () => ({ profile_hash: 'selection-membership-test', capabilities }),
-    invoke: async (request) => {
-      calls.push(request);
-      return { unexpected: true };
-    },
-  };
-  const bridge = new ServicesBridge({
-    taskService: { getTask: () => null, getExecution: () => null },
-    contextService: {},
-    runtime: {},
-    registry,
-    role: AGENT_ROLES.SELECTION,
-  });
-  bridge.setSelectionCandidates([{ task_id: 'task-in-shortlist', goal: 'bounded task' }]);
-  try {
-    for (const operation of operations) {
-      await assert.rejects(
-        () => bridge.call({ operation, payload: { task_id: 'task-outside-shortlist' } }),
-        (error) => error.code === 'INVALID_CONTRACT' && /bounded shortlist/.test(error.message),
-        operation,
-      );
-    }
-    assert.equal(calls.length, 0);
-  } finally {
-    await bridge.stop();
-  }
-});
-
 test('ServicesBridge exposes controlled Workspace file operations with snake_case payloads', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);
@@ -630,6 +743,52 @@ test('ServicesBridge routes Judge feedback through the named Judge Service tool'
     assert.deepEqual(result.diagnostic_location, null);
     assert.equal(result.evidence, undefined);
     assert.equal(result.process_evidence.exit_code, null);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
+test('ServicesBridge allows a research Mission Task to use Judge without a completion check contract', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:research-judge' });
+  const mission = owner.createMission({
+    mission_id: 'mission:research-judge', goal: 'allow diagnostic checks', acceptance_conditions: {},
+  }).mission;
+  const task = owner.createTask({
+    mission_id: mission.mission_id, task_type: 'research', summary: 'Inspect a candidate and record the diagnostic boundary.',
+    goal: 'Inspect a candidate diagnostically while preserving the research result boundary.', expected_output: 'diagnostic material',
+    acceptance_conditions: { boundary: 'diagnostic' }, owner_ref: 'owner:research-judge',
+    completion_contract: { required_materials: [{ kind: 'fact', min_count: 1 }] },
+  }).task;
+  const claim = taskService.claimTask(task.task_id, {
+    execution_id: 'research-judge-execution', claim_key: 'research-judge-claim',
+    owner_ref: 'agent:research-judge', agent_prompt: 'research', input_material_refs: [],
+  });
+  taskService.dispatch('start_execution', {}, makeEnvelope({
+    operationId: 'research-judge-start', actorRef: 'runtime:test', taskId: task.task_id,
+    executionId: claim.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
+  }));
+  let submissions = 0;
+  const bridge = new ServicesBridge({
+    taskService, contextService, runtime: {}, router,
+    taskId: task.task_id, executionId: claim.execution.execution_id,
+    onSubmitCandidate: async ({ executionId, payload }) => {
+      submissions += 1;
+      return { check_result: { result_class: 'source_failure', diagnostic_code: 'source_failure' }, execution_id: executionId, candidate_material_id: payload.candidate_material_id };
+    },
+  });
+  try {
+    const materialResult = await bridge.call({ operation: 'publish_material', payload: { kind: 'artifact', scope: 'proof_relevant', content: 'diagnostic candidate' } });
+    const result = await bridge.call({ operation: 'submit_candidate', payload: { candidate_material_id: materialResult.material.material_id } });
+    assert.equal(submissions, 1);
+    assert.equal(result.check_result.result_class, 'source_failure');
+    assert.equal(taskService.getExecution(claim.execution.execution_id).state, 'RUNNING');
   } finally {
     await bridge.stop();
     taskService.close();
@@ -784,7 +943,7 @@ test('ServicesBridge returns checker feedback before applying a deferred typed b
   }
 });
 
-test('ServicesBridge binds an explicit claim to the bridge Agent and keeps the reusable prompt', async () => {
+test('ServicesBridge binds canonical task_take to the reusable identity and keeps the prompt', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);
   const taskService = new TaskService(database, { contextService });
@@ -807,17 +966,16 @@ test('ServicesBridge binds an explicit claim to the bridge Agent and keeps the r
     onClaim: async (result) => { claimed = result; },
   });
   try {
-    bridge.setSelectionCandidates([{ task_id: task.task_id }]);
-    const result = await bridge.call({ operation: 'claim', payload: {
+    const result = await bridge.call({ operation: 'task_take', payload: {
       task_id: task.task_id,
-      claim_key: 'bridge:identity:claim',
+      claim_key: 'bridge:identity:take',
       owner_ref: 'agent:forged',
       agent_prompt: 'task-specific prompt smuggled through transport',
       workspace_mode: 'clean',
     } });
     assert.equal(result.execution.owner_ref, 'agent:bridge-identity');
     assert.equal(result.execution.agent_prompt, 'shared worker prompt');
-    assert.equal(result.handoff_required, true);
+    assert.equal(bridge.role, 'bound');
     assert.equal(claimed.execution.execution_id, result.execution.execution_id);
   } finally {
     await bridge.stop();
@@ -845,8 +1003,7 @@ test('ServicesBridge rolls back a Task claim when Runtime handoff fails', async 
     onClaim: async () => { throw new Error('controlled handoff failure'); },
   });
   try {
-    bridge.setSelectionCandidates([{ task_id: task.task_id }]);
-    await assert.rejects(() => bridge.call({ operation: 'claim', payload: { task_id: task.task_id, claim_key: 'bridge:rollback:claim', workspace_mode: 'clean' } }), /controlled handoff failure/);
+    await assert.rejects(() => bridge.call({ operation: 'task_take', payload: { task_id: task.task_id, claim_key: 'bridge:rollback:take', workspace_mode: 'clean' } }), /controlled handoff failure/);
     assert.equal(bridge.taskId, null);
     assert.equal(bridge.executionId, null);
     assert.equal(taskService.listActiveExecutions().length, 0);

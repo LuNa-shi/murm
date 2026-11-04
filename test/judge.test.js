@@ -498,6 +498,26 @@ test('JudgeService stores CheckResult truth, keeps Task untouched, and deduplica
   judge.close();
 });
 
+test('JudgeService deduplicates an unchanged candidate across request keys', async () => {
+  let checks = 0;
+  const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    checker: checkerWithPreflight({ check: async () => { checks += 1; return { verdict: 'FAIL', result_class: 'source_failure', evidence: { exit_code: 1 } }; } }),
+  });
+  const input = {
+    request_key: 'candidate-duplicate-1', candidate_material_id: 'same-material', target_task_id: targetTask.task_id, target_spec_version: 1,
+    input_snapshot_hash: workspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
+    environment_ref: fixtureManifest.environment_ref, candidate: candidate('theorem duplicate : True := by trivial', 'same-material'), target_task: targetTask,
+    workspace, fixture_manifest: fixtureManifest,
+  };
+  const first = await judge.judgeCandidate(input, { operationId: 'candidate-duplicate-op-1' });
+  const duplicate = await judge.judgeCandidate({ ...input, request_key: 'candidate-duplicate-2', candidate_material_id: 'different-material', candidate: candidate('theorem duplicate : True := by trivial', 'different-material') }, { operationId: 'candidate-duplicate-op-2' });
+  assert.equal(checks, 1);
+  assert.equal(duplicate.check_result_id, first.check_result_id);
+  assert.equal(duplicate.deduplicated, true);
+  assert.equal(duplicate.duplicate_of_request_key, input.request_key);
+  judge.close();
+});
+
 test('concurrent checks for one request_key elect one checker invocation', async () => {
   let checks = 0;
   let release;

@@ -1,7 +1,10 @@
 import { execFile as defaultExecFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { access } from 'node:fs/promises';
+import { join } from 'node:path';
 import { AgentCoreAdapter, resolveAgentCoreRoute } from '../agent/pi-adapter.js';
+import { SYSTEM_IDENTITY_PROMPT } from '../agent/agent-prompt.js';
 import { ContextService } from '../context/context-service.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
 import { ServicesRouter } from '../sdk/service-router.js';
@@ -15,8 +18,8 @@ import { agentCheckResult } from '../judge/check-result.js';
 import { validateFixtureManifest } from '../judge/fixture.js';
 import { DatabaseSync } from 'node:sqlite';
 import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
-import { createHttpJsonAdapter } from '../sdk/service-adapter.js';
-import { createMathlibSearchManifest } from '../services/mathlib-search-service.js';
+import { createHttpJsonAdapter, createInProcessAdapter } from '../sdk/service-adapter.js';
+import { createMathlibSearchManifest, createMathlibSearchService } from '../services/mathlib-search-service.js';
 
 const execFile = promisify(defaultExecFile);
 const extensionPath = fileURLToPath(new URL('../agent/swarmenv-extension.mjs', import.meta.url));
@@ -206,6 +209,8 @@ function reportWorkspace(workspace) {
     workspace_ref: workspace.workspace_ref ?? null,
     workspace_revision: workspace.workspace_revision ?? null,
     content_hash: workspace.content_hash ?? null,
+    git_commit: workspace.git_commit ?? null,
+    git_worktree: workspace.git_worktree ?? workspace.workspace_ref ?? null,
     execution_id: workspace.execution_id ?? null,
     fencing_version: workspace.fencing_version ?? null,
     parent_workspace_ref: workspace.parent_workspace_ref ?? null,
@@ -518,6 +523,25 @@ export async function runRealAgentPath({
     });
     await capabilityRegistry.checkReadiness('mathlib-search');
   }
+  if (!serviceRegistry && !present(env.SWARMENV_MATHLIB_SEARCH_URL) && !capabilityRegistry.listServices().some((service) => service.service_id === 'mathlib-search')) {
+    const sourceRoot = env.MATHLIB_SEARCH_SOURCE_ROOT ?? join(lockedFixture.project_root, '.lake', 'packages', 'mathlib', 'Mathlib');
+    try {
+      await access(sourceRoot);
+      const provider = createMathlibSearchService({
+        endpoint: { transport: 'in-process' },
+        sourceRoot,
+        projectRoot: lockedFixture.project_root,
+        mathlibRevision: env.MATHLIB_REVISION ?? lockedFixture.mathlib_version ?? null,
+        leanVersion: env.LEAN_VERSION ?? lockedFixture.lean_toolchain ?? null,
+      });
+      registerUserService(capabilityRegistry, {
+        manifest: provider.manifest,
+        adapter: createInProcessAdapter({ invoke: provider.handler, readiness: provider.readiness }),
+      });
+    } catch (error) {
+      if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error;
+    }
+  }
   const ownerSdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const task = ownerSdk.proposeTask({
     task_type: 'proof',
@@ -558,6 +582,9 @@ export async function runRealAgentPath({
     group: env.NUROUTER_PI_GROUP,
     extensionPath,
     env: childEnv,
+    // Stable identity rules enter through Pi's system-role addendum; the
+    // controlled first-candidate instructions remain the user turn.
+    systemPrompt: SYSTEM_IDENTITY_PROMPT,
   });
   const runtimeLifecycleEvents = [];
   const runtime = new Runtime({
@@ -807,6 +834,9 @@ export async function runRealAgentPath({
       await Promise.resolve(active.session.stop?.()).catch(() => undefined);
     }
     await bridge.stop();
+    // Drain process-exit/failure handlers before closing the durable store;
+    // a late Pi close event must not race recovery bookkeeping.
+    await runtime.waitForSettled().catch(() => undefined);
     taskService.close();
   }
 }

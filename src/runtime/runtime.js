@@ -38,6 +38,35 @@ function classifySessionFailure(record) {
   return null;
 }
 
+function finitePositive(value) {
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function contextWindowRatio(record, session) {
+  const usage = record?.usage ?? record?.result?.usage ?? record?.data?.usage ?? record?.message?.usage ?? {};
+  const contextUsage = record?.contextUsage ?? record?.context_usage ?? record?.data?.contextUsage ?? null;
+  const contextWindow = finitePositive(
+    record?.context_window ?? record?.contextWindow ?? record?.model?.contextWindow ??
+    record?.data?.model?.contextWindow ?? contextUsage?.contextWindow ?? contextUsage?.context_window ??
+    session?.contextWindow,
+  );
+  const percent = Number.isFinite(contextUsage?.percent) ? contextUsage.percent : null;
+  const tokens = finitePositive(
+    record?.tokens ?? record?.token_count ?? record?.context_tokens ??
+    record?.input_tokens ?? record?.result?.tokensBefore ?? record?.result?.tokens_before ??
+    record?.tokensBefore ?? record?.tokens_before ?? contextUsage?.tokens ??
+    usage.tokens ?? usage.total_tokens ?? usage.totalTokens ?? usage.input_tokens ??
+    usage.prompt_tokens ?? usage.input,
+  );
+  if (contextWindow === null || tokens === null) {
+    // Pi 1.3.0's get_session_stats may report only a percentage; a percentage
+    // is still authoritative for the current window ratio.
+    if (percent !== null) return { ratio: percent / 100, tokens: null, context_window: contextWindow, percent };
+    return null;
+  }
+  return { ratio: tokens / contextWindow, tokens, context_window: contextWindow, ...(percent === null ? {} : { percent }) };
+}
+
 function normalizeWaitFiles(files) {
   if (files === undefined || files === null) return {};
   if (!files || typeof files !== 'object' || Array.isArray(files)) {
@@ -48,6 +77,21 @@ function normalizeWaitFiles(files) {
     if (content === undefined) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `wait file content must be text: ${path}`);
     return [path, JSON.stringify(content, null, 2)];
   }));
+}
+
+function normalizeProgress(progress) {
+  if (!progress || typeof progress !== 'object' || Array.isArray(progress)) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'progress must be an object');
+  }
+  for (const field of ['completed_work', 'findings', 'open_questions', 'next_step']) {
+    if (!Object.hasOwn(progress, field)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `progress.${field} is required`);
+  }
+  return {
+    completed_work: progress.completed_work,
+    findings: progress.findings,
+    open_questions: progress.open_questions,
+    next_step: progress.next_step,
+  };
 }
 
 function taskUsesJudge(task) {
@@ -89,29 +133,45 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, agentAdapter, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
     this.agentAdapter = agentAdapter;
+    this.sandboxManager = sandboxManager;
     this.maxWorkers = maxWorkers;
     this.runtimeGeneration = runtimeGeneration;
     this.actorRef = actorRef;
     this.logger = logger;
     this.agentLogger = agentLogger;
     this.capabilityRegistry = capabilityRegistry;
-    this.runtimeCapabilities = runtimeCapabilities;
+    // Never advertise a capability the deployment cannot execute. Sandbox
+    // tools are visible only when a Sandbox manager is bound.
+    this.runtimeCapabilities = (runtimeCapabilities ?? runtimeCapabilityList())
+      .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
     this.maxRecoveryAttempts = maxRecoveryAttempts;
+    if (!Number.isInteger(maxCompactions) || maxCompactions < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'maxCompactions must be a non-negative integer');
+    if (!Number.isFinite(handoffWindowRatio) || handoffWindowRatio <= 0 || handoffWindowRatio > 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffWindowRatio must be greater than 0 and at most 1');
+    this.maxCompactions = maxCompactions;
+    this.handoffWindowRatio = handoffWindowRatio;
     this.watchdogTimeoutMs = watchdogTimeoutMs;
     if (!Number.isFinite(executionTimeoutMs) || executionTimeoutMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'executionTimeoutMs must be positive');
     if (!Number.isFinite(handoffReminderMs) || handoffReminderMs <= 0 || handoffReminderMs >= executionTimeoutMs) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffReminderMs must be positive and less than executionTimeoutMs');
     this.executionTimeoutMs = executionTimeoutMs;
     this.handoffReminderMs = handoffReminderMs;
+    this.compactionCheckpointReminder = compactionCheckpointReminder === true;
     this.clock = clock;
     this.onSessionStarted = onSessionStarted;
     this.onCoreEvent = onCoreEvent;
     this.activeProcesses = new Map();
     this.coreStates = new Map();
+    // Compaction count belongs to the reusable identity/lane, not to one
+    // Execution. An ordinary Task handoff keeps the count; an explicit
+    // identity rotation resets it.
+    this.identityCompactionCounts = new Map();
+    // Reusable identity Sessions remain owned by Runtime even while no
+    // Execution is bound. Shutdown/restart must stop them too.
+    this.identitySessions = new Set();
     const configuredCoreIds = Array.isArray(coreIds)
       ? coreIds
       : Array.from({ length: Math.max(0, maxWorkers) }, (_, index) => `core-${index + 1}`);
@@ -231,6 +291,11 @@ export class Runtime {
     this.notificationUnsubscribe?.();
     this.notificationUnsubscribe = null;
     const executionIds = [...this.activeProcesses.keys()];
+    // A reusable identity Session is intentionally preserved on a normal
+    // release, but shutdown owns every live process. Capture them before the
+    // release path detaches the Execution binding.
+    const ownedSessions = new Set([...this.activeProcesses.values()].map((active) => active.session).filter(Boolean));
+    for (const session of this.identitySessions) ownedSessions.add(session);
     for (const executionId of executionIds) {
       const execution = this.taskService.getExecution(executionId);
       if (execution && ['CREATED', 'RUNNING'].includes(execution.state)) {
@@ -238,9 +303,14 @@ export class Runtime {
       } else {
         const active = this.activeProcesses.get(executionId);
         this.activeProcesses.delete(executionId);
+        await this.#stopSandbox(executionId);
         this.#setCoreState(active?.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
         await Promise.resolve(active?.session?.stop?.()).catch(() => undefined);
       }
+    }
+    for (const session of ownedSessions) {
+      await Promise.resolve(session.stop?.()).catch(() => undefined);
+      this.identitySessions.delete(session);
     }
     await this.waitForSettled();
     return { active_process_count: this.activeProcesses.size };
@@ -355,6 +425,64 @@ export class Runtime {
     });
   }
 
+  /**
+   * Run a bounded command in the Execution's Sandbox. The Sandbox is bound to
+   * the same private Workspace as the file tools, so shell edits and
+   * read/write tool edits share one file truth. Shell changes are not a saved
+   * revision until execution_progress checkpoints them.
+   */
+  async sandboxExec(executionId, { command, cwd = '/workspace', timeout_ms: timeoutMs = undefined, env = {}, background = false } = {}) {
+    const execution = this.#getExecution(executionId);
+    if (!this.sandboxManager) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox execution is not enabled');
+    const active = this.activeProcesses.get(executionId);
+    if (!active || active.closing || !['CREATED', 'RUNNING'].includes(execution.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Sandbox commands require an active Execution binding');
+    }
+    if (!execution.workspace_ref) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution has no materialized Workspace');
+    await this.sandboxManager.ensureExecution({
+      executionId,
+      workspaceRef: execution.workspace_ref,
+      bindingVersion: execution.fencing_version,
+    });
+    return this.sandboxManager.exec({ executionId, command, cwd, timeoutMs, env, background });
+  }
+
+  async sandboxJob(executionId, { action, job_id: jobId } = {}) {
+    const execution = this.#getExecution(executionId);
+    if (!this.sandboxManager) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox execution is not enabled');
+    const active = this.activeProcesses.get(executionId);
+    if (!active || active.closing || !['CREATED', 'RUNNING'].includes(execution.state)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Sandbox jobs require an active Execution binding');
+    }
+    if (typeof jobId !== 'string' || jobId.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'sandbox job_id is required');
+    // A job belongs to the Execution that created it. rebinding or release
+    // fences the Sandbox, so a late query cannot reach a successor.
+    if (action === 'cancel') return this.sandboxManager.cancelJob(executionId, jobId);
+    return this.sandboxManager.jobStatus(executionId, jobId);
+  }
+
+  async #ensureSandbox(execution, workspace) {
+    if (!this.sandboxManager) return;
+    await this.sandboxManager.ensureExecution({
+      executionId: execution.execution_id,
+      workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref,
+      bindingVersion: execution.fencing_version,
+    });
+  }
+
+  async #stopSandbox(executionId) {
+    if (!this.sandboxManager || !executionId) return;
+    try {
+      await this.sandboxManager.stopExecution(executionId);
+    } catch (error) {
+      this.logger?.append({
+        event: 'runtime.sandbox_stop_error',
+        execution_id: executionId,
+        error_class: error?.code ?? error?.name ?? 'sandbox_stop_error',
+      });
+    }
+  }
+
   async startExecution(executionId, { sessionReason = 'start', coreId = null } = {}) {
     this.logger?.append({ event: 'runtime.start_execution', execution_id: executionId, session_reason: sessionReason });
     const execution = this.#getExecution(executionId);
@@ -362,25 +490,32 @@ export class Runtime {
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
     const selectedCoreId = this.#resolveCoreId(execution, coreId);
     this.#assertCoreAvailable(selectedCoreId, execution.execution_id);
-    const workspace = await this.#prepareWorkspace(execution);
-    // A recovery start restores the already persisted revision. Rewriting that
-    // same revision would violate the Workspace Manager's monotonic CAS rule.
-    let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
-    const started = this.taskService.dispatch('start_execution', {
-      ...this.#executionTimingPayload(this.clock(), current),
-      ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
-    }, this.#executionEnvelope(current, operationId('start')));
-    current = started.execution;
+    let workspace = null;
+    let current = execution;
+    let startedDurably = false;
     try {
+      workspace = await this.#prepareWorkspace(execution);
+      // A recovery start restores the already persisted revision. Rewriting
+      // that same revision would violate the Workspace Manager's monotonic
+      // CAS rule.
+      current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
+      current = this.taskService.dispatch('start_execution', {
+        ...this.#executionTimingPayload(this.clock(), current),
+        ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
+      }, this.#executionEnvelope(current, operationId('start'))).execution;
+      startedDurably = true;
       return await this.#launch(current, workspace, { sessionReason, coreId: selectedCoreId });
     } catch (error) {
       const active = this.activeProcesses.get(executionId);
       this.activeProcesses.delete(executionId);
+      await this.#stopSandbox(executionId);
       this.#setCoreState(active?.coreId ?? selectedCoreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       await Promise.resolve(active?.session.stop?.()).catch(() => undefined);
       if (this.stopping) throw error;
       const failed = this.#getExecution(executionId);
-      if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
+      if (!startedDurably && ['CREATED', 'RUNNING'].includes(failed.state)) {
+        await this.fenceExecution(executionId, { reason: 'startup_prepare_failed' }).catch(() => undefined);
+      } else if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', {
           terminal_state: 'FAILED',
           terminal_reason: 'startup_failed',
@@ -406,7 +541,7 @@ export class Runtime {
     return this.startClaimedExecution(executionOrId, options);
   }
 
-  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null, promptSnapshot = null, capabilityProfile = null, promptContext = {}, coreId = null, sessionReason = 'bound' } = {}) {
+  async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null, promptSnapshot = null, capabilityProfile = null, promptContext = {}, coreId = null, sessionReason = 'bound', sendInitialPrompt = true } = {}) {
     this.logger?.append({ event: 'runtime.bind_execution', execution_id: executionId });
     if ((!session || typeof session.stop !== 'function') && typeof startSession !== 'function') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Agent session or startSession is required');
@@ -416,69 +551,78 @@ export class Runtime {
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
     const selectedCoreId = this.#resolveCoreId(execution, coreId);
     this.#assertCoreAvailable(selectedCoreId, execution.execution_id);
-    const workspace = await this.#prepareWorkspace(execution, workspaceRef);
-    let current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
+    let workspace = null;
+    let current = execution;
     let initialPrompt = agentPrompt;
     let initialPromptSnapshot = promptSnapshot;
-    if (!initialPromptSnapshot && capabilityProfile) {
-      const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
-      const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
-      const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
-        ? agentPrompt
-        : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
-      initialPromptSnapshot = buildPromptSnapshot({
-        role,
-        profile: capabilityProfile,
-        staticSop,
-        task: this.taskService.getTask(current.task_id),
-        execution: current,
-        workspace,
-        recovery: promptContext.recovery ?? null,
-      });
-      initialPrompt = initialPromptSnapshot.prompt;
-    } else if (initialPromptSnapshot?.prompt) {
-      initialPrompt = initialPromptSnapshot.prompt;
-    }
-    if (!capabilityProfile && this.capabilityRegistry) {
-      const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
-      const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
-      const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
-        ? agentPrompt
-        : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
-      const profile = buildCapabilityProfile({ role, registry: this.capabilityRegistry, runtimeCapabilities: this.runtimeCapabilities, context: { task_id: current.task_id, execution_id: current.execution_id } });
-      initialPromptSnapshot = buildPromptSnapshot({
-        role, profile, staticSop, task: this.taskService.getTask(current.task_id), execution: current, workspace, recovery: promptContext.recovery ?? null,
-      });
-      initialPrompt = initialPromptSnapshot.prompt;
-    }
-    if (initialPromptSnapshot) {
-      this.logger?.append({
-        event: 'runtime.initial_prompt_composed',
-        execution_id: current.execution_id,
-        role: initialPromptSnapshot.role,
-        prompt_version: initialPromptSnapshot.prompt_version,
-        prompt_hash: initialPromptSnapshot.prompt_hash,
-        profile_version: initialPromptSnapshot.profile_version,
-        profile_hash: initialPromptSnapshot.profile_hash,
-      });
-    }
-    current = this.taskService.dispatch('start_execution', {
-      ...this.#executionTimingPayload(this.clock(), current),
-      ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
-    }, this.#executionEnvelope(current, operationId('bind'))).execution;
     let boundSession = session;
+    let startedDurably = false;
     try {
+      workspace = await this.#prepareWorkspace(execution, workspaceRef);
+      current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
+      if (!initialPromptSnapshot && capabilityProfile) {
+        const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
+        const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
+        const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
+          ? agentPrompt
+          : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
+        initialPromptSnapshot = buildPromptSnapshot({
+          role, profile: capabilityProfile, staticSop, task: this.taskService.getTask(current.task_id), execution: current, workspace,
+          recovery: promptContext.recovery ?? null,
+        });
+        initialPrompt = initialPromptSnapshot.prompt;
+      } else if (initialPromptSnapshot?.prompt) {
+        initialPrompt = initialPromptSnapshot.prompt;
+      }
+      if (!capabilityProfile && this.capabilityRegistry) {
+        const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
+        const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
+        const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
+          ? agentPrompt
+          : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
+        const profile = buildCapabilityProfile({ role, registry: this.capabilityRegistry, runtimeCapabilities: this.runtimeCapabilities, context: { task_id: current.task_id, execution_id: current.execution_id } });
+        initialPromptSnapshot = buildPromptSnapshot({
+          role, profile, staticSop, task: this.taskService.getTask(current.task_id), execution: current, workspace, recovery: promptContext.recovery ?? null,
+        });
+        initialPrompt = initialPromptSnapshot.prompt;
+      }
+      if (initialPromptSnapshot) {
+        this.logger?.append({
+          event: 'runtime.initial_prompt_composed', execution_id: current.execution_id,
+          role: initialPromptSnapshot.role, prompt_version: initialPromptSnapshot.prompt_version,
+          prompt_hash: initialPromptSnapshot.prompt_hash, profile_version: initialPromptSnapshot.profile_version,
+          profile_hash: initialPromptSnapshot.profile_hash,
+        });
+      }
+      current = this.taskService.dispatch('start_execution', {
+        ...this.#executionTimingPayload(this.clock(), current),
+        ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
+      }, this.#executionEnvelope(current, operationId('bind'))).execution;
+      startedDurably = true;
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
       if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
       this.#registerActiveProcess(current, workspace, boundSession, { sessionReason, coreId: selectedCoreId });
-      await this.#sendInitialPrompt(boundSession, initialPrompt, current, workspace);
+      await this.#ensureSandbox(current, workspace);
+      if (sendInitialPrompt !== false) {
+        await this.#sendInitialPrompt(boundSession, initialPrompt, current, workspace);
+      } else {
+        // The benchmark's reusable identity path deliberately does not send a
+        // second initial prompt while the current Agent turn is still active.
+        // Task-level notifications created while this identity was unbound
+        // still need a delivery opportunity. Queue them behind the Session's
+        // settled boundary instead of losing them until a future restart.
+        this.#queuePendingNotifications(this.activeProcesses.get(current.execution_id));
+      }
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
       this.activeProcesses.delete(executionId);
+      await this.#stopSandbox(executionId);
       this.#setCoreState(selectedCoreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       await Promise.resolve(boundSession?.stop?.()).catch(() => undefined);
       const failed = this.#getExecution(executionId);
-      if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
+      if (!startedDurably && ['CREATED', 'RUNNING'].includes(failed.state)) {
+        await this.fenceExecution(executionId, { reason: 'bind_prepare_failed' }).catch(() => undefined);
+      } else if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
         this.taskService.dispatch('stop_execution', {
           terminal_state: 'FAILED',
           terminal_reason: 'bind_failed',
@@ -502,6 +646,7 @@ export class Runtime {
     if (active) {
       this.activeProcesses.delete(executionId);
       await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+      this.identitySessions.delete(active.session);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
     let current = this.#getExecution(executionId);
@@ -546,6 +691,11 @@ export class Runtime {
       ...(wakeCoreId ? { core_id: wakeCoreId } : {}),
     }, this.#executionEnvelope(waiting, operationId('wake'))).execution;
     try {
+      await this.workspaceManager.reopenWorkspace?.({
+        workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'),
+        executionId,
+        fencingVersion: resumed.fencing_version,
+      });
       const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'), executionId, fencingVersion: resumed.fencing_version });
       const coreId = this.#resolveCoreId(resumed, wakeCoreId);
       this.#assertCoreAvailable(coreId, executionId);
@@ -564,6 +714,10 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     const execution = this.#getExecution(executionId);
     if (!active || execution.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime process can request wait');
+    // Freeze shell/job writes before taking the wait snapshot. Otherwise a
+    // background Sandbox job could write after the saved revision.
+    active.closing = true;
+    await this.#stopSandbox(executionId);
     let validatedWait;
     try {
       validatedWait = this.taskService.validateWaitCondition?.(executionId, {
@@ -608,7 +762,8 @@ export class Runtime {
       wait_condition: waitCondition,
       wait_deadline: deadline ?? waitCondition?.deadline ?? null,
     }, this.#executionEnvelope(current, operationId('wait')));
-    await Promise.resolve(active.session.stop()).catch(() => undefined);
+    await this.#releaseSessionBinding(active, executionId);
+    await this.#stopSandbox(executionId);
     await this.workspaceManager.releaseWorkspace({ workspaceRef: workspace.workspace_ref, executionId, fencingVersion: execution.fencing_version });
     this.activeProcesses.delete(executionId);
     this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
@@ -634,6 +789,8 @@ export class Runtime {
     if (!active || !['CREATED', 'RUNNING'].includes(execution.state)) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime Execution can be blocked');
     }
+    active.closing = true;
+    await this.#stopSandbox(executionId);
     requireString(reason, 'block_reason');
     const task = this.taskService.getTask(execution.task_id);
     if (task?.completion_contract?.normal_flow === true && dependency === undefined) {
@@ -681,7 +838,7 @@ export class Runtime {
       newFencingVersion: result.execution.fencing_version,
       event: 'runtime.block_workspace_fence_error',
     });
-    await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+    await this.#releaseSessionBinding(active, executionId);
     if (workspaceFenced && result.execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({
         workspaceRef: result.execution.workspace_ref,
@@ -689,6 +846,7 @@ export class Runtime {
         fencingVersion: result.execution.fencing_version,
       }).catch(() => undefined);
     }
+    await this.#stopSandbox(executionId);
     this.activeProcesses.delete(executionId);
     this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     this.logger?.append({ event: 'runtime.execution_blocked', execution_id: executionId, block_reason: reason, dependency });
@@ -716,7 +874,36 @@ export class Runtime {
     if (!['CREATED', 'RUNNING'].includes(current.state)) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `only an active Runtime Execution can ${operation === 'handoff_task' ? 'hand off' : 'block'} a Task`);
     }
-    const result = this.taskService.dispatch(operation, payload, this.#executionEnvelope(current, operationId(operation)));
+    // Stop shell/job writes before the durable handoff/block snapshot so a
+    // late Sandbox process cannot change the Workspace after the recorded
+    // revision/fence.
+    const activeBeforeRelease = this.activeProcesses.get(id);
+    if (activeBeforeRelease) activeBeforeRelease.closing = true;
+    await this.#stopSandbox(id);
+    // The semantic Task transition is requested on behalf of the bound Agent.
+    // Runtime still owns the physical Session/Workspace release below, but it
+    // must not present its daemon actor as the Task owner.  Claims bind the
+    // Execution to `owner_ref` (for example `agent:core-2`); using
+    // `runtime:core-2` here made every normal handoff/block fail the Task
+    // Service ownership check before Runtime could release the Core.
+    let result;
+    try {
+      result = this.taskService.dispatch(operation, payload, this.#executionEnvelope(current, operationId(operation), current.owner_ref));
+    } catch (error) {
+      // Stopping Sandbox writes is a preparation step, not a committed
+      // lifecycle transition. If Task Service rejects the semantic request
+      // (missing handoff Material, duplicate dependency, stale version, ...),
+      // keep the still-running Execution usable for a corrected retry. Leaving
+      // `closing=true` here silently drops later Session events and strands a
+      // RUNNING owner behind a failed handoff attempt.
+      const stillActive = this.activeProcesses.get(id) === activeBeforeRelease;
+      const latest = this.taskService.getExecution(id);
+      if (activeBeforeRelease && stillActive && latest && ['CREATED', 'RUNNING'].includes(latest.state)) {
+        activeBeforeRelease.closing = false;
+        this.logger?.append({ event: 'runtime.semantic_release_rejected', execution_id: id, operation, error_class: error?.code ?? error?.name ?? 'semantic_release_rejected' });
+      }
+      throw error;
+    }
     const active = this.activeProcesses.get(id);
     const workspaceRef = result.execution.workspace_ref ?? current.workspace_ref;
     const workspaceFenced = await this.#fenceWorkspaceBestEffort({
@@ -729,9 +916,7 @@ export class Runtime {
     });
     if (active) {
       active.closing = true;
-      await Promise.resolve(active.session.stop?.()).catch((error) => {
-        this.logger?.append({ event: `runtime.${operation}_stop_error`, execution_id: id, error_class: error?.code ?? error?.name ?? 'session_stop_error' });
-      });
+      await this.#releaseSessionBinding(active, id);
       this.activeProcesses.delete(id);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
@@ -744,6 +929,7 @@ export class Runtime {
         this.logger?.append({ event: `runtime.${operation}_release_error`, execution_id: id, error_class: error?.code ?? error?.name ?? 'workspace_release_error' });
       });
     }
+    await this.#stopSandbox(id);
     this.logger?.append({ event: `runtime.execution_${disposition}`, execution_id: id, terminal_state: result.execution.state });
     return { ...result, disposition };
   }
@@ -790,6 +976,119 @@ export class Runtime {
   }
 
   /**
+   * Agent-facing progress boundary. Filesystem/checkpoint persistence is
+   * attempted once, then one Progress Material records the exact handoff
+   * state. A checkpoint failure leaves the Execution alive; a handoff failure
+   * is recorded and still releases the old Execution so it cannot strand a
+   * Core or claim that unsaved work was persisted.
+   */
+  async executionProgress(executionId, {
+    kind = 'checkpoint', progress, checkpoint = {}, files = {}, reason = 'progress_handoff', summary = null,
+  } = {}) {
+    const id = requireString(executionId, 'execution_id');
+    if (!['checkpoint', 'handoff'].includes(kind)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'execution_progress kind must be checkpoint or handoff');
+    const normalizedProgress = normalizeProgress(progress);
+    let current = this.#getExecution(id);
+    if (!['CREATED', 'RUNNING'].includes(current.state)) {
+      return { execution: current, task: this.taskService.getTask(current.task_id), kind, disposition: 'already_terminal', save_status: 'not_applicable' };
+    }
+    const normalizedFiles = normalizeWaitFiles(files);
+    let workspace = null;
+    let checkpointResult = null;
+    let saveStatus = 'not_applicable';
+    let saveFailure = null;
+    const lastValidSnapshot = current.workspace_ref ? {
+      workspace_ref: current.workspace_ref,
+      workspace_revision: current.workspace_revision,
+      workspace_content_hash: current.workspace_content_hash,
+      checkpoint_ref: current.checkpoint_ref,
+      checkpoint_hash: current.checkpoint_hash,
+    } : null;
+    try {
+      if (current.workspace_ref) {
+        workspace = await this.workspaceManager.saveWorkspaceRevision({
+          workspaceRef: current.workspace_ref,
+          executionId: id,
+          fencingVersion: current.fencing_version,
+          files: normalizedFiles,
+        });
+        current = this.#saveWorkspaceReference(current, workspace, `runtime:progress-workspace:${id}:${current.state_version}`);
+        checkpointResult = await this.workspaceManager.saveCheckpoint({
+          workspaceRef: workspace.workspace_ref,
+          executionId: id,
+          fencingVersion: current.fencing_version,
+          checkpoint: { ...checkpoint, progress: normalizedProgress },
+        });
+        current = this.taskService.dispatch('save_checkpoint', checkpointResult, this.#executionEnvelope(current, `runtime:progress-checkpoint:${id}:${current.state_version}`)).execution;
+        saveStatus = 'saved';
+      }
+    } catch (error) {
+      saveStatus = 'save_failed';
+      saveFailure = { phase: workspace ? 'checkpoint' : 'workspace', error_class: error?.code ?? error?.name ?? 'save_failed' };
+      this.logger?.append({ event: 'runtime.progress_save_failed', execution_id: id, phase: saveFailure.phase, error_class: saveFailure.error_class });
+    }
+
+    const recordedProgress = {
+      ...normalizedProgress,
+      workspace_revision: workspace?.workspace_revision ?? current.workspace_revision ?? null,
+      workspace_commit: workspace?.git_commit ?? null,
+    };
+    let progressMaterial = null;
+    let progressLink = null;
+    try {
+      const envelope = this.#executionEnvelope(current, `runtime:progress-material:${id}:${current.state_version}`, current.owner_ref);
+      progressMaterial = this.contextService?.publishMaterialForTask
+        ? this.contextService.publishMaterialForTask({
+          kind: 'experience', role: 'experience', scope: 'execution_progress', evidence_state: 'observed',
+          content: recordedProgress,
+          provenance: {
+            actor_ref: envelope.actor_ref,
+            source_execution: id,
+            save_status: saveStatus,
+            workspace_commit: workspace?.git_commit ?? null,
+            workspace_revision: workspace?.workspace_revision ?? current.workspace_revision ?? null,
+          },
+        }, envelope).material
+        : null;
+      if (progressMaterial) {
+        progressLink = this.taskService.dispatch('link_material', {
+          task_id: current.task_id, material_id: progressMaterial.material_id, role: 'experience',
+        }, envelope).link;
+      }
+    } catch (error) {
+      this.logger?.append({ event: 'runtime.progress_material_failed', execution_id: id, error_class: error?.code ?? error?.name ?? 'material_save_failed' });
+      if (saveStatus === 'saved') saveStatus = 'save_failed';
+      saveFailure ??= { phase: 'material', error_class: error?.code ?? error?.name ?? 'material_save_failed' };
+    }
+
+    const result = {
+      kind,
+      progress_material: progressMaterial,
+      progress_link: progressLink,
+      workspace: workspace ?? null,
+      checkpoint: checkpointResult,
+      save_status: saveStatus,
+      last_valid_snapshot: lastValidSnapshot,
+      loss: saveFailure ? { unsaved_progress: true, ...saveFailure } : { unsaved_progress: false },
+    };
+    if (kind === 'checkpoint') {
+      return { ...result, execution: current, task: this.taskService.getTask(current.task_id), disposition: 'continued' };
+    }
+    const handed = await this.handoffExecution(id, {
+      checkpoint: {}, files: {}, reason, summary,
+      handoffMetadata: {
+        summary,
+        progress_material_id: progressMaterial?.material_id ?? null,
+        save_status: saveStatus,
+        last_valid_snapshot: lastValidSnapshot,
+        loss: result.loss,
+      },
+      skipWorkspaceSave: true,
+    });
+    return { ...result, ...handed, save_status: saveStatus, last_valid_snapshot: lastValidSnapshot, loss: result.loss };
+  }
+
+  /**
    * End one unfinished Execution attempt and return its Task to the OPEN
    * (claimable/READY) projection. Checkpoint and Workspace writes happen
    * before the fence; the fence is durable before the old session is stopped.
@@ -803,6 +1102,7 @@ export class Runtime {
     terminalState = 'FENCED',
     handoffKey = null,
     at = new Date(this.clock()),
+    skipWorkspaceSave = false,
   } = {}) {
     const id = requireString(executionId, 'execution_id');
     const existing = this.#getExecution(id);
@@ -823,6 +1123,7 @@ export class Runtime {
       terminalState,
       handoffKey,
       at,
+      skipWorkspaceSave,
     });
     this.handoffPromises.set(id, promise);
     try {
@@ -841,7 +1142,7 @@ export class Runtime {
       (link.producer_execution_id ?? link.material?.source_execution) === execution.execution_id);
   }
 
-  async #performHandoff(executionId, { checkpoint, files, handoffMetadata, summary, reason, terminalState, handoffKey, at }) {
+  async #performHandoff(executionId, { checkpoint, files, handoffMetadata, summary, reason, terminalState, handoffKey, at, skipWorkspaceSave = false }) {
     const started = this.#getExecution(executionId);
     if (!['CREATED', 'RUNNING'].includes(started.state)) {
       return { execution: started, task: this.taskService.getTask(started.task_id), disposition: started.state === 'WAITING' ? 'already_waiting' : 'already_terminal' };
@@ -864,31 +1165,62 @@ export class Runtime {
       requested_at: new Date(at instanceof Date ? at.getTime() : at).toISOString(),
     };
     let current = started;
+    const activeBeforeHandoff = this.activeProcesses.get(executionId);
+    if (activeBeforeHandoff) activeBeforeHandoff.closing = true;
+    await this.#drainCompactionCheckpoint(activeBeforeHandoff);
+    // Freeze the Sandbox before saving the handoff snapshot.
+    await this.#stopSandbox(executionId);
+    current = this.#getExecution(executionId);
     let workspace = null;
     let checkpointResult = null;
-    if (current.workspace_ref) {
-      workspace = await this.workspaceManager.saveWorkspaceRevision({
-        workspaceRef: current.workspace_ref,
-        executionId,
-        fencingVersion: current.fencing_version,
-        files: normalizedFiles,
-      });
-      current = this.#saveWorkspaceReference(current, workspace, `runtime:handoff-workspace:${executionId}:${current.state_version}`);
-      const activeAfterWorkspace = this.activeProcesses.get(executionId);
-      if (activeAfterWorkspace) {
-        activeAfterWorkspace.execution = current;
-        activeAfterWorkspace.workspace = workspace;
+    let saveStatus = skipWorkspaceSave ? (handoffMetadata?.save_status ?? 'not_applicable') : 'not_applicable';
+    let saveFailure = null;
+    const lastValidSnapshot = current.workspace_ref ? {
+      workspace_ref: current.workspace_ref,
+      workspace_revision: current.workspace_revision,
+      workspace_content_hash: current.workspace_content_hash,
+      checkpoint_ref: current.checkpoint_ref,
+      checkpoint_hash: current.checkpoint_hash,
+    } : null;
+    if (current.workspace_ref && !skipWorkspaceSave) {
+      // A handoff save is one bounded attempt. If Git/checkpoint persistence
+      // fails, end the Execution from the last valid snapshot and report the
+      // loss; never leave the old owner RUNNING or claim the save succeeded.
+      try {
+        workspace = await this.workspaceManager.saveWorkspaceRevision({
+          workspaceRef: current.workspace_ref,
+          executionId,
+          fencingVersion: current.fencing_version,
+          files: normalizedFiles,
+        });
+        current = this.#saveWorkspaceReference(current, workspace, `runtime:handoff-workspace:${executionId}:${current.state_version}`);
+        const activeAfterWorkspace = this.activeProcesses.get(executionId);
+        if (activeAfterWorkspace) {
+          activeAfterWorkspace.execution = current;
+          activeAfterWorkspace.workspace = workspace;
+        }
+        checkpointResult = await this.workspaceManager.saveCheckpoint({
+          workspaceRef: workspace.workspace_ref,
+          executionId,
+          fencingVersion: current.fencing_version,
+          checkpoint,
+        });
+        current = this.taskService.dispatch('save_checkpoint', checkpointResult, this.#executionEnvelope(current, `runtime:handoff-checkpoint:${executionId}:${current.state_version}`)).execution;
+        const activeAfterCheckpoint = this.activeProcesses.get(executionId);
+        if (activeAfterCheckpoint) activeAfterCheckpoint.execution = current;
+        saveStatus = 'saved';
+      } catch (error) {
+        saveStatus = 'save_failed';
+        saveFailure = { phase: workspace ? 'checkpoint' : 'workspace', error_class: error?.code ?? error?.name ?? 'save_failed' };
+        this.logger?.append({ event: 'runtime.handoff_save_failed', execution_id: executionId, phase: saveFailure.phase, error_class: saveFailure.error_class });
+        // Keep the last durably recorded Workspace/checkpoint pointers; the
+        // fence still proceeds from that valid state.
+        current = this.#getExecution(executionId);
       }
-      checkpointResult = await this.workspaceManager.saveCheckpoint({
-        workspaceRef: workspace.workspace_ref,
-        executionId,
-        fencingVersion: current.fencing_version,
-        checkpoint,
-      });
-      current = this.taskService.dispatch('save_checkpoint', checkpointResult, this.#executionEnvelope(current, `runtime:handoff-checkpoint:${executionId}:${current.state_version}`)).execution;
-      const activeAfterCheckpoint = this.activeProcesses.get(executionId);
-      if (activeAfterCheckpoint) activeAfterCheckpoint.execution = current;
     }
+    metadata.save_status = handoffMetadata?.save_status ?? saveStatus;
+    metadata.last_valid_snapshot = handoffMetadata?.last_valid_snapshot ?? lastValidSnapshot;
+    metadata.loss = handoffMetadata?.loss ?? (saveFailure ? { unsaved_progress: true, ...saveFailure } : { unsaved_progress: false });
     const handoffOperationId = `runtime:handoff:${executionId}:${handoffKey ?? `${reason}:${current.state_version}`}`;
     const oldFence = current.fencing_version;
     const result = this.taskService.dispatch('handoff_execution', {
@@ -911,9 +1243,7 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (active) {
       active.closing = true;
-      await Promise.resolve(active.session.stop?.()).catch((error) => {
-        this.logger?.append({ event: 'runtime.handoff_stop_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'session_stop_error' });
-      });
+      await this.#releaseSessionBinding(active, executionId);
       this.activeProcesses.delete(executionId);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
@@ -926,8 +1256,17 @@ export class Runtime {
         this.logger?.append({ event: 'runtime.handoff_release_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'workspace_release_error' });
       });
     }
+    await this.#stopSandbox(executionId);
     this.logger?.append({ event: 'runtime.execution_handoff', execution_id: executionId, terminal_reason: reason, terminal_state: terminalState });
-    return { ...result, disposition: 'handed_off', checkpoint: checkpointResult, workspace };
+    return {
+      ...result,
+      disposition: 'handed_off',
+      checkpoint: checkpointResult,
+      workspace,
+      save_status: metadata.save_status,
+      last_valid_snapshot: metadata.last_valid_snapshot,
+      loss: metadata.loss,
+    };
   }
 
   async #sendHandoffReminder(executionId, at) {
@@ -1018,17 +1357,22 @@ export class Runtime {
   async stopExecution(executionId, terminalState = 'CANCELLED', terminalReason = null) {
     const reason = terminalReason ?? terminalState.toLowerCase();
     this.logger?.append({ event: 'runtime.stop_execution', execution_id: executionId, terminal_state: terminalState, terminal_reason: reason });
-    const execution = this.#getExecution(executionId);
+    let execution = this.#getExecution(executionId);
     const active = this.activeProcesses.get(executionId);
     if (active) {
+      // Drain ownership writes before fencing/releasing the Workspace.
+      active.closing = true;
+      await this.#drainCompactionCheckpoint(active);
+      execution = this.#getExecution(executionId);
       this.activeProcesses.delete(executionId);
-      await Promise.resolve(active.session.stop()).catch(() => undefined);
+      await this.#releaseSessionBinding(active, executionId);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
     const result = this.taskService.dispatch('stop_execution', {
       terminal_state: terminalState,
       terminal_reason: reason,
     }, this.#executionEnvelope(execution, operationId('stop')));
+    await this.#stopSandbox(executionId);
     if (execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({ workspaceRef: execution.workspace_ref, executionId, fencingVersion: execution.fencing_version });
     }
@@ -1041,13 +1385,17 @@ export class Runtime {
    */
   async releaseExecution(executionId) {
     const id = requireString(executionId, 'execution_id');
-    const execution = this.#getExecution(id);
+    let execution = this.#getExecution(id);
     const active = this.activeProcesses.get(id);
     if (active) {
+      active.closing = true;
+      await this.#drainCompactionCheckpoint(active);
+      execution = this.#getExecution(id);
       this.activeProcesses.delete(id);
-      await Promise.resolve(active.session.stop()).catch(() => undefined);
+      await this.#releaseSessionBinding(active, id);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
+    await this.#stopSandbox(id);
     if (execution.workspace_ref) {
       await this.workspaceManager.releaseWorkspace({
         workspaceRef: execution.workspace_ref,
@@ -1060,7 +1408,12 @@ export class Runtime {
 
   async fenceExecution(executionId, { reason = 'fenced' } = {}) {
     this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId, terminal_reason: reason });
-    const execution = this.#getExecution(executionId);
+    let execution = this.#getExecution(executionId);
+    const activeBeforeFence = this.activeProcesses.get(executionId);
+    if (activeBeforeFence) activeBeforeFence.closing = true;
+    await this.#drainCompactionCheckpoint(activeBeforeFence);
+    await this.#stopSandbox(executionId);
+    execution = this.#getExecution(executionId);
     const result = this.taskService.dispatch('fence_execution', {
       runtime_generation: this.runtimeGeneration,
       terminal_reason: reason,
@@ -1072,7 +1425,7 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (active) {
       this.activeProcesses.delete(executionId);
-      await Promise.resolve(active.session.stop()).catch(() => undefined);
+      await this.#releaseSessionBinding(active, executionId);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
     if (workspaceFenced && result.execution.workspace_ref) {
@@ -1084,6 +1437,7 @@ export class Runtime {
         this.logger?.append({ event: 'runtime.fence_workspace_release_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'workspace_release_error' });
       });
     }
+    await this.#stopSandbox(executionId);
     return result;
   }
 
@@ -1103,7 +1457,7 @@ export class Runtime {
       const active = this.activeProcesses.get(execution.execution_id);
       if (active) {
         this.activeProcesses.delete(execution.execution_id);
-        await Promise.resolve(active.session.stop()).catch(() => undefined);
+        await this.#releaseSessionBinding(active, execution.execution_id);
         this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       }
       if (workspaceFenced && result.execution.workspace_ref) {
@@ -1115,6 +1469,7 @@ export class Runtime {
           this.logger?.append({ event: 'runtime.expire_workspace_release_error', execution_id: execution.execution_id, error_class: error?.code ?? error?.name ?? 'workspace_release_error' });
         });
       }
+      await this.#stopSandbox(execution.execution_id);
       expired.push(result);
     }
     return expired;
@@ -1122,12 +1477,17 @@ export class Runtime {
 
   async restart() {
     this.runtimeGeneration += 1;
+    // Capture reusable identity Sessions before fenceExecution detaches them;
+    // an explicit Runtime restart must actually replace the processes.
+    const ownedSessions = new Set([...this.activeProcesses.values()].map((active) => active.session).filter(Boolean));
+    for (const session of this.identitySessions) ownedSessions.add(session);
     for (const execution of this.taskService.listActiveExecutions()) {
       if (execution.state === 'RUNNING' || execution.state === 'CREATED') {
         await this.fenceExecution(execution.execution_id, { reason: 'runtime_restart' });
       }
     }
-    await Promise.all([...this.activeProcesses.values()].map((active) => Promise.resolve(active.session.stop()).catch(() => undefined)));
+    await Promise.all([...ownedSessions].map((session) => Promise.resolve(session.stop?.()).catch(() => undefined)));
+    for (const session of ownedSessions) this.identitySessions.delete(session);
     this.activeProcesses.clear();
     return { runtime_generation: this.runtimeGeneration, active_executions: this.taskService.listActiveExecutions() };
   }
@@ -1275,6 +1635,7 @@ export class Runtime {
     });
     const current = this.#saveWorkspaceReference(execution, nextWorkspace);
     this.#registerActiveProcess(current, nextWorkspace, session, { sessionReason, coreId });
+    await this.#ensureSandbox(current, nextWorkspace);
     await beforePrompt?.({ execution: current, workspace: nextWorkspace, session });
     let initialPrompt = execution.agent_prompt;
     if (this.capabilityRegistry) {
@@ -1287,10 +1648,15 @@ export class Runtime {
         runtimeCapabilities: this.runtimeCapabilities,
         context: { task_id: current.task_id, execution_id: current.execution_id },
       });
-      const staticSop = [
-        role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT,
-        execution.agent_prompt,
-      ].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
+      const adapterHasSystemPrompt = Boolean(
+        this.agentAdapter?.config?.systemPrompt || this.agentAdapter?.config?.systemPromptPath,
+      );
+      const staticSop = adapterHasSystemPrompt
+        ? (execution.agent_prompt ?? '')
+        : [
+          role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT,
+          execution.agent_prompt,
+        ].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
       const promptSnapshot = buildPromptSnapshot({
         role,
         profile,
@@ -1309,6 +1675,10 @@ export class Runtime {
         role: promptSnapshot.role,
         prompt_version: promptSnapshot.prompt_version,
         prompt_hash: promptSnapshot.prompt_hash,
+        system_prompt_version: promptSnapshot.system_prompt_version,
+        system_prompt_hash: promptSnapshot.system_prompt_hash,
+        dynamic_prompt_hash: promptSnapshot.dynamic_prompt_hash,
+        service_doc_hashes: promptSnapshot.service_doc_hashes,
         profile_version: promptSnapshot.profile_version,
         profile_hash: promptSnapshot.profile_hash,
       });
@@ -1342,7 +1712,10 @@ export class Runtime {
       expected_output: candidate.expected_output,
       relations: candidate.relations,
     })) ?? [];
-    const notifications = this.taskService.listPendingNotifications?.(task.task_id, execution.execution_id) ?? [];
+    const notificationReader = typeof this.taskService.listUnprocessedNotifications === 'function'
+      ? this.taskService.listUnprocessedNotifications.bind(this.taskService)
+      : this.taskService.listPendingNotifications?.bind(this.taskService);
+    const notifications = notificationReader?.(task.task_id, execution.execution_id) ?? [];
     const role = execution.session_reason === 'recovery' || execution.session_reason === 'session_recovery'
       ? AGENT_ROLES.RECOVERY
       : AGENT_ROLES.BOUND;
@@ -1367,6 +1740,7 @@ export class Runtime {
     return {
       prompt: composeAgentPrompt({
         staticPrompt: (promptOverride ?? execution.agent_prompt) || undefined,
+        profile,
         mission,
         task: modernTaskPromptProjection(task),
         tasks,
@@ -1441,9 +1815,31 @@ export class Runtime {
   }
 
   #deliverNotification(active, notification) {
-    active.promptChain = active.promptChain.catch(() => undefined).then(async () => {
+    if (!active?.notificationPromises) active.notificationPromises = new Map();
+    const existing = active.notificationPromises.get(notification.notification_id);
+    if (existing) return existing;
+    const queuedAt = this.clock();
+    const delivery = active.promptChain.catch(() => undefined).then(async () => {
       const current = this.taskService.getExecution(active.execution.execution_id);
       if (!current || !['CREATED', 'RUNNING'].includes(current.state)) return;
+      if (typeof active.session.waitForSettled === 'function') {
+        try {
+          await active.session.waitForSettled({ timeoutMs: 5_000 });
+        } catch (error) {
+          // Some Pi provider-retry paths emit turn_end/auto_retry_end but no
+          // agent_settled. Once that boundary is durable, the follow-up is
+          // safe to send; otherwise defer and retry at the next boundary.
+          if (!active.lastTurnEndedAt || active.lastTurnEndedAt < queuedAt) {
+            this.logger?.append({
+              event: 'runtime.notification_delivery_deferred',
+              execution_id: current.execution_id,
+              notification_id: notification.notification_id,
+              error_class: error?.code ?? error?.name ?? 'settled_timeout',
+            });
+            return;
+          }
+        }
+      }
       this.taskService.recordNotificationAttempt?.(notification.notification_id);
       try {
         await active.session.prompt?.(this.#notificationText(notification), {
@@ -1456,7 +1852,43 @@ export class Runtime {
         this.logger?.append({ event: 'runtime.notification_delivery_error', execution_id: current.execution_id, notification_id: notification.notification_id, notification_type: notification.notification_type, error_class: error?.code ?? error?.name ?? 'prompt_error' });
       }
     });
-    return active.promptChain;
+    active.promptChain = delivery.catch(() => undefined);
+    active.notificationPromises.set(notification.notification_id, delivery);
+    delivery.finally(() => {
+      if (active.notificationPromises.get(notification.notification_id) === delivery) {
+        active.notificationPromises.delete(notification.notification_id);
+      }
+    }).catch(() => undefined);
+    return delivery;
+  }
+
+  #queuePendingNotifications(active) {
+    if (!active) return;
+    const notifications = this.taskService.listUnprocessedNotifications?.(
+      active.execution.task_id,
+      active.execution.execution_id,
+    ) ?? [];
+    for (const notification of notifications) this.#deliverNotification(active, notification);
+  }
+
+  #identityKey(coreId, execution) {
+    return coreId ?? execution?.core_id ?? execution?.owner_ref ?? execution?.execution_id ?? 'identity';
+  }
+
+  /**
+   * Release one Execution's claim on a reusable identity Session. The
+   * Session survives a normal completion/handoff/block so the same identity
+   * can take the next responsibility; only explicit rotation, process
+   * failure, or shutdown stops it.
+   */
+  async #releaseSessionBinding(active, executionId) {
+    if (!active?.session) return;
+    if (active.session.boundExecutionId === executionId) active.session.boundExecutionId = null;
+    if (active.session.identitySession === true) {
+      this.identitySessions.add(active.session);
+      return;
+    }
+    await Promise.resolve(active.session.stop?.()).catch(() => undefined);
   }
 
   #registerActiveProcess(execution, workspace, session, { sessionReason = 'start', coreId = null } = {}) {
@@ -1470,14 +1902,21 @@ export class Runtime {
       lastEventAt: nowMs,
       lastHeartbeatAt: null,
       lastCompletedTurnAt: null,
+      lastTurnEndedAt: null,
       lastSuccessfulServiceCallAt: null,
       lastProductiveAt: nowMs,
       lastFailureClass: null,
       failurePromise: null,
+      closing: false,
+      identityId: session.sessionId ?? randomUUID(),
+      compactionCount: this.identityCompactionCounts.get(this.#identityKey(coreId, execution)) ?? 0,
+      compactionCheckpointPromise: null,
+      rotationPromise: null,
       // Initial and follow-up prompts share one queue.  Pi can accept a
       // follow-up while a turn is active, but two concurrent prompt calls
       // would reorder lifecycle notifications and Agent work.
       promptChain: Promise.resolve(),
+      notificationPromises: new Map(),
     };
     this.activeProcesses.set(execution.execution_id, active);
     this.#setCoreState(coreId, {
@@ -1486,15 +1925,40 @@ export class Runtime {
       task_id: execution.task_id,
       session_id: session.sessionId ?? null,
     });
-    session.on('rpc', (record) => {
-      void this.#handleSessionEvent(execution.execution_id, record);
-    });
-    session.on('processError', () => {
-      void this.#handleSessionFailure(execution.execution_id, 'process_error');
-    });
-    session.on('close', () => {
-      void this.#processExit(execution.execution_id);
-    });
+    // A reusable identity Session can be bound to several Executions over its
+    // lifetime. Attach one listener set and read the current binding at event
+    // time; re-binding must not multiply handlers or route late events to the
+    // previous Execution.
+    session.boundExecutionId = execution.execution_id;
+    if (session.identitySession === true) this.identitySessions.add(session);
+    if (session.__swarmenvRuntimeBound !== true) {
+      session.__swarmenvRuntimeBound = true;
+      session.on('rpc', (record) => {
+        const boundId = session.boundExecutionId;
+        if (boundId) {
+          void this.#handleSessionEvent(boundId, record).catch((error) => {
+            // EventEmitter does not observe rejected async listeners. Keep a
+            // provider/session timeout as durable Runtime evidence instead of
+            // allowing an unhandled rejection to terminate the benchmark
+            // before report and Execution cleanup can run.
+            this.logger?.append({
+              event: 'runtime.agent_event_error',
+              execution_id: boundId,
+              record_type: record?.type ?? null,
+              error_class: error?.code ?? error?.name ?? 'agent_event_error',
+            });
+          });
+        }
+      });
+      session.on('processError', () => {
+        const boundId = session.boundExecutionId;
+        if (boundId) void this.#handleSessionFailure(boundId, 'process_error').catch(() => undefined);
+      });
+      session.on('close', () => {
+        const boundId = session.boundExecutionId;
+        if (boundId) void this.#processExit(boundId).catch(() => undefined);
+      });
+    }
     this.#notifySessionStarted({ execution, workspace, session, sessionReason });
   }
 
@@ -1541,9 +2005,12 @@ export class Runtime {
   async #releaseFencedProcess(executionId) {
     const active = this.activeProcesses.get(executionId);
     if (!active) return;
+    active.closing = true;
+    await this.#drainCompactionCheckpoint(active);
     this.activeProcesses.delete(executionId);
+    await this.#stopSandbox(executionId);
     const execution = this.taskService.getExecution(executionId);
-    await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+    await this.#releaseSessionBinding(active, executionId);
     if (execution?.workspace_ref) {
       const oldFence = Math.max(0, execution.fencing_version - 1);
       await this.workspaceManager.fenceWorkspace({
@@ -1568,13 +2035,51 @@ export class Runtime {
   async #handleSessionEvent(executionId, record) {
     if (this.stopping) return;
     const active = this.activeProcesses.get(executionId);
-    if (!active) return;
+    if (!active || active.closing) return;
     active.lastEventAt = this.clock();
     this.logger?.append({ event: 'runtime.agent_event', execution_id: executionId, record_type: record.type, phase: active.phase });
+    let usage = contextWindowRatio(record, active.session);
+    // Pi's stream usage uses camelCase fields (`totalTokens`, `usage.input`)
+    // and its authoritative window measurement is get_session_stats. Query it
+    // at turn/compaction boundaries; never substitute zero for an unavailable
+    // measurement.
+    if ((record.type === 'turn_end' || record.type === 'compaction_end') && typeof active.session.getSessionStats === 'function') {
+      try {
+        const stats = await active.session.getSessionStats({ timeoutMs: 5_000 });
+        const measured = contextWindowRatio(stats ?? {}, active.session);
+        if (measured) usage = { ...measured, source: 'get_session_stats' };
+      } catch {
+        // Older/mock adapters may not implement the command. Keep the
+        // event-derived value or null; unknown is handled conservatively.
+      }
+    }
     if (record.type === 'turn_start' || record.type === 'auto_retry_start' || record.type === 'compaction_start') {
       active.phase = record.type === 'turn_start' ? 'turn' : record.type === 'auto_retry_start' ? 'provider_retry' : 'compaction';
     }
-    if (record.type === 'turn_end') active.lastCompletedTurnAt = this.clock();
+    if (record.type === 'compaction_start') {
+      this.logger?.append({
+        event: 'runtime.compaction_started', execution_id: executionId, identity_id: active.identityId,
+        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
+        context_window: usage?.context_window ?? active.session.contextWindow ?? null,
+        window_ratio: usage?.ratio ?? null, usage_source: usage ? 'event' : 'unknown',
+      });
+      // The fourth compaction is prohibited at the adapter boundary.  A
+      // start record is the earliest portable signal before Pi mutates its
+      // context; fence/restart the identity immediately instead of waiting
+      // for a later report to discover that the limit was crossed.
+      if (active.compactionCount >= this.maxCompactions) {
+        await this.#rotateIdentity(executionId, {
+          reason: 'compaction_limit',
+          windowRatio: usage?.ratio ?? null,
+          usageSource: usage ? 'event' : 'unknown',
+        });
+        return;
+      }
+    }
+    if (record.type === 'turn_end') {
+      active.lastCompletedTurnAt = this.clock();
+      active.lastTurnEndedAt = active.lastCompletedTurnAt;
+    }
     if (record.type === 'tool_execution_end' && record.isError !== true && String(record.toolName ?? '').startsWith('swarmenv_')) {
       active.lastSuccessfulServiceCallAt = this.clock();
     }
@@ -1585,6 +2090,55 @@ export class Runtime {
     if (completedProductiveEvent) {
       active.lastProductiveAt = this.clock();
       active.phase = 'idle';
+      if (record.type === 'auto_retry_end' && record.success === true) active.lastTurnEndedAt = active.lastProductiveAt;
+    }
+    // Provider-retry paths may emit a completed turn boundary without ever
+    // emitting Pi's agent_settled record. Retry pending notifications at each
+    // such boundary instead of leaving them starved behind one stale Promise.
+    if (record.type === 'turn_end' || (record.type === 'auto_retry_end' && record.success === true)) {
+      this.#queuePendingNotifications(active);
+    }
+    if (record.type === 'compaction_end' && record.result && !record.aborted) {
+      active.compactionCount += 1;
+      this.identityCompactionCounts.set(this.#identityKey(active.coreId, active.execution), active.compactionCount);
+      const estimatedTokensAfter = record.result?.estimatedTokensAfter ?? record.result?.estimated_tokens_after ?? null;
+      const postCompactionUsage = estimatedTokensAfter !== null && estimatedTokensAfter !== undefined
+        ? contextWindowRatio({ ...record, tokens: estimatedTokensAfter, result: { ...record.result, tokensBefore: undefined, tokens_before: undefined } }, active.session)
+        : usage ?? contextWindowRatio(record.result, active.session);
+      this.logger?.append({
+        event: 'runtime.compaction_completed', execution_id: executionId, identity_id: active.identityId,
+        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
+        context_window: postCompactionUsage?.context_window ?? active.session.contextWindow ?? null,
+        window_ratio: postCompactionUsage?.ratio ?? null,
+        usage_source: postCompactionUsage ? 'event' : 'unknown',
+      });
+      // Save exactly once for each successful compaction.  The helper waits
+      // for the current turn to settle when the adapter exposes that signal;
+      // it never starts a concurrent prompt or blocks identity rotation on a
+      // failed filesystem/checkpoint write.
+      this.#queueCompactionCheckpoint(active, record);
+      if (active.compactionCount >= this.maxCompactions && !postCompactionUsage) {
+        await this.#rotateIdentity(executionId, {
+          reason: 'compaction_window_unknown', usageSource: 'unknown', windowRatio: null,
+        });
+        return;
+      }
+      if (active.compactionCount >= this.maxCompactions && postCompactionUsage?.ratio >= this.handoffWindowRatio) {
+        await this.#rotateIdentity(executionId, {
+          reason: 'compaction_window_threshold', usageSource: 'event', windowRatio: postCompactionUsage.ratio,
+        });
+        return;
+      }
+    }
+    if (record.type === 'turn_end' && active.compactionCount >= this.maxCompactions) {
+      if (!usage) {
+        this.logger?.append({ event: 'runtime.compaction_window_unknown', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, action: 'continue_until_boundary' });
+      } else if (usage.ratio >= this.handoffWindowRatio) {
+        await this.#rotateIdentity(executionId, {
+          reason: 'compaction_window_threshold', usageSource: 'event', windowRatio: usage.ratio,
+        });
+        return;
+      }
     }
     const failureClass = classifySessionFailure(record);
     if (failureClass) {
@@ -1593,9 +2147,122 @@ export class Runtime {
     }
   }
 
+  #queueCompactionCheckpoint(active, record) {
+    const executionId = active.execution.execution_id;
+    const checkpoint = {
+      kind: 'compaction',
+      reason: record.reason ?? 'compaction',
+      compaction_count: active.compactionCount,
+      identity_id: active.identityId,
+      tokens_before: record.result?.tokensBefore ?? record.result?.tokens_before ?? record.tokensBefore ?? null,
+      estimated_tokens_after: record.result?.estimatedTokensAfter ?? record.result?.estimated_tokens_after ?? null,
+    };
+    // Pi can emit the next compaction event before the previous checkpoint
+    // has finished saving. Queue every successful compaction in arrival order
+    // instead of dropping events while one save is in flight.
+    const previous = active.compactionCheckpointPromise ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(async () => {
+      try {
+        if (typeof active.session.waitForSettled === 'function') {
+          await active.session.waitForSettled({ timeoutMs: 30_000 });
+        }
+        const current = this.#getExecution(executionId);
+        if (!['CREATED', 'RUNNING'].includes(current.state)) return { status: 'not_applicable', execution: current };
+        if (!current.workspace_ref) {
+          this.logger?.append({ event: 'runtime.compaction_checkpoint_skipped', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, reason: 'no_workspace' });
+          return { status: 'not_applicable', execution: current };
+        }
+        const workspace = await this.workspaceManager.saveWorkspaceRevision({
+          workspaceRef: current.workspace_ref, executionId, fencingVersion: current.fencing_version, files: {},
+        });
+        const savedExecution = this.#saveWorkspaceReference(current, workspace, operationId('compaction-workspace'));
+        const savedCheckpoint = await this.workspaceManager.saveCheckpoint({
+          workspaceRef: workspace.workspace_ref, executionId, fencingVersion: savedExecution.fencing_version, checkpoint,
+        });
+        const checkpointResult = this.taskService.dispatch('save_checkpoint', savedCheckpoint, this.#executionEnvelope(savedExecution, operationId('compaction-checkpoint')));
+        active.execution = checkpointResult.execution;
+        active.workspace = workspace;
+        this.logger?.append({ event: 'runtime.compaction_checkpoint_saved', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, workspace_revision: workspace.workspace_revision, checkpoint_ref: savedCheckpoint.checkpoint_ref });
+        // Metadata alone is not research Progress. At this safe point ask the
+        // same identity to record substantive progress; the prompt is queued
+        // only after the current turn settled and is skipped when this
+        // identity is already due to rotate.
+        if (this.compactionCheckpointReminder && !active.closing && !active.rotationPromise && typeof active.session.prompt === 'function') {
+          const currentNow = this.#getExecution(executionId);
+          if (['CREATED', 'RUNNING'].includes(currentNow.state)) {
+            try {
+              await active.session.prompt(
+                'Compaction completed. Before continuing research, call execution_progress with kind=checkpoint and substantive completed_work, findings, open_questions, and next_step from the actual work. Do not record only token or compaction metadata.',
+                { timeoutMs: 30_000, streamingBehavior: 'followUp' },
+              );
+            } catch (error) {
+              this.logger?.append({ event: 'runtime.compaction_progress_reminder_failed', execution_id: executionId, identity_id: active.identityId, error_class: error?.code ?? error?.name ?? 'prompt_error' });
+            }
+          }
+        }
+        return { status: 'saved', execution: checkpointResult.execution, workspace, checkpoint: savedCheckpoint };
+      } catch (error) {
+        this.logger?.append({ event: 'runtime.compaction_checkpoint_failed', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, error_class: error?.code ?? error?.name ?? 'checkpoint_failed' });
+        return { status: 'save_failed', error_class: error?.code ?? error?.name ?? 'checkpoint_failed' };
+      }
+    });
+    const queued = run.finally(() => {
+      if (active.compactionCheckpointPromise === queued) active.compactionCheckpointPromise = null;
+    });
+    active.compactionCheckpointPromise = queued;
+    return queued;
+  }
+
+  async #drainCompactionCheckpoint(active) {
+    if (!active?.compactionCheckpointPromise) return;
+    await active.compactionCheckpointPromise.catch(() => undefined);
+  }
+
+  async #rotateIdentity(executionId, { reason, windowRatio = null, usageSource = 'unknown' } = {}) {
+    const active = this.activeProcesses.get(executionId);
+    if (!active) return null;
+    if (active.rotationPromise) return active.rotationPromise;
+    const previousIdentity = active.identityId;
+    const previousCompactions = active.compactionCount;
+    const rotation = (async () => {
+      // A rotation raised at compaction_start must stop promptly; do not wait
+      // for a new `agent_settled` event from the compaction that is being
+      // aborted.  A successful compaction already queued its one checkpoint,
+      // and that in-flight save is the only save we await here.
+      if (active.compactionCheckpointPromise) await active.compactionCheckpointPromise.catch(() => undefined);
+      this.logger?.append({
+        event: 'runtime.identity_rotation_started', execution_id: executionId,
+        old_identity_id: previousIdentity, compaction_count: previousCompactions,
+        reason, window_ratio: windowRatio, usage_source: usageSource,
+      });
+      const restarted = await this.restartSession(executionId, { reason: 'compaction_rotation' });
+      const replacement = this.activeProcesses.get(executionId);
+      if (replacement) {
+        replacement.compactionCount = 0;
+        this.identityCompactionCounts.set(this.#identityKey(replacement.coreId, replacement.execution), 0);
+      }
+      this.logger?.append({
+        event: 'runtime.identity_rotation_completed', execution_id: executionId,
+        old_identity_id: previousIdentity, new_identity_id: replacement?.identityId ?? restarted.session?.sessionId ?? null,
+        old_compaction_count: previousCompactions, new_compaction_count: replacement?.compactionCount ?? 0,
+        reason,
+      });
+      return restarted;
+    })();
+    active.rotationPromise = rotation;
+    try {
+      return await rotation;
+    } finally {
+      active.rotationPromise = null;
+    }
+  }
+
   async #processExit(executionId) {
+    const closedActive = this.activeProcesses.get(executionId);
+    if (closedActive?.session) this.identitySessions.delete(closedActive.session);
     if (this.stopping) {
       this.activeProcesses.delete(executionId);
+      await this.#stopSandbox(executionId);
       return;
     }
     const active = this.activeProcesses.get(executionId);
@@ -1604,6 +2271,7 @@ export class Runtime {
     if (execution.state === 'RUNNING') await this.#handleSessionFailure(executionId, 'process_exit');
     else {
       this.activeProcesses.delete(executionId);
+      await this.#stopSandbox(executionId);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
   }
@@ -1611,6 +2279,7 @@ export class Runtime {
   async #handleSessionFailure(executionId, failureClass) {
     if (this.stopping) {
       this.activeProcesses.delete(executionId);
+      await this.#stopSandbox(executionId);
       return null;
     }
     const active = this.activeProcesses.get(executionId);
@@ -1620,10 +2289,12 @@ export class Runtime {
     const failurePromise = (async () => {
       const coreId = active.coreId;
       this.activeProcesses.delete(executionId);
+      await this.#stopSandbox(executionId);
       this.#setCoreState(coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
       const execution = this.#getExecution(executionId);
       if (execution.state !== 'RUNNING') return { execution };
       await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+      this.identitySessions.delete(active.session);
       if (this.stopping) return { execution, disposition: 'stopping' };
       const recoveryAttempt = (this.recoveryAttempts.get(execution.task_id) ?? 0) + 1;
       this.recoveryAttempts.set(execution.task_id, recoveryAttempt);
@@ -1633,7 +2304,15 @@ export class Runtime {
         this.logger?.append({ event: 'runtime.recovery_exhausted', execution_id: executionId, failure_class: failureClass, recovery_attempt: recoveryAttempt });
         return { execution: fenced.execution, recovery: null, disposition: 'exhausted' };
       }
-      const task = this.taskService.getTask(execution.task_id);
+      let task;
+      try {
+        task = this.taskService.getTask(execution.task_id);
+      } catch (error) {
+        // A shutdown may close the durable store while a process-exit event is
+        // still being handled. Never keep recovery alive against a closed DB.
+        if (this.stopping || error?.code === 'ERR_INVALID_STATE') return { execution, disposition: 'stopping' };
+        throw error;
+      }
       const recoveryPrompt = this.#recoveryPrompt(task, execution, failureClass, recoveryAttempt);
       const nextFencingVersion = execution.fencing_version + 1;
       if (execution.workspace_ref) {
@@ -1648,6 +2327,10 @@ export class Runtime {
         runtime_generation: this.runtimeGeneration,
         agent_prompt: recoveryPrompt,
       }, this.#executionEnvelope(execution, operationId('recover')));
+      // A recovered process is a fresh identity Session. Do not inherit the
+      // failed Session's compaction count; only an ordinary handoff carries
+      // the lane's count forward.
+      this.identityCompactionCounts.delete(this.#identityKey(coreId, execution));
       const replacement = await this.startExecution(recovered.execution.execution_id, { sessionReason: 'recovery' });
       return { execution: execution, recovery: replacement.execution, disposition: 'recovered' };
     })();
@@ -1673,10 +2356,10 @@ export class Runtime {
     ].join('\n');
   }
 
-  #executionEnvelope(execution, id) {
+  #executionEnvelope(execution, id, actorRef = this.actorRef) {
     return makeEnvelope({
       operationId: id,
-      actorRef: this.actorRef,
+      actorRef,
       taskId: execution.task_id,
       executionId: execution.execution_id,
       specVersion: execution.spec_version,

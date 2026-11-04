@@ -24,42 +24,6 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', properties: { root_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, task_type: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, available_only: { type: 'boolean' } }, additionalProperties: false },
   },
   {
-    name: 'task_list_claimable', service: 'task', operation: 'list_claimable_tasks', version: '1.0',
-    description: 'Return a bounded claimable shortlist with aging and fairness metadata for the Core Daemon selection turn.',
-    scope: 'public-read', side_effect: false,
-    parameters: { type: 'object', properties: { root_id: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, aging_threshold_ms: { type: 'integer', minimum: 0 }, now_ms: { type: 'integer', minimum: 0 } }, additionalProperties: false },
-  },
-  {
-    name: 'task_get', service: 'task', operation: 'get_task', version: '1.0',
-    description: 'Read the current Task specification and state.',
-    scope: 'task-read', side_effect: false,
-    parameters: { type: 'object', properties: { task_id: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'task_scheduler_status', service: 'task', operation: 'scheduler_status', version: '1.0',
-    description: 'Read current core capacity, active and waiting executions, and claimable Tasks for adaptive decomposition.',
-    scope: 'public-read', side_effect: false,
-    parameters: { type: 'object', properties: { root_id: { type: 'string' }, task_id: { type: 'string' }, execution_id: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, additionalProperties: false },
-  },
-  {
-    name: 'task_list_executions', service: 'task', operation: 'list_executions', version: '1.0',
-    description: 'List prior and active Executions for a Task so a worker can choose a Workspace lineage.',
-    scope: 'task-read', side_effect: false,
-    parameters: { type: 'object', properties: { task_id: { type: 'string' }, include_terminal: { type: 'boolean' } }, additionalProperties: false },
-  },
-  {
-    name: 'task_claim', service: 'task', operation: 'claim', version: '1.0',
-    description: 'Claim one explicitly selected Task and create its Execution.',
-    scope: 'task-claim', side_effect: true,
-    parameters: { type: 'object', required: ['task_id', 'claim_key'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, core_id: { type: 'string' }, owner_ref: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'task_select', service: 'task', operation: 'select_task', version: '1.0',
-    description: 'Return one task_id from the bounded shortlist supplied to this stateless Core Daemon selection turn. The Daemon performs the durable claim.',
-    scope: 'task-selection', side_effect: false,
-    parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' } }, additionalProperties: false },
-  },
-  {
     name: 'task_create_child', service: 'task', operation: 'create_child_task', version: '1.0',
     description: 'Create a bounded direct child Task for a genuinely separate responsibility.',
     scope: 'execution-write', side_effect: true,
@@ -221,6 +185,43 @@ const TOOL_DEFINITIONS = Object.freeze([
 // name even when an adapter temporarily maps them to an older implementation.
 const publicTaskTools = [
   {
+    name: 'task_status', service: 'task', operation: 'task_status', version: '1.0',
+    description: 'Read the authoritative Mission, Task counts, claimable work, and observation timestamp.',
+    scope: 'task-read', side_effect: false,
+    parameters: { type: 'object', required: ['mission_id'], properties: { mission_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false },
+  },
+  {
+    name: 'task_register', service: 'task', operation: 'task_register', version: '1.0',
+    description: 'Register one independent Task with a goal, output, acceptance condition, and collaboration reason.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['mission_id', 'goal', 'expected_output', 'acceptance_conditions'], properties: { mission_id: { type: 'string' }, task_id: { type: 'string' }, summary: { type: 'string' }, goal: { type: 'string' }, task_type: { type: 'string' }, task_instructions: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] }, required_capabilities: { type: 'array', items: { type: 'string', minLength: 1 } }, collaboration_reason: { type: 'string' }, responsibility_key: { type: 'string' }, spawned_from: { type: 'string' }, depends_on: { type: 'array', items: { type: 'string' } }, timebox_ms: { type: 'integer', minimum: 1 } }, additionalProperties: false },
+  },
+  {
+    name: 'task_take', service: 'task', operation: 'task_take', version: '1.0',
+    description: 'Take an existing Mission or ordinary Task using the caller identity and Core lane.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' }, input_material_refs: { type: 'array', items: { type: 'string' } } }, additionalProperties: false },
+  },
+  {
+    name: 'task_feedback', service: 'task', operation: 'task_feedback', version: '1.0',
+    description: 'Record this Execution\'s durable decision and action for delivered feedback; another Execution may retain its own handling state.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['notification_id', 'decision', 'action'], properties: { notification_id: { type: 'string' }, decision: { type: 'string' }, action: { type: 'string' }, details: { type: 'object' } }, additionalProperties: false },
+  },
+  {
+    name: 'execution_progress', service: 'task', operation: 'execution_progress', version: '1.0',
+    description: 'Save a bounded Progress Material and either continue the current Execution or hand it off.',
+    scope: 'execution-write', side_effect: true,
+    parameters: { type: 'object', required: ['kind', 'progress'], properties: {
+      kind: { type: 'string', enum: ['checkpoint', 'handoff'] },
+      progress: { type: 'object', required: ['completed_work', 'findings', 'open_questions', 'next_step'] },
+      checkpoint: { type: 'object' },
+      files: { type: 'object' },
+      reason: { type: 'string' },
+      summary: { type: 'string' },
+    }, additionalProperties: false },
+  },
+  {
     name: 'task_list', service: 'task', operation: 'task_list', version: '1.0',
     description: 'List Mission Tasks and search their short summaries before proposing new work.',
     scope: 'task-read', side_effect: false,
@@ -247,6 +248,7 @@ const publicTaskTools = [
         task_instructions: { type: 'string' },
         expected_output: { type: 'string' },
         acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] },
+        required_capabilities: { type: 'array', items: { type: 'string', minLength: 1 } },
         completion_contract: { type: 'object' },
         input_material_refs: { type: 'array', items: { type: 'string' } },
         responsibility_key: { type: 'string', minLength: 1, maxLength: 256 },
@@ -278,9 +280,24 @@ const publicTaskTools = [
   },
   {
     name: 'task_block', service: 'task', operation: 'task_block', version: '1.0',
-    description: 'Publish and link Handoff Material, record a typed dependency, and stop unfinished work as BLOCKED.',
+    description: 'Publish and link Handoff Material, record a typed Task or capability dependency, and stop unfinished work as BLOCKED.',
     scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['blocker', 'dependency', 'handoff_material_id'], properties: { blocker: { type: 'object' }, dependency: { type: 'object', description: 'A real prerequisite Task; this first version does not block on Material or CheckResult.' }, handoff_material_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['blocker', 'dependency', 'handoff_material_id'], properties: {
+      blocker: { type: 'object' },
+      dependency: {
+        type: 'object', minProperties: 1,
+        description: 'Use dependency_kind TASK with prerequisite_task_id for a Task prerequisite, or CAPABILITY with capability_id for a missing runtime/external capability. Capability blockers remain durably BLOCKED until an explicit reopen after the recovery condition is met.',
+        properties: {
+          dependency_kind: { type: 'string', enum: ['TASK', 'CAPABILITY'] },
+          prerequisite_task_id: { type: 'string' },
+          capability_id: { type: 'string' },
+          scope: { type: 'string' },
+          retryable: { type: 'boolean' },
+          recovery_condition: { type: 'string' },
+        },
+      },
+      handoff_material_id: { type: 'string' },
+    }, additionalProperties: false },
   },
   {
     name: 'task_close', service: 'task', operation: 'task_close', version: '1.0',
@@ -313,6 +330,9 @@ const publicContextTools = [
       scope: { type: 'string', description: 'The bounded collaboration or proof scope for the Material.' },
       evidence_state: { type: 'string', enum: ['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale'] },
       content: {}, summary: { type: 'string' }, receiving_task_id: { type: 'string' },
+      // A revised artifact must be able to identify the failed candidate it
+      // replaces; without this field the Agent cannot record repair lineage.
+      supersedes: { type: 'string' },
     }, additionalProperties: false },
   },
 ];
@@ -333,6 +353,7 @@ const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'c
 // entries above and the Registry-backed profile.
 const LEGACY_AGENT_OPERATIONS = new Set([
   'abort', 'accept_task', 'apply_check_result', 'block_execution',
+  'claim', 'list_claimable_tasks', 'select_task',
   'create_rework_task', 'fence_execution', 'heartbeat', 'request_rework',
   'request_wait', 'resume_execution', 'start_execution', 'stop_execution',
   'wake', 'wake_execution',
@@ -347,7 +368,7 @@ const SERVICE_DEFINITIONS = Object.freeze([
   {
     name: 'task',
     version: '1.0',
-    description: 'Task goals, Mission-scoped Material links, semantic completion, alternative branches, explicit dependencies, and claim discovery.',
+    description: 'Task goals, Mission-scoped Material links, semantic completion, explicit dependencies, and canonical task_take.',
     tools: [...TOOL_DEFINITIONS.filter((tool) => tool.service === 'task'), ...publicTaskTools, ...publicWorkspaceTools],
   },
   { name: 'execution', version: '1.0', description: 'Internal Execution lease, heartbeat, wait, and lifecycle metadata.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'execution') },

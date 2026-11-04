@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { ServicesBridge } from '../src/agent/services-bridge.js';
 import { AGENT_ROLES } from '../src/agent/capability-profile.js';
 
-test('Bridge exposes one authenticated deterministic role profile endpoint', async () => {
+test('Bridge exposes one authenticated reusable-identity profile endpoint', async () => {
   const bridge = new ServicesBridge({
     taskService: {},
     contextService: {},
     runtime: {},
-    role: AGENT_ROLES.SELECTION,
+    role: AGENT_ROLES.BOUND,
   });
   const environment = await bridge.start();
   try {
@@ -20,26 +20,27 @@ test('Bridge exposes one authenticated deterministic role profile endpoint', asy
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.ok, true);
-    assert.equal(body.profile.role, AGENT_ROLES.SELECTION);
+    assert.equal(body.profile.role, AGENT_ROLES.BOUND);
     assert.equal(typeof body.profile.profile_hash, 'string');
-    assert.ok(body.profile.capabilities.some((capability) => capability.operation === 'claim'));
-    assert.ok(!body.profile.capabilities.some((capability) => capability.service_id === 'workspace'));
+    assert.ok(body.profile.capabilities.some((capability) => capability.operation === 'task_take'));
+    assert.ok(!body.profile.capabilities.some((capability) => capability.operation === 'claim'));
+    assert.ok(body.profile.capabilities.some((capability) => capability.service_id === 'workspace'));
   } finally {
     await bridge.stop();
   }
 });
 
-test('Bridge changes profile from Selection to Bound after a handoff binding', async () => {
+test('Bridge keeps the reusable identity profile across binding and release', async () => {
   const bridge = new ServicesBridge({
     taskService: {},
     contextService: {},
     runtime: {},
-    role: AGENT_ROLES.SELECTION,
+    role: AGENT_ROLES.BOUND,
   });
-  assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.SELECTION);
+  assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.BOUND);
   await bridge.bindClaim({ task: { task_id: 'task-1' }, execution: { execution_id: 'execution-1' } });
   assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.BOUND);
   assert.ok(!bridge.getCapabilityProfile().capabilities.some((capability) => capability.operation === 'claim'));
   await bridge.releaseClaim();
-  assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.SELECTION);
+  assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.BOUND);
 });

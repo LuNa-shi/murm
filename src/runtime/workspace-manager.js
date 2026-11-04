@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { execFile as defaultExecFile } from 'node:child_process';
 import { cp, mkdir, lstat, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { promisify } from 'node:util';
 import { dirname, isAbsolute, join, relative as pathRelative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
@@ -12,6 +14,7 @@ import {
 
 const META_DIR = '.swarm';
 const META_FILE = 'workspace.json';
+const execFile = promisify(defaultExecFile);
 
 function hash(value) {
   return createHash('sha256').update(stableStringify(value)).digest('hex');
@@ -47,6 +50,18 @@ function contentEntry(content) {
   return { content_hash: textHash(content), bytes: Buffer.byteLength(content) };
 }
 
+async function git(workspaceRef, args, options = {}) {
+  try {
+    const result = await execFile('git', ['-C', workspaceRef, ...args], {
+      timeout: options.timeout ?? 30_000,
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    return String(result.stdout ?? '').trim();
+  } catch (error) {
+    throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `Workspace Git operation failed: ${error.message}`, { args }, { cause: error });
+  }
+}
+
 async function exists(path) {
   try {
     await stat(path);
@@ -59,6 +74,30 @@ async function exists(path) {
 export class WorkspaceManager {
   constructor({ rootDir }) {
     this.rootDir = resolve(requireString(rootDir, 'rootDir'));
+  }
+
+  async #initializeGit(workspaceRef, message = 'Initialize Execution Workspace') {
+    await writeFile(join(workspaceRef, '.gitignore'), [
+      '.swarm/', '.env', '.env.*', '*.sqlite', '*.sqlite3', '*.db',
+      'experiments/', 'logs/', 'node_modules/', '.lake/', 'dist/', 'build/',
+    ].join('\n') + '\n', 'utf8');
+    await git(workspaceRef, ['init', '--initial-branch=main']);
+    await git(workspaceRef, ['add', '-A']);
+    await git(workspaceRef, ['-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid', 'commit', '--allow-empty', '-m', message]);
+    return git(workspaceRef, ['rev-parse', 'HEAD']);
+  }
+
+  async #commitWorkspace(workspaceRef, message) {
+    await git(workspaceRef, ['add', '-A']);
+    const status = await git(workspaceRef, ['status', '--porcelain']);
+    if (status) {
+      await git(workspaceRef, ['-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid', 'commit', '-m', message]);
+    }
+    return git(workspaceRef, ['rev-parse', 'HEAD']);
+  }
+
+  async #gitCommit(workspaceRef) {
+    return git(workspaceRef, ['rev-parse', 'HEAD']);
   }
 
   workspacePath(executionId) {
@@ -128,12 +167,15 @@ export class WorkspaceManager {
       fileManifest[relativePath] = contentEntry(content);
     }
     validateRequiredWorkspaceInputs(fileManifest, workspaceContract);
+    const gitCommit = await this.#initializeGit(workspaceRef);
     const metadata = {
       execution_id: executionId,
       workspace_ref: workspaceRef,
       fencing_version: fencingVersion,
       workspace_revision: 1,
       content_hash: hash({ revision: 1, files: fileManifest }),
+      git_commit: gitCommit,
+      git_worktree: workspaceRef,
       files: fileManifest,
       workspace_contract: workspaceContract,
       checkpoint_ref: null,
@@ -174,8 +216,22 @@ export class WorkspaceManager {
       }
       return this.#publicMetadata(existing);
     }
-    await mkdir(join(target, META_DIR, 'revisions'), { recursive: true });
-    await mkdir(join(target, META_DIR, 'checkpoints'), { recursive: true });
+    const gitSourceCommit = selected.git_commit ?? source.git_commit ?? null;
+    if (gitSourceCommit) {
+      // Each Execution receives an independent Git checkout.  Restoring a
+      // Progress revision is an exact commit checkout, not a best-effort copy
+      // of the source directory's current files.
+      await mkdir(dirname(target), { recursive: true });
+      await execFile('git', ['clone', '--no-local', source.workspace_ref, target], { timeout: 30_000, maxBuffer: 2 * 1024 * 1024 })
+        .catch((error) => { throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `Workspace Git clone failed: ${error.message}`, undefined, { cause: error }); });
+      await git(target, ['checkout', '--detach', gitSourceCommit]);
+      await mkdir(join(target, META_DIR, 'revisions'), { recursive: true });
+      await mkdir(join(target, META_DIR, 'checkpoints'), { recursive: true });
+    }
+    if (!gitSourceCommit) {
+      await mkdir(join(target, META_DIR, 'revisions'), { recursive: true });
+      await mkdir(join(target, META_DIR, 'checkpoints'), { recursive: true });
+    }
     // A fork keeps the selected revision as its current tip, but its local
     // revision history must still be usable for diffs and later forks. The
     // source Workspace is already Runtime-owned and path-checked, so copy the
@@ -194,6 +250,20 @@ export class WorkspaceManager {
     }
     const files = {};
     for (const [relativePath, file] of Object.entries(selected.files ?? {})) {
+      if (gitSourceCommit) {
+        // Older metadata may point at a commit created before a Runtime
+        // support file was added. Materialize that one file from the pinned
+        // revision snapshot rather than allowing a restore to fail halfway
+        // through startup; normal new Workspaces never take this path.
+        if (!(await exists(join(target, relativePath)))) {
+          const sourceFile = join(selectedSnapshotRoot, relativePath);
+          await this.#assertNoSymlinkAncestors(source.workspace_ref, sourceFile);
+          await mkdir(dirname(join(target, relativePath)), { recursive: true });
+          await writeFile(join(target, relativePath), await readFile(sourceFile));
+        }
+        files[relativePath] = { content_hash: file.content_hash, bytes: file.bytes };
+        continue;
+      }
       let content;
       try {
         await this.#assertNoSymlinkAncestors(source.workspace_ref, join(source.workspace_ref, relativePath));
@@ -234,9 +304,19 @@ export class WorkspaceManager {
       input_snapshot: inputSnapshotManifest,
       changed_files: selected.changed_files ?? Object.keys(files),
       runtime_manifest: runtimeManifest,
+      git_commit: gitSourceCommit,
+      git_worktree: target,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+    if (gitSourceCommit) {
+      // A source checkout already contains the selected commit.  Metadata is
+      // intentionally ignored by .gitignore and does not alter the restored
+      // commit identity.
+      metadata.git_commit = gitSourceCommit;
+    } else {
+      metadata.git_commit = await this.#initializeGit(target, 'Restore legacy Workspace revision');
+    }
     await this.#writeMetadata(target, metadata);
     await this.#writeRevisionSnapshot(target, metadata);
     return this.#publicMetadata(metadata);
@@ -267,12 +347,15 @@ export class WorkspaceManager {
       nextFiles[relativePath] = contentEntry(content);
       changedFiles.push(relativePath);
     }
+    const gitCommit = await this.#commitWorkspace(workspaceRef, `Save Workspace revision ${metadata.workspace_revision + 1}`);
     const next = {
       ...metadata,
       workspace_revision: revision,
       content_hash: hash({ revision, files: nextFiles }),
       files: nextFiles,
       changed_files: changedFiles,
+      git_commit: gitCommit,
+      git_worktree: workspaceRef,
       released_at: null,
       updated_at: new Date().toISOString(),
     };
@@ -354,7 +437,7 @@ export class WorkspaceManager {
     const next = { ...metadata, checkpoint_ref: ref, checkpoint_hash: checkpointHash, updated_at: new Date().toISOString() };
     await this.#writeMetadata(workspaceRef, next);
     await this.#writeRevisionMetadata(workspaceRef, next);
-    return { checkpoint_ref: ref, checkpoint_hash: checkpointHash, workspace_revision: metadata.workspace_revision };
+    return { checkpoint_ref: ref, checkpoint_hash: checkpointHash, workspace_revision: metadata.workspace_revision, git_commit: metadata.git_commit ?? null };
   }
 
   async restoreWorkspace({ workspaceRef, executionId, fencingVersion = undefined }) {
@@ -383,6 +466,8 @@ export class WorkspaceManager {
       content_hash: revision.content_hash,
       checkpoint_ref: revision.checkpoint_ref,
       checkpoint_hash: revision.checkpoint_hash,
+      git_commit: revision.git_commit ?? null,
+      git_worktree: revision.git_worktree ?? metadata.workspace_ref,
       changed_files: revision.changed_files ?? [],
     }));
   }
@@ -390,6 +475,20 @@ export class WorkspaceManager {
   async releaseWorkspace({ workspaceRef, executionId, fencingVersion }) {
     const metadata = await this.#assertWritable(workspaceRef, executionId, fencingVersion);
     const next = { ...metadata, released_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    await this.#writeMetadata(workspaceRef, next);
+    await this.#writeRevisionMetadata(workspaceRef, next);
+    return this.#publicMetadata(next);
+  }
+
+  /** Reopen a released Workspace only when its durable owner wakes the same
+   * WAITING Execution with the same fence.  Late writers stay rejected while
+   * the Execution is waiting, but the checkpoint lineage can be resumed. */
+  async reopenWorkspace({ workspaceRef, executionId, fencingVersion }) {
+    const metadata = await this.#readMetadata(workspaceRef);
+    if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
+    if (metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace fence is stale');
+    if (!metadata.released_at) return this.#publicMetadata(metadata);
+    const next = { ...metadata, released_at: null, updated_at: new Date().toISOString() };
     await this.#writeMetadata(workspaceRef, next);
     await this.#writeRevisionMetadata(workspaceRef, next);
     return this.#publicMetadata(next);
@@ -410,6 +509,7 @@ export class WorkspaceManager {
     const metadata = await this.#readMetadata(workspaceRef);
     if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
     if (metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace write uses an old fencing version');
+    if (metadata.released_at) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace has been released');
     return metadata;
   }
 
@@ -533,6 +633,8 @@ export class WorkspaceManager {
       fencing_version: metadata.fencing_version,
       workspace_revision: metadata.workspace_revision,
       content_hash: metadata.content_hash,
+      git_commit: metadata.git_commit ?? null,
+      git_worktree: metadata.git_worktree ?? metadata.workspace_ref,
       parent_workspace_ref: metadata.parent_workspace_ref ?? null,
       parent_workspace_revision: metadata.parent_workspace_revision ?? null,
       task_id: metadata.task_id ?? null,

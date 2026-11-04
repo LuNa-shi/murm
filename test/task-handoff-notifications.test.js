@@ -156,6 +156,9 @@ test('Response Material notification is keyed, provenance-aware, and at-least-on
     const pending = taskService.listPendingNotifications(receiver.task_id, receiverExecution.execution_id);
     assert.equal(pending.length, 1);
     assert.equal(pending[0].notification_type, 'material_available');
+    assert.equal(pending[0].payload.action, 'inspect_material_and_record_task_feedback');
+    assert.equal(pending[0].payload.producer_task_id, producer.task_id);
+    assert.equal(pending[0].payload.material_id, material.material.material_id);
     assert.equal(taskService.markNotificationDelivered(pending[0].notification_id, receiverExecution.execution_id).delivered, true);
     assert.equal(taskService.listPendingNotifications(receiver.task_id, receiverExecution.execution_id).length, 0);
     assert.equal(taskService.markNotificationDelivered(pending[0].notification_id, receiverExecution.execution_id).delivered, true);
@@ -173,12 +176,20 @@ class NotificationSession extends EventEmitter {
 
   async waitForReady() {}
 
+  async waitForSettled() {}
+
   async prompt(message, options = {}) {
     this.prompts.push({ message, options });
   }
 
   async stop() {
     this.emit('close', { code: 0 });
+  }
+}
+
+class BoundaryNotificationSession extends NotificationSession {
+  async waitForSettled() {
+    throw Object.assign(new Error('agent_settled was not emitted'), { code: 'RPC_ERROR' });
   }
 }
 
@@ -232,6 +243,84 @@ test('Runtime delivers active notifications in order and inactive notifications 
     await runtime.startExecution(inactiveExecution.execution_id, { coreId: 'core-test' });
     assert.match(sessions[1].prompts[0].message, /test:inactive:one|material:y/);
     assert.equal(taskService.listPendingNotifications(inactiveTask.task_id, inactiveExecution.execution_id).length, 0);
+  } finally {
+    await runtime.shutdown().catch(() => undefined);
+    taskService.close();
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('Runtime delivers pending Task notifications after a reusable binding skips the initial prompt', async () => {
+  const { taskService, contextService } = setup();
+  const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-issue113-rebind-notify-'));
+  const session = new NotificationSession();
+  const runtime = new Runtime({
+    taskService,
+    contextService,
+    workspaceManager: new WorkspaceManager({ rootDir }),
+    agentAdapter: { async start() { return session; } },
+    actorRef: 'runtime:rebind-notify',
+    coreIds: ['core-rebind-notify'],
+  });
+  try {
+    taskService.dispatch('mission.create', { mission_id: 'mission:rebind-notify', goal: 'rebind notification' }, env('rebind:mission', 'operator:test'));
+    const task = makeTask(taskService, 'mission:rebind-notify', 'task:rebind-notify');
+    const execution = claim(taskService, task, 'execution:rebind-notify', 'agent:rebind-notify');
+    taskService.enqueueNotification({
+      deliveryKey: 'rebind:pending', missionId: 'mission:rebind-notify', recipientTaskId: task.task_id,
+      type: 'material_available', materialId: 'material:pending', payload: { material_id: 'material:pending' },
+    });
+    await runtime.bindAgentExecution(execution.execution_id, session, {
+      workspaceRef: join(rootDir, execution.execution_id),
+      coreId: 'core-rebind-notify',
+      sendInitialPrompt: false,
+      agentPrompt: 'current bound turn already owns the first prompt',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(session.prompts.length, 1);
+    assert.equal(session.prompts[0].options.streamingBehavior, 'followUp');
+    assert.match(session.prompts[0].message, /material:pending/);
+    assert.equal(taskService.listPendingNotifications(task.task_id, execution.execution_id).length, 0);
+  } finally {
+    await runtime.shutdown().catch(() => undefined);
+    taskService.close();
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('Runtime retries a pending notification after a turn boundary without agent_settled', async () => {
+  const { taskService, contextService } = setup();
+  const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-issue113-boundary-notify-'));
+  const session = new BoundaryNotificationSession();
+  const runtime = new Runtime({
+    taskService,
+    contextService,
+    workspaceManager: new WorkspaceManager({ rootDir }),
+    agentAdapter: { async start() { return session; } },
+    actorRef: 'runtime:boundary-notify',
+    coreIds: ['core-boundary-notify'],
+  });
+  try {
+    taskService.dispatch('mission.create', { mission_id: 'mission:boundary-notify', goal: 'boundary notification' }, env('boundary:mission', 'operator:test'));
+    const task = makeTask(taskService, 'mission:boundary-notify', 'task:boundary-notify');
+    const execution = claim(taskService, task, 'execution:boundary-notify', 'agent:boundary-notify');
+    taskService.enqueueNotification({
+      deliveryKey: 'boundary:pending', missionId: 'mission:boundary-notify', recipientTaskId: task.task_id,
+      type: 'material_available', materialId: 'material:boundary', payload: { material_id: 'material:boundary' },
+    });
+    await runtime.bindAgentExecution(execution.execution_id, session, {
+      workspaceRef: join(rootDir, execution.execution_id),
+      coreId: 'core-boundary-notify',
+      sendInitialPrompt: false,
+      agentPrompt: 'current bound turn already owns the first prompt',
+    });
+    session.emit('rpc', { type: 'turn_end' });
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(session.prompts.length, 1);
+    assert.match(session.prompts[0].message, /material:boundary/);
+    assert.equal(taskService.listPendingNotifications(task.task_id, execution.execution_id).length, 0);
   } finally {
     await runtime.shutdown().catch(() => undefined);
     taskService.close();

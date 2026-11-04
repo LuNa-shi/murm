@@ -66,6 +66,92 @@ test('ServicesSDK exposes the Mission-scoped Task seam without parent-specific m
   service.close();
 });
 
+test('canonical task supply seam reports status, registers work, and takes it', () => {
+  const { service } = env();
+  const sdk = new ServicesSDK(service, { actorRef: 'agent:canonical', coreId: 'core:canonical' });
+  const mission = sdk.createMission({ mission_id: 'mission:canonical', goal: 'canonical task supply' }, { operationId: 'canonical:mission' }).mission;
+
+  const initial = sdk.taskStatus({ mission_id: mission.mission_id });
+  assert.equal(initial.mission.mission_id, mission.mission_id);
+  assert.equal(initial.counts.total, 0);
+  assert.deepEqual(initial.tasks, []);
+
+  const registered = sdk.taskRegister({
+    mission_id: mission.mission_id,
+    task_id: 'task:canonical',
+    goal: 'find one independent route',
+    expected_output: 'a route note',
+    acceptance_conditions: ['note exists'],
+    collaboration_reason: 'another identity can verify this route',
+  }, { operationId: 'canonical:register' });
+  assert.equal(registered.task.task_id, 'task:canonical');
+  assert.equal(registered.provenance.actor_ref, 'agent:canonical');
+
+  const status = sdk.taskStatus({ mission_id: mission.mission_id });
+  assert.equal(status.counts.total, 1);
+  assert.equal(status.counts.claimable, 1);
+  assert.equal(status.tasks[0].task_id, 'task:canonical');
+
+  const taken = sdk.taskTake({
+    task_id: registered.task.task_id,
+    claim_key: 'canonical:take',
+    core_id: 'core:canonical',
+  }, { operationId: 'canonical:take' });
+  assert.equal(taken.task.task_id, registered.task.task_id);
+  assert.equal(taken.execution.owner_ref, 'agent:canonical');
+  assert.equal(taken.execution.core_id, 'core:canonical');
+  service.close();
+});
+
+test('the first Mission Task is a shared entry and may have multiple Core-bound Executions', () => {
+  const { service } = env();
+  const mission = createMission(service, 'mission:shared-entry');
+  const shared = createTask(service, mission.mission_id, 'task:shared-entry');
+  const first = service.dispatch('task_take', {
+    task_id: shared.task_id, claim_key: 'shared:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
+  }, op('shared:one', 'agent:one', { taskId: shared.task_id, specVersion: shared.spec_version, stateVersion: shared.state_version })).execution;
+  const current = service.getTask(shared.task_id);
+  const second = service.dispatch('task_take', {
+    task_id: shared.task_id, claim_key: 'shared:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
+  }, op('shared:two', 'agent:two', { taskId: shared.task_id, specVersion: current.spec_version, stateVersion: current.state_version })).execution;
+
+  assert.notEqual(first.execution_id, second.execution_id);
+  assert.equal(service.listExecutions(shared.task_id, { includeTerminal: false }).length, 2);
+  const status = service.taskStatus({ mission_id: mission.mission_id, limit: 1 });
+  assert.equal(status.counts.total, 1);
+  assert.equal(status.counts.running, 1);
+  assert.equal(status.counts.claimable, 1);
+  assert.equal(status.claimable_tasks[0].task_id, shared.task_id);
+  service.close();
+});
+
+test('ordinary Mission Tasks stay exclusive while registration has no queue-size cap', () => {
+  const { service } = env();
+  const mission = createMission(service, 'mission:ordinary-exclusive');
+  const first = createTask(service, mission.mission_id, 'task:first-ordinary');
+  const second = createTask(service, mission.mission_id, 'task:second-ordinary');
+  const taken = service.dispatch('task_take', {
+    task_id: second.task_id, claim_key: 'ordinary:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
+  }, op('ordinary:one', 'agent:one', { taskId: second.task_id, specVersion: second.spec_version, stateVersion: second.state_version }));
+  const current = service.getTask(second.task_id);
+  assert.throws(() => service.dispatch('task_take', {
+    task_id: second.task_id, claim_key: 'ordinary:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
+  }, op('ordinary:two', 'agent:two', { taskId: second.task_id, specVersion: current.spec_version, stateVersion: current.state_version })), /active Execution quota/);
+  for (let index = 0; index < 12; index += 1) {
+    const registered = service.taskRegister({
+      mission_id: mission.mission_id,
+      task_id: `task:unbounded-${index}`,
+      summary: `Register independent responsibility ${index} without a queue quota.`,
+      goal: `Explore route ${index}`,
+      expected_output: 'a bounded note',
+      acceptance_conditions: ['the note is durable'],
+    }, op(`register:unbounded:${index}`, 'agent:one', { taskId: second.task_id, executionId: taken.execution.execution_id, specVersion: taken.execution.spec_version, stateVersion: taken.execution.state_version, fencingVersion: taken.execution.fencing_version }));
+    assert.equal(registered.task.owner_ref, 'agent:one');
+  }
+  assert.equal(service.taskStatus({ mission_id: mission.mission_id }).counts.total, 14);
+  service.close();
+});
+
 test('Mission Task creation carries a bounded dynamic contract and deduplicates responsibility keys', () => {
   const { service } = env();
   const mission = createMission(service, 'mission:dynamic-contract');
@@ -81,9 +167,16 @@ test('Mission Task creation carries a bounded dynamic contract and deduplicates 
   const duplicate = service.dispatch('task.create', {
     mission_id: mission.mission_id,
     task_id: 'task:duplicate-id',
-    summary: 'Investigate the same feedback route without duplicating responsibility.',
+    summary: 'Investigate task:feedback-route without duplicating other work.',
+    task_type: 'research',
+    task_instructions: 'Read the feedback Material and produce one bounded route result.',
+    goal: 'Answer task:feedback-route',
     expected_output: 'A useful written result',
     acceptance_conditions: ['result is documented'],
+    completion_contract: { required_materials: [{ kinds: ['fact'], scope: 'proof_relevant', min_count: 1 }] },
+    input_material_refs: ['material:feedback'],
+    priority: 105,
+    timebox_ms: 30 * 60_000,
     responsibility_key: 'flat:proof-feedback:check-1',
   }, op('task:feedback-route:duplicate', 'agent:test'));
 

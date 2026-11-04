@@ -6,15 +6,9 @@ import swarmenvExtension from '../src/agent/swarmenv-extension.mjs';
 
 const capabilities = [
   {
-    id: 'task.list_claimable', name: 'task_list_claimable', operation: 'list_claimable_tasks',
-    service_id: 'task', service_title: 'Task Service', service_purpose: 'Task selection',
-    description: 'List the bounded claimable Task set.', audience: ['selection'], side_effect: false,
-    input_schema: { type: 'object', additionalProperties: false }, help: { when: 'Choose only from this bounded list.' },
-  },
-  {
-    id: 'task.claim', name: 'task_claim', operation: 'claim',
-    service_id: 'task', service_title: 'Task Service', service_purpose: 'Task selection',
-    description: 'Claim one listed Task.', audience: ['selection'], side_effect: true, idempotent: true,
+    id: 'task.take', name: 'task_take', operation: 'task_take',
+    service_id: 'task', service_title: 'Task Service', service_purpose: 'Canonical identity task acquisition',
+    description: 'Take one eligible Task on this reusable identity.', audience: ['bound', 'recovery'], side_effect: true, idempotent: true,
     input_schema: { type: 'object', required: ['task_id'] },
   },
   {
@@ -46,16 +40,13 @@ function registry() {
 }
 
 test('capability profiles are role-scoped, deterministic, and hashable', () => {
-  const selection = buildCapabilityProfile({ role: AGENT_ROLES.SELECTION, registry: registry() });
   const bound = buildCapabilityProfile({ role: AGENT_ROLES.BOUND, registry: registry() });
   const recovery = buildCapabilityProfile({ role: AGENT_ROLES.RECOVERY, registry: registry() });
-  assert.deepEqual(profileToolNames(selection), ['task_claim', 'task_list_claimable']);
-  assert.deepEqual(profileToolNames(bound), ['geometry_search_lemmas', 'workspace_read_file']);
+  assert.deepEqual(profileToolNames(bound), ['geometry_search_lemmas', 'task_take', 'workspace_read_file']);
   assert.deepEqual(profileToolNames(recovery), profileToolNames(bound));
-  assert.equal(selection.profile_hash, 'registry-selection');
   assert.equal(buildCapabilityProfile({ role: AGENT_ROLES.BOUND, registry: registry() }).profile_hash, bound.profile_hash);
-  assert.doesNotMatch(capabilityDirectory(selection), /Geometry|Workspace|heartbeat/);
   assert.match(capabilityDirectory(bound), /Geometry Research/);
+  assert.match(capabilityDirectory(bound), /task_take.*inputs required=\[task_id\]/);
 });
 
 test('initial prompt snapshot composes profile, contract, workspace, and recovery context', () => {
@@ -81,10 +72,10 @@ test('Pi extension registers only the supplied role profile and no generic trans
   const profile = buildCapabilityProfile({ role: AGENT_ROLES.BOUND, registry: registry() });
   const tools = [];
   const result = await swarmenvExtension({ registerTool(tool) { tools.push(tool); } }, { profile });
-  assert.deepEqual(tools.map((tool) => tool.name), ['swarmenv_geometry_search_lemmas', 'swarmenv_workspace_read_file']);
+  assert.deepEqual(tools.map((tool) => tool.name), ['swarmenv_geometry_search_lemmas', 'swarmenv_workspace_read_file', 'swarmenv_task_take']);
   assert.ok(!tools.some((tool) => tool.name === 'swarmenv_call'));
   assert.equal(result.profile_hash, profile.profile_hash);
-  assert.equal(result.tool_names.length, 2);
+  assert.equal(result.tool_names.length, 3);
 });
 
 test('every role profile and generated named directory excludes legacy Agent surfaces', () => {

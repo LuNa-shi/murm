@@ -104,12 +104,28 @@ class FakeSession extends EventEmitter {
     this.promptMessages = [];
     this.closed = false;
     this.candidateResults = [];
+    this._settled = null;
+    this._resolveSettled = null;
   }
 
   async waitForReady() {}
 
+  async waitForSettled() {
+    if (this._settled) await this._settled;
+  }
+
   async prompt(message) {
     if (typeof message === 'string') this.promptMessages.push(message);
+    this._settled = new Promise((resolve) => { this._resolveSettled = resolve; });
+    try {
+      return await this.#promptTurn(message);
+    } finally {
+      this._resolveSettled?.();
+      this._resolveSettled = null;
+    }
+  }
+
+  async #promptTurn(message) {
     if (this.noWork) return { data: { disposition: 'handled' } };
     const call = async (operation, payload) => {
       this.rpcRecords.push({ type: 'tool_call', tool_name: namedTool(operation) });
@@ -132,7 +148,7 @@ class FakeSession extends EventEmitter {
     };
     let claim;
     if (this.bound) {
-      claim = { task: await call('get_task', {}) };
+      claim = { task: await call('get_task', {}), execution: await call('get_execution', {}) };
     } else {
       await call('list_services', {});
       await call('list_tools', {});
@@ -142,49 +158,36 @@ class FakeSession extends EventEmitter {
         tasks = await call('list_tasks', { limit: 10 });
       }
       if (tasks.length === 0) return { data: { disposition: 'handled' } };
-      if (this.selectionOnly) {
-        await call('claim', {
-          task_id: tasks[0].task_id,
-          claim_key: `fake-selection-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
-          workspace_mode: 'clean',
-        });
-        return { data: { disposition: 'handled' } };
-      }
       if (this.invalidClaim && !this.invalidClaimUsed) {
         this.invalidClaimUsed = true;
         try {
-          await call('claim', {
+          await call('task_take', {
             task_id: tasks[0].task_id,
-            claim_key: `fake-invalid-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
-            workspace_mode: 'clean',
-            workspace_revision: 1,
+            claim_key: `fake-invalid-take-${this.env.SWARMENV_BRIDGE_TOKEN}`,
+            workspace_mode: 'invalid-mode',
           });
         } catch (error) {
           assert.equal(error.code, 'INVALID_CONTRACT');
           return { data: { disposition: 'handled' } };
         }
       }
+      const take = async (taskId) => call('task_take', {
+        task_id: taskId,
+        claim_key: `fake-take-${this.env.SWARMENV_BRIDGE_TOKEN}-${taskId}`,
+        workspace_mode: 'clean',
+      });
       try {
-        claim = await call('claim', {
-          task_id: tasks[0].task_id,
-          claim_key: `fake-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
-          workspace_mode: 'clean',
-        });
+        claim = await take(tasks[0].task_id);
       } catch {
-        this.invalidClaimUsed = true;
+        // Another Core may have one the same Task first. Re-read the queue and
+        // take one still-claimable Task; do not invent a second Execution.
         tasks = await call('list_tasks', { limit: 10 });
         if (tasks.length === 0) return { data: { disposition: 'handled' } };
-        claim = await call('claim', {
-          task_id: tasks[0].task_id,
-          claim_key: `fake-claim-${this.env.SWARMENV_BRIDGE_TOKEN}`,
-          workspace_mode: 'clean',
-        });
+        claim = await take(tasks[0].task_id);
       }
+      // Same identity: the task_take turn continues into bound research work.
+      this.bound = true;
     }
-    // The discovery transport only claims work. Runtime hands the claim to a
-    // fresh bound session, so the unbound prompt must settle before attempting
-    // any Workspace or candidate operations for the same Execution.
-    if (!this.bound) return { data: { disposition: 'handled' } };
     if (this.hardToolError && !this.hardToolErrorUsed) {
       this.hardToolErrorUsed = true;
       try {
@@ -328,11 +331,26 @@ class FlatFailureSession extends EventEmitter {
     return body.result;
   }
 
+  async waitForSettled() {
+    if (this._settled) await this._settled;
+  }
+
   async prompt() {
+    this._settled = new Promise((resolve) => { this._resolveSettled = resolve; });
+    try {
+      return await this.#promptTurn();
+    } finally {
+      this._resolveSettled?.();
+      this._resolveSettled = null;
+    }
+  }
+
+  async #promptTurn() {
     if (!this.bound) {
       const tasks = await this.call('list_tasks', { limit: 10 });
-      if (tasks[0]) await this.call('claim', { task_id: tasks[0].task_id, claim_key: `flat-failure-${this.options.executionId}`, workspace_mode: 'resume' });
-      return { data: { disposition: 'handled' } };
+      if (!tasks[0]) return { data: { disposition: 'handled' } };
+      await this.call('task_take', { task_id: tasks[0].task_id, claim_key: `flat-failure-${this.options.executionId}`, workspace_mode: 'resume' });
+      this.bound = true;
     }
     if (this.finished) return { data: { disposition: 'handled' } };
     const view = await this.call('get_task', {});
@@ -341,7 +359,13 @@ class FlatFailureSession extends EventEmitter {
     const material = await this.call('publish_material', {
       kind: 'artifact', scope: 'proof_relevant', content: 'def flatFailureCandidate : Nat := 0',
     });
-    await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
+    const first = await this.call('submit_candidate', { candidate_material_id: material.material.material_id });
+    if (first.check_result?.result_class === 'source_failure') {
+      const revised = await this.call('publish_material', {
+        kind: 'artifact', scope: 'proof_relevant', content: 'def revisedFlatFailureCandidate : Nat := 1',
+      });
+      await this.call('submit_candidate', { candidate_material_id: revised.material.material_id });
+    }
     this.finished = true;
     return { data: { disposition: 'handled' } };
   }
@@ -438,11 +462,15 @@ class CollaborationSession extends EventEmitter {
 
   async claimTask(task) {
     this.adapter.claimSequence += 1;
-    return this.call('claim', {
+    return this.call('task_take', {
       task_id: task.task_id,
-      claim_key: `collaboration-claim-${this.adapter.role}-${this.adapter.claimSequence}`,
+      claim_key: `collaboration-take-${this.adapter.role}-${this.adapter.claimSequence}`,
       workspace_mode: 'resume',
     });
+  }
+
+  async waitForSettled() {
+    if (this._settled) await this._settled;
   }
 
   async workClaimedTask() {
@@ -461,21 +489,32 @@ class CollaborationSession extends EventEmitter {
   }
 
   async prompt() {
+    this._settled = new Promise((resolve) => { this._resolveSettled = resolve; });
+    try {
+      return await this.#promptTurn();
+    } finally {
+      this._resolveSettled?.();
+      this._resolveSettled = null;
+    }
+  }
+
+  async #promptTurn() {
     if (!this.bound) {
+      let taken = null;
       if (this.adapter.role === 'root' && !this.adapter.rootFinished) {
-        if (this.adapter.rootFinished) return { data: { disposition: 'handled' } };
-        const root = await this.waitForTask((task) => task.parent_id === null);
-        if (root) {
-          await this.claimTask(root);
-          return { data: { disposition: 'handled' } };
-        }
+        taken = await this.waitForTask((task) => task.parent_id === null);
       }
       // A reusable unbound Agent discovers whichever child Task is READY;
       // the fixed role only makes the deterministic fixture easier to read.
-      const target = await this.waitForTask((task) => task.parent_id !== null);
-      if (!target) return { data: { disposition: 'handled' } };
-      await this.claimTask(target);
-      return { data: { disposition: 'handled' } };
+      taken = taken ?? await this.waitForTask((task) => task.parent_id !== null);
+      if (!taken) return { data: { disposition: 'handled' } };
+      try {
+        await this.claimTask(taken);
+      } catch {
+        return { data: { disposition: 'handled' } };
+      }
+      // Same identity: continue this turn as the bound owner.
+      this.bound = true;
     }
 
     const currentTask = await this.call('get_task', {});
@@ -629,9 +668,9 @@ class DynamicCollaborationSession extends EventEmitter {
     const task = tasks.find((candidate) => candidate.parent_id !== null) ?? tasks.find((candidate) => candidate.parent_id === null);
     if (!task) return false;
     try {
-      await this.call('claim', {
+      await this.call('task_take', {
         task_id: task.task_id,
-        claim_key: `dynamic-claim-${this.options.executionId}-${this.adapter.claimSequence++}`,
+        claim_key: `dynamic-take-${this.options.executionId}-${this.adapter.claimSequence++}`,
         workspace_mode: 'resume',
       });
       return true;
@@ -673,23 +712,32 @@ class DynamicCollaborationSession extends EventEmitter {
     }
   }
 
+  async waitForSettled() {
+    if (this._settled) await this._settled;
+  }
+
   async prompt() {
-    if (this.adapter.state.rootFinished) return { data: { disposition: 'handled' } };
-    if (this.adapter.state.queueOnly) {
-      if (!this.bound) {
-        await this.call('list_services', {});
-        await this.call('list_tools', {});
-        await this.claimAvailableTask();
-        return { data: { disposition: 'handled' } };
-      }
-      const task = await this.call('get_task', {});
-      await this.workClaimedTask(task);
-      return { data: { disposition: 'handled' } };
+    this._settled = new Promise((resolve) => { this._resolveSettled = resolve; });
+    try {
+      return await this.#promptTurn();
+    } finally {
+      this._resolveSettled?.();
+      this._resolveSettled = null;
     }
+  }
+
+  async #promptTurn() {
+    if (this.adapter.state.rootFinished) return { data: { disposition: 'handled' } };
     if (!this.bound) {
       await this.call('list_services', {});
       await this.call('list_tools', {});
-      await this.claimAvailableTask();
+      if (!await this.claimAvailableTask()) return { data: { disposition: 'handled' } };
+      // Same identity: continue this turn as the bound owner.
+      this.bound = true;
+    }
+    if (this.adapter.state.queueOnly) {
+      const task = await this.call('get_task', {});
+      await this.workClaimedTask(task);
       return { data: { disposition: 'handled' } };
     }
 
@@ -780,7 +828,7 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, taskModel = undefined, flatInitialTaskCount = undefined, flatDynamicTaskBudget = undefined, agentAdapterFactory = null, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, taskModel = undefined, agentAdapterFactory = null, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -793,8 +841,6 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     maxInfrastructureRetries,
     ...(normalFlow === undefined ? {} : { normalFlow }),
     ...(taskModel === undefined ? {} : { taskModel }),
-    ...(flatInitialTaskCount === undefined ? {} : { flatInitialTaskCount }),
-    ...(flatDynamicTaskBudget === undefined ? {} : { flatDynamicTaskBudget }),
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
@@ -856,13 +902,12 @@ test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Ex
     assert.equal(report.protocol.task_model, 'flat');
     assert.equal(report.protocol.execution_timeout_ms, 30 * 60_000);
     assert.equal(report.protocol.handoff_reminder_ms, 25 * 60_000);
-    assert.equal(report.protocol.dynamic_task_budget, 2);
-    assert.equal(report.project.task_count, 4);
+    assert.equal(report.protocol.dynamic_task_budget, null);
+    assert.equal(report.project.task_count, 1);
     assert.ok(report.project.task_tree.every((task) => task.mission_id));
-    assert.equal(report.project.task_tree.filter((task) => task.task_type === 'research').length, 3);
+    assert.equal(report.project.task_tree.filter((task) => task.task_type === 'research').length, 0);
     const proofTask = report.project.task_tree.find((task) => task.task_type === 'proof');
     assert.ok(proofTask);
-    assert.ok(report.project.task_tree.filter((task) => task.task_type === 'research').every((task) => task.priority < proofTask.priority));
     assert.equal(report.project.task_tree[0].parent_id, null);
     assert.equal(report.run.protocol_valid, true);
     const boundPrompts = adapters.flatMap((adapter) => adapter.sessions.flatMap((session) => session.promptMessages));
@@ -870,8 +915,9 @@ test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Ex
     const prompt = boundPrompts.join('\n');
     assert.match(prompt, /current Task/);
     assert.match(prompt, /source-level Judge FAIL/);
-    assert.match(prompt, /swarmenv_task_create/);
-    assert.match(prompt, /one bounded Material for each distinct finding/);
+    assert.match(prompt, /submit_candidate again/);
+    assert.doesNotMatch(prompt, /required Response handoff/);
+    assert.match(prompt, /bounded Materials for distinct findings or checkpoints/);
     assert.match(prompt, /do not publish duplicate copies/);
     assert.doesNotMatch(prompt, /publish two bounded Materials/);
     assert.doesNotMatch(prompt, /Branch Task|branch group|required subtask|parent review|root integration/i);
@@ -881,15 +927,14 @@ test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Ex
   }
 });
 
-test('select_task keeps the selection Session through claim and Runtime bind', async () => {
-  const experimentDir = await mkdtemp('/tmp/swarmenv-selection-bind-experiment-');
-  const reportDir = await mkdtemp('/tmp/swarmenv-selection-bind-report-');
+test('same identity keeps its Session through task_take and Runtime bind', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-take-bind-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-take-bind-report-');
   try {
     const report = await runFixture({
       reportDir,
       experimentDir,
-      id: 'putnam_selection_bind_test',
-      selectionOnly: true,
+      id: 'putnam_take_bind_test',
       timeboxMs: 2_000,
     });
     assert.equal(report.run.protocol_valid, true);
@@ -925,11 +970,19 @@ test('benchmark bounds retries after an unbound prompt startup failure', async (
     });
     assert.ok(adapter.starts >= 2);
     assert.ok(adapter.starts <= 8);
-    assert.equal(report.run.scheduler.startup_attempt_count, adapter.starts);
-    assert.equal(report.run.scheduler.startup_failure_count, adapter.starts);
+    // A failed unbound prompt is retried on the same identity Session, so turn
+    // attempts can exceed process starts; both counts must still be bounded.
+    assert.ok(report.run.scheduler.startup_attempt_count >= adapter.starts);
+    // A failed prompt on an existing Session is a turn failure, not a new
+    // process start, so failures can exceed starts. Both remain bounded.
+    assert.ok(report.run.scheduler.startup_failure_count >= report.run.scheduler.startup_attempt_count);
+    assert.ok(report.run.scheduler.startup_failure_count <= 8);
     assert.ok(report.run.scheduler.bounded_startup_exhausted_count >= 1);
     assert.ok(report.run.scheduler.bounded_startup_exhausted_count <= 4);
     assert.equal(report.run.scheduler.dispatch_count, 0);
+    assert.ok(Array.isArray(report.run.identity_loop_errors));
+    assert.ok(Array.isArray(report.run.cleanup_errors));
+    assert.ok(Array.isArray(report.run.unhandled_rejections));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
@@ -985,7 +1038,11 @@ test('benchmark project starts four isolated cores and redacts candidate content
     assert.ok(Array.isArray(report.project.structure.events));
     assert.ok(Array.isArray(report.project.structure.completion.task_contracts));
     assert.ok(Array.isArray(report.project.structure.completion.branch_and_subtask_groups));
-    assert.ok(adapters.some((adapter) => adapter.starts.some((start) => start.executionId && start.cwd?.includes('/workspaces/projects/putnam_test/') && !start.cwd.includes('/core-'))));
+    // Same-identity execution: every transport is the Core's reusable worker
+    // Session. Bound research happens in that Session after task_take, not in
+    // a separate selection/handoff process.
+    assert.ok(adapters.every((adapter) => adapter.starts.every((start) => String(start.executionId ?? '').startsWith('worker-'))));
+    assert.ok(adapters.some((adapter) => adapter.sessions.some((session) => session.candidateResults.length > 0)));
     assert.equal(report.run.solved, true);
     assert.equal(report.run.protocol_valid, true);
     assert.equal(report.run.made_progress, true);
@@ -1190,7 +1247,7 @@ test('benchmark submit_candidate returns Agent feedback separately from the reda
   }
 });
 
-test('flat Judge source failure admits one bounded feedback Task through the Task Service', async () => {
+test('flat Judge source failure stays on the same Task and each Execution can revise in place', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-flat-feedback-task-experiment-');
   const reportDir = await mkdtemp('/tmp/swarmenv-flat-feedback-task-report-');
   try {
@@ -1199,24 +1256,26 @@ test('flat Judge source failure admits one bounded feedback Task through the Tas
       experimentDir,
       id: 'putnam_flat_feedback_task_test',
       taskModel: 'flat',
-      flatInitialTaskCount: 1,
-      flatDynamicTaskBudget: 1,
       timeboxMs: 1_500,
       agentAdapterFactory: ({ env }) => new FlatFailureAdapter({ env }),
       checker: {
-        async check() {
+        async check({ candidate }) {
           return {
-            verdict: 'FAIL',
-            evidence: { checker_started: true, exit_code: 1, diagnostic: 'type mismatch' },
+            verdict: candidate.content.includes('revised') ? 'PASS' : 'FAIL',
+            evidence: { checker_started: true, exit_code: candidate.content.includes('revised') ? 0 : 1, diagnostic: candidate.content.includes('revised') ? 'checked' : 'type mismatch' },
           };
         },
       },
     });
     assert.equal(report.run.protocol_valid, true);
-    assert.equal(report.run.dynamic_task_count, 1);
-    assert.equal(report.project.task_count, 2);
-    assert.equal(report.project.task_tree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length, 1);
-    assert.equal(report.run.dynamic_task_events[0].status, 'created');
+    assert.equal(report.run.dynamic_task_count, 0);
+    assert.equal(report.project.task_count, 1);
+    assert.equal(report.project.task_tree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length, 0);
+    // The Mission entry is intentionally shareable after Issue #111.  Each
+    // reusable Core may therefore run its own FAIL -> revision chain on the
+    // same logical Task; the invariant is that no repair Task or response
+    // gate is created, and each chain stays on its bound Execution.
+    assert.ok(report.run.candidate_check_count >= 2);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
@@ -1280,7 +1339,8 @@ test('short four-core collaboration proves root decomposition, parallel work, ty
     assert.ok(report.run.candidate_check_count >= 3, 'two child candidates and one root candidate should be checked');
     assert.equal(report.audit.invalid, false);
     assert.ok(adapters.every((adapter) => adapter.starts.length >= 1), JSON.stringify(adapters.map((adapter) => adapter.starts.length)));
-    assert.ok(adapters.some((adapter) => adapter.starts.length >= 2));
+    // The same identity Session continues across the Tasks it takes.
+    assert.ok(adapters.every((adapter) => adapter.starts.length === 1));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
@@ -1327,7 +1387,7 @@ test('production queue dynamically reuses Cores across typed blocking waves', as
     assert.ok(report.cores.some((core) => core.material_reads.some((read) =>
       childTaskIds.size === new Set([...childTaskIds].filter((taskId) => read.source_task_ids.includes(taskId))).size)));
     assert.ok(adapters.every((adapter) => adapter.starts.length >= 1));
-    assert.ok(adapters.some((adapter) => adapter.starts.length >= 2), 'at least one reusable Core must start a later worker session');
+    assert.ok(adapters.every((adapter) => adapter.starts.every((start) => String(start.executionId ?? '').startsWith('worker-'))), 'every transport is a reusable identity session, not a separate selection Agent');
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
@@ -1411,7 +1471,9 @@ test('production queue consumes pre-existing independent Tasks without Root synt
     assert.ok(coreTaskSets.some((tasks) => tasks.size >= 2), 'a Core must claim different pre-existing Tasks across waves');
     assert.ok(report.run.candidate_check_count >= 8);
     assert.ok(report.parallelism.eligible_window_ms > 0);
-    assert.ok(adapters.every((adapter) => adapter.starts.length >= 2));
+    // The same identity Session takes subsequent Tasks; a Core does not start a
+    // replacement Session merely because an Execution completed.
+    assert.ok(adapters.every((adapter) => adapter.starts.length === 1), `starts=${adapters.map((adapter) => adapter.starts.length).join(',')}`);
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });

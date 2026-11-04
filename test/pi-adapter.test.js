@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { resolve } from 'node:path';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { AgentCoreAdapter, ERROR_CODES, SwarmEnvError } from '../src/index.js';
 
@@ -46,6 +47,33 @@ test('adapter launches the required NuRouter Pi RPC shape and binds the session 
   assert.equal(session.manifest.node_version, process.versions.node);
   session.stop();
   assert.deepEqual(await session.wait(), { code: 0, signal: null, stdout: '{"type":"ready"}\n', stderr: '' });
+});
+
+test('adapter injects the stable identity contract as a system-role addendum', async () => {
+  const sessionDir = await mkdtemp('/tmp/swarmenv-system-prompt-');
+  let args;
+  const identity = 'You are a continuous SwarmEnv research identity.\nNever invent a commit.';
+  const adapter = new AgentCoreAdapter({
+    provider: 'openai', model: 'gpt-test', sessionDir,
+    systemPrompt: identity,
+    spawnProcess: (...values) => {
+      [, args] = values;
+      return fakeChild();
+    },
+  });
+  try {
+    const session = await adapter.start({ executionId: 'execution-system-prompt', sessionDir });
+    const flag = args.indexOf('--append-system-prompt');
+    assert.ok(flag > 0, 'launch args must carry the system-role addendum');
+    const promptPath = args[flag + 1];
+    assert.ok(promptPath.startsWith(sessionDir));
+    assert.equal(await readFile(promptPath, 'utf8'), identity);
+    assert.ok(!args.includes(identity), 'identity text must come from a file, not argv');
+    session.stop();
+    await session.wait();
+  } finally {
+    await rm(sessionDir, { recursive: true, force: true });
+  }
 });
 
 test('adapter keeps managed Kimi routing in the NuRouter argument segment', async () => {

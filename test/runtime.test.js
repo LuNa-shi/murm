@@ -64,7 +64,15 @@ class FakeAgentAdapter {
   }
 }
 
-async function fixture({ stopDelayMs = 0, runtimeOptions = {}, parallelQuota = 1 } = {}) {
+async function waitForCondition(predicate, { timeoutMs = 1_000, intervalMs = 5 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  assert.equal(predicate(), true, 'condition did not become true before timeout');
+}
+
+async function fixture({ stopDelayMs = 0, runtimeOptions = {}, parallelQuota = 1, claimOwnerRef = 'runtime:local', runtimeActorRef = 'runtime:local' } = {}) {
   const database = new DatabaseSync(':memory:');
   const taskService = new TaskService(database);
   const contextService = new ContextService(database, { taskService });
@@ -72,11 +80,11 @@ async function fixture({ stopDelayMs = 0, runtimeOptions = {}, parallelQuota = 1
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const task = sdk.proposeTask({ task_type: 'proof', goal: 'runtime fixture', expected_output: 'proof', acceptance_conditions: { fixture: true }, owner_ref: 'owner:root', parallel_quota: parallelQuota }, { operationId: 'runtime-proposal' }).task;
   const claimed = sdk.withContext({ taskId: task.task_id, specVersion: 1, stateVersion: 0 }).claim({
-    execution_id: 'execution-runtime', claim_key: 'runtime-claim', owner_ref: 'runtime:local', agent_prompt: 'run the fixture', input_material_refs: [],
+    execution_id: 'execution-runtime', claim_key: 'runtime-claim', owner_ref: claimOwnerRef, agent_prompt: 'run the fixture', input_material_refs: [],
   }, { operationId: 'runtime-claim-op' });
   const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-workspace-'));
   const adapter = new FakeAgentAdapter({ stopDelayMs });
-  const runtime = new Runtime({ taskService, contextService, workspaceManager: new WorkspaceManager({ rootDir }), agentAdapter: adapter, actorRef: 'runtime:local', ...runtimeOptions });
+  const runtime = new Runtime({ taskService, contextService, workspaceManager: new WorkspaceManager({ rootDir }), agentAdapter: adapter, actorRef: runtimeActorRef, ...runtimeOptions });
   return { taskService, contextService, sdk, task, claimed, rootDir, adapter, runtime };
 }
 
@@ -301,6 +309,8 @@ test('Runtime bind composes the supplied mode prompt with the live Service profi
     assert.match(prompt, /TASK_INSTRUCTIONS_SENTINEL/);
     assert.match(prompt, /Mathlib Search/);
     assert.match(prompt, /swarmenv_mathlib_search/);
+    assert.match(prompt, /explicit decomposition decision/);
+    assert.match(prompt, /substantive increment/);
     assert.doesNotMatch(prompt, /swarmenv_call|request_wait/);
     await runtime.stopExecution(claimed.execution.execution_id);
   } finally {
@@ -378,6 +388,7 @@ test('final provider retry failure starts a fresh Session from the durable Works
     const oldAgent = fixtureData.sdk.withContext({ actorRef: 'agent:old', taskId: fixtureData.task.task_id, executionId: claimed.execution.execution_id, specVersion: 1, stateVersion: started.execution.state_version, fencingVersion: started.execution.fencing_version });
     oldSession.emit('rpc', { type: 'auto_retry_end', success: false, attempt: 15, finalError: 'provider unavailable' });
     await new Promise((resolve) => setTimeout(resolve, 25));
+    await runtime.waitForSettled();
     assert.equal(oldSession.closed, true);
     assert.equal(runtime.getActiveProcessCount(), 1);
     assert.equal(adapter.sessions.length, 2);
@@ -397,6 +408,7 @@ test('final provider retry failure starts a fresh Session from the durable Works
     );
     await runtime.stopExecution(replacement.execution_id);
   } finally {
+    await runtime.waitForSettled().catch(() => undefined);
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
   }
@@ -448,6 +460,24 @@ test('watchdog recovers a heartbeat-only stalled Session but not an active turn'
   }
 });
 
+test('Runtime shutdown stops a released reusable identity Session', async () => {
+  const fixtureData = await fixture();
+  const { runtime, adapter, claimed, rootDir, taskService } = fixtureData;
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    const session = adapter.sessions[0];
+    session.identitySession = true;
+    // A normal release detaches the Execution but keeps the identity Session.
+    await runtime.releaseExecution(claimed.execution.execution_id);
+    assert.equal(session.closed, false);
+    await runtime.shutdown();
+    assert.equal(session.closed, true);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
 test('compaction failure is classified and recovered with a fresh Session', async () => {
   const fixtureData = await fixture();
   const { runtime, adapter, claimed, rootDir, taskService } = fixtureData;
@@ -455,11 +485,13 @@ test('compaction failure is classified and recovered with a fresh Session', asyn
     await runtime.startExecution(claimed.execution.execution_id);
     adapter.sessions[0].emit('rpc', { type: 'compaction_end', reason: 'overflow', aborted: false, errorMessage: 'summary provider failed' });
     await new Promise((resolve) => setTimeout(resolve, 25));
+    await runtime.waitForSettled();
     assert.equal(adapter.sessions.length, 2);
     assert.equal(adapter.sessions[1].prompts[0].includes('compaction_failure'), true);
     assert.equal(taskService.listExecutions(fixtureData.task.task_id).filter((execution) => execution.state === 'RUNNING').length, 1);
     await runtime.stopExecution(taskService.listActiveExecutions()[0].execution_id);
   } finally {
+    await runtime.waitForSettled().catch(() => undefined);
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
   }
@@ -471,11 +503,12 @@ test('fresh-session recovery is bounded and fences the Execution after exhaustio
   try {
     await runtime.startExecution(claimed.execution.execution_id);
     adapter.sessions[0].emit('rpc', { type: 'auto_retry_end', success: false, attempt: 15, finalError: 'provider unavailable' });
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await waitForCondition(() => adapter.sessions.length >= 2
+      && adapter.sessions[1].boundExecutionId === claimed.execution.execution_id
+      && runtime.getActiveProcessCount() === 1);
     adapter.sessions[1].emit('rpc', { type: 'auto_retry_end', success: false, attempt: 15, finalError: 'provider unavailable' });
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    assert.equal(runtime.getActiveProcessCount(), 0);
-    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'FENCED');
+    await waitForCondition(() => runtime.getActiveProcessCount() === 0
+      && taskService.getExecution(claimed.execution.execution_id).state === 'FENCED');
   } finally {
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
@@ -803,6 +836,69 @@ test('Runtime handoff checkpoints metadata, fences stale writers, and releases t
     assert.equal(replay.disposition, 'already_terminal');
     assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
   } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('semantic handoff uses the authenticated Execution owner when Runtime actor differs', async () => {
+  const fixtureData = await fixture({ claimOwnerRef: 'agent:core-1', runtimeActorRef: 'runtime:core-1' });
+  const { runtime, taskService, contextService, claimed, rootDir, task } = fixtureData;
+  try {
+    taskService.contextService = contextService;
+    contextService.taskService = taskService;
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const material = new ServicesSDK(contextService, {
+      actorRef: 'agent:core-1', taskId: task.task_id, executionId: claimed.execution.execution_id,
+      specVersion: started.execution.spec_version, stateVersion: started.execution.state_version,
+      fencingVersion: started.execution.fencing_version,
+    }).publishMaterial({ role: 'handoff', kind: 'failure', scope: 'proof_relevant', content: { blocker: 'external capability' } }, { operationId: 'semantic-owner-handoff:material' }).material;
+    const handedOff = await runtime.handoffTask(claimed.execution.execution_id, {
+      reason: 'external_capability', handoff_material_id: material.material_id,
+    });
+    assert.equal(handedOff.disposition, 'handed_off');
+    assert.equal(handedOff.execution.state, 'HANDED_OFF');
+    assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+  } finally {
+    await runtime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('rejected semantic handoff restores the active Runtime binding for a corrected retry', async () => {
+  const fixtureData = await fixture({ claimOwnerRef: 'agent:core-retry', runtimeActorRef: 'runtime:core-retry' });
+  const { runtime, taskService, contextService, claimed, rootDir, task } = fixtureData;
+  taskService.contextService = contextService;
+  contextService.taskService = taskService;
+  const originalDispatch = taskService.dispatch.bind(taskService);
+  let rejectOnce = true;
+  taskService.dispatch = (operation, payload, envelope) => {
+    if (operation === 'handoff_task' && rejectOnce) {
+      rejectOnce = false;
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'controlled missing handoff material');
+    }
+    return originalDispatch(operation, payload, envelope);
+  };
+  try {
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const material = new ServicesSDK(contextService, {
+      actorRef: 'agent:core-retry', taskId: task.task_id, executionId: claimed.execution.execution_id,
+      specVersion: started.execution.spec_version, stateVersion: started.execution.state_version,
+      fencingVersion: started.execution.fencing_version,
+    }).publishMaterial({ role: 'handoff', kind: 'failure', scope: 'proof_relevant', content: { blocker: 'retryable contract rejection' } }, { operationId: 'semantic-retry:material' }).material;
+    await assert.rejects(() => runtime.handoffTask(claimed.execution.execution_id, {
+      reason: 'controlled_rejection', handoff_material_id: 'missing-material',
+    }), (error) => error.code === ERROR_CODES.INVALID_CONTRACT);
+    assert.equal(runtime.getActiveProcessCount(), 1);
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
+    const handedOff = await runtime.handoffTask(claimed.execution.execution_id, {
+      reason: 'corrected_retry', handoff_material_id: material.material_id,
+    });
+    assert.equal(handedOff.disposition, 'handed_off');
+    assert.equal(handedOff.execution.state, 'HANDED_OFF');
+  } finally {
+    await runtime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
   }

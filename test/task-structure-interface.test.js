@@ -7,6 +7,7 @@ function services() {
   const taskService = {
     dispatch(operation, payload, envelope) {
       calls.push({ service: 'task', operation, payload: structuredClone(payload), envelope: structuredClone(envelope) });
+      if (operation === 'list_tasks') return [{ task_id: 'public-task', goal: 'bounded discovery' }];
       return { service: 'task', operation, payload };
     },
     getTask(taskId) {
@@ -57,13 +58,12 @@ test('ServicesRouter exposes the semantic Task structure operations', () => {
   ]);
 });
 
-test('ServicesBridge exposes current discovery to Selection and Task work to Bound', async () => {
+test('ServicesBridge exposes discovery and task work to one reusable Bound identity', async () => {
   const { calls, taskService, contextService } = services();
   const router = new ServicesRouter({ taskService, contextService });
   const bridge = new ServicesBridge({ taskService, contextService, runtime: {}, router, actorRef: 'agent:surface' });
-  bridge.setSelectionCandidates([{ task_id: 'selection-task', goal: 'bounded discovery' }]);
   const tasks = await bridge.call({ operation: 'list_tasks', payload: { limit: 8 } });
-  assert.deepEqual(tasks.map((task) => task.task_id), ['selection-task']);
+  assert.deepEqual(tasks.map((task) => task.task_id), ['public-task']);
   assert.equal(bridge.taskId, null);
 
   const bound = new ServicesBridge({
@@ -82,11 +82,12 @@ test('ServicesBridge exposes current discovery to Selection and Task work to Bou
     await bridge.stop();
   }
   assert.deepEqual(calls.map(({ operation }) => operation), [
+    'list_tasks',
     'create_child_task',
   ]);
-  assert.equal(calls[0].envelope.actor_ref, 'agent:surface');
-  assert.equal(calls[0].envelope.task_id, 'task-1');
-  assert.equal(calls[0].envelope.execution_id, 'execution-1');
+  assert.equal(calls[1].envelope.actor_ref, 'agent:surface');
+  assert.equal(calls[1].envelope.task_id, 'task-1');
+  assert.equal(calls[1].envelope.execution_id, 'execution-1');
 });
 
 test('Runtime-only handoff transitions are not exposed as Agent Service tools', () => {

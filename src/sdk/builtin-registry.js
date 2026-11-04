@@ -10,16 +10,13 @@ const SERVICE_INFO = Object.freeze({
   catalog: { title: 'Service Catalog', purpose: 'Role-scoped Service and capability discovery.' },
 });
 
-const ALL_ROLES = Object.freeze(['selection', 'bound', 'recovery']);
-const SELECTION_OPERATIONS = new Set(['list_claimable_tasks', 'claim', 'task_list', 'task_view']);
-// Selection can inspect only the bounded Task contract it is about to choose.
-// Execution-scoped projections (Materials, CheckResults, and prior Executions)
-// belong to the bound/recovery roles and must not leak into the selection turn.
-const SHARED_READ_OPERATIONS = new Set(['get_task']);
+const ALL_ROLES = Object.freeze(['bound', 'recovery']);
+const SHARED_READ_OPERATIONS = new Set(['get_task', 'task_status']);
 const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
-    'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'claim', 'create_child_task', 'propose_task',
-    'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
+    'list_tasks', 'get_task', 'list_executions', 'create_child_task', 'propose_task',
+    'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_block', 'task_close',
+    'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
   ]),
   context: new Set(['publish_material', 'read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material']),
   judge: new Set(['submit_candidate', 'get_check_result']),
@@ -66,7 +63,6 @@ function strictInputSchema(parameters) {
 }
 
 function audienceFor(tool) {
-  if (SELECTION_OPERATIONS.has(tool.operation) && !['task_list', 'task_view'].includes(tool.operation)) return ['selection'];
   if (['list_tasks', 'task_list', 'task_view'].includes(tool.operation)) return ALL_ROLES;
   if (SHARED_READ_OPERATIONS.has(tool.operation)) return ALL_ROLES;
   if (tool.service === 'catalog' && tool.scope === 'public-read' && tool.side_effect === false) return ALL_ROLES;
@@ -122,7 +118,11 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
       side_effect: tool.side_effect ? 'write' : 'read',
       idempotent: !tool.side_effect,
       context: serviceId === 'catalog' ? [] : ['task', 'execution'],
-      help: { when: tool.description, ref: `service://${serviceId}/${tool.operation}` },
+      help: {
+        when: tool.description,
+        ref: `service://${serviceId}/${tool.operation}`,
+        text: `Purpose: ${info.purpose}\nUse when: ${tool.description}\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code.`,
+      },
       input_schema: strictInputSchema(tool.parameters),
       // Built-in results intentionally use a JSON value schema: Task and
       // Context reads include arrays while writes return structured objects.

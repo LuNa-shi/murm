@@ -20,6 +20,37 @@ function proofInput(overrides = {}) {
   };
 }
 
+test('successor claims persist Workspace source lineage after a handoff', () => {
+  const service = new TaskService(new DatabaseSync(':memory:'));
+  const sdk = new ServicesSDK(service, { actorRef: 'owner:lineage' });
+  const task = sdk.proposeTask({
+    task_type: 'proof', goal: 'preserve Workspace lineage', expected_output: 'a successor route',
+    acceptance_conditions: { lineage: true }, owner_ref: 'owner:lineage',
+  }, { operationId: 'lineage:task' }).task;
+  const first = service.claimTask(task.task_id, { claim_key: 'lineage:first', owner_ref: 'agent:first' });
+  const saved = service.dispatch('save_workspace_revision', {
+    workspace_ref: 'workspace://lineage:first', workspace_revision: 2, workspace_content_hash: 'hash:first',
+  }, makeEnvelope({
+    operationId: 'lineage:workspace', actorRef: 'agent:first', taskId: task.task_id,
+    executionId: first.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: first.execution.state_version, fencingVersion: first.execution.fencing_version,
+  })).execution;
+  const handed = service.dispatch('handoff_execution', {
+    terminal_state: 'FENCED', terminal_reason: 'lineage_handoff',
+    workspace_ref: saved.workspace_ref, workspace_revision: saved.workspace_revision,
+    workspace_content_hash: saved.workspace_content_hash,
+  }, makeEnvelope({
+    operationId: 'lineage:handoff', actorRef: 'agent:first', taskId: task.task_id,
+    executionId: first.execution.execution_id, specVersion: task.spec_version,
+    stateVersion: saved.state_version, fencingVersion: saved.fencing_version,
+  })).execution;
+  const successor = service.claimTask(task.task_id, { claim_key: 'lineage:successor', owner_ref: 'agent:second' });
+  assert.equal(successor.execution.workspace_selection.source_execution_id, handed.execution_id);
+  assert.equal(successor.execution.workspace_selection.source_workspace_ref, 'workspace://lineage:first');
+  assert.equal(successor.execution.workspace_selection.revision, 2);
+  service.close();
+});
+
 test('registered proof root Task persists its contract and rejects incomplete proposals', () => {
   const { service, sdk } = rootService();
   const result = sdk.proposeTask(proofInput(), { operationId: 'propose-proof-1', actorRef: 'owner:root' });

@@ -3,7 +3,6 @@ import { isLegacyAgentSurface, listTools } from '../sdk/service-catalog.js';
 import { stableStringify } from '../protocol/envelope.js';
 
 export const AGENT_ROLES = Object.freeze({
-  SELECTION: 'selection',
   BOUND: 'bound',
   RECOVERY: 'recovery',
 });
@@ -18,9 +17,10 @@ const INTERNAL_AUDIENCES = new Set(['runtime', 'daemon', 'internal']);
 // contract while callers migrate to a Registry.
 const CURRENT_AGENT_OPERATIONS = new Set([
   'list_services', 'get_service_metadata', 'list_tools',
-  'list_tasks', 'list_claimable_tasks', 'get_task', 'list_executions', 'claim',
+  'list_tasks', 'get_task', 'list_executions',
   'create_child_task', 'propose_task',
-  'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close',
+  'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_block', 'task_close',
+  'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
   'publish_material', 'read_materials', 'consume_materials',
   'context_search_materials', 'context_get_material', 'context_publish_material',
   'submit_candidate', 'get_check_result', 'get_execution',
@@ -43,7 +43,7 @@ function asList(value) {
 }
 
 function canonicalRole(role) {
-  if (role === AGENT_ROLES.SELECTION || role === AGENT_ROLES.BOUND || role === AGENT_ROLES.RECOVERY) return role;
+  if (role === AGENT_ROLES.BOUND || role === AGENT_ROLES.RECOVERY) return role;
   throw new TypeError(`unknown Agent role: ${role}`);
 }
 
@@ -78,17 +78,11 @@ function inferredAudience(capability) {
   if (service === 'workspace' || service === 'execution' || service === 'context' || service === 'judge' || capability.runtime_owned === true || operation === 'scheduler_status') {
     return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
-  if (operation === 'claim' || operation === 'list_claimable_tasks') {
-    return [AGENT_ROLES.SELECTION];
-  }
-  if (operation === 'list_tasks' || operation === 'task_list' || operation === 'task_view' || operation === 'get_task') {
-    return [AGENT_ROLES.SELECTION, AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
-  }
-  if (scope === 'task-selection') {
-    return ['runtime'];
+  if (operation === 'list_tasks' || operation === 'task_list' || operation === 'task_view' || operation === 'get_task' || operation === 'task_status') {
+    return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
   if (scope === 'public-read' && sideEffect === false) {
-    return [AGENT_ROLES.SELECTION, AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
+    return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
   return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
 }
@@ -122,6 +116,9 @@ function normalizeCapability(capability, role) {
     service_id: serviceId,
     service_title: capability.service_title ?? capability.serviceTitle ?? capability.title ?? serviceId,
     service_purpose: capability.service_purpose ?? capability.servicePurpose ?? capability.purpose ?? '',
+    provider_version: capability.provider_version ?? capability.providerVersion ?? null,
+    contract_version: capability.contract_version ?? capability.contractVersion ?? null,
+    manifest_hash: capability.manifest_hash ?? capability.manifestHash ?? null,
     description: capability.description ?? '',
     input_schema: clone(capability.input_schema ?? capability.inputSchema ?? capability.parameters ?? { type: 'object' }),
     output_schema: clone(capability.output_schema ?? capability.outputSchema ?? null),
@@ -151,17 +148,33 @@ function sourceCapabilities({ registry, role, context, tools }) {
   return { profile: null, capabilities: catalog.filter((capability) => CURRENT_AGENT_OPERATIONS.has(operationOf(capability))) };
 }
 
-function normalizeServices(capabilities) {
+function normalizeServices(capabilities, profileServices = []) {
   const grouped = new Map();
   for (const capability of capabilities) {
     const service = grouped.get(capability.service_id) ?? {
       id: capability.service_id,
+      service_id: capability.service_id,
       title: capability.service_title,
       purpose: capability.service_purpose,
+      provider_version: capability.provider_version ?? null,
+      contract_version: capability.contract_version ?? null,
+      manifest_hash: capability.manifest_hash ?? null,
+      documentation: [],
       capabilities: [],
     };
     service.capabilities.push(capability.tool_name ?? capability.name);
     grouped.set(capability.service_id, service);
+  }
+  for (const service of grouped.values()) {
+    const source = Array.isArray(profileServices)
+      ? profileServices.find((candidate) => (candidate.service_id ?? candidate.id) === service.id)
+      : null;
+    if (!source) continue;
+    if (source.purpose) service.purpose = source.purpose;
+    if (source.provider_version) service.provider_version = source.provider_version;
+    if (source.contract_version) service.contract_version = source.contract_version;
+    if (source.manifest_hash) service.manifest_hash = source.manifest_hash;
+    if (Array.isArray(source.documentation)) service.documentation = clone(source.documentation);
   }
   return [...grouped.values()]
     .map((service) => ({ ...service, capabilities: [...service.capabilities].sort() }))
@@ -208,7 +221,7 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
       : (capability.tool_name ?? capability.name);
     return { ...capability, name, tool_name: toolName };
   });
-  const services = normalizeServices(capabilities);
+  const services = normalizeServices(capabilities, source.profile?.services);
   const identity = {
     profile_version: source.profile?.profile_version ?? source.profile?.profileVersion ?? PROFILE_VERSION,
     role: canonical,
@@ -223,7 +236,7 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
     usedToolNames.add(toolName);
     return { ...capability, tool_name: toolName };
   });
-  const finalIdentity = { ...identity, capabilities: disambiguatedCapabilities, services: normalizeServices(disambiguatedCapabilities) };
+  const finalIdentity = { ...identity, capabilities: disambiguatedCapabilities, services: normalizeServices(disambiguatedCapabilities, source.profile?.services) };
   const profileHash = generatedNames || disambiguatedCapabilities.some((capability, index) => capability.tool_name !== capabilities[index].tool_name)
     ? digest(finalIdentity)
     : (source.profile?.profile_hash ?? source.profile?.profileHash ?? digest(identity));
@@ -232,7 +245,7 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
     profile_version: identity.profile_version,
     profile_hash: profileHash,
     capabilities: disambiguatedCapabilities,
-    services: normalizeServices(disambiguatedCapabilities),
+    services: normalizeServices(disambiguatedCapabilities, source.profile?.services),
   };
 }
 
@@ -252,7 +265,15 @@ export function capabilityDirectory(profile) {
       if (!capability) continue;
       const guidance = capability.help?.when ?? capability.help?.usage ?? capability.help?.summary ?? null;
       const effect = capability.side_effect === false || capability.side_effect === 'read' ? 'read-only' : 'writes state';
-      lines.push(`  - swarmenv_${name}: ${capability.description || 'Use the registered capability.'} (logical operation ${capability.service_id}.${capability.operation}; ${effect}${guidance ? `; ${guidance}` : ''})`);
+      const schema = capability.input_schema && typeof capability.input_schema === 'object' && !Array.isArray(capability.input_schema)
+        ? capability.input_schema
+        : {};
+      const required = Array.isArray(schema.required) ? schema.required : [];
+      const properties = schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)
+        ? Object.keys(schema.properties).sort()
+        : [];
+      const inputSummary = `inputs required=[${required.join(',') || 'none'}] fields=[${properties.join(',') || 'none'}]`;
+      lines.push(`  - swarmenv_${name}: ${capability.description || 'Use the registered capability.'} (logical operation ${capability.service_id}.${capability.operation}; ${effect}; ${inputSummary}${guidance ? `; ${guidance}` : ''})`);
     }
   }
   return lines.length > 0 ? lines.join('\n') : '- No callable provider capabilities are available in this Session.';

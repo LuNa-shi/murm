@@ -13,10 +13,10 @@ export const TERMINAL_EXECUTION_STATES = Object.freeze(['SUCCEEDED', 'FAILED', '
 
 const CONTRACT_KEYS = new Set([
   'required_children', 'required_materials', 'required_response', 'required_candidate', 'required_check', 'parent_review', 'normal_flow',
-  'required_branch_groups', 'required_subtask_groups',
+  'required_branch_groups', 'required_subtask_groups', 'final_candidate',
 ]);
 const CHECK_KEYS = new Set(['checker_ref', 'checker_version', 'environment_ref', 'input_snapshot_hash']);
-const MATERIAL_KEYS = new Set(['kind', 'kinds', 'scope', 'min_count', 'requires_consumption', 'action', 'consumption_action']);
+const MATERIAL_KEYS = new Set(['kind', 'kinds', 'scope', 'role', 'min_count', 'requires_consumption', 'action', 'consumption_action', 'cross_task']);
 const MATERIAL_CONSUMPTION_ACTIONS = new Set(['route', 'task', 'candidate', 'integration']);
 const CANDIDATE_KEYS = new Set(['kind', 'scope']);
 const RESPONSE_KEYS = new Set(['receiving_task_id', 'task_id', 'min_count']);
@@ -49,6 +49,12 @@ function normalizeMaterials(value) {
     if (item.requires_consumption !== undefined && typeof item.requires_consumption !== 'boolean') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].requires_consumption must be boolean`);
     }
+    if (item.cross_task !== undefined && typeof item.cross_task !== 'boolean') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].cross_task must be boolean`);
+    }
+    if (item.role !== undefined && (typeof item.role !== 'string' || item.role.length === 0)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].role must be a non-empty string`);
+    }
     if (item.action !== undefined && !MATERIAL_CONSUMPTION_ACTIONS.has(item.action)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].action must be route, task, candidate, or integration`);
     }
@@ -65,9 +71,11 @@ function normalizeMaterials(value) {
     return {
       kinds: [...kinds],
       ...(item.scope ? { scope: item.scope } : {}),
+      ...(item.role ? { role: item.role } : {}),
       min_count: minCount,
       ...(item.requires_consumption !== undefined ? { requires_consumption: item.requires_consumption } : {}),
       ...(consumptionAction !== undefined ? { action: consumptionAction } : {}),
+      ...(item.cross_task !== undefined ? { cross_task: item.cross_task } : {}),
     };
   });
 }
@@ -148,6 +156,12 @@ export function validateCompletionContract(contract, { taskType, parentId = null
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'normal_flow must be boolean');
     }
     normalized.normal_flow = contract.normal_flow;
+  }
+  if (contract.final_candidate !== undefined) {
+    if (typeof contract.final_candidate !== 'boolean') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'final_candidate must be boolean');
+    }
+    normalized.final_candidate = contract.final_candidate;
   }
   if (normalized.normal_flow === true && normalized.parent_review === true) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'normal_flow Tasks cannot require parent_review');

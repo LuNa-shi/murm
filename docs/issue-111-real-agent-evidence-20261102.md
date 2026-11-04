@@ -1,0 +1,227 @@
+# Issue #111 real-Agent evidence
+
+This is a sanitized record for the implementation commit used by the Issue
+#111 acceptance attempt. It contains no Agent transcript, proof source,
+credential, stdout, or stderr.
+
+## Fixed inputs
+
+- Latest implementation commit: `ba006dd09ee81da2f1706b5a20f614132344ef10` (the blocked probe below was run
+  against the prior `1aca2651cda88926f2d4732ad769c7ba1bda242c` commit and is
+  not acceptance evidence for this follow-up code).
+- Worktree: `/home/ubuntu/SwarmEnv/.worktrees/issue-111-task-centric-phase1`
+- Worktree state at launch: clean (`git status --porcelain` was empty)
+- PutnamBench commit: `a635813f5edf297d928f9bd5ef8324a26bdde09c`
+- Lean project root: `/home/ubuntu/PutnamBench/lean4`
+- Locked toolchain: `leanprover/lean4:v4.33.1`
+- Mathlib revision: `0df444a360eaa60ab8c11dca51a86af692955474`
+- Checker: `lean`, version `mvp-1`
+- Default target route: `openai` / `gpt-6.1-sol`
+- Local `.env` route: `openai-codex` / `gpt-6.1-sol`
+
+The required local variables were present in the ignored worktree `.env`; no
+secret values were recorded. Node, NuRouter, Pi, Lean, and Lake were all
+available in the readiness probe.
+
+## Deterministic validation
+
+The final implementation passed:
+
+```text
+npm test                         301/301
+node --test test/phase1-s3.test.js 5/5
+git diff --check                 clean
+```
+
+The S3 test was also repeated five times after the checkpoint queue fix. The
+implementation includes canonical Task supply, shared Mission admission,
+same-Execution Judge feedback, Progress checkpoint/handoff, per-Execution
+feedback receipts, and bounded compaction identity rotation.
+
+## Real-Agent probes
+
+The final corrected probe below used the clean implementation commit above and
+the locked PutnamBench revision. Earlier route diagnostics were run before the
+final implementation commit and are identified as such; none is acceptance
+evidence for the two-hour benchmark.
+
+1. A preliminary explicit default `openai` route, run against an earlier clean
+   implementation commit, returned a sanitized `READY_TO_LAUNCH` preflight
+   followed by `RPC_ERROR / real_agent_path_error` before a usable Agent turn.
+2. A preliminary copied local `.env` route omitted
+   `SWARMENV_PUTNAMBENCH_ROOT`; its checker preflight was unavailable. This was
+   diagnostic-only and was corrected before the final probe.
+3. The final corrected local `.env` route on the implementation commit above
+   returned `READY_TO_LAUNCH` with all required tools and the locked project
+   root, then ended as `FAILED` with `RPC_ERROR / timeout` while Task and
+   Execution remained `RUNNING`; no Material or CheckResult was produced. No
+   two-hour benchmark was started, so the real acceptance gate is **BLOCKED**
+   by the local Agent route/turn availability.
+
+The corrected controlled probe command for the prior implementation was:
+
+```sh
+set -a; source .env; set +a
+export SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 \
+  SWARMENV_IMPLEMENTATION_COMMIT=1aca2651cda88926f2d4732ad769c7ba1bda242c \
+  SWARMENV_WORKTREE_DIRTY=false SWARMENV_WORKTREE_STATUS=clean
+timeout 420s node scripts/run-mvp-fixture.mjs --real-agent
+```
+
+Once the probe can complete a real Agent turn, the Issue's two-hour run must
+be launched from the same clean implementation commit with four Cores, the
+same provider/model, and the locked checker. The canonical benchmark shape is:
+
+```sh
+set -a; source .env; set +a
+export SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 \
+  SWARMENV_IMPLEMENTATION_COMMIT=1aca2651cda88926f2d4732ad769c7ba1bda242c \
+  SWARMENV_WORKTREE_DIRTY=false SWARMENV_WORKTREE_STATUS=clean
+timeout 7500s node scripts/run-putnambench-benchmark.mjs \
+  --problems config/putnambench-12.json \
+  --putnambench-root /home/ubuntu/PutnamBench \
+  --problem putnam_2025_b1 --cores 4 --project-parallelism 1 \
+  --timebox-ms 7200000 --parallel-mode semantic --normal-flow \
+  --experiment-root experiments \
+  --experiment-dir experiments/issue-111-2h-20261102 \
+  --report-dir experiments/issue-111-2h-20261102/analysis/runner-report \
+  --observability-host 127.0.0.1 --observability-port 8894
+```
+
+The follow-up implementation commit `ba006dd09ee81da2f1706b5a20f614132344ef10` requires a fresh readiness probe
+and real run before any acceptance claim. No mathematical solve, orchestration
+improvement, or real compaction rotation claim is made from the blocked probes.
+
+## Follow-up probe on the current implementation
+
+The exact clean commit `9088be769f40aa6c85cc2411417819e57224a027` (documentation
+only on top of implementation `ba006dd09ee81da2f1706b5a20f614132344ef10`) was
+probed with the command above after rebinding `SWARMENV_IMPLEMENTATION_COMMIT`.
+The preflight was **BLOCKED** because the local `pi --version` check exceeded
+the probe's bounded stderr buffer. NuRouter, Lean, Lake, the locked
+PutnamBench revision, and route variables were present; no Agent turn was
+started, and no Task, Execution, Material, or CheckResult was produced.
+
+## Real-Agent probe on implementation `d5214b5493e952a197d00375a7260d54a197f897`
+
+After the local Pi route recovered, the controlled probe was rerun on the clean
+implementation commit `d5214b5493e952a197d00375a7260d54a197f897`
+(`SWARMENV_WORKTREE_DIRTY=false`, worktree clean):
+
+```sh
+set -a; source .env; set +a
+export PATH="/home/ubuntu/.elan/bin:$PATH" \
+  SWARMENV_PUTNAMBENCH_ROOT=/home/ubuntu/PutnamBench/lean4 \
+  SWARMENV_IMPLEMENTATION_COMMIT=d5214b5493e952a197d00375a7260d54a197f897 \
+  SWARMENV_WORKTREE_DIRTY=false SWARMENV_WORKTREE_STATUS=clean
+timeout 600s node scripts/run-mvp-fixture.mjs --real-agent --keep
+```
+
+- Preflight: **READY_TO_LAUNCH**; Node v24.21.0, NuRouter 0.2.16, Pi 1.4.0,
+  Lean 4.33.1, Lake 5.0.0; locked PutnamBench commit
+  `a635813f5edf297d928f9bd5ef8324a26bdde09c`; route `openai-codex` /
+  `gpt-6.1-sol` from the local ignored `.env`.
+- Result: **SUCCEEDED**. The real Agent submitted a first candidate, received
+  the synchronous source-level FAIL with its diagnostic, published a revised
+  artifact that supersedes the failed material, and submitted it for a second
+  check that returned PASS, all in the same Agent Session and Execution.
+- Sanitized record: `experiments/issue-111-probe-d5214b5/analysis/report.json`
+  (ignored raw-evidence directory; no transcript, proof text, or credentials).
+- The real Pi session format contains a leading system `addendum` section with
+  the stable identity contract; the dynamic candidate instruction remains the
+  user turn. This verifies the system-role injection path on Pi 1.4.0.
+
+Two earlier diagnostic probes on `947d555` and `8be429a` produced one
+FAIL-only turn and one provider timeout respectively; they are not acceptance
+evidence. The two-hour four-Core comparison has not yet been run and remains
+**BLOCKED / not yet executed**.
+
+## Re-probe after identity Session reuse (`0bc87896236a6a221c67afba434d13591306bf81`)
+
+The reusable-Session change was validated again with the same controlled
+command on clean commit `0bc87896236a6a221c67afba434d13591306bf81`:
+
+- Preflight **READY_TO_LAUNCH**; Pi 1.4.0 / NuRouter 0.2.16 / Node v24.21.0,
+  Lean 4.33.1, Lake 5.0.0.
+- Result **SUCCEEDED**: two Materials, two CheckResults, first `source_failure`
+  followed by a superseding revision and `PASS` in the same Session/Execution.
+- Sanitized record: `experiments/issue-111-probe-0bc8789/analysis/report.json`.
+- Session inspection: the identity contract is present in the leading system
+  `addendum` section and absent from the user turn, confirming the stable /
+  dynamic separation on the real Pi version.
+
+This supersedes the `d5214b5` probe as the current implementation evidence; the
+`d5214b5` result remains a valid record of that earlier commit.
+
+
+## Re-probe after review fixes (`f359e4f45cd52868d4d7ee11cba5077069401b5d`)
+
+The final implementation commit was probed again after the code review fixes
+(durable bind rollback, identity-Session shutdown cleanup, Sandbox close
+ordering, recovery compaction reset, and authenticated lane selection):
+
+- Preflight **READY_TO_LAUNCH**; worktree clean; `implementation_commit`
+  recorded as `f359e4f45cd52868d4d7ee11cba5077069401b5d`.
+- Result **SUCCEEDED**: two Materials, two CheckResults, source FAIL followed
+  by a superseding revision and PASS in the same Session/Execution.
+- Sanitized record: `experiments/issue-111-probe-f359e4f/analysis/report.json`.
+- Deterministic suite at this commit: 315/315.
+
+
+## Re-probe after tool-surface cleanup (`e81082c0082410685d7786d6c3ba771bec563f3d`)
+
+The final tool-surface cleanup (Sandbox hidden without a manager, legacy
+`task_handoff` removed from the Agent profile, structured candidate-reference
+errors) was probed on clean `e81082c0082410685d7786d6c3ba771bec563f3d`:
+
+- Preflight **READY_TO_LAUNCH**; worktree clean; implementation commit recorded.
+- Result **SUCCEEDED**: two Materials, two CheckResults, source FAIL followed
+  by a superseding revision and PASS in the same Session/Execution.
+- Sanitized record: `experiments/issue-111-probe-e81082c/analysis/report.json`.
+- Deterministic suite: 316/316.
+
+
+## Final probe after audit classification fix (`1e418a29fc0fef8ba58516d38cb6b6148049c9c2`)
+
+- Preflight **READY_TO_LAUNCH**, clean worktree, implementation commit recorded.
+- Result **SUCCEEDED**: two Materials, two CheckResults, source FAIL → superseding
+  revision → PASS in one Session/Execution.
+- Sanitized record: `experiments/issue-111-probe-1e418a2/analysis/report.json`.
+- Deterministic suite: 316/316.
+
+## Final two-hour four-Core run (`34d04b3393f099c5a3225fafe8bfe86f205c8fcc`)
+
+Run HEAD `34d04b3393f099c5a3225fafe8bfe86f205c8fcc`; implementation code
+`1e418a29fc0fef8ba58516d38cb6b6148049c9c2` plus the run registration docs.
+Clean worktree, `--task-model flat`, 4 Cores, 7200 s, `openai-codex` /
+`gpt-6.1-sol`, locked PutnamBench `a635813…`.
+
+| Observation | Result |
+|---|---|
+| Protocol validity | **valid**, `audit.invalid=false` |
+| Wall clock | 7,304,003 ms |
+| Mission | 1 shared Mission Task; 1 Agent-created peer research Task |
+| Claims | 80 on the Mission Task, 55 on the research Task; all 4 Cores claimed |
+| Candidate checks | 4, all `source_failure` (no PASS in this run) |
+| Materials / consumptions | 302 / 147 |
+| Wait / wake / rework / accept | 0 / 0 / 0 / 0 |
+| Solve | no (deadline reached; not a mechanism failure) |
+| Sessions | 3-5 per Core, 1-2 recoveries per Core |
+| Tool errors | 131 total: `get_workspace` 47, `task_block` 46, `task_take` 20 (11 NOT_ALLOWED + 9 CONFLICT), other validation feedback |
+
+The run demonstrates shared-Mission concurrency with four real identities, an
+Agent-initiated independent peer Task that another identity claimed, repeated
+same-Core continuation, durable Materials, and real checker feedback. It did
+not produce a same-Execution FAIL→revision→PASS chain; that path is evidenced
+by the controlled probe above. The peer research Task was still OPEN at the
+end, so B02's independent-output completion remains uncovered.
+
+The previous `1235bb7` run is diagnostic only: it produced one PASS but was
+marked invalid by a false `workspace_boundary_violation` caused by an allowed
+`task_take_bind_failed` rollback without a Workspace. That classification was
+fixed in `1e418a2`; the false-positive run is not acceptance evidence.
+
+Remaining gaps: no matched pre-Issue baseline comparison; no real
+compaction-threshold rotation; the Sandbox backend was not enabled in this run;
+the eligibility metric (`eligible_window_ms`) stayed 0 and is not used as
+acceptance evidence.
