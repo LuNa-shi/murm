@@ -1907,15 +1907,28 @@ export class Runtime {
       session.__swarmenvRuntimeBound = true;
       session.on('rpc', (record) => {
         const boundId = session.boundExecutionId;
-        if (boundId) void this.#handleSessionEvent(boundId, record);
+        if (boundId) {
+          void this.#handleSessionEvent(boundId, record).catch((error) => {
+            // EventEmitter does not observe rejected async listeners. Keep a
+            // provider/session timeout as durable Runtime evidence instead of
+            // allowing an unhandled rejection to terminate the benchmark
+            // before report and Execution cleanup can run.
+            this.logger?.append({
+              event: 'runtime.agent_event_error',
+              execution_id: boundId,
+              record_type: record?.type ?? null,
+              error_class: error?.code ?? error?.name ?? 'agent_event_error',
+            });
+          });
+        }
       });
       session.on('processError', () => {
         const boundId = session.boundExecutionId;
-        if (boundId) void this.#handleSessionFailure(boundId, 'process_error');
+        if (boundId) void this.#handleSessionFailure(boundId, 'process_error').catch(() => undefined);
       });
       session.on('close', () => {
         const boundId = session.boundExecutionId;
-        if (boundId) void this.#processExit(boundId);
+        if (boundId) void this.#processExit(boundId).catch(() => undefined);
       });
     }
     this.#notifySessionStarted({ execution, workspace, session, sessionReason });
