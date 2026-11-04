@@ -1696,6 +1696,7 @@ function projectReport(state, startedAt, deadline) {
       deadline_reached: Date.now() >= deadline,
       cleanup_elapsed_ms: state.cleanupElapsedMs,
       cleanup_errors: state.cleanupErrors ?? [],
+      unhandled_rejections: state.unhandledRejections ?? [],
       resources_at_start: state.resourcesAtStart,
       resources_at_end: resourceSnapshot(),
       heartbeat_count: state.heartbeatCount,
@@ -2852,6 +2853,7 @@ async function createProjectState(problem, config, options) {
     identityLoops: [],
     identityLoopRuns: [],
     identityLoopErrors: [],
+    unhandledRejections: [],
     identityLoopAbortController: null,
     unsubscribeTaskEvents: null,
     controllerEvents: [],
@@ -2877,6 +2879,24 @@ async function createProjectState(problem, config, options) {
 
 export async function runBenchmarkProject(problem, config, options = {}) {
   const state = await createProjectState(problem, config, options);
+  const unhandledRejectionHandler = (reason) => {
+    const record = {
+      code: reason?.code ?? reason?.name ?? 'UNHANDLED_REJECTION',
+      class: safeDiagnostic(reason?.message) ?? 'unhandled_rejection',
+    };
+    state.unhandledRejections.push(record);
+    state.observationStore.append({
+      experimentId: state.runId,
+      source: 'runtime',
+      kind: 'benchmark_unhandled_rejection',
+      visibility: 'operator',
+      payload: record,
+    });
+  };
+  // A provider/session promise must not abort report generation. Keep this
+  // handler scoped to this benchmark lifecycle and preserve the error as
+  // explicit evidence; normal paths still attach their own catches.
+  process.on('unhandledRejection', unhandledRejectionHandler);
   for (const core of state.cores) core.stateRef = state;
   state.controller = new TaskController({
     taskService: state.taskService,
@@ -3247,7 +3267,16 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     await state.controller?.stop?.();
     state.identityLoopAbortController?.abort();
     for (const loop of state.identityLoops ?? []) loop.stop();
-    await Promise.all(state.identityLoopRuns ?? []);
+    const identityResults = await Promise.allSettled(state.identityLoopRuns ?? []);
+    for (const result of identityResults) {
+      if (result.status === 'rejected') {
+        state.identityLoopErrors.push({
+          core_id: null,
+          code: result.reason?.code ?? result.reason?.name ?? 'IDENTITY_LOOP_ERROR',
+          class: safeDiagnostic(result.reason?.message) ?? 'identity_loop_error',
+        });
+      }
+    }
     // Cleanup of one Core can wait for a provider/session recovery boundary.
     // Run the independent Core cleanup paths concurrently so one slow Pi
     // process cannot consume the entire outer benchmark grace period before
@@ -3257,6 +3286,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       .filter((result) => result.status === 'rejected')
       .map((result) => ({ code: result.reason?.code ?? result.reason?.name ?? 'CLEANUP_ERROR', class: safeDiagnostic(result.reason?.message) ?? 'cleanup_error' }));
     state.cleanupElapsedMs = Date.now() - cleanupStartedAt;
+    process.off('unhandledRejection', unhandledRejectionHandler);
   }
   const report = projectReport(state, startedAt, deadline);
   state.observationStore.append({
