@@ -68,14 +68,16 @@ function assertTaskCapabilityAdmission(payload, profile) {
   const available = availableTaskCapabilities(profile);
   const missing = required.filter((capability) => !available.has(capability));
   if (missing.length > 0) {
+    const availableCapabilities = [...available].sort();
     throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT,
       `Task requires capabilities unavailable to this Session: ${missing.join(', ')}`, {
         missing_capabilities: missing,
         required_capabilities: required,
+        available_capabilities: availableCapabilities,
         admission: 'rejected',
         condition: 'task_creation_admission',
         action: 'modify_task_contract_or_register_capability',
-        hint: 'Declare only capabilities exposed by this Session, or register and verify the required Service before creating the Task.',
+        hint: 'Use exact capability IDs or operation names from available_capabilities; do not invent conceptual names. Register and verify the required Service before creating the Task if no listed capability is suitable.',
       });
   }
 }

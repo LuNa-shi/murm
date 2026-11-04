@@ -28,6 +28,9 @@ test('static prompts describe bounded decomposition without fixed fanout', () =>
   assert.match(prompt, /task\.create/);
   assert.match(prompt, /task\.handoff/);
   assert.match(prompt, /task\.close/);
+  assert.match(prompt, /exact ID.*operation.*tool name/i);
+  assert.match(prompt, /available_capabilities/);
+  assert.match(prompt, /never invent conceptual names/i);
   assert.doesNotMatch(prompt, /four reusable|two child|three child|select_task|swarmenv_call|request_wait|execution_wait/i);
 });
 

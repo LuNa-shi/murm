@@ -229,7 +229,10 @@ test('ServicesBridge rejects a capability-infeasible research Task before admiss
           acceptance_conditions: { requires_exact_declarations: true, requires_verified_usage: true },
         },
       }),
-      (error) => error.code === 'INVALID_TASK_CONTRACT' && error.details?.admission === 'rejected' && error.details.missing_capabilities.includes('mathlib_search'),
+      (error) => error.code === 'INVALID_TASK_CONTRACT' && error.details?.admission === 'rejected' &&
+        error.details.missing_capabilities.includes('mathlib_search') &&
+        Array.isArray(error.details.available_capabilities) &&
+        error.details.hint.includes('exact capability IDs'),
     );
     assert.equal(taskService.listMissionTasks({ mission_id: mission.mission_id }).length, 1);
   } finally {
