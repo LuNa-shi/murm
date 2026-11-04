@@ -64,6 +64,14 @@ class FakeAgentAdapter {
   }
 }
 
+async function waitForCondition(predicate, { timeoutMs = 1_000, intervalMs = 5 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  assert.equal(predicate(), true, 'condition did not become true before timeout');
+}
+
 async function fixture({ stopDelayMs = 0, runtimeOptions = {}, parallelQuota = 1, claimOwnerRef = 'runtime:local', runtimeActorRef = 'runtime:local' } = {}) {
   const database = new DatabaseSync(':memory:');
   const taskService = new TaskService(database);
@@ -495,11 +503,12 @@ test('fresh-session recovery is bounded and fences the Execution after exhaustio
   try {
     await runtime.startExecution(claimed.execution.execution_id);
     adapter.sessions[0].emit('rpc', { type: 'auto_retry_end', success: false, attempt: 15, finalError: 'provider unavailable' });
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await waitForCondition(() => adapter.sessions.length >= 2
+      && adapter.sessions[1].boundExecutionId === claimed.execution.execution_id
+      && runtime.getActiveProcessCount() === 1);
     adapter.sessions[1].emit('rpc', { type: 'auto_retry_end', success: false, attempt: 15, finalError: 'provider unavailable' });
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    assert.equal(runtime.getActiveProcessCount(), 0);
-    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'FENCED');
+    await waitForCondition(() => runtime.getActiveProcessCount() === 0
+      && taskService.getExecution(claimed.execution.execution_id).state === 'FENCED');
   } finally {
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
