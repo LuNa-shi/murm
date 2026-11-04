@@ -1248,7 +1248,17 @@ async function stopCore(state, core) {
   await core.bridge.stop().catch(() => undefined);
   // Runtime owns process termination, capacity release, fencing, and recovery
   // suppression. Keep those effects behind its public shutdown seam.
-  await core.runtime.shutdown({ terminalState: 'FAILED', terminalReason: 'benchmark_deadline_cleanup' });
+  const shutdownPromise = Promise.resolve(core.runtime.shutdown({ terminalState: 'FAILED', terminalReason: 'benchmark_deadline_cleanup' }));
+  shutdownPromise.catch(() => undefined);
+  let shutdownSettled = false;
+  await Promise.race([
+    shutdownPromise.then(() => { shutdownSettled = true; }),
+    sleep(30_000),
+  ]);
+  if (!shutdownSettled) {
+    state.cleanupErrors.push({ code: 'RUNTIME_SHUTDOWN_TIMEOUT', class: 'runtime_shutdown_timeout' });
+    forceFenceCoreExecutions(state, core, 'benchmark_cleanup_shutdown_timeout');
+  }
   await Promise.all([...sessions].map(async (session) => {
     try {
       await session.stop?.();
@@ -1275,13 +1285,43 @@ async function stopCore(state, core) {
   }
   // Drain recovery/fence/rotation handlers before the caller removes the
   // experiment directory; a late workspace revision must not race cleanup.
-  await core.runtime.waitForSettled?.().catch(() => undefined);
+  await Promise.race([
+    Promise.resolve(core.runtime.waitForSettled?.()).catch(() => undefined),
+    sleep(10_000),
+  ]);
   const current = core.executionId ? state.taskService.getExecution(core.executionId) : null;
   if (core.parallelism) core.parallelism.transition(core.index, 'IDLE', {
     task_id: current?.task_id ?? null,
     execution_id: current?.execution_id ?? null,
     reason: 'benchmark_cleanup_complete',
   });
+}
+
+function forceFenceCoreExecutions(state, core, reason) {
+  const executions = state.taskService.listActiveExecutions().filter((execution) =>
+    execution.core_id === `core-${core.index}` || execution.execution_id === core.executionId);
+  for (const execution of executions) {
+    if (!['CREATED', 'RUNNING'].includes(execution.state)) continue;
+    try {
+      state.taskService.dispatch('fence_execution', {
+        runtime_generation: execution.runtime_generation ?? 1,
+        terminal_reason: reason,
+      }, makeEnvelope({
+        operationId: `benchmark:force-fence:${execution.execution_id}:${randomUUID()}`,
+        actorRef: execution.owner_ref,
+        taskId: execution.task_id,
+        executionId: execution.execution_id,
+        specVersion: execution.spec_version,
+        stateVersion: execution.state_version,
+        fencingVersion: execution.fencing_version,
+      }));
+    } catch (error) {
+      state.cleanupErrors.push({
+        code: error?.code ?? error?.name ?? 'FORCE_FENCE_ERROR',
+        class: safeDiagnostic(error?.message) ?? 'force_fence_error',
+      });
+    }
+  }
 }
 
 function structureEvidence(taskService, taskTree, cores, mode) {
@@ -3282,9 +3322,9 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     // process cannot consume the entire outer benchmark grace period before
     // the remaining Cores are fenced and the report is written.
     const cleanupResults = await Promise.allSettled(state.cores.map((core) => stopCore(state, core)));
-    state.cleanupErrors = cleanupResults
+    state.cleanupErrors.push(...cleanupResults
       .filter((result) => result.status === 'rejected')
-      .map((result) => ({ code: result.reason?.code ?? result.reason?.name ?? 'CLEANUP_ERROR', class: safeDiagnostic(result.reason?.message) ?? 'cleanup_error' }));
+      .map((result) => ({ code: result.reason?.code ?? result.reason?.name ?? 'CLEANUP_ERROR', class: safeDiagnostic(result.reason?.message) ?? 'cleanup_error' })));
     state.cleanupElapsedMs = Date.now() - cleanupStartedAt;
     process.off('unhandledRejection', unhandledRejectionHandler);
   }
