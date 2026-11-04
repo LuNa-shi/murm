@@ -1695,6 +1695,7 @@ function projectReport(state, startedAt, deadline) {
       ended_early: state.stopOnSolved && state.solvedAt !== null,
       deadline_reached: Date.now() >= deadline,
       cleanup_elapsed_ms: state.cleanupElapsedMs,
+      cleanup_errors: state.cleanupErrors ?? [],
       resources_at_start: state.resourcesAtStart,
       resources_at_end: resourceSnapshot(),
       heartbeat_count: state.heartbeatCount,
@@ -2837,6 +2838,7 @@ async function createProjectState(problem, config, options) {
     solvedBy: null,
     stopOnSolved: options.stopOnSolved === true,
     cleanupElapsedMs: null,
+    cleanupErrors: [],
     heartbeatCount: 0,
     heartbeatErrorCount: 0,
     watchdogSweepCount: 0,
@@ -3246,7 +3248,14 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     state.identityLoopAbortController?.abort();
     for (const loop of state.identityLoops ?? []) loop.stop();
     await Promise.all(state.identityLoopRuns ?? []);
-    for (const core of state.cores) await stopCore(state, core);
+    // Cleanup of one Core can wait for a provider/session recovery boundary.
+    // Run the independent Core cleanup paths concurrently so one slow Pi
+    // process cannot consume the entire outer benchmark grace period before
+    // the remaining Cores are fenced and the report is written.
+    const cleanupResults = await Promise.allSettled(state.cores.map((core) => stopCore(state, core)));
+    state.cleanupErrors = cleanupResults
+      .filter((result) => result.status === 'rejected')
+      .map((result) => ({ code: result.reason?.code ?? result.reason?.name ?? 'CLEANUP_ERROR', class: safeDiagnostic(result.reason?.message) ?? 'cleanup_error' }));
     state.cleanupElapsedMs = Date.now() - cleanupStartedAt;
   }
   const report = projectReport(state, startedAt, deadline);

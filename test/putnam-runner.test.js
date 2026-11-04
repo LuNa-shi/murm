@@ -981,6 +981,7 @@ test('benchmark bounds retries after an unbound prompt startup failure', async (
     assert.ok(report.run.scheduler.bounded_startup_exhausted_count <= 4);
     assert.equal(report.run.scheduler.dispatch_count, 0);
     assert.ok(Array.isArray(report.run.identity_loop_errors));
+    assert.ok(Array.isArray(report.run.cleanup_errors));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
