@@ -187,6 +187,12 @@ class NotificationSession extends EventEmitter {
   }
 }
 
+class BoundaryNotificationSession extends NotificationSession {
+  async waitForSettled() {
+    throw Object.assign(new Error('agent_settled was not emitted'), { code: 'RPC_ERROR' });
+  }
+}
+
 test('Runtime delivers active notifications in order and inactive notifications on next start', async () => {
   const { database, taskService, contextService } = setup();
   const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-issue100-notify-'));
@@ -275,6 +281,45 @@ test('Runtime delivers pending Task notifications after a reusable binding skips
     assert.equal(session.prompts.length, 1);
     assert.equal(session.prompts[0].options.streamingBehavior, 'followUp');
     assert.match(session.prompts[0].message, /material:pending/);
+    assert.equal(taskService.listPendingNotifications(task.task_id, execution.execution_id).length, 0);
+  } finally {
+    await runtime.shutdown().catch(() => undefined);
+    taskService.close();
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('Runtime retries a pending notification after a turn boundary without agent_settled', async () => {
+  const { taskService, contextService } = setup();
+  const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-issue113-boundary-notify-'));
+  const session = new BoundaryNotificationSession();
+  const runtime = new Runtime({
+    taskService,
+    contextService,
+    workspaceManager: new WorkspaceManager({ rootDir }),
+    agentAdapter: { async start() { return session; } },
+    actorRef: 'runtime:boundary-notify',
+    coreIds: ['core-boundary-notify'],
+  });
+  try {
+    taskService.dispatch('mission.create', { mission_id: 'mission:boundary-notify', goal: 'boundary notification' }, env('boundary:mission', 'operator:test'));
+    const task = makeTask(taskService, 'mission:boundary-notify', 'task:boundary-notify');
+    const execution = claim(taskService, task, 'execution:boundary-notify', 'agent:boundary-notify');
+    taskService.enqueueNotification({
+      deliveryKey: 'boundary:pending', missionId: 'mission:boundary-notify', recipientTaskId: task.task_id,
+      type: 'material_available', materialId: 'material:boundary', payload: { material_id: 'material:boundary' },
+    });
+    await runtime.bindAgentExecution(execution.execution_id, session, {
+      workspaceRef: join(rootDir, execution.execution_id),
+      coreId: 'core-boundary-notify',
+      sendInitialPrompt: false,
+      agentPrompt: 'current bound turn already owns the first prompt',
+    });
+    session.emit('rpc', { type: 'turn_end' });
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(session.prompts.length, 1);
+    assert.match(session.prompts[0].message, /material:boundary/);
     assert.equal(taskService.listPendingNotifications(task.task_id, execution.execution_id).length, 0);
   } finally {
     await runtime.shutdown().catch(() => undefined);

@@ -1815,11 +1815,30 @@ export class Runtime {
   }
 
   #deliverNotification(active, notification) {
-    active.promptChain = active.promptChain.catch(() => undefined).then(async () => {
+    if (!active?.notificationPromises) active.notificationPromises = new Map();
+    const existing = active.notificationPromises.get(notification.notification_id);
+    if (existing) return existing;
+    const queuedAt = this.clock();
+    const delivery = active.promptChain.catch(() => undefined).then(async () => {
       const current = this.taskService.getExecution(active.execution.execution_id);
       if (!current || !['CREATED', 'RUNNING'].includes(current.state)) return;
       if (typeof active.session.waitForSettled === 'function') {
-        await active.session.waitForSettled({ timeoutMs: 30_000 });
+        try {
+          await active.session.waitForSettled({ timeoutMs: 5_000 });
+        } catch (error) {
+          // Some Pi provider-retry paths emit turn_end/auto_retry_end but no
+          // agent_settled. Once that boundary is durable, the follow-up is
+          // safe to send; otherwise defer and retry at the next boundary.
+          if (!active.lastTurnEndedAt || active.lastTurnEndedAt < queuedAt) {
+            this.logger?.append({
+              event: 'runtime.notification_delivery_deferred',
+              execution_id: current.execution_id,
+              notification_id: notification.notification_id,
+              error_class: error?.code ?? error?.name ?? 'settled_timeout',
+            });
+            return;
+          }
+        }
       }
       this.taskService.recordNotificationAttempt?.(notification.notification_id);
       try {
@@ -1833,7 +1852,14 @@ export class Runtime {
         this.logger?.append({ event: 'runtime.notification_delivery_error', execution_id: current.execution_id, notification_id: notification.notification_id, notification_type: notification.notification_type, error_class: error?.code ?? error?.name ?? 'prompt_error' });
       }
     });
-    return active.promptChain;
+    active.promptChain = delivery.catch(() => undefined);
+    active.notificationPromises.set(notification.notification_id, delivery);
+    delivery.finally(() => {
+      if (active.notificationPromises.get(notification.notification_id) === delivery) {
+        active.notificationPromises.delete(notification.notification_id);
+      }
+    }).catch(() => undefined);
+    return delivery;
   }
 
   #queuePendingNotifications(active) {
@@ -1876,6 +1902,7 @@ export class Runtime {
       lastEventAt: nowMs,
       lastHeartbeatAt: null,
       lastCompletedTurnAt: null,
+      lastTurnEndedAt: null,
       lastSuccessfulServiceCallAt: null,
       lastProductiveAt: nowMs,
       lastFailureClass: null,
@@ -1889,6 +1916,7 @@ export class Runtime {
       // follow-up while a turn is active, but two concurrent prompt calls
       // would reorder lifecycle notifications and Agent work.
       promptChain: Promise.resolve(),
+      notificationPromises: new Map(),
     };
     this.activeProcesses.set(execution.execution_id, active);
     this.#setCoreState(coreId, {
@@ -2048,7 +2076,10 @@ export class Runtime {
         return;
       }
     }
-    if (record.type === 'turn_end') active.lastCompletedTurnAt = this.clock();
+    if (record.type === 'turn_end') {
+      active.lastCompletedTurnAt = this.clock();
+      active.lastTurnEndedAt = active.lastCompletedTurnAt;
+    }
     if (record.type === 'tool_execution_end' && record.isError !== true && String(record.toolName ?? '').startsWith('swarmenv_')) {
       active.lastSuccessfulServiceCallAt = this.clock();
     }
@@ -2059,6 +2090,13 @@ export class Runtime {
     if (completedProductiveEvent) {
       active.lastProductiveAt = this.clock();
       active.phase = 'idle';
+      if (record.type === 'auto_retry_end' && record.success === true) active.lastTurnEndedAt = active.lastProductiveAt;
+    }
+    // Provider-retry paths may emit a completed turn boundary without ever
+    // emitting Pi's agent_settled record. Retry pending notifications at each
+    // such boundary instead of leaving them starved behind one stale Promise.
+    if (record.type === 'turn_end' || (record.type === 'auto_retry_end' && record.success === true)) {
+      this.#queuePendingNotifications(active);
     }
     if (record.type === 'compaction_end' && record.result && !record.aborted) {
       active.compactionCount += 1;
