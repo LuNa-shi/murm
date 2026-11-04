@@ -1711,6 +1711,7 @@ function projectReport(state, startedAt, deadline) {
       scheduler_status_count: state.schedulerStatusCount,
       identity_loops: state.identityLoops?.map((loop) => loop.snapshot()) ?? [],
       identity_loop_events: state.identityLoopEvents ?? [],
+      identity_loop_errors: state.identityLoopErrors ?? [],
       // Kept as a compatibility projection for existing report consumers;
       // production decisions are owned by Controller and IdentityTaskLoop above.
       scheduler: state.scheduler?.snapshot() ?? null,
@@ -2848,6 +2849,7 @@ async function createProjectState(problem, config, options) {
     identityLoopEvents: [],
     identityLoops: [],
     identityLoopRuns: [],
+    identityLoopErrors: [],
     identityLoopAbortController: null,
     unsubscribeTaskEvents: null,
     controllerEvents: [],
@@ -3107,7 +3109,30 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     // Controller only reconciles durable readiness and wakes these loops; it
     // never performs a selection or claim itself.
     state.identityLoopAbortController = new AbortController();
-    state.identityLoopRuns = state.identityLoops.map((loop) => loop.run({ signal: state.identityLoopAbortController.signal }));
+    state.identityLoopRuns = state.identityLoops.map((loop) => {
+      const run = loop.run({ signal: state.identityLoopAbortController.signal });
+      // A provider/session boundary must never become an unhandled rejection
+      // that aborts the benchmark before its bounded report and cleanup run.
+      // Keep the failure visible in the report and let the Controller/runtime
+      // continue or fence the affected Core through their normal repair paths.
+      return run.catch((error) => {
+        const record = {
+          core_id: loop.coreId,
+          code: error?.code ?? error?.name ?? 'IDENTITY_LOOP_ERROR',
+          class: safeDiagnostic(error?.message) ?? 'identity_loop_error',
+        };
+        state.identityLoopErrors.push(record);
+        state.observationStore.append({
+          experimentId: state.runId,
+          source: 'identity-task-loop',
+          kind: 'identity_loop_error',
+          coreId: loop.coreId,
+          visibility: 'operator',
+          payload: record,
+        });
+        return { disposition: 'error', error: record };
+      });
+    });
     for (const core of state.cores) core.nextTurnAt = Date.now();
     const heartbeat = setInterval(() => {
       for (const core of state.cores) {
