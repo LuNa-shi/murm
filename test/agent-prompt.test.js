@@ -34,6 +34,17 @@ test('static prompts describe bounded decomposition without fixed fanout', () =>
   assert.doesNotMatch(prompt, /four reusable|two child|three child|select_task|swarmenv_call|request_wait|execution_wait/i);
 });
 
+test('prompt states shared Mission block, Judge iteration, and capability semantics without quantity targets (r12)', () => {
+  const prompt = BOUND_AGENT_PROMPT;
+  assert.match(prompt, /task\.block ends only your own branch/);
+  assert.match(prompt, /Mission stays claimable/);
+  assert.match(prompt, /Registering a Task does not end your Execution/);
+  assert.match(prompt, /Judge FAIL is not a reason to hand off/);
+  assert.match(prompt, /Callable capability directory is never an external blocker/);
+  // Phase-one rule: production prompts carry no acceptance-quantity instruction.
+  assert.doesNotMatch(prompt, /at least \d|minimum of \d|\d+ (Tasks|checks|Judge calls)/i);
+});
+
 test('all prompt aliases describe one reusable identity contract', () => {
   for (const prompt of [GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT]) {
     assert.match(prompt, /task_take/);
@@ -141,4 +152,38 @@ test('authorized service documentation is injected and hashed with the profile s
   const snapshot = buildPromptSnapshot({ role: AGENT_ROLES.BOUND, services });
   assert.equal(snapshot.service_doc_hashes.length, 1);
   assert.equal(snapshot.service_doc_hashes[0].service_id, 'mathlib-search');
+});
+
+test('task loop guide names one exact registered tool per identity step (r12)', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { ContextService, TaskService } = await import('../src/index.js');
+  const { createBuiltinServiceRegistry } = await import('../src/sdk/builtin-registry.js');
+  const { runtimeCapabilityList } = await import('../src/runtime/runtime-capabilities.js');
+  const { taskLoopGuide } = await import('../src/agent/agent-prompt.js');
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  try {
+    const registry = createBuiltinServiceRegistry({ taskService, contextService, judgeService: {} });
+    // Flat Mission deployments omit the Runtime lifecycle aliases (putnam-runner).
+    const flatRuntime = runtimeCapabilityList().filter((capability) => !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
+    const bound = buildCapabilityProfile({ role: AGENT_ROLES.BOUND, registry, runtimeCapabilities: flatRuntime });
+    const toolNames = bound.capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`);
+    // One action, one tool: the Runtime alias must not shadow the registered Task capability.
+    assert.deepEqual(toolNames.filter((name) => /task_block$/.test(name)), ['swarmenv_task_block']);
+    assert.deepEqual(toolNames.filter((name) => /task_complete$/.test(name)), ['swarmenv_task_complete']);
+
+    const guide = taskLoopGuide(bound);
+    for (const step of ['Look:', 'Take:', 'Work:', 'Check:', 'Share:', 'Save:', 'End this Execution', 'Next:']) assert.match(guide, new RegExp(step));
+    const mentioned = guide.match(/swarmenv_[a-z_]+/g);
+    for (const name of mentioned) assert.ok(toolNames.includes(name), `${name} must be a registered tool`);
+    assert.match(guide, /swarmenv_task_take/);
+    assert.match(guide, /swarmenv_judge_submit_candidate with the returned material_id/);
+    assert.match(guide, /swarmenv_task_block with a published and linked handoff_material_id/);
+    assert.doesNotMatch(guide, /at least \d|minimum of \d|\d+ (Tasks|checks|Judge calls)/i);
+    // The guide is part of the profile-bound prompt.
+    assert.match(composeAgentPrompt({ role: AGENT_ROLES.BOUND, profile: bound }), /Task loop \(exact tool names in this Session\)/);
+  } finally {
+    taskService.close();
+  }
 });

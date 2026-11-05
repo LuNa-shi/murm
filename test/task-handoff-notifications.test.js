@@ -96,6 +96,9 @@ test('semantic block requires Handoff Material, records typed dependency, and re
   const { database, contextService, taskService } = setup();
   try {
     taskService.dispatch('mission.create', { mission_id: 'mission:block', goal: 'block' }, env('mission', 'operator:test'));
+    // The first Mission Task is the shared Mission responsibility and never
+    // becomes aggregate-BLOCKED (contract §3); block an ordinary Task here.
+    makeTask(taskService, 'mission:block', 'task:0-shared-mission');
     const blocked = makeTask(taskService, 'mission:block', 'task:blocked');
     const prerequisite = makeTask(taskService, 'mission:block', 'task:prerequisite');
     claim(taskService, blocked, 'execution:blocked', 'agent:blocked');

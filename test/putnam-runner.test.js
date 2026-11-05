@@ -1270,6 +1270,10 @@ test('flat Judge source failure stays on the same Task and each Execution can re
     assert.equal(report.run.protocol_valid, true);
     assert.equal(report.run.dynamic_task_count, 0);
     assert.equal(report.project.task_count, 1);
+    // r12: one tool per lifecycle action in the flat Task model.
+    const tools = report.protocol.allowed_agent_tool_names;
+    assert.deepEqual(tools.filter((name) => /task_block$/.test(name)), ['swarmenv_task_block']);
+    assert.deepEqual(tools.filter((name) => /task_complete$/.test(name)), ['swarmenv_task_complete']);
     assert.equal(report.project.task_tree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length, 0);
     // The Mission entry is intentionally shareable after Issue #111.  Each
     // reusable Core may therefore run its own FAIL -> revision chain on the

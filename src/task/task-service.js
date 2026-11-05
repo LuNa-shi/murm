@@ -818,7 +818,7 @@ export class TaskService {
     if (!availableOnly) return tasks;
     const nowMs = Date.now();
     return tasks.filter((task) => {
-      if (this.#dependencyBlockers(task.task_id).length > 0) return false;
+      if (this.#gatingDependencyBlockers(task).length > 0) return false;
       const executions = this.listExecutions(task.task_id, { includeTerminal: false });
       const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
       // The shared Mission entry is a collaboration surface: a RUNNING
@@ -857,7 +857,7 @@ export class TaskService {
     const tasks = this.listTasks({ rootId: missionId === null ? rootId : null, states: ['OPEN', 'RUNNING', 'WAITING'], limit: 100, availableOnly: false, scanAll: true })
       .filter((task) => missionId === null || task.mission_id === missionId || (task.mission_id === undefined && task.root_id === missionId))
       .filter((task) => {
-        if (this.#dependencyBlockers(task.task_id).length > 0) return false;
+        if (this.#gatingDependencyBlockers(task).length > 0) return false;
         const executions = this.listExecutions(task.task_id, { includeTerminal: false });
         const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
         const waiting = executions.filter((execution) => execution.state === 'WAITING');
@@ -1060,8 +1060,11 @@ export class TaskService {
     const task = typeof taskOrId === 'string' ? this.getTask(taskId) : taskOrId;
     const modern = this.#modernTaskRecord(taskId);
     if (!modern || !task) return false;
+    // Tie-break on insertion order: created_at has millisecond resolution and
+    // task_id is usually a random UUID, so two Tasks registered in the same
+    // millisecond previously made the shared Mission identity nondeterministic.
     const first = this.db.prepare(`SELECT task_id FROM modern_task_records
-      WHERE mission_id = ? ORDER BY created_at, task_id LIMIT 1`).get(modern.mission_id);
+      WHERE mission_id = ? ORDER BY created_at, rowid LIMIT 1`).get(modern.mission_id);
     return first?.task_id === taskId;
   }
 
@@ -1317,8 +1320,9 @@ export class TaskService {
       WHERE ${where.join(' AND ')} ORDER BY t.priority DESC, t.created_at, t.task_id LIMIT ?`).all(...params, queryLimit);
     const filtered = rows.map((row) => this.#decorateModernTask(rowToTask(row))).filter((task) => {
       if (!availableOnly) return true;
-      if (task.state !== 'OPEN' && !(task.state === 'RUNNING' && this.#isSharedMissionTask(task))) return false;
-      return this.#modernDependencyBlockers(task.task_id).length === 0;
+      const sharedMission = this.#isSharedMissionTask(task);
+      if (task.state !== 'OPEN' && !(task.state === 'RUNNING' && sharedMission)) return false;
+      return sharedMission || this.#modernDependencyBlockers(task.task_id).length === 0;
     });
     return filtered.slice(0, limit);
   }
@@ -1703,11 +1707,12 @@ export class TaskService {
       SUM(CASE WHEN t.state = 'RUNNING' THEN 1 ELSE 0 END) AS running,
       SUM(CASE WHEN t.state = 'WAITING' THEN 1 ELSE 0 END) AS waiting,
       SUM(CASE WHEN t.state IN ('DONE', 'CLOSED', 'CANCELED', 'SATISFIED') THEN 1 ELSE 0 END) AS terminal,
-      SUM(CASE WHEN (t.state = 'OPEN' OR (t.state = 'RUNNING' AND t.task_id = (
+      SUM(CASE WHEN t.task_id = (
         SELECT first_task.task_id FROM modern_task_records first_task
         WHERE first_task.mission_id = m.mission_id
-        ORDER BY first_task.created_at, first_task.task_id LIMIT 1
-      ))) AND NOT EXISTS (
+        ORDER BY first_task.created_at, first_task.rowid LIMIT 1
+      ) THEN (CASE WHEN t.state IN ('OPEN', 'RUNNING') THEN 1 ELSE 0 END)
+      WHEN t.state = 'OPEN' AND NOT EXISTS (
         SELECT 1 FROM task_relations r
         JOIN tasks prerequisite ON prerequisite.task_id = r.related_task_id
         WHERE r.task_id = t.task_id AND r.relation_kind = 'depends_on'
@@ -2211,7 +2216,7 @@ export class TaskService {
   #taskReadiness(taskId) {
     const task = this.#taskRow(taskId);
     if (TERMINAL_TASK_STATES.includes(task.state)) return { status: task.state, blockers: [] };
-    const blockers = this.#dependencyBlockers(taskId);
+    const blockers = this.#gatingDependencyBlockers(task);
     if (blockers.length > 0 || task.state === 'BLOCKED') {
       return { status: 'BLOCKED', blockers: blockers.length > 0 ? blockers : [{ reason: task.block_reason ?? 'task_blocked' }] };
     }
@@ -2471,6 +2476,19 @@ export class TaskService {
     return false;
   }
 
+  /**
+   * Dependencies that gate claim/readiness. A shared Mission Task records a
+   * branch's prerequisites as observable structure, but per the runtime
+   * contract (§1, §3) it remains OPEN and claimable whenever it has no
+   * executor until the Mission itself ends; one branch's prerequisite never
+   * removes the shared responsibility from the other identities.
+   */
+  #gatingDependencyBlockers(taskOrId) {
+    const taskId = typeof taskOrId === 'string' ? taskOrId : taskOrId?.task_id;
+    if (this.#isSharedMissionTask(taskOrId)) return [];
+    return this.#dependencyBlockers(taskId);
+  }
+
   #dependencyBlockers(taskId) {
     const legacy = this.#taskDependencyRows(taskId).filter((dependency) => !this.#dependencySatisfied(dependency)).map((dependency) => ({
       dependency_id: dependency.dependency_id,
@@ -2576,7 +2594,9 @@ export class TaskService {
     const task = this.#taskRow(taskId);
     const structure = this.#taskStructure(taskId);
     const missing = [];
-    const blockers = structure.satisfaction.dependencies.filter((dependency) => !dependency.satisfied);
+    const blockers = this.#isSharedMissionTask(task)
+      ? []
+      : structure.satisfaction.dependencies.filter((dependency) => !dependency.satisfied);
     const active = this.listExecutions(taskId, { includeTerminal: false });
     const activeCount = active.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state)).length;
     const waiting = active.filter((execution) => execution.state === 'WAITING');
@@ -2977,11 +2997,17 @@ export class TaskService {
     if (envelope.execution_id !== null) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Controller reconciliation cannot target an Execution');
     const task = this.getTask(taskId);
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`);
-    const blockers = this.#dependencyBlockers(taskId);
+    const blockers = this.#gatingDependencyBlockers(task);
     const active = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')").get(taskId).count;
     const updatedAt = now();
     if (TERMINAL_TASK_STATES.includes(task.state) || active > 0) {
       return { task: this.getTask(taskId), changed: false, blockers };
+    }
+    if (task.state === 'BLOCKED' && this.#isSharedMissionTask(task)) {
+      // Repair durable state written before the shared-Mission block fix: a
+      // shared Mission is never aggregate-BLOCKED while the Mission is live.
+      const reopened = this.#refreshTaskState(taskId, { updatedAt });
+      return { task: reopened, changed: reopened.state !== task.state, blockers: [] };
     }
     if (blockers.length > 0 && task.state !== 'BLOCKED') {
       const reason = blockers.map((blocker) => `dependency:${blocker.dependency_id ?? 'unknown'}`).join(',');
@@ -3027,7 +3053,7 @@ export class TaskService {
     const task = this.getTask(taskId);
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`);
     if (TERMINAL_TASK_STATES.includes(task.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be reopened');
-    const blockers = this.#dependencyBlockers(taskId);
+    const blockers = this.#gatingDependencyBlockers(task);
     if (blockers.length > 0) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task dependencies are not satisfied', { blockers });
     }
@@ -3134,18 +3160,13 @@ export class TaskService {
       WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')`)
       .run(`dependency_blocked:${blockReason}`, updatedAt, execution.task_id, execution.execution_id).changes;
     if (sharedMission) {
-      const survivingExecutions = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'WAITING')").get(execution.task_id).count;
-      if (survivingExecutions > 0) {
-        this.#refreshTaskState(execution.task_id, { updatedAt });
-      } else {
-        // A shared Mission keeps sibling branches alive, but when the last
-        // branch records a typed blocker the aggregate Task must remain
-        // durably blocked until that dependency is satisfied.  OPEN would
-        // make the blocked responsibility appear claimable and would lose
-        // the reason needed by reconciliation.
-        this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ? AND state NOT IN ('DONE', 'CLOSED', 'CANCELED')")
-          .run(blockReason, updatedAt, execution.task_id);
-      }
+      // The block ends only this branch. Per the runtime contract (§1, §3)
+      // the shared Mission Task is RUNNING while others execute and OPEN with
+      // no executor, and stays claimable until the Mission ends. The typed
+      // prerequisite remains recorded on the Execution handoff metadata and
+      // as Task structure; it does not become an aggregate BLOCKED state
+      // (r12: that state idled every Core for the remaining 84 minutes).
+      this.#refreshTaskState(execution.task_id, { updatedAt });
     } else {
       this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
         .run(blockReason, updatedAt, execution.task_id);
@@ -3170,7 +3191,7 @@ export class TaskService {
   #claimTask(task, payload, envelope) {
     if (TERMINAL_TASK_STATES.includes(task.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be claimed');
     const sharedMission = this.#isSharedMissionTask(task);
-    const dependencyBlockers = this.#dependencyBlockers(task.task_id);
+    const dependencyBlockers = this.#gatingDependencyBlockers(task);
     if (dependencyBlockers.length > 0) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task is blocked by an explicit execution dependency', { blockers: dependencyBlockers });
     }

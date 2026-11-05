@@ -280,13 +280,13 @@ const publicTaskTools = [
   },
   {
     name: 'task_block', service: 'task', operation: 'task_block', version: '1.0',
-    description: 'Publish and link Handoff Material, record a typed Task or capability dependency, and stop unfinished work as BLOCKED.',
+    description: 'Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends.',
     scope: 'task-write', side_effect: true,
     parameters: { type: 'object', required: ['blocker', 'dependency', 'handoff_material_id'], properties: {
       blocker: { type: 'object' },
       dependency: {
         type: 'object', minProperties: 1,
-        description: 'Use dependency_kind TASK with prerequisite_task_id for a Task prerequisite, or CAPABILITY with capability_id for a missing runtime/external capability. Capability blockers remain durably BLOCKED until an explicit reopen after the recovery condition is met.',
+        description: 'Use dependency_kind TASK with prerequisite_task_id for a Task prerequisite, or CAPABILITY with capability_id for a missing runtime/external capability. On an ordinary Task, capability blockers remain durably BLOCKED until an explicit reopen after the recovery condition is met. A capability listed among this Session tools is callable and is rejected as a blocker.',
         properties: {
           dependency_kind: { type: 'string', enum: ['TASK', 'CAPABILITY'] },
           prerequisite_task_id: { type: 'string' },

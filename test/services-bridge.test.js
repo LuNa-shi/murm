@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   ContextService,
   AGENT_ROLES,
+  ERROR_CODES,
   JudgeService,
   ServiceRegistry,
   ServicesBridge,
@@ -615,6 +616,55 @@ test('ServicesBridge routes modern task_block through Runtime lifecycle cleanup'
     assert.equal(released.length, 1);
     assert.equal(bridge.taskId, null);
     assert.equal(bridge.executionId, null);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
+test('ServicesBridge rejects a capability block naming a callable capability (r12)', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:capability-block' });
+  const mission = owner.createMission({
+    mission_id: 'mission:capability-block-bridge', goal: 'reject inconsistent capability blocks',
+    acceptance_conditions: { route: 'capability-block' },
+  }, { operationId: 'capability-bridge:mission' }).mission;
+  const task = owner.createTask({
+    mission_id: mission.mission_id,
+    summary: 'Exercise capability block admission against the callable directory',
+    task_type: 'research', goal: 'block admission', expected_output: 'a bounded result',
+    acceptance_conditions: { route: 'capability-block-task' },
+  }, { operationId: 'capability-bridge:task' }).task;
+  const claim = owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
+    execution_id: 'capability-bridge-execution', claim_key: 'capability-bridge:claim',
+    owner_ref: 'agent:capability-bridge', agent_prompt: 'bridge', input_material_refs: [],
+  }, { operationId: 'capability-bridge:claim' });
+  const lifecycle = [];
+  const bridge = new ServicesBridge({
+    taskService, contextService, router,
+    runtime: { blockTask: async (executionId, payload) => { lifecycle.push({ executionId, payload }); return { disposition: 'blocked' }; } },
+    taskId: task.task_id, executionId: claim.execution.execution_id,
+  });
+  try {
+    await assert.rejects(bridge.call({ operation: 'task_block', payload: {
+      blocker: { reason: 'workspace unavailable' },
+      dependency: { dependency_kind: 'CAPABILITY', capability_id: 'swarmenv_workspace_get' },
+      handoff_material_id: 'unused',
+    } }), (error) => error.code === ERROR_CODES.INVALID_CONTRACT && error.details?.condition === 'capability_block_admission');
+    assert.equal(lifecycle.length, 0, 'an inconsistent block must not release the Execution');
+    assert.equal(bridge.executionId, claim.execution.execution_id);
+
+    const accepted = await bridge.call({ operation: 'task_block', payload: {
+      blocker: { reason: 'prover not registered' },
+      dependency: { dependency_kind: 'CAPABILITY', capability_id: 'external.unregistered_prover' },
+      handoff_material_id: 'unused',
+    } });
+    assert.equal(accepted.disposition, 'blocked');
+    assert.equal(lifecycle.length, 1);
   } finally {
     await bridge.stop();
     taskService.close();

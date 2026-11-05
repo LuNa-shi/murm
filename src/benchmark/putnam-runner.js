@@ -19,7 +19,7 @@ import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
-import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, SYSTEM_IDENTITY_PROMPT } from '../agent/agent-prompt.js';
+import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, SYSTEM_IDENTITY_PROMPT, taskLoopGuide } from '../agent/agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
 import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
 import { createHttpJsonAdapter, createInProcessAdapter } from '../sdk/service-adapter.js';
@@ -1990,8 +1990,13 @@ async function createProjectState(problem, config, options) {
   // ServicesBridge uses capabilityRegistry for the named HTTP calls.
   const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService });
   const router = new ServicesRouter({ taskService, contextService, judgeService, registry: routerRegistry, logger: routerLogger });
+  // Flat Mission Tasks complete and block through the registered Task
+  // capabilities. The Runtime lifecycle aliases serve legacy Tasks only;
+  // exposing both gave r12 Agents two tools per action with different
+  // schemas (the Runtime task_block omits the required handoff_material_id).
   const runtimeCapabilities = runtimeCapabilityList()
-    .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
+    .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation))
+    .filter((capability) => selectedTaskModel !== 'flat' || !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
   const allowedAgentToolNames = [...new Set([
     AGENT_ROLES.BOUND,
     AGENT_ROLES.RECOVERY,
@@ -2000,6 +2005,13 @@ async function createProjectState(problem, config, options) {
     registry: capabilityRegistry,
     runtimeCapabilities,
   }).capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`)))];
+  // The loop guide names the exact registered tools for each identity step;
+  // it is recomputed from the same profile the Pi extension registers.
+  const agentTaskLoopGuide = taskLoopGuide(buildCapabilityProfile({
+    role: AGENT_ROLES.BOUND,
+    registry: capabilityRegistry,
+    runtimeCapabilities,
+  }));
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const taskCreateMutex = selectedTaskModel === 'flat' ? new SerialTaskCreateAdmission() : null;
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
@@ -2012,7 +2024,7 @@ async function createProjectState(problem, config, options) {
         : 'Use direct child Tasks only when a genuinely separable route emerges.';
   const dependencyInstruction = normalFlow
     ? (selectedTaskModel === 'flat'
-      ? 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.'
+      ? 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends only the current Execution and releases the Core. On the shared Mission Task it does not block the Mission: the Mission stays claimable, so block there only when you have no useful Mission work without the prerequisite. Do not call request_wait in the normal-flow treatment.'
       : 'When a real external dependency blocks progress, preserve useful Workspace and Materials and call execution_block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.')
     : 'Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency.';
   const taskSpecificInstruction = selectedTaskModel === 'flat'
@@ -2151,6 +2163,7 @@ async function createProjectState(problem, config, options) {
       contextService,
       workspaceManager,
       agentAdapter: adapter,
+      runtimeCapabilities,
       sandboxManager,
       capabilityRegistry,
       maxWorkers: 1,
@@ -2272,6 +2285,7 @@ async function createProjectState(problem, config, options) {
       contextService,
       runtime,
       router,
+      runtimeCapabilities,
       registry: capabilityRegistry,
       actorRef: `agent:core-${index}`,
       // The bridge, not the model payload, owns the lane identity.
@@ -2872,6 +2886,7 @@ async function createProjectState(problem, config, options) {
     router,
     capabilityRegistry,
     allowedAgentToolNames,
+    agentTaskLoopGuide,
     judgeService,
     sandboxManager,
     cores,
@@ -3004,7 +3019,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   // durable Runtime deadline; a turn timeout is only the per-prompt bound.
   const executionTimeoutMs = state.executionTimeoutMs;
   const basePrompt = (core) => core.taskId
-      ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or blocking on a typed dependency.`
+      ? `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or blocking on a typed dependency.`
       : GENERIC_AGENT_PROMPT;
   state.identityLoopEvents = state.identityLoopEvents ?? [];
   state.identityLoops = state.cores.map((core) => {
@@ -3012,7 +3027,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       coreId: `core-${core.index}`,
       // This is a bounded discovery prompt for the reusable identity, not a
       // old selection transport SOP.  The identity must call task_take itself.
-      takePrompt: `${BOUND_AGENT_PROMPT}\nUse task_status/task_take on this same Core identity; do not call task.claim or delegate selection to another Session.`,
+      takePrompt: `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nUse the Task view in this turn and task_take on this same Core identity; do not call task.claim or delegate selection to another Session.`,
       shortlistLimit: options.controllerShortlistLimit ?? 16,
       maxTakeAttempts: options.maxStartupAttempts ?? 3,
       maxTakeRescans: options.maxTakeRescans ?? 1,
