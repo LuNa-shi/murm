@@ -47,6 +47,8 @@ const toolNameForOperation = Object.freeze({
   write_workspace_file: 'workspace_write_file',
   workspace_diff: 'workspace_diff',
 });
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function namedTool(operation) {
   return `swarmenv_${toolNameForOperation[operation] ?? operation}`;
 }
@@ -419,6 +421,31 @@ class PromptFailureAdapter {
   async start() {
     this.starts += 1;
     return new PromptFailureSession();
+  }
+}
+
+// r14: a take turn whose Agent keeps working past the deadline. prompt() is
+// accepted but the turn only settles when the Session is stopped.
+class HangingTakeSession extends EventEmitter {
+  constructor() {
+    super();
+    this.rpcRecords = [];
+    this.closed = false;
+    this.manifest = { fake: true, pi_version: 'hanging-take' };
+    this.settled = new Promise((resolve) => { this.resolveSettled = resolve; });
+  }
+
+  async waitForReady() {}
+
+  async prompt() { return { data: { disposition: 'queued' } }; }
+
+  async waitForSettled() { await this.settled; }
+
+  stop() {
+    if (this.closed) return;
+    this.closed = true;
+    this.resolveSettled();
+    queueMicrotask(() => this.emit('close', { code: 0, signal: 'SIGTERM' }));
   }
 }
 
@@ -944,6 +971,34 @@ test('same identity keeps its Session through task_take and Runtime bind', async
     assert.ok(report.run.candidate_check_count > 0);
     assert.ok(report.cores.some((core) => core.claims.some((claim) => claim.workspace_revision_start !== null)));
     assert.equal(report.audit.invalid, false);
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('benchmark finalizes at the deadline when a take turn is still running (r14)', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-hanging-take-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-hanging-take-report-');
+  try {
+    const startedAt = Date.now();
+    const run = runBenchmarkProject(problem('putnam_hanging_take_test'), config, {
+      experimentDir,
+      reportDir,
+      timeboxMs: 1_000,
+      pollMs: 50,
+      turnTimeoutMs: 100,
+      identityLoopStopGraceMs: 500,
+      stopOnSolved: false,
+      repositoryCommit: 'test-repository-commit',
+      repositoryWorktreeDirty: false,
+      agentAdapterFactory: () => ({ async start() { return new HangingTakeSession(); } }),
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
+    });
+    const outcome = await Promise.race([run, sleep(20_000).then(() => 'timeout')]);
+    assert.notEqual(outcome, 'timeout', 'report must be written although the take turn never settles on its own');
+    assert.ok(Date.now() - startedAt < 20_000);
+    assert.ok(outcome.run.cleanup_errors.some((error) => error.code === 'IDENTITY_LOOP_STOP_TIMEOUT'));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });

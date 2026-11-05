@@ -32,6 +32,7 @@
 | R7 | `task_status` 的 `counts.claimable` 与 `claimable_tasks` 对共享 Mission 不一致 | P10"筛选、分页和计数如实表达" | `task_status` 计数 SQL、`#listModernTasks` | B06 |
 | R8 | flat 模式同时暴露 `swarmenv_task_task_block`/`swarmenv_runtime_task_block` 与两个 complete 工具；Runtime 版 block 的 schema 缺少必需的 `handoff_material_id`（r12 core-1 连续 3 次 `INVALID_CONTRACT`） | P10、P11 工具说明一致性 | `putnam-runner.js` runtimeCapabilities、`runtime-capabilities.js` | B06 |
 | R10 | （r13 复检发现）未处理的通知在每个 `turn_end` 都被重新提示给同一 Execution：3 条通知共提示 344 次；提示文本不含 `task_feedback` 需要的 `notification_id`，Agent 无法确认处理，29 个 Execution 中 7 个以"重复通知无新证据"为由 handoff | P8"一个人的已读/处理不得替其他人确认"、至少一次指每个接收 Execution 一次 | `runtime.js` `#queuePendingNotifications`、`#notificationText` | B07 |
+| R11 | （r14 发现）到达时间盒后清理阶段无界等待 identity loop；认领轮中的 Agent 仍在同一轮内工作时，runner 越过时间盒继续运行，直到外层 timeout 杀死进程，未写报告 | P7 单次运行预算、运行契约收束条件 | `putnam-runner.js` 清理阶段 | B04 |
 | R9 | `task_block` 工具说明写"stop as BLOCKED"，与共享 Mission 语义不符 | 契约 §1、§3 | `service-catalog.js`、`runtime-capabilities.js` | B04 |
 
 修复状态（分支 `claude/r12-collaboration-fixes`）：
@@ -46,6 +47,7 @@
 | R7 | 计数与列表对共享 Mission 采用同一可认领判定 | `test/shared-mission-block.test.js` |
 | R8 | flat 模式不再注入 Runtime 的 task_block/task_complete 别名，每个动作只有一个工具 | `test/putnam-runner.test.js`（flat Judge 用例断言工具名唯一）、`test/agent-prompt.test.js` |
 | R10 | 已送达本 Execution 的通知不再重复提示（新 Execution 仍各自接收）；通知文本带 `notification_id` 并指向 `task_feedback`，说明通知不要求 handoff | `test/task-handoff-notifications.test.js`（修复前 4 个 turn_end 产生 3 次提示） |
+| R11 | 等待 identity loop 设上限（默认 15 s，超时记 `IDENTITY_LOOP_STOP_TIMEOUT`），随后由 stopCore 停止 Session 并写报告 | `test/putnam-runner.test.js`（修复前测试进程挂起） |
 | R9 | 两处工具说明改为"普通 Task 变为 BLOCKED；共享 Mission 保持可认领" | 全量测试 |
 | A4 | 新增 `taskLoopGuide(profile)`：按当前 profile 的真实工具名列出 查看→认领→工作→检查→共享→保存→结束→下一轮 八步及步间调用，注入 runner 的认领/续轮 prompt 与 `composeAgentPrompt`；不含数量与策略 | `test/agent-prompt.test.js`（所有提到的工具名都必须已注册） |
 | A1–A3 | `agent-prompt.js` 补充 block/Judge/能力目录语义（PROMPT_VERSION 4，SYSTEM_PROMPT_VERSION 2）；flat runner 的依赖说明同步 | `test/agent-prompt.test.js`（含无数量指令断言） |

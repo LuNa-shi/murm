@@ -3322,7 +3322,20 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     await state.controller?.stop?.();
     state.identityLoopAbortController?.abort();
     for (const loop of state.identityLoops ?? []) loop.stop();
-    const identityResults = await Promise.allSettled(state.identityLoopRuns ?? []);
+    // A take turn may still be inside its Agent turn at the deadline (the
+    // Agent keeps working after task_take in the same turn), and that turn
+    // only settles when the Session stops. Waiting unboundedly here kept r14
+    // running past its timebox until the outer timeout killed it without a
+    // report. Bound the wait; stopCore below stops the Sessions.
+    const identityLoopStopGraceMs = options.identityLoopStopGraceMs ?? 15_000;
+    let identityLoopsSettled = false;
+    const identityResults = await Promise.race([
+      Promise.allSettled(state.identityLoopRuns ?? []).then((results) => { identityLoopsSettled = true; return results; }),
+      sleep(identityLoopStopGraceMs).then(() => []),
+    ]);
+    if (!identityLoopsSettled) {
+      state.cleanupErrors.push({ code: 'IDENTITY_LOOP_STOP_TIMEOUT', class: 'identity_loop_stop_timeout' });
+    }
     for (const result of identityResults) {
       if (result.status === 'rejected') {
         state.identityLoopErrors.push({
