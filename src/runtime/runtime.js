@@ -1797,10 +1797,10 @@ export class Runtime {
   #notificationText(notification) {
     const payload = notification.payload ?? {};
     if (notification.notification_type === 'handoff_warning') {
-      return 'Execution deadline is approaching. Publish and link Handoff Material now if the current Task is unfinished; this reminder is persisted.';
+      return `Execution deadline is approaching (notification_id ${notification.notification_id}). Publish and link Handoff Material now if the current Task is unfinished; this reminder is persisted.`;
     }
     if (notification.notification_type === 'material_available') {
-      return `Response Material ${notification.material_id ?? payload.material_id ?? '<unknown>'} from Task ${notification.source_task_id ?? payload.producer_task_id ?? '<unknown>'} / Execution ${notification.source_execution_id ?? payload.producer_execution_id ?? '<unknown>'} is linked to this Task. Read it through Context Service and adapt your own work; call task.close only when your contract accepts it.`;
+      return `Response Material ${notification.material_id ?? payload.material_id ?? '<unknown>'} from Task ${notification.source_task_id ?? payload.producer_task_id ?? '<unknown>'} / Execution ${notification.source_execution_id ?? payload.producer_execution_id ?? '<unknown>'} is linked to this Task. Read it through Context Service and adapt your own work, then record your decision with task_feedback using notification_id ${notification.notification_id}. This notice is delivered once; it does not end your Execution or require a handoff. Call task.close only when your contract accepts the Response.`;
     }
     return `Task ${notification.recipient_task_id} is OPEN again because its typed dependency is satisfied; it is claimable when a Core is idle.`;
   }
@@ -1868,7 +1868,14 @@ export class Runtime {
       active.execution.task_id,
       active.execution.execution_id,
     ) ?? [];
-    for (const notification of notifications) this.#deliverNotification(active, notification);
+    for (const notification of notifications) {
+      // At-least-once means once per recipient Execution, not once per turn.
+      // A notification already delivered to this Execution stays unhandled
+      // until task_feedback; re-prompting it at every turn_end (r13: 344
+      // prompts for 3 notifications) reads to the Agent as new evidence.
+      if (notification.recipient_delivery?.delivered_at) continue;
+      this.#deliverNotification(active, notification);
+    }
   }
 
   #identityKey(coreId, execution) {
