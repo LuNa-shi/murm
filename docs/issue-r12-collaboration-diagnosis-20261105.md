@@ -75,3 +75,15 @@ R5（通知 `delivery_attempts=0`）在 r12 之后已由 `a909a34` 修复（sett
 ## 验收
 
 每个第一类条目对应一个修复前失败、修复后通过的回归测试；第三类条目以 prompt/工具说明的快照测试与理由记录。修复后运行 `npm test` 与 `git diff --check`。真实两小时复验需另行授权。
+
+## r14 后的设计修订（用户 2026-11-05 批准）
+
+r14 中 Execution 中位时长 3.3 分钟，Agent 以"bounded attempt"主动 handoff。用户给出预期模型：先只读研究（可发研究 Material）→ 开始实施时登记自己的 Task 且他人不争抢 → 在该 Task 内大量尝试与 Judge → 只在截止提醒或 compaction 轮换时 handoff；完成后领下一项。三项决定与实现：
+
+| 决定 | 规范 | 实现 | 测试 |
+|---|---|---|---|
+| 登记并切换为一次操作 | 契约 §1 | `task_register` 新增 `take: true`：bridge 先 checkpoint，Task Service 在同一事务中以 `task_switch` FENCED 当前 Execution 并在同一 Core 认领新 Task（内部认领跳过 fairness，Agent 的 `task_take` 不能传 `skip_fairness`）；Runtime `detachSwitchedExecution` 只做进程/Sandbox/Workspace 清理 | `test/services-bridge.test.js`（切换、他人抢占被拒、无 take 保持旧语义、无绑定时拒绝） |
+| 只在生命周期边界 handoff | 契约 §3 | 删除 SOP 中主动 handoff/"bounded attempt"/"substantive increment"、runner 续轮"a read-only turn is not complete"、"block … instead of submitting"；说明只读研究是正常工作；任务循环新增"Own a direction"步骤；PROMPT_VERSION 5、SYSTEM_PROMPT_VERSION 3 | `test/agent-prompt.test.js`、`test/runtime.test.js` |
+| 时间盒放宽到运行总时长 | 契约 §5 | flat 默认 executionTimeoutMs = 运行时长，提醒提前 min(5 min, 时长/10)；Runtime `setRunDeadline` 使每个 Execution 截止不晚于全运行截止，提醒相对全运行截止发送 | `test/runtime.test.js`（r15）、`test/putnam-runner.test.js` |
+
+旧测试"Issue #100 … 30/25 minute Executions"断言的是被撤销的旧行为，已按新规范改写。R10 尚无真实运行覆盖（r14 未产生通知）；r14 因 R11 未写 report.json。

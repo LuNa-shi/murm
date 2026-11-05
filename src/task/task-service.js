@@ -1751,7 +1751,43 @@ export class TaskService {
     };
   }
 
-  #taskRegister(payload, envelope) {
+  #taskRegister(input, envelope) {
+    // `take: true` is the contract §1 register-and-switch operation: in one
+    // transaction the caller's current Execution ends (FENCED, task_switch)
+    // and the new Task is claimed on the same Core lane. No other actor can
+    // observe the new Task unowned, so there is no reservation state.
+    const { take = false, ...payload } = input;
+    if (take !== false && take !== true) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'take must be a boolean');
+    const switchFrom = take ? this.#executionForWrite(envelope) : null;
+    if (switchFrom) {
+      if (switchFrom.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `task_register take requires a RUNNING Execution, found ${switchFrom.state}`);
+      if (switchFrom.owner_ref !== envelope.actor_ref) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_register take requires the caller to own the current Execution');
+    }
+    const registered = this.#registerModernTask(payload, envelope);
+    if (!switchFrom || !registered.task) return registered;
+    const updatedAt = now();
+    this.db.prepare(`UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1, handoff_metadata_json = ?, terminal_reason = 'task_switch', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
+      .run(json({ reason: 'task_switch', switched_to_task_id: registered.task.task_id, requested_at: updatedAt }), updatedAt, switchFrom.execution_id);
+    const previousTask = this.getTask(switchFrom.task_id);
+    if (!TERMINAL_TASK_STATES.includes(previousTask.state)) this.#refreshTaskState(switchFrom.task_id, { updatedAt });
+    const created = this.getTask(registered.task.task_id);
+    const claimed = this.#claimTask(created, {
+      claim_key: `task_switch:${envelope.operation_id}`,
+      owner_ref: envelope.actor_ref,
+      core_id: switchFrom.core_id ?? null,
+      agent_prompt: created.task_instructions ?? '',
+      workspace_mode: 'clean',
+      skip_fairness: true,
+    }, { ...envelope, task_id: created.task_id, execution_id: null, spec_version: created.spec_version, state_version: created.state_version });
+    return {
+      ...registered,
+      task: claimed.task,
+      execution: claimed.execution,
+      switched_from: { task: this.getTask(switchFrom.task_id), execution: this.getExecution(switchFrom.execution_id) },
+    };
+  }
+
+  #registerModernTask(payload, envelope) {
     const goal = payload.goal ?? payload.summary;
     // Older Agent callers do not send the optional explanation yet. Keep the
     // canonical registration seam compatible while persisting an explicit
@@ -1793,8 +1829,10 @@ export class TaskService {
       spec_version: envelope.spec_version ?? task.spec_version,
       state_version: envelope.state_version ?? task.state_version,
     };
+    // Fairness bypass is reserved for the internal register-and-switch claim.
+    const { skip_fairness: _skipFairness, ...takePayload } = payload;
     return this.#claimTask(task, {
-      ...payload,
+      ...takePayload,
       claim_key: payload.claim_key ?? payload.request_key ?? envelope.operation_id,
       owner_ref: envelope.actor_ref,
     }, claimEnvelope);
@@ -3207,7 +3245,7 @@ export class TaskService {
     if (envelope.spec_version !== task.spec_version || envelope.state_version !== task.state_version) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Task claim version is stale', { expected_state_version: task.state_version, expected_spec_version: task.spec_version });
     }
-    this.#enforceFairness(task);
+    if (payload.skip_fairness !== true) this.#enforceFairness(task);
     const ownerRef = payload.owner_ref ?? envelope.actor_ref;
     const coreId = payload.core_id ?? payload.coreId ?? null;
     if (coreId !== null) requireString(coreId, 'core_id');

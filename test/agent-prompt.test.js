@@ -187,3 +187,12 @@ test('task loop guide names one exact registered tool per identity step (r12)', 
     taskService.close();
   }
 });
+
+test('prompt keeps an Execution until a lifecycle boundary and offers register-and-take (r15)', () => {
+  const prompt = BOUND_AGENT_PROMPT;
+  assert.match(prompt, /read-only research phase .* is normal work/);
+  assert.match(prompt, /Do not hand off on your own initiative/);
+  assert.match(prompt, /task_register with take: true/);
+  assert.doesNotMatch(prompt, /voluntary handoff|bounded attempt|substantive increment/i);
+  assert.doesNotMatch(prompt, /at least \d|minimum of \d|\d+ (Tasks|checks|Judge calls)/i);
+});

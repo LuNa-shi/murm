@@ -913,7 +913,7 @@ test('benchmark runtime publishes live core, execution, service, and completion 
   }
 });
 
-test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Executions', async () => {
+test('flat benchmark profile uses a Mission queue and run-length Executions with a reminder before the run deadline', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-flat-benchmark-experiment-');
   const reportDir = await mkdtemp('/tmp/swarmenv-flat-benchmark-report-');
   const adapters = [];
@@ -927,8 +927,10 @@ test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Ex
       onAdapter: (adapter) => adapters.push(adapter),
     });
     assert.equal(report.protocol.task_model, 'flat');
-    assert.equal(report.protocol.execution_timeout_ms, 30 * 60_000);
-    assert.equal(report.protocol.handoff_reminder_ms, 25 * 60_000);
+    // r15 contract §5 revision: an Execution may last the whole run; the
+    // reminder lead is min(5 min, timebox/10) before the run deadline.
+    assert.equal(report.protocol.execution_timeout_ms, 1_500);
+    assert.equal(report.protocol.handoff_reminder_ms, 1_350);
     assert.equal(report.protocol.dynamic_task_budget, null);
     assert.equal(report.project.task_count, 1);
     assert.ok(report.project.task_tree.every((task) => task.mission_id));

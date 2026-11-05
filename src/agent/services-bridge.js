@@ -147,6 +147,27 @@ async function readBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
+// The automatic checkpoint taken before a task_register switch. An Agent may
+// pass its own progress object; otherwise the registration itself is the
+// recorded next step.
+function switchProgress(payload) {
+  const supplied = payload.progress;
+  if (supplied && typeof supplied === 'object' && !Array.isArray(supplied)) {
+    return {
+      completed_work: supplied.completed_work ?? '',
+      findings: supplied.findings ?? '',
+      open_questions: supplied.open_questions ?? '',
+      next_step: supplied.next_step ?? `execute registered Task: ${payload.goal ?? payload.summary ?? ''}`,
+    };
+  }
+  return {
+    completed_work: 'research recorded in this Execution and its Materials',
+    findings: payload.collaboration_reason ?? '',
+    open_questions: '',
+    next_step: `execute registered Task: ${payload.goal ?? payload.summary ?? ''}`,
+  };
+}
+
 export class ServicesBridge {
   constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onBeforeSubmitCandidate = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
@@ -613,6 +634,19 @@ export class ServicesBridge {
             core_id: this.coreId ?? currentExecution?.core_id ?? null,
           }
           : payload;
+        const switching = operation === 'task_register' && payload.take === true;
+        let switchPreviousFence = null;
+        if (switching) {
+          if (!this.taskId || !this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_register take requires a bound Execution to switch from');
+          // Contract §1: save the current Execution first, then the Task
+          // Service ends it and claims the new Task in one transaction.
+          await this.runtime?.executionProgress?.(this.executionId, {
+            kind: 'checkpoint',
+            progress: switchProgress(payload),
+            actorRef: this.actorRef,
+          });
+          switchPreviousFence = this.taskService.getExecution(this.executionId)?.fencing_version ?? null;
+        }
         const invoke = async () => {
           if (operation === 'task_create' || operation === 'task_register') {
             const guard = this.onTaskCreate?.({ taskId: this.taskId, executionId: this.executionId, payload });
@@ -621,13 +655,22 @@ export class ServicesBridge {
           }
           if (operation === 'task_take') this.lastTakeOutcome = { attempted: true, ok: false, task_id: invocationPayload.task_id ?? null };
           const registeredPayload = operation === 'task_create' || operation === 'task_register'
-            ? { ...invocationPayload, required_capabilities: requiredTaskCapabilities(payload) }
+            ? (({ progress: _progress, ...rest }) => ({ ...rest, required_capabilities: requiredTaskCapabilities(payload) }))(invocationPayload)
             : invocationPayload;
           return this.#invokeRegistered(capability, registeredPayload, bridgeOperationId);
         };
         let result = operation === 'task_create' && this.taskCreateMutex
           ? await this.taskCreateMutex.run(invoke)
           : await invoke();
+        if (switching && result?.switched_from?.execution?.execution_id && result?.execution?.execution_id) {
+          const previous = result.switched_from.execution;
+          await this.runtime?.detachSwitchedExecution?.(previous.execution_id, { previousFencingVersion: switchPreviousFence });
+          await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
+          await this.releaseClaim({ result: { ...result, switching: true } });
+          await this.bindClaim(result);
+          this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
+          return result;
+        }
         if (operation === 'task_take') {
           await this.bindClaim(result);
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };

@@ -133,7 +133,7 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, agentAdapter, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -159,6 +159,7 @@ export class Runtime {
     if (!Number.isFinite(handoffReminderMs) || handoffReminderMs <= 0 || handoffReminderMs >= executionTimeoutMs) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffReminderMs must be positive and less than executionTimeoutMs');
     this.executionTimeoutMs = executionTimeoutMs;
     this.handoffReminderMs = handoffReminderMs;
+    this.setRunDeadline(runDeadlineAt);
     this.compactionCheckpointReminder = compactionCheckpointReminder === true;
     this.clock = clock;
     this.onSessionStarted = onSessionStarted;
@@ -1406,6 +1407,37 @@ export class Runtime {
     return { execution };
   }
 
+  /**
+   * Physical cleanup after task_register take committed a durable switch.
+   * The Task Service already fenced the old Execution in the same
+   * transaction that claimed the new Task; Runtime only detaches the
+   * process, Sandbox and Workspace writer so the identity Session can be
+   * bound to the new Execution.
+   */
+  async detachSwitchedExecution(executionId, { previousFencingVersion } = {}) {
+    const id = requireString(executionId, 'execution_id');
+    const execution = this.#getExecution(id);
+    const active = this.activeProcesses.get(id);
+    if (active) {
+      active.closing = true;
+      await this.#drainCompactionCheckpoint(active);
+    }
+    await this.#stopSandbox(id);
+    if (Number.isInteger(previousFencingVersion)) {
+      await this.#fenceWorkspaceBestEffort({ ...execution, fencing_version: previousFencingVersion }, {
+        newFencingVersion: execution.fencing_version,
+        event: 'runtime.task_switch_workspace_fence_error',
+      });
+    }
+    if (active) {
+      await this.#releaseSessionBinding(active, id);
+      this.activeProcesses.delete(id);
+      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+    }
+    this.logger?.append({ event: 'runtime.task_switch_detached', execution_id: id, task_id: execution.task_id });
+    return { execution };
+  }
+
   async fenceExecution(executionId, { reason = 'fenced' } = {}) {
     this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId, terminal_reason: reason });
     let execution = this.#getExecution(executionId);
@@ -2428,11 +2460,28 @@ export class Runtime {
     }
   }
 
+  /**
+   * Bind every Execution deadline to the run's global deadline. The handoff
+   * reminder keeps its lead time (executionTimeoutMs - handoffReminderMs)
+   * before whichever deadline comes first, so a long Execution is reminded
+   * only near the end of the run, not at a fixed offset from its start.
+   */
+  setRunDeadline(runDeadlineAt) {
+    if (runDeadlineAt !== null && runDeadlineAt !== undefined && !Number.isFinite(runDeadlineAt)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'runDeadlineAt must be an epoch millisecond value');
+    }
+    this.runDeadlineAt = runDeadlineAt ?? null;
+  }
+
   #executionTimingPayload(at = this.clock(), execution = null) {
     const task = execution?.task_id ? this.taskService.getTask(execution.task_id) : null;
     const taskTimeout = task?.mission_id && Number.isInteger(task.timebox_ms) ? task.timebox_ms : this.executionTimeoutMs;
-    const timeoutMs = Math.max(1, taskTimeout);
-    const reminderMs = Math.min(this.handoffReminderMs, Math.max(1, timeoutMs - 1));
+    const leadMs = Math.max(1, this.executionTimeoutMs - this.handoffReminderMs);
+    const untilRunDeadline = this.runDeadlineAt === null ? Number.POSITIVE_INFINITY : this.runDeadlineAt - at;
+    const timeoutMs = Math.max(1, Math.min(taskTimeout, untilRunDeadline));
+    const reminderMs = this.runDeadlineAt === null
+      ? Math.min(this.handoffReminderMs, Math.max(1, timeoutMs - 1))
+      : Math.max(1, Math.min(timeoutMs - 1, timeoutMs - leadMs));
     const startedAt = new Date(at).toISOString();
     return {
       started_at: startedAt,

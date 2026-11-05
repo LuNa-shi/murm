@@ -101,6 +101,17 @@ function projectClaimableTasks(state, { limit = 100 } = {}) {
   return state.taskService.listClaimableTasks({ rootId: state.rootTaskId, limit });
 }
 
+// Flat model: one Execution may run for the whole run; the reminder lead is
+// five minutes (or a tenth of a short run) before the run deadline.
+function flatExecutionTimeoutMs(options) {
+  return options.timeboxMs ?? 60 * 60_000;
+}
+
+function flatHandoffReminderMs(options) {
+  const timeoutMs = flatExecutionTimeoutMs(options);
+  return Math.max(1, timeoutMs - Math.min(5 * 60_000, Math.floor(timeoutMs / 10)));
+}
+
 function modePrompt(mode, prompt, selectedTaskModel = 'legacy') {
   if (selectedTaskModel === 'flat') return prompt;
   if (mode === 'semantic') {
@@ -2039,7 +2050,7 @@ async function createProjectState(problem, config, options) {
     // when the pool is larger than the Core count; research routes remain
     // independently available instead of starving the integration lane.
     priority: selectedTaskModel === 'flat' ? 110 : 0,
-    task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. If no honest candidate is ready, preserve useful evidence and block on a concrete dependency instead of submitting the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.`,
+    task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. Until an honest candidate is ready, keep researching and publish useful evidence; never submit the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.`,
     completion_contract: {
       ...(normalFlow ? { normal_flow: true } : {}),
       ...(selectedParallelMode === 'semantic' && selectedTaskModel !== 'flat' ? {
@@ -2100,7 +2111,7 @@ async function createProjectState(problem, config, options) {
     ? owner.createTask({
       ...taskPayload,
       mission_id: mission.mission_id,
-      timebox_ms: options.taskTimeboxMs ?? 30 * 60_000,
+      timebox_ms: options.taskTimeboxMs ?? flatExecutionTimeoutMs(options),
       owner_ref: 'owner:benchmark',
     }, { operationId: `benchmark:task:create:${runId}` }).task
     : owner.proposeTask(taskPayload, { operationId: `benchmark:root:propose:${runId}` }).task;
@@ -2170,11 +2181,12 @@ async function createProjectState(problem, config, options) {
       coreIds: [`core-${index}`],
       actorRef: `runtime:core-${index}`,
       watchdogTimeoutMs: options.watchdogTimeoutMs,
-      // The Issue #100 benchmark profile gives each first-class Task a
-      // 30-minute bounded Execution and a five-minute handoff warning.  The
-      // generic Runtime defaults remain 60/55 minutes for legacy callers.
-      executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? 30 * 60_000 : undefined),
-      handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? 25 * 60_000 : undefined),
+      // Contract §5 (r15 revision): in the flat model an Execution may last
+      // the whole run. Its deadline is the run deadline (set at run start)
+      // and the handoff reminder fires a lead time before it; compaction
+      // rotation bounds identity lifetime. Legacy callers keep 60/55 minutes.
+      executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? flatExecutionTimeoutMs(options) : undefined),
+      handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? flatHandoffReminderMs(options) : undefined),
       logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
       onSessionStarted: ({ execution, session, recovery }) => {
@@ -2924,8 +2936,8 @@ async function createProjectState(problem, config, options) {
     missionId: mission?.mission_id ?? null,
     taskCreateMutex,
     dynamicTaskEvents: [],
-    executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? 30 * 60_000 : 60 * 60_000),
-    handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? 25 * 60_000 : 55 * 60_000),
+    executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? flatExecutionTimeoutMs(options) : 60 * 60_000),
+    handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? flatHandoffReminderMs(options) : 55 * 60_000),
     normalFlow,
     readinessSamples: [],
   };
@@ -3013,13 +3025,16 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   recordReadinessSnapshot(state, startedAt);
   const durationMs = options.timeboxMs ?? 60 * 60_000;
   const deadline = startedAt + durationMs;
+  if (state.taskModel === 'flat') {
+    for (const core of state.cores) core.runtime?.setRunDeadline?.(deadline);
+  }
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
   // IdentityTaskLoop waits for the whole Runtime Execution to release after a
   // successful claim. Keep that ownership deadline at least as long as the
   // durable Runtime deadline; a turn timeout is only the per-prompt bound.
   const executionTimeoutMs = state.executionTimeoutMs;
   const basePrompt = (core) => core.taskId
-      ? `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or blocking on a typed dependency.`
+      ? `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision. Research, reading, and publishing research Materials are normal work in this Execution. Read new Materials and Judge feedback before refining, publishing, submitting, completing, or blocking on a typed dependency. Keep this Execution until its Task is complete, a real prerequisite stops it, or Runtime asks for handoff.`
       : GENERIC_AGENT_PROMPT;
   state.identityLoopEvents = state.identityLoopEvents ?? [];
   state.identityLoops = state.cores.map((core) => {
