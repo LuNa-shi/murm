@@ -68,6 +68,28 @@ function sampleDurations(samples, startedAt, endedAt) {
   return result;
 }
 
+/**
+ * Intervals in which every Core was idle and no claimable work existed. This
+ * is a stalled Mission, not a quiet scheduler: r12 spent 84 of 120 minutes
+ * here while only per-Core idle totals were reported.
+ */
+function stallIntervalsFromSamples(samples, coreCount, startedAt, endedAt) {
+  const ordered = samples
+    .map((sample) => ({ ...sample, at_ms: clamp(sample.at_ms, startedAt, endedAt) }))
+    .filter((sample) => sample.at_ms <= endedAt)
+    .sort((left, right) => left.at_ms - right.at_ms);
+  const intervals = [];
+  for (let index = 0; index < ordered.length; index += 1) {
+    const current = ordered[index];
+    const nextAt = ordered[index + 1]?.at_ms ?? endedAt;
+    if (nextAt <= current.at_ms || current.ready_count !== 0 || current.idle_core_count < coreCount) continue;
+    const previous = intervals.at(-1);
+    if (previous && previous.end_ms === current.at_ms) previous.end_ms = nextAt;
+    else intervals.push({ start_ms: current.at_ms, end_ms: nextAt });
+  }
+  return intervals;
+}
+
 function eligibleIntervalsFromSamples(samples, coreCount, startedAt, endedAt) {
   const ordered = samples
     .map((sample) => ({ ...sample, at_ms: clamp(sample.at_ms, startedAt, endedAt) }))
@@ -315,6 +337,8 @@ export class CoreParallelismTracker {
     const samples = sampleDurations(this.readySamples, this.startedAt, end);
     const eligibleIntervals = eligibleIntervalsFromSamples(this.readySamples, this.coreCount, this.startedAt, end);
     const eligibleWindowMs = eligibleIntervals.reduce((total, interval) => total + interval.end_ms - interval.start_ms, 0);
+    const stallIntervals = stallIntervalsFromSamples(this.readySamples, this.coreCount, this.startedAt, end);
+    const stallMs = stallIntervals.reduce((total, interval) => total + interval.end_ms - interval.start_ms, 0);
     const eligibleConcurrencyHistogram = histogramWithinWindows(effectiveAgentIntervals, eligibleIntervals);
     const eligibleAgentTimeMs = Object.entries(eligibleConcurrencyHistogram)
       .reduce((total, [activeCoreCount, duration]) => total + Number(activeCoreCount) * duration, 0);
@@ -335,6 +359,10 @@ export class CoreParallelismTracker {
       eligible_concurrency_histogram_ms: eligibleConcurrencyHistogram,
       ready_work_ms: samples.readyWorkMs,
       ready_unassigned_ms: samples.readyUnassignedMs,
+      // All Cores idle with zero claimable work (sampled at scheduler polls).
+      mission_stall_ms: stallMs,
+      mission_stall_ratio: elapsedMs === 0 ? 0 : stallMs / elapsedMs,
+      mission_stall_intervals: stallIntervals.map((interval) => ({ start: toIso(interval.start_ms), end: toIso(interval.end_ms), duration_ms: interval.end_ms - interval.start_ms })),
       waiting_ms_by_core: waitingMsByCore,
       idle_ms_by_core: idleMsByCore,
       scheduler_poll_ms: this.schedulerPollMs,

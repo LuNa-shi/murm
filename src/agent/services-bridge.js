@@ -81,6 +81,38 @@ function assertTaskCapabilityAdmission(payload, profile) {
       });
   }
 }
+function blockedCapabilityId(payload) {
+  const dependency = payload?.dependency;
+  if (!dependency || typeof dependency !== 'object' || Array.isArray(dependency)) return null;
+  const kind = String(dependency.dependency_kind ?? dependency.dependencyKind ?? dependency.kind ?? '').toUpperCase();
+  if (!['CAPABILITY', 'EXTERNAL_CAPABILITY', 'EXTERNAL'].includes(kind)) return null;
+  const id = dependency.capability_id ?? dependency.capabilityId ?? dependency.required_capability ?? null;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
+/**
+ * A capability block declares that the named capability is unavailable. When
+ * the current Session can call it, the block is inconsistent with the
+ * authoritative capability directory (r12: `swarmenv_workspace_get` was
+ * accepted as an external blocker and stranded a Task). Reject it before any
+ * lifecycle release so the Execution stays usable.
+ */
+function assertCapabilityBlockIsUnavailable(payload, profile) {
+  const capabilityId = blockedCapabilityId(payload);
+  if (!capabilityId) return;
+  const available = availableTaskCapabilities(profile);
+  const bare = capabilityId.startsWith('swarmenv_') ? capabilityId.slice('swarmenv_'.length) : capabilityId;
+  if (!available.has(capabilityId) && !available.has(bare)) return;
+  throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT,
+    `capability ${capabilityId} is callable in this Session; it is not an external blocker`, {
+      capability_id: capabilityId,
+      condition: 'capability_block_admission',
+      action: 'call_the_capability_or_block_on_a_real_dependency',
+      hint: 'Call the listed tool directly. If it returned an error, treat that structured error as feedback; block only on a capability absent from the Callable capability directory or on a prerequisite Task.',
+      retryable: false,
+    });
+}
+
 function json(value) {
   return JSON.stringify(value ?? null);
 }
@@ -113,6 +145,27 @@ async function readBody(request) {
   }
   if (size === 0) return {};
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+}
+
+// The automatic checkpoint taken before a task_register switch. An Agent may
+// pass its own progress object; otherwise the registration itself is the
+// recorded next step.
+function switchProgress(payload) {
+  const supplied = payload.progress;
+  if (supplied && typeof supplied === 'object' && !Array.isArray(supplied)) {
+    return {
+      completed_work: supplied.completed_work ?? '',
+      findings: supplied.findings ?? '',
+      open_questions: supplied.open_questions ?? '',
+      next_step: supplied.next_step ?? `execute registered Task: ${payload.goal ?? payload.summary ?? ''}`,
+    };
+  }
+  return {
+    completed_work: 'research recorded in this Execution and its Materials',
+    findings: payload.collaboration_reason ?? '',
+    open_questions: '',
+    next_step: `execute registered Task: ${payload.goal ?? payload.summary ?? ''}`,
+  };
 }
 
 export class ServicesBridge {
@@ -530,6 +583,7 @@ export class ServicesBridge {
         const currentTask = this.taskService.getTask(boundTaskId);
         const modernTask = currentTask?.mission_id ? currentTask : null;
         const legacyBlock = operation === 'task_block' && !modernTask;
+        if (operation === 'task_block') assertCapabilityBlockIsUnavailable(payload, this.getCapabilityProfile());
         const method = operation === 'task_handoff' ? 'handoffTask' : (legacyBlock ? 'blockExecution' : 'blockTask');
         if (typeof this.runtime?.[method] !== 'function') {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime does not expose semantic ${operation} boundary`);
@@ -580,6 +634,19 @@ export class ServicesBridge {
             core_id: this.coreId ?? currentExecution?.core_id ?? null,
           }
           : payload;
+        const switching = operation === 'task_register' && payload.take === true;
+        let switchPreviousFence = null;
+        if (switching) {
+          if (!this.taskId || !this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_register take requires a bound Execution to switch from');
+          // Contract §1: save the current Execution first, then the Task
+          // Service ends it and claims the new Task in one transaction.
+          await this.runtime?.executionProgress?.(this.executionId, {
+            kind: 'checkpoint',
+            progress: switchProgress(payload),
+            actorRef: this.actorRef,
+          });
+          switchPreviousFence = this.taskService.getExecution(this.executionId)?.fencing_version ?? null;
+        }
         const invoke = async () => {
           if (operation === 'task_create' || operation === 'task_register') {
             const guard = this.onTaskCreate?.({ taskId: this.taskId, executionId: this.executionId, payload });
@@ -588,13 +655,22 @@ export class ServicesBridge {
           }
           if (operation === 'task_take') this.lastTakeOutcome = { attempted: true, ok: false, task_id: invocationPayload.task_id ?? null };
           const registeredPayload = operation === 'task_create' || operation === 'task_register'
-            ? { ...invocationPayload, required_capabilities: requiredTaskCapabilities(payload) }
+            ? (({ progress: _progress, ...rest }) => ({ ...rest, required_capabilities: requiredTaskCapabilities(payload) }))(invocationPayload)
             : invocationPayload;
           return this.#invokeRegistered(capability, registeredPayload, bridgeOperationId);
         };
         let result = operation === 'task_create' && this.taskCreateMutex
           ? await this.taskCreateMutex.run(invoke)
           : await invoke();
+        if (switching && result?.switched_from?.execution?.execution_id && result?.execution?.execution_id) {
+          const previous = result.switched_from.execution;
+          await this.runtime?.detachSwitchedExecution?.(previous.execution_id, { previousFencingVersion: switchPreviousFence });
+          await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
+          await this.releaseClaim({ result: { ...result, switching: true } });
+          await this.bindClaim(result);
+          this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
+          return result;
+        }
         if (operation === 'task_take') {
           await this.bindClaim(result);
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
@@ -648,6 +724,7 @@ export class ServicesBridge {
         // no Handoff Material requirement and is still routed through the
         // Runtime/Task Service boundary for compatibility fixtures.
         const legacyBlock = operation === 'task_block' && !modernBoundTask;
+        if (operation === 'task_block') assertCapabilityBlockIsUnavailable(payload, this.getCapabilityProfile());
         const method = operation === 'task_handoff' ? 'handoffTask' : (legacyBlock ? 'blockExecution' : 'blockTask');
         if (typeof this.runtime?.[method] !== 'function') {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime does not expose semantic ${operation} boundary`);

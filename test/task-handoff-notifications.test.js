@@ -96,6 +96,9 @@ test('semantic block requires Handoff Material, records typed dependency, and re
   const { database, contextService, taskService } = setup();
   try {
     taskService.dispatch('mission.create', { mission_id: 'mission:block', goal: 'block' }, env('mission', 'operator:test'));
+    // The first Mission Task is the shared Mission responsibility and never
+    // becomes aggregate-BLOCKED (contract §3); block an ordinary Task here.
+    makeTask(taskService, 'mission:block', 'task:0-shared-mission');
     const blocked = makeTask(taskService, 'mission:block', 'task:blocked');
     const prerequisite = makeTask(taskService, 'mission:block', 'task:prerequisite');
     claim(taskService, blocked, 'execution:blocked', 'agent:blocked');
@@ -321,6 +324,52 @@ test('Runtime retries a pending notification after a turn boundary without agent
     assert.equal(session.prompts.length, 1);
     assert.match(session.prompts[0].message, /material:boundary/);
     assert.equal(taskService.listPendingNotifications(task.task_id, execution.execution_id).length, 0);
+  } finally {
+    await runtime.shutdown().catch(() => undefined);
+    taskService.close();
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('Runtime delivers a notification once per Execution and names the feedback handle (r13)', async () => {
+  // r13: one material_available notification was prompted 344 times because
+  // every turn_end re-queued it until task_feedback marked it handled, while
+  // the prompt never exposed the notification_id task_feedback requires.
+  const { taskService, contextService } = setup();
+  const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-r13-notify-once-'));
+  const session = new BoundaryNotificationSession();
+  const runtime = new Runtime({
+    taskService,
+    contextService,
+    workspaceManager: new WorkspaceManager({ rootDir }),
+    agentAdapter: { async start() { return session; } },
+    actorRef: 'runtime:notify-once',
+    coreIds: ['core-notify-once'],
+  });
+  try {
+    taskService.dispatch('mission.create', { mission_id: 'mission:notify-once', goal: 'notify once' }, env('once:mission', 'operator:test'));
+    const task = makeTask(taskService, 'mission:notify-once', 'task:notify-once');
+    const execution = claim(taskService, task, 'execution:notify-once', 'agent:notify-once');
+    const notification = taskService.enqueueNotification({
+      deliveryKey: 'once:pending', missionId: 'mission:notify-once', recipientTaskId: task.task_id,
+      type: 'material_available', materialId: 'material:once', payload: { material_id: 'material:once' },
+    });
+    await runtime.bindAgentExecution(execution.execution_id, session, {
+      workspaceRef: join(rootDir, execution.execution_id),
+      coreId: 'core-notify-once',
+      sendInitialPrompt: false,
+      agentPrompt: 'current bound turn already owns the first prompt',
+    });
+    for (let index = 0; index < 4; index += 1) {
+      session.emit('rpc', { type: 'turn_end' });
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(session.prompts.length, 1, 'a delivered notification is not re-prompted to the same Execution');
+    const notificationId = notification.notification_id ?? notification.notification?.notification_id;
+    assert.ok(notificationId);
+    assert.match(session.prompts[0].message, new RegExp(notificationId));
+    assert.match(session.prompts[0].message, /task_feedback/);
   } finally {
     await runtime.shutdown().catch(() => undefined);
     taskService.close();

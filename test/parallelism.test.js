@@ -163,3 +163,19 @@ test('insufficient work produces no eligible window and does not invent a utiliz
   assert.equal(summary.eligible_mean_active_core_count, null);
   assert.deepEqual(summary.eligible_intervals, []);
 });
+
+test('all Cores idle with no claimable work is reported as a Mission stall (r12)', () => {
+  const tracker = new CoreParallelismTracker({ coreCount: 4, startedAt: 0 });
+  tracker.recordReadyWork({ readyCount: 1, idleCoreCount: 0, at: 0 });
+  tracker.recordReadyWork({ readyCount: 0, idleCoreCount: 4, at: 2_000 });
+  tracker.recordReadyWork({ readyCount: 0, idleCoreCount: 4, at: 4_000 });
+  // Idle Cores with claimable work is a scheduling gap, not a stall.
+  tracker.recordReadyWork({ readyCount: 1, idleCoreCount: 4, at: 7_000 });
+  tracker.recordReadyWork({ readyCount: 0, idleCoreCount: 3, at: 8_000 });
+
+  const summary = tracker.snapshot({ endedAt: 10_000 });
+
+  assert.equal(summary.mission_stall_ms, 5_000);
+  assert.equal(summary.mission_stall_ratio, 0.5);
+  assert.deepEqual(summary.mission_stall_intervals.map((interval) => interval.duration_ms), [5_000]);
+});

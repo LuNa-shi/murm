@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { BenchmarkAgentCoreAdapter, runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport } from '../src/benchmark/putnam-runner.js';
+import { BenchmarkAgentCoreAdapter, runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport, isPreparationFailure } from '../src/benchmark/putnam-runner.js';
 import { ObservationStore } from '../src/observability/observation-store.js';
 
 const source = 'import Mathlib\ntheorem benchmark : True := by\n  sorry\n';
@@ -47,6 +47,8 @@ const toolNameForOperation = Object.freeze({
   write_workspace_file: 'workspace_write_file',
   workspace_diff: 'workspace_diff',
 });
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function namedTool(operation) {
   return `swarmenv_${toolNameForOperation[operation] ?? operation}`;
 }
@@ -419,6 +421,31 @@ class PromptFailureAdapter {
   async start() {
     this.starts += 1;
     return new PromptFailureSession();
+  }
+}
+
+// r14: a take turn whose Agent keeps working past the deadline. prompt() is
+// accepted but the turn only settles when the Session is stopped.
+class HangingTakeSession extends EventEmitter {
+  constructor() {
+    super();
+    this.rpcRecords = [];
+    this.closed = false;
+    this.manifest = { fake: true, pi_version: 'hanging-take' };
+    this.settled = new Promise((resolve) => { this.resolveSettled = resolve; });
+  }
+
+  async waitForReady() {}
+
+  async prompt() { return { data: { disposition: 'queued' } }; }
+
+  async waitForSettled() { await this.settled; }
+
+  stop() {
+    if (this.closed) return;
+    this.closed = true;
+    this.resolveSettled();
+    queueMicrotask(() => this.emit('close', { code: 0, signal: 'SIGTERM' }));
   }
 }
 
@@ -886,7 +913,7 @@ test('benchmark runtime publishes live core, execution, service, and completion 
   }
 });
 
-test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Executions', async () => {
+test('flat benchmark profile uses a Mission queue and run-length Executions with a reminder before the run deadline', async () => {
   const experimentDir = await mkdtemp('/tmp/swarmenv-flat-benchmark-experiment-');
   const reportDir = await mkdtemp('/tmp/swarmenv-flat-benchmark-report-');
   const adapters = [];
@@ -900,8 +927,10 @@ test('Issue #100 benchmark profile uses a flat Mission queue and 30/25 minute Ex
       onAdapter: (adapter) => adapters.push(adapter),
     });
     assert.equal(report.protocol.task_model, 'flat');
-    assert.equal(report.protocol.execution_timeout_ms, 30 * 60_000);
-    assert.equal(report.protocol.handoff_reminder_ms, 25 * 60_000);
+    // r15 contract §5 revision: an Execution may last the whole run; the
+    // reminder lead is min(5 min, timebox/10) before the run deadline.
+    assert.equal(report.protocol.execution_timeout_ms, 1_500);
+    assert.equal(report.protocol.handoff_reminder_ms, 1_350);
     assert.equal(report.protocol.dynamic_task_budget, null);
     assert.equal(report.project.task_count, 1);
     assert.ok(report.project.task_tree.every((task) => task.mission_id));
@@ -944,6 +973,34 @@ test('same identity keeps its Session through task_take and Runtime bind', async
     assert.ok(report.run.candidate_check_count > 0);
     assert.ok(report.cores.some((core) => core.claims.some((claim) => claim.workspace_revision_start !== null)));
     assert.equal(report.audit.invalid, false);
+  } finally {
+    await rm(experimentDir, { recursive: true, force: true });
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('benchmark finalizes at the deadline when a take turn is still running (r14)', async () => {
+  const experimentDir = await mkdtemp('/tmp/swarmenv-benchmark-hanging-take-experiment-');
+  const reportDir = await mkdtemp('/tmp/swarmenv-benchmark-hanging-take-report-');
+  try {
+    const startedAt = Date.now();
+    const run = runBenchmarkProject(problem('putnam_hanging_take_test'), config, {
+      experimentDir,
+      reportDir,
+      timeboxMs: 1_000,
+      pollMs: 50,
+      turnTimeoutMs: 100,
+      identityLoopStopGraceMs: 500,
+      stopOnSolved: false,
+      repositoryCommit: 'test-repository-commit',
+      repositoryWorktreeDirty: false,
+      agentAdapterFactory: () => ({ async start() { return new HangingTakeSession(); } }),
+      checker: checkerWithPreflight({ async check() { return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
+    });
+    const outcome = await Promise.race([run, sleep(20_000).then(() => 'timeout')]);
+    assert.notEqual(outcome, 'timeout', 'report must be written although the take turn never settles on its own');
+    assert.ok(Date.now() - startedAt < 20_000);
+    assert.ok(outcome.run.cleanup_errors.some((error) => error.code === 'IDENTITY_LOOP_STOP_TIMEOUT'));
   } finally {
     await rm(experimentDir, { recursive: true, force: true });
     await rm(reportDir, { recursive: true, force: true });
@@ -1270,6 +1327,10 @@ test('flat Judge source failure stays on the same Task and each Execution can re
     assert.equal(report.run.protocol_valid, true);
     assert.equal(report.run.dynamic_task_count, 0);
     assert.equal(report.project.task_count, 1);
+    // r12: one tool per lifecycle action in the flat Task model.
+    const tools = report.protocol.allowed_agent_tool_names;
+    assert.deepEqual(tools.filter((name) => /task_block$/.test(name)), ['swarmenv_task_block']);
+    assert.deepEqual(tools.filter((name) => /task_complete$/.test(name)), ['swarmenv_task_complete']);
     assert.equal(report.project.task_tree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length, 0);
     // The Mission entry is intentionally shareable after Issue #111.  Each
     // reusable Core may therefore run its own FAIL -> revision chain on the
@@ -1511,4 +1572,11 @@ test('report validator rejects proof-bearing fields', () => {
     run: {},
     audit: { formal_source: 'leaked proof', raw_transcript_exported: false, proof_contents_exported: false },
   }), /redacted fields/);
+});
+
+test('a fenced bind_prepare_failed Execution without a Workspace is a preparation failure, not a boundary violation (r15)', () => {
+  assert.equal(isPreparationFailure({ state: 'FENCED', terminal_reason: 'bind_prepare_failed', workspace_ref: null }), true);
+  assert.equal(isPreparationFailure({ state: 'FAILED', terminal_reason: 'task_take_bind_failed' }), true);
+  assert.equal(isPreparationFailure({ state: 'FENCED', terminal_reason: 'progress_handoff' }), false);
+  assert.equal(isPreparationFailure({ state: 'RUNNING', terminal_reason: 'bind_prepare_failed' }), false);
 });

@@ -310,7 +310,8 @@ test('Runtime bind composes the supplied mode prompt with the live Service profi
     assert.match(prompt, /Mathlib Search/);
     assert.match(prompt, /swarmenv_mathlib_search/);
     assert.match(prompt, /explicit decomposition decision/);
-    assert.match(prompt, /substantive increment/);
+    assert.match(prompt, /Do not hand off on your own initiative/);
+    assert.doesNotMatch(prompt, /substantive increment|bounded attempt/);
     assert.doesNotMatch(prompt, /swarmenv_call|request_wait/);
     await runtime.stopExecution(claimed.execution.execution_id);
   } finally {
@@ -950,6 +951,60 @@ test('Runtime validates wait conditions before checkpointing so invalid waits do
     assert.equal(adapter.sessions[0].closed, false);
   } finally {
     await runtime.stopExecution(claimed.execution.execution_id).catch(() => undefined);
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('Runtime run deadline bounds the Execution and sends the reminder only before it (r15)', async () => {
+  // Flat profile: Execution timeout equals the run length (60 s here) with a
+  // 6 s lead. Started 20 s before the run deadline, the Execution must end at
+  // the run deadline and be reminded 6 s before it, not 54 s after start.
+  const fixtureData = await fixture({ runtimeOptions: { executionTimeoutMs: 60_000, handoffReminderMs: 54_000 } });
+  const { runtime, taskService, claimed, rootDir } = fixtureData;
+  try {
+    runtime.setRunDeadline(Date.now() + 20_000);
+    const started = await runtime.startExecution(claimed.execution.execution_id);
+    const startedAt = Date.parse(started.execution.started_at);
+    const executionDeadline = Date.parse(started.execution.execution_deadline);
+    const handoffDeadline = Date.parse(started.execution.handoff_deadline);
+    assert.ok(executionDeadline - startedAt <= 20_000);
+    assert.equal(executionDeadline - handoffDeadline, 6_000);
+    assert.equal((await runtime.sweepExecutionTimeouts(new Date(handoffDeadline - 1_000))).length, 0);
+    const reminder = await runtime.sweepExecutionTimeouts(new Date(handoffDeadline));
+    assert.equal(reminder[0]?.kind, 'handoff_reminder');
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
+    assert.throws(() => runtime.setRunDeadline('soon'), /runDeadlineAt/);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});
+
+test('a slow turn_end stats query does not mark the next active turn idle for the watchdog (r15)', async () => {
+  // r15: turn_end awaited getSessionStats while the next turn_start had
+  // already set phase=turn; turn_end then set phase=idle, and the watchdog
+  // fenced a Session that was still streaming the model reply.
+  const fixtureData = await fixture({ runtimeOptions: { watchdogTimeoutMs: 1_000 } });
+  const { runtime, adapter, claimed, rootDir, taskService } = fixtureData;
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    const session = adapter.sessions[0];
+    let releaseStats;
+    session.getSessionStats = () => new Promise((resolve) => { releaseStats = () => resolve({}); });
+    session.emit('rpc', { type: 'turn_start' });
+    session.emit('rpc', { type: 'turn_end' });
+    session.emit('rpc', { type: 'turn_start' });
+    session.emit('rpc', { type: 'message_update' });
+    await new Promise((resolve) => setImmediate(resolve));
+    releaseStats?.();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(runtime.getSessionHealth(claimed.execution.execution_id).phase, 'turn');
+    const swept = await runtime.sweepWatchdog(new Date(Date.now() + 5_000));
+    assert.equal(swept.length, 0);
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
+    await runtime.stopExecution(claimed.execution.execution_id);
+  } finally {
     await rm(rootDir, { recursive: true, force: true });
     taskService.close();
   }

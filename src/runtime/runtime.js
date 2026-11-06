@@ -133,7 +133,7 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, agentAdapter, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -159,6 +159,7 @@ export class Runtime {
     if (!Number.isFinite(handoffReminderMs) || handoffReminderMs <= 0 || handoffReminderMs >= executionTimeoutMs) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffReminderMs must be positive and less than executionTimeoutMs');
     this.executionTimeoutMs = executionTimeoutMs;
     this.handoffReminderMs = handoffReminderMs;
+    this.setRunDeadline(runDeadlineAt);
     this.compactionCheckpointReminder = compactionCheckpointReminder === true;
     this.clock = clock;
     this.onSessionStarted = onSessionStarted;
@@ -1406,6 +1407,37 @@ export class Runtime {
     return { execution };
   }
 
+  /**
+   * Physical cleanup after task_register take committed a durable switch.
+   * The Task Service already fenced the old Execution in the same
+   * transaction that claimed the new Task; Runtime only detaches the
+   * process, Sandbox and Workspace writer so the identity Session can be
+   * bound to the new Execution.
+   */
+  async detachSwitchedExecution(executionId, { previousFencingVersion } = {}) {
+    const id = requireString(executionId, 'execution_id');
+    const execution = this.#getExecution(id);
+    const active = this.activeProcesses.get(id);
+    if (active) {
+      active.closing = true;
+      await this.#drainCompactionCheckpoint(active);
+    }
+    await this.#stopSandbox(id);
+    if (Number.isInteger(previousFencingVersion)) {
+      await this.#fenceWorkspaceBestEffort({ ...execution, fencing_version: previousFencingVersion }, {
+        newFencingVersion: execution.fencing_version,
+        event: 'runtime.task_switch_workspace_fence_error',
+      });
+    }
+    if (active) {
+      await this.#releaseSessionBinding(active, id);
+      this.activeProcesses.delete(id);
+      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+    }
+    this.logger?.append({ event: 'runtime.task_switch_detached', execution_id: id, task_id: execution.task_id });
+    return { execution };
+  }
+
   async fenceExecution(executionId, { reason = 'fenced' } = {}) {
     this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId, terminal_reason: reason });
     let execution = this.#getExecution(executionId);
@@ -1797,10 +1829,10 @@ export class Runtime {
   #notificationText(notification) {
     const payload = notification.payload ?? {};
     if (notification.notification_type === 'handoff_warning') {
-      return 'Execution deadline is approaching. Publish and link Handoff Material now if the current Task is unfinished; this reminder is persisted.';
+      return `Execution deadline is approaching (notification_id ${notification.notification_id}). Publish and link Handoff Material now if the current Task is unfinished; this reminder is persisted.`;
     }
     if (notification.notification_type === 'material_available') {
-      return `Response Material ${notification.material_id ?? payload.material_id ?? '<unknown>'} from Task ${notification.source_task_id ?? payload.producer_task_id ?? '<unknown>'} / Execution ${notification.source_execution_id ?? payload.producer_execution_id ?? '<unknown>'} is linked to this Task. Read it through Context Service and adapt your own work; call task.close only when your contract accepts it.`;
+      return `Response Material ${notification.material_id ?? payload.material_id ?? '<unknown>'} from Task ${notification.source_task_id ?? payload.producer_task_id ?? '<unknown>'} / Execution ${notification.source_execution_id ?? payload.producer_execution_id ?? '<unknown>'} is linked to this Task. Read it through Context Service and adapt your own work, then record your decision with task_feedback using notification_id ${notification.notification_id}. This notice is delivered once; it does not end your Execution or require a handoff. Call task.close only when your contract accepts the Response.`;
     }
     return `Task ${notification.recipient_task_id} is OPEN again because its typed dependency is satisfied; it is claimable when a Core is idle.`;
   }
@@ -1868,7 +1900,14 @@ export class Runtime {
       active.execution.task_id,
       active.execution.execution_id,
     ) ?? [];
-    for (const notification of notifications) this.#deliverNotification(active, notification);
+    for (const notification of notifications) {
+      // At-least-once means once per recipient Execution, not once per turn.
+      // A notification already delivered to this Execution stays unhandled
+      // until task_feedback; re-prompting it at every turn_end (r13: 344
+      // prompts for 3 notifications) reads to the Agent as new evidence.
+      if (notification.recipient_delivery?.delivered_at) continue;
+      this.#deliverNotification(active, notification);
+    }
   }
 
   #identityKey(coreId, execution) {
@@ -2037,6 +2076,17 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (!active || active.closing) return;
     active.lastEventAt = this.clock();
+    // Session events are handled concurrently. A start record bumps the
+    // phase epoch synchronously, so a completion whose handler resumes after
+    // an await cannot reset a newer turn/retry/compaction to idle (r15:
+    // turn_end awaiting get_session_stats let the watchdog fence a Session
+    // that was streaming the next reply).
+    const startsPhase = record.type === 'turn_start' || record.type === 'auto_retry_start' || record.type === 'compaction_start';
+    if (startsPhase) {
+      active.phaseEpoch = (active.phaseEpoch ?? 0) + 1;
+      active.phase = record.type === 'turn_start' ? 'turn' : record.type === 'auto_retry_start' ? 'provider_retry' : 'compaction';
+    }
+    const phaseEpoch = active.phaseEpoch ?? 0;
     this.logger?.append({ event: 'runtime.agent_event', execution_id: executionId, record_type: record.type, phase: active.phase });
     let usage = contextWindowRatio(record, active.session);
     // Pi's stream usage uses camelCase fields (`totalTokens`, `usage.input`)
@@ -2052,9 +2102,6 @@ export class Runtime {
         // Older/mock adapters may not implement the command. Keep the
         // event-derived value or null; unknown is handled conservatively.
       }
-    }
-    if (record.type === 'turn_start' || record.type === 'auto_retry_start' || record.type === 'compaction_start') {
-      active.phase = record.type === 'turn_start' ? 'turn' : record.type === 'auto_retry_start' ? 'provider_retry' : 'compaction';
     }
     if (record.type === 'compaction_start') {
       this.logger?.append({
@@ -2089,7 +2136,7 @@ export class Runtime {
       (record.type === 'auto_retry_end' && record.success === true);
     if (completedProductiveEvent) {
       active.lastProductiveAt = this.clock();
-      active.phase = 'idle';
+      if ((active.phaseEpoch ?? 0) === phaseEpoch) active.phase = 'idle';
       if (record.type === 'auto_retry_end' && record.success === true) active.lastTurnEndedAt = active.lastProductiveAt;
     }
     // Provider-retry paths may emit a completed turn boundary without ever
@@ -2421,11 +2468,28 @@ export class Runtime {
     }
   }
 
+  /**
+   * Bind every Execution deadline to the run's global deadline. The handoff
+   * reminder keeps its lead time (executionTimeoutMs - handoffReminderMs)
+   * before whichever deadline comes first, so a long Execution is reminded
+   * only near the end of the run, not at a fixed offset from its start.
+   */
+  setRunDeadline(runDeadlineAt) {
+    if (runDeadlineAt !== null && runDeadlineAt !== undefined && !Number.isFinite(runDeadlineAt)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'runDeadlineAt must be an epoch millisecond value');
+    }
+    this.runDeadlineAt = runDeadlineAt ?? null;
+  }
+
   #executionTimingPayload(at = this.clock(), execution = null) {
     const task = execution?.task_id ? this.taskService.getTask(execution.task_id) : null;
     const taskTimeout = task?.mission_id && Number.isInteger(task.timebox_ms) ? task.timebox_ms : this.executionTimeoutMs;
-    const timeoutMs = Math.max(1, taskTimeout);
-    const reminderMs = Math.min(this.handoffReminderMs, Math.max(1, timeoutMs - 1));
+    const leadMs = Math.max(1, this.executionTimeoutMs - this.handoffReminderMs);
+    const untilRunDeadline = this.runDeadlineAt === null ? Number.POSITIVE_INFINITY : this.runDeadlineAt - at;
+    const timeoutMs = Math.max(1, Math.min(taskTimeout, untilRunDeadline));
+    const reminderMs = this.runDeadlineAt === null
+      ? Math.min(this.handoffReminderMs, Math.max(1, timeoutMs - 1))
+      : Math.max(1, Math.min(timeoutMs - 1, timeoutMs - leadMs));
     const startedAt = new Date(at).toISOString();
     return {
       started_at: startedAt,

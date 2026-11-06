@@ -19,7 +19,7 @@ import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
-import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, SYSTEM_IDENTITY_PROMPT } from '../agent/agent-prompt.js';
+import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, SYSTEM_IDENTITY_PROMPT, taskLoopGuide } from '../agent/agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
 import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
 import { createHttpJsonAdapter, createInProcessAdapter } from '../sdk/service-adapter.js';
@@ -99,6 +99,26 @@ function projectTasks(state, {
 function projectClaimableTasks(state, { limit = 100 } = {}) {
   if (state.taskModel === 'flat') return state.taskService.listClaimableTasks({ missionId: state.missionId, limit });
   return state.taskService.listClaimableTasks({ rootId: state.rootTaskId, limit });
+}
+
+// Flat model: one Execution may run for the whole run; the reminder lead is
+// five minutes (or a tenth of a short run) before the run deadline.
+function flatExecutionTimeoutMs(options) {
+  return options.timeboxMs ?? 60 * 60_000;
+}
+
+function flatHandoffReminderMs(options) {
+  const timeoutMs = flatExecutionTimeoutMs(options);
+  return Math.max(1, timeoutMs - Math.min(5 * 60_000, Math.floor(timeoutMs / 10)));
+}
+
+// Runtime fences a bind that fails before the Execution starts durably
+// (bind_prepare_failed), so the terminal state may be FENCED rather than
+// FAILED. r15: a rejected workspace_revision on task_take invalidated the
+// whole run as a workspace boundary violation.
+export function isPreparationFailure(execution) {
+  return ['FAILED', 'FENCED'].includes(execution?.state)
+    && ['task_take_bind_failed', 'startup_prepare_failed', 'bind_prepare_failed', 'startup_failed'].includes(execution.terminal_reason);
 }
 
 function modePrompt(mode, prompt, selectedTaskModel = 'legacy') {
@@ -1542,8 +1562,7 @@ function projectReport(state, startedAt, deadline) {
   // A preparation/bind failure is allowed to end before a Workspace exists
   // (B09). It is not a boundary violation; every Execution that actually
   // materialized a Workspace must still have a unique one.
-  const preparationFailure = (execution) => execution?.state === 'FAILED'
-    && ['task_take_bind_failed', 'startup_prepare_failed', 'bind_prepare_failed', 'startup_failed'].includes(execution.terminal_reason);
+  const preparationFailure = isPreparationFailure;
   const workspaceBoundaryViolation = claimedExecutions.some((execution) => !execution
     || (!execution.workspace_ref && !preparationFailure(execution)))
     || new Set(workspaceRefs).size !== workspaceRefs.length;
@@ -1990,8 +2009,13 @@ async function createProjectState(problem, config, options) {
   // ServicesBridge uses capabilityRegistry for the named HTTP calls.
   const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService });
   const router = new ServicesRouter({ taskService, contextService, judgeService, registry: routerRegistry, logger: routerLogger });
+  // Flat Mission Tasks complete and block through the registered Task
+  // capabilities. The Runtime lifecycle aliases serve legacy Tasks only;
+  // exposing both gave r12 Agents two tools per action with different
+  // schemas (the Runtime task_block omits the required handoff_material_id).
   const runtimeCapabilities = runtimeCapabilityList()
-    .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
+    .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation))
+    .filter((capability) => selectedTaskModel !== 'flat' || !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
   const allowedAgentToolNames = [...new Set([
     AGENT_ROLES.BOUND,
     AGENT_ROLES.RECOVERY,
@@ -2000,6 +2024,13 @@ async function createProjectState(problem, config, options) {
     registry: capabilityRegistry,
     runtimeCapabilities,
   }).capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`)))];
+  // The loop guide names the exact registered tools for each identity step;
+  // it is recomputed from the same profile the Pi extension registers.
+  const agentTaskLoopGuide = taskLoopGuide(buildCapabilityProfile({
+    role: AGENT_ROLES.BOUND,
+    registry: capabilityRegistry,
+    runtimeCapabilities,
+  }));
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const taskCreateMutex = selectedTaskModel === 'flat' ? new SerialTaskCreateAdmission() : null;
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
@@ -2012,7 +2043,7 @@ async function createProjectState(problem, config, options) {
         : 'Use direct child Tasks only when a genuinely separable route emerges.';
   const dependencyInstruction = normalFlow
     ? (selectedTaskModel === 'flat'
-      ? 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.'
+      ? 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends only the current Execution and releases the Core. On the shared Mission Task it does not block the Mission: the Mission stays claimable, so block there only when you have no useful Mission work without the prerequisite. Do not call request_wait in the normal-flow treatment.'
       : 'When a real external dependency blocks progress, preserve useful Workspace and Materials and call execution_block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.')
     : 'Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency.';
   const taskSpecificInstruction = selectedTaskModel === 'flat'
@@ -2027,7 +2058,7 @@ async function createProjectState(problem, config, options) {
     // when the pool is larger than the Core count; research routes remain
     // independently available instead of starving the integration lane.
     priority: selectedTaskModel === 'flat' ? 110 : 0,
-    task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. If no honest candidate is ready, preserve useful evidence and block on a concrete dependency instead of submitting the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.`,
+    task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. Until an honest candidate is ready, keep researching and publish useful evidence; never submit the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.`,
     completion_contract: {
       ...(normalFlow ? { normal_flow: true } : {}),
       ...(selectedParallelMode === 'semantic' && selectedTaskModel !== 'flat' ? {
@@ -2088,7 +2119,7 @@ async function createProjectState(problem, config, options) {
     ? owner.createTask({
       ...taskPayload,
       mission_id: mission.mission_id,
-      timebox_ms: options.taskTimeboxMs ?? 30 * 60_000,
+      timebox_ms: options.taskTimeboxMs ?? flatExecutionTimeoutMs(options),
       owner_ref: 'owner:benchmark',
     }, { operationId: `benchmark:task:create:${runId}` }).task
     : owner.proposeTask(taskPayload, { operationId: `benchmark:root:propose:${runId}` }).task;
@@ -2151,17 +2182,19 @@ async function createProjectState(problem, config, options) {
       contextService,
       workspaceManager,
       agentAdapter: adapter,
+      runtimeCapabilities,
       sandboxManager,
       capabilityRegistry,
       maxWorkers: 1,
       coreIds: [`core-${index}`],
       actorRef: `runtime:core-${index}`,
       watchdogTimeoutMs: options.watchdogTimeoutMs,
-      // The Issue #100 benchmark profile gives each first-class Task a
-      // 30-minute bounded Execution and a five-minute handoff warning.  The
-      // generic Runtime defaults remain 60/55 minutes for legacy callers.
-      executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? 30 * 60_000 : undefined),
-      handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? 25 * 60_000 : undefined),
+      // Contract §5 (r15 revision): in the flat model an Execution may last
+      // the whole run. Its deadline is the run deadline (set at run start)
+      // and the handoff reminder fires a lead time before it; compaction
+      // rotation bounds identity lifetime. Legacy callers keep 60/55 minutes.
+      executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? flatExecutionTimeoutMs(options) : undefined),
+      handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? flatHandoffReminderMs(options) : undefined),
       logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
       onSessionStarted: ({ execution, session, recovery }) => {
@@ -2272,6 +2305,7 @@ async function createProjectState(problem, config, options) {
       contextService,
       runtime,
       router,
+      runtimeCapabilities,
       registry: capabilityRegistry,
       actorRef: `agent:core-${index}`,
       // The bridge, not the model payload, owns the lane identity.
@@ -2872,6 +2906,7 @@ async function createProjectState(problem, config, options) {
     router,
     capabilityRegistry,
     allowedAgentToolNames,
+    agentTaskLoopGuide,
     judgeService,
     sandboxManager,
     cores,
@@ -2909,8 +2944,8 @@ async function createProjectState(problem, config, options) {
     missionId: mission?.mission_id ?? null,
     taskCreateMutex,
     dynamicTaskEvents: [],
-    executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? 30 * 60_000 : 60 * 60_000),
-    handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? 25 * 60_000 : 55 * 60_000),
+    executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? flatExecutionTimeoutMs(options) : 60 * 60_000),
+    handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? flatHandoffReminderMs(options) : 55 * 60_000),
     normalFlow,
     readinessSamples: [],
   };
@@ -2998,13 +3033,16 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   recordReadinessSnapshot(state, startedAt);
   const durationMs = options.timeboxMs ?? 60 * 60_000;
   const deadline = startedAt + durationMs;
+  if (state.taskModel === 'flat') {
+    for (const core of state.cores) core.runtime?.setRunDeadline?.(deadline);
+  }
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
   // IdentityTaskLoop waits for the whole Runtime Execution to release after a
   // successful claim. Keep that ownership deadline at least as long as the
   // durable Runtime deadline; a turn timeout is only the per-prompt bound.
   const executionTimeoutMs = state.executionTimeoutMs;
   const basePrompt = (core) => core.taskId
-      ? `${BOUND_AGENT_PROMPT}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision and make a concrete verified contribution; a read-only turn is not complete. Read new Materials and Judge feedback before refining, publishing, submitting, accepting, requesting rework, or blocking on a typed dependency.`
+      ? `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision. Research, reading, and publishing research Materials are normal work in this Execution. Read new Materials and Judge feedback before refining, publishing, submitting, completing, or blocking on a typed dependency. Keep this Execution until its Task is complete, a real prerequisite stops it, or Runtime asks for handoff.`
       : GENERIC_AGENT_PROMPT;
   state.identityLoopEvents = state.identityLoopEvents ?? [];
   state.identityLoops = state.cores.map((core) => {
@@ -3012,7 +3050,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       coreId: `core-${core.index}`,
       // This is a bounded discovery prompt for the reusable identity, not a
       // old selection transport SOP.  The identity must call task_take itself.
-      takePrompt: `${BOUND_AGENT_PROMPT}\nUse task_status/task_take on this same Core identity; do not call task.claim or delegate selection to another Session.`,
+      takePrompt: `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nUse the Task view in this turn and task_take on this same Core identity; do not call task.claim or delegate selection to another Session.`,
       shortlistLimit: options.controllerShortlistLimit ?? 16,
       maxTakeAttempts: options.maxStartupAttempts ?? 3,
       maxTakeRescans: options.maxTakeRescans ?? 1,
@@ -3307,7 +3345,20 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     await state.controller?.stop?.();
     state.identityLoopAbortController?.abort();
     for (const loop of state.identityLoops ?? []) loop.stop();
-    const identityResults = await Promise.allSettled(state.identityLoopRuns ?? []);
+    // A take turn may still be inside its Agent turn at the deadline (the
+    // Agent keeps working after task_take in the same turn), and that turn
+    // only settles when the Session stops. Waiting unboundedly here kept r14
+    // running past its timebox until the outer timeout killed it without a
+    // report. Bound the wait; stopCore below stops the Sessions.
+    const identityLoopStopGraceMs = options.identityLoopStopGraceMs ?? 15_000;
+    let identityLoopsSettled = false;
+    const identityResults = await Promise.race([
+      Promise.allSettled(state.identityLoopRuns ?? []).then((results) => { identityLoopsSettled = true; return results; }),
+      sleep(identityLoopStopGraceMs).then(() => []),
+    ]);
+    if (!identityLoopsSettled) {
+      state.cleanupErrors.push({ code: 'IDENTITY_LOOP_STOP_TIMEOUT', class: 'identity_loop_stop_timeout' });
+    }
     for (const result of identityResults) {
       if (result.status === 'rejected') {
         state.identityLoopErrors.push({

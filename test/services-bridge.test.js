@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   ContextService,
   AGENT_ROLES,
+  ERROR_CODES,
   JudgeService,
   ServiceRegistry,
   ServicesBridge,
@@ -621,6 +622,55 @@ test('ServicesBridge routes modern task_block through Runtime lifecycle cleanup'
   }
 });
 
+test('ServicesBridge rejects a capability block naming a callable capability (r12)', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:capability-block' });
+  const mission = owner.createMission({
+    mission_id: 'mission:capability-block-bridge', goal: 'reject inconsistent capability blocks',
+    acceptance_conditions: { route: 'capability-block' },
+  }, { operationId: 'capability-bridge:mission' }).mission;
+  const task = owner.createTask({
+    mission_id: mission.mission_id,
+    summary: 'Exercise capability block admission against the callable directory',
+    task_type: 'research', goal: 'block admission', expected_output: 'a bounded result',
+    acceptance_conditions: { route: 'capability-block-task' },
+  }, { operationId: 'capability-bridge:task' }).task;
+  const claim = owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
+    execution_id: 'capability-bridge-execution', claim_key: 'capability-bridge:claim',
+    owner_ref: 'agent:capability-bridge', agent_prompt: 'bridge', input_material_refs: [],
+  }, { operationId: 'capability-bridge:claim' });
+  const lifecycle = [];
+  const bridge = new ServicesBridge({
+    taskService, contextService, router,
+    runtime: { blockTask: async (executionId, payload) => { lifecycle.push({ executionId, payload }); return { disposition: 'blocked' }; } },
+    taskId: task.task_id, executionId: claim.execution.execution_id,
+  });
+  try {
+    await assert.rejects(bridge.call({ operation: 'task_block', payload: {
+      blocker: { reason: 'workspace unavailable' },
+      dependency: { dependency_kind: 'CAPABILITY', capability_id: 'swarmenv_workspace_get' },
+      handoff_material_id: 'unused',
+    } }), (error) => error.code === ERROR_CODES.INVALID_CONTRACT && error.details?.condition === 'capability_block_admission');
+    assert.equal(lifecycle.length, 0, 'an inconsistent block must not release the Execution');
+    assert.equal(bridge.executionId, claim.execution.execution_id);
+
+    const accepted = await bridge.call({ operation: 'task_block', payload: {
+      blocker: { reason: 'prover not registered' },
+      dependency: { dependency_kind: 'CAPABILITY', capability_id: 'external.unregistered_prover' },
+      handoff_material_id: 'unused',
+    } });
+    assert.equal(accepted.disposition, 'blocked');
+    assert.equal(lifecycle.length, 1);
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
 test('ServicesBridge refreshes the profile when a Service is registered after startup', async () => {
   const registry = new ServiceRegistry();
   const bridge = new ServicesBridge({
@@ -1008,6 +1058,135 @@ test('ServicesBridge rolls back a Task claim when Runtime handoff fails', async 
     assert.equal(bridge.executionId, null);
     assert.equal(taskService.listActiveExecutions().length, 0);
     assert.equal(taskService.getTask(task.task_id).state, 'OPEN');
+  } finally {
+    await bridge.stop();
+    taskService.close();
+  }
+});
+
+test('task_register take checkpoints the shared Mission Execution and takes the new Task on the same lane atomically', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  const owner = new ServicesSDK(router, { actorRef: 'owner:switch' });
+  const mission = owner.createMission({
+    mission_id: 'mission:switch', goal: 'research then execute an own direction', acceptance_conditions: ['proved'],
+  }, { operationId: 'switch:mission' }).mission;
+  const root = owner.createTask({
+    mission_id: mission.mission_id,
+    task_id: 'task:switch-mission',
+    summary: 'Shared Mission responsibility for the register-and-switch test.',
+    goal: 'prove the statement',
+    expected_output: 'a proof',
+    acceptance_conditions: ['checked'],
+  }, { operationId: 'switch:root' }).task;
+  const claim = owner.withContext({ taskId: root.task_id, specVersion: root.spec_version, stateVersion: root.state_version }).claim({
+    execution_id: 'execution:switch-mission',
+    claim_key: 'switch:claim',
+    owner_ref: 'agent:switch',
+    core_id: 'core:switch',
+    agent_prompt: 'switch test',
+    input_material_refs: [],
+  }, { operationId: 'switch:claim' });
+  const created = taskService.getExecution(claim.execution.execution_id);
+  taskService.dispatch('start_execution', { core_id: 'core:switch' }, makeEnvelope({
+    operationId: 'switch:start', actorRef: 'agent:switch', taskId: root.task_id, executionId: created.execution_id,
+    specVersion: created.spec_version, stateVersion: created.state_version, fencingVersion: created.fencing_version,
+  }));
+  const calls = [];
+  const runtime = {
+    executionProgress: async (executionId, payload) => {
+      calls.push({ op: 'checkpoint', executionId, kind: payload.kind, state: taskService.getExecution(executionId).state });
+      return {};
+    },
+    detachSwitchedExecution: async (executionId) => {
+      calls.push({ op: 'detach', executionId, state: taskService.getExecution(executionId).state });
+      return {};
+    },
+  };
+  const released = [];
+  const claimed = [];
+  const bridge = new ServicesBridge({
+    taskService, contextService, runtime, router,
+    actorRef: 'agent:switch', coreId: 'core:switch',
+    taskId: root.task_id, executionId: created.execution_id,
+    onRelease: async (value) => { released.push(value); },
+    onClaim: async (value) => { claimed.push(value); },
+  });
+  const other = new ServicesBridge({ taskService, contextService, runtime: {}, router, actorRef: 'agent:other', coreId: 'core:other', role: AGENT_ROLES.BOUND });
+  try {
+    const result = await bridge.call({
+      operation: 'task_register',
+      payload: {
+        mission_id: mission.mission_id,
+        task_id: 'task:switch-own-route',
+        goal: 'Execute the induction route found during research.',
+        expected_output: 'a checked candidate',
+        acceptance_conditions: ['Judge PASS'],
+        collaboration_reason: 'my own direction; others should not compete for it',
+        take: true,
+      },
+    });
+    // Checkpoint first, while the Mission Execution is still RUNNING.
+    assert.deepEqual(calls.map((call) => [call.op, call.state]), [['checkpoint', 'RUNNING'], ['detach', 'FENCED']]);
+    assert.equal(result.switched_from.execution.state, 'FENCED');
+    assert.equal(result.switched_from.execution.terminal_reason, 'task_switch');
+    // The shared Mission stays claimable for other identities.
+    assert.equal(result.switched_from.task.state, 'OPEN');
+    // The new Task is already owned on the same Core lane.
+    assert.equal(result.task.task_id, 'task:switch-own-route');
+    assert.equal(result.execution.owner_ref, 'agent:switch');
+    assert.equal(result.execution.core_id, 'core:switch');
+    assert.equal(bridge.taskId, 'task:switch-own-route');
+    assert.equal(bridge.executionId, result.execution.execution_id);
+    assert.equal(released.length, 1);
+    assert.equal(released[0].executionId, created.execution_id);
+    assert.equal(claimed.length, 1);
+    assert.equal(claimed[0].execution.execution_id, result.execution.execution_id);
+    assert.ok(!taskService.listClaimableTasks({ missionId: mission.mission_id, limit: 10 }).some((task) => task.task_id === 'task:switch-own-route'));
+    await assert.rejects(
+      () => other.call({ operation: 'task_take', payload: { task_id: 'task:switch-own-route', claim_key: 'switch:steal' } }),
+      (error) => error.code === 'CONFLICT' || error.code === 'NOT_ALLOWED',
+    );
+    // Without take the registration leaves the Task open and keeps the Execution.
+    const plain = await bridge.call({
+      operation: 'task_register',
+      payload: {
+        mission_id: mission.mission_id,
+        task_id: 'task:switch-open-route',
+        goal: 'A separate lemma another identity may take.',
+        expected_output: 'a lemma',
+        acceptance_conditions: ['Judge PASS'],
+        collaboration_reason: 'separable lemma',
+      },
+    });
+    assert.equal(plain.task.state, 'OPEN');
+    assert.equal(plain.switched_from, undefined);
+    assert.equal(bridge.executionId, result.execution.execution_id);
+  } finally {
+    await bridge.stop();
+    await other.stop();
+    taskService.close();
+  }
+});
+
+test('task_register take is rejected without a bound Execution', async () => {
+  const database = new DatabaseSync(':memory:');
+  const contextService = new ContextService(database);
+  const taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  const router = new ServicesRouter({ taskService, contextService });
+  new ServicesSDK(router, { actorRef: 'owner:unbound' }).createMission({
+    mission_id: 'mission:unbound', goal: 'g', acceptance_conditions: ['a'],
+  }, { operationId: 'unbound:mission' });
+  const bridge = new ServicesBridge({ taskService, contextService, runtime: {}, router, actorRef: 'agent:unbound', coreId: 'core:unbound', role: AGENT_ROLES.BOUND });
+  try {
+    await assert.rejects(() => bridge.call({
+      operation: 'task_register',
+      payload: { mission_id: 'mission:unbound', goal: 'g', expected_output: 'o', acceptance_conditions: ['a'], take: true },
+    }), (error) => error.code === 'NOT_ALLOWED');
   } finally {
     await bridge.stop();
     taskService.close();

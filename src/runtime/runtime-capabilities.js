@@ -27,7 +27,7 @@ export const RUNTIME_CAPABILITIES = Object.freeze([
   {
     id: 'runtime.task_block', name: 'task_block', operation: 'task_block', service_id: 'runtime',
     service_title: 'SwarmEnv Runtime', service_purpose: 'Task-scoped completion and dependency actions',
-    description: 'Save a useful checkpoint, declare a typed dependency, release this Execution, and mark the Task BLOCKED.',
+    description: 'Save a useful checkpoint, declare a typed dependency, and release this Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable.',
     audience: ['bound', 'recovery'], side_effect: 'write', idempotent: true, runtime_owned: true,
     context: ['task', 'execution', 'fencing'],
     help: { when: 'Use only when the current Task cannot progress without a concrete typed dependency.', ref: 'runtime://task_block' },

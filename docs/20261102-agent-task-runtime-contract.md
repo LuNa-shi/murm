@@ -8,7 +8,9 @@ Mission保存用户目标和不可被局部任务降低的最终验收要求。�
 
 共享Mission Task不设额外的任务级并行上限，实际并发仍受Core容量、工具资源与总预算限制。各执行者可以研究整体问题、整理现有成果、组织完整候选，发现值得独立推进的问题时再登记子任务。独立子任务通常只有一个有效Execution，避免已明确的分工被重复占用。创建来源不带审批权。
 
-这个差异只影响认领与聚合状态，不新增manager、warm-up planner或子任务审批流程。同一identity同一时刻只能执行一项责任；可以在执行当前Task时登记新任务留给别人，但自己要切换任务时先结束或交接当前Execution。
+这个差异只影响认领与聚合状态，不新增manager、warm-up planner或子任务审批流程。同一identity同一时刻只能执行一项责任。可以在执行当前Task时登记新任务留给别人；若要自己执行自己选定的方向，使用`task_register`的`take: true`：先为当前Execution保存checkpoint，再在同一个Task Service事务中以`task_switch`结束当前Execution并在同一Core lane上认领新Task。新Task从创建起就有执行者，别人无法抢先认领，也不存在保留/预约状态。（2026-11-05用户决定，r15修订。）
+
+预期工作周期：先在共享Mission上只读研究，可发布研究Material；开始具体实施和测试时登记并切换到自己的Task；在该Task内反复尝试、发布Material、登记子任务和Judge检查；完成后再认领下一项。Execution只在生命周期边界结束（见§3）。
 
 没有可认领子任务时，Agent继续共享Mission Task，而不因普通队列空而结束identity。若正在切换，可以短暂处于无Execution状态；实际继续研究Mission前要取得它的Execution，使工作与成本有归属。全Mission只因成功、总预算/时间到期、授权停止或明确环境故障收束，不因子任务队列空自动宣布结束。
 
@@ -36,6 +38,8 @@ Core的发现、上下文准备、研究、工具等待和收束分别记录。a
 
 共享Mission某个Execution交接时，只撤销它自己的执行权，记录它自己的Progress/Workspace来源。其他执行者继续，聚合Task状态仍可为RUNNING；没有执行者时为OPEN，只要Mission未结束就仍可认领。一个执行者的handoff、局部失败或轮换不能关闭Mission，不能撤销其他执行者的权限。
 
+Execution只在以下边界结束：Task完成；明确前置条件阻塞（block）；Runtime截止提醒；compaction轮换（§5）；明确要求handoff的通知。只读研究阶段是正常工作，Judge FAIL也不是结束理由；prompt不鼓励Agent主动handoff。
+
 每个Execution都有独立worktree和快照引用。共享Task不使用一个可被所有人覆盖的“最新工作目录/commit”。恢复指定前驱Execution/Progress Material所指的commit；其他路线结果通过Material按需读取。最终候选由任一有权限的执行者提交，按固定原题验收。
 
 ## 4. Progress Material与最小Git接续
@@ -51,6 +55,8 @@ Progress Material包含completed_work、findings、open_questions、next_step，
 checkpoint保存失败可返回错误并继续当前Execution；到handoff/rotation时失败则允许丢弃本次未保存状态。新执行优先恢复最后成功快照；没有快照时从输入材料重启，并明确说明从哪里恢复。正常实验应展示保存与接续成功；故障注入只证明失败不把系统卡住，不能代替正常路径的成功证据。
 
 ## 5. compaction：三次以后，下一轮达到80%再交接
+
+flat模型下单个Execution的时间盒等于运行总时长（1h/2h），截止时间为全运行截止时间；截止提醒在全运行截止前min(5分钟, 时长/10)发送。identity寿命由compaction次数与80%窗口决定。（r15修订，原为30/25分钟。）
 
 配置默认max_compactions=3、handoff_window_ratio=0.8。计数属于identity，跨其连续认领的Tasks累计；完成一个Task不重置计数。window_ratio指当前上下文token估计数除以模型上下文窗口，不是运行累计token。
 

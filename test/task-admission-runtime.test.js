@@ -113,6 +113,15 @@ test('semantic blocking persists an external capability condition for explicit r
     goal: 'record a missing research capability',
     acceptance_conditions: { blocker: true },
   }, { operationId: 'capability-block:mission' }).mission;
+  // The first Mission Task is the shared Mission responsibility, which never
+  // becomes aggregate-BLOCKED (contract §3). This test covers an ordinary Task.
+  owner.createTask({
+    mission_id: mission.mission_id,
+    summary: 'Shared Mission responsibility for the capability-block scenario.',
+    task_type: 'research',
+    expected_output: 'shared Mission work',
+    acceptance_conditions: { blocker: true },
+  }, { operationId: 'capability-block:shared' });
   const task = owner.createTask({
     mission_id: mission.mission_id,
     summary: 'Record a typed external capability blocker for the research route.',
