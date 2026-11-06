@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { BenchmarkAgentCoreAdapter, runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport } from '../src/benchmark/putnam-runner.js';
+import { BenchmarkAgentCoreAdapter, runBenchmarkBatch, runBenchmarkProject, validateBenchmarkReport, isPreparationFailure } from '../src/benchmark/putnam-runner.js';
 import { ObservationStore } from '../src/observability/observation-store.js';
 
 const source = 'import Mathlib\ntheorem benchmark : True := by\n  sorry\n';
@@ -1572,4 +1572,11 @@ test('report validator rejects proof-bearing fields', () => {
     run: {},
     audit: { formal_source: 'leaked proof', raw_transcript_exported: false, proof_contents_exported: false },
   }), /redacted fields/);
+});
+
+test('a fenced bind_prepare_failed Execution without a Workspace is a preparation failure, not a boundary violation (r15)', () => {
+  assert.equal(isPreparationFailure({ state: 'FENCED', terminal_reason: 'bind_prepare_failed', workspace_ref: null }), true);
+  assert.equal(isPreparationFailure({ state: 'FAILED', terminal_reason: 'task_take_bind_failed' }), true);
+  assert.equal(isPreparationFailure({ state: 'FENCED', terminal_reason: 'progress_handoff' }), false);
+  assert.equal(isPreparationFailure({ state: 'RUNNING', terminal_reason: 'bind_prepare_failed' }), false);
 });

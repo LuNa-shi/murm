@@ -980,3 +980,32 @@ test('Runtime run deadline bounds the Execution and sends the reminder only befo
     taskService.close();
   }
 });
+
+test('a slow turn_end stats query does not mark the next active turn idle for the watchdog (r15)', async () => {
+  // r15: turn_end awaited getSessionStats while the next turn_start had
+  // already set phase=turn; turn_end then set phase=idle, and the watchdog
+  // fenced a Session that was still streaming the model reply.
+  const fixtureData = await fixture({ runtimeOptions: { watchdogTimeoutMs: 1_000 } });
+  const { runtime, adapter, claimed, rootDir, taskService } = fixtureData;
+  try {
+    await runtime.startExecution(claimed.execution.execution_id);
+    const session = adapter.sessions[0];
+    let releaseStats;
+    session.getSessionStats = () => new Promise((resolve) => { releaseStats = () => resolve({}); });
+    session.emit('rpc', { type: 'turn_start' });
+    session.emit('rpc', { type: 'turn_end' });
+    session.emit('rpc', { type: 'turn_start' });
+    session.emit('rpc', { type: 'message_update' });
+    await new Promise((resolve) => setImmediate(resolve));
+    releaseStats?.();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(runtime.getSessionHealth(claimed.execution.execution_id).phase, 'turn');
+    const swept = await runtime.sweepWatchdog(new Date(Date.now() + 5_000));
+    assert.equal(swept.length, 0);
+    assert.equal(taskService.getExecution(claimed.execution.execution_id).state, 'RUNNING');
+    await runtime.stopExecution(claimed.execution.execution_id);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    taskService.close();
+  }
+});

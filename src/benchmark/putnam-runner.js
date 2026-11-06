@@ -112,6 +112,15 @@ function flatHandoffReminderMs(options) {
   return Math.max(1, timeoutMs - Math.min(5 * 60_000, Math.floor(timeoutMs / 10)));
 }
 
+// Runtime fences a bind that fails before the Execution starts durably
+// (bind_prepare_failed), so the terminal state may be FENCED rather than
+// FAILED. r15: a rejected workspace_revision on task_take invalidated the
+// whole run as a workspace boundary violation.
+export function isPreparationFailure(execution) {
+  return ['FAILED', 'FENCED'].includes(execution?.state)
+    && ['task_take_bind_failed', 'startup_prepare_failed', 'bind_prepare_failed', 'startup_failed'].includes(execution.terminal_reason);
+}
+
 function modePrompt(mode, prompt, selectedTaskModel = 'legacy') {
   if (selectedTaskModel === 'flat') return prompt;
   if (mode === 'semantic') {
@@ -1553,8 +1562,7 @@ function projectReport(state, startedAt, deadline) {
   // A preparation/bind failure is allowed to end before a Workspace exists
   // (B09). It is not a boundary violation; every Execution that actually
   // materialized a Workspace must still have a unique one.
-  const preparationFailure = (execution) => execution?.state === 'FAILED'
-    && ['task_take_bind_failed', 'startup_prepare_failed', 'bind_prepare_failed', 'startup_failed'].includes(execution.terminal_reason);
+  const preparationFailure = isPreparationFailure;
   const workspaceBoundaryViolation = claimedExecutions.some((execution) => !execution
     || (!execution.workspace_ref && !preparationFailure(execution)))
     || new Set(workspaceRefs).size !== workspaceRefs.length;

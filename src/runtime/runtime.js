@@ -2076,6 +2076,17 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (!active || active.closing) return;
     active.lastEventAt = this.clock();
+    // Session events are handled concurrently. A start record bumps the
+    // phase epoch synchronously, so a completion whose handler resumes after
+    // an await cannot reset a newer turn/retry/compaction to idle (r15:
+    // turn_end awaiting get_session_stats let the watchdog fence a Session
+    // that was streaming the next reply).
+    const startsPhase = record.type === 'turn_start' || record.type === 'auto_retry_start' || record.type === 'compaction_start';
+    if (startsPhase) {
+      active.phaseEpoch = (active.phaseEpoch ?? 0) + 1;
+      active.phase = record.type === 'turn_start' ? 'turn' : record.type === 'auto_retry_start' ? 'provider_retry' : 'compaction';
+    }
+    const phaseEpoch = active.phaseEpoch ?? 0;
     this.logger?.append({ event: 'runtime.agent_event', execution_id: executionId, record_type: record.type, phase: active.phase });
     let usage = contextWindowRatio(record, active.session);
     // Pi's stream usage uses camelCase fields (`totalTokens`, `usage.input`)
@@ -2091,9 +2102,6 @@ export class Runtime {
         // Older/mock adapters may not implement the command. Keep the
         // event-derived value or null; unknown is handled conservatively.
       }
-    }
-    if (record.type === 'turn_start' || record.type === 'auto_retry_start' || record.type === 'compaction_start') {
-      active.phase = record.type === 'turn_start' ? 'turn' : record.type === 'auto_retry_start' ? 'provider_retry' : 'compaction';
     }
     if (record.type === 'compaction_start') {
       this.logger?.append({
@@ -2128,7 +2136,7 @@ export class Runtime {
       (record.type === 'auto_retry_end' && record.success === true);
     if (completedProductiveEvent) {
       active.lastProductiveAt = this.clock();
-      active.phase = 'idle';
+      if ((active.phaseEpoch ?? 0) === phaseEpoch) active.phase = 'idle';
       if (record.type === 'auto_retry_end' && record.success === true) active.lastTurnEndedAt = active.lastProductiveAt;
     }
     // Provider-retry paths may emit a completed turn boundary without ever

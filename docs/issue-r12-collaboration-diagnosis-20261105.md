@@ -87,3 +87,12 @@ r14 中 Execution 中位时长 3.3 分钟，Agent 以"bounded attempt"主动 han
 | 时间盒放宽到运行总时长 | 契约 §5 | flat 默认 executionTimeoutMs = 运行时长，提醒提前 min(5 min, 时长/10)；Runtime `setRunDeadline` 使每个 Execution 截止不晚于全运行截止，提醒相对全运行截止发送 | `test/runtime.test.js`（r15）、`test/putnam-runner.test.js` |
 
 旧测试"Issue #100 … 30/25 minute Executions"断言的是被撤销的旧行为，已按新规范改写。R10 尚无真实运行覆盖（r14 未产生通知）；r14 因 R11 未写 report.json。
+
+## r15 复检（`issue-r12fix-1h-20261105-r15-lifecycle`，提交 `8e3c230`）
+
+Execution 跑到截止提醒才 handoff（core-3/2 约 56 分钟，core-1 43 分钟，core-4 36 分钟；r14 中位 3.3 分钟），Judge 检查 18 次；core-2 登记一个子任务（未用 take），core-4 认领并完成。`take: true` 未被使用，登记并切换无真实覆盖。发现两项第一类问题：
+
+| ID | 问题 | 修复 | 回归测试 |
+|---|---|---|---|
+| R12 | watchdog 误杀正在流式输出的 Session：Session 事件并发处理，`turn_end` 等待 `get_session_stats` 期间下一个 `turn_start` 已设 phase=turn，`turn_end` 随后改回 idle；120 s 无完成事件即 `watchdog_stall`（r15 7 次、r14 3 次，5 个 Execution `recovery_exhausted`） | start 记录同步递增 phase epoch，完成事件只在 epoch 未变时置 idle | `test/runtime.test.js`（修复前 phase 为 idle） |
+| R13 | `task_take` 请求越界 `workspace_revision` 被正确拒绝，Runtime 以 FENCED/`bind_prepare_failed` 收束，runner 只认 FAILED，整场判 `workspace_boundary_violation` | `isPreparationFailure` 接受 FENCED | `test/putnam-runner.test.js` |
