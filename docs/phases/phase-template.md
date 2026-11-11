@@ -1,48 +1,59 @@
-# 阶段说明：<标题>
+# Research phase: <title>
 
-Status: DRAFT（审批前） / APPROVED / CLOSED
-Decision owner: <负责人>
-Worktree / branch: <独立位置>
-Approved on: <日期或待批准>
+Status: DRAFT / APPROVED / CLOSED
+Human decision owner: <name or role>
+Approval date: <date>
+Worktree / branch: <location>
 
-## 研究问题和主要假设
+## Research question and priority
 
-写清当前准备回答的问题、可证伪的主要假设。探索型阶段应明确备选方向及筛选边界，不事后将探索说成预注册验证。
+- Question or exploratory scope:
+- Why the human owner considers it valuable:
+- Priority and relationship to other ongoing work:
+- Main hypothesis and alternatives, or bounded exploratory candidates:
 
-## 允许的修改与非目标
+## Approved design and boundaries
 
-- Code / Prompt / schema / tool / instrumentation 允许范围：
-- 可直接修复的合同内 Bug：
-- 不可改变的输入、权限与验收：
-- 非目标：
+- Intended behavior / specification references:
+- Implementation changes allowed without another approval:
+- Architecture and interfaces that must remain unchanged:
+- Benchmark, checker, fixture, provider/model and acceptance conditions:
+- Non-goals and conditions requiring human review:
 
-## 固定基线
+## Delegated testing and resources
 
-| 项目 | 版本或值 |
+- Tests and local probes Coding Agents may repeat autonomously:
+- Diagnostic provider/model and tool permissions:
+- Maximum diagnostic cost/time/resources without an additional request:
+- Approved formal experiment matrix, repetitions and total budget:
+- Conditions requiring an immediate stop:
+
+Approval of code changes alone does not authorize paid external probes.
+
+## Baseline
+
+| Item | Fixed version or reference |
 |---|---|
 | Code commit / clean state | |
-| Architecture/document commit | |
+| Approved design document revision | |
 | Fixture / Lean / Mathlib | |
 | Provider / model | |
-| Prompt / schema / tools hash | |
-| Budget / Core / timebox | |
+| Prompt / tools / schema hashes | |
+| Core / budget / timebox | |
 
-## 实验矩阵
+## Experiment plan
 
-| EXP ID（运行前登记） | 类型 / 对照 | 改变的变量 | 主要观察与反证 | 停止条件 |
+| Formal EXP ID (allocated before the run) | Comparison / purpose | Changed variable | Observation and falsifier | Stop condition |
 |---|---|---|---|---|
 | | | | | |
 
-## 评估和结束条件
+Ordinary deterministic tests and in-scope debug probes do not require an EXP ID.
 
-记录支持、反驳、证据不足的判据、必须保护的行为，以及实验未触发时的处理。不得看完结果才改阈值。
+## Human review
 
-## 负责人审阅与关闭
-
-- 证据支持的事实：
-- 解释与替代原因：
-- 仍未知：
-- 合同内修复：
-- 推迟或拒绝的提案：
-- 决定：继续 / 修改范围 / 关闭 / 新阶段
-- 决策人和日期：
+- Established by evidence:
+- Remaining uncertainties and alternative explanations:
+- Contract-aligned fixes:
+- Proposed new research hypotheses or scope changes:
+- Human decision: CONTINUE / REVISE / CLOSE / NEW PHASE
+- Decision owner / date:

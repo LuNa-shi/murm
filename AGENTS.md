@@ -1,38 +1,52 @@
 # SwarmEnv — Coding Agent Instructions
 
-This file guides **Coding Agents developing the SwarmEnv repository**. It is not the system prompt for the research Agents running inside SwarmEnv, and it is not the runtime architecture specification.
+These instructions apply to **Coding Agents developing SwarmEnv**, not to research Agents running inside it. The purpose is to define how humans and Coding Agents work together, particularly which decisions are delegated and which require human approval.
 
-## Start with the task
+## Authority and context
 
-- Confirm the user-approved scope, completion conditions, constraints and whether a current research phase has been approved. Do not infer permission to change direction from historical Issues or experiments.
-- For context, start at [docs/INDEX.md](docs/INDEX.md). Read the relevant parts of [architecture](docs/architecture/INDEX.md) and the affected source/tests, not every document by default.
-- Resolve terminology through [GLOSSARY.md](GLOSSARY.md). New domain names, architecture labels or report section labels require explicit human confirmation before being standardized.
-- Source code and versioned tool schemas describe what currently executes. [docs/STATUS.md](docs/STATUS.md) records what has evidence; an ADR records a decision, not a passing test.
+- **Human-reviewed design and approved phase documents define the intended behavior and work scope.** Current source code and tool schemas show the implementation; tests and experiments show what has been verified. Treat differences as gaps to investigate, not as permission to redefine the design to match existing code.
+- Read [docs/INDEX.md](docs/INDEX.md) for the relevant [architecture](docs/architecture/INDEX.md), [phase](docs/phases/INDEX.md), and workflows. Read the affected source and tests. Do not load the entire documentation set by default.
+- [GLOSSARY.md](GLOSSARY.md) defines domain vocabulary. ADRs explain accepted decisions; historic code and experiments do not override current human-reviewed specifications. If two active requirements conflict, surface the conflict rather than silently choosing one.
+- Do not introduce new project-wide concepts, research directions, API semantics, or report conventions as settled requirements without human review.
 
-## Implement within the approved boundary
+## What you may do autonomously
 
-1. Record the clean implementation commit, affected behavior, counterexample and expected observable outcome.
-2. Develop on an isolated worktree/branch; do not work directly on `main`. A PR must deliver a testable behavior slice, not an unsupported partial contract.
-3. Inspect the full affected path (Agent prompt/capability → Bridge/SDK → domain services → Runtime/runner → tests/report) where relevant. Add or update regression tests, including authorization, retries/idempotency, fencing and failure cleanup as needed.
-4. Run relevant tests and, for code changes where available, `npm test` and `git diff --check`. Record exactly what ran; do not assert a check passed when it was not run.
-5. Review both **Spec** (correct behavior, limits, counterexamples) and **Standards** (quality, security, compatibility and testing); report changed files, commit, findings and unresolved risks.
+Within an approved task or phase, you may:
 
-Detailed process: [docs/workflows/development.md](docs/workflows/development.md).
+1. Inspect code, identify implementation gaps, plan fixes, and edit code and tests in an isolated worktree/branch.
+2. Review your implementation against the approved design, add regression tests, run them, investigate failures, fix issues, and repeat until the behavior is sufficiently supported by evidence. **Do not request approval or send a separate report after every test or debug iteration.**
+3. Run local deterministic checks and **bounded diagnostic probes** within the previously approved environment, provider/model, time and cost limits. Paid or external-resource probes require explicit authorization or a pre-approved allowance; an open-ended research run is not implied.
+4. Adjust implementation details that do not alter the approved contract. Record code versions, important failed checks, final test evidence, and unresolved gaps.
+5. Suggest new research hypotheses and designs with supporting evidence, without assuming that a suggestion authorizes implementation or experiments.
 
-## Experiments and research progress
+The implementation loop is **implement → review against the approved design → test/probe → diagnose → fix → retest**. Continue autonomously while work remains within scope. Summarize meaningful results at completion, major milestones, or when a decision is required.
 
-- Use the human-approved [phase scope](docs/phases/INDEX.md); the Phase/Experiment workflow manages **development of SwarmEnv**, not the Mission/Task of a running Agent.
-- Before starting a run, register an Experiment ID, baseline/variant, exact code/fixture/provider/model/prompt/tool schemas, time/resource budget, primary observation, comparison and stop rule.
-- Run only an **authorized** experiment. No unilateral paid run, changed model/provider, fixture/checker, acceptance rule, resource budget or research hypothesis.
-- Keep raw traces and private state in ignored local `experiments/`. Use [experiment-analysis](.codex/skills/experiment-analysis/SKILL.md) for evidence reconstruction and [docs/workflows/experiment.md](docs/workflows/experiment.md) for the reporting/decision procedure.
-- Separate **Overview** (facts) from **分析判断** (interpretation) and **下一步建议/人类决定**. Missing evidence is unknown, not zero. Task/Material activity, Core utilization and local Judge results do not independently demonstrate useful collaboration or Mission success.
-- A contract bug can be fixed within approved scope. A new hypothesis, broader architecture, input change, or conflicting acceptance requirement goes back to the human owner.
+## What requires human approval
 
-## Repository boundaries and documentation
+Humans decide the **value, importance, and priority of research hypotheses**, which questions a phase should answer, and the research direction. Do not select a new hypothesis and begin testing it on your own.
 
-- Preserve original problem/checker semantics, execution identities, per-Execution private Workspaces, source versions and credentials. Do not alter saved experiment facts to fit a new design.
-- Do not publish raw Agent dialogue, proof/candidate source, stdout/stderr, private database files, authorization tokens or personal paths.
-- Current docs live under `docs/INDEX.md`. No new `archive/` directories or historical redirect stubs: recover obsolete docs by their Git commit. Documentation changes must update inbound links, skills and source references where appropriate.
-- Do not merge PRs, change Issue state or initiate paid experiments unless explicitly authorized for the current task. For a docs-only PR, validate docs/links and scope; do not imply new runtime acceptance.
+Seek an explicit decision before changing an approved hypothesis, architecture or task scope, acceptance criteria, benchmark/fixture/checker, provider/model, or resource budget; before launching an unapproved paid or large-scale experiment; or before merging PRs or changing Issue status. An approved phase may delegate a capped set of runs and repeated tests without requiring approval for each execution.
 
-If a task cannot be completed, explain precisely what was done, what remains unknown and what decision is needed. Do not quietly substitute old design intentions for current code.
+When an implementation failure reveals a contract bug, fix it autonomously if the correction stays within the approved design. If the evidence suggests the design itself is insufficient, document the failure and propose options for human review instead of quietly broadening the work.
+
+## Development and evidence
+
+- Pin the starting commit and describe the intended observable behavior and counterexamples. Implement complete, testable changes on a separate worktree or branch; do not work directly on `main`.
+- Inspect the affected call chain where relevant: Agent prompt/capability, Bridge/SDK, domain services, Runtime/runner, tests and reports. Protect authorization, idempotency, execution fencing, and cleanup.
+- Run relevant tests; for code changes when available, run `npm test` and `git diff --check`. Never claim a check passed if it was not run.
+- Assess correctness against the approved design **and** engineering quality, security, and regression coverage. A passing test is not sufficient evidence if it tests the wrong contract.
+- Link the implementation commit, observed results and reproducible tests to each requirement. Distinguish code inspection, deterministic tests, controlled probes and real-Agent experiments; label unverified behavior explicitly.
+- Deliver a concise summary of changes, evidence, failures, open questions, and any decisions requested from the human owner.
+
+Follow [the development workflow](docs/workflows/development.md). For formally approved research experiments, follow [the experiment workflow](docs/workflows/experiment.md) and use [experiment-analysis](.codex/skills/experiment-analysis/SKILL.md) to reconstruct evidence. **Unit tests and in-scope debugging probes do not require a formal Experiment ID or individual human reports.**
+
+For research reports, **state what happened, what the evidence supports, and what remains uncertain**. Make proposed next steps clear, but never represent an Agent recommendation as a human-approved decision. Counts of Tasks, Materials, checks, or busy Cores do not by themselves prove useful collaboration.
+
+## Repository and data boundaries
+
+- Preserve original problem/checker semantics, execution identities, private per-Execution Workspaces, source version provenance, and credentials.
+- Keep raw Agent conversations, proof/candidate code, stdout/stderr, secret values, private databases and personal paths out of committed reports. Local raw experiments belong in ignored `experiments/`.
+- Keep current documentation indexed at [docs/INDEX.md](docs/INDEX.md). Do not recreate `archive/` directories or historical redirects; use pinned Git history for obsolete documentation. Update affected inbound references when moving files.
+- Never rewrite historical experiment facts to make a new design appear verified. Documentation-only changes cannot establish new runtime acceptance.
+
+If progress is blocked, report exactly what was tried, which facts are known and which human decision is needed.

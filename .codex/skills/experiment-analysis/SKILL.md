@@ -1,51 +1,54 @@
 ---
 name: experiment-analysis
-description: Reconstruct SwarmEnv experiment evidence, analyze Task/Execution/Material/Judge activity, and draft an Overview and evidence-backed analysis for a registered experiment.
+description: Analyze existing SwarmEnv experiment or diagnostic evidence, reconstruct Task/Execution/Material/Judge activity, and produce grounded results and explanations.
 ---
 
 # SwarmEnv experiment analysis
 
-This skill produces an evidence-first **draft**, not a research-direction decision. Read [docs/workflows/experiment.md](../../../docs/workflows/experiment.md), the approved phase description when it exists, the registered experiment input, and [docs/experiments/TEMPLATE.md](../../../docs/experiments/TEMPLATE.md). Do not silently substitute a historical S1–S3 acceptance plan for the currently approved experiment.
+Analyze **existing evidence**. This skill cannot authorize a paid run, choose a new research direction, change an approved fixture/model/checker, or rewrite raw traces. Follow [the experiment workflow](../../../docs/workflows/experiment.md) and the relevant human-approved task or phase.
 
-**Only analyze an existing run.** This skill does not authorize paid runs, change the tested code/model/fixture, approve new hypotheses, or edit raw evidence. Write the detailed local report to `<experiment-directory>/analysis/experiment-analysis.md`. A separate sanitized publication under `docs/experiments/` needs review and explicit approval.
+There are two output paths:
+- **Implementation diagnostics**: small tests and authorized debugging probes may be repeated autonomously and summarized locally or at a milestone. No formal EXP ID or report after every iteration.
+- **Formal research/acceptance experiments**: use the preregistered Experiment ID, approved comparison, stop rules and [canonical report template](../../../docs/experiments/TEMPLATE.md). Write the detailed local analysis to `<experiment-directory>/analysis/experiment-analysis.md`. Only publish a reviewed, sanitized version to `docs/experiments/`.
 
-## 1. Evidence gate
+## Evidence gate
 
-Record the canonical Experiment ID (or exact legacy ID), code commit and clean state, baseline/comparison, fixture/environment, model/provider, prompt/profile/schema identity, resource limits, planned/actual time and outcome. Enumerate metadata, raw Agent JSONL, authoritative Task/Execution state, Runtime/Service events, Material/Workspace/Judge and external observation stores.
+Identify code commit and clean state, tested contract, actual inputs, fixture/environment, model/provider, prompt/tool/schema identity, resources, timebox and actual duration. Inventory metadata, authoritative Task/Execution state, Agent logs, Runtime/Service events, Workspace versions, Materials, Candidate/Judge checks and external observability stores.
 
-- Missing, empty, malformed and not applicable are distinct. **Unknown is not zero.**
-- Use schemas recorded by the run or exact source commit; otherwise say `schema unavailable`.
-- An unexercised code path is `source-verified only`. A deterministic test, real controlled probe and natural Agent run are separate evidence levels.
-- Do not infer hidden model reasoning, predecessor lineage from timestamps, or acceptance from absent failures.
-- Mark missing preregistration or unmatched comparison `retrospective / diagnostic-only` as appropriate.
+- Source-verified, deterministic tests, controlled probes and natural Agent runs are different evidence classes.
+- Missing sources or links are **unknown**, not zero. For a formal run, absent preregistration or unmatched comparison must be identified as retrospective or diagnostic-only.
+- Compare operations with the exact run schema or source commit; otherwise mark `schema unavailable`.
+- Preserve stable IDs. Do not assign an ambiguous record to the latest Session simply because the Core or timestamp is similar. Do not infer hidden model reasoning.
 
-## 2. Task-centric evidence reconstruction
+## Evidence reconstruction
 
-Use [references/evidence-map.md](references/evidence-map.md) to join stable IDs first. Follow each relevant Task from proposal/admission through claims, Execution binding, results and release/closure.
+Use [references/evidence-map.md](references/evidence-map.md) and trace each relevant Task from proposal/admission through Execution, delivery and termination.
 
-**Orchestration:** Which Agent proposed or took responsibility? Did Task Service, Bridge and Runtime agree on owner, Core and Execution? What was actually ready versus waiting, timed out or being cleaned up?
+**Orchestration:** Task selection, claim, authoritative owner/Execution, Runtime bind, wait, release and cleanup. Distinguish available work from selection time, genuine working time, and waiting.
 
-**Coordination:** Which Material was produced for whom? Reconstruct publish → delivered → read → recipient decision → downstream action; distinguish self-checkpoint from inter-Task sharing. A read or consumer count alone does not demonstrate benefit.
+**Coordination:** Material producer, intended recipient, delivery, read, decision and subsequent action. A count or read alone does not prove useful reuse. Preserve decisions of different recipients.
 
-**Execution:** Keep Task/Execution/Session/Core/Workspace identifiers separate. For meaningful windows summarize target, action, immediate result and next effect. Preserve handoff, expiry, fencing, shutdown and continuation distinctions; unknown predecessor is unknown.
+**Execution:** Keep Task, Execution, identity, Session, Core, Workspace and revision separate. For important windows, explain target, Agent action, immediate result and next effect. Check real predecessor/successor lineage; distinguish handoff, expiry, fencing and final cleanup.
 
-**Tools and Judge:** Join each relevant request, service response, returned error or diagnosis and next Agent action. Preserve Candidate content/checker/environment binding. A cache hit or retry is not necessarily a new research iteration. Keep checker source_failure separate from infrastructure failure.
+**Tool/Checker:** Connect actual request, response, error/diagnosis and next action. Preserve Candidate input/checker/environment identity; a replay or cache hit is not another iteration. Separate checker source failures from infrastructure errors.
 
-Group normal events compactly; explain concrete mismatches with IDs and evidence anchors.
+Group routine calls compactly. Report concrete mismatches with evidence anchors and competing explanations.
 
-## 3. Canonical report sections
+## Report
 
-1. **Registration and evidence boundary**: copied from the pre-run record; if missing say so.
-2. **Overview**: immutable inputs, runtime and observed outcomes, task/execution/material/judge facts, protocol, costs and math result. No causal speculation.
-3. **Input surface and process**: what the Agent could see and what it did, including timelines and evidence consumption.
-4. **分析判断**: competing causes (implementation/contract; tools/provider; Agent behavior; experiment confounds; design hypothesis), evidence for/against, uncertainty and falsifiers.
-5. **下一步建议与人工决定**: AI may suggest a bounded diagnostic; only the human phase owner may approve hypothesis/scope/next paid run.
-6. **Evidence index and privacy limitations**: where each claim comes from and what is not visible.
+Formal reports use plain headings:
+- **Setup**: the human-approved question, fixed inputs and evidence boundary.
+- **Results**: what actually happened, with IDs, costs and outcomes; no unsupported causal inference.
+- **Analysis**: what the evidence supports, what may explain it otherwise, and what remains uncertain.
+- **Next steps**: in-scope fixes the Agent can perform, proposals that require human approval, and any recorded human decision.
+- **Evidence and limitations**: source references, unknowns and privacy restrictions.
 
-The published report format is owned by `docs/experiments/TEMPLATE.md`. [references/report-template.md](references/report-template.md) is only the diagnostic checklist; do not maintain competing public formats here.
+For an implementation probe, use only the sections necessary to explain the defect, attempted correction and final verification. An Agent must not turn a debugging explanation into an independently selected **research hypothesis**.
 
-## 4. Acceptance and privacy
+## Verification, costs and privacy
 
-Use **registered** denominators, changed variables, stop rules, comparisons and guardrails. Report PASS, FAIL, INCONCLUSIVE or BLOCKED with actual event coverage. Do not change thresholds after the run, count filler Tasks or whitespace-only edits, or mistake shared-Mission concurrency for independent parallel work.
+Use preregistered criteria for formal studies and approved contract assertions for diagnostics. Report PASS/FAIL/INCONCLUSIVE/BLOCKED with actual coverage. An untriggered case is not a pass; high Task/Material/Core counts are not proof of productive research.
 
-Preserve mathematical result separately from protocol and execution reliability. Report model/tool costs and missing metrics as unknown, not zero. Never publish credentials, raw transcripts, private reasoning, candidate/proof code, stdout/stderr, private paths or unrestricted state DBs. Use relative paths plus event/row/commit IDs; references outside experiment directory use `<external>/<basename>` and store identity.
+Report known costs and unknown amounts explicitly. Never publish raw Agent dialogue, private reasoning, proof/candidate source, credentials, stdout/stderr, private databases or personal absolute paths. Use relative event/row/commit references; external stores use `<external>/<basename>` with store identity.
+
+[references/report-template.md](references/report-template.md) is a diagnostic checklist, not a second authoritative formal template.

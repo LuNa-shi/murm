@@ -1,21 +1,30 @@
-# 人工控制的研究阶段
+# Human-controlled research phases
 
-> Type: Research governance · Status: Active · Source: [ADR 0018](../adr/0018-human-controlled-phases-and-evidence-review.md)
+> Type: Research governance · Status: Active · Based on [ADR 0018](../adr/0018-human-controlled-phases-and-evidence-review.md)
 
-阶段用于控制 **SwarmEnv 项目开发实验**，不等于运行时 Agent 的 Mission 或 Task。阶段负责人批准问题、核心假设/探索范围、允许改变的代码与实验变量、预算、停止条件，并指定独立 worktree。
+A **phase** governs research and development of SwarmEnv, not the internal Mission/Task lifecycle of research Agents running in SwarmEnv.
 
-AI 可以在批准范围内实现、修复合同内 Bug、做确定性测试、执行已获授权的实验、形成 Overview 与分析草稿。改变假设、验收标准、fixture、provider/model、预算、架构边界或对外承诺，应先提出范围变更，不能静默执行。
+## Human responsibility
 
-## 标准循环
+The human phase owner decides which research hypotheses are valuable and important, sets their priority, and approves the question or exploratory boundary, the intended design, experiment controls, allowable resources and stop conditions. An Agent may propose hypotheses and show why they might matter; proposals are not approval.
 
-1. 人类批准 [阶段说明模板](phase-template.md)。
-2. AI 固定代码和文档基线，识别相关契约及待验证行为。
-3. AI 在独立 worktree 开发；每次运行先登记 Experiment ID。
-4. AI 给出可追溯事实与分析，再提交下一步建议。
-5. 人类决定继续、修订、结束阶段，或开启新阶段。
+A phase may include an approved set of implementations, tests and experiment runs. The human can delegate a bounded spending allowance and a repeatable experiment matrix so routine work does not require repeated authorization.
 
-一个阶段以主要研究问题为中心；探索阶段可明确声明多个候选探索，不应伪装成单变量因果证明。缺少已批准的阶段不代表 Coding Agent 可自行选择新的研究方向。
+## Coding Agent autonomy
 
-## 当前阶段
+Within approved scope, an Agent can inspect current code, implement requirements, identify bugs, write tests, repeatedly fix failures, and use previously authorized diagnostic probes. It may also execute and analyze registered runs covered by the approved matrix and budget. It should collect evidence of alignment rather than request permission at each iteration.
 
-本次文档整理不创建/批准下一阶段，也不追溯把旧运行编入新的阶段记录。后续新增阶段说明在此索引并指定实际负责人、状态和 worktree；目录中不存在一份默认批准的空白阶段。
+If a finding suggests the intended design is wrong or a new hypothesis is worth pursuing, the Agent presents the evidence, alternatives and expected impact; the human decides whether to revise or start a phase. Changes in fixture, provider/model, research outcomes, acceptance, resources or architecture that affect the study cannot be made silently.
+
+## Phase flow
+
+1. A human approves a [phase description](phase-template.md), which records research priorities, acceptance conditions and delegated autonomy.
+2. The Agent identifies discrepancies between approved design and current code, then autonomously implements and tests within the boundary.
+3. When approved research runs are needed, the Agent registers formal experiment IDs and runs the authorized matrix.
+4. The Agent consolidates observations and limitations; the human reviews hypotheses and makes the next research decision.
+
+A phase can authorize exploration of a bounded set of candidates but must not be represented after the fact as a clean single-variable causal study unless it was designed that way.
+
+## Current phase registry
+
+This documentation cleanup does not itself approve a new research phase or retrospectively register an earlier run. Add approved, owner-signed phase records here as they are created; no implicit default phase is approved by this index.

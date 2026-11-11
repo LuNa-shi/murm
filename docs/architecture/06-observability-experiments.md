@@ -1,21 +1,20 @@
-# 06. Observability and evidence boundary
+# 06. Observability and evidence
 
-Observability is a bounded projection of evidence. Task, Execution, Context, Workspace and Judge services own authoritative state; the observation store joins events for inspection and dashboard views. A chart or count is not a new authority or an explanation of research progress.
+> Type: Architecture · Status: Current implementation boundary; verify against source and run evidence.
 
-## Evidence distinctions
+Observability is a projection of recorded events, **not** the authority for Task, Execution, Material, Workspace or Judge state. A dashboard may expose what happened but does not automatically explain research progress.
 
-- Published Material ≠ read Material ≠ accepted/used Material ≠ improved output.
-- Shared Mission concurrency ≠ independently scoped Task parallelism.
-- A completed local Task, one checker PASS and final Mission completion are different facts.
-- `protocol_valid=true` does not mean the mathematical goal was achieved.
+## Essential distinctions
+
+- Published Material, read Material, and evidence that a successor **acted on** Material are different observations.
+- Concurrent Executions of a shared Mission Task do not prove useful independent Task decomposition.
+- A Task marked complete, a local Candidate passing Judge, and satisfying the original Mission are distinct outcomes.
+- `protocol_valid=true` does not prove mathematical or collaborative progress.
 - Missing evidence is `unknown`, not zero.
-- Source inspection, deterministic tests, controlled probes and natural Agent runs are different evidence classes.
+- Source inspection, deterministic tests, bounded probes and real-Agent runs support different claims.
 
-## Experiment workflow
+## Using evidence during development
 
-每次经批准的运行先登记输入、变量、对照、预期现象、资源与停止规则。结束后区分：
-1. **Overview**：输入、执行与可验证的事实。
-2. **分析判断**：证据支持的解释、替代原因和未知项。
-3. **下一步建议或决定**：AI 可提出建议，阶段负责人审批方向、范围变化和下一实验。
+The approved design defines intended behavior; source code shows what executes; tests and observations establish what is verified. Coding Agents may run and repeat tests or permitted diagnostic probes autonomously to close implementation gaps. A **new research hypothesis** or changed experimental scope is a human decision.
 
-具体定义只在 [实验流程](../workflows/experiment.md) 与 [报告模板](../experiments/TEMPLATE.md) 维护；`experiment-analysis` Skill 生成证据诊断草稿，不能自行修改阶段目标。
+For a formal experiment, follow the [experiment workflow](../workflows/experiment.md) and [template](../experiments/TEMPLATE.md). Report **Results** (observed facts), **Analysis** (what they support and what remains uncertain), and **Next steps** (Agent proposals and explicit human decisions). The [experiment-analysis skill](../../.codex/skills/experiment-analysis/SKILL.md) provides supporting diagnosis; it does not approve research directions or substitute for the domain authority.

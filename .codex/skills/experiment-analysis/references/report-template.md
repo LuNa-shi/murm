@@ -1,21 +1,22 @@
-# Experiment-analysis diagnostic checklist
+# Experiment analysis — evidence checklist
 
-**唯一的正式发布模板是 [docs/experiments/TEMPLATE.md](../../../../docs/experiments/TEMPLATE.md)。** 本文件只帮助逐项检查证据，避免与项目报告格式维护两套重复规范。
+The only formal publication template is [docs/experiments/TEMPLATE.md](../../../../docs/experiments/TEMPLATE.md). This file is an evidence checklist, not a second report format. Ordinary implementation probes do not need a formal Experiment ID.
 
-## Evidence gate
-- [ ] 实验 ID 与预注册输入、固定代码/模型/fixture/schema/预算、实际开始和结束
-- [ ] 原始元数据、Task/Execution 状态、Runtime、Bridge、Service、Material、Workspace、Judge 的可用性及未知项
-- [ ] source-verified、deterministic、controlled probe、natural run 各自标明
-- [ ] 回溯报告和没有匹配对照的结论被明确标注
+## Input and evidence
+- [ ] Formal runs: preregistration, human-approved research question, changed variables, clean commit, fixture/model/schema/budget, start and end times
+- [ ] Diagnostic probes: approved behavior to verify, actual code and input, failure and final test/probe result
+- [ ] Available and missing metadata, Task/Execution state, Runtime/Bridge/Service events, Material, Workspace and Judge records
+- [ ] Separate source-verified, deterministic, controlled probe and natural-run evidence
+- [ ] Clearly label retrospective analyses and unmatched comparisons
 
-## Four diagnostic lenses
-- [ ] Orchestration：Task 创建/认领/绑定/释放，错误权限和竞争
-- [ ] Coordination：Material 生产→读取→接收决定→后续行为，包含未消费与重复使用
-- [ ] Execution：Task、Execution、Session、Core、Workspace、版本、handoff/expiry/cleanup
-- [ ] Tools/Judge：实际工具请求、可见错误、检查器诊断、下一 Candidate/行动
+## Four diagnostic perspectives
+- [ ] **Orchestration:** Task creation, claim, binding, release, permission errors and contention
+- [ ] **Coordination:** Material publication, read, recipient decision and subsequent action
+- [ ] **Execution:** Task/Execution/Session/Core/Workspace, versions, handoff, expiry and cleanup
+- [ ] **Tools/Judge:** actual requests, errors, checker results and next Candidate/Agent action
 
-## Publication check
-- [ ] Overview 只写可核实事实，分析判断提供替代原因和反证
-- [ ] 下一步建议不冒充人类决定
-- [ ] 判据沿用预注册；未知/未触发不能写 PASS
-- [ ] 脱敏后无凭据、原始对话、证明源码、候选源码、stdout/stderr 或私人绝对路径
+## Reporting checks
+- [ ] **Results** present verifiable observations; **Analysis** gives alternative explanations and falsifiers
+- [ ] **Next steps** distinguish the Agent's suggestions from human-approved research decisions
+- [ ] Formal runs use preregistered criteria; unknown or untested conditions cannot be PASS
+- [ ] Sanitized output contains no credentials, raw dialogue, proof/candidate source, stdout/stderr or private paths

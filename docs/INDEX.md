@@ -1,33 +1,34 @@
-# SwarmEnv 文档索引
+# SwarmEnv documentation index
 
-> Status: Active · 核对基线：PR #116 分支，运行实现基线 `02adbb43`（PR #115 合并树），2026-11-11。
->
-> 本目录只保留当前有维护责任的说明、可复用流程、决策记录和一份标明回溯性质的示例。历史设计、Issue 证据和旧报告请查固定 Git 提交，不再放在工作树中参与当前决策。
+> Status: Active · Current runtime code baseline: `02adbb43` (PR #115 tree) · Reviewed 2026-11-11
 
-## 根据问题选择入口
+This is the single entry point for active project documentation. Historic designs, retired Issue plans and old experiment reports are available from Git history, not kept as parallel current specifications.
 
-| 需要做什么 | 入口 | 权威范围 |
+## Find the right document
+
+| Question | Document | Responsibility |
 |---|---|---|
-| 了解项目和研究目标 | [PROJECT.md](PROJECT.md) | 问题与研究范围；不预设具体实现 |
-| 查当前代码实现及证据缺口 | [STATUS.md](STATUS.md) | 版本化状态快照；不能替代源码和实验 |
-| 理解系统模块、任务、接续 | [architecture/INDEX.md](architecture/INDEX.md) | 当前实现边界与交互 |
-| 开发或 Review PR | [workflows/development.md](workflows/development.md) | Coding Agent 工作流程 |
-| 登记、运行、分析实验 | [workflows/experiment.md](workflows/experiment.md) | 实验流程与证据要求 |
-| 查看获批准的研究阶段 | [phases/INDEX.md](phases/INDEX.md) | 人类批准的范围、假设与权限 |
-| 查实验 ID 或报告格式 | [experiments/INDEX.md](experiments/INDEX.md) | 实验登记、报告与示例 |
-| 理解为什么做出某项决定 | [adr/INDEX.md](adr/INDEX.md) | 设计决策的背景和取舍 |
-| 启动基准或观测服务 | [operations/benchmark.md](operations/benchmark.md)、[operations/observability.md](operations/observability.md) | 操作指引，使用前核对当前脚本 |
+| What are we researching? | [PROJECT.md](PROJECT.md) | Research goals and open questions, not a mandated implementation strategy |
+| What is implemented and actually supported by evidence? | [STATUS.md](STATUS.md) | Versioned evidence snapshot, not a substitute for source or new experiments |
+| How does the system work today? | [architecture/INDEX.md](architecture/INDEX.md) | Runtime modules, Task/Execution boundary, state and continuity |
+| How does a Coding Agent implement and verify changes? | [workflows/development.md](workflows/development.md) | Autonomous implementation and testing within approved designs |
+| How should experiments be conducted? | [workflows/experiment.md](workflows/experiment.md) | Diagnostic probes versus formally approved research experiments |
+| Who chooses the next research question? | [phases/INDEX.md](phases/INDEX.md) | Human-owned hypothesis selection, priority and bounded delegation |
+| How are formal experiments registered? | [experiments/INDEX.md](experiments/INDEX.md) | Experiment IDs, report template, representative historical example |
+| Why was a design chosen? | [adr/INDEX.md](adr/INDEX.md) | Architectural decisions and tradeoffs |
+| How are benchmark and observability tools operated? | [operations/benchmark.md](operations/benchmark.md), [operations/observability.md](operations/observability.md) | Operational references, subject to current CLI/source verification |
 
-全局 Coding Agent 指令见 [AGENTS.md](../AGENTS.md)，领域术语见 [GLOSSARY.md](../GLOSSARY.md)；前者不承载具体运行时 API 设计，后者不维护参数和状态机。`.codex/skills/experiment-analysis/SKILL.md` 是实验诊断执行技能，必须遵循本仓库的实验规范。
+[AGENTS.md](../AGENTS.md) defines the human/Coding Agent working boundary; [GLOSSARY.md](../GLOSSARY.md) defines SwarmEnv runtime terminology. The [experiment-analysis skill](../.codex/skills/experiment-analysis/SKILL.md) describes how to reconstruct evidence for an existing run.
 
-## 文档维护约定
+## Authority and maintenance
 
-- 当前代码和运行事实以实际源码、固定提交、实验元数据为准；架构说明只解释并链接它们。
-- 新增概念和报告栏目名称先明确取得人类确认。草案不可悄然变成接口契约。
-- 同一个流程只在一个权威文件维护。ADR 解释历史决策缘由，不覆盖当前代码。
-- 当前文档更新时记录核对版本和未验证项，禁止以文档 PR 声称新的实验结果。
-- 不建立 `archive/`、旧路径占位文件或额外的 `CONTEXT.md`；历史通过 Git 固定提交追溯。
+- **Human-reviewed design and approved phase documents** define the intended behavior and what a Coding Agent is permitted to change. A draft is not an approved contract.
+- **Source code and tool schemas** describe the implementation. **Tests and experiment records** establish what was actually verified. If they disagree with an approved design, record the discrepancy and investigate; do not silently rewrite the requirement to match code.
+- ADRs explain decisions; old Issue plans and historical runs do not override active approved documents.
+- The human owner selects valuable research questions and authorizes scope and resources. Coding Agents can autonomously repair, test and repeat within those bounds; a new research hypothesis requires review.
+- Update the applicable active document and evidence references when an approved decision changes. Avoid competing copies of the same procedure. New project-wide terms and report conventions require human review.
+- Do not create `archive/` folders, redirect stubs or a second `CONTEXT.md`. Obsolete documents can be recovered by pinned Git commits.
 
-## 历史资料如何找
+## Historical records
 
-PR #116 整理前的文档树： [`02adbb43/docs`](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs)。旧实验和 Issue 附录都可以在此提交查看；原始运行证据可能只存在于本地忽略目录中，Git 不会自动保存它们。旧文档不能证明当前实现或审批状态。
+Read the [fixed `docs/` tree at `02adbb43`](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs) for pre-cleanup documents and old Issue reports. Original raw experimental evidence may live only in ignored local storage; Git history does not automatically contain those raw files.

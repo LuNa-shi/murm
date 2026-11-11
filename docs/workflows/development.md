@@ -1,28 +1,40 @@
-# Coding Agent 开发与 Review 流程
+# Development workflow for Coding Agents
 
 > Type: Workflow · Status: Active · Updated: 2026-11-11
 
-## 接受任务前
+The [AGENTS.md](../../AGENTS.md) file owns human/Agent authority boundaries. This document describes the practical development loop; it does not confer approval for a new research hypothesis.
 
-1. 明确用户批准的工作范围、目标行为、禁止改动、成功与失败标准；较大的研究改变必须有 [阶段说明](../phases/INDEX.md)。
-2. 从 [文档索引](../INDEX.md) 选择相关架构资料，直接读受影响源码、测试与工具 schema；不要因为旧 Issue 或归档声称的设计而更改当前行为。
-3. 固定起点 commit，记录已知问题、预期修改、潜在冲突；如 PR 有新的提交，先复核 head。
+## 1. Establish the contract
 
-## 实现
+- Identify the human-reviewed design requirement, approved phase or assigned issue, observable success and failure cases, and explicit non-goals.
+- Inspect the relevant [architecture](../architecture/INDEX.md), current source, tool schemas and tests. Current implementation is evidence of what executes, not authority to change a design requirement.
+- Record the clean starting commit. If the PR head has moved, inspect its new changes before proceeding.
+- If approved sources conflict, report the inconsistency; do not resolve it by silently conforming the documentation to current code.
 
-1. 使用独立 worktree/分支，不直接在 `main` 开发。
-2. 一个 PR 尽量提供可以完整验证的行为变化，不把必需的测试或接口使用方留给后续不确定工作。
-3. 在改动前后补充相关回归；检查权限、执行身份、重放、跨执行写入、错误分类与清理等受影响的边界。
-4. 不为让旧测试变绿而静默改变原题、Judge、fixture、Provider/model、预算或保护条件；确需改变设计时先回到批准流程。
-5. 不修改原始实验或用户资料；数据/凭据只保存在授权且忽略的位置。
+## 2. Iterate autonomously within scope
 
-## 交付检查
+1. Work on a dedicated branch/worktree, never directly on `main`.
+2. Implement a complete behavior slice and review it against the intended contract.
+3. Run focused regression/integration tests. Reproduce failures, inspect the evidence, correct the code, and rerun as needed.
+4. If deterministic tests are insufficient, run a **small, bounded diagnostic probe** when its tools, environment and spending are already authorized. Keep the commit, input, result and failure evidence locally; a formal Experiment ID is not needed for ordinary debugging.
+5. Repeat this loop until the implementation is supported by sufficient evidence or a real blocker is identified. No individual status report or new approval is required for every test, repair or in-scope rerun.
 
-- 执行相关自动化测试；代码 PR 在可用环境中运行 `npm test` 和 `git diff --check`。
-- 文档 PR 检查当前链接、文档权威关系、历史路径引用、敏感信息及非文档文件是否意外变化；不把文档修改宣称为真实实验改进。
-- 分别 Review **Spec**（目标行为、范围、反例）与 **Standards**（安全、可维护性、测试和项目约束）。
-- 报告 commit、改动文件、执行了哪些检查、未运行的检查及原因、已知风险和后续提议。未经明确授权，不合并 PR、不关闭/创建 Issue，也不启动付费实验。
+Bug fixes that restore the accepted behavior are delegated. A new architecture direction, hypothesis, benchmark/checker, provider/model, acceptance threshold or resource expansion is not.
 
-## 文档变更
+## 3. Verify alignment
 
-当前规范使用稳定路径；已不适用的内容直接从工作树删除，历史使用固定 Git commit 恢复。不得新建 `archive/` 或旧路径导航占位。概念与栏目名称的新增先让负责人确认；不得由 Coding Agent 悄然创造第二套术语。
+- Trace the affected boundaries as appropriate, including caller/Bridge/SDK/service, Runtime, prompt/schema, and tests.
+- Verify both intended behavior and guardrails: authentication, execution identity, idempotency, fencing, concurrency, error handling, cleanup, privacy and costs when relevant.
+- For code changes, run the relevant tests and, if available, `npm test` and `git diff --check`. Clearly identify any test not executed.
+- Separate **implementation done**, **deterministic verification**, **real-Agent observations**, and **not yet validated**. Do not turn static plausibility into an acceptance claim.
+- Only run a formal registered experiment when it is needed and approved under [the experiment workflow](experiment.md); a quick debugger probe is not a substitute for controlled research evidence.
+
+## 4. Report at decision points
+
+At a meaningful milestone or completion, report changed files and commit, intended contract, tests/probes performed, representative failures and fixes, evidence of alignment, unresolved limits, and suggested next actions. Escalate immediately if completing the task requires changing the approved scope or research hypothesis.
+
+Unless explicitly authorized, do not merge a PR, change Issue status, start a paid run outside an approved allowance, or modify original experiment inputs or private data.
+
+## 5. Maintain documentation
+
+Update the current relevant specification and links when an approved design changes; do not create a second source of truth in an Issue, readme or new `archive/` directory. Recover obsolete documents from pinned Git history. New project-wide terms or report conventions need human review.
