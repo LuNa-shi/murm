@@ -855,7 +855,7 @@ class DynamicCollaborationAdapter {
   }
 }
 
-async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, taskModel = undefined, agentAdapterFactory = null, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500, normalFlow = undefined }) {
+async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_test', cheat = false, noWork = false, fileCandidate = false, invalidClaim = false, hardToolError = false, selectionOnly = false, agentAdapterFactory = null, onAdapter = null, checker = null, observationStore = null, watchdogTimeoutMs = undefined, watchdogIntervalMs = undefined, maxInfrastructureRetries = undefined, timeboxMs = 500 }) {
   return runBenchmarkProject(problem(id), config, {
     experimentDir,
     reportDir,
@@ -866,8 +866,6 @@ async function runFixture({ reportDir, experimentDir = reportDir, id = 'putnam_t
     watchdogTimeoutMs,
     watchdogIntervalMs,
     maxInfrastructureRetries,
-    ...(normalFlow === undefined ? {} : { normalFlow }),
-    ...(taskModel === undefined ? {} : { taskModel }),
     stopOnSolved: true,
     repositoryCommit: 'test-repository-commit',
     repositoryWorktreeDirty: false,
@@ -922,7 +920,6 @@ test('flat benchmark profile uses a Mission queue and run-length Executions with
       reportDir,
       experimentDir,
       id: 'putnam_flat_task_model_test',
-      taskModel: 'flat',
       timeboxMs: 1_500,
       onAdapter: (adapter) => adapters.push(adapter),
     });
@@ -1234,7 +1231,6 @@ test('checker infrastructure errors returned by submit_candidate retain actionab
       id: 'putnam_checker_error_test',
       maxInfrastructureRetries: 1,
       timeboxMs: 1_500,
-      normalFlow: true,
       checker: {
         preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: { exit_code: 0 } }),
         check: async () => ({ verdict: 'ERROR', evidence: { checker_started: false, error_code: 'ENOENT', diagnostic: 'spawn lake ENOENT' } }),
@@ -1312,7 +1308,6 @@ test('flat Judge source failure stays on the same Task and each Execution can re
       reportDir,
       experimentDir,
       id: 'putnam_flat_feedback_task_test',
-      taskModel: 'flat',
       timeboxMs: 1_500,
       agentAdapterFactory: ({ env }) => new FlatFailureAdapter({ env }),
       checker: {
