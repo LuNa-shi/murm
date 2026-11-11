@@ -2,13 +2,17 @@
 
 ## 当前设计入口
 
-[AGENTS](../AGENTS.md)给出项目约束，[GLOSSARY](../GLOSSARY.md)定义术语，[架构](architecture.md)解释整体流程，[运行契约](20261102-agent-task-runtime-contract.md)规定共同Mission、主动Task、Progress/Git和identity轮换。新草案纳入用户最新决定：无任务数量配额、Mission共享并行、保存失败有界放弃未保存变化。
+[AGENTS](../AGENTS.md)给出项目约束，[GLOSSARY](../GLOSSARY.md)定义术语，[当前架构目录](architecture/README.md)解释最新main的模块边界，[运行契约](20261102-agent-task-runtime-contract.md)规定共同Mission、主动Task、Progress/Git和identity轮换。根目录的 `architecture.md` 是第一阶段目标架构历史入口，不与当前实现说明混用。
 
-[实现状态](implementation-status.md)如实区分要求与代码。[固定基线复盘](reviews/task-centric-baseline.md)保留原版本证据，[符合性审计](reviews/phase-1-conformance-audit.md)将确定问题分配给后续修复，不定义第二套规范。
+[当前架构目录](architecture/README.md)按模块解释最新main的实现边界。[实现状态](implementation-status.md)如实区分要求与代码。[固定基线复盘](reviews/task-centric-baseline.md)保留原版本证据，[符合性审计](reviews/phase-1-conformance-audit.md)将确定问题分配给后续修复，不定义第二套规范。
 
 ## 第一阶段计划与验收
 
 [三个Issue草案](plans/phase-1/README.md)按完整行为组织。[两小时协议](validation/phase-1-acceptance.md)规定匹配与判定，[逐项行为表](validation/20261102-phase-1-behavior-acceptance.md)连接每项实现、可观察结果、反例和证据。不得只以总利用率或单次演示验收全部功能。
+
+## Stage、实验和历史
+
+[Stage协作规范](stages/README.md)规定人类阶段负责人和AI执行者的边界。[Stage Charter模板](stages/stage-charter-template.md)规定每个大阶段要先拍板的内容。[实验规范](experiments/README.md)规定规范Experiment ID、Truth/Assessment/Decision报告和证据边界。以[R16示例](experiments/EXP-20261111-01-r16-example.md)查看一份完整的可读报告。
 
 ## 开发、运行和历史
 

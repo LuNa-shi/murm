@@ -4,7 +4,7 @@
 
 ## 阅读顺序与规范效力
 
-先读本文件、[术语表](GLOSSARY.md)、[目标架构](docs/architecture.md)、[Agent Task 运行契约](docs/20261102-agent-task-runtime-contract.md)，再读[第一阶段计划](docs/plans/phase-1/README.md)和相关代码。`CONTEXT.md` 只作导航。
+先读本文件、[术语表](GLOSSARY.md)、[当前架构目录](docs/architecture/README.md)、[Agent Task 运行契约](docs/20261102-agent-task-runtime-contract.md)，再读[第一阶段计划](docs/plans/phase-1/README.md)和相关代码。根目录的 `docs/architecture.md` 保留为第一阶段目标架构历史入口；当前main的模块边界以 `docs/architecture/` 为准。`CONTEXT.md` 只作导航。
 
 本文件定义约束，运行契约给出接口和状态细节，架构文档解释整体流程；三者必须一致。Issue 细化交付与验收，不能默默覆盖原则。冲突需要显式设计变更，不能选择更符合旧代码的文件。归档、旧 Issues、历史实验和 Notion 是来源或证据，不构成第二套当前规范。既有实验事实不随新设计改写。
 

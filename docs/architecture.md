@@ -1,5 +1,7 @@
 # Task-oriented Swarm：第一阶段目标架构
 
+> 当前 main 的实现导览已迁入 [architecture/](architecture/README.md)。本文保留第一阶段目标架构和设计约束，不能单独作为当前代码已经实现的证明。
+
 状态：PR #110 设计草案，尚非已实现能力。本文说明整体流程，详细契约见[Agent Task运行契约](20261102-agent-task-runtime-contract.md)，约束见[AGENTS](../AGENTS.md)，差距见[实现状态](implementation-status.md)。本次根据用户澄清修订，不再采用单一执行者的Mission入口或任务数量配额。
 
 ## 1. 同一个目标，两种工作范围
