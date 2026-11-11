@@ -12,13 +12,12 @@ Current research experiments primarily use PutnamBench and Lean/Mathlib to exami
 | Coding Agent instructions and permissions | [AGENTS.md](AGENTS.md) |
 | Current documentation map | [docs/INDEX.md](docs/INDEX.md) |
 | Human-reviewed development task | **Approved GitHub Issue** (Issue discussion and acceptance criteria) |
-| Technical implementation plan for a complex Issue | [Issue implementation notes](docs/phases/INDEX.md) |
 | Accepted runtime architecture | [docs/architecture/INDEX.md](docs/architecture/INDEX.md) |
 | Implementation progress and evidence | [docs/STATUS.md](docs/STATUS.md) |
 | Development and experiment workflows | [Development](docs/workflows/development.md) · [Experiments](docs/workflows/experiment.md) |
 | Domain vocabulary | [GLOSSARY.md](GLOSSARY.md) |
 
-The GitHub Issue is the human-facing place to approve **why** a change matters, **what** it should do, and **which observations** constitute success. For long-running work, the Coding Agent may keep Issue-numbered implementation notes containing technical context pointers; the GitHub Issue remains the spec. No separate Phase approval document is required.
+The GitHub Issue is the human-facing place to approve **why** a change matters, **what** it should do, and **which observations** constitute success. The GitHub Issue and its human-approved comments are the sole requirements and acceptance source. Keep implementation decisions, handoffs, ticket dependencies, and progress links in GitHub Issues/PRs rather than a separate local Phase or spec document.
 
 ## Implementation map
 
