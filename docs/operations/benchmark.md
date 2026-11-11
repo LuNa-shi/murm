@@ -1,17 +1,18 @@
-# 基准环境与运行入口
+# Benchmark environment and operation
 
-> Type: Operations · Status: Verify commands against current scripts before use · 2026-11-11
+> Type: Operations · Status: Verify commands against current source before use · Updated 2026-11-11
 
-本仓库当前使用 PutnamBench/Lean/Mathlib 做系统协作机制实验。`scripts/run-putnambench-benchmark.mjs` 是已有入口；`config/`、`fixtures/`、`services/` 和 `src/benchmark/` 决定实际行为。这里不是新的运行协议，具体参数以该提交的脚本为准。
+SwarmEnv currently uses PutnamBench, Lean/Mathlib and multi-Core runs to test collaboration mechanisms. `scripts/run-putnambench-benchmark.mjs` is the existing benchmark entry. The current CLI, `config/`, `fixtures/` and `src/benchmark/` are authoritative for supported arguments and actual behavior.
 
-## 运行前检查
+## Before a formal run
 
-1. 必须有已批准的 [阶段说明](../phases/INDEX.md) 和 [实验登记](../experiments/INDEX.md)。付费真实实验需要明确授权；不因文档指令自动启动。
-2. 锁定 clean SwarmEnv commit、PutnamBench revision、Lean/Mathlib、模型和 provider、prompt/schema、Core 数和总预算；相同输入才可做匹配对照。
-3. 凭据使用忽略的本地 `.env` 或环境变量。`.env.example` 仅用于非敏感变量名/默认提示，不输出 secret。
-4. 在本地忽略的 `experiments/` 写原始数据；提交到 `docs/experiments/` 的只能是脱敏摘要。环境缺失则记录 BLOCKED，不能静默切换 provider/model。
+1. Confirm the **human-approved GitHub Issue** and its authorized experiment plan, input configuration, resource/cost allowance and stopping conditions. A separate Phase document is not required.
+2. Register a formal [Experiment ID](../experiments/INDEX.md) before execution; ordinary deterministic tests and in-scope diagnostic probes do not require formal registration.
+3. Pin clean code commit, PutnamBench/Lean/Mathlib revisions, provider/model, prompt/profile/schema identities, Core count and total budget. Do not alter the baseline or checker silently.
+4. Use ignored local `.env` or process environment for credentials. `.env.example` contains nonsecret examples only; never publish secret values or raw Agent conversations.
+5. Keep raw evidence in ignored `experiments/`. Only reviewed sanitized summaries belong in `docs/experiments/`. If inputs are unavailable, report BLOCKED rather than silently substituting.
 
-## 最小入口示意（非自动执行）
+## Entry-point illustration (not an executable approved plan)
 
 ~~~sh
 node scripts/run-putnambench-benchmark.mjs \
@@ -25,4 +26,4 @@ node scripts/run-putnambench-benchmark.mjs \
   --experiment-dir experiments/<registered-id>
 ~~~
 
-参数组合与实际可用性必须先核对当前脚本，示例中的 Core 数和题目不是默认研究决策。运行后按 [实验流程](../workflows/experiment.md) 生成并审阅报告。服务部署另见 [Built-in](../../services/builtin/README.md) 和 [Mathlib Search](../../services/mathlib-search/README.md)。
+Check every option against the actual script and approved Issue before use; the example's model-independent placeholders, Core count and problem are not defaults for future research. Use the [experiment workflow](../workflows/experiment.md) for reporting. Built-in and Mathlib service deployment references: [built-in services](../../services/builtin/README.md) and [Mathlib Search](../../services/mathlib-search/README.md).

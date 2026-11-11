@@ -1,10 +1,10 @@
-# 架构决策记录（ADR）
+# Architecture decision records
 
-> ADR 解释某一决定为什么形成，不取代当前接口、源码和真实验收。
+ADRs explain the context, decision and tradeoffs behind durable choices. They do not replace a human-approved GitHub Issue, the accepted [Architecture](../architecture/INDEX.md), source code, or verification evidence.
 
-| ADR | 状态及用途 |
+| ADR | Role |
 |---|---|
-| [0017 Task-centric 共同 Mission](0017-task-centric-phase1-contract.md) | 记录第一阶段的设计决定与取舍；运行合同已整理到当前架构，不表示所有行为通过实验 |
-| [0018 人工控制阶段与证据审阅](0018-human-controlled-phases-and-evidence-review.md) | 当前文档与研发流程的决策记录 |
+| [0017: Task-centric shared Mission](0017-task-centric-phase1-contract.md) | Records the historical first-phase design rationale; verify current implementation and evidence separately |
+| [0018: Issue-led research governance](0018-human-controlled-phases-and-evidence-review.md) | GitHub Issue owns approved intent, optional implementation specs serve Coding Agents, STATUS tracks evidence, Architecture records accepted design |
 
-旧的 0001–0016 ADR 原文不在当前工作树保留（也不留跳转占位），可从 [固定 Git 提交的 ADR](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs/archive/2026-11-01/docs/adr) 读取。旧 ADR 的状态只说明其历史上下文，不自动授权当前实现。新的 ADR 必须写明状态、背景、决定、影响及替代方案。
+Original ADR 0001–0016 versions are available in [pinned Git history](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs/archive/2026-11-01/docs/adr). Their old validity does not automatically extend to the latest accepted design. A new ADR should include status, context, alternatives, decision and consequences, and link the approving GitHub Issue.

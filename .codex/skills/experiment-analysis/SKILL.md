@@ -1,19 +1,19 @@
 ---
 name: experiment-analysis
-description: Analyze existing SwarmEnv experiment or diagnostic evidence, reconstruct Task/Execution/Material/Judge activity, and produce grounded results and explanations.
+description: Analyze existing SwarmEnv experimental or diagnostic evidence, reconstruct Task/Execution/Material/Judge activity, and produce evidence-backed results and explanations.
 ---
 
 # SwarmEnv experiment analysis
 
-Analyze **existing evidence**. This skill cannot authorize a paid run, choose a new research direction, change an approved fixture/model/checker, or rewrite raw traces. Follow [the experiment workflow](../../../docs/workflows/experiment.md) and the relevant human-approved task or phase.
+Analyze **existing evidence**. This skill cannot authorize paid runs, choose a new research direction, change an approved fixture/model/checker or rewrite raw traces. Follow [the experiment workflow](../../../docs/workflows/experiment.md), the relevant **human-approved GitHub Issue**, and any [Issue-numbered implementation spec](../../../docs/phases/INDEX.md).
 
 There are two output paths:
-- **Implementation diagnostics**: small tests and authorized debugging probes may be repeated autonomously and summarized locally or at a milestone. No formal EXP ID or report after every iteration.
-- **Formal research/acceptance experiments**: use the preregistered Experiment ID, approved comparison, stop rules and [canonical report template](../../../docs/experiments/TEMPLATE.md). Write the detailed local analysis to `<experiment-directory>/analysis/experiment-analysis.md`. Only publish a reviewed, sanitized version to `docs/experiments/`.
+- **Implementation diagnostics**: small tests and authorized debugging probes may be repeated autonomously and summarized locally or at a milestone. No formal EXP ID or individual report after every iteration.
+- **Formal research/acceptance experiments**: use the preregistered Experiment ID, its parent Issue, approved comparison, stop rules and [canonical report template](../../../docs/experiments/TEMPLATE.md). Write detailed analysis to `<experiment-directory>/analysis/experiment-analysis.md`. Publish only a reviewed, sanitized version to `docs/experiments/`.
 
 ## Evidence gate
 
-Identify code commit and clean state, tested contract, actual inputs, fixture/environment, model/provider, prompt/tool/schema identity, resources, timebox and actual duration. Inventory metadata, authoritative Task/Execution state, Agent logs, Runtime/Service events, Workspace versions, Materials, Candidate/Judge checks and external observability stores.
+Identify the tested Issue contract, code commit and clean state, actual inputs, fixture/environment, model/provider, prompt/tool/schema identity, resources, timebox and actual duration. Inventory metadata, authoritative Task/Execution state, Agent logs, Runtime/Service events, Workspace versions, Materials, Candidate/Judge checks and external observation stores.
 
 - Source-verified, deterministic tests, controlled probes and natural Agent runs are different evidence classes.
 - Missing sources or links are **unknown**, not zero. For a formal run, absent preregistration or unmatched comparison must be identified as retrospective or diagnostic-only.
@@ -24,31 +24,31 @@ Identify code commit and clean state, tested contract, actual inputs, fixture/en
 
 Use [references/evidence-map.md](references/evidence-map.md) and trace each relevant Task from proposal/admission through Execution, delivery and termination.
 
-**Orchestration:** Task selection, claim, authoritative owner/Execution, Runtime bind, wait, release and cleanup. Distinguish available work from selection time, genuine working time, and waiting.
+**Orchestration:** Task selection, claim, authoritative owner/Execution, Runtime binding, waiting, release and cleanup. Distinguish ready work, discovery, productive execution and waiting.
 
-**Coordination:** Material producer, intended recipient, delivery, read, decision and subsequent action. A count or read alone does not prove useful reuse. Preserve decisions of different recipients.
+**Coordination:** Material producer, recipient, delivery, read, decision and subsequent action. A read or count alone does not establish useful reuse. Preserve each recipient's independent decision.
 
-**Execution:** Keep Task, Execution, identity, Session, Core, Workspace and revision separate. For important windows, explain target, Agent action, immediate result and next effect. Check real predecessor/successor lineage; distinguish handoff, expiry, fencing and final cleanup.
+**Execution:** Keep Task, Execution, identity, Session, Core, Workspace and revision separate. For meaningful windows explain target, action, immediate result and next effect. Establish actual predecessor/successor lineage and distinguish handoff, expiry, fencing and cleanup.
 
-**Tool/Checker:** Connect actual request, response, error/diagnosis and next action. Preserve Candidate input/checker/environment identity; a replay or cache hit is not another iteration. Separate checker source failures from infrastructure errors.
+**Tools/Judge:** Link requests, responses, error/diagnostic codes and subsequent action. Preserve Candidate input/checker/environment identity. A replay or cache hit is not necessarily an independent research iteration; checker source failure is not infrastructure failure.
 
-Group routine calls compactly. Report concrete mismatches with evidence anchors and competing explanations.
+Group routine calls compactly and report mismatches with concrete evidence IDs and competing explanations.
 
 ## Report
 
-Formal reports use plain headings:
-- **Setup**: the human-approved question, fixed inputs and evidence boundary.
-- **Results**: what actually happened, with IDs, costs and outcomes; no unsupported causal inference.
-- **Analysis**: what the evidence supports, what may explain it otherwise, and what remains uncertain.
-- **Next steps**: in-scope fixes the Agent can perform, proposals that require human approval, and any recorded human decision.
-- **Evidence and limitations**: source references, unknowns and privacy restrictions.
+Formal reports use:
+- **Setup**: parent approved Issue, fixed inputs, comparison and evidence boundary.
+- **Results**: observed execution, system and research outcomes with IDs, costs and versions.
+- **Analysis**: evidence-supported explanations, alternatives, confounds and remaining uncertainty.
+- **Next steps**: permitted Issue-scope fixes, proposals needing a new human decision, and any recorded approval.
+- **Evidence and limitations**: references, missing data and privacy restrictions.
 
-For an implementation probe, use only the sections necessary to explain the defect, attempted correction and final verification. An Agent must not turn a debugging explanation into an independently selected **research hypothesis**.
+For a local implementation probe, only document what is needed to reproduce the defect and verify the fix. Do not turn a debugging explanation into a self-approved research hypothesis.
 
 ## Verification, costs and privacy
 
-Use preregistered criteria for formal studies and approved contract assertions for diagnostics. Report PASS/FAIL/INCONCLUSIVE/BLOCKED with actual coverage. An untriggered case is not a pass; high Task/Material/Core counts are not proof of productive research.
+For formal studies use the Issue-approved criteria and preregistered comparisons; for diagnostics use the accepted contract and reproducible tests. Report PASS/FAIL/INCONCLUSIVE/BLOCKED with actual coverage. An untriggered condition is not a pass; high Task, Material or Core counts do not by themselves prove useful progress.
 
-Report known costs and unknown amounts explicitly. Never publish raw Agent dialogue, private reasoning, proof/candidate source, credentials, stdout/stderr, private databases or personal absolute paths. Use relative event/row/commit references; external stores use `<external>/<basename>` with store identity.
+Report actual costs and unknown amounts, never zero-filled assumptions. Do not publish raw Agent conversations, private reasoning, candidate/proof source, credentials, stdout/stderr, private databases or private absolute paths. Use relative event/row/commit references; external stores use `<external>/<basename>` and store identity.
 
 [references/report-template.md](references/report-template.md) is a diagnostic checklist, not a second authoritative formal template.

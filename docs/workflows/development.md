@@ -2,39 +2,32 @@
 
 > Type: Workflow · Status: Active · Updated: 2026-11-11
 
-The [AGENTS.md](../../AGENTS.md) file owns human/Agent authority boundaries. This document describes the practical development loop; it does not confer approval for a new research hypothesis.
+The [AGENTS.md](../../AGENTS.md) file defines human/Coding Agent authority. **A human-approved GitHub Issue is the primary requirement and acceptance contract**. An optional Issue-numbered [implementation spec](../phases/INDEX.md) describes how the Agent intends to implement it.
 
-## 1. Establish the contract
+## 1. Establish the Issue contract
 
-- Identify the human-reviewed design requirement, approved phase or assigned issue, observable success and failure cases, and explicit non-goals.
-- Inspect the relevant [architecture](../architecture/INDEX.md), current source, tool schemas and tests. Current implementation is evidence of what executes, not authority to change a design requirement.
-- Record the clean starting commit. If the PR head has moved, inspect its new changes before proceeding.
-- If approved sources conflict, report the inconsistency; do not resolve it by silently conforming the documentation to current code.
+1. Understand the problem and why it matters, expected observable behavior, counterexamples, constraints, evidence requirements and allowed resources from the GitHub Issue.
+2. If asked to plan work, draft the Issue for human review **before** implementing a significant new research direction. A created Issue is not automatically approved. Record explicit approval through the Issue or linked human instruction.
+3. Read [accepted architecture](../architecture/INDEX.md), current code, tool schemas and tests. Record the starting clean commit and any approved Issue changes to the baseline.
+4. Create `docs/phases/issue-<number>-implementation-spec.md` from the [template](../phases/issue-implementation-spec-template.md) when a complex Issue benefits from a durable technical plan. The plan may be updated autonomously but cannot override Issue goals.
 
-## 2. Iterate autonomously within scope
+## 2. Implement and diagnose independently
 
-1. Work on a dedicated branch/worktree, never directly on `main`.
-2. Implement a complete behavior slice and review it against the intended contract.
-3. Run focused regression/integration tests. Reproduce failures, inspect the evidence, correct the code, and rerun as needed.
-4. If deterministic tests are insufficient, run a **small, bounded diagnostic probe** when its tools, environment and spending are already authorized. Keep the commit, input, result and failure evidence locally; a formal Experiment ID is not needed for ordinary debugging.
-5. Repeat this loop until the implementation is supported by sufficient evidence or a real blocker is identified. No individual status report or new approval is required for every test, repair or in-scope rerun.
+- Use a dedicated branch/worktree. Implement an end-to-end behavior slice, including required interfaces and regression coverage.
+- Follow **implement → self-review → test/probe → diagnose → fix → retest**. Run focused tests and bounded probes as needed within approved provider/model, time, cost and task scope.
+- Do not request permission or file a human-facing report for each debugging iteration. Preserve consequential version/input/result evidence and summarize at milestones.
+- If the Issue's approved contract is internally inconsistent or requires a new research hypothesis, modified acceptance condition or broader architecture, return the question to the human in the Issue instead of silently widening the spec.
 
-Bug fixes that restore the accepted behavior are delegated. A new architecture direction, hypothesis, benchmark/checker, provider/model, acceptance threshold or resource expansion is not.
+## 3. Verify alignment and report
 
-## 3. Verify alignment
+- Check requirements and counterexamples against code paths and observed behavior, including authorization, fencing, concurrency, version binding, error handling, cleanup and privacy where applicable.
+- Run relevant tests; for code changes when available run `npm test` and `git diff --check`. Record skipped checks honestly.
+- Update [STATUS.md](../STATUS.md) on meaningful implementation or verification progress, with Issue/PR/commit/test links and unresolved limitations.
+- PRs should link the approved Issue and optional implementation spec. At a milestone, present a consolidated evidence-based summary rather than raw debugging logs.
+- A verified implementation does not automatically mean the scientific hypothesis is supported; distinguish deterministic correctness, real-Agent observations and unvalidated claims.
 
-- Trace the affected boundaries as appropriate, including caller/Bridge/SDK/service, Runtime, prompt/schema, and tests.
-- Verify both intended behavior and guardrails: authentication, execution identity, idempotency, fencing, concurrency, error handling, cleanup, privacy and costs when relevant.
-- For code changes, run the relevant tests and, if available, `npm test` and `git diff --check`. Clearly identify any test not executed.
-- Separate **implementation done**, **deterministic verification**, **real-Agent observations**, and **not yet validated**. Do not turn static plausibility into an acceptance claim.
-- Only run a formal registered experiment when it is needed and approved under [the experiment workflow](experiment.md); a quick debugger probe is not a substitute for controlled research evidence.
+## 4. Design synchronization and closeout
 
-## 4. Report at decision points
+The GitHub Issue remains the human review surface. When a design-changing PR is accepted for merge, bring its accepted contract and behavior into [Architecture](../architecture/INDEX.md); ordinary internal refactors that do not change architecture need no unnecessary rewrite. At Issue closeout, check STATUS, architecture, relevant ADRs and links for consistency.
 
-At a meaningful milestone or completion, report changed files and commit, intended contract, tests/probes performed, representative failures and fixes, evidence of alignment, unresolved limits, and suggested next actions. Escalate immediately if completing the task requires changing the approved scope or research hypothesis.
-
-Unless explicitly authorized, do not merge a PR, change Issue status, start a paid run outside an approved allowance, or modify original experiment inputs or private data.
-
-## 5. Maintain documentation
-
-Update the current relevant specification and links when an approved design changes; do not create a second source of truth in an Issue, readme or new `archive/` directory. Recover obsolete documents from pinned Git history. New project-wide terms or report conventions need human review.
+Do not merge PRs, close or change Issues, or start external paid runs without authorization. Do not maintain obsolete docs in `archive/`; Git history provides historical versions.

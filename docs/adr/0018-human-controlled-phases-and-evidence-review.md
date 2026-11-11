@@ -1,23 +1,23 @@
-# ADR 0018: Human-controlled research phases and evidence review
+# ADR 0018: Issue-led research decisions and evidence-driven development
 
-- Status: Accepted for research and documentation workflow
+- Status: Accepted for development and research governance
 - Date: 2026-11-11
-- Clarified: 2026-11-11 (Coding Agent autonomy within an approved phase)
+- Clarification: GitHub Issue as the human-facing approval unit; local specs are for Coding Agent execution.
 
 ## Context
 
-Research progress was previously driven by a series of implementation commits and experiment reports with sometimes implicit hypotheses, acceptance criteria, and ownership of the next research decision. Requiring human approval for *every* implementation test would also interrupt productive debugging without protecting research direction.
+Research development needs human control of hypotheses, objectives and observable success criteria. At the same time, requiring a human to maintain a separate Phase Charter and approve each debugging run creates duplication and slows implementation. Historically, code changes and experiment reports were not consistently tied to an approved research question.
 
 ## Decision
 
-**Human ownership:** A human-reviewed design and approved [research phase](../phases/INDEX.md) determine intended behavior, which hypotheses are worth testing, their importance and priority, allowed scope, research experiments, budgets and stop conditions. Coding Agents may propose hypotheses and supply supporting evidence but may not independently select a new research direction and execute it.
-
-**Delegated implementation:** Within an approved scope, Coding Agents independently implement, review, test, diagnose, fix and retest. Deterministic checks and bounded diagnostic probes inside an expressly authorized environment and spending allowance do not require a new approval or per-run report.
-
-**Formal experiments:** Each formal research or acceptance run receives a preregistered `EXP-YYYYMMDD-NN` ID. Runs that are part of a human-approved matrix and resource allowance may proceed without per-run review. Changing a research hypothesis, approval boundary, fixture/checker, provider/model, acceptance criteria or budget requires another human decision.
-
-**Evidence and reporting:** Separate observed results from interpretation and recommendations. Use the plain section headings **Results**, **Analysis**, **Next steps**, without inventing another set of formal truth/decision objects. Recommendations that require human approval remain pending until the owner decides.
+1. **GitHub Issue is the approved work contract.** Human reviewers decide why the issue matters, which behavior should be implemented, what outcomes should be observed, which constraints apply, and the acceptance criteria. A drafted or created Issue alone is not approval. An explicit human decision is required.
+2. **Implementation specs are agent working notes.** Files under [docs/phases/](../phases/INDEX.md) are named after Issue numbers, such as `issue-123-implementation-spec.md`, and contain concrete implementation proposals, affected modules, test plans and evidence links. They do not compete with GitHub Issue content or need a second Phase approval.
+3. **Coding Agent autonomy is bounded.** Within an approved Issue, Agents may design implementation details, write code, review, test, diagnose, fix and repeat authorized probes. Significant new research hypotheses, changed scope, criteria or budget require human approval; routine debugging does not.
+4. **STATUS and Architecture have distinct cadences.** [STATUS](../STATUS.md) continuously tracks meaningful implementation and verification progress with Issue/PR/commit evidence. [Architecture](../architecture/INDEX.md) is the accepted baseline, updated when a design-changing PR is accepted for merge and reconciled at Issue closeout.
+5. **Formal runs are registered within the Issue.** Approved research/acceptance experiments use `EXP-YYYYMMDD-NN`; ordinary implementation tests and bounded debug probes do not. Reports use plain **Results / Analysis / Next steps**, and do not label Agent proposals as human decisions.
 
 ## Consequences
 
-Coding Agents can iterate efficiently toward a human-reviewed design, using code changes and reproducible tests as evidence of alignment. Human attention is reserved for significant research choices and permission boundaries. Old experiments remain historically accurate; they are not retroactively treated as preregistered. This ADR changes development governance, not runtime Agent autonomy or research performance.
+A human can manage and review research progress directly in GitHub's web interface while Coding Agents retain durable technical implementation notes in the repository. There is no duplicated human-facing Phase plan. The Issue defines **what and why**, the spec describes **how**, STATUS tracks **evidence and gaps**, and Architecture records **accepted design**.
+
+An umbrella project phase may group several Issues without adding another approval layer. Historical runs remain historical and cannot retroactively prove acceptance.

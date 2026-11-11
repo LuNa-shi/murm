@@ -1,40 +1,41 @@
-# EXP-YYYYMMDD-NN: <short title>
+# EXP-YYYYMMDD-NN: Short title
 
 Status: REGISTERED / RUNNING / COMPLETE / BLOCKED / INCONCLUSIVE
-Approved phase: <link to human-approved phase>
-Experiment ID: <assigned in INDEX before this formal run>
-Repeat of / comparison to: <optional>
+Approved GitHub Issue: [Issue URL and linked approval]
+Implementation spec (optional): [optional path under docs/phases/]
+Experiment ID: [assigned in INDEX before execution]
+Repeat of / comparison to: [optional]
 
 ## Setup (record before the run)
 
 | Item | Fixed value or reference |
 |---|---|
-| Approved hypothesis, comparison and decision criteria | |
-| Clean implementation commit and approved design revision | |
+| Approved Issue requirements, main observations and decision criteria | |
+| Clean implementation commit, Architecture baseline and spec revision | |
 | Baseline and treatment, or approved exploration boundary | |
-| Variables that may change and conditions held fixed | |
-| Problem / fixture, Lean/Mathlib, input hash | |
+| Variables allowed to change and conditions held fixed | |
+| Problem / fixture, Lean/Mathlib and input hash | |
 | Provider/model and prompt/profile/tool schema hashes | |
-| Core, budget, timebox, exact command and stop rule | |
+| Core, budget, timebox, exact command and stop conditions | |
 | Raw evidence and privacy boundary | |
 
-A formally approved research experiment has a registered ID. Implementation unit tests and in-scope diagnostic probes do **not** require this template or a separate human report.
+A formal experiment has a registered ID and is authorized by the Issue or a linked explicit decision. Implementation unit tests and bounded diagnostic probes do **not** require this template or a separate human-facing report.
 
 ## Results
 
-Report actual start/end times, changes from the planned setup, protocol and cleanup status, Task/Execution/Material/Judge and Workspace evidence, cost, and whether the objective was achieved. Use authoritative records and stable IDs; **missing evidence is unknown, not zero**. Avoid causal claims in this section.
+Report actual start/end, any input deviations, protocol and cleanup status, Task/Execution/Material/Judge/Workspace evidence, costs and whether the intended result occurred. Use authoritative records and stable IDs; **missing evidence is unknown, not zero**. Avoid causal claims in this section.
 
 ## Analysis
 
-What does the evidence support? What alternatives, confounds and uncertainties remain? Separate implementation/contract defects, provider/tools/environment failures, Agent actions, and the hypothesis itself. Show the next action after feedback or Material consumption when it matters. A Material read, tool call count or a busy Core is not proof of useful progress.
+State what the observed results support, and which alternatives, confounds and unknowns remain. Distinguish implementation/contract failures, tools/provider/environment problems, Agent decisions and failures of the research hypothesis itself. Publication/read of Material alone does not establish useful reuse.
 
 ## Next steps
 
-- Agent recommendation: <a bounded diagnostic or proposal, supported by evidence>
-- Approved in-scope implementation fixes or repeat runs: <what may proceed without another human decision>
-- New hypothesis, changed goal, budget or architecture: <pending human decision; do not run automatically>
-- Human owner decision and date: <pending / approved / declined / phase closed>
+- Agent recommendation: [bounded, evidence-backed suggestion]
+- Within-Issue work already authorized: [tests, repairs or repeats within approval]
+- New scope, hypothesis, budget or Architecture proposal: [Issue decision required]
+- Human decision/reference: [linked approval state, comment and date]
 
 ## Evidence and limitations
 
-Link fixed commits, relative event/row IDs, missing stores and incomplete comparisons. Never publish credentials, raw Agent conversations, candidate/proof source, stdout/stderr or private absolute paths.
+Link code commits, relative event/row IDs, missing stores and incomplete comparisons. Never publish credentials, raw Agent conversations, proof/candidate source, stdout/stderr or private absolute paths.

@@ -1,20 +1,20 @@
-# ADR 0017：共同 Mission 与 Task-centric 分工
+# ADR 0017: Shared Mission and Task-centric division of work
 
-- Status: Recorded design decision; original phase-one proposal archived in Git history. Current behavior and evidence must be checked against source and [STATUS](../STATUS.md).
-- Origin: 2026-11-01 to 2026-11-05, PR #110 and related task-centric revisions.
+- Status: Recorded design decision. The original phase-one proposal remains available in Git history; actual implementation and evidence should be checked against source and [STATUS](../STATUS.md).
+- Origin: 2026-11-01 to 2026-11-05; PR #110 and related task-centric revisions.
 
 ## Context
 
-早期父子审批树、扁平 Task 和 Judge 重试门禁同时存在，且固定任务路线与任务数量配额限制了自主分工。共同目标、独立责任、Execution 授权和 Session 容量一度混为一体。
+Earlier parent-child approval trees, flat Tasks, and Judge retry gates coexisted. Predefined research routes and Task-count quotas also constrained self-directed work. Shared objectives, independent responsibilities, Execution authorization, and Session capacity were not consistently separated.
 
 ## Decision
 
-- Mission 表达共享研究目标；共享 Mission Task 允许多个独立 Execution。普通 Task 代表有明确交付边界的分工，通常只允许一个有效 Execution。
-- Agent 决定是否登记独立工作，Runtime 管理物理资源；没有普通 Task 可认领时可以继续共同 Mission。
-- 不设置任务数量配额；总预算、容量及超时仍可限制执行。Judge 是可迭代检查工具，局部 PASS 不替代共同目标完成。
-- Progress Material 引用真实版本，文件通过 Execution 私有本地 Git 工作面保存，handoff 与 identity rotation 不得抹除已有成果；保存失败需明确记录实际损失。
-- 具体注册/切换、检查、权限与接续行为以 [当前架构](../architecture/INDEX.md) 和对应源码为准。
+- A Mission expresses the shared research objective. Its shared Mission Task permits multiple independent Executions. An ordinary Task represents separable work with its own delivery boundary and normally only one active Execution.
+- Agents decide whether to create independent work; Runtime manages physical resources. When no ordinary Task is suitable, an Agent may continue the shared Mission.
+- No Task-count quota applies. Overall budgets, model/Core capacity, and timeouts still constrain execution. Judge is an iterative checking tool, and a local PASS is not completion of the original Mission.
+- Progress Material references actual versions. File work uses a per-Execution local Git Workspace. Handoff and identity rotation must preserve prior valid work; saving failure must clearly disclose potential unsaved loss.
+- Exact register/switch, checking, authorization and continuation behavior is documented by [current Architecture](../architecture/INDEX.md) and corresponding source.
 
 ## Consequences
 
-降低中央审批与任务供给瓶颈，同时增加重复探索、分工与汇聚质量难以判断的风险。实验必须分开观察共享 Mission 并发、独立 Task 分工以及成果是否真正被接续。本 ADR 不再维护 S1–S3 的具体 Issue 清单、两小时验收门槛或旧实现状态。
+This reduces centralized approval and task-supply bottlenecks while leaving open the risks of redundant exploration, ineffective delegation and poor convergence. Research evidence must distinguish concurrent shared-Mission Executions, independent Task decomposition, and actual downstream reuse. This ADR does not maintain the old S1–S3 Issue list, fixed two-hour acceptance criteria, or earlier implementation-state assertions.

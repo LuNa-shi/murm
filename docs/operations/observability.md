@@ -1,11 +1,11 @@
-# Observability 运行与数据边界
+# Observability operation and data boundaries
 
-> Type: Operations · Status: Current entry guide, verify flags against source · 2026-11-11
+> Type: Operations · Status: Current reference; verify flags against source · Updated 2026-11-11
 
-`scripts/serve-observability.mjs` 启动观测服务；`src/observability/` 维护事件接收、持久化与查询，相关源码及测试比历史部署说明更权威。前端以 Experiment 列表、Core 时间线、Execution 交互、Task/Material 和 Service 诊断等视图展示已记录活动。
+`scripts/serve-observability.mjs` starts the observation service. `src/observability/` implements event ingestion, storage and queries; current source and tests take precedence over historical deployment notes. The UI provides Experiment lists, Core timelines, Execution interactions, Task/Material views and Service diagnostics.
 
-静态报告导入、实时 SSE 和持久 Observation Store 的配置依赖部署环境。运行或重新部署前检查当前 CLI、监听地址、观测数据库位置及对外访问权限。不要在公共服务暴露 raw Agent 对话、候选/证明源码、token 或私有路径。
+Importing historical reports, serving live Server-Sent Events, and operating a persistent Observation Store depend on the deployment configuration. Before starting or redeploying the service, verify the current CLI, listener address, database path, and external access controls. Never expose raw Agent conversations, candidate/proof source, credentials or private file paths on a public dashboard.
 
-`experiments/.observability/` 是共享观测数据的本地忽略存储；每次实验的观测元数据与固定代码提交需要保留。事件汇总可以帮助定位问题，但不是 Task、Context、Judge 或 Runtime 的权威状态，也不能从利用率或 Material 数直接推断有价值研究。详情见 [架构 06](../architecture/06-observability-experiments.md)。
+`experiments/.observability/` contains ignored local shared observation state. Preserve each experiment's observation metadata and tested code commit. Event summaries can help locate an operational issue but are not authoritative Task, Context, Judge or Runtime state, and they cannot establish useful research from utilization or Material counts alone. See [Architecture 06](../architecture/06-observability-experiments.md).
 
-实验的审阅和报告输出遵循 [实验流程](../workflows/experiment.md)，不是由前端仪表盘自动宣布实验成功。
+Review and reporting follow the [experiment workflow](../workflows/experiment.md), linked to the relevant human-approved GitHub Issue. A dashboard does not independently declare experimental or research success.

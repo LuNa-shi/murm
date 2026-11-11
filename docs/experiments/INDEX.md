@@ -1,13 +1,15 @@
 # Experiment registry
 
-> Type: Registry · Status: Active
+> Type: Formal run registry · Status: Active
 
-**Formal research and acceptance runs** within a human-approved phase use `EXP-YYYYMMDD-NN`, allocated before execution using the UTC date and a non-reused daily sequence. A repeated formal run receives a new ID linked with `repeat_of` or `comparison_to`. IDs do not encode the Issue, model, commit or result.
+Formal experiments performed under a **human-approved GitHub Issue** use `EXP-YYYYMMDD-NN`, allocated before execution using the UTC date and a non-reused daily sequence. Every formal entry links the parent Issue, tested commit and report. Repeated experiments receive new IDs linked via `repeat_of` or `comparison_to`; IDs do not encode Issue, model or outcome.
 
-**Implementation checks are different:** local tests, bounded debugging probes and failure reproductions within the approved scope and budget may be repeated without a formal Experiment ID. Preserve the important version/input/result evidence, then report the consolidated findings at a milestone or decision point. See the [experiment workflow](../workflows/experiment.md).
+Implementation unit tests, bounded debugging probes and failure reproductions are different: they may run and repeat within an approved Issue and resource allowance **without a formal EXP ID**. Keep reproducible evidence and summarize at meaningful milestones. See [experiment workflow](../workflows/experiment.md).
 
-| ID | Kind and status | Run code | Report |
-|---|---|---|---|
-| `EXP-20261111-01` | Retrospective reporting example, **not preregistered** | `93176b7` | [R16 example](EXP-20261111-01-r16-example.md) |
+| ID | Parent Issue / context | Type and status | Code | Report |
+|---|---|---|---|---|
+| `EXP-20261111-01` | Historical R16; no newly approved Issue | **Retrospective example, not preregistered** | `93176b7` | [R16 example](EXP-20261111-01-r16-example.md) |
 
-Use [TEMPLATE.md](TEMPLATE.md) for a new formal experiment. The human phase owner chooses worthwhile research questions and approves changes in scope or resources; registered repetitions within that permission need no per-run approval. Original historical reports can be found in the [fixed pre-cleanup Git tree](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs/experiments), not in a live `archive/` directory.
+Use [TEMPLATE.md](TEMPLATE.md) for each new formal study. An approved Issue may delegate a bounded matrix and repeated runs, so a separate human approval is not needed for every execution. The human decides the value/importance of research hypotheses and any material scope change.
+
+Historical experimental reports can be found in [the fixed pre-cleanup Git tree](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs/experiments). Git does not necessarily include raw records from ignored local experiment directories.
