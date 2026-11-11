@@ -2,7 +2,7 @@
 
 > Type: Workflow · Status: Active · Updated: 2026-11-11
 
-**GitHub Issues organize research and engineering intent.** A human-approved Issue decides why the next work is valuable, what the system should do and which phenomena matter for acceptance. A separate Phase approval document is not required. The [Issue implementation spec](../phases/INDEX.md) can contain technical test plans but does not authorize a new question or extra resources.
+**GitHub Issues organize research and engineering intent.** A human-approved Issue decides why the next work is valuable, what the system should do and which phenomena matter for acceptance. A separate Phase approval document is not required. Optional [Issue implementation notes](../phases/INDEX.md) may point to technical test plans but do not authorize a new question or extra resources.
 
 Distinguish implementation diagnostics from formal research or acceptance experiments.
 
@@ -20,7 +20,7 @@ Within an approved Issue, Coding Agents may run and repeat deterministic checks,
 
 ### 1. Confirm the approved Issue
 
-The human-approved GitHub Issue (or a linked explicit human decision) defines the research question and priority, allowed variations, acceptance observations, baseline, guardrails, resources and stopping conditions. An optional implementation spec may expand test methods **within** these bounds.
+The human-approved GitHub Issue (or a linked explicit human decision) defines the research question and priority, allowed variations, acceptance observations, baseline, guardrails, resources and stopping conditions. Optional implementation notes may record test methods **within** these bounds; they never expand the Issue's approval.
 
 An umbrella research program may contain several linked Issues; the normal control unit is still the approved Issue, not an additional Phase Charter.
 

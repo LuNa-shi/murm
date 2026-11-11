@@ -1,38 +1,37 @@
 # SwarmEnv documentation index
 
 > Status: Active · Documentation reviewed 2026-11-11
->
-> This is the entry point to current maintained documents. Retired design plans and old experimental reports can be recovered from pinned Git commits, not from a parallel `archive/` tree.
+
+This is the entry point for current maintained documents. Old Issues, designs and experimental reports are available in pinned Git history rather than a parallel `archive/` tree.
 
 ## Documentation map
 
 | Question | Source | Responsibility |
 |---|---|---|
-| Why do we research this system? | [PROJECT.md](PROJECT.md) | Broad research motivation; not an approved implementation request |
-| What must the next work item accomplish? | **Human-reviewed GitHub Issue** | Approved motivation, scope, observable outcomes, constraints and acceptance criteria |
-| How will the Coding Agent implement an Issue? | [phases/INDEX.md](phases/INDEX.md) | Optional Issue-numbered implementation specs, derived from GitHub Issues |
-| What system design has been accepted? | [architecture/INDEX.md](architecture/INDEX.md) | Maintained architecture baseline, updated with accepted changes |
-| What has been implemented and verified? | [STATUS.md](STATUS.md) | Continuous Issue/PR-linked progress and evidence |
-| How should an Agent develop and review changes? | [workflows/development.md](workflows/development.md) | Independent implementation and testing within the approved Issue |
-| How should approved research runs be executed? | [workflows/experiment.md](workflows/experiment.md) | Debugging probes vs. preregistered formal experiments |
-| Where are formal experimental reports? | [experiments/INDEX.md](experiments/INDEX.md) | Run registration, evidence and report template |
-| Why was an important design choice made? | [adr/INDEX.md](adr/INDEX.md) | Decisions and tradeoffs |
-| How are benchmark and observation services operated? | [operations/benchmark.md](operations/benchmark.md), [operations/observability.md](operations/observability.md) | Operational references verified against current source |
+| Why are we researching SwarmEnv? | [PROJECT.md](PROJECT.md) | Research motivation and open problems, not a task approval |
+| What should the next work item deliver? | **Human-approved GitHub Issue / accepted Agent Brief** | Intended behavior, rationale, scope and acceptance |
+| Which engineering process should be followed? | **Installed Matt engineering skills** and [AGENTS.md](../AGENTS.md) | `/to-spec`, `/to-tickets`, `/implement`, `/implement-spec`, `/tdd`, `/code-review`, `/pr` |
+| Where are tracker/triage/domain skill settings? | [agents/](agents/issue-tracker.md) | GitHub Issue tracker, triage labels and domain docs |
+| Where should long-running local execution context go? | [phases/INDEX.md](phases/INDEX.md) | Optional Issue-numbered implementation notes, **not** a second spec |
+| What is the accepted system design? | [architecture/INDEX.md](architecture/INDEX.md) | Maintained architecture baseline |
+| What is implemented and verified? | [STATUS.md](STATUS.md) | Issue/PR/commit evidence and gaps |
+| What are the SwarmEnv-specific workflows? | [workflows/development.md](workflows/development.md), [workflows/experiment.md](workflows/experiment.md) | Project constraints layered on installed skills |
+| Where are formal experiments? | [experiments/INDEX.md](experiments/INDEX.md) | Registered runs and reports |
+| Why was a design chosen? | [adr/INDEX.md](adr/INDEX.md) | Durable design decisions |
+| How are tools operated? | [operations/benchmark.md](operations/benchmark.md), [operations/observability.md](operations/observability.md) | Operational notes, checked against source |
 
-[AGENTS.md](../AGENTS.md) governs human/Coding Agent permissions. [GLOSSARY.md](../GLOSSARY.md) defines domain vocabulary; the [experiment-analysis skill](../.codex/skills/experiment-analysis/SKILL.md) explains evidence reconstruction.
+Root [GLOSSARY.md](../GLOSSARY.md) defines runtime vocabulary. The [experiment-analysis skill](../.codex/skills/experiment-analysis/SKILL.md) reconstructs existing experiment evidence.
 
-## Design authority and lifecycle
+## Sources of authority
 
-**GitHub Issue → optional Implementation Spec → implementation and evidence in STATUS → accepted Architecture.**
+- **Human-approved GitHub Issue or accepted Agent Brief:** product/research requirements and acceptance.
+- **Accepted Architecture/ADRs:** baseline outside the Issue's approved change.
+- **Installed Matt engineering skills:** engineering procedure; [AGENTS.md](../AGENTS.md) adds human/Agent permissions and SwarmEnv-specific boundaries.
+- **Source, tests and experiments:** implemented and observed behavior; [STATUS](STATUS.md) tracks meaningful verification milestones.
+- **Optional local notes in `phases/`:** technical context pointers for agents, not an independent Phase approval or a replacement for the GitHub Issue/ticket graph.
 
-- A **human-reviewed Issue** is authoritative for its explicitly approved change. The Implementation Spec is the Agent's technical plan and never changes the Issue's intended outcome.
-- **Architecture** is the accepted baseline outside that change. It is updated as design-changing PRs are accepted, and reconciled at Issue closeout. It does not become a log of unverified technical proposals.
-- **STATUS** follows implementation and verification progress, distinguishing code changes, tests, controlled probes, real-Agent observations and unknowns.
-- Source and tool schemas show what actually executes; tests and experiment records substantiate what was observed. Historic evidence does not silently replace an approved requirement.
-- ADRs preserve the reasoning behind major decisions, rather than creating another authority for an Issue's acceptance criteria.
+At design-changing PR merge, synchronize the accepted Architecture. At Issue closeout, verify Architecture, STATUS, code and the Issue's evidence links are aligned. See AGENTS.md for full decision boundaries and permission rules.
 
-No independently approved Phase plan is required for normal work. A broader research effort may link several Issues, but approval still belongs to the Issue or an explicit human decision. See AGENTS.md for the complete permission rules.
+## Historical records
 
-## Historical documents
-
-The [pre-cleanup `docs/` tree at `02adbb43`](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs) preserves previous tracked documents in Git history. Raw experiments in ignored local storage may not exist in Git. Do not recreate `archive/`, old redirects or `CONTEXT.md` for documentation versioning.
+The [pre-cleanup `docs/` tree at `02adbb43`](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs) preserves older tracked documents. Ignored raw experiment evidence may not be in Git. Do not recreate `archive/`, redirect stubs or a redundant `CONTEXT.md`.

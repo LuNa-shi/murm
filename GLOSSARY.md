@@ -28,4 +28,4 @@
 | Fencing | Revoking the stale authorization and write capability of a terminated Execution |
 | `spawned_from` / `depends_on` | Proposal provenance and a genuine prerequisite, respectively; provenance is not managerial authority |
 
-The GitHub development Issue, its optional implementation spec, and any human-controlled research phase are **project-management objects**, not runtime Missions or Tasks. They are documented in [the development workflow](docs/workflows/development.md), not given competing meanings here.
+The GitHub development Issue, its optional implementation notes, and any human-controlled research phase are **project-management objects**, not runtime Missions or Tasks. They are documented in [the development workflow](docs/workflows/development.md), not given competing meanings here.

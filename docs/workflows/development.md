@@ -1,33 +1,28 @@
-# Development workflow for Coding Agents
+# Development workflow — Matt engineering skills adapter
 
-> Type: Workflow · Status: Active · Updated: 2026-11-11
+> Type: Project-specific workflow · Status: Active · Updated: 2026-11-11
 
-The [AGENTS.md](../../AGENTS.md) file defines human/Coding Agent authority. **A human-approved GitHub Issue is the primary requirement and acceptance contract**. An optional Issue-numbered [implementation spec](../phases/INDEX.md) describes how the Agent intends to implement it.
+SwarmEnv uses [Matt Pocock's engineering skills](https://github.com/mattpocock/skills/tree/main/skills/engineering) as the preferred engineering workflow **when installed**. Do not rewrite or compete with those skills here. [AGENTS.md](../../AGENTS.md) defines SwarmEnv-specific authority, resource limits, evidence rules and documentation responsibilities.
 
-## 1. Establish the Issue contract
+## From problem to Issue
 
-1. Understand the problem and why it matters, expected observable behavior, counterexamples, constraints, evidence requirements and allowed resources from the GitHub Issue.
-2. If asked to plan work, draft the Issue for human review **before** implementing a significant new research direction. A created Issue is not automatically approved. Record explicit approval through the Issue or linked human instruction.
-3. Read [accepted architecture](../architecture/INDEX.md), current code, tool schemas and tests. Record the starting clean commit and any approved Issue changes to the baseline.
-4. Create `docs/phases/issue-<number>-implementation-spec.md` from the [template](../phases/issue-implementation-spec-template.md) when a complex Issue benefits from a durable technical plan. The plan may be updated autonomously but cannot override Issue goals.
+- Use `/to-spec` for a substantial new feature or design. Its **GitHub Issue is the spec**, containing Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions and Out of Scope.
+- Review the relevant [GLOSSARY](../../GLOSSARY.md), [ADRs](../adr/INDEX.md) and [Architecture](../architecture/INDEX.md). Agree with the human on intended observable behavior, scope and important testing seams.
+- If triage produced an accepted Agent Brief, read it alongside the Issue and later decisions. Do not assume an old Issue body overrides an explicitly approved later change.
+- `/to-tickets` is optional: use it when independent, complete vertical slices and blocking edges will help. The human reviews the split before publication. Do **not** force every large Issue into sub-Issues: [Issue #111](https://github.com/LuNa-shi/SwarmEnv/issues/111) used one Issue for several implementation PRs.
 
-## 2. Implement and diagnose independently
+## Implementation and review
 
-- Use a dedicated branch/worktree. Implement an end-to-end behavior slice, including required interfaces and regression coverage.
-- Follow **implement → self-review → test/probe → diagnose → fix → retest**. Run focused tests and bounded probes as needed within approved provider/model, time, cost and task scope.
-- Do not request permission or file a human-facing report for each debugging iteration. Preserve consequential version/input/result evidence and summarize at milestones.
-- If the Issue's approved contract is internally inconsistent or requires a new research hypothesis, modified acceptance condition or broader architecture, return the question to the human in the Issue instead of silently widening the spec.
+- Use `/implement` for a single Issue or ticket; use `/implement-spec` for a ticket graph, following its integration branch and separate worktree process. Ticket state and dependencies stay on GitHub.
+- Follow `/tdd` at pre-agreed public seams. Use `/diagnosing-bugs` to reproduce and reduce failures. Iterate within approved scope without asking for permission after every test or probe.
+- Run focused tests and full tests when available, then use `/code-review` to review **Standards** and **Spec** separately. Correct review findings before completing the PR.
+- Use `/pr` to present a concise Summary, before/after Evidence, and Merge Danger. Link the originating Issue and tested commit.
+- If a skill is unavailable, follow its equivalent documented behavior without claiming the skill ran.
 
-## 3. Verify alignment and report
+## SwarmEnv-specific synchronization
 
-- Check requirements and counterexamples against code paths and observed behavior, including authorization, fencing, concurrency, version binding, error handling, cleanup and privacy where applicable.
-- Run relevant tests; for code changes when available run `npm test` and `git diff --check`. Record skipped checks honestly.
-- Update [STATUS.md](../STATUS.md) on meaningful implementation or verification progress, with Issue/PR/commit/test links and unresolved limitations.
-- PRs should link the approved Issue and optional implementation spec. At a milestone, present a consolidated evidence-based summary rather than raw debugging logs.
-- A verified implementation does not automatically mean the scientific hypothesis is supported; distinguish deterministic correctness, real-Agent observations and unvalidated claims.
-
-## 4. Design synchronization and closeout
-
-The GitHub Issue remains the human review surface. When a design-changing PR is accepted for merge, bring its accepted contract and behavior into [Architecture](../architecture/INDEX.md); ordinary internal refactors that do not change architecture need no unnecessary rewrite. At Issue closeout, check STATUS, architecture, relevant ADRs and links for consistency.
-
-Do not merge PRs, close or change Issues, or start external paid runs without authorization. Do not maintain obsolete docs in `archive/`; Git history provides historical versions.
+- The **GitHub Issue or accepted Agent Brief** owns intended behavior and acceptance. A local [Issue implementation note](../phases/INDEX.md) is optional and records code-level decisions and context pointers, not a second spec.
+- Maintain [STATUS](../STATUS.md) at meaningful implementation/evidence milestones. Do not copy full Issue discussions or raw debugging logs into STATUS.
+- When a design-changing PR is accepted for merge, synchronize the affected [Architecture](../architecture/INDEX.md); at Issue closeout verify the agreed design, merged code and evidence.
+- Formal paid or research experiments require approval under [the experiment workflow](experiment.md). In-scope deterministic tests and bounded authorized debug probes do not require a formal EXP ID.
+- Escalate changes to research direction, accepted contract, experiment controls, or resource budgets. Do not change unrelated Issue state or merge unapproved PRs.

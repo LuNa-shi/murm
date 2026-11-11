@@ -1,44 +1,54 @@
 # SwarmEnv — Coding Agent Instructions
 
-These instructions are for **Coding Agents developing SwarmEnv**, not Agents running inside SwarmEnv. They define what an Agent may do independently and when a human decision is required.
+These instructions apply to **Coding Agents developing SwarmEnv**, not research Agents running within it. They define human/Agent authority and project-specific constraints. The installed **Matt Pocock engineering skills** define the default engineering workflow.
 
-## Authority and entry points
+## Sources of authority
 
-- **The human-approved GitHub Issue is the primary work contract:** why the problem matters, what behavior must change, expected observations, constraints, and acceptance criteria. Creating or drafting an Issue alone does not imply approval; look for an explicit human decision in the Issue or the current instruction.
-- [docs/architecture/](docs/architecture/INDEX.md) records the accepted system baseline. An approved Issue may specify a change to that baseline **only within its stated scope**. Otherwise preserve it. If documents conflict, report the discrepancy rather than silently choosing the existing code.
-- [docs/phases/](docs/phases/INDEX.md) holds optional **Issue-numbered implementation specs** prepared by Coding Agents, not separate plans requiring human approval. Such specs explain how to implement an approved Issue, and must never redefine its goal or acceptance criteria.
-- Source code and tool schemas show what currently executes. [docs/STATUS.md](docs/STATUS.md) tracks implementation progress and verification evidence. Tests and experiments establish which behaviors have actually been observed.
-- Use [docs/INDEX.md](docs/INDEX.md) to find relevant references and [GLOSSARY.md](GLOSSARY.md) for domain vocabulary. Read the affected sources and tests; do not load every document by default.
+1. **Human-approved GitHub Issue or accepted Agent Brief:** what matters, what to build, observable outcomes, acceptance criteria, constraints and non-goals. Read the full Issue, linked tickets, comments and later human decisions. A draft or `ready-for-agent` label alone does not authorize a new research hypothesis or unapproved spending.
+2. **Accepted Architecture and ADRs:** the existing system baseline and durable decisions. An approved Issue can change the baseline within its explicit scope; an unreviewed code path or local note cannot.
+3. **Matt engineering skills:** authoritative procedures for specification, ticket planning, implementation, testing, review and PR preparation **when installed**. Follow the skills rather than reproducing their steps or creating a parallel workflow.
+4. **Current source and tests:** code and schemas show what runs; tests and experiments show what has been verified. [STATUS.md](docs/STATUS.md) tracks evidence, not new requirements.
 
-## Autonomy within an approved Issue
+Start at [docs/INDEX.md](docs/INDEX.md), read the relevant [Architecture](docs/architecture/INDEX.md) and [GLOSSARY.md](GLOSSARY.md), then inspect the affected source and tests. Do not load all project documents by default.
 
-1. Inspect the implementation, propose technical approaches, write or revise the Issue's implementation spec when useful, and implement changes in an isolated branch/worktree. Never work directly on `main`.
-2. Independently repeat **implement → review against the approved contract → test/probe → diagnose → fix → retest**. Add regression tests and inspect all affected boundaries. No approval or standalone report is required after each debugging iteration.
-3. Run deterministic checks and bounded diagnostics within authorized tool, provider/model, time and cost limits. Paid probes require explicit permission or a previously approved allowance.
-4. Record significant implementation milestones, clean commits, relevant failures, test evidence and unresolved gaps in the PR and [STATUS.md](docs/STATUS.md), without turning STATUS into a turn-by-turn diary.
-5. Suggest alternative research hypotheses or architecture directions with evidence. Do not independently approve or execute a new research question.
+## Human decisions and Agent autonomy
 
-## Human decisions
+Humans judge the **value and priority of research hypotheses**, approve the Issue's intended behavior, acceptance criteria and experimental/resource boundaries. An Agent may suggest a new hypothesis and support it with evidence, but must not select and run that new research direction without approval.
 
-Humans decide **why an Issue is worth pursuing, what should be implemented, which outcomes matter, and what success means**. They also select and prioritize new research hypotheses.
+Within the approved Issue and resource limits, Coding Agents may design implementation details, edit code, test, diagnose, fix and retest independently. **Do not ask for approval or send a separate human report after every implementation test or debug probe.** Use an isolated branch/worktree, not `main`.
 
-Escalate before changing an Issue's objective, expected behavior, acceptance conditions, architecture scope, benchmark/checker/fixture, provider/model, or resource budget. A formal research experiment needs the authorization described in [the experiment workflow](docs/workflows/experiment.md); an approved set of runs may be executed without per-run permission.
+Escalate any material change to the research hypothesis, requirements, acceptance criteria, architecture scope, benchmark/checker/fixture, provider/model or budget. A task or local technical note cannot silently expand the Issue. Paid or external-resource probes require explicit permission or a pre-approved allowance.
 
-The Agent may revise implementation details and fix approved-contract defects autonomously. An implementation spec is not permission to enlarge the Issue. Important new design decisions require human review, with an [ADR](docs/adr/INDEX.md) when they should endure beyond this Issue.
+## Matt engineering workflow
 
-## Evidence and closeout
+Use the **installed** skills when applicable; do not claim to have invoked an unavailable skill.
 
-- Pin the starting commit and link each material requirement to source changes, tests, probes and any real-run evidence. Distinguish implementation, deterministic verification, controlled probes, natural runs and unknowns.
-- Run relevant tests and, for code changes when available, `npm test` and `git diff --check`. Never claim that an unrun check passed. Review both the **Spec** (behavior/counterexamples) and **Standards** (quality, privacy, regression and security).
-- At milestones or completion, report the current result on the GitHub Issue/PR and maintain [STATUS.md](docs/STATUS.md). Do not require human review after every test.
-- When a design-changing PR is accepted for merge, synchronize the affected [architecture](docs/architecture/INDEX.md) documentation. At Issue closeout, verify that the accepted design, implementation evidence, STATUS and Issue links agree. Do not write unverified proposals into Architecture as established behavior.
-- Summarize research evidence as **Results**, **Analysis**, and **Next steps**; separate Agent suggestions from human decisions. More Tasks, Materials, Judge calls or Core activity do not by themselves establish useful progress.
+- **`/to-spec`** publishes the spec in GitHub Issues, using the domain glossary and applicable ADRs. Do not duplicate that spec in `docs/phases/`.
+- **`/to-tickets`** is optional for large work: propose complete vertical slices and blocking edges, obtain human agreement, then publish GitHub sub-Issues/dependencies. A single umbrella Issue with several commits/PRs is also valid.
+- **`/implement`** works an Issue or ticket, using **`/tdd`** at agreed public seams, and finishing with **`/code-review`**.
+- **`/implement-spec`** executes a ticket dependency graph on an integration branch with separate implementer branches/worktrees where supported. GitHub owns ticket state; do not replicate its task graph locally.
+- **`/diagnosing-bugs`** supports disciplined reproduction and regression testing. **`/code-review`** checks **Spec** (against the originating Issue/accepted Agent Brief) separately from **Standards** (repo conventions and code quality).
+- **`/pr`** summarizes the change, before/after evidence, and Merge Danger (door and blast radius).
 
-Detailed instructions: [development workflow](docs/workflows/development.md), [experiment workflow](docs/workflows/experiment.md), and [experiment-analysis skill](.codex/skills/experiment-analysis/SKILL.md). Implementation unit tests and in-scope debugging probes need no formal Experiment ID.
+Explicitly invoking a skill authorizes its normal agreed tracker/branch actions within the user's request, **not** a new research direction, altered experiment budget, or unrelated merge. Do not merge PRs or close unrelated Issues without authorization.
 
-## Safety and repository boundaries
+## Project-specific verification and closeout
 
-- Preserve original problem/checker semantics, execution identities, private per-Execution Workspaces and source/version provenance.
-- Keep raw Agent conversations, proof/candidate code, secrets, stdout/stderr, private databases and personal paths out of committed reports. Raw experiment evidence belongs in ignored local `experiments/`.
-- Do not recreate `archive/` directories, obsolete redirects or a second `CONTEXT.md`. Recover historical documents from pinned Git history.
-- Do not merge a PR, change Issue status or launch an unapproved paid run without explicit authorization. When blocked, report the attempted work, available evidence and required human decision.
+- Pin the implementation commit; verify the complete affected flow when needed: Agent prompt/capability, Bridge/SDK, domain services, Runtime/runner, tests and reports. Preserve identity, fencing, idempotency, checker integrity, privacy and cleanup boundaries.
+- Run focused tests and, for code changes when available, `npm test` and `git diff --check`. Report checks not run; a passing test cannot substitute for an approved contract.
+- Formal experiments follow [the experiment workflow](docs/workflows/experiment.md) and use [experiment-analysis](.codex/skills/experiment-analysis/SKILL.md). Ordinary in-scope tests and bounded diagnostic probes do not require formal EXP IDs or per-probe reports.
+- At meaningful milestones, update [STATUS](docs/STATUS.md) with Issue/PR/commit links and evidence. When design changes are accepted for merge, synchronize the affected [Architecture](docs/architecture/INDEX.md); verify alignment at Issue closeout.
+- Report **Results**, **Analysis** and **Next steps**. Distinguish observed facts, alternative explanations and human decisions. Counts of Tasks, Materials, Judge calls or busy Cores do not independently prove useful collaboration.
+- Keep raw Agent conversations, proof/candidate source, credentials, stdout/stderr, private databases and personal paths out of committed reports. Keep raw evidence in ignored local `experiments/`.
+- Do not recreate `archive/` folders, obsolete redirects or `CONTEXT.md`; recover obsolete docs from pinned Git history.
+
+## Agent skills
+
+### Issue tracker
+GitHub Issues and sub-Issues are the spec/ticket source. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+
+### Triage labels
+See [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
+
+### Domain docs
+Single-context repository: root [GLOSSARY.md](GLOSSARY.md) and [docs/adr/](docs/adr/INDEX.md). See [docs/agents/domain.md](docs/agents/domain.md).

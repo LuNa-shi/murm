@@ -18,7 +18,7 @@
 
 ## Change lifecycle
 
-The human-approved **GitHub Issue** specifies what must change, why and how success will be observed. It may authorize a deliberate change to this accepted baseline within the scope explicitly recorded in that Issue. An [Issue implementation spec](../phases/INDEX.md) can outline code-level options but cannot override this architecture or enlarge the Issue.
+The human-approved **GitHub Issue** specifies what must change, why and how success will be observed. It may authorize a deliberate change to this accepted baseline within the scope explicitly recorded in that Issue. Optional [Issue implementation notes](../phases/INDEX.md) can link code-level decisions and experiments but cannot override this architecture or enlarge the Issue.
 
 Coding Agents implement and test against the Issue, while [STATUS](../STATUS.md) records what is implemented and verified. **Synchronize the affected architecture with any design-changing PR when it is accepted for merge, and verify consistency at Issue closeout.** Do not rewrite accepted Architecture to match a failing test or unreviewed idea.
 

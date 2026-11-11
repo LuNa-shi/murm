@@ -1,41 +1,36 @@
-# Issue-linked implementation specs
+# Issue-linked implementation notes
 
-> Type: Coding Agent working documentation · Status: Active · See [ADR 0018](../adr/0018-human-controlled-phases-and-evidence-review.md)
+> Type: Optional Coding Agent working context · Status: Active · Compatible with [Matt Pocock's engineering skills](https://github.com/mattpocock/skills/tree/main/skills/engineering)
 
-**GitHub Issues are the human-facing unit of development approval and planning.** A typical Issue is the scope of one implementable and verifiable stage of work. We do not require a separate Phase proposal, title, charter or approval document.
+**The GitHub Issue is the spec and the human-facing review surface.** For an Issue created by `/to-spec`, the Issue body contains the Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, and further notes. An accepted `/triage` Agent Brief in the Issue comments may provide a more focused execution contract. Read the full Issue and its comments; prefer explicit, later human-approved decisions over superseded text.
 
-## Single source of approved intent
+There is **no second mandatory Phase Charter or local Implementation Spec**. The `docs/phases/` directory is only for optional **Issue-numbered implementation notes** that help Coding Agents preserve code-level decisions across sessions, subagents, or several PRs. Such notes are not another source of product requirements, do not require separate approval, and must not copy the Issue body.
 
-The human-reviewed GitHub Issue defines:
-- **Why:** the problem, evidence, significance and priority.
-- **What:** expected behavior, scope and non-goals.
-- **Observe:** phenomena to demonstrate, acceptance criteria and meaningful counterexamples.
-- **Permission:** constraints, allowed tests/experiments, resource allowance and decisions that must return to the human owner.
+## Follow the installed engineering skills
 
-An Issue draft prepared by a Coding Agent is a proposal until the human explicitly approves it. The Issue's GitHub conversation or a clearly linked human instruction can record that approval. An explicit material change to its scope requires human review; an Agent must not silently change an Issue to fit its implementation.
+| Work | Preferred skill | Durable source |
+|---|---|---|
+| Turn discussion into an approved specification | `/to-spec` | GitHub spec Issue |
+| Break a large spec into complete, dependent slices (if useful) | `/to-tickets` | GitHub sub-Issues and blocking edges |
+| Implement one Issue or one slice | `/implement` | Source branch, tests, PR |
+| Implement a ticket graph | `/implement-spec` | Integration branch, ticket branches/worktrees and Issue graph |
+| Test and debug | `/tdd`, `/diagnosing-bugs` | Tests at agreed public seams and reproducible evidence |
+| Review and publish | `/code-review`, `/pr` | Spec/Standards findings, before/after evidence and merge risk |
 
-## Implementation specs for Coding Agents
+Use the names and behavior of the **installed** skills; this file is a navigation adapter, not a replacement implementation of those skills. A `ready-for-agent` label indicates a work item is prepared for implementation, but does not by itself authorize a paid experiment or new research hypothesis.
 
-The `docs/phases/` directory stores **optional technical specifications organized by GitHub Issue number**, for example:
+## Two valid implementation shapes
 
-`docs/phases/issue-123-implementation-spec.md`
+- **One umbrella Issue, several commits or PRs:** Keep the Issue's overall acceptance contract and collect milestones in its discussion, as in [Issue #111](https://github.com/LuNa-shi/SwarmEnv/issues/111). No ticket split is required.
+- **One spec Issue, multiple dependent tickets:** When `/to-tickets` is appropriate, use vertical, independently verifiable slices with explicit blocking edges. `/implement-spec` consumes that graph and may use a shared integration branch with fresh implementer worktrees. Do not also create an unrelated task graph in local Markdown.
 
-Start from [issue-implementation-spec-template.md](issue-implementation-spec-template.md) when an Issue is complex enough to benefit from durable technical notes. The file records the relevant Issue URL, an approved scope reference, current code baseline, proposed implementation, affected modules, test/evidence plan, progress and remaining gaps.
+Only create a local file such as `docs/phases/issue-123-implementation-notes.md` when the technical context is too large to recover cheaply from code, commits and the GitHub Issue. Start from [issue-implementation-notes-template.md](issue-implementation-notes-template.md). For small Issues, omit it entirely.
 
-This spec is **derived from the Issue** and exists for the Coding Agent, not as another human-facing source of product requirements. Technical approaches may change without permission if the approved outcome remains intact. Never duplicate the full Issue or claim that an implementation spec itself approved a new hypothesis.
+## Authority and closeout
 
-A small Issue may need no local spec. An umbrella research phase may contain multiple linked Issues; it does not acquire an independent approval process.
+- **Issue/approved Agent Brief:** what behavior is wanted, why, its boundaries and acceptance.
+- **Local implementation notes:** where the code work is, what implementation decisions were tried, agreed test seams, pointers to tickets/worktrees/commits and open engineering questions.
+- **[STATUS](../STATUS.md):** meaningful implementation and evidence milestones across Issues.
+- **[Architecture](../architecture/INDEX.md):** accepted design synchronized when design-changing PRs merge and checked at Issue closeout.
 
-## Workflow and lifecycle
-
-1. The human provides a problem; a Coding Agent may draft a GitHub Issue for review. Approval of the Issue establishes intended scope and success criteria.
-2. The Coding Agent links its PR/worktree and optional Issue-numbered spec, translates objectives into technical work, implements and repeatedly tests within authorized limits.
-3. [STATUS.md](../STATUS.md) tracks meaningful implementation and evidence milestones using Issue and commit links. Diagnostic runs within approved limits do not need a new Issue or a formal experiment registration.
-4. Formal research runs, where necessary, use the approved Issue and [experiment workflow](../workflows/experiment.md).
-5. When a design-changing PR is merged, update [architecture/](../architecture/INDEX.md) for that accepted change. At Issue closeout, confirm Architecture, STATUS, spec and GitHub evidence are aligned.
-
-If the Issue changes materially, update the implementation spec and rerun affected tests. If a spec exposes an unapproved architecture or research-direction change, propose it in the Issue and stop only the out-of-scope work.
-
-## Current active specs
-
-This documentation refactor creates no new project development Issue or approved implementation spec. Add entries here by **Issue number and GitHub link** when actual specs are needed. Closed specs can be removed from the working tree once the accepted design and evidence have been reflected in Architecture/STATUS and the GitHub record; Git retains their history.
+If an implementation choice changes the approved behavior or research direction, propose it in the GitHub Issue for human review. Retire no-longer-needed local notes from the working tree when their durable decisions and evidence have been linked; Git preserves the history.
