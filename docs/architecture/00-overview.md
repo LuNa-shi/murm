@@ -11,12 +11,12 @@ Services Bridge + Capability Profile
         │ authenticated, task-scoped calls
         ├── Task Service       Mission, Task, Execution facts
         ├── Context Service    Material and consumption facts
-        ├── Judge Service      Candidate and CheckResult facts
+        ├── Judge Service      checker execution and CheckResult facts
         ├── Workspace/Runtime  private files, revisions, fencing, Sandbox
         └── Catalog/Registry   manifests, tools, documentation and hashes
 ```
 
-The benchmark runner owns the outer run, Core lanes and finalization. The
+The benchmark runner owns the outer run, Core lanes and finalization; in the current implementation it also orchestrates Judge submission via a callback. The
 Runtime owns process/session lifecycle and physical cleanup. Domain Services
 own authoritative Task, Execution, Material and Judge state. The Agent chooses
 research actions through the exposed tools; the Runtime does not choose a
@@ -48,20 +48,20 @@ Agent reads capability profile and Mission/Task state
   → Runtime binds one Execution and private Workspace
   → Agent reads/publishes/consumes Material and edits Workspace
   → Agent may register a genuinely independent ordinary Task
-  → Agent submits a Candidate to Judge and reads CheckResult
+  → Agent submits Candidate Material through the registered judge tool (currently relayed by Task Service and Benchmark Runner)
+  → Benchmark Runner calls Judge Service, applies CheckResult to Task Service, and returns feedback
   → Agent revises, checkpoints, completes, blocks, or hands off
   → Runtime fences/releases this Execution
   → the same identity may take another responsibility
 ```
 
-The current implementation deliberately keeps the Agent-facing surface smaller
-than the historical internal catalog. Legacy structural operations remain in
-compatibility code for old fixtures, but the normal bound profile uses named
-Task, Context, Judge, Workspace and Runtime capabilities.
+The **flat Mission Task model** is the baseline described by this architecture. In this reviewed code tree, the benchmark still exposes `taskModel=flat|legacy` and the CLI defaults to `legacy`; legacy Root/Child structure and compatibility operations remain in source and tests. This does not make them part of the flat model. A separate cleanup PR will remove that implementation split. The normal bound flat profile uses named Task, Context, Judge, Workspace and Runtime capabilities.
+
+Within the flat benchmark path, `TaskController` observes claimable work and signals idle `IdentityTaskLoop`s; the Agent chooses its Task through `task_take`. Controller and Runner do not select the mathematical research route. See `src/benchmark/putnam-runner.js`, `src/runtime/task-controller.js`, and `src/runtime/identity-task-loop.js`.
 
 ## Current implementation versus acceptance
 
-This guide describes the code shape in the current main tree. It does not turn
+This guide describes the code shape at the pinned reviewed implementation commit, not automatically every subsequent `main` tree. It does not turn
 the target rules in `AGENTS.md` into claims that the code has passed every real
 experiment. The implementation matrix and each registered experiment must say
 which behavior is deterministic-only, real-probe evidence, natural-run

@@ -2,7 +2,7 @@
 
 > Type: Accepted system baseline · Implementation reference: `02adbb43` (PR #115 tree), reviewed 2026-11-11.
 >
-> This directory explains the established module boundaries and runtime model. It is **not** an unreviewed proposal for future work and does not claim that all documented behavior passed real-Agent acceptance.
+> This directory describes the reviewed **Mission-scoped flat Task architecture** as implemented at the pinned baseline. It is **not** an unreviewed future proposal or a claim of real-Agent acceptance. The code and CLI at this commit still support a **legacy Root/Child model** (and the benchmark CLI defaults to `legacy`); that is a distinct compatibility/test path, not the flat architecture described here. A follow-up removal PR will retire this split.
 
 ## Read as needed
 
@@ -23,5 +23,7 @@ The human-approved **GitHub Issue** specifies what must change, why and how succ
 Coding Agents implement and test against the Issue, while [STATUS](../STATUS.md) records what is implemented and verified. **Synchronize the affected architecture with any design-changing PR when it is accepted for merge, and verify consistency at Issue closeout.** Do not rewrite accepted Architecture to match a failing test or unreviewed idea.
 
 Source code and tests, including `src/sdk/service-catalog.js`, `src/agent/`, `src/task/` and `src/runtime/`, are needed to verify current behavior. This directory does not duplicate full API schemas. Persistent decisions are explained in [ADR](../adr/INDEX.md). Documentation baselines describe the reviewed implementation, not an automatically up-to-date assertion about every later main commit.
+
+Known as-built boundary: `judge.submit_candidate` is currently relayed through Task Service and the Benchmark Runner before reaching Judge Service; this is not the intended final Judge Service integration. [Issue #117](https://github.com/LuNa-shi/SwarmEnv/issues/117) tracks the separate, human-reviewed redesign. Document the current code here without silently treating that redesign as complete.
 
 The GitHub development Issue is a *management unit for improving SwarmEnv*; it is not a runtime Mission, Task or Execution within SwarmEnv.

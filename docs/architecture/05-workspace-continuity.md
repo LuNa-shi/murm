@@ -10,23 +10,25 @@ next step. For file work, Runtime may save a local Git revision and the
 Progress Material references the actual commit/revision. A successor must be
 able to identify the source Execution, source Workspace and source revision.
 
-Checkpoint saves progress and continues the current Execution. Handoff ends
+Checkpoint attempts to save progress and continues the current Execution. Handoff ends
 only that Execution's authority and leaves the responsibility unfinished.
 Saving failure is bounded: the system records the failure and may discard the
-unsaved state while preserving the last valid Material/commit.
+unsaved state while preserving the last valid Material/commit. The Task Service's
+`task_register(take: true)` switch and the preceding Runtime checkpoint are not
+one file/database transaction; inspect `save_status` rather than assuming success.
 
 ## Identity rotation
 
 The identity lane carries the compaction count across successive Tasks. The
 documented default rule is at most three successful compactions; after the
 third, the identity may continue until the next 80% context-window threshold,
-then hands off to a new identity. A fourth compaction is not allowed.
+then triggers **identity/Session rotation**. A fourth compaction is not allowed.
 
 Confirm current configuration and observed context-window measurements for each run; an unspecified usage value is not proof that the threshold was avoided.
 
-The rotation path must preserve the effective Task, last valid Workspace/Git
-snapshot, pending feedback boundaries and fencing. It must not create a new
-research responsibility merely because the Session changed.
+Implementation detail: `Runtime.#rotateIdentity` calls `restartSession`, which normally keeps the **same Execution ID** while replacing its Pi Session and updating session/fencing generation via `recover_execution`. This differs from a **Task/Execution handoff**, which releases the existing Execution so a successor can claim the responsibility. After the third compaction, an unknown post-compaction usage measurement may also trigger conservative rotation. These behaviors need run-level verification of context measurements.
+
+The rotation path must preserve the effective Task, last valid Workspace/Git snapshot, pending feedback boundaries and fencing. The Session change alone must not create a new research responsibility.
 
 ## What a continuity report must prove
 

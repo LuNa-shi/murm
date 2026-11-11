@@ -2,10 +2,9 @@
 
 ## Mission
 
-A Mission stores the user's shared objective, original acceptance conditions,
-initial material and resource scope. It is not a permanent manager Agent.
+The persisted Mission record contains its `goal`, `acceptance_conditions`, `created_by` and timestamps (`src/storage/schema.js` and `TaskService.#createMission`). Initial Materials are separate Context/Task facts; model, timebox, checker and budget parameters are supplied by the benchmark/runtime configuration and/or Task contracts, not persisted as `missions.initial_material` or `missions.resource_scope` columns. Mission is not a permanent manager Agent.
 
-The shared Mission Task is the common research responsibility. Multiple
+The shared Mission Task is the common research responsibility. In the current flat implementation it is identified as the **first Task registered in a Mission**, ordered by `created_at, rowid` (`TaskService.#isSharedMissionTask`); there is no explicit `is_shared_mission_task` column. Its identity therefore depends on creation order, a concrete implementation constraint worth testing before changing schema/registration order. Multiple
 Executions may work on it. When no ordinary Task is suitable, an identity
 continues the Mission instead of treating an empty ordinary-Task queue as
 retirement or completion.
@@ -28,10 +27,9 @@ The current Agent-facing operations are principally:
 - `task_complete`, `task_block`, `task_close` at the appropriate contract
   boundary.
 
-`task_register` with `take: true` checkpoints the current Execution and registers/switches to the new independent Task on the same Core lane. Registration without `take` leaves it for others; a direct `task_take` acquires an existing eligible Task. Verify the authorization and conflict behavior against `src/task/task-service.js` and `src/agent/services-bridge.js`.
+`task_register` with `take: true` **attempts** a Runtime checkpoint of the current Execution before a same-lane switch. The old Execution is fenced and the new Task claimed atomically within a **Task Service database transaction**; the preceding Workspace/Progress save is separate and may return `save_failed`, which does not by itself abort the switch. Do not claim an all-or-nothing disk + database save. Registration without `take` leaves the Task for others; a direct `task_take` acquires an existing eligible Task. See `src/agent/services-bridge.js` and `src/task/task-service.js`.
 
-There is no current task-count quota. Task counts, claims, handoffs and
-readiness intervals are observation fields, not admission limits.
+In the **flat Mission Task registration path** no fixed numerical Task-count admission quota is enforced; distinct responsibility and key/idempotency checks still apply. The **legacy** structural Task path additionally supports configurable limits such as `max_unfinished_tasks` and `max_open_tasks` (`TaskService.#normalizeAdmissionPolicy` / `#assertChildAdmission`). Those legacy limits must not be mistaken for flat admission behavior. Task counts, claims, handoffs and readiness intervals are also observation metrics, not proof of useful work.
 
 ## Material and completion
 

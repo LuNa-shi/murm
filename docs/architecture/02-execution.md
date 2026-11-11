@@ -28,7 +28,7 @@ Semantic Task transitions use the current Execution's authenticated
 authority. This distinction was central to the Issue #113 lifecycle repairs.
 
 An identity may finish or hand off one Execution and then take another Task on
-the same Core lane. A Mission with several Executions does not imply several
+the same Core lane. By contrast, `Runtime.restartSession` can replace a Pi Session **within the same durable Execution ID**, bumping its session/fencing generation. Session restart/identity rotation must not be counted as Task handoff or a new research responsibility. A Mission with several Executions does not imply several
 independent responsibilities; reports must separate shared-Mission concurrency
 from ordinary-Task decomposition.
 
