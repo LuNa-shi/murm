@@ -20,11 +20,10 @@ node scripts/run-putnambench-benchmark.mjs \
   --putnambench-root /path/to/PutnamBench \
   --problem putnam_2025_b1 \
   --cores 4 \
-  --task-model flat \
   --timebox-ms <approved-ms> \
   --provider <approved-provider> \
   --model <approved-model> \
   --experiment-dir experiments/<registered-id>
 ~~~
 
-Until the stacked Legacy cleanup is accepted, the current CLI default is `--task-model legacy`; pass `--task-model flat` explicitly for experiments using the reviewed architecture. Once the cleanup lands this argument is removed, not required. Check every option against the actual script and approved Issue before use; the example's model-independent placeholders, Core count and problem are not defaults for future research. Use the [experiment workflow](../workflows/experiment.md) for reporting. Built-in and Mathlib service deployment references: [built-in services](../../services/builtin/README.md) and [Mathlib Search](../../services/mathlib-search/README.md).
+The benchmark runner in the stacked cleanup branch uses the Mission Task model exclusively; `--task-model` and `--normal-flow` are no longer accepted CLI parameters. Legacy compatibility internals must be removed and tests migrated before this branch is considered ready for merge. Check every option against the actual script and approved Issue before use; the example's model-independent placeholders, Core count and problem are not defaults for future research. Use the [experiment workflow](../workflows/experiment.md) for reporting. Built-in and Mathlib service deployment references: [built-in services](../../services/builtin/README.md) and [Mathlib Search](../../services/mathlib-search/README.md).

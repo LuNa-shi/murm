@@ -41,8 +41,7 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
 
 const FORBIDDEN_PLACEHOLDER = /\b(?:sorry|admit|axiom)\b/i;
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const PARALLEL_MODES = new Set(['direct', 'legacy', 'semantic', 'root-only']);
-const TASK_MODELS = new Set(['legacy', 'flat']);
+const PARALLEL_MODES = new Set(['direct', 'semantic', 'root-only']);
 const STRUCTURE_OPERATIONS = new Set([
   'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task',
 ]);
@@ -69,36 +68,21 @@ function parallelMode(options = {}) {
   return mode;
 }
 
-/**
- * Select the Task Service model independently from the historical benchmark
- * treatment.  Existing fixtures keep the legacy Root tree by default; the
- * Issue #100 profile opts into the Mission-scoped flat pool explicitly.
- */
-function taskModel(options = {}) {
-  const model = options.taskModel ?? (options.taskOriented === true ? 'flat' : 'legacy');
-  if (!TASK_MODELS.has(model)) throw new TypeError(`taskModel must be one of ${[...TASK_MODELS].join(', ')}`);
-  return model;
-}
-
 function projectTasks(state, {
   states = ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
   limit = 100,
   availableOnly = false,
 } = {}) {
-  if (state.taskModel === 'flat') {
-    return state.taskService.listMissionTasks({
-      mission_id: state.missionId,
-      states,
-      limit,
-      available_only: availableOnly,
-    });
-  }
-  return state.taskService.listTasks({ rootId: state.rootTaskId, states, limit, availableOnly });
+  return state.taskService.listMissionTasks({
+    mission_id: state.missionId,
+    states,
+    limit,
+    available_only: availableOnly,
+  });
 }
 
 function projectClaimableTasks(state, { limit = 100 } = {}) {
-  if (state.taskModel === 'flat') return state.taskService.listClaimableTasks({ missionId: state.missionId, limit });
-  return state.taskService.listClaimableTasks({ rootId: state.rootTaskId, limit });
+  return state.taskService.listClaimableTasks({ missionId: state.missionId, limit });
 }
 
 // Flat model: one Execution may run for the whole run; the reminder lead is
@@ -121,23 +105,6 @@ export function isPreparationFailure(execution) {
     && ['task_take_bind_failed', 'startup_prepare_failed', 'bind_prepare_failed', 'startup_failed'].includes(execution.terminal_reason);
 }
 
-function modePrompt(mode, prompt, selectedTaskModel = 'legacy') {
-  if (selectedTaskModel === 'flat') return prompt;
-  if (mode === 'semantic') {
-    return [
-      'This run uses the semantic-structure treatment. Create ordinary alternative or required work only when the current research reveals a genuinely separable responsibility; do not use a fixed fanout or create placeholder Tasks. Give each Task a concrete goal, expected output, acceptance condition, and real Workspace or Material result. Read task structure and readiness after each mutation. Continue useful root and branch work after the structure is created; the shared queue must keep resulting Tasks claimable by other Cores.',
-      'The semantic run also requires an observable delivery loop: after child or branch Materials exist, the Root must read them through swarmenv_context_read, call swarmenv_context_consume with the bounded Material IDs and action integration, write a bounded integration note in its own Workspace, and publish one root-owned Material with scope root_integration whose provenance names exactly those consumed Material IDs. A proof failure does not excuse skipping this integration step; preserve the integration evidence and then block on the typed proof/check dependency if needed.',
-      prompt,
-    ].join('\n');
-  }
-  if (mode === 'root-only') {
-    return [
-      'This run is the Root-only control. Work only on the currently bound root Task and do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks. Do not call the semantic structure mutation tools. Keep all proof work and checking on the root responsibility.',
-      prompt,
-    ].join('\n');
-  }
-  return prompt;
-}
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -176,7 +143,7 @@ function lifecycleEvents(taskService) {
     if (prerequisiteTaskId && !dependencyIds.includes(prerequisiteTaskId)) dependencyIds.push(prerequisiteTaskId);
     return {
       operation_id: row.operation_id,
-      // Keep the report's lifecycle vocabulary stable across the legacy
+      // Keep the report's lifecycle vocabulary stable across the retired
       // execution_block path and the modern semantic Task block alias.
       operation: row.operation === 'block_task_semantic' ? 'block_task' : row.operation,
       created_at: row.created_at,
@@ -306,8 +273,7 @@ function observedEligibleWorkCount(state, readyTasks) {
   const tasks = projectTasks(state, { states: ['OPEN', 'RUNNING'], limit: 100, availableOnly: false });
   const readyIds = new Set(readyTasks.map((task) => task.task_id));
   return tasks.filter((task) => {
-    if (state.taskModel !== 'flat' && task.parent_id === null) return false;
-    if (state.taskModel === 'flat' && task.task_id === state.rootTaskId) return false;
+    if (task.task_id === state.rootTaskId) return false;
     if (readyIds.has(task.task_id)) return true;
     if (task.state !== 'RUNNING') return false;
     const execution = task.latest_execution ?? state.taskService.listExecutions(task.task_id, { includeTerminal: false })[0];
@@ -634,7 +600,7 @@ async function runTurn(core, prompt, timeoutMs) {
       core.taskId && core.executionId && core.runtime.hasActiveExecution(core.executionId),
     );
     if (!handedOff) {
-      // A legacy claim may enter onClaim before Runtime rejects the permanent
+      // A retired claim may enter onClaim before Runtime rejects the permanent
       // Core binding (for example, two selectors race for a resumable wait).
       // Clear that provisional local ownership or the selection transport
       // would keep this Core permanently marked turn-in-flight.
@@ -756,7 +722,7 @@ async function ensureAgentSession(core) {
     core.releasedSession = null;
   }
   if (core.session?.closed) core.session = null;
-  // A failed legacy claim can clear the bridge binding after the transport
+  // A failed retired claim can clear the bridge binding after the transport
   // Session has already been replaced. Repair the stale local occupancy when
   // no Session, Task, Execution, recovery, or handoff promise remains.
   if (core.turnInFlight && !core.session && !core.taskId && !core.executionId && !core.boundTurnPromise && !core.recoveryInFlight) {
@@ -1574,9 +1540,7 @@ function projectReport(state, startedAt, deadline) {
   });
   const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     candidateBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
-  const childTaskCount = state.taskModel === 'flat'
-    ? taskTree.filter((task) => task.task_id !== state.rootTaskId).length
-    : taskTree.filter((task) => task.parent_id !== null).length;
+  const childTaskCount = taskTree.filter((task) => task.task_id !== state.rootTaskId).length;
   const decompositionAvailable = childTaskCount > 0;
   const lifecycle = lifecycleEvents(state.taskService);
   const taskLifecycle = taskLifecycleEvents(state.taskService);
@@ -1585,10 +1549,7 @@ function projectReport(state, startedAt, deadline) {
   const narratives = executionNarratives(state, taskTree, materials);
   const invalidWaitAttemptCount = cores.reduce((count, core) => count + (core.toolErrors ?? []).filter((error) =>
     error.operation === 'request_wait' && ['INVALID_CONTRACT', 'NOT_ALLOWED', 'FENCED'].includes(error.code)).length, 0);
-  const taskById = new Map(taskTree.map((task) => [task.task_id, task]));
-  const childClaimCount = claimHistory.filter((claim) => state.taskModel === 'flat'
-    ? claim.task_id !== state.rootTaskId
-    : taskById.get(claim.task_id)?.parent_id !== null).length;
+  const childClaimCount = claimHistory.filter((claim) => claim.task_id !== state.rootTaskId).length;
   const rootClaimCount = claimHistory.filter((claim) => claim.task_id === state.rootTaskId).length;
   const executionClaimCounts = new Map();
   for (const claim of claimHistory) executionClaimCounts.set(claim.execution_id, (executionClaimCounts.get(claim.execution_id) ?? 0) + 1);
@@ -1629,7 +1590,7 @@ function projectReport(state, startedAt, deadline) {
       repository_worktree_dirty: state.repositoryWorktreeDirty,
       parallel_mode: state.parallelMode,
       normal_flow: state.normalFlow,
-      task_model: state.taskModel,
+      task_model: 'flat',
       provider: state.provider ?? null,
       model: state.model ?? null,
       timebox_ms: state.timeboxMs ?? null,
@@ -1850,9 +1811,13 @@ function projectReport(state, startedAt, deadline) {
 }
 
 async function createProjectState(problem, config, options) {
+  // The Mission-scoped Task lifecycle is the only supported model.
+  // Reject removed programmatic mode toggles rather than silently ignoring them.
+  if (Object.hasOwn(options, 'taskModel') || Object.hasOwn(options, 'taskOriented')) {
+    throw new TypeError('taskModel/taskOriented have been removed; Mission Task is the only runtime model');
+  }
   const selectedParallelMode = parallelMode(options);
-  const selectedTaskModel = taskModel(options);
-  const normalFlow = options.normalFlow ?? selectedParallelMode === 'semantic';
+  const normalFlow = true; // The Mission Task contract always uses typed normal-flow lifecycle.
   const runId = options.runId ?? randomUUID();
   const startedAt = options.startedAt ?? Date.now();
   const experimentRoot = resolve(options.experimentDir ?? options.reportDir);
@@ -2010,12 +1975,12 @@ async function createProjectState(problem, config, options) {
   const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService });
   const router = new ServicesRouter({ taskService, contextService, judgeService, registry: routerRegistry, logger: routerLogger });
   // Flat Mission Tasks complete and block through the registered Task
-  // capabilities. The Runtime lifecycle aliases serve legacy Tasks only;
+  // capabilities. The Runtime lifecycle aliases serve retired Tasks only;
   // exposing both gave r12 Agents two tools per action with different
   // schemas (the Runtime task_block omits the required handoff_material_id).
   const runtimeCapabilities = runtimeCapabilityList()
     .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation))
-    .filter((capability) => selectedTaskModel !== 'flat' || !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
+    .filter((capability) => !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
   const allowedAgentToolNames = [...new Set([
     AGENT_ROLES.BOUND,
     AGENT_ROLES.RECOVERY,
@@ -2032,23 +1997,13 @@ async function createProjectState(problem, config, options) {
     runtimeCapabilities,
   }));
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
-  const taskCreateMutex = selectedTaskModel === 'flat' ? new SerialTaskCreateAdmission() : null;
+  const taskCreateMutex = new SerialTaskCreateAdmission();
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
-  const modeInstructions = selectedTaskModel === 'flat'
-    ? 'Search the Mission Task summaries and linked Materials before proposing substantial new work. The current Task may call the Judge directly whenever a candidate is ready. A source-level Judge FAIL is diagnostic feedback: read the returned CheckResult, revise the candidate in this same Execution, and call submit_candidate again without creating a repair Task or waiting for a Response handoff. Create a separate Task only for genuinely independent work. Publish bounded Materials for distinct findings or checkpoints when they become useful, link them to their producer, and do not publish duplicate copies or require another Task before continuing the current candidate route. Complete the current Task when its own contract is satisfied.'
-    : selectedParallelMode === 'semantic'
-      ? 'This is the semantic-structure treatment. Create branch or required-subtask structure only for genuinely separable responsibilities discovered during research, with concrete outputs and no fixed count. Read task structure and readiness after each change. These must be real claimable responsibilities; do not create placeholder Tasks. After child or branch Materials exist, the Root must read them through Context Service, durably record the bounded handoff using action integration, make a bounded Workspace integration note, and publish a root-owned Material with scope root_integration whose provenance names the consumed Material IDs before blocking or claiming the collaboration loop complete.'
-      : selectedParallelMode === 'root-only'
-        ? 'This is the Root-only control. Keep all work on this root Task and do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks. Do not call the semantic structure mutation tools. Keep all proof work and checking on the root responsibility.'
-        : 'Use direct child Tasks only when a genuinely separable route emerges.';
-  const dependencyInstruction = normalFlow
-    ? (selectedTaskModel === 'flat'
-      ? 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends only the current Execution and releases the Core. On the shared Mission Task it does not block the Mission: the Mission stays claimable, so block there only when you have no useful Mission work without the prerequisite. Do not call request_wait in the normal-flow treatment.'
-      : 'When a real external dependency blocks progress, preserve useful Workspace and Materials and call execution_block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.')
-    : 'Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency.';
-  const taskSpecificInstruction = selectedTaskModel === 'flat'
-    ? 'The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition. Publish and link durable evidence when the Task has a result; consume useful linked research Material with an explicit integration action when it informs the proof.'
-    : 'Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge.';
+  const modeInstructions = selectedParallelMode === 'root-only'
+    ? 'Root-only benchmark treatment: do not register ordinary Tasks. Work on the shared Mission Task only. This is a controlled treatment, not a different Task model.'
+    : 'Search Mission Task summaries and Materials before creating work. Judge FAIL is diagnostic feedback: revise the same Candidate in the same Execution. Register a Task only for genuinely independent work, publish bounded evidence and integrate others’ useful findings. Do not manufacture tasks to fill the queue.';
+  const dependencyInstruction = 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends only the current Execution and releases the Core. On the shared Mission Task it does not block the whole Mission. Do not call request_wait.';
+  const taskSpecificInstruction = 'The current Task owns its result; completion is based on its own contract. Publish/link durable evidence; consume useful research Material with an explicit integration action when it informs the proof.';
   const taskPayload = {
     task_type: 'proof',
     summary: `Prove ${problem.id} with an independently checked candidate and a clear boundary from other Mission work.`,
@@ -2057,27 +2012,15 @@ async function createProjectState(problem, config, options) {
     // Keep the final proof lane claimable alongside the bounded research pool
     // when the pool is larger than the Core count; research routes remain
     // independently available instead of starving the integration lane.
-    priority: selectedTaskModel === 'flat' ? 110 : 0,
+    priority: 110,
     task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. Until an honest candidate is ready, keep researching and publish useful evidence; never submit the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.`,
     completion_contract: {
-      ...(normalFlow ? { normal_flow: true } : {}),
-      ...(selectedParallelMode === 'semantic' && selectedTaskModel !== 'flat' ? {
-        required_materials: [{ kinds: ['artifact', 'fact', 'experience', 'failure'], scope: 'root_integration', min_count: 1, requires_consumption: true, cross_task: true, action: 'integration' }],
-      } : {}),
-      ...(selectedTaskModel === 'flat' ? {
-        required_materials: [{
-          kinds: ['fact', 'experience', 'conjecture', 'artifact', 'failure'],
-          scope: 'proof_relevant',
-          min_count: 1,
-          requires_consumption: true,
-          cross_task: true,
-          action: 'integration',
-        }],
-      } : {}),
-      // A passing child/diagnostic check must not close the Mission. Only a
-      // Task explicitly carrying the final-candidate contract can establish
-      // the project-level solved projection; authorized non-root Tasks may
-      // opt into this contract when they own the complete candidate.
+      normal_flow: true,
+      required_materials: [{
+        kinds: ['fact', 'experience', 'conjecture', 'artifact', 'failure'],
+        scope: 'proof_relevant', min_count: 1,
+        requires_consumption: true, cross_task: true, action: 'integration',
+      }],
       final_candidate: true,
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
       required_check: {
@@ -2095,38 +2038,31 @@ async function createProjectState(problem, config, options) {
       input_metadata: inputMetadata,
       formal_source: problem.source,
     },
-    max_children: 32,
-    max_depth: 3,
   };
-  const mission = selectedTaskModel === 'flat'
-    ? owner.createMission({
-      mission_id: `mission:${problem.id}:${runId}`,
-      goal: `Solve ${problem.id} through independent, shared Task work.`,
-      acceptance_conditions: {
-        project: problem.id,
-        source_hash: problem.source_hash,
-        final_candidate: true,
-        required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
-        required_check: {
-          checker_ref: fixture.checker_ref,
-          checker_version: fixture.checker_version,
-          environment_ref: fixture.environment_ref,
-        },
+  const mission = owner.createMission({
+    mission_id: `mission:${problem.id}:${runId}`,
+    goal: `Solve ${problem.id} through independent, shared Task work.`,
+    acceptance_conditions: {
+      project: problem.id,
+      source_hash: problem.source_hash,
+      final_candidate: true,
+      required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
+      required_check: {
+        checker_ref: fixture.checker_ref,
+        checker_version: fixture.checker_version,
+        environment_ref: fixture.environment_ref,
       },
-    }, { operationId: `benchmark:mission:create:${runId}` }).mission
-    : null;
-  const root = selectedTaskModel === 'flat'
-    ? owner.createTask({
-      ...taskPayload,
-      mission_id: mission.mission_id,
-      timebox_ms: options.taskTimeboxMs ?? flatExecutionTimeoutMs(options),
-      owner_ref: 'owner:benchmark',
-    }, { operationId: `benchmark:task:create:${runId}` }).task
-    : owner.proposeTask(taskPayload, { operationId: `benchmark:root:propose:${runId}` }).task;
+    },
+  }, { operationId: `benchmark:mission:create:${runId}` }).mission;
+  const root = owner.createTask({
+    ...taskPayload, mission_id: mission.mission_id,
+    timebox_ms: options.taskTimeboxMs ?? flatExecutionTimeoutMs(options),
+    owner_ref: 'owner:benchmark',
+  }, { operationId: `benchmark:task:create:${runId}` }).task;
   const initialTasks = [root];
   observationStore.registerExperiment({ experimentId: runId, rootTaskId: root.task_id, status: 'RUNNING', metadata: {
     problem_id: problem.id,
-    task_model: selectedTaskModel,
+    task_model: 'flat',
     mission_id: mission?.mission_id ?? null,
     initial_task_count: initialTasks.length,
   } });
@@ -2140,7 +2076,7 @@ async function createProjectState(problem, config, options) {
       core_count: 4,
       timebox_ms: options.timeboxMs ?? 60 * 60_000,
       parallel_mode: selectedParallelMode,
-      task_model: selectedTaskModel,
+      task_model: 'flat',
       mission_id: mission?.mission_id ?? null,
       normal_flow: normalFlow,
     },
@@ -2192,9 +2128,9 @@ async function createProjectState(problem, config, options) {
       // Contract §5 (r15 revision): in the flat model an Execution may last
       // the whole run. Its deadline is the run deadline (set at run start)
       // and the handoff reminder fires a lead time before it; compaction
-      // rotation bounds identity lifetime. Legacy callers keep 60/55 minutes.
-      executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? flatExecutionTimeoutMs(options) : undefined),
-      handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? flatHandoffReminderMs(options) : undefined),
+      // rotation bounds identity lifetime. retired callers keep 60/55 minutes.
+      executionTimeoutMs: options.executionTimeoutMs ?? flatExecutionTimeoutMs(options),
+      handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
       logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
       onSessionStarted: ({ execution, session, recovery }) => {
@@ -2312,7 +2248,7 @@ async function createProjectState(problem, config, options) {
       coreId: `core-${index}`,
       // This is an active reusable identity even while it has no current
       // Execution.  BOUND is intentional: it exposes task_status/task_take
-      // and prevents the legacy Selection role from becoming a second Agent.
+      // and prevents the retired Selection role from becoming a second Agent.
       role: AGENT_ROLES.BOUND,
       taskCreateMutex,
       // Mission Task creation is governed by the Task Service contract and
@@ -2365,7 +2301,7 @@ async function createProjectState(problem, config, options) {
           // another initial prompt from inside task_take would race the
           // in-flight RPC and violate the single-turn ordering contract.
           sendInitialPrompt: false,
-          agentPrompt: modePrompt(selectedParallelMode, BOUND_AGENT_PROMPT, selectedTaskModel),
+          agentPrompt: BOUND_AGENT_PROMPT,
         });
         const boundSession = core.session;
         const boundExecutionId = claim.execution.execution_id;
@@ -2405,7 +2341,7 @@ async function createProjectState(problem, config, options) {
                 if (core.stopping || core.session !== boundSession || core.executionId !== boundExecutionId) break;
                 core.turnStartedAt = Date.now();
                 core.turnInFlight = false;
-                await runTurn(core, modePrompt(selectedParallelMode, BOUND_AGENT_PROMPT, selectedTaskModel), core.startConfig.options.turnTimeoutMs ?? 30_000);
+                await runTurn(core, BOUND_AGENT_PROMPT, core.startConfig.options.turnTimeoutMs ?? 30_000);
               }
             } catch (error) {
               const expectedHandoff = boundSession.expectedStop || core.session !== boundSession || core.stopping;
@@ -2527,8 +2463,7 @@ async function createProjectState(problem, config, options) {
         }
         const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
         const releasedState = releasedExecution?.state ?? 'RELEASED';
-        const legacyWaiting = releasedState === 'WAITING' && core.stateRef?.normalFlow !== true;
-        const coreProjection = legacyWaiting ? 'WAITING' : 'IDLE';
+        const coreProjection = 'IDLE';
         // A claim record is created before Runtime binds its Workspace. If a
         // very short bound turn fails before the handoff callback records the
         // starting revision, retain the attempted ownership with the durable
@@ -2548,16 +2483,16 @@ async function createProjectState(problem, config, options) {
           taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
           payload: {
             state: coreProjection,
-            reason: legacyWaiting ? 'execution_waiting' : 'execution_released',
+            reason: 'execution_released',
           },
         });
         core.parallelism.transition(core.index, coreProjection, {
           task_id: taskId,
           execution_id: executionId,
-          reason: legacyWaiting ? releasedExecution.wait_condition?.type ?? 'request_wait' : releasedExecution?.state?.toLowerCase() ?? 'claim_released',
+          reason: releasedExecution?.state?.toLowerCase() ?? 'claim_released',
         });
         if (core.taskId === taskId && core.executionId === executionId) {
-          core.waitingExecutionId = legacyWaiting ? executionId : null;
+          core.waitingExecutionId = null;
           core.taskId = null;
           core.executionId = null;
           core.claim = null;
@@ -2708,7 +2643,7 @@ async function createProjectState(problem, config, options) {
         } else if (operation === 'task_create') {
           const created = result?.task ?? result ?? {};
           const state = core.stateRef;
-          const dynamic = Boolean(state?.taskModel === 'flat' && created.task_id && !state.initialTaskIds.includes(created.task_id));
+          const dynamic = Boolean(created.task_id && !state.initialTaskIds.includes(created.task_id));
           if (dynamic && state) {
             state.dynamicTaskEvents.push({
               task_id: created.task_id ?? null,
@@ -2940,12 +2875,11 @@ async function createProjectState(problem, config, options) {
     repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
     parallelism,
     parallelMode: selectedParallelMode,
-    taskModel: selectedTaskModel,
-    missionId: mission?.mission_id ?? null,
+    missionId: mission.mission_id,
     taskCreateMutex,
     dynamicTaskEvents: [],
-    executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? flatExecutionTimeoutMs(options) : 60 * 60_000),
-    handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? flatHandoffReminderMs(options) : 55 * 60_000),
+    executionTimeoutMs: options.executionTimeoutMs ?? flatExecutionTimeoutMs(options),
+    handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
     normalFlow,
     readinessSamples: [],
   };
@@ -3033,9 +2967,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   recordReadinessSnapshot(state, startedAt);
   const durationMs = options.timeboxMs ?? 60 * 60_000;
   const deadline = startedAt + durationMs;
-  if (state.taskModel === 'flat') {
-    for (const core of state.cores) core.runtime?.setRunDeadline?.(deadline);
-  }
+  for (const core of state.cores) core.runtime?.setRunDeadline?.(deadline);
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
   // IdentityTaskLoop waits for the whole Runtime Execution to release after a
   // successful claim. Keep that ownership deadline at least as long as the
