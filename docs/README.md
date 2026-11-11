@@ -12,7 +12,7 @@
 
 ## Stage、实验和历史
 
-[Stage协作规范](stages/README.md)规定人类阶段负责人和AI执行者的边界。[Stage Charter模板](stages/stage-charter-template.md)规定每个大阶段要先拍板的内容。[实验规范](experiments/README.md)规定规范Experiment ID、Truth/Assessment/Decision报告和证据边界。以[R16示例](experiments/EXP-20261111-01-r16-example.md)查看一份完整的可读报告。
+[阶段协作规范](phases/README.md)规定人类阶段负责人和AI执行者的边界。[阶段说明模板](phases/phase-template.md)规定每个大阶段要先拍板的内容。[实验规范](experiments/README.md)规定规范Experiment ID、Overview、分析判断和下一步决定的报告结构。以[R16示例](experiments/EXP-20261111-01-r16-example.md)查看一份完整的可读报告。
 
 ## 开发、运行和历史
 

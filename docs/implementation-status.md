@@ -1,6 +1,6 @@
 # 目标与实现状态
 
-> 本表是 Issue #111 第一阶段实现状态快照，不是当前 main 的完整代码清单。当前模块边界见 [architecture/](architecture/README.md)，新的阶段与实验协作规范见 [stages/](stages/README.md) 和 [experiments/](experiments/README.md)。表内历史实验事实不因文档整理而改写。
+> 本表是 Issue #111 第一阶段实现状态快照，不是当前 main 的完整代码清单。当前模块边界见 [architecture/](architecture/README.md)，新的阶段与实验协作规范见 [phases/](phases/README.md) 和 [experiments/](experiments/README.md)。表内历史实验事实不因文档整理而改写。
 
 代码核对基线为 Issue #111 后续实现提交 `1e418a29fc0fef8ba58516d38cb6b6148049c9c2`（基于 PR #112 的 `1aca2651cda88926f2d4732ad769c7ba1bda242c`）。完整确定性回归为 316/316。真实 Agent 受控 probe 在同一 clean 实现上返回 **SUCCEEDED**：同一 Session/Execution 内完成 source-level FAIL → 读取诊断 → 修订并 supersede → 第二次检查 PASS。两小时四 Core flat 运行已完成（run HEAD `34d04b3`，code `1e418a2`），`protocol_valid=true`、`audit.invalid=false`、未解出原题；四 Core 共同 Mission 并发、Agent 自主登记一项 peer research Task 并被其他 delegation 认领、重复同一 Core 接续与真实 checker 反馈均有真实轨迹。匹配基线与真实 compaction 阈值/启用 Sandbox 的长跑仍缺。
 

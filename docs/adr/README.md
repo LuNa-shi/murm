@@ -2,6 +2,6 @@
 
 [0017：第一阶段Task-centric规范](0017-task-centric-phase1-contract.md) 是本PR提出的新基线决定，状态为Proposed。合并后按审阅结论接受；代码符合性仍由 [实现状态](../implementation-status.md) 单独记录。
 
-[0018：人类控制Stage与证据审阅](0018-human-controlled-stages-and-evidence-review.md) 规定Stage Charter、规范Experiment ID以及Truth/Assessment/Decision分层。它约束文档和实验协作，不改变运行代码。
+[0018：人工控制阶段与证据审阅](0018-human-controlled-phases-and-evidence-review.md) 规定大阶段范围、规范Experiment ID以及Overview/分析判断/下一步决定的报告分层。它约束文档和实验协作，不改变运行代码。
 
 此前ADR原文保存在 [历史快照](../archive/README.md)，旧路径保留跳转。它们用于解释旧版本取舍；当前仍采用的隔离、服务与执行安全原则已在AGENTS/架构中明确延续。归档不表示旧决定当时都是错误，也不代表本PR修改了相应代码。

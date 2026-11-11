@@ -1,7 +1,7 @@
 # Experiment records
 
-An experiment is one registered run inside a human-approved Stage. The primary
-record is a readable report with separate Truth, Assessment and Decision
+An experiment is one registered run inside a human-approved phase. The primary
+record is a readable report with separate Overview, analysis and next-step
 sections. Raw conversations, candidate/proof source, credentials and private
 state remain in ignored local evidence directories.
 
@@ -25,14 +25,13 @@ by this convention.
 ## Required report sections
 
 1. Run card and evidence boundary
-2. Truth: immutable inputs, environment and observed outcome
+2. Overview: immutable inputs, environment and observed outcome
 3. Input surface: prompt, Task/Execution entry, tools, services, Workspace
 4. Process: Task windows, Execution windows, Material/feedback windows and
    Judge sequence
-5. Assessment: causal hypotheses, alternatives, confidence and unknowns
-6. Decision: what the Stage owner should do next
-7. Evidence index and privacy limitations
+5. Analysis and next step: causal hypotheses, alternatives, confidence and unknowns
+6. Evidence index and privacy limitations
 
 Use [`report-template.md`](report-template.md). The current
 `experiment-analysis` skill supplies useful evidence joins, but its output is a
-draft appendix rather than the Stage decision.
+draft appendix rather than the human's next-step decision.

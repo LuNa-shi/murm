@@ -31,7 +31,7 @@ the experiment reports.
 | Interface/state details | [`docs/20261102-agent-task-runtime-contract.md`](../20261102-agent-task-runtime-contract.md) and the relevant source |
 | Why a durable design choice exists | [`docs/adr/`](../adr/README.md) |
 | Code versus intended behavior | [`docs/implementation-status.md`](../implementation-status.md) |
-| A stage's approved scope and hypothesis | [`docs/stages/`](../stages/README.md) |
+| 大阶段批准的范围和假设 | [`docs/phases/`](../phases/README.md) |
 | What a run actually did | [`docs/experiments/`](../experiments/README.md) |
 | Historical material | [`docs/archive/`](../archive/README.md) |
 

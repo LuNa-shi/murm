@@ -2,7 +2,7 @@
 
 Status: `REGISTERED | RUNNING | COMPLETE | BLOCKED | INCONCLUSIVE`
 
-Stage: `<Stage Charter link>`
+所属阶段：`<阶段说明链接>`
 
 Legacy ID: `<optional historical name>`
 
@@ -23,7 +23,7 @@ Legacy ID: `<optional historical name>`
 State what is present, what is external, and what is unavailable. Missing
 evidence is `unknown`, not zero.
 
-## 2. Truth
+## 2. Overview
 
 Record only facts supported by metadata, authoritative state, Runtime/Service
 events, Workspace manifests and Judge records. Include the final protocol,
@@ -53,7 +53,7 @@ Keep Session, Execution, Core and Workspace identities separate.
 Show candidate identity/content binding, CheckResult, feedback read, subsequent
 route change and any notification delivery/handling receipt.
 
-## 5. Assessment
+## 5. 分析判断
 
 Separate these hypotheses:
 
@@ -66,10 +66,9 @@ Separate these hypotheses:
 For each claim list evidence, alternative explanations, confidence and what
 would falsify it. Do not infer hidden reasoning from prose.
 
-## 6. Decision and next experiment
+## 6. 下一步决定和实验
 
-The human Stage owner records the decision. The next experiment must state one
-primary hypothesis, one changed variable and a pre-registered stopping rule.
+由人类阶段负责人记录决定。下一次实验必须写明一个主要假设、一个变化变量和预先登记的停止规则。
 
 ## 7. Privacy and limitations
 

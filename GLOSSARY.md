@@ -31,10 +31,5 @@
 | Fencing | 撤销具体Execution旧写入资格；对共享Mission不能同时撤销无关执行者。 |
 | Claim / task_take | identity主动取得工作责任、关联上下文和私有工作面，在自己的lane内开始Execution。 |
 | Controller / Daemon | 物理运行监督的实现名称，不是语义领导者或研究路线生成者。 |
-| Stage | 一个由人类批准的工作阶段，拥有独立worktree、主要假设、允许变更、实验矩阵和关闭决定。 |
-| Stage Charter | Stage的可审阅范围与验收文件；它规定AI可以执行什么，以及哪些发现必须回到人类决定。 |
-| Experiment ID | 一次具体运行的稳定标识；新运行使用`EXP-YYYYMMDD-NN`，不把结果或实现类型编码进ID。 |
-| Truth report | 从运行元数据、权威状态和证据日志重建的事实报告；不包含未经证据支持的因果判断。 |
-| Assessment | 对Truth的证据支持解释、替代原因、置信度和未知项；不等同于运行事实。 |
 
 共享Mission的某次执行完成、独立Task完成、消费者接受材料、局部检查通过和Mission最终成功分别记录。Task状态枚举与“当前是否仍可认领”不必等价。
