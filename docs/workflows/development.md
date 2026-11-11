@@ -22,6 +22,6 @@ The default engineering procedure is defined by the [installed Matt Pocock engin
 
 - Keep exact commit, environment, provider/model, checker and input identities for substantive evidence. Do not silently change the approved Issue, fixtures, acceptance thresholds or experiment budget.
 - Formal real-Agent research runs require the approval and registration described in [experiment workflow](experiment.md). Bounded in-scope debug probes and deterministic tests do not need a formal EXP ID.
-- Update [STATUS](../STATUS.md) at meaningful Issue milestones with PR/commit/test/run links and limitations; the Issue/PR holds detailed implementation discussion.
+- **Maintain [STATUS](../STATUS.md) in the relevant PR** whenever meaningful implementation, blocker, regression, or verification evidence changes. Record the Issue, exact tested commit, evidence level, conclusion, and remaining gap; mark unmerged work pending. Do not update after every test or duplicate Issue specifications. At Issue closeout consolidate the accepted state. See [AGENTS.md](../../AGENTS.md) for the maintenance triggers.
 - Synchronize changed [Architecture](../architecture/INDEX.md) when a design-changing PR is accepted, and check accepted behavior and evidence at Issue closeout.
 - Do not merge, close unrelated Issues, or run unapproved paid experiments without explicit user permission. Retire obsolete documentation through Git history, not an `archive/` directory.

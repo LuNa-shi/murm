@@ -42,6 +42,18 @@ An explicit request to invoke a skill permits its normal in-scope operations; it
 - Do not create `docs/phases/`, `archive/`, historical redirect files, or `CONTEXT.md`. Git history preserves obsolete tracked documentation.
 - Do not merge PRs, close unrelated Issues, or run unapproved paid experiments without the user's authorization.
 
+## Maintaining STATUS
+
+[docs/STATUS.md](docs/STATUS.md) is a **living, evidence-backed implementation index**, maintained by the Coding Agent responsible for each approved Issue. It is not a second specification, a task queue, a debugging diary, or a substitute for GitHub Issues, PRs, and experiment reports.
+
+- **When to update:** On meaningful implementation milestones, newly confirmed blockers or regressions, substantive test/probe or real-Agent verification outcomes, design-changing PR acceptance, and Issue closeout. Update STATUS in the relevant implementation PR so the reviewed version stays synchronized with code and evidence.
+- **What to record:** Link the approved Issue, PR, exact implementation/tested commit, concise implemented behavior, verification method and result, unresolved gaps, and next action. Distinguish code inspected, deterministic tests, controlled probes, and natural real-Agent evidence; missing or untested cases remain `unknown`.
+- **Keep status honest:** Separate `implemented` from `verified`; identify unmerged work as **pending** rather than part of the accepted `main` baseline. Do not convert a test pass into a research-success claim.
+- **Avoid churn and duplication:** No update is required for every commit, test call, or debugging attempt. Keep detailed discussion, acceptance criteria, experiments and review logs in GitHub Issues/PRs or their dedicated reports. STATUS carries only current conclusions and links.
+- **At closeout:** Reconcile accepted code, STATUS, and relevant Architecture. Consolidate or retire superseded Issue rows; do not accumulate a chronological history. Git preserves old snapshots.
+
+A docs-only change does not require inventing runtime progress. See the [STATUS format and update policy](docs/STATUS.md).
+
 ## Agent skills configuration
 
 ### Issue tracker

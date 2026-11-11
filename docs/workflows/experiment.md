@@ -38,6 +38,6 @@ Use [experiment-analysis](../../.codex/skills/experiment-analysis/SKILL.md) and 
 
 ### 4. Sync decisions and evidence
 
-At a milestone or at completion, link the registered runs and consolidated conclusions back to the GitHub Issue/PR and update [STATUS](../STATUS.md). The Agent may fix code defects and rerun within approved limits. Only the human can approve a new scientific question, expanded system design, changed acceptance conditions or extra resources.
+At a meaningful verification milestone or at completion, link registered runs and consolidated conclusions to the GitHub Issue/PR. **Update [STATUS](../STATUS.md) only when the experiment changes the known implementation/verification state**, using the exact tested commit and a link to the formal report; do not duplicate the full analysis or post a STATUS update for every diagnostic iteration. The Agent may fix code defects and rerun within approved limits. Only the human can approve a new scientific question, expanded system design, changed acceptance conditions or extra resources.
 
 When the resulting design is accepted for merge, update [Architecture](../architecture/INDEX.md); at Issue closeout verify that the design, implementation and evidence records agree. Do not turn historical runs into retrospectively preregistered evidence.
