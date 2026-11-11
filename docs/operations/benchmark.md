@@ -6,7 +6,7 @@ SwarmEnv currently uses PutnamBench, Lean/Mathlib and multi-Core runs to test co
 
 ## Before a formal run
 
-1. Confirm the **human-approved GitHub Issue** and its authorized experiment plan, input configuration, resource/cost allowance and stopping conditions. A separate Phase document is not required.
+1. Confirm the **human-approved GitHub Issue** and its authorized experiment plan, input configuration, resource/cost allowance and stopping conditions. The Issue is the only requirements and approval source.
 2. Register a formal [Experiment ID](../experiments/INDEX.md) before execution; ordinary deterministic tests and in-scope diagnostic probes do not require formal registration.
 3. Pin clean code commit, PutnamBench/Lean/Mathlib revisions, provider/model, prompt/profile/schema identities, Core count and total budget. Do not alter the baseline or checker silently.
 4. Use ignored local `.env` or process environment for credentials. `.env.example` contains nonsecret examples only; never publish secret values or raw Agent conversations.
@@ -26,4 +26,4 @@ node scripts/run-putnambench-benchmark.mjs \
   --experiment-dir experiments/<registered-id>
 ~~~
 
-The benchmark runner in the stacked cleanup branch uses the Mission Task model exclusively; `--task-model` and `--normal-flow` are no longer accepted CLI parameters. Legacy compatibility internals must be removed and tests migrated before this branch is considered ready for merge. Check every option against the actual script and approved Issue before use; the example's model-independent placeholders, Core count and problem are not defaults for future research. Use the [experiment workflow](../workflows/experiment.md) for reporting. Built-in and Mathlib service deployment references: [built-in services](../../services/builtin/README.md) and [Mathlib Search](../../services/mathlib-search/README.md).
+In the stacked cleanup branch, the benchmark runner uses Mission-scoped Tasks exclusively: `--task-model` and `--normal-flow` are no longer accepted. Legacy compatibility internals and their tests still require removal before the cleanup PR is ready for merge. Check every option against the actual script and approved Issue before use; the example's model-independent placeholders, Core count and problem are not defaults for future research. Use the [experiment workflow](../workflows/experiment.md) for reporting. Built-in and Mathlib service deployment references: [built-in services](../../services/builtin/README.md) and [Mathlib Search](../../services/mathlib-search/README.md).

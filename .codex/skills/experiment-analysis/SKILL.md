@@ -5,7 +5,7 @@ description: Analyze existing SwarmEnv experimental or diagnostic evidence, reco
 
 # SwarmEnv experiment analysis
 
-Analyze **existing evidence**. This skill cannot authorize paid runs, choose a new research direction, change an approved fixture/model/checker or rewrite raw traces. Follow [the experiment workflow](../../../docs/workflows/experiment.md), the relevant **human-approved GitHub Issue**, and any [Issue-numbered implementation notes](../../../docs/phases/INDEX.md).
+Analyze **existing evidence**. This skill cannot authorize paid runs, choose a new research direction, change an approved fixture/model/checker or rewrite raw traces. Follow [the experiment workflow](../../../docs/workflows/experiment.md), the relevant **human-approved GitHub Issue**, its approved comments, and linked tickets/PRs. No local Phase spec is needed.
 
 There are two output paths:
 - **Implementation diagnostics**: small tests and authorized debugging probes may be repeated autonomously and summarized locally or at a milestone. No formal EXP ID or individual report after every iteration.

@@ -2,7 +2,6 @@
 
 Status: REGISTERED / RUNNING / COMPLETE / BLOCKED / INCONCLUSIVE
 Approved GitHub Issue: [Issue URL and linked approval]
-Implementation notes (optional): [optional path under docs/phases/]
 Experiment ID: [assigned in INDEX before execution]
 Repeat of / comparison to: [optional]
 
@@ -11,7 +10,7 @@ Repeat of / comparison to: [optional]
 | Item | Fixed value or reference |
 |---|---|
 | Approved Issue requirements, main observations and decision criteria | |
-| Clean implementation commit, Architecture baseline and optional notes revision | |
+| Clean implementation commit, Architecture baseline and linked PR/ticket references | |
 | Baseline and treatment, or approved exploration boundary | |
 | Variables allowed to change and conditions held fixed | |
 | Problem / fixture, Lean/Mathlib and input hash | |

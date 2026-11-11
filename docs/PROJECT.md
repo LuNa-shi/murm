@@ -17,4 +17,4 @@ These are open research questions, not proven conclusions or permission to hard-
 
 PutnamBench, Lean/Mathlib and existing multi-Core execution paths are the primary current testbed. The long-term goal is a transferable collaboration system; problem-specific mathematical strategies are not default architectural requirements.
 
-The **next approved work objective** lives in a human-reviewed GitHub Issue, which specifies why the task matters and the behavior and evidence expected. Coding Agents can maintain an optional [Issue implementation notes](phases/INDEX.md) and update [STATUS](STATUS.md) as they implement and verify it. Established system design is described in [Architecture](architecture/INDEX.md).
+The **next approved work objective** lives in a human-reviewed GitHub Issue, which specifies why the task matters and the behavior and evidence expected. Coding Agents follow the approved Issue and its comments for technical decisions, and update [STATUS](STATUS.md) as they implement and verify it. Established system design is described in [Architecture](architecture/INDEX.md).
