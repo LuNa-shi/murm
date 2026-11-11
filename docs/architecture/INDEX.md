@@ -40,7 +40,6 @@ Source coverage is an inventory, not a formal proof that every branch is correct
 |---|---|---|
 | Approved GitHub Issue / accepted Agent Brief | Intended change, scope, resources and acceptance | Human decisions and meaningful implementation progress |
 | Architecture | Current reviewed implementation and explicit discrepancies | In the same PR as behavior changes; complete reconciliation at stage closeout |
-| STATUS | What is implemented, verified, blocked or unknown, with evidence | Meaningful milestones and final closeout |
 | Experiments | Inputs and observations of a particular version/run | Registration and evidence-backed reporting |
 | ADR | Durable decision rationale and tradeoffs | Only when a significant decision warrants a lasting record |
 
@@ -52,6 +51,6 @@ Implementation notes and handoffs stay in the originating Issue/PR. There is no 
 2. Update the explanatory chapters, including changed defaults, fields, state transitions, errors, prompt-delivery paths and limitations. Keep present behavior and approved future work explicit.
 3. Run `npm run docs:generate`. Review the full prompt, API, storage and source-fingerprint diffs. Regeneration cannot write the required explanation for you.
 4. Run `npm run docs:check` and `git diff --check`, plus the behavior checks appropriate to the code change. `docs:check` runs offline: it checks generated drift, unmapped/missing source files, chapter ownership and local documentation links. It does not call a model, launch a real experiment or prove semantic correctness.
-5. In the PR, provide a short code-area → architecture-chapter mapping, validation results and remaining limitations. At Issue/stage closeout, reconcile this directory and STATUS with the final merged revision and acceptance evidence. Do not close out with a known stale implementation manual.
+5. In the PR, provide a short code-area → architecture-chapter mapping, validation results and remaining limitations. At Issue/stage closeout, reconcile this directory with the final merged revision and acceptance evidence linked from the Issue/PR. Do not close out with a known stale implementation manual.
 
 The runtime baseline and raw experiment version are separate. Updating this manual never changes historical results in [Experiments](../experiments/INDEX.md), and documentation review alone does not establish successful scientific collaboration.

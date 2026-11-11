@@ -13,7 +13,6 @@ This is the entry point to current maintained documentation. Historical design d
 | Which engineering workflow applies? | **Installed Matt Pocock engineering skills** + [AGENTS.md](../AGENTS.md) | `/to-spec`, optional `/to-tickets`, `/implement`, `/implement-spec`, `/tdd`, `/code-review`, `/pr` |
 | Where is Matt skills configuration? | [agents/issue-tracker.md](agents/issue-tracker.md), [agents/domain.md](agents/domain.md), [agents/triage-labels.md](agents/triage-labels.md) | Issue tracker, domain and triage setup |
 | How does the current system run in detail? | [architecture/INDEX.md](architecture/INDEX.md) | Complete implementation manual, full prompts, interfaces, state and source coverage |
-| What is implemented and verified? | [STATUS.md](STATUS.md) | Continuously maintained Issue/PR/commit-linked evidence, gaps and pending work |
 | What are the SwarmEnv-specific working rules? | [workflows/development.md](workflows/development.md), [workflows/experiment.md](workflows/experiment.md) | Repo conventions, verification and experiment boundaries |
 | Where are formal experiments? | [experiments/INDEX.md](experiments/INDEX.md) | Run IDs, evidence and report template |
 | Why was a major design decision made? | [adr/INDEX.md](adr/INDEX.md) | Decision rationale |
@@ -23,11 +22,11 @@ Root [GLOSSARY.md](../GLOSSARY.md) defines runtime vocabulary. The [experiment-a
 
 ## Authority and lifecycle
 
-**Approved GitHub Issue → Matt engineering implementation/review → Issue/PR evidence and STATUS → accepted Architecture.**
+**Approved GitHub Issue → Matt engineering implementation/review → Issue/PR evidence → accepted Architecture.**
 
-The Issue (including explicitly approved Agent Briefs and changes in its comments) defines requirements and acceptance. Matt engineering skills determine *how engineering work is carried out*. Architecture is the baseline to preserve outside an approved Issue's changes; ADRs explain durable tradeoffs. Code shows the current implementation, and tests/experiments establish what was observed. STATUS links current implementation and verification evidence to Issues without redefining requirements. Coding Agents update it at material milestones and Issue closeout under the [AGENTS.md](../AGENTS.md) maintenance rules, not after every test.
+The Issue (including explicitly approved Agent Briefs and changes in its comments) defines requirements and acceptance. Matt engineering skills determine *how engineering work is carried out*. Architecture is the baseline to preserve outside an approved Issue's changes; ADRs explain durable tradeoffs. Code shows the current implementation; tests and experiments establish what was observed. Keep implementation progress, test results, unresolved gaps and decisions in the originating GitHub Issue/PR, linking formal experiment reports when appropriate.
 
-Keep engineering plans, dependencies, code-level decisions, handoff notes and discussion in the Issue/PR and commit history rather than creating local Phase or Implementation Spec files. Update Architecture in the same PR as its implementation so both can be reviewed together. At Issue/stage closeout, reconcile the manual, generated references, source fingerprints, STATUS, final code and acceptance evidence. See AGENTS.md for human/Agent approval boundaries.
+Keep engineering plans, dependencies, code-level decisions, handoff notes and discussion in the Issue/PR and commit history rather than creating local Phase or Implementation Spec files. Update Architecture in the same PR as its implementation so both can be reviewed together. At Issue/stage closeout, reconcile the manual, generated references, source fingerprints, final code and Issue/PR acceptance evidence. See AGENTS.md for human/Agent approval boundaries.
 
 ## Why experiments and ADRs remain
 

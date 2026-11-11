@@ -7,7 +7,7 @@ These instructions apply to **Coding Agents developing SwarmEnv**, not research 
 - **The human-approved GitHub Issue is the sole authority for work requirements:** why the change matters, desired behavior, research hypotheses, constraints, observable outcomes, and acceptance criteria. Read the full Issue, its linked tickets, comments, and explicit human decisions. An accepted Agent Brief is part of the Issue's discussion, not a separate specification.
 - An Issue can cover several PRs or be split into dependent GitHub tickets using `/to-tickets`. Keep the approved decisions and ticket graph on GitHub. **Do not create local Phase Charters, Implementation Specs, or a second requirement source.**
 - [Architecture](docs/architecture/INDEX.md) documents the previously accepted system baseline; [ADRs](docs/adr/INDEX.md) explain why past decisions were made. They are references, **not independent approval to change the current Issue's scope**. When they conflict with an approved Issue, surface the discrepancy and obtain clarification rather than editing requirements to match code.
-- Current code and schemas describe what executes. Tests and experiments establish what is verified. [STATUS](docs/STATUS.md) records implementation and evidence gaps, without defining new requirements. Start from [docs/INDEX.md](docs/INDEX.md), [GLOSSARY.md](GLOSSARY.md), then relevant source/tests; do not load every document by default.
+- Current code and schemas describe what executes. Tests and experiments establish what is verified. Keep implementation progress, validation evidence and unresolved gaps in the relevant GitHub Issue/PR, with formal run evidence in experiment reports. Start from [docs/INDEX.md](docs/INDEX.md), [GLOSSARY.md](GLOSSARY.md), then relevant source/tests; do not load every document by default.
 
 ## Human decisions and delegated autonomy
 
@@ -35,7 +35,7 @@ An explicit request to invoke a skill permits its normal in-scope operations; it
 
 - Pin the implementation commit; validate affected Agent/Bridge/Service/Runtime paths, authorization, idempotency, fencing, checker integrity, privacy, and cleanup as relevant. Run focused tests and, for code changes when available, `npm test` and `git diff --check`. Report skipped checks honestly.
 - Formal research runs follow [the experiment workflow](docs/workflows/experiment.md) and [experiment-analysis skill](.codex/skills/experiment-analysis/SKILL.md). Ordinary in-scope tests and diagnostic probes do not require an EXP ID or individual report.
-- At meaningful milestones, link commits, tests/probes, PR review findings, real-run evidence, and remaining gaps **to the GitHub Issue/PR**; summarize them in [STATUS](docs/STATUS.md). Do not require human review after every debugging iteration.
+- At meaningful milestones, link commits, tests/probes, PR review findings, real-run evidence, and remaining gaps **to the GitHub Issue/PR**; the Issue/PR remains the record of progress. Do not require human review after every debugging iteration.
 - Update affected [Architecture](docs/architecture/INDEX.md) in the implementation PR, ready for review with the code. Reconcile the complete affected flow at Issue/stage closeout; documentation is part of completion. Never describe an unverified proposal as accepted or a passing tool call as scientific progress.
 - Use plain **Results / Analysis / Next steps** in formal research reporting. Keep observations distinct from interpretations and unapproved recommendations.
 - Keep raw Agent conversations, proof/candidate source, credentials, stdout/stderr, private state databases, and personal paths out of committed reports. Store raw experiment evidence only in ignored local `experiments/`.
@@ -50,20 +50,8 @@ The owner reads `docs/architecture/` to understand the implementation **without 
 - Maintain the explicit file-to-chapter inventory in [source-map.json](docs/architecture/source-map.json). New or removed runtime, CLI, service, configuration, storage, UI or build files require a deliberate inventory update. A file mapping is a coverage aid, not proof that every behavior has been explained.
 - Maintain full repository-controlled prompt text, composition conditions, dynamic field provenance and actual send paths in [Prompts](docs/architecture/08-prompts.md). Include discovery, ordinary turns, tool instructions, feedback, lifecycle rejection, notification, recovery, compaction/rotation and legacy paths. Distinguish composed snapshots from messages actually sent; external Pi/provider context is not recoverable from repository templates alone.
 - Regenerate the prompt/API/storage references and source fingerprints with `npm run docs:generate`; then run `npm run docs:check` and `git diff --check`. Read the generated diff and update the explanatory chapters as well. Do not treat regeneration or a successful check as semantic approval.
-- The implementation PR must link changed code areas to the changed architecture chapters, report the checks performed, and identify implemented limitations or unresolved discrepancies. If a change has no architecture effect, state the reason. At stage closeout, verify the final merged code revision, generated references, narrative, Issue acceptance and STATUS evidence together.
+- The implementation PR must link changed code areas to the changed architecture chapters, report the checks performed, and identify implemented limitations or unresolved discrepancies. If a change has no architecture effect, state the reason. At stage closeout, verify the final merged code revision, generated references, narrative, Issue acceptance and linked verification evidence together.
 - Keep `docs/experiments/` for version-bound experimental evidence. Keep ADRs only for durable rationale and tradeoffs worth retaining; no ADR is required for every Issue or stage. Neither directory duplicates the Issue's plan or the implementation manual.
-
-## Maintaining STATUS
-
-[docs/STATUS.md](docs/STATUS.md) is a **living, evidence-backed implementation index**, maintained by the Coding Agent responsible for each approved Issue. It is not a second specification, a task queue, a debugging diary, or a substitute for GitHub Issues, PRs, and experiment reports.
-
-- **When to update:** On meaningful implementation milestones, newly confirmed blockers or regressions, substantive test/probe or real-Agent verification outcomes, design-changing PR acceptance, and Issue closeout. Update STATUS in the relevant implementation PR so the reviewed version stays synchronized with code and evidence.
-- **What to record:** Link the approved Issue, PR, exact implementation/tested commit, concise implemented behavior, verification method and result, unresolved gaps, and next action. Distinguish code inspected, deterministic tests, controlled probes, and natural real-Agent evidence; missing or untested cases remain `unknown`.
-- **Keep status honest:** Separate `implemented` from `verified`; identify unmerged work as **pending** rather than part of the accepted `main` baseline. Do not convert a test pass into a research-success claim.
-- **Avoid churn and duplication:** No update is required for every commit, test call, or debugging attempt. Keep detailed discussion, acceptance criteria, experiments and review logs in GitHub Issues/PRs or their dedicated reports. STATUS carries only current conclusions and links.
-- **At closeout:** Reconcile accepted code, STATUS, and relevant Architecture. Consolidate or retire superseded Issue rows; do not accumulate a chronological history. Git preserves old snapshots.
-
-A docs-only change does not require inventing runtime progress. See the [STATUS format and update policy](docs/STATUS.md).
 
 ## Agent skills configuration
 

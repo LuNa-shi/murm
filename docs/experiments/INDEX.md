@@ -14,7 +14,7 @@ Use [TEMPLATE.md](TEMPLATE.md) for each new formal study. An approved Issue may 
 
 ## Retention and interpretation
 
-This directory is retained because a current implementation manual cannot reconstruct a historical observation. Keep the registry, reusable report template and reports still cited by STATUS or active decisions. When a report leaves the active tree, replace its maintained references with an immutable Git link; do not silently discard the evidence behind a current claim. The existing R16 example remains explicitly retrospective and is not proof of a later implementation's behavior.
+This directory is retained because a current implementation manual cannot reconstruct a historical observation. Keep the registry, reusable report template and reports still cited by current Issues, PRs, ADRs or accepted design decisions. When a report leaves the active tree, replace its maintained references with an immutable Git link; do not silently discard the evidence behind a current claim. The existing R16 example remains explicitly retrospective and is not proof of a later implementation's behavior.
 
 Architecture describes runtime mechanisms, including the evidence pipeline. These reports record the actual inputs, tested version, observations and limitations of particular runs. Neither creates a second stage plan.
 

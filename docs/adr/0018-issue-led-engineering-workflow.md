@@ -27,7 +27,7 @@ Installed Matt Pocock engineering skills govern the engineering procedure, with 
 
 [Architecture](../architecture/INDEX.md) is the complete manual of the reviewed implementation: flow, state, storage, interfaces, full repository-controlled prompts, defaults, failures, cleanup and known discrepancies. Update it in the same PR as runtime changes. At each Issue/stage closeout reconcile it with the final merged code and evidence. Generated references and source fingerprints detect mechanical drift; explanatory review establishes what those changes mean.
 
-[STATUS](../STATUS.md) records implementation and verification milestones. [Experiments](../experiments/INDEX.md) retain version-bound run evidence using Results, Analysis and Next steps. Register formal approved research/acceptance runs with an EXP ID; ordinary deterministic tests and bounded diagnostic probes do not require one. ADRs preserve the rationale for selected durable decisions; an ADR is not required for each stage.
+GitHub Issues and PRs record implementation and verification milestones, including tested commits and unresolved gaps. [Experiments](../experiments/INDEX.md) retain version-bound run evidence using Results, Analysis and Next steps. Register formal approved research/acceptance runs with an EXP ID; ordinary deterministic tests and bounded diagnostic probes do not require one. ADRs preserve the rationale for selected durable decisions; an ADR is not required for each stage.
 
 ## Consequences
 

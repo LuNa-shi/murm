@@ -1,6 +1,6 @@
 # ADR 0017: Shared Mission and Task-centric division of work
 
-- Status: Recorded design decision. The original phase-one proposal remains available in Git history; actual implementation and evidence should be checked against source and [STATUS](../STATUS.md).
+- Status: Recorded design decision. The original phase-one proposal remains available in Git history; actual implementation and evidence should be checked against source, the [architecture manual](../architecture/INDEX.md) and the relevant GitHub Issue/PR evidence.
 - Origin: 2026-11-01 to 2026-11-05; PR #110 and related task-centric revisions.
 
 ## Context

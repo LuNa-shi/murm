@@ -28,4 +28,4 @@ For native sub-Issues and blocking edges, use the operations supported by the in
 
 **PRs as a request surface: no.** PRs are implementation/review artifacts; triage of new work starts from Issues unless the user explicitly asks to review a particular PR.
 
-The canonical triage-state mapping lives in [triage-labels.md](triage-labels.md). Domain vocabulary and decisions are configured in [domain.md](domain.md). For multi-PR Issues, report implementation progress in the Issue comments and link to STATUS; do not close the parent merely because a partial PR merged.
+The canonical triage-state mapping lives in [triage-labels.md](triage-labels.md). Domain vocabulary and decisions are configured in [domain.md](domain.md). For multi-PR Issues, report implementation progress and verification links in the Issue comments; do not close the parent merely because a partial PR merged.

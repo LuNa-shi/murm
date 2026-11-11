@@ -12,7 +12,7 @@ Within an approved Issue, Coding Agents may run and repeat deterministic checks,
 
 - Iterate: review the accepted contract → inspect the implementation → run tests → diagnose a mismatch → fix → retest.
 - Keep enough commit, input, failed assertion and final result evidence to make consequential findings reproducible. Ordinary debug probes do not need an `EXP-YYYYMMDD-NN`.
-- Summarize evidence at a meaningful PR/Issue milestone and in [STATUS](../STATUS.md), rather than producing a report per tool call.
+- Summarize evidence in the GitHub Issue/PR at a meaningful milestone, rather than producing a separate report per tool call.
 - If the findings point to an important new research hypothesis or a design beyond the Issue, propose it to the human owner first. Do not treat a debugging explanation as approval for a new research program.
 - Code authorization does not imply unlimited model calls or external spending. Use only an explicitly approved allowance.
 
@@ -38,6 +38,6 @@ Use [experiment-analysis](../../.codex/skills/experiment-analysis/SKILL.md) and 
 
 ### 4. Sync decisions and evidence
 
-At a meaningful verification milestone or at completion, link registered runs and consolidated conclusions to the GitHub Issue/PR. **Update [STATUS](../STATUS.md) only when the experiment changes the known implementation/verification state**, using the exact tested commit and a link to the formal report; do not duplicate the full analysis or post a STATUS update for every diagnostic iteration. The Agent may fix code defects and rerun within approved limits. Only the human can approve a new scientific question, expanded system design, changed acceptance conditions or extra resources.
+At a meaningful verification milestone or at completion, link registered runs and consolidated conclusions to the GitHub Issue/PR, including the exact tested commit, evidence limits and a link to the formal report. Do not duplicate full analyses in Issue comments or report each diagnostic iteration. The Agent may fix code defects and rerun within approved limits. Only the human can approve a new scientific question, expanded system design, changed acceptance conditions or extra resources.
 
 Update affected [Architecture](../architecture/INDEX.md) in the implementation PR, including complete prompt changes, observed discrepancies and code-to-chapter ownership. Run the offline documentation generation/check commands. At Issue/stage closeout reconcile the manual with the final code and evidence. Do not turn historical runs into retrospectively preregistered evidence.

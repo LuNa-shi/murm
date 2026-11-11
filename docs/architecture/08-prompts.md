@@ -242,6 +242,6 @@ The implementation author should:
 2. Update the path/field tables when composition changes, including changes that remove an old branch.
 3. Run `node scripts/generate-architecture-prompts.mjs`, inspect complete bodies and synthetic substitutions, then run it with `--check`.
 4. Verify that runtime evidence can identify the message actually sent; record any remaining evidence gap explicitly.
-5. Update the architecture baseline/coverage map and stage evidence in `STATUS`, with the originating Issue/PR and checks actually run.
+5. Update the architecture baseline/coverage map and link the observed evidence in the originating Issue/PR, naming the checks actually run.
 
 The generated fingerprints catch source drift; human review still checks whether the changed assembly is accurately explained and whether a new indirect producer needs coverage. No automated hash check proves that a model complied with its instructions or that every external Pi/provider input is captured.
