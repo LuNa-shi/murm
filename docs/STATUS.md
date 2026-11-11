@@ -24,6 +24,15 @@ Only add a row when the current Issue's implementation or verification status ha
 
 An Issue being opened, assigned, labelled `ready-for-agent`, or discussed does **not** by itself create an implemented or verified claim. Where no current checkpoint has been independently confirmed, retain the template instead of guessing.
 
+## Pending documentation review — PR #116
+
+[PR #116](https://github.com/LuNa-shi/SwarmEnv/pull/116) expands [Architecture](architecture/INDEX.md) into the complete implementation manual requested during human review. This remains **pending, unmerged documentation/tooling work**; it does not implement Legacy removal or the Judge redesign in Issue #117.
+
+- **Code inspected:** the runtime baseline remains `02adbb43d39e0b23befb7f2ffc4b19ffb386a36d`. The [source coverage reference](architecture/12-code-coverage.md) records the reviewed runtime/configuration files and the documentation tools added in this PR. Full prompt bodies, actual send conditions, tool schemas and SQL definitions are included.
+- **Deterministic verification:** 52 existing targeted tests passed across prompt/capability, Bridge/catalog/SDK, flat/shared Tasks, Workspace contracts and the stubbed Sandbox manager. The executable fake-NuRouter child-process smoke test also passed. These checks do not establish a successful real Pi/provider/Lean/Docker run. The full `npm test` suite was not run; two separately attempted Pi-dependent integration tests could not launch because `pi` is absent in the review environment.
+- **Documentation verification:** offline generation/checks validate source ownership and fingerprints, prompt/API/storage drift, and local links. Negative probes verify that unowned source or stale generated output fails rather than being silently accepted. The PR review records the final check results.
+- **Remaining gaps:** [known implementation boundaries](architecture/09-known-boundaries.md) include source-level findings and existing runtime limits, not fixes or new acceptance claims. Future approved implementation PRs must update the affected manual in the same change; Issue/stage closeout reconciles the final merged code, manual and evidence.
+
 ## Pinned runtime baseline (historical snapshot)
 
 The snapshot below is verified against a specific code tree; it does **not** automatically describe later commits. Refresh affected rows and the baseline reference when corresponding changes are accepted, preserving earlier evidence links rather than silently carrying claims forward.
@@ -47,4 +56,4 @@ The current reviewed runtime code tree used for this snapshot is `02adbb43d39e0b
 
 ## Closeout boundary
 
-Keep the approved Issue and its PR as the durable discussion, specification, and detailed review record. STATUS only summarizes the final implementation/evidence delta and remaining gaps at an exact code version. On acceptance, synchronize relevant [Architecture](architecture/INDEX.md) and fold completed work into the maintained baseline; do not leave stale work-in-progress rows indefinitely. This documentation-only PR establishes maintenance rules, **not** new runtime evidence.
+Keep the approved Issue and its PR as the durable discussion, specification, and detailed review record. STATUS only summarizes the final implementation/evidence delta and remaining gaps at an exact code version. On acceptance, synchronize relevant [Architecture](architecture/INDEX.md) and fold completed work into the maintained baseline; do not leave stale work-in-progress rows indefinitely. This documentation/tooling PR establishes maintenance rules and documents current behavior. Its deterministic checks do **not** establish new runtime capabilities or real-Agent research performance.

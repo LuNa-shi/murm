@@ -1,24 +1,34 @@
-# ADR 0018: GitHub Issue as the sole requirements authority
+# ADR 0018: Issue-led development and a complete implementation manual
 
-- Status: Accepted for repository development and research governance
-- Date: 2026-11-11
-- Updated: 2026-11-11 — removed local Phase/Implementation Notes workflow
+- Status: Governance decision, amended in [PR #116](https://github.com/LuNa-shi/SwarmEnv/pull/116) during human review.
+- Date: 2026-11-11.
+- Scope: Development documentation and research evidence; no runtime algorithm change.
 
 ## Context
 
-SwarmEnv's development goals and experiments have been coordinated through GitHub Issues and the Matt Pocock engineering skills. Introducing local Phase Charters or Issue Implementation Specs creates parallel requirements, duplicates the ticket graph and can confuse future Coding Agents about what the human approved.
+The owner approves stages through GitHub Issues and understands the system through `docs/architecture/`, without reading source. A second phase/spec directory duplicates the Issue and can drift. Short module summaries also leave the owner unable to inspect real behavior, especially composed prompts, lifecycle transitions and implementation limitations.
 
-The project's exploratory research also requires a clear separation between human decisions about the value of hypotheses and autonomous implementation/debugging work.
+Experiments answer a different question: what actually happened for a particular code revision, input, prompt and resource budget. Replacing those records with a description of today's implementation would lose the evidence needed to judge progress.
+
+## Alternatives considered
+
+| Approach | Tradeoff |
+|---|---|
+| Issue plus a parallel repository phase/spec ledger | Adds a second place to approve and synchronize the same plan |
+| Issue as the only documentation, including implementation details | Plans and discussion become difficult to use as a coherent manual of the current system |
+| Delete experimental reports when architecture changes | Hides the version-bound observations behind research conclusions |
+| Keep a complete implementation manual, with a small decision and evidence layer | Requires documentation updates in implementation PRs, while preserving a clear owner for each kind of information |
 
 ## Decision
 
-1. **GitHub Issue is the sole requirements and acceptance source.** A human-approved Issue, including approved Agent Brief comments and later explicit decisions, defines why the change matters, desired behavior, experiments, scope and acceptance. Creating or labeling an Issue is not, by itself, permission to run new research or incur costs.
-2. **Matt engineering skills govern development procedure.** Use `/to-spec` for Issue specs, optional `/to-tickets` for reviewed ticket dependencies, `/implement` or `/implement-spec` for implementation, `/tdd` and `/diagnosing-bugs` for verification, and `/code-review` and `/pr` for review and PR presentation. Engineering skills do not independently approve new product or research requirements.
-3. **No local Phase/Implementation Spec directory.** Put code-level plans, cross-session pointers, reviews and implementation decisions in GitHub Issues/PRs and commits. Remove `docs/phases/` rather than maintaining a second working-plan system.
-4. **Bounded Coding Agent autonomy.** Within approved scope and resource limits, Agents may implement, test, diagnose, fix and repeat without per-run approval. New hypotheses, changed architecture scope, benchmark/checker, provider/model, acceptance criteria or budget require human decisions.
-5. **STATUS and Architecture are not competing requirement sources.** [STATUS](../STATUS.md) tracks Issue/PR/commit-linked progress and evidence. [Architecture](../architecture/INDEX.md) records the accepted system baseline, updated for accepted design-changing PRs and checked at Issue closeout. ADRs record the reasons for enduring choices.
-6. **Formal experiments remain traceable.** Register approved research/acceptance runs via `EXP-YYYYMMDD-NN`. Ordinary deterministic tests and bounded in-scope diagnostic probes do not need a formal Experiment ID. Reports use **Results / Analysis / Next steps**.
+The human-approved GitHub Issue is the sole requirements and acceptance source: it owns the intended outcome, constraints and resource authorization. An accepted Agent Brief and later approved decisions belong to its discussion. Creating or labeling an Issue does not independently authorize new research or spending. Implementation decisions, progress and handoffs remain in its Issue/PR discussion. There is no maintained `docs/phases/` directory.
+
+Installed Matt Pocock engineering skills govern the engineering procedure, with project-specific rules in [AGENTS.md](../../AGENTS.md). Routine implementation and verification within approved scope remain autonomous. Changes to hypotheses, intended behavior, architecture scope, benchmark/checker, provider/model, acceptance or budget require human decisions; skills do not independently grant those approvals.
+
+[Architecture](../architecture/INDEX.md) is the complete manual of the reviewed implementation: flow, state, storage, interfaces, full repository-controlled prompts, defaults, failures, cleanup and known discrepancies. Update it in the same PR as runtime changes. At each Issue/stage closeout reconcile it with the final merged code and evidence. Generated references and source fingerprints detect mechanical drift; explanatory review establishes what those changes mean.
+
+[STATUS](../STATUS.md) records implementation and verification milestones. [Experiments](../experiments/INDEX.md) retain version-bound run evidence using Results, Analysis and Next steps. Register formal approved research/acceptance runs with an EXP ID; ordinary deterministic tests and bounded diagnostic probes do not require one. ADRs preserve the rationale for selected durable decisions; an ADR is not required for each stage.
 
 ## Consequences
 
-The human-facing review and approval surface is GitHub. Coding Agents follow one spec and one task graph, preserve evidence through Issues/PRs and STATUS, and update Architecture only after a design change is accepted. No local Phase documentation competes with GitHub's approved work contract. Historical tracked documents remain available by their Git commits, without a working-tree archive.
+The owner can review intended work in GitHub and read the architecture directory as one coherent account of the running system. Coding Agents must budget documentation work into implementation and closeout. A successful documentation check cannot prove runtime correctness, useful collaboration or scientific success. Historical results remain pinned to the code and evidence that produced them.

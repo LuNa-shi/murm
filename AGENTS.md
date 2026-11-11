@@ -36,11 +36,22 @@ An explicit request to invoke a skill permits its normal in-scope operations; it
 - Pin the implementation commit; validate affected Agent/Bridge/Service/Runtime paths, authorization, idempotency, fencing, checker integrity, privacy, and cleanup as relevant. Run focused tests and, for code changes when available, `npm test` and `git diff --check`. Report skipped checks honestly.
 - Formal research runs follow [the experiment workflow](docs/workflows/experiment.md) and [experiment-analysis skill](.codex/skills/experiment-analysis/SKILL.md). Ordinary in-scope tests and diagnostic probes do not require an EXP ID or individual report.
 - At meaningful milestones, link commits, tests/probes, PR review findings, real-run evidence, and remaining gaps **to the GitHub Issue/PR**; summarize them in [STATUS](docs/STATUS.md). Do not require human review after every debugging iteration.
-- When a design-changing PR is accepted for merge, synchronize the affected [Architecture](docs/architecture/INDEX.md); reconcile at Issue closeout. Never describe an unverified proposal as accepted or a passing tool call as scientific progress.
+- Update affected [Architecture](docs/architecture/INDEX.md) in the implementation PR, ready for review with the code. Reconcile the complete affected flow at Issue/stage closeout; documentation is part of completion. Never describe an unverified proposal as accepted or a passing tool call as scientific progress.
 - Use plain **Results / Analysis / Next steps** in formal research reporting. Keep observations distinct from interpretations and unapproved recommendations.
 - Keep raw Agent conversations, proof/candidate source, credentials, stdout/stderr, private state databases, and personal paths out of committed reports. Store raw experiment evidence only in ignored local `experiments/`.
 - Do not create `docs/phases/`, `archive/`, historical redirect files, or `CONTEXT.md`. Git history preserves obsolete tracked documentation.
 - Do not merge PRs, close unrelated Issues, or run unapproved paid experiments without the user's authorization.
+
+## Architecture documentation is a required deliverable
+
+The owner reads `docs/architecture/` to understand the implementation **without reading source code**. It must be a complete implementation manual, not only module summaries or pointers to source. Code references support verification; they must not replace the explanation.
+
+- For every runtime-affecting change, explain the entry point, call/event order, inputs and defaults, guards, state/storage writes, outputs, failure/retry/timeout behavior, cleanup, and observable evidence. Cover compatibility paths still executable in the reviewed tree and distinguish them from approved pending changes.
+- Maintain the explicit file-to-chapter inventory in [source-map.json](docs/architecture/source-map.json). New or removed runtime, CLI, service, configuration, storage, UI or build files require a deliberate inventory update. A file mapping is a coverage aid, not proof that every behavior has been explained.
+- Maintain full repository-controlled prompt text, composition conditions, dynamic field provenance and actual send paths in [Prompts](docs/architecture/08-prompts.md). Include discovery, ordinary turns, tool instructions, feedback, lifecycle rejection, notification, recovery, compaction/rotation and legacy paths. Distinguish composed snapshots from messages actually sent; external Pi/provider context is not recoverable from repository templates alone.
+- Regenerate the prompt/API/storage references and source fingerprints with `npm run docs:generate`; then run `npm run docs:check` and `git diff --check`. Read the generated diff and update the explanatory chapters as well. Do not treat regeneration or a successful check as semantic approval.
+- The implementation PR must link changed code areas to the changed architecture chapters, report the checks performed, and identify implemented limitations or unresolved discrepancies. If a change has no architecture effect, state the reason. At stage closeout, verify the final merged code revision, generated references, narrative, Issue acceptance and STATUS evidence together.
+- Keep `docs/experiments/` for version-bound experimental evidence. Keep ADRs only for durable rationale and tradeoffs worth retaining; no ADR is required for every Issue or stage. Neither directory duplicates the Issue's plan or the implementation manual.
 
 ## Maintaining STATUS
 
