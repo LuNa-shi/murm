@@ -12,7 +12,7 @@ dynamic Mission, Task, Execution and Workspace context is placed in the user
 turn. The implementation keeps independent prompt versions so a report can
 distinguish a changed system contract from a changed task binding.
 
-The prompt instructs an identity to:
+The current bound-identity contract (verify the concrete hash for each run) instructs an identity to:
 
 - use the current valid Execution and its task-scoped capabilities;
 - call canonical `task_take` in its own Core lane;
@@ -22,7 +22,7 @@ The prompt instructs an identity to:
 - treat Judge failures as feedback and revise the current route;
 - publish evidence with provenance and record feedback decisions;
 - save Progress before checkpoint, handoff or typed blocking;
-- keep a substantive increment before voluntary handoff.
+- avoid voluntary handoff; only end an Execution at a valid lifecycle boundary, saving Progress when required.
 
 The prompt is an input to an experiment, not a hidden explanation of what the
 Agent actually did. Reports must record its version/hash and the tool/profile

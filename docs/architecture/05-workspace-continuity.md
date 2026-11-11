@@ -18,9 +18,11 @@ unsaved state while preserving the last valid Material/commit.
 ## Identity rotation
 
 The identity lane carries the compaction count across successive Tasks. The
-current phase-one rule is at most three successful compactions; after the
+documented default rule is at most three successful compactions; after the
 third, the identity may continue until the next 80% context-window threshold,
 then hands off to a new identity. A fourth compaction is not allowed.
+
+Confirm current configuration and observed context-window measurements for each run; an unspecified usage value is not proof that the threshold was avoided.
 
 The rotation path must preserve the effective Task, last valid Workspace/Git
 snapshot, pending feedback boundaries and fencing. It must not create a new

@@ -10,7 +10,7 @@ Use the experiment directory and metadata as the boundary; summary fields only l
 | Updates | Feedback identity/type, delivery and decision events, Task changes | Current processing, successor processing, actual response, expired reminders |
 | Judge | Requests, scope/content/environment identity, checker result, subsequent edits | Real iterative checking, not cache/replay or new Task rituals |
 | Services | Registry/Bridge/service requests and authoritative state | Same task identity, supported deployment boundary, errors and concurrency |
-| Acceptance | Preregistered Issue contract, all baseline/treatment runs and conformance ledger | Improvement with event coverage, guardrails and explicit failed/unknown cases |
+| Acceptance | Preregistered phase/Experiment contract, all baseline/treatment runs and conformance ledger | Improvement with event coverage, guardrails and explicit failed/unknown cases |
 
 Typical stores are `metadata/`, `logs/projects/<project>/`, `state/projects/<project>/project.sqlite`, Workspace manifests/revisions and the metadata-declared observation database. Report records as present, missing, malformed, empty or not applicable. A historical child relation is evidence for that run, not a current architecture requirement.
 

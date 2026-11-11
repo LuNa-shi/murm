@@ -44,7 +44,7 @@ from ordinary-Task decomposition.
 - **BLOCKED**: the Task has a typed dependency or external condition and must
   not be repeatedly claimed while the condition is unchanged.
 
-The exact state projection belongs to the runtime contract and Task Service;
+The exact state projection belongs to the Task Service code and capability contract;
 reports must preserve the recorded state and terminal reason rather than
 normalizing all non-success outcomes into one failure label.
 

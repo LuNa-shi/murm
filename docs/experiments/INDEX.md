@@ -1,12 +1,13 @@
-# Experiment index
+# 实验登记索引
 
-This index allocates canonical IDs for new runs. Historical experiment names
-remain valid references and are listed as `legacy_id` when a new example or
-follow-up report points to them.
+> Type: Registry · Status: Active · 新实验先登记，再运行。
 
-| Canonical ID | Status | Stage | Legacy ID | Code commit | Report |
-|---|---|---|---|---|---|
-| `EXP-20261111-01` | Example | R16 evidence/reporting example | `issue-r12fix-1h-20261105-r16-watchdog` | `93176b7` (same tree as main merge `02adbb43`) | [R16 example](EXP-20261111-01-r16-example.md) |
+新的运行编号为 `EXP-YYYYMMDD-NN`，`YYYYMMDD` 使用 UTC 日期，`NN` 是该日按顺序分配且不复用的编号。编号不编码 Issue、模型、结果或代码提交；重试分配新 ID，通过 `repeat_of`、`comparison_to` 关联前次实验。
 
-For the next Stage, allocate the next unused sequence before launching the
-process. Do not use a free-form `rN` suffix as the primary identity.
+实验要求见 [实验流程](../workflows/experiment.md)，新报告从 [TEMPLATE.md](TEMPLATE.md) 创建。原始证据必须留在受忽略的本地 `experiments/`，此处只保留经审阅的脱敏报告、登记与指向固定提交的引用。
+
+| ID | 类型 / 状态 | 代码身份 | 说明 |
+|---|---|---|---|
+| [EXP-20261111-01](EXP-20261111-01-r16-example.md) | **Retrospective example**，非预注册 | `93176b7` | 对旧 R16 运行的事后格式示例；不能视为符合新阶段/预注册流程 |
+
+旧实验报告保留在 [PR #116 之前的 `docs/experiments/` Git 树](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs/experiments)。旧 ID 仍用于追溯原运行，**不批量重命名、不重写历史结果**。新一轮实验的审批与上下文需按 [阶段](../phases/INDEX.md) 另行登记。

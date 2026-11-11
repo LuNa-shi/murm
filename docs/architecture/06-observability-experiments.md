@@ -1,32 +1,21 @@
-# 06. Observability and experiments
+# 06. Observability and evidence boundary
 
-Observability is a bounded evidence projection, not the domain authority.
-Task, Execution, Material, Workspace and Judge services remain authoritative;
-the observation store joins their events for inspection and dashboard views.
+Observability is a bounded projection of evidence. Task, Execution, Context, Workspace and Judge services own authoritative state; the observation store joins events for inspection and dashboard views. A chart or count is not a new authority or an explanation of research progress.
 
-## Experiment report sections
+## Evidence distinctions
 
-Every registered experiment has four sections:
+- Published Material ≠ read Material ≠ accepted/used Material ≠ improved output.
+- Shared Mission concurrency ≠ independently scoped Task parallelism.
+- A completed local Task, one checker PASS and final Mission completion are different facts.
+- `protocol_valid=true` does not mean the mathematical goal was achieved.
+- Missing evidence is `unknown`, not zero.
+- Source inspection, deterministic tests, controlled probes and natural Agent runs are different evidence classes.
 
-1. **Registration**: the human-approved hypothesis, changed variables,
-   comparison, environment, resources, expected observations and stop rules.
-2. **Overview**: deterministic facts extracted from metadata, authoritative state,
-   Runtime/Service logs, Workspace manifests and Judge records.
-3. **分析判断**：证据支持的原因解释、替代原因、置信度和未知项。
-4. **下一步决定**：是否继续当前阶段、改变范围、停止，或开始新的假设。
+## Experiment workflow
 
-The report format and phase templates live in
-[`docs/experiments/`](../experiments/README.md) and [`docs/phases/`](../phases/README.md).
+每次经批准的运行先登记输入、变量、对照、预期现象、资源与停止规则。结束后区分：
+1. **Overview**：输入、执行与可验证的事实。
+2. **分析判断**：证据支持的解释、替代原因和未知项。
+3. **下一步建议或决定**：AI 可提出建议，阶段负责人审批方向、范围变化和下一实验。
 
-## Evidence rules
-
-Missing evidence is `unknown`, not zero. A completed run with `solved=false`
-can still provide lifecycle evidence. `protocol_valid=true` does not prove
-mathematical progress. A Material being published, read or counted does not
-prove it changed later work. A model's prose does not prove a hidden reasoning
-step.
-
-The `experiment-analysis` skill is useful for building Task/Execution/Material
-windows and checking tool request/response pairs. Its output must remain an
-evidence appendix or a draft analysis; the human phase owner decides what the
-experiment means and what to do next.
+具体定义只在 [实验流程](../workflows/experiment.md) 与 [报告模板](../experiments/TEMPLATE.md) 维护；`experiment-analysis` Skill 生成证据诊断草稿，不能自行修改阶段目标。

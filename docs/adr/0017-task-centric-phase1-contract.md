@@ -1,24 +1,20 @@
-# ADR 0017：第一阶段Task-centric规范及共同Mission修订
+# ADR 0017：共同 Mission 与 Task-centric 分工
 
-- 状态：Proposed，PR #110审阅后生效；运行实现另见状态表。
-- 初稿：2026-11-01；本轮接续20261102运行契约及用户澄清。
+- Status: Recorded design decision; original phase-one proposal archived in Git history. Current behavior and evidence must be checked against source and [STATUS](../STATUS.md).
+- Origin: 2026-11-01 to 2026-11-05, PR #110 and related task-centric revisions.
 
-## 背景
+## Context
 
-旧父子树、扁平Task和不同Judge流程同时存在于入口文档，导致实现依据不一致。初稿又将所有Task的单执行者、在制上限和复杂接续保护扩大为统一要求。用户进一步明确共同Mission不应被一人独占，本轮不设任务数量上限，保存失败允许丢弃未保存状态。
+早期父子审批树、扁平 Task 和 Judge 重试门禁同时存在，且固定任务路线与任务数量配额限制了自主分工。共同目标、独立责任、Execution 授权和 Session 容量一度混为一体。
 
-## 决定
+## Decision
 
-AGENTS规定核心约束，GLOSSARY定义词汇，architecture说明完整流程，日期化运行契约细化语义；实现状态、审计证据与Issue验收分别维护。历史正文与实验不改写。
+- Mission 表达共享研究目标；共享 Mission Task 允许多个独立 Execution。普通 Task 代表有明确交付边界的分工，通常只允许一个有效 Execution。
+- Agent 决定是否登记独立工作，Runtime 管理物理资源；没有普通 Task 可认领时可以继续共同 Mission。
+- 不设置任务数量配额；总预算、容量及超时仍可限制执行。Judge 是可迭代检查工具，局部 PASS 不替代共同目标完成。
+- Progress Material 引用真实版本，文件通过 Execution 私有本地 Git 工作面保存，handoff 与 identity rotation 不得抹除已有成果；保存失败需明确记录实际损失。
+- 具体注册/切换、检查、权限与接续行为以 [当前架构](../architecture/INDEX.md) 和对应源码为准。
 
-共同Mission Task允许多个Execution，每个identity使用自己的Core lane和私有工作面；普通子任务保持单有效执行者。无子任务时继续Mission，不引入中央供给planner。不设置动态/在制/OPEN任务数量配额。总预算、并发容量和执行期限仍有效。
+## Consequences
 
-Progress/Git采用最小本地保存和对应commit接续，失败有界放弃本次未保存状态，不假报成功。identity最多完成三次compaction，第三次后继续，下一轮窗口达到80%时handoff，第四次禁止。运行细节见[契约](../20261102-agent-task-runtime-contract.md)。
-
-第一阶段仍三个完整Issue：S1工具检查；S2共同Mission/主动分工及基本保存接续；S3反馈和compaction轮换。每个实现对应可观察行为，正常路径真实验证、稀有失败受控验证，并各有两小时匹配主改善。
-
-## 取舍和后果
-
-共享Mission降低独立子任务供给不足时的单人瓶颈，但可能产生重复整体探索；本轮如实分开观察，不提前引入语义去重/调度优化。无任务配额允许观察自然工作形成，但仍需记录任务增长和资源消耗。允许丢弃未保存状态简化失败路径，正常保存可靠性仍必须验证。
-
-已有#107的Response门禁加固和新任务配额设计不能继续直接实施，其他正确性缺陷仍承接。文档合并不表示代码符合；不以设计变化重写旧实验事实。
+降低中央审批与任务供给瓶颈，同时增加重复探索、分工与汇聚质量难以判断的风险。实验必须分开观察共享 Mission 并发、独立 Task 分工以及成果是否真正被接续。本 ADR 不再维护 S1–S3 的具体 Issue 清单、两小时验收门槛或旧实现状态。

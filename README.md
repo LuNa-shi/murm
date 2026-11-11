@@ -1,34 +1,30 @@
 # SwarmEnv
 
-SwarmEnv 研究以显式任务组织的 Agent Swarm。Agent 在工作中提出新的 Task，通过 Material 共享阶段成果，并根据反馈调整正在进行的任务。Runtime 提供可接续执行、资源限制与公共服务。
+SwarmEnv 是一个研究多智能体自主协作的系统：多个 Agent 可以围绕同一 Mission 工作，提出独立 Task，通过 Material 共享与利用成果，并借助 Judge、Workspace 和 Runtime 实现检查与连续执行。
 
-## 当前状态
+当前主要以 PutnamBench/Lean 数学任务检验协作机制。这个测试场景不是研究目标的全部，也不意味着现有系统已经证明多 Agent 在解题质量或效率上优于基线。
 
-仓库已有 Task、Runtime、Workspace、Context、Judge 和观测实现。本 PR 提议确立 task-centric 第一阶段基线；**文档中的目标行为尚未全部实现**。当前已知限制包括预设研究方向、累计新增任务额度、Judge 重试门禁和不完整的运行中反馈。详见 [实现状态](docs/implementation-status.md)。
+## 从哪里开始
 
-近期继续使用现有 PutnamBench/Lean 数学环境验证任务机制，不另建非数学环境。
+| 读者 | 入口 |
+|---|---|
+| 第一次了解研究目标 | [docs/PROJECT.md](docs/PROJECT.md) |
+| Coding Agent 开发或 Review | [AGENTS.md](AGENTS.md) |
+| 找到当前有效文档 | [docs/INDEX.md](docs/INDEX.md) |
+| 理解运行时架构 | [docs/architecture/INDEX.md](docs/architecture/INDEX.md) |
+| 查看现有实现及真实证据缺口 | [docs/STATUS.md](docs/STATUS.md) |
+| 研究阶段和人类决策边界 | [docs/phases/INDEX.md](docs/phases/INDEX.md) |
+| 实验如何登记、运行和分析 | [docs/workflows/experiment.md](docs/workflows/experiment.md) |
+| 领域术语 | [GLOSSARY.md](GLOSSARY.md) |
 
-## 设计与开发入口
+## 仓库中的主要实现
 
-| 入口 | 内容 |
-| --- | --- |
-| [AGENTS.md](AGENTS.md) | 项目约束、核心设计准则、开发与验收要求 |
-| [GLOSSARY.md](GLOSSARY.md) | 统一领域术语 |
-| [目标架构](docs/architecture.md) | 启动、分工、检查、反馈、接续与结束的完整流程 |
-| [Agent Task运行契约](docs/20261102-agent-task-runtime-contract.md) | 四 Core、主动登记/认领、Progress Material、compaction 轮换与 Git Workspace lineage |
-| [架构复盘](docs/reviews/task-centric-baseline.md) | 固定代码和实验基线的发现与设计推导 |
-| [第一阶段计划](docs/plans/phase-1/README.md) | 三个完整代码 Issue 草案、依赖与范围 |
-| [两小时验收协议](docs/validation/phase-1-acceptance.md) | 匹配对照、指标定义、触发机会和失败条件 |
-| [文档索引](docs/README.md) | 当前规范、实现说明、历史证据与归档 |
+`src/agent/` 是 Pi Agent、Prompt/Capability 和 Bridge；`src/task/`、`src/context/`、`src/judge/` 保存对应领域状态；`src/runtime/` 管理执行与工作区；`src/observability/` 提供可观测数据。运行入口及配置见 `scripts/`、`config/`、`services/` 与 `test/`。
 
-先阅读 [开发流程](docs/agents/workflow.md)。本次文档 PR 不修改程序或实验配置。具体运行参数使用当前脚本和 [环境说明](docs/benchmark-environment.md)，不要把尚未实现的设计接口当作已存在命令。
+环境准备参考 [Benchmark 操作说明](docs/operations/benchmark.md)；内置服务与 Mathlib Search 的部署说明分别位于 [services/builtin/README.md](services/builtin/README.md) 和 [services/mathlib-search/README.md](services/mathlib-search/README.md)。
 
-## 服务与观测
+## 当前状态与历史资料
 
-服务部署参考 [内置服务](services/builtin/README.md) 和 [Mathlib Search](services/mathlib-search/README.md)。观测运行参考 [观测文档](docs/observability.md)；它描述当前实现，不另行定义目标架构。
+截至 PR #116 文档核对，参考实现树为 `02adbb43`（PR #115），R16 真实实验能展示 Task/Execution 等生命周期，但没有完成数学目标，也没有提供匹配的 root-only 对照。详见 [STATUS](docs/STATUS.md) 与 [R16 回溯报告](docs/experiments/EXP-20261111-01-r16-example.md)。
 
-真实实验输出统一放在受忽略的 `experiments/<experiment-id>/`，共享观测数据放在 `experiments/.observability/`。脱敏历史报告保留于 [docs/experiments](docs/experiments/)，不得当作新版本已验收的证据。
-
-## 文档版本
-
-当前规范由 `AGENTS.md`、目标架构和日期化的 Agent Task 运行契约共同定义。新建或新版本工程文档使用 `YYYYMMDD-标题短名.md`；稳定入口保留原路径，过时版本移入日期归档。旧设计已保留到 [归档](docs/archive/README.md)，原路径只保留导航。Notion 用于讨论，获确认的实现要求通过仓库 PR 维护；新讨论不会自动改写已经合并的规范。
+旧设计、旧 Issue 验收和旧实验报告不再作为当前仓库的规范目录。原文可从 [固定历史提交](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs) 查阅，原始实验数据可能保存在本地忽略目录中。此仓库不再使用 `archive/` 目录复制历史。

@@ -1,58 +1,48 @@
-# 阶段说明：`<人类标题>`
+# 阶段说明：<标题>
 
-状态：`DRAFT | APPROVED | CLOSED`
+Status: DRAFT（审批前） / APPROVED / CLOSED
+Decision owner: <负责人>
+Worktree / branch: <独立位置>
+Approved on: <日期或待批准>
 
-负责人：`<人类决定负责人>`
+## 研究问题和主要假设
 
-Worktree：`<绝对路径或worktree名称>`
+写清当前准备回答的问题、可证伪的主要假设。探索型阶段应明确备选方向及筛选边界，不事后将探索说成预注册验证。
 
-## 问题
+## 允许的修改与非目标
 
-这个阶段只回答哪个项目问题？
+- Code / Prompt / schema / tool / instrumentation 允许范围：
+- 可直接修复的合同内 Bug：
+- 不可改变的输入、权限与验收：
+- 非目标：
 
-## 假设
+## 固定基线
 
-用一两句话写出可被实验否定的假设。
-
-## 允许变更
-
-- Code paths:
-- Prompt/schema/tool changes:
-- Report/instrumentation changes:
-- Bug fixes allowed without a new decision:
-
-## 非目标
-
-列出不得进入本阶段的工作。
-
-## 基线
-
-| Input | Value |
+| 项目 | 版本或值 |
 |---|---|
-| Code commit | |
-| Architecture/document baseline | |
-| Fixture/environment | |
-| Provider/model | |
-| Prompt/tool schema identity | |
+| Code commit / clean state | |
+| Architecture/document commit | |
+| Fixture / Lean / Mathlib | |
+| Provider / model | |
+| Prompt / schema / tools hash | |
+| Budget / Core / timebox | |
 
 ## 实验矩阵
 
-每次运行前登记规范的`EXP-YYYYMMDD-NN`。
-
-| Experiment | Purpose | Changed variable | Primary observation | Stop condition |
+| EXP ID（运行前登记） | 类型 / 对照 | 改变的变量 | 主要观察与反证 | 停止条件 |
 |---|---|---|---|---|
 | | | | | |
 
-## 判定规则
+## 评估和结束条件
 
-说明什么算支持、矛盾、证据不足和停止理由。不得看完结果后再增加阈值。
+记录支持、反驳、证据不足的判据、必须保护的行为，以及实验未触发时的处理。不得看完结果才改阈值。
 
-## 收尾
+## 负责人审阅与关闭
 
-只有人类负责人记录以下内容后，本阶段才关闭：
-
-- what the evidence establishes;
-- what remains unknown;
-- which bugs were fixed inside the charter;
-- which proposed changes were rejected or deferred;
-- the next decision or the reason to stop.
+- 证据支持的事实：
+- 解释与替代原因：
+- 仍未知：
+- 合同内修复：
+- 推迟或拒绝的提案：
+- 决定：继续 / 修改范围 / 关闭 / 新阶段
+- 决策人和日期：

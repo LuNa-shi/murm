@@ -28,6 +28,8 @@ The current Agent-facing operations are principally:
 - `task_complete`, `task_block`, `task_close` at the appropriate contract
   boundary.
 
+`task_register` with `take: true` checkpoints the current Execution and registers/switches to the new independent Task on the same Core lane. Registration without `take` leaves it for others; a direct `task_take` acquires an existing eligible Task. Verify the authorization and conflict behavior against `src/task/task-service.js` and `src/agent/services-bridge.js`.
+
 There is no current task-count quota. Task counts, claims, handoffs and
 readiness intervals are observation fields, not admission limits.
 
