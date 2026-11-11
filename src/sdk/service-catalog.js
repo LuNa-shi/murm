@@ -441,11 +441,6 @@ export function listTools(service = null, options = {}) {
     : deduplicateNamedTools(selected.filter((tool) => !isLegacyAgentSurface(tool))));
 }
 
-/** Internal adapters can inspect the full pre-#100 catalog explicitly. */
-export function listLegacyTools(service = null) {
-  return listTools(service, { includeInternal: true });
-}
-
 export function serviceCatalog(options = {}) {
   return { services: listServices(options), tools: listTools(null, options) };
 }

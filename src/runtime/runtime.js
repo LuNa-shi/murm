@@ -1722,10 +1722,8 @@ export class Runtime {
 
   #dynamicPromptContext(execution, workspace, promptOverride = null) {
     const task = this.taskService.getTask(execution.task_id);
-    // Legacy Tasks have no Mission record. Keep their exact prompt semantics
-    // so compatibility fixtures remain deterministic; modern Mission Tasks
-    // receive the bounded context required by Issue #100.
-    if (!task?.mission_id) return { prompt: promptOverride ?? execution.agent_prompt, notifications: [] };
+    // Every research Execution must now belong to a Mission-scoped Task.
+    if (!task?.mission_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Execution Task has no Mission binding');
     const mission = this.taskService.getMission?.(task.mission_id) ?? null;
     const judgeEnabled = taskUsesJudge(task);
     const workspaceEnabled = taskUsesWorkspace(task);

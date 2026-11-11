@@ -14,7 +14,7 @@ const ALL_ROLES = Object.freeze(['bound', 'recovery']);
 const SHARED_READ_OPERATIONS = new Set(['get_task', 'task_status']);
 const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
-    'list_tasks', 'get_task', 'list_executions', 'create_child_task', 'propose_task',
+    'list_tasks', 'get_task', 'list_executions',
     'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_block', 'task_close',
     'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
   ]),
@@ -26,12 +26,11 @@ const EXPOSED_OPERATIONS = Object.freeze({
 const TOOL_OVERRIDES = Object.freeze({
   list_tasks: { name: 'task_discover', description: 'Discover the bounded Mission Task view and relevant shared work.' },
   get_task: { name: 'task_view', description: 'Read one Task contract, current state, provenance, and result references.' },
-  propose_task: { name: 'task_create', description: 'Propose a substantial peer Task with an explicit output and acceptance contract.' },
   accept_task: { name: 'task_complete', description: 'Complete the current Task after its own contract and result references are satisfied.' },
 });
 
 function publicTools(serviceId) {
-  const selected = listTools(serviceId, { includeInternal: true })
+  const selected = listTools(serviceId)
     .filter((tool) => EXPOSED_OPERATIONS[serviceId]?.has(tool.operation));
   const modernNames = new Set(selected.filter((tool) => tool.operation === tool.name).map((tool) => tool.name));
   const seen = new Set();
