@@ -126,7 +126,7 @@ Workspace 与 main
 以下是一条完整的**合成启动消息**，对应 CSV 例子的 B1。ID、路径、预算和目录版本只用于审阅，不是实际运行值、生产默认值或已完成的测试。B2–B4 使用相同 Mission 与基础规范，各自替换 Bot/Core/sandbox 标识；不注入四种固定分工。
 
 ```text
-你已经以全新运行上下文启动。以下是本次运行的启动快照；你尚未认领 Task。此示例中的 take 前只读运行环境属于待确认设计，不代表已经决定必须在 sandbox 中预先启动 Pi。
+你已经以全新运行上下文启动。以下是本次运行的启动快照；你尚未认领 Task。此示例不预设 take 前已经创建 Execution sandbox；Workspace/Material 的预览通过服务读取。take 前是否另有只读 Bot sandbox 仍待确认。
 请遵循稳定规范，读取真实服务状态后自主选择或提出工作。
 
 {
@@ -142,14 +142,12 @@ Workspace 与 main
     "input_materials": ["M0"],
     "workspace_id": "W-CSV-DEMO"
   },
-  "bot": {"id": "B1", "core_id": "C1", "sandbox_id": "S1", "phase": "unbound", "execution_id": null},
+  "bot": {"id": "B1", "core_id": "C1", "phase": "unbound", "execution_id": null},
   "workspace_preview": {
     "id": "W-CSV-DEMO",
     "main_revision": "0.1",
     "main_commit": "c0-demo",
-    "project_path": "/workspace/project",
-    "project_access": "read",
-    "runtime_path": "/run/bot",
+    "project_access": "read via Workspace/Material services; pre-take filesystem environment is not specified in this example",
     "note": "take 会返回实际执行基准；若已变化，重新阅读相关内容。"
   },
   "budget": {
