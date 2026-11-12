@@ -14,7 +14,7 @@
 - [8. 运行记录与复现要求](#8-运行记录与复现要求)
 - [9. 本阶段的完成判断](#9-本阶段的完成判断)
 
-本章使用 [模型与运行流程](01-core-runtime.md)、[Task / Material 策略](03-task.md)、[Workspace 与集成](05-workspace.md) 和 [Prompt / Skills](06-prompts-and-skills.md) 的目标合同。这里的测试情景是后续实现需要满足的要求，不表示已有同名 CLI、字段或测试程序。实施切片及文档同步见 [架构迁移](08-architecture-migration.md)。
+本章使用 [模型与运行流程](01-model-and-runtime.md)、[Task / Material 策略](03-task.md)、[Workspace 与集成](05-workspace.md) 和 [Prompt / Skills](06-prompts-and-skills.md) 的目标合同。这里的测试情景是后续实现需要满足的要求，不表示已有同名 CLI、字段或测试程序。实施切片及文档同步见 [架构迁移](08-architecture-migration.md)。
 
 ## 1. 本阶段需要回答的两个问题
 
@@ -117,7 +117,7 @@ H1–H3 不能靠一组“全功能版对最弱基线”的结果分别成立。
 
 ## 6. 四个 Bot 的受控验收轨迹
 
-使用 [运行流程中的 CSV 工具 Mission](01-core-runtime.md) 作为最小可复现集成情景。初始 main commit c0 / Workspace revision `0.1` 提供框架、接口与样例；四项局部目标分别是过滤、分组统计、JSON 输出和验证资料。**受控测试可以固定请求顺序；真实 Bot 实验必须让 Bot 自行提出和选择工作，二者分开记账。**
+使用 [运行流程中的 CSV 工具 Mission](01-model-and-runtime.md) 作为最小可复现集成情景。初始 main commit c0 / Workspace revision `0.1` 提供框架、接口与样例；四项局部目标分别是过滤、分组统计、JSON 输出和验证资料。**受控测试可以固定请求顺序；真实 Bot 实验必须让 Bot 自行提出和选择工作，二者分开记账。**
 
 | 检查点 | 要发生的事件 | 需要检查的共同状态 |
 |---|---|---|
