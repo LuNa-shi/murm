@@ -57,7 +57,7 @@ Sandbox 是不可信执行边界。即使 Bot 只收到一个 Task，也必须�
 
 ### 3.1 创建前：准备执行描述
 
-Runtime 从权威服务读取并固定：
+Bot sandbox 启动时，Runtime 准备只读启动环境；take 时再读取/确认权威服务并固定本次 Execution：
 - Mission ID、Task ID、Task 合同 revision；
 - 新 Execution ID、Core/Bot 运行身份；
 - Workspace ID、实际 base revision/commit；
@@ -69,15 +69,15 @@ Runtime 从权威服务读取并固定：
 
 ### 3.2 创建 sandbox
 
-1. Runtime 调用 Provider API 创建全新 sandbox，设置 CPU、内存、磁盘、生命周期 TTL 和网络配置。
-2. Provider 返回 sandbox ID 和连接信息；Runtime 将它与 Mission/Task/E/Core/Bot 绑定。
+1. Bot 生命周期启动时，Runtime 调用 Provider API 创建全新 sandbox，设置 CPU、内存、磁盘、生命周期 TTL 和网络配置；此时尚未绑定 Task Execution。
+2. Provider 返回 sandbox ID 和连接信息；Runtime 先将 sandbox 与 Mission/Core/Bot 生命周期绑定；Task/E 在 take 成功时再绑定。
 3. Runtime 等待 provider 报告 sandbox ready，再执行健康检查；不能只凭 create API 返回 200 就启动 Agent。
 4. 在 sandbox 内启动受控 entrypoint/worker，由 worker 启动 Pi RPC 进程并转发 prompt、事件、steer/abort 和退出状态。
 5. Runtime 通过 Pi RPC 发送稳定系统规范和本次启动消息。具体 prompt 文本由 [06](06-prompts-and-skills.md) 维护。
 
 ### 3.3 新 Execution 的干净工作目录
 
-每个 E 必须得到新工作目录。项目工作目录从 Workspace Service 导出的当前 main revision/commit 创建独立 clone；Bot 不接触 Workspace 主 Repository 的 .git。Material 通过 Context API/CLI 获取真实内容或受控附件，不从前任私有目录复制。
+每个 Bot sandbox 启动时就准备一个全新工作目录。项目工作目录从 Workspace Service 导出的当前 main revision/commit 创建独立 clone；take 前由 OS 权限强制只读，take 成功后 Runtime 在同一 sandbox 中将其切换为当前 E 可写。Bot 不接触 Workspace 主 Repository 的 .git。Material 通过 Context API/CLI 获取真实内容或受控附件，不从前任私有目录复制。
 
 Sandbox 内至少区分：
 
@@ -116,8 +116,8 @@ Provider 删除响应丢失或 Runtime 重启时，reconciler 根据持久 E 状
 
 本项目的业务规则是：
 - 未 take：Agent 可以读 Mission、Task 列表、Workspace main 和有权限的 Material；不能写项目工作副本、发布研究成果或提交领域服务贡献。
-- take 准备阶段：Runtime 创建 sandbox 和 project clone，但在 Execution 激活前项目目录仍只读。
-- active E：可信 Runtime 授予当前 E 的项目目录写权限；服务端也验证当前 E 才接受写入。
+- Bot 启动阶段：Runtime 创建 sandbox、Pi Session 和 project clone；在 take 前项目目录仍只读。
+- take 成功并进入 active E：可信 Runtime 在当前 sandbox 授予项目目录写权限；服务端也验证当前 E 才接受写入。
 - closing/closed：服务端拒绝旧 E 的新写请求，Runtime 停止整个 sandbox，旧进程不能继续运行。
 
 这里的只读指项目文件与业务贡献，不是禁止操作系统内所有写入。Pi 运行目录、缓存和临时文件可能需要可写，但它们不能成为项目目录的旁路。
