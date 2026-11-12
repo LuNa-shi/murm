@@ -101,7 +101,7 @@ Sandbox 内至少区分：
 
 ### 3.5 Task finish 与 Bot sandbox 终止
 
-**v1 一个 Bot 只执行一个 Execution，因此 Task finish 或超时会结束 Bot sandbox。** Runtime 必须：
+**v1 一个 Bot 只执行一个 Execution，因此 Task finish、主动 incomplete/handoff 或超时都会结束 Bot sandbox。** Runtime 必须：
 1. 阻止当前 E 发起新的服务写操作；服务端按 E 状态拒绝旧 E 的后续写请求。
 2. 撤销当前 E 的项目目录写权限和贡献型服务权限。
 3. 停止 Pi、NuRouter、Bash 及全部子进程；不能保留后台进程继续写入。
@@ -202,7 +202,7 @@ OpenSandbox release-1.2.0 的源码调研给出以下限制，均需在固定版
 
 ## 9. 尚待实现验证的关键问题
 
-1. **Bot 与 Execution 的绑定。** v1 一个 Bot 生命周期最多一个 Execution；后续若要允许一个 Bot 连续执行多个 Task，才需要重新评估 sandbox 复用和工作目录切换。
+1. **Bot 与 Execution 的绑定。** v1 一个 Bot 生命周期最多一个 Execution；后续若允许一个 Bot 连续执行多个 Task，再重新评估 sandbox 复用和工作目录切换。
 2. **take 前只读浏览。** Bot 在自己的 sandbox 中先只读查看 Workspace/Task/Material；take 后 Runtime 在同一 sandbox 中挂载 Task 专属工作目录并开放写权限。
 3. **本地 Git clone 的磁盘成本。** Workspace 外部 Repository 与每 E 独立 clone 的对象复用策略需基于真实实验规模测量；第一版不以共享可写 .git 换取空间。
 4. **私有卷留存策略。** #119 允许私有卷用于审计，但后继不能读。需明确保留期限、磁盘位置、加密和删除策略；这不等于研究 handoff。
