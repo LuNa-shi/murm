@@ -1,4 +1,4 @@
-# 06. 架构迁移、实施切片与文档交付
+# 08. 架构迁移、实施切片与文档交付
 
 > 设计附件：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)。本文是待审的迁移方案，**不是已经实现的 Architecture，也不构成 runtime 实施或付费运行授权**。
 > 当前实现对照固定为 `008ecdb9ab64adcd8135042ff2160ec1db704952`。前置阶段是 [#119](https://github.com/LuNa-shi/SwarmEnv/issues/119) / [阶段 01](../0001-sandbox-services-cli.md)；它尚未完成。Judge 职责修复关联 [#117](https://github.com/LuNa-shi/SwarmEnv/issues/117)。截至 2026-11-12，[PR #118](https://github.com/LuNa-shi/SwarmEnv/pull/118) 仍 open、未 merged，不能把 legacy 删除当作现状。
