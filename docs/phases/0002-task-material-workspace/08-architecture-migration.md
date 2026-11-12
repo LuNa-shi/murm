@@ -34,7 +34,7 @@
 
 ### 1.2 与已有工作的衔接
 
-**#119 先交付基础运行能力。** 完整 Pi/NuRouter/四基础工具及子进程在第三方 sandbox 中运行；业务服务独立持久化；统一 CLI 能访问服务；终态授权、请求幂等、长期操作和资源回收可验证。新 Execution 的干净环境和显式 Material 接续也属于该前置方向。阶段 02 在此之上定义零 Task 启动、有限 Bot、同一 Pi 的先读后写、独占 take/release、Task 策略及 Workspace main。不能把这些新增业务规则反向塞进 #119 的验收。
+**#119 先交付基础运行能力。** 完整 Pi/NuRouter/四基础工具及子进程在第三方 sandbox 中运行；业务服务独立持久化；统一 CLI 能访问服务；终态授权、请求幂等、长期操作和资源回收可验证。新 Execution 的干净环境和显式 Material 接续也属于该前置方向。阶段 02 在此之上定义零 Task 启动、有限 Bot、Bot 启动时 Sandbox 内只读研究、take 后 Runtime 准备独立 Execution 工作目录、一个 Bot 最多执行一个 Task、finish/超时后销毁 Bot Sandbox，以及 Task/Material/Workspace 策略。不能把这些新增业务规则反向塞进 #119 的验收。
 
 **#117 修复 Judge 的真实服务边界。** 需要 Judge 的本阶段验收必须使用可独立受理、保存输入、查询结果的 Judge 路径。若 #117 尚未完成，可以先做不需要 Judge 的机制切片；不能用 runner 回调模拟已完成的独立服务验收。Judge 不因此成为所有 Task 的强制裁判，也不负责替 Workspace 决定研究价值。
 
@@ -55,7 +55,7 @@
 | Pi 四基础工具与 `swarm` CLI | 文件操作、help、参数、传输、请求 ID、结果呈现 | 业务动作经 Bash CLI 调服务；授权由服务和 Runtime 执行，CLI 不是安全边界 |
 | Observation / UI / 分析 | 对权威记录的有版本投影、运行证据、解释清楚的成本与结果 | 不用投影反向授予权限、重写 main 或宣布 Mission 达成；保留未知和不完整证据 |
 
-一个服务操作已经同步完成，不代表旧 Bot 继续有效。普通 CLI/API 请求在服务处理时验证当前 Execution，直接执行并返回；release 后旧 Execution 的新写请求被拒绝。若某项服务确实需要跨 sandbox 生命周期继续运行，由该服务单独定义异步接口。Workspace main 更新在 Workspace 本地操作中核对 E、candidate 和 expected revision；不建立当前 Execution 有效性校验协议。
+一个服务操作已经同步完成，不代表旧 Bot 继续有效。普通 CLI/API 请求在服务处理时验证当前 Execution，直接执行并返回；Task finish 后旧 Execution 的新写请求被拒绝。若某项服务确实需要跨 sandbox 生命周期继续运行，由该服务单独定义异步接口。Workspace main 更新在 Workspace 本地操作中核对 E、candidate 和 expected revision；不建立当前 Execution 有效性校验协议。
 
 ### 2.2 新增或重建的接口面
 
@@ -65,7 +65,7 @@
 |---|---|---|
 | Mission / Workspace 初始化 | 受控输入发布、Mission 创建、Workspace v0 建立、稳定请求查询；不需要 E | 内容成功而初始化未完成可对账；不伪造 Task/Execution 来源 |
 | 协调与选工 | 全状态 Task 查询、分页、提案、依赖、受限规格修订、take 及 take 请求查询 | 重复提案请求、旧规格、竞争失败、同 Bot 双重 take、无工作等待 |
-| E 贡献与 release | 当前绑定、范围/预算、当前 Execution 绑定、范围/预算、普通写请求身份校验、完成或未完成 release | 迟到 grant、失联、重复 release、旧 E 请求、清理未确认、已接纳外部操作 |
+| E 贡献与 finish | 当前绑定、范围/预算、当前 Execution 绑定、范围/预算、普通写请求身份校验、done/incomplete finish | 迟到 grant、失联、重复 finish、旧 E 请求、清理未确认、已接纳外部操作 |
 | Material | 发布实际正文/附件、按 ID 读、搜索、Task 关联、使用记录、质疑/更正与消费者查询 | 内容/关联部分完成、缺附件、截断、同 request ID 改载荷、跨 Mission 越权 |
 | Workspace | 读公开版本、导出候选、`advance` 条件更新、按 request ID 查结果 | 旧 main、错误输入摘要、过期检查、内容不可达、响应丢失、撤权后的请求 |
 | Runtime / provider 控制 | 新环境、固定项目卷物化、可信权限开放、全进程停止、资源隔离、重启对账 | 部分创建、开放失败、关闭中迟到动作、provider 不可达、未确认清理 |
@@ -79,7 +79,7 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 |---|---|---|
 | runner 创建 Mission 后先创建共享 Task；Task Service 按 Mission 第一条记录判定共享身份，允许多个 E | Mission 不可 take；空 Task 列表是合法启动状态；排他规则适用于全部 Task，不能仅把 `parallel_quota` 改成 1 | [runner](../../../src/benchmark/putnam-runner.js)、[Task Service](../../../src/task/task-service.js)、[现有 03](../../architecture/03-mission-task.md) |
 | CLI / runner 默认仍有 `legacy`；Root/Child、parent review、结构依赖和多种终态仍可执行 | 新模型没有父任务管理树；旧配置、SDK、fixtures 和报表须一起迁移或明确保留只读解释 | [启动器](../../../scripts/run-putnambench-benchmark.mjs)、[Task 类型](../../../src/task/task-types.js)、[现有 07](../../architecture/07-run-configuration.md) |
-| Core 的 Pi Session 可跨 Task 使用，register-and-take 可切换责任；rotation/recovery 往往保留 E | 新 Bot 可先阅读，成功 take 后只执行这一 E；release 后新 Bot/Pi/sandbox 补位。Runtime 重启对账不等于给后继恢复研究上下文 | [Runtime](../../../src/runtime/runtime.js)、[身份循环](../../../src/runtime/identity-task-loop.js)、[现有 02](../../architecture/02-execution.md) |
+| Core 的 Pi Session 可跨 Task 使用，register-and-take 可切换责任；rotation/recovery 往往保留 E | 新 Bot 可先阅读，成功 take 后只执行这一 E；Task finish/超时后新 Bot/Pi/sandbox 补位。Runtime 重启对账不等于给后继恢复研究上下文 | [Runtime](../../../src/runtime/runtime.js)、[身份循环](../../../src/runtime/identity-task-loop.js)、[现有 02](../../architecture/02-execution.md) |
 | `workspace_mode` 默认 `resume`，可选前任 E 的私有 revision；Runtime/WorkspaceManager 会克隆或恢复旧目录 | 所有新 E 仅从公开 main 和显式 Material 建副本；删除默认/显式 private resume 入口、旧私有对象回退和自动会话继承 | [WorkspaceManager](../../../src/runtime/workspace-manager.js)、[现有 05](../../architecture/05-workspace-continuity.md) |
 | 现有 Workspace 是执行目录、manifest、revision 与本地 Git；其本地 `main` 不是项目共享权威 | 增加跨 E 持续存在的 Workspace 身份和 main 版本；所有公开版本都能由 Workspace 本地 Git Repository 的 commit 物化，不以宿主目录或私有 commit 代替 | [Workspace contract](../../../src/runtime/workspace-contract.js)、[03 设计](05-workspace.md) |
 | Context 的 Material 有全局 `role`；Task 的 `#linkMaterial` 要求它与每条关联 role 相同，并要求非空生产 Task/E | 同一 M 可是 T1 产物、T2 输入、T3 纠错依据；用途属于关联，生产来源不可改；受控初始输入允许无生产 Task/E | [Context](../../../src/context/context-service.js)、[Context schema](../../../src/storage/context-schema.js)、[Task schema](../../../src/storage/schema.js) |
@@ -155,9 +155,9 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 **依赖：** S2；Workspace 事务边界、合入政策已批准；使用 Judge 的工作量还依赖 #117 的实际服务闭环。
 
-**闭环：** 两个局部 Task 各自产生可读成果并保存 Workspace Candidate；Bot 默认可在自己的有效 Execution 中直接整合简单 Candidate，复杂跨 Task 冲突时再提出独立整合 Task；integrate 按 expected Workspace revision 更新 main，另一个基于相同旧 main 的请求冲突并重新整合。未合入 Candidate 长期保留，Mission 结束或 integrate 失败不触发自动清理；Bot 显式 discard 只隐藏，不物理删除。下一 Bot 实际取得新 main 内容。
+**闭环：** 两个局部 Task 各自产生可读成果并保存 Workspace Candidate；Bot 默认可请求 Runtime 整合简单 Candidate，复杂跨 Task 冲突时再提出独立整合 Task；integrate 按 expected Workspace revision 更新 main，另一个基于相同旧 main 的请求冲突并重新整合。未合入 Candidate 长期保留，Mission 结束或 integrate 失败不触发自动清理；Bot 显式 discard 只隐藏，不物理删除。下一 Bot 实际取得新 main 内容。
 
-**必须一起交付：** Workspace 本地 Git Repository、公开版本及来源链、独立 clone 的 Candidate 导出与安全校验、Candidate 长期保留和显式 discard、最小整合检查（有效 E、expected revision/base commit、Candidate 完整性/来源、明确指定的检查）、条件更新、错误 main 的补偿修正、Candidate active/discarded 与 main 已接纳状态的 UI 区分。Context 仍持有内容，不把“同进程部署”扩成直接读其他服务数据库。
+**必须一起交付：** Workspace 本地 Git Repository、公开版本及来源链、Runtime 管理的 Execution 工作目录导出、Candidate 保存与安全校验、Candidate 长期保留和显式 discard、最小整合检查（有效 E、expected revision/base commit、Candidate 完整性/来源、明确指定的检查）、条件更新、错误 main 的补偿修正、Candidate active/discarded 与 main 已接纳状态的 UI 区分。Context 仍持有内容，不把“同进程部署”扩成直接读其他服务数据库。
 
 **验收出口：** V16–V18，并复验相关 V09、V10、V13；Workspace candidate commit 可导入并物化，两个相同 expected Workspace revision 的 integrate 请求最多一项成功；未合入 Candidate 不因冲突自动丢弃，修改候选后旧 PASS 不可复用，超时可查询原结果。Task done、Workspace integrate、Mission accepted 三类记录互不替代。
 
@@ -261,7 +261,7 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 | 视图 / 数据流 | 本阶段必须表达的内容 | 不允许的混淆 |
 |---|---|---|
 | Mission 首页 | 目标与验收、Workspace 本地 Git Repository/main branch/revision、全部 Task 状态、总体预算与停止原因 | 不用一条隐藏 Mission Task 充当项目；无可领工作不等于达成目标 |
-| Core / Bot / E 时间线 | Core 可复用；Bot 阅读期；E preparing/active/closing/closed；后继 Bot；实际停止/隔离证据 | 准备/清理期间的 Task 仍占有；收到 release 不等于 sandbox 已停止 |
+| Core / Bot / E 时间线 | Core 可复用；Bot 阅读期；E preparing/active/closing/closed；后继 Bot；实际停止/隔离证据 | 准备/清理期间的 Task 仍占有；收到 finish 不等于 sandbox 已停止 |
 | Material | 实际内容、生产 Task/E 或输入来源、各 Task 的用途、读取/消费版本、质疑与更正 | 全局 role 不代表所有用途；发布数、读数、consume 自报不代表知识正确或有收益 |
 | Workspace | main 版本/候选/来源/检查，CAS 成功与冲突，下一 E 的实际基线 | 本地 Git commit 或已上传候选不表示 main 前进；main 已接纳不证明全部主张 |
 | 服务请求 | pending、已受理、结果未知、成功/失败/取消，许可与撤权顺序，旧 E 尾部操作 | 请求超时不自动失败；Bot 结束不自动撤销已接纳工作或费用 |
@@ -318,7 +318,7 @@ PR 需要完成以下工作，而不是留下“以后补架构”的任务：
 
 ### 9.2 阶段结束需要一次完整对账
 
-阶段结束不能只汇总各 PR 的绿色检查。应固定最终 merged commit，重新走通从启动、零 Task 阅读、提案/take、产出/使用、main 更新、release、清理补位到 Mission 停止的整条流程，并核对异常、预算和直接服务旁路。
+阶段结束不能只汇总各 PR 的绿色检查。应固定最终 merged commit，重新走通从启动、零 Task 阅读、提案/take、产出/使用、main 更新、task finish、清理补位到 Mission 停止的整条流程，并核对异常、预算和直接服务旁路。
 
 | 对账对象 | 阶段完成时要能回答的问题 |
 |---|---|
