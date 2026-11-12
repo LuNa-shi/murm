@@ -9,7 +9,6 @@ import { AgentCoreAdapter } from '../agent/pi-adapter.js';
 import { ContextService } from '../context/context-service.js';
 import { JudgeService } from '../judge/judge-service.js';
 import { LeanChecker } from '../judge/lean-adapter.js';
-import { agentCheckResult } from '../judge/check-result.js';
 import { Runtime } from '../runtime/runtime.js';
 import { WorkspaceManager } from '../runtime/workspace-manager.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
@@ -39,7 +38,6 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
   });
 });
 
-const FORBIDDEN_PLACEHOLDER = /\b(?:sorry|admit|axiom)\b/i;
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const PARALLEL_MODES = new Set(['direct', 'legacy', 'semantic', 'root-only']);
 const TASK_MODELS = new Set(['legacy', 'flat']);
@@ -358,43 +356,6 @@ function safeLifecycleReason(value) {
   return 'other';
 }
 
-async function resolveCandidateSource(runtime, material, execution) {
-  if (typeof material.content === 'string') {
-    return { content: material.content, contentHash: null };
-  }
-  const reference = material.content;
-  if (!reference || typeof reference !== 'object' || Array.isArray(reference) || typeof reference.path !== 'string') {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate artifact must contain a Workspace file path or direct source text', {
-      remediation: 'Publish the candidate as one artifact Material whose content is the complete source text, or a {path, workspace_revision, content_hash} reference to a Workspace file.',
-    });
-  }
-  if (reference.workspace_revision !== undefined && reference.workspace_revision !== execution.workspace_revision) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `candidate Workspace revision ${reference.workspace_revision} does not match Execution revision ${execution.workspace_revision}`, {
-      expected_revision: execution.workspace_revision,
-      supplied_revision: reference.workspace_revision,
-      remediation: 'Read the current Workspace revision and re-publish the candidate reference.',
-    });
-  }
-  const file = await runtime.readWorkspaceFile(execution.execution_id, { path: reference.path });
-  if (reference.workspace_revision !== undefined && reference.workspace_revision !== file.workspace_revision) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `candidate Workspace revision ${reference.workspace_revision} does not match readable revision ${file.workspace_revision}`, {
-      expected_revision: file.workspace_revision,
-      supplied_revision: reference.workspace_revision,
-      path: reference.path,
-      remediation: 'Re-read the Workspace file after saving and use its current revision/hash.',
-    });
-  }
-  if (reference.content_hash !== undefined && reference.content_hash !== file.content_hash) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `candidate Workspace file hash does not match ${reference.path}`, {
-      path: reference.path,
-      expected_hash: file.content_hash,
-      supplied_hash: reference.content_hash,
-      remediation: 'The Workspace file changed after the reference was created. Re-read the file and publish a fresh artifact Material with its current hash.',
-    });
-  }
-  return { content: file.content, contentHash: file.content_hash };
-}
-
 function required(value, name) {
   if (typeof value !== 'string' || value.length === 0) throw new TypeError(`${name} is required`);
   return value;
@@ -402,17 +363,6 @@ function required(value, name) {
 
 function sdk(router, context) {
   return new ServicesSDK(router, context);
-}
-
-function executionContext(router, execution, actorRef) {
-  return sdk(router, {
-    actorRef,
-    taskId: execution.task_id,
-    executionId: execution.execution_id,
-    specVersion: execution.spec_version,
-    stateVersion: execution.state_version,
-    fencingVersion: execution.fencing_version,
-  });
 }
 
 function taskContext(router, task, actorRef) {
@@ -990,260 +940,6 @@ function resourceSnapshot() {
     logical_cpus: cpus().length,
     total_memory_bytes: totalmem(),
     available_memory_bytes: freemem(),
-  };
-}
-
-async function publishFeedback(state, core, material, result, { taskId = core.taskId, executionId = core.executionId } = {}) {
-  const execution = state.taskService.getExecution(executionId);
-  if (!execution || !['CREATED', 'RUNNING', 'WAITING'].includes(execution.state)) return;
-  const published = state.contextService.dispatch('publish_material', {
-    kind: 'experience',
-    scope: 'judge_feedback',
-    evidence_state: 'checked',
-    content: {
-      project: state.problem.id,
-      target_material_hash: material.content_hash,
-      verdict: result.verdict,
-      result_class: result.result_class ?? result.evidence?.result_class ?? 'unassessed',
-      checker_process_status: result.checker_process_status ?? result.evidence?.checker_process_status ?? 'unknown',
-      mathematical_outcome: result.evidence?.mathematical_outcome ?? 'unassessed',
-      retryable: result.retryable ?? Boolean(result.evidence?.retryable),
-      diagnostic_code: result.diagnostic_code ?? result.evidence?.diagnostic_code ?? null,
-      preflight_key: result.evidence?.preflight_key ?? null,
-      preflight_status: result.evidence?.preflight_status ?? null,
-      preflight_verified: result.evidence?.preflight_verified ?? null,
-      input_binding_verified: result.evidence?.input_binding_verified ?? null,
-      toolchain_version_verified: result.evidence?.toolchain_version_verified ?? null,
-      checker_ref_verified: result.evidence?.checker_ref_verified ?? null,
-      checker_version_verified: result.evidence?.checker_version_verified ?? null,
-      checker_identity_verified: result.evidence?.checker_identity_verified ?? null,
-      health_fingerprint: result.evidence?.health_fingerprint ?? null,
-      infrastructure_attempt_count: result.evidence?.infrastructure_attempt_count ?? null,
-      retry_exhausted: Boolean(result.evidence?.retry_exhausted),
-      process_evidence: {
-        exit_code: result.evidence?.exit_code ?? null,
-        signal: result.evidence?.signal ?? null,
-        timed_out: Boolean(result.evidence?.timed_out),
-        error_code: result.evidence?.error_code ?? null,
-      },
-      check_result_id: result.check_result_id,
-      diagnostic_class: result.evidence?.forbidden_placeholder === true
-        ? 'forbidden_placeholder'
-        : safeDiagnostic(result.evidence?.diagnostic),
-    },
-    provenance: { actor_ref: 'judge:lean', project: state.problem.id, target_task_id: taskId },
-  }, makeEnvelope({
-    operationId: `benchmark:feedback:${state.runId}:${core.index}:${result.check_result_id}`,
-    actorRef: 'judge:lean',
-    taskId,
-    executionId,
-    specVersion: execution.spec_version,
-    stateVersion: execution.state_version,
-    fencingVersion: execution.fencing_version,
-  }));
-  const feedback = published?.material ?? published ?? {};
-  core.observe({
-    source: 'context-service', kind: 'material_published', visibility: 'operator',
-    taskId, executionId, coreId: `core-${core.index}`,
-    payload: {
-      material_id: feedback.material_id ?? null,
-      kind: feedback.kind ?? 'experience',
-      scope: feedback.scope ?? 'judge_feedback',
-      source_task: feedback.source_task ?? taskId,
-      source_execution: feedback.source_execution ?? executionId,
-      publish_reason: 'judge_feedback',
-    },
-  });
-  return feedback;
-}
-
-async function judgeCandidate(state, core, candidateMaterialId = null) {
-  const pending = [...core.claimHistory].reverse().map((claim) => ({
-    taskId: claim.task_id,
-    executionId: claim.execution_id,
-    execution: state.taskService.getExecution(claim.execution_id),
-  })).find(({ execution }) => execution && ['CREATED', 'RUNNING', 'WAITING'].includes(execution.state) && execution.candidate_material_id && (!candidateMaterialId || execution.candidate_material_id === candidateMaterialId) && !core.checked.has(execution.candidate_material_id));
-  if (!pending) return;
-  const task = state.taskService.getTask(pending.taskId);
-  const execution = pending.execution;
-  if (!task) return;
-  const candidateId = execution.candidate_material_id;
-  const material = state.contextService.getMaterial(candidateId);
-  if (!material) return;
-  const { content, contentHash } = await resolveCandidateSource(core.runtime, material, execution);
-  if (FORBIDDEN_PLACEHOLDER.test(content)) {
-    core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: material.content_hash });
-  }
-  const workspace = {
-    execution_id: pending.executionId,
-    task_id: task.task_id,
-    input_snapshot_hash: execution.input_snapshot_hash,
-    workspace_ref: execution.workspace_ref,
-    workspace_revision: execution.workspace_revision,
-    manifest: {
-      input_snapshot_hash: execution.input_snapshot_hash,
-      task_spec: task,
-      workspace: task.workspace,
-    },
-  };
-  const checkStartedAt = Date.now();
-  const checkAttempt = (core.checkAttempts.get(candidateId) ?? 0) + 1;
-  core.checkAttempts.set(candidateId, checkAttempt);
-  const result = await state.judgeService.judgeCandidate({
-    request_key: `benchmark:check:${state.runId}:${core.index}:${candidateId}:${checkAttempt}`,
-    candidate_material_id: candidateId,
-    target_task_id: task.task_id,
-    target_spec_version: task.spec_version,
-    input_snapshot_hash: workspace.input_snapshot_hash,
-    checker_ref: state.fixtureManifest.checker_ref,
-    checker_version: state.fixtureManifest.checker_version,
-    environment_ref: state.fixtureManifest.environment_ref,
-    execution_id: pending.executionId,
-    state_version: execution.state_version,
-    candidate: { material_id: candidateId, content, content_hash: contentHash ?? undefined },
-    target_task: task,
-    workspace,
-    fixture_manifest: state.fixtureManifest,
-  }, {
-    operationId: `benchmark:judge:${state.runId}:${core.index}:${candidateId}:${checkAttempt}`,
-    actorRef: 'judge:lean',
-  });
-  state.cores[core.index - 1].parallelism.recordJudgeTime(Date.now() - checkStartedAt);
-  const fresh = state.taskService.getExecution(pending.executionId);
-  let applied = executionContext(state.router, fresh, 'judge:controller').applyCheckResult({
-    check_result_id: result.check_result_id,
-    ...(state.normalFlow === true ? { defer_execution_block: true } : {}),
-  }, {
-    operationId: `benchmark:apply:${state.runId}:${core.index}:${candidateId}:${checkAttempt}`,
-  });
-  const persistedResult = state.taskService.getCheckResult(result.check_result_id);
-  const retryableInfrastructure = persistedResult.result_class === 'infrastructure_failure' && persistedResult.retryable && !persistedResult.evidence?.retry_exhausted;
-  const normalFlow = state.normalFlow === true;
-  // A transient checker failure must leave the candidate eligible for a later
-  // retry. Source-level results and exhausted infrastructure failures are
-  // terminal for this candidate.
-  if (!retryableInfrastructure) core.checked.add(candidateId);
-  core.checks.push({ ...sanitizedCheck(persistedResult, material), check_elapsed_ms: Date.now() - checkStartedAt });
-  core.parallelism.recordWorkUnit({
-    task_id: pending.taskId,
-    execution_id: pending.executionId,
-    core: core.index,
-    progress_kind: 'candidate_check',
-  });
-  const feedback = await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
-  // Feedback is returned synchronously and may be retained as diagnostic
-  // Material, but a source failure never creates a controller-owned repair
-  // Task or a Response-consumption gate. The same Task/Execution can revise
-  // the candidate and call submit_candidate again.
-  let deferredWait = null;
-  let deferredBlock = null;
-  if (retryableInfrastructure) {
-    const preflightKey = result.evidence?.preflight_key;
-    const preflight = preflightKey ? state.judgeService.getCheckerPreflight(preflightKey) : null;
-    if (!preflight?.health_fingerprint) {
-      throw new Error('retryable checker failure has no durable preflight health fingerprint');
-    }
-    // The checker result is synchronous from the Agent's perspective. Stage
-    // the typed dependency block for ServicesBridge to flush after its HTTP
-    // response has been written, so
-    // Runtime cannot stop the Session before the Agent sees the result.
-    const lifecycle = {
-      waitCondition: {
-        type: 'checker_health',
-        preflight_key: preflightKey,
-        health_fingerprint: preflight.health_fingerprint,
-        diagnostic_code: persistedResult.diagnostic_code,
-        candidate_material_id: candidateId,
-      },
-      checkpoint: {
-        phase: 'checker_unavailable',
-        candidate_material_id: candidateId,
-        check_result_id: persistedResult.check_result_id,
-        preflight_key: preflightKey,
-        diagnostic_code: persistedResult.diagnostic_code,
-      },
-    };
-    if (normalFlow) {
-      deferredWait = null;
-      deferredBlock = {
-        reason: 'checker health unavailable',
-        dependency: {
-          dependency_kind: 'CHECK_RESULT',
-          check_result_id: persistedResult.check_result_id,
-          requirement: {
-            checker_health: {
-              preflight_key: preflightKey,
-              health_fingerprint: preflight.health_fingerprint,
-            },
-          },
-        },
-        checkpoint: lifecycle.checkpoint,
-        terminal_state: 'FAILED',
-      };
-    } else {
-      deferredWait = lifecycle;
-    }
-  } else if (normalFlow && persistedResult.result_class === 'infrastructure_failure') {
-    const preflightKey = persistedResult.evidence?.preflight_key;
-    const preflight = preflightKey ? state.judgeService.getCheckerPreflight(preflightKey) : null;
-    if (preflightKey && preflight?.health_fingerprint) {
-      deferredBlock = {
-        reason: 'checker health unavailable',
-        dependency: {
-          dependency_kind: 'CHECK_RESULT',
-          check_result_id: persistedResult.check_result_id,
-          requirement: {
-            checker_health: {
-              preflight_key: preflightKey,
-              health_fingerprint: preflight.health_fingerprint,
-            },
-          },
-        },
-        checkpoint: {
-          phase: 'checker_unavailable',
-          candidate_material_id: candidateId,
-          check_result_id: persistedResult.check_result_id,
-          preflight_key: preflightKey,
-          diagnostic_code: persistedResult.diagnostic_code,
-        },
-        terminal_state: 'FAILED',
-      };
-    } else {
-      // The Judge normally records a health fingerprint for every checker
-      // infrastructure result. Keep a typed CheckResult dependency even when
-      // an unusual adapter omits it; the Controller will leave the Task
-      // blocked until an operator supplies a new accepted CheckResult.
-      deferredBlock = {
-        reason: 'checker health unavailable',
-        dependency: {
-          dependency_kind: 'CHECK_RESULT',
-          check_result_id: persistedResult.check_result_id,
-        },
-        checkpoint: {
-          phase: 'checker_unavailable',
-          candidate_material_id: candidateId,
-          check_result_id: persistedResult.check_result_id,
-          diagnostic_code: persistedResult.diagnostic_code,
-        },
-        terminal_state: 'FAILED',
-      };
-    }
-  }
-  if (result.verdict === 'PASS' && completedTaskState(applied.task.state) &&
-      (pending.taskId === state.rootTaskId || task.completion_contract?.final_candidate === true)) {
-    state.solvedAt = Date.now();
-    state.solvedBy = core.index;
-  }
-  // The report keeps its redacted operational projection above, while the
-  // synchronous Agent tool receives bounded diagnostic feedback that can guide
-  // the next candidate.
-  return {
-    // Apply the durable result before returning it so the synchronous Agent
-    // view agrees with a subsequent judge_get_check_result read.
-    check_result: agentCheckResult(persistedResult),
-    applied,
-    ...(deferredWait ? { deferred_wait: deferredWait } : {}),
-    ...(deferredBlock ? { deferred_block: deferredBlock } : {}),
   };
 }
 

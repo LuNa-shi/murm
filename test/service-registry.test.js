@@ -43,6 +43,19 @@ function manifest({ id = 'fake', endpoint = { transport: 'in-process' }, audienc
   });
 }
 
+const directJudgeFixture = {
+  fixture_id: 'direct-judge-http',
+  putnambench_commit: 'a'.repeat(40),
+  problem_file: 'src/problem.lean',
+  problem_file_hash: 'b'.repeat(64),
+  lean_toolchain: 'leanprover/lean4:v4.33.1',
+  mathlib_version: 'test-mathlib',
+  checker_ref: 'lean',
+  checker_version: 'mvp-1',
+  environment_ref: 'env:direct-http',
+  project_root: '/tmp/direct-judge-http',
+};
+
 test('Service Manifest rejects open-ended schemas and duplicate capabilities', () => {
   assert.throws(
     () => createServiceManifest({
@@ -276,6 +289,41 @@ test('built-in Task, Context, Judge, and Catalog providers can all be replaced b
     contextService.close();
     taskService.close();
     databases.forEach((database) => { try { database.close(); } catch {} });
+  }
+});
+
+test('hosted Judge accepts the same direct Workspace source contract as in-process Judge', async () => {
+  const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    fixtureManifest: directJudgeFixture,
+    checker: {
+      preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: {} }),
+      check: async () => ({ verdict: 'PASS', evidence: { checker_started: true, exit_code: 0 } }),
+    },
+  });
+  const token = 'direct-judge-token';
+  const initial = builtInServiceManifest('judge', { endpoint: { transport: 'http-json', url: 'http://127.0.0.1:0' } });
+  const host = createServiceHost({
+    manifest: initial,
+    token,
+    handler: ({ capability, input, envelope }) => judge.dispatch(capability.operation, input, envelope),
+  });
+  const environment = await host.start();
+  const registeredManifest = createServiceManifest({ ...initial, endpoint: { transport: 'http-json', url: environment.url } });
+  const registry = new ServiceRegistry();
+  registry.registerService({ manifest: registeredManifest, adapter: createHttpJsonAdapter({ token }), trusted: true });
+  try {
+    const result = await registry.invoke({
+      serviceId: 'judge',
+      capability: 'judge_submit_candidate',
+      input: { source: { path: 'Candidate.lean', workspace_revision: 1, content: 'theorem direct : True := by trivial' } },
+      envelope: makeEnvelope({ operationId: 'direct-judge-http-submit', actorRef: 'agent:bound', taskId: 'task:http', executionId: 'execution:http', specVersion: 1, stateVersion: 1, fencingVersion: 1 }),
+      role: 'bound',
+    });
+    assert.equal(result.verdict, 'PASS');
+    assert.equal(result.result_class, 'PASS');
+  } finally {
+    await host.stop();
+    judge.close();
   }
 });
 

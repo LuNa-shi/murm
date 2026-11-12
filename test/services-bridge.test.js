@@ -799,194 +799,35 @@ test('ServicesBridge routes Judge feedback through the named Judge Service tool'
   }
 });
 
-test('ServicesBridge allows a research Mission Task to use Judge without a completion check contract', async () => {
+test('ServicesBridge does not fall back to a removed Judge submission callback', async () => {
   const database = new DatabaseSync(':memory:');
   const contextService = new ContextService(database);
   const taskService = new TaskService(database, { contextService });
   contextService.taskService = taskService;
   const router = new ServicesRouter({ taskService, contextService });
-  const owner = new ServicesSDK(router, { actorRef: 'owner:research-judge' });
-  const mission = owner.createMission({
-    mission_id: 'mission:research-judge', goal: 'allow diagnostic checks', acceptance_conditions: {},
-  }).mission;
-  const task = owner.createTask({
-    mission_id: mission.mission_id, task_type: 'research', summary: 'Inspect a candidate and record the diagnostic boundary.',
-    goal: 'Inspect a candidate diagnostically while preserving the research result boundary.', expected_output: 'diagnostic material',
-    acceptance_conditions: { boundary: 'diagnostic' }, owner_ref: 'owner:research-judge',
-    completion_contract: { required_materials: [{ kind: 'fact', min_count: 1 }] },
-  }).task;
+  const owner = new ServicesSDK(router, { actorRef: 'owner:direct-judge-only' });
+  const task = owner.proposeTask({
+    task_type: 'proof', goal: 'direct Judge provider is required', expected_output: 'checked source', acceptance_conditions: {}, owner_ref: 'owner:direct-judge-only',
+    completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixture().environment_ref } },
+  }, { operationId: 'bridge:direct-judge-only:propose' }).task;
   const claim = taskService.claimTask(task.task_id, {
-    execution_id: 'research-judge-execution', claim_key: 'research-judge-claim',
-    owner_ref: 'agent:research-judge', agent_prompt: 'research', input_material_refs: [],
+    execution_id: 'direct-judge-only-execution', claim_key: 'direct-judge-only-claim', owner_ref: 'agent:direct-judge-only', agent_prompt: 'direct', input_material_refs: [],
   });
   taskService.dispatch('start_execution', {}, makeEnvelope({
-    operationId: 'research-judge-start', actorRef: 'runtime:test', taskId: task.task_id,
+    operationId: 'direct-judge-only:start', actorRef: 'runtime:test', taskId: task.task_id,
     executionId: claim.execution.execution_id, specVersion: task.spec_version,
     stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
   }));
-  let submissions = 0;
   const bridge = new ServicesBridge({
-    taskService, contextService, runtime: {}, router,
+    taskService, contextService, runtime: { readWorkspaceFile: async () => ({ workspace_revision: 1, content: 'candidate', content_hash: 'hash' }) }, router,
     taskId: task.task_id, executionId: claim.execution.execution_id,
-    onSubmitCandidate: async ({ executionId, payload }) => {
-      submissions += 1;
-      return { check_result: { result_class: 'source_failure', diagnostic_code: 'source_failure' }, execution_id: executionId, candidate_material_id: payload.candidate_material_id };
-    },
+    onSubmitCandidate: async () => ({ verdict: 'FAIL' }),
   });
   try {
-    const materialResult = await bridge.call({ operation: 'publish_material', payload: { kind: 'artifact', scope: 'proof_relevant', content: 'diagnostic candidate' } });
-    const result = await bridge.call({ operation: 'submit_candidate', payload: { candidate_material_id: materialResult.material.material_id } });
-    assert.equal(submissions, 1);
-    assert.equal(result.check_result.result_class, 'source_failure');
-    assert.equal(taskService.getExecution(claim.execution.execution_id).state, 'RUNNING');
-  } finally {
-    await bridge.stop();
-    taskService.close();
-  }
-});
-
-test('ServicesBridge keeps the same binding for a source failure so the Agent can revise synchronously', async () => {
-  const database = new DatabaseSync(':memory:');
-  const contextService = new ContextService(database);
-  const taskService = new TaskService(database, { contextService });
-  contextService.taskService = taskService;
-  const router = new ServicesRouter({ taskService, contextService });
-  const owner = new ServicesSDK(router, { actorRef: 'owner:source-failure' });
-  const task = owner.proposeTask({
-    task_type: 'proof', goal: 'source failure bridge', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:source-failure',
-    completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixture().environment_ref } },
-  }, { operationId: 'bridge:source-failure:propose' }).task;
-  const claim = owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
-    execution_id: 'bridge-source-failure-execution', claim_key: 'bridge:source-failure:claim', owner_ref: 'agent:source-failure', agent_prompt: 'bridge', input_material_refs: [],
-  });
-  const started = taskService.dispatch('start_execution', {}, makeEnvelope({
-    operationId: 'bridge:source-failure:start', actorRef: 'runtime:test', taskId: task.task_id,
-    executionId: claim.execution.execution_id, specVersion: claim.execution.spec_version,
-    stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
-  }));
-  const released = [];
-  let waitCalls = 0;
-  let submissions = 0;
-  const bridge = new ServicesBridge({
-    taskService,
-    contextService,
-    runtime: { requestWait: async () => { waitCalls += 1; throw new Error('source failure must not request wait'); } },
-    router,
-    taskId: task.task_id,
-    executionId: claim.execution.execution_id,
-    onSubmitCandidate: async ({ executionId }) => {
-      submissions += 1;
-      const execution = taskService.getExecution(executionId);
-      return {
-        check_result: {
-          result_class: 'source_failure',
-          mathematical_outcome: 'FAIL',
-          checker_process_status: 'completed',
-          diagnostic_code: 'source_failure',
-          evidence: { diagnostic: 'type mismatch at line 3, column 7', exit_code: 1 },
-        },
-        applied: { execution, task: taskService.getTask(task.task_id) },
-      };
-    },
-    onRelease: async (release) => released.push(release),
-  });
-  try {
-    const agent = owner.withContext({
-      actorRef: 'agent:source-failure', taskId: task.task_id, executionId: claim.execution.execution_id,
-      specVersion: started.execution.spec_version, stateVersion: started.execution.state_version, fencingVersion: started.execution.fencing_version,
-    });
-    const first = agent.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: 'invalid candidate' }, { operationId: 'bridge:source-failure:material-1' }).material;
-    const firstResult = await bridge.call({ operation: 'submit_candidate', payload: { candidate_material_id: first.material_id } });
-    assert.equal(firstResult.check_result.result_class, 'source_failure');
-    assert.equal(firstResult.applied.execution.state, 'RUNNING');
-    assert.equal(bridge.taskId, task.task_id);
-    assert.equal(bridge.executionId, claim.execution.execution_id);
-    assert.equal(waitCalls, 0);
-    assert.equal(released.length, 0);
-
-    const current = taskService.getExecution(claim.execution.execution_id);
-    const second = owner.withContext({
-      actorRef: 'agent:source-failure', taskId: task.task_id, executionId: claim.execution.execution_id,
-      specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version,
-    }).publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: 'revised candidate', supersedes: first.material_id }, { operationId: 'bridge:source-failure:material-2' }).material;
-    const secondResult = await bridge.call({ operation: 'submit_candidate', payload: { candidate_material_id: second.material_id } });
-    assert.equal(secondResult.check_result.result_class, 'source_failure');
-    assert.equal(submissions, 2);
-    assert.equal(taskService.getExecution(claim.execution.execution_id).state, 'RUNNING');
-    assert.equal(bridge.taskId, task.task_id);
-    assert.equal(bridge.executionId, claim.execution.execution_id);
-    assert.equal(waitCalls, 0);
-    assert.equal(released.length, 0);
-  } finally {
-    await bridge.stop();
-    taskService.close();
-  }
-});
-
-test('ServicesBridge returns checker feedback before applying a deferred typed block', async () => {
-  const database = new DatabaseSync(':memory:');
-  const contextService = new ContextService(database);
-  const taskService = new TaskService(database, { contextService });
-  contextService.taskService = taskService;
-  const router = new ServicesRouter({ taskService, contextService });
-  const owner = new ServicesSDK(router, { actorRef: 'owner:typed-block' });
-  const task = owner.proposeTask({
-    task_type: 'proof', goal: 'typed checker block', expected_output: 'artifact', acceptance_conditions: {}, owner_ref: 'owner:typed-block',
-    completion_contract: { required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixture().environment_ref } },
-  }, { operationId: 'bridge:typed-block:propose' }).task;
-  const claim = owner.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
-    execution_id: 'bridge-typed-block-execution', claim_key: 'bridge:typed-block:claim', owner_ref: 'agent:typed-block', agent_prompt: 'bridge', input_material_refs: [],
-  }, { operationId: 'bridge:typed-block:claim' });
-  const started = taskService.dispatch('start_execution', {}, makeEnvelope({
-    operationId: 'bridge:typed-block:start', actorRef: 'runtime:test', taskId: task.task_id,
-    executionId: claim.execution.execution_id, specVersion: claim.execution.spec_version,
-    stateVersion: claim.execution.state_version, fencingVersion: claim.execution.fencing_version,
-  }));
-  const lifecycle = [];
-  const released = [];
-  const bridge = new ServicesBridge({
-    taskService,
-    contextService,
-    runtime: {
-      blockExecution: async (executionId, block) => {
-        lifecycle.push({ executionId, block });
-        return {
-          execution: { ...started.execution, execution_id: executionId, state: 'FAILED' },
-          task: { ...task, state: 'BLOCKED' },
-        };
-      },
-    },
-    router,
-    taskId: task.task_id,
-    executionId: claim.execution.execution_id,
-    onSubmitCandidate: async ({ executionId }) => ({
-      check_result: { result_class: 'infrastructure_failure', mathematical_outcome: 'unassessed', diagnostic_code: 'checker_unavailable' },
-      applied: { execution: taskService.getExecution(executionId), task: taskService.getTask(task.task_id) },
-      deferred_block: {
-        reason: 'checker health unavailable',
-        dependency: { dependency_kind: 'CHECK_RESULT', check_result_id: 'check-typed-block' },
-        checkpoint: { phase: 'checker_unavailable' },
-        terminal_state: 'FAILED',
-      },
-    }),
-    onRelease: async (release) => released.push(release),
-  });
-  try {
-    const agent = owner.withContext({
-      actorRef: 'agent:typed-block', taskId: task.task_id, executionId: claim.execution.execution_id,
-      specVersion: started.execution.spec_version, stateVersion: started.execution.state_version, fencingVersion: started.execution.fencing_version,
-    });
-    const material = agent.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: 'candidate' }, { operationId: 'bridge:typed-block:material' }).material;
-    const result = await bridge.call({ operation: 'submit_candidate', payload: { candidate_material_id: material.material_id } });
-    assert.equal(result.check_result.result_class, 'infrastructure_failure');
-    assert.equal(lifecycle.length, 0);
-    assert.equal(bridge.taskId, task.task_id);
-    await bridge.flushDeferredLifecycle();
-    assert.equal(lifecycle.length, 1);
-    assert.equal(lifecycle[0].block.dependency.dependency_kind, 'CHECK_RESULT');
-    assert.equal(bridge.taskId, null);
-    assert.equal(bridge.executionId, null);
-    assert.equal(released.length, 1);
+    await assert.rejects(
+      () => bridge.call({ operation: 'submit_candidate', payload: { path: 'Candidate.lean', workspace_revision: 1 } }),
+      (error) => error.code === 'SERVICE_UNAVAILABLE',
+    );
   } finally {
     await bridge.stop();
     taskService.close();

@@ -108,35 +108,37 @@ export class JudgeService {
     if (!source || typeof source.content !== 'string') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate requires a Workspace source');
     }
-    const fixtureManifest = payload.fixture_manifest ?? this.fixtureManifest;
+    // Checker and input bindings are provider configuration. Never accept a
+    // fixture manifest, Task projection, or Execution object from the Agent
+    // payload; the envelope and the configured Judge provider are authoritative.
+    const fixtureManifest = this.fixtureManifest;
     if (!fixtureManifest) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge checker binding is not configured');
     }
-    const task = payload.target_task ?? payload.task ?? {
+    const targetSpecVersion = Number.isInteger(envelope.spec_version) ? envelope.spec_version : 0;
+    const inputSnapshotHash = fixtureManifest.input_snapshot_hash ?? hash({
+      fixture_id: fixtureManifest.fixture_id,
+      problem_file_hash: fixtureManifest.problem_file_hash,
+      putnambench_commit: fixtureManifest.putnambench_commit,
+    });
+    const task = {
       task_id: envelope.task_id,
-      spec_version: envelope.spec_version,
+      spec_version: targetSpecVersion,
       workspace: { input_metadata: fixtureManifest },
       completion_contract: {},
     };
-    if (task.task_id !== envelope.task_id) {
-      throw new SwarmEnvError(ERROR_CODES.FENCED, 'Judge source context does not match the current Task');
-    }
-    const execution = payload.execution ?? {
+    const execution = {
       execution_id: envelope.execution_id,
       task_id: envelope.task_id,
-      spec_version: envelope.spec_version,
+      spec_version: targetSpecVersion,
       state_version: envelope.state_version,
-      input_snapshot_hash: payload.input_snapshot_hash ?? fixtureManifest.input_snapshot_hash ?? 'judge-input',
-      workspace_ref: payload.workspace_ref ?? null,
+      input_snapshot_hash: source.input_snapshot_hash ?? inputSnapshotHash,
+      workspace_ref: null,
       workspace_revision: source.workspace_revision ?? null,
     };
-    if (execution.execution_id !== envelope.execution_id || execution.task_id !== envelope.task_id) {
-      throw new SwarmEnvError(ERROR_CODES.FENCED, 'Judge Execution context does not match the envelope');
-    }
-    const sourceId = payload.candidate_material_id ??
-      `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${source.content_hash ?? contentHash(source.content)}`;
+    const sourceId = `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${source.content_hash ?? contentHash(source.content)}`;
     const result = await this.judgeCandidate({
-      request_key: payload.request_key ?? hash({
+      request_key: hash({
         source_id: sourceId,
         source_hash: source.content_hash ?? contentHash(source.content),
         task_id: envelope.task_id,
@@ -145,8 +147,8 @@ export class JudgeService {
       }),
       candidate_material_id: sourceId,
       target_task_id: envelope.task_id,
-      target_spec_version: task.spec_version ?? envelope.spec_version,
-      input_snapshot_hash: execution.input_snapshot_hash ?? fixtureManifest.input_snapshot_hash ?? 'judge-input',
+      target_spec_version: task.spec_version,
+      input_snapshot_hash: execution.input_snapshot_hash,
       checker_ref: fixtureManifest.checker_ref,
       checker_version: fixtureManifest.checker_version,
       environment_ref: fixtureManifest.environment_ref,
@@ -159,7 +161,7 @@ export class JudgeService {
       },
       target_task: task,
       workspace: {
-        input_snapshot_hash: execution.input_snapshot_hash ?? fixtureManifest.input_snapshot_hash ?? 'judge-input',
+        input_snapshot_hash: execution.input_snapshot_hash,
         execution_id: envelope.execution_id,
         task_id: envelope.task_id,
         workspace_ref: execution.workspace_ref ?? null,
