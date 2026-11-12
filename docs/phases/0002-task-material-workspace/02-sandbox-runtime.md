@@ -10,7 +10,7 @@
 来自 #119 的决定：
 
 1. **每个 Bot 生命周期使用独立、临时的第三方 sandbox。** 整个 Agent 执行环境都在 sandbox 内，包括 Pi、NuRouter、扩展、Bash 和本地子进程。至少达到 Docker 级隔离；不沿用当前自建 SandboxManager 作为目标隔离后端。
-2. **每个新 Bot 生命周期都从干净环境启动。** Bot 启动时创建 sandbox、新 Pi Session 和只读项目工作目录；take 前在同一 sandbox/Pi 中研究和选择 Task；take 成功后不创建第二个 sandbox/Pi，而是在当前环境建立 E 绑定并切换目录/服务权限；release 后销毁 sandbox。后继 Bot 不继承前一 Bot 的私有文件、对话和工具历史。
+2. **每个新 Bot 生命周期都从干净环境启动。** Bot 启动时创建 sandbox、新 Pi Session 和只读项目工作目录；take 前在同一 sandbox/Pi 中研究和选择 Task；take 成功后不创建第二个 sandbox/Pi，而是在当前环境建立 E 绑定并切换目录/服务权限；release 结束 E 并恢复只读权限，Bot 可继续；Bot 生命周期结束时才销毁 sandbox。后继 Bot 不继承前一 Bot 的私有文件、对话和工具历史。
 3. **跨 Execution 的研究接续只通过 Material。** 后继不能引用前任 sandbox 私有目录、私有 Git 对象或临时路径作为输入。
 4. **服务位于 sandbox 外。** Task、Context/Material、Judge 和启用的领域服务独立部署，各自拥有 API、持久状态和重启生命周期。sandbox 通过网络 API/CLI 调用，不共享进程对象或数据库。
 5. **Agent 使用 Pi 的 read/write/edit/bash。** 业务服务通过 Bash 调用统一 swarm CLI；不为每个业务操作单独注册裸模型 tool。
