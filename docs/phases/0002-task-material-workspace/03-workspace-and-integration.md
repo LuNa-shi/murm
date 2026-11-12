@@ -49,18 +49,18 @@ Context Service 继续独立拥有 Material 的内容、附件、可见性、来
 
 | 责任 | 负责方 | 不应暗中承担的责任 |
 |---|---|---|
-| 选择值得整合的成果、处理内容冲突、解释检查结果 | 认领普通整合 Task 的 Bot | 不能自行宣布自己的服务权限或伪造有效检查 |
+| 选择是否保存 Candidate、是否整合 main、处理内容冲突并解释检查结果 | 当前有效 Execution 的 Bot；复杂时可由独立整合 Task 的 Bot 承担 | 不能自行宣布自己的服务权限或伪造有效检查 |
 | Task/E 独占、当前执行资格、main 条件更新 | Task Service 内的 Workspace 模块 | 不替 Bot 发明研究结论、解决代码冲突 |
-| 持久保存候选内容、查阅 Material 与修正关系 | Context Service | 不因上传成功自动改 main 或判定 Task 完成 |
+| 持久保存 Material 内容与修正关系 | Context Service | 不管理 Git Candidate，不因 Material 发布自动改 main |
 | 物化公开基线、管理私有目录权限和 sandbox | Runtime | 不读取前任私有目录来补齐未公开成果 |
 | 执行已配置的检查，返回绑定具体输入的结果 | Judge 或相关领域 Service | 不把返回值提升为必须由用户理解的新核心对象 |
-| 确定合入政策和 Mission 验收目标 | Mission 的批准配置与负责人 | Bot 不得通过改本地配置放宽这些规则 |
+| 指定必要检查和 Mission 验收目标 | Mission/Task 合同及负责人配置 | Bot 不得伪造检查结果或修改既定验收目标 |
 
 Workspace 可以在服务内部使用 Git 管理公开版本，但外部权威记录至少包含下列信息。字段名称供审核，不能视为已有 API。
 
 | 记录 | 最少需要表达的信息 |
 |---|---|
-| Workspace | `workspace_id`、`mission_id`、当前 `main_revision`、对应 `main_commit`、内容摘要、合入政策版本 |
+| Workspace | `workspace_id`、`mission_id`、当前 `main_revision`、对应 `main_commit`、内容摘要 |
 | Workspace revision | revision 编号、对应 Git commit、父 commit、来源 Task/E、整合 Candidate、指定检查引用、更新时间 |
 | Execution 绑定 | Task/E、Workspace、物化的 Workspace revision、额外输入 Material 及内容摘要、sandbox/私有副本标识 |
 | Candidate | candidate ID、Workspace、commit、base revision/commit、来源 Task/E、内容摘要、状态（active/discarded）、创建时间 |
@@ -169,7 +169,7 @@ swarm workspace integrate C5 --expected-revision 0.1 --json
 
 `view` 返回 main branch、Workspace revision、对应 commit 和公开历史，不返回私有目录。`candidate save` 由可信 Runtime 从当前 Execution 的独立 clone 导出允许文件并导入 Workspace 本地 Repository，返回 candidate ID 和 commit；candidate 不必关联 Material。`candidate view/diff` 返回基准、候选内容摘要、来源 Task/E 和差异。`integrate` 由 Bot 明确选择候选并请求更新 main，携带 expected revision；服务端验证当前 E、candidate 来源、政策及检查要求。普通调用同步返回结果；如果本地 Git 操作确实耗时而需要异步化，由 Workspace Service 自己定义状态查询，不引入通用 request/permit 框架。
 
-**第一版采用最小整合政策。** 不建立通用审批 DSL 或复杂 Mission policy engine。Workspace Service 只检查当前 E 身份与权限、expected revision/base commit、Candidate 完整性与来源，以及 Mission/Task 明确指定的检查是否通过。Workspace Service 至少检查：(1) 当前调用者是有效 Execution，且对该 Workspace 有整合权限；(2) expected revision 与当前 main revision 一致；(3) Candidate commit 已完整导入、可物化且来源可追溯；(4) Mission/Task 明确指定的检查已经针对该 Candidate commit 执行并通过。若 Mission/Task 没有指定额外检查，则不虚构测试门槛，但仍必须满足版本、完整性和来源要求。第一版默认不要求人工逐次批准。
+**第一版采用最小整合政策。** 不建立通用审批 DSL、复杂 Mission policy engine 或逐次人工审批。Workspace Service 只检查四件事：(1) 当前调用者是有效 Execution，且有权操作该 Workspace；(2) expected revision 与当前 main revision 一致，Candidate base commit 与该 revision 对应的 main commit 一致；(3) Candidate commit 已完整导入、可物化且来源可追溯；(4) Mission/Task 明确指定的检查已针对该 Candidate commit 执行并通过。若没有指定额外检查，不虚构测试门槛，但版本、完整性和来源检查仍然必须通过。
 
 政策检查可以只验证材料格式、来源与范围，也可以验证编译、测试、形式证明或其他领域条件，取决于 Mission。研究性文件允许明确标注的假设与未决问题。**main 表示项目接纳的当前共同工作基础，不保证里面每个知识主张已被证明为真。**
 
@@ -185,14 +185,14 @@ main 更新是一次 Workspace Service 操作。服务在处理时检查当前 E
 
 Git commit 本身固定文件树内容。若候选依赖 Material 中的研究主张，Workspace candidate 记录对应 Material ID/版本；integrate 前重新查询其纠错状态。Material 被后续 supersede 不会改写历史 commit，但会提示当前 main 可能需要普通修复 Task。
 
-Workspace Candidate 的保存与 main 更新是两件事。Candidate 保存后长期保留，不因 integrate 失败或 Mission 完成而自动清理。Bot 可以显式 discard；discard 只将状态改为 `discarded` 并从默认列表隐藏，第一版不物理删除 Git 对象、commit 或来源记录。
+Workspace Candidate 的保存与 main 更新是两件事。Candidate 保存后长期保留，不因 integrate 失败或 Mission 完成而自动清理。Bot 可以显式 discard；discard 只将状态改为 `discarded` 并从默认列表隐藏，第一版不物理删除 Git 对象、commit 或来源记录。默认 list 只展示 active Candidate；显式包含 discarded 的历史查询仍可查看它们。
 
 ## 8. 并发、旧版本与失败处理
 
 | 情形 | 服务与 Bot 的行为 | 保证与边界 |
 |---|---|---|
 | 两个 Bot 同时 take 同一整合 Task | Task 排他认领只允许一个成功 | 这是 Task 互斥，不阻止它们提出两个语义相同的 Task |
-| 不同整合 Task 都从 v1 生成候选 | 首个条件更新得到 revision `0.3`；另一个得到版本冲突 | 不会把后提交候选静默覆盖成另一条 v2 |
+| 两个 Bot 都基于 revision `0.2` 请求 integrate | 首个请求得到 revision `0.3`；另一个得到版本冲突 | 不会把后提交候选静默覆盖成另一条主线版本 |
 | 候选基于 revision 0.1，main 已到 0.3 | Bot 在自己的副本读取当前 main，重新整合并保存新 candidate | 不允许直接把旧快照当成新 main，从而丢掉中间改动 |
 | 合入有内容冲突 | Bot 解释冲突并解决，或发布局部成果后未完成退出 | v1 不要求自动语义合并器；不能仅因 Git 没报冲突就判定结果正确 |
 | 检查通过后文件又变了 | 旧结果与新候选摘要不匹配，拒绝接纳 | 重新检查受影响内容，不能复用过时的 PASS |
@@ -223,10 +223,10 @@ Mission 是为 CSV 分析工具添加过滤、分组统计和 JSON 输出。Work
 | B1/T1、B2/T2、B3/T3、B4/T4 各自 take | 各 E 从 commit `c0` 建立独立本地 clone | main revision `0.1` | 四路并行不共享可写目录 |
 | B1 完成过滤 patch | 发布 Material M1（研究说明/证据），并保存 Workspace candidate C1（代码变更）；T1 按局部交付完成 | main 仍为 `c0` / revision `0.1` | 发布 Material 和 candidate、Task 完成均不自动合入 |
 | B1 在当前 Task 内直接整合 C1 | Bot 检查 C1、满足最小政策后调用 integrate | `c0` → `c1` / revision `0.2` | 不强制创建独立整合 Task |
-| B2 部分完成分组统计后 release | 发布未完成 Material M2；如有文件变更可另存 candidate C3；T2 可继续 | main revision `0.2` | M2 不确定性不会因存在 main 而消失 |
+| B2 部分完成分组统计后 release | 发布未完成 Material M2；如有文件变更可另存 Candidate C3；T2 可继续 | main revision `0.2` | M2 不确定性不会因存在 main 而消失 |
 | 新 B6 再次 take T2 | 从 main commit `c1` / revision `0.2` 创建独立 clone，并读取 M2/C3（若公开） | main revision `0.2` | B6 不能访问 B2 私有目录；candidate C3 是显式公开候选而非私有工作目录 |
 | B3 发布 JSON patch | 保存 Workspace candidate C4（基于 `c0`），可另发 Material M3 解释实现和测试结果 | main revision `0.2` | 候选保留不意味着必须合入 |
-| 后继 Bot/T6 整合 M3 | 在 v1 整合，保留过滤功能，重新检查并发布 M6 | v1 → v2，指向 M6 | 不将 v0 + JSON 直接覆盖为最新 main |
+| 后继 Bot/T6 评估 Candidate C4 | 若值得进入主线，在当前 main 上重新整合 C4、保存新 Candidate 并 integrate | revision `0.2` → `0.3` | 不将旧基准直接覆盖为最新 main |
 | B4 的验证资料 M4 被后继 Task 使用 | 记录有意义的使用关系；若测试文件值得保留，也可保存 Workspace candidate | 视后续判断而定 | Material 和 Git 文件候选各自独立 |
 
 若另一 Bot 在同一时段也基于 revision `0.2` 整合，只有一个请求能够把 `0.2` 推进到 `0.3`。失败者仍保有自己的 Candidate，但需要面对新的 main 重新判断。这是共享主线的必要代价，不能在例子中省略。
