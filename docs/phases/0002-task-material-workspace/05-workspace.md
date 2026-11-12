@@ -56,7 +56,7 @@ Workspace 初始化必须可验证：Repository 和初始 commit 能从本地仓
 
 每个新 Execution 从明确的 Workspace main commit/revision 创建独立 local clone。若 Task 指定 base revision/commit，就使用该版本；若没有指定，take 时解析当时 main HEAD，并把实际 commit 和 revision 固定到 Execution。
 
-Runtime 在 sandbox 外执行本地 clone，再将该 E 的工作目录挂载到新 sandbox。Bot 可在自己的 clone 中创建本地分支、commit 和修改文件。Bot 不访问 Workspace 主 Repository 的 .git、共享 refs 或管理凭据。
+Bot 启动后先在 sandbox 中只读浏览 Workspace；take 成功时 Runtime 在 sandbox 外从指定 main commit 创建 Execution 专属工作目录，并将其挂载到 sandbox。Bot 只使用 Pi 文件工具/Bash 修改文件，不创建 Git branch/commit，不访问任何 .git、共享 refs 或管理凭据。
 
 新 E 不克隆前任 E 的私有 clone，也不继承前任 Pi 会话、shell history 或未导出的 Git 对象。跨 Execution 的研究接续通过 Material；项目代码接续通过 Workspace main 或明确保存的 Candidate。
 
@@ -66,7 +66,7 @@ Sandbox 生命周期和权限切换不在本文重复，见 [02](02-sandbox-runt
 
 Git linked worktree 共享主 Repository 的对象数据库和部分 refs/配置，不能直接当作不可信 Bot 的隔离边界。第一版宁可承担本地 clone 的磁盘成本，也不把共享可写 .git 暴露给 Bot。
 
-第一版采用独立 clone，不使用共享可写 .git、--shared alternates 或前任私有对象库。后续可根据实测磁盘成本评估 reflink/COW 或受控只读对象池，但不得降低隔离边界。
+Runtime 为每个 Execution 创建独立、互不共享可写 .git 的工作副本；Bot 不需要知道底层使用 clone、worktree 还是受控导出目录。第一版优先采用独立 clone，不使用共享可写 .git、--shared alternates 或前任私有对象库。后续可根据实测磁盘成本评估 reflink/COW 或受控只读对象池，但不得降低隔离边界。
 
 ## 4. Git 可见性、导出和安全边界
 
@@ -78,7 +78,7 @@ Git linked worktree 共享主 Repository 的对象数据库和部分 refs/配置
 | Workspace 主 Repository 的 .git/refs | 不可访问 | 不可访问 | 独占管理 |
 | 其他 E 的私有 clone | 不可访问 | 不可访问 | 受控销毁/审计 |
 
-Bot 可以在自己的副本中自由使用 Git，但这些本地操作不会改变共享 main。Runtime 不把宿主 Git 凭据、Docker socket、服务数据库、provider 管理接口或共享可写 refs 放进 sandbox。
+Bot 只能修改 Runtime 为当前 Execution 准备的工作目录；不向 Bot 暴露 Git 管理能力。文件变更不会自动改变共享 main。Runtime 不把宿主 Git 凭据、Docker socket、服务数据库、provider 管理接口或共享可写 refs 放进 sandbox。
 
 导出 Candidate 时，可信 Runtime 必须读取真实文件字节并计算摘要，不能信任 Bot 自报的文件清单或可能滞后的本地 manifest。第一版拒绝：
 - 越出项目根目录的路径；
@@ -93,7 +93,7 @@ Bot 可以在自己的副本中自由使用 Git，但这些本地操作不会改
 
 ### 5.1 Candidate 的意义
 
-Candidate 是从某个 Execution 的独立 clone 导入 Workspace Repository 的 Git commit/文件变更，附带来源、base revision/commit、摘要和状态。Candidate 不属于 Material，不自动进入 main，也不要求最终合并。
+Candidate 是 Runtime 从某个 Execution 工作目录安全导入 Workspace Repository 后创建的 Git commit/文件变更，附带来源、base revision/commit、摘要和状态。Candidate 不属于 Material，不自动进入 main，也不要求最终合并。
 
 不是每个 Execution 都必须保存 Candidate：
 - 研究结论、证明、实验观察、反例、失败经验发布为 Material。
@@ -152,9 +152,9 @@ main 表示项目接纳的当前共同工作基础，不保证里面每个研究
 ### 6.3 integrate 流程
 
 1. Bot 读取当前 main revision/commit、自己的 base、Candidate 实际内容和来源。
-2. Bot 在自己的 clone 中完成必要的整合；Git 没有文本冲突不代表语义兼容。
+2. Bot 在当前 Execution 工作目录中完成必要的文件层面整合；底层 Git 操作由 Runtime 执行。Git 没有文本冲突不代表语义兼容。
 3. 若 Task/Mission 明确指定检查，运行真实检查并确保结果绑定 Candidate commit。检查后修改文件，旧检查即不再适用。
-4. Bot 调用 Workspace integrate，提交 Candidate ID 和 expected revision。
+4. Bot 调用 Workspace integrate，提交 Candidate ID；expected revision 由 Runtime 从 Candidate/当前 main 读取并做条件检查，Agent 不管理 Git SHA。
 5. Workspace Service 验证当前 E、Candidate 来源和完整性、base commit、expected revision 以及指定检查。
 6. 若检查通过且 main 未变化，Workspace Service 在本地 Repository 中受控推进 main，产生新 commit 并递增 Workspace revision。
 7. 返回新的 revision 和 commit。Bot 将结果记录到 Task 交付中。
@@ -164,7 +164,7 @@ main 表示项目接纳的当前共同工作基础，不保证里面每个研究
 | 情形 | 服务与 Bot 的行为 | 保证与边界 |
 |---|---|---|
 | 两个 Bot 都基于 revision 0.2 请求 integrate | 首个请求得到 revision 0.3；另一个得到版本冲突 | 不会静默覆盖 |
-| Candidate 基于 revision 0.1，main 已到 0.3 | Bot 在自己的 clone 获取当前 main，重新整合并保存新 Candidate | 不允许把旧快照直接当成新 main |
+| Candidate 基于 revision 0.1，main 已到 0.3 | Runtime 返回版本冲突；Bot 请求当前 main 的新工作目录/基线，由 Runtime 准备新的 Execution 后重新整合并保存 Candidate | 不允许把旧快照直接当成新 main |
 | 合入有内容冲突 | Bot 解释冲突并解决，或保留 Candidate 暂不整合 | v1 不要求自动语义合并器 |
 | 检查通过后文件又变了 | 检查与 Candidate commit 不匹配，拒绝接纳 | 重新检查，不复用旧 PASS |
 | Candidate 导出失败或文件校验失败 | 当前 E 内修正/重试 | 不登记为可整合候选 |
@@ -207,14 +207,14 @@ Mission 完成后是否允许继续创建 Task、是否允许新的 Bot 继续�
 |---|---|
 | swarm workspace view | 查看 main、Workspace revision、commit 和公开历史 |
 | swarm workspace history | 查看 revision/commit 历史、来源 Task/E 和整合说明 |
-| swarm workspace status | 查看当前 E 工作副本的 base 和变更摘要 |
-| swarm workspace diff | 查看当前 E 相对 base 的文件差异 |
-| swarm workspace candidate save | 将当前 E 的允许文件/commit 导入 Workspace Repository，创建 Candidate |
+| swarm workspace status | 查看当前 Execution 工作目录的 base 和变更摘要 |
+| swarm workspace diff | 查看当前 Execution 相对 base 的文件差异 |
+| swarm workspace save | 请求 Runtime 保存当前 Execution 的文件成果并创建 Candidate；Bot 不提交 Git commit/SHA |
 | swarm workspace candidate list | 默认列出 active Candidate |
 | swarm workspace candidate list --include-discarded | 查看包含 discarded 的历史 Candidate |
 | swarm workspace candidate view ID | 查看 Candidate 来源、base、commit 和 diff |
 | swarm workspace candidate discard ID | 将 Candidate 标记 discarded；不物理删除对象 |
-| swarm workspace integrate ID --expected-revision REV | 按最小政策条件更新 main |
+| swarm workspace integrate ID | 请求 Runtime 按最小政策检查并整合 Candidate；revision/CAS 由 Runtime 内部管理 |
 
 所有命令由服务端验证身份与 E 状态。Bot 不得通过填写 Execution ID、Task ID 或 Git author 字段伪造权限。候选保存和整合都是普通 Service 调用；不建立通用 pending/permit 协议。若实际 Git 操作确实需要异步执行，由 Workspace Service 自己定义专属状态查询。
 
@@ -229,7 +229,7 @@ Mission 完成后是否允许继续创建 Task、是否允许新的 Bot 继续�
 - Bot 不能通过共享 .git、宿主卷、旧私有仓库或伪造 CLI 字段绕过权限。
 - Candidate 导入后可在 sandbox 删除后完整物化，来源 Task/E 和 base revision/commit 可追溯。
 - Candidate 长期保留；discard 只隐藏默认列表，不物理删除 commit；历史查询可见。
-- Candidate 保存不自动推进 main；Bot 可以直接 integrate；复杂整合可使用独立普通 Task。
+- Candidate 保存不自动推进 main；Bot 可以请求 Runtime integrate；复杂整合可使用独立普通 Task。Bot 不直接操作 Git。
 - 两个相同 expected revision 的 integrate 最多一个成功；失败者保留 Candidate 并重新整合。
 - 指定检查绑定确切 Candidate commit；文件变化后旧检查不能授权。
 - Material 纠错不会静默改写历史 commit，相关 main 可被识别并通过新 Task 修复。
