@@ -13,12 +13,29 @@ There are two output paths:
 
 ## Evidence gate
 
-Identify the tested Issue contract, code commit and clean state, actual inputs, fixture/environment, model/provider, prompt/tool/schema identity, resources, timebox and actual duration. Inventory metadata, authoritative Task/Execution state, Agent logs, Runtime/Service events, Workspace versions, Materials, Candidate/Judge checks and external observation stores.
+Identify the tested Issue contract, code commit and clean state, actual inputs, fixture/environment, model/provider, prompt/tool/schema identity, resources, timebox and actual duration. Inventory metadata, raw Agent JSONL, authoritative Task/Execution state, Agent logs, Runtime/Service events, Workspace versions, Materials, Candidate/Judge checks and external observation stores. For every recorded request/response pair, preserve the expected result, actual result and operational effect.
 
 - Source-verified, deterministic tests, controlled probes and natural Agent runs are different evidence classes.
 - Missing sources or links are **unknown**, not zero. For a formal run, absent preregistration or unmatched comparison must be identified as retrospective or diagnostic-only.
 - Compare operations with the exact run schema or source commit; otherwise mark `schema unavailable`.
+- A source path that is only checked statically is `source-verified only`; missing runtime evidence remains unknown.
 - Preserve stable IDs. Do not assign an ambiguous record to the latest Session simply because the Core or timestamp is similar. Do not infer hidden model reasoning.
+
+### 1. Orchestration question
+
+Follow a concrete Task through admission, claim, Runtime binding, effective work and release. Keep selection, waits, tool-only waits, cleanup and a reusable-Core handoff distinct from productive execution.
+
+### 2. Coordination question
+
+Build a **Task window** from proposal through all Executions and a **Material window** from production through intended recipient, read, decision and downstream action. A read or count alone does not prove reuse or value. Historical labels such as `closed at child scope` describe old evidence only.
+
+### 3. Execution question
+
+Keep Task, Execution, identity, Session, Core, Workspace and revision separate. Establish predecessor/successor evidence and summarize each meaningful work window as Target, Action, Immediate result and Next effect. Preserve unknown lineage.
+
+### 4. Tool contract question
+
+For every recorded request/response pair, compare the expected result with the actual result and the Agent reaction. Keep checker infrastructure failures separate from mathematical source failures; a replay or cache hit is not a new research iteration.
 
 ## Evidence reconstruction
 
