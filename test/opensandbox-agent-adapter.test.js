@@ -21,7 +21,7 @@ test('OpenSandbox Agent adapter keeps Pi RPC inside the provider worker', async 
   const session = await adapter.start({ executionId: 'execution-remote', sessionId: 'session-remote', agentPrompt: 'inspect the task' });
   assert.equal(manager.started.cwd, '/workspace');
   assert.deepEqual(manager.started.args.slice(0, 2), ['--mode', 'rpc']);
-  assert.equal(manager.started.args.includes('--no-builtin-tools'), false);
+  assert.equal(manager.started.args.includes('--no-builtin-tools'), true);
   assert.equal(manager.started.args.includes('--extension'), false);
   assert.equal(manager.started.systemPrompt, 'identity');
   assert.equal(session.sessionId, 'session-remote');

@@ -29,7 +29,7 @@
     },
     {
       "path": "src/agent/opensandbox-agent-adapter.js",
-      "sha256": "a1e39c0fdcfcd32d9b17951b6d435396f8169ffad7ed210ef8673fe506b17bef"
+      "sha256": "d82c8de5670228373d8d7720472195da1b0abe92764b5b8a67be63751e6d9a07"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
@@ -193,7 +193,7 @@
   "prompt_send_sites": [
     {
       "path": "src/agent/opensandbox-agent-adapter.js",
-      "line": 194,
+      "line": 195,
       "expression": "await session.prompt(agentPrompt, { timeoutMs: 30_000 });"
     },
     {

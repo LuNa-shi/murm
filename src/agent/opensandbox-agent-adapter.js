@@ -132,6 +132,7 @@ export class OpenSandboxAgentAdapter {
     if (!directPi) args.push('--');
     args.push('--mode', 'rpc', '--session-dir', sessionDir, '--session-id', sessionId,
       ...(this.config.extensionPath ? ['--extension', this.config.extensionPath] : []),
+      '--no-builtin-tools',
       '--no-skills', '--no-prompt-templates', '--no-context-files',
       ...(this.config.systemPrompt ? ['--append-system-prompt', join(sessionDir, 'identity-system-prompt.md')] : []),
       ...(placement === 'pi' ? ['--provider', this.config.provider, '--model', this.config.model] : []));
