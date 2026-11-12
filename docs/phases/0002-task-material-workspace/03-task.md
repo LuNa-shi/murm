@@ -2,7 +2,7 @@
 
 > 设计附件：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · 状态：供审核的目标设计，尚未实现。以下合同是根据已确认决定整理的 v1 方案，不代表当前代码已经具备这些接口。
 
-本文只定义 Task 本身：什么工作应成为 Task、Task 如何被提出/选择/认领/修订/完成，以及依赖关系如何表达。Bot/Core/Execution 生命周期见 [01](01-model-and-runtime.md)，Sandbox 权限和文件隔离见 [02](02-sandbox-runtime.md)，Material 的内容与纠错见 [04](04-material.md)，Workspace/Git 起点见 [05](05-workspace.md)。
+本文只定义 Task 本身：什么工作应成为 Task、Task 如何被提出/选择/认领/完成，以及依赖关系如何表达。Bot/Core/Execution 生命周期见 [01](01-model-and-runtime.md)，Sandbox 权限和文件隔离见 [02](02-sandbox-runtime.md)，Material 的内容与纠错见 [04](04-material.md)，Workspace/Git 起点见 [05](05-workspace.md)。
 
 ## 2. Task 最小合同
 
@@ -25,7 +25,7 @@ Task 可以指定一个 Workspace 起点：记录 Workspace ID，以及可选的
 | 可选上下文 | Inputs | 已知 Material ID/版本、外部资料引用等 |
 | 可选上下文 | Workspace base | 指定的 revision/commit；若未指定，则在 take 时解析并固定实际起点 |
 | 系统维护 | Status / current owner | 可认领性、当前 Execution、阻塞原因；历史 Execution 单独保留 |
-| 系统维护 | Revision / timestamps | 合同修订号、状态修订号、创建/更新时间 |
+| 系统维护 | Status / timestamps | 状态修订号、创建/更新时间；v1 Task 合同创建后不提供 Agent revise |
 
 不再单独保留 `spawned_from`。它与 Creator/创建时 Execution 重复；若 Task 是在某个 Execution 中提出，创建来源记录已经足以追溯。Task 之间是否存在依赖，只由显式 Dependencies 表达，不从创建先后推断。
 
@@ -49,11 +49,11 @@ Task Service 的 **list 和 detail 是两种不同视图**：
 | `done` | 本 Task 的已声明交付与完成条件满足 | 不可以 |
 | `cancelled` | 责任被明确撤回，记录原因与替代 Task（若有） | 不可以 |
 
-`running` 不声称模型每一刻都在输出；详情应展示 Execution 处于准备、工作还是清理中。认领事务先使 Task 不再可领，再完成输入准备与授权激活。失败补偿和 release 必须等旧执行已停止或隔离之后才解除占有；不能先把 Task 标为 `ready`，再慢慢清理旧 Bot。
+`running` 不声称模型每一刻都在输出；详情应展示 Execution 处于准备、工作还是清理中。认领事务先使 Task 不再可领，再完成输入准备与授权激活。失败补偿和 finish/timeout 必须等旧 sandbox 已停止或隔离之后才解除占有；不能先把 Task 标为 `ready`，再慢慢清理旧 Bot。
 
-正常未完成 release 后，Task 根据依赖变回 `ready` 或 `blocked`。单次 Execution 失败不等于 Task 永久失败。`done` 表达局部合同达成，不等于 Mission 达成、main 已更新或其中所有研究主张都被证明。
+正常 incomplete finish 或超时后，Task 根据依赖变回 `ready` 或 `blocked`。单次 Execution 失败不等于 Task 永久失败。`done` 表达局部合同达成，不等于 Mission 达成、main 已更新或其中所有研究主张都被证明。
 
-### 2.3 依赖与规格修改
+### 2.3 依赖关系与不可变合同
 
 Dependencies 是 Task 合同中的基本关系，字段始终存在，但可以是空列表。v1 只支持简单 Task-to-Task 依赖：`T2 depends_on T1` 表示 T1 完成前 T2 不可 take；T1 达到 `done` 后依赖满足；T1 被取消时不算满足。Task Service 拒绝自依赖和环。第一版不增加依赖类型、条件表达式或复杂调度语言。
 
@@ -108,7 +108,7 @@ Task Service 提供事实、筛选和排序字段；Bot 自主选择。建议它
 
 成功 take 返回 Task/Execution 绑定、私有工作目录、实际基准版本、输入 Material 和可用服务权限。Bot 应先确认这些与选择时观察的条件一致。选择期间 main 或材料状态可能已经变化；当前 Execution 的工作副本不会被后台改写。
 
-第一版的一个 Bot 最多绑定一个 Execution。它可以在执行中提出后续 Task，却不能以切换 Task 的方式保留旧私有对话并开始第二段计算。当前责任结束后 release，新的 Bot 再选择工作。工作目录与授权细节见 [01](01-model-and-runtime.md) 和 [03](05-workspace.md)。
+第一版一个 Bot 最多执行一个 Task；完成或超时/handoff 后 Bot/Sandbox/Pi 结束。一个 Task 可以跨多个 Bot/Execution 接续：前一个 Bot 未完成退出后 Task 回到可认领状态，由新 Bot 在全新 sandbox 中继续。一个 Bot 不在同一生命周期内 take 第二个 Task。工作目录与授权细节见 [01](01-model-and-runtime.md) 和 [03](05-workspace.md)。
 
 ### 4.2 什么值得成为一次持续产出
 
@@ -131,11 +131,11 @@ Task Service 提供事实、筛选和排序字段；Bot 自主选择。建议它
 
 Task 的完成由当前 Bot 根据合同作出声明；Task Service 不替代研究者判断任意数学/科学结论是否正确。Service 只检查结构性条件：声明者是否为有效执行者、必需交付是否存在且可读取、必要材料关联是否完成、合同明确要求的检查是否已返回，以及 Task 合同修订版本是否匹配。若合同要求 Lean/Judge/人工检查，则必须提供相应证据；Service 检查证据是否存在、是否绑定正确输入，不自行重新证明结论。
 
-### 4.4 release 与未完成交接
+### 4.4 finish 与未完成交接
 
-准备结束时，Bot 应先发布值得保留的局部内容，再确认发布结果，最后发 release。发布失败时可在当前有效 Execution 内重试；未完成退出允许没有新 Material，不应为通过退出校验编造空成果。崩溃时只能保留此前已经成功发布的内容。
+准备结束时，Bot 应先发布值得保留的局部内容，再确认发布结果，最后调用 `swarm task finish`。发布失败时可在当前有效 Execution 内重试；未完成退出允许没有新 Material，不应为通过退出校验编造空成果。崩溃时只能保留此前已经成功发布的内容。
 
-release 的完成/未完成意图、材料引用和原因是持久请求的一部分。服务验证通过后，Runtime 撤销新贡献授权、停止本地进程并结束 sandbox。最后一条 CLI 可能随 sandbox 关闭而断开；不能要求 Bot 在 release 后再上传文件。新 Bot 从公开记录接手，不从私有存档恢复。
+`task finish` 的 outcome（done/incomplete）和原因是请求的一部分。服务验证通过后，Runtime 撤销当前 E 权限、停止 Pi 和全部子进程并销毁 sandbox。最后一条 CLI 可能随 sandbox 关闭而断开；不能要求 Bot 在 finish 后再上传文件。新 Bot 从公开记录接手，不从私有存档恢复。
 
 因剩余预算、上下文限制或 compaction 预算结束而交接时，Bot 应尽早发布已有的有用增量；具体阈值由运行配置给出。`compaction max = 3`、`80%` 只是讨论中的例子，不在本章固定为算法常量。
 
