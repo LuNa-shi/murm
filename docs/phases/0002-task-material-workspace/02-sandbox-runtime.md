@@ -75,21 +75,21 @@ Bot sandbox 启动时，Runtime 准备只读启动环境；take 时再读取/确
 4. 在 sandbox 内启动受控 entrypoint/worker，由 worker 启动 Pi RPC 进程并转发 prompt、事件、steer/abort 和退出状态。
 5. Runtime 通过 Pi RPC 发送稳定系统规范和本次启动消息。具体 prompt 文本由 [06](06-prompts-and-skills.md) 维护。
 
-### 3.3 新 Execution 的干净工作目录
+### 3.3 Bot 启动时的只读项目浏览与 Execution 工作目录
 
-Bot 启动时只提供 Workspace 的只读项目浏览能力；take 成功后 Runtime 从 Workspace 当前/指定 revision 创建 Execution 专属工作目录（独立 clone 或受控导出目录），挂载到 sandbox 并开放写权限。Bot 不接触 Workspace 主 Repository 的 .git，也不直接管理 Git。Material 通过 Context API/CLI 获取真实内容或受控附件，不从前任私有目录复制。
+Bot 启动时先通过 Workspace Service/只读 API 浏览项目文件和 main 基线，不预先创建可写 Git clone。take 成功后 Runtime 在当前 sandbox 内准备 Execution 专属工作目录，并按 3.3.1 的受信任文件传输和 OS 权限流程开放写入。Bot 不接触 Workspace 主 Repository 的 .git，也不直接管理 Git。Material 通过 Context API/CLI 获取真实内容或受控附件，不从前任私有目录复制。
 
 Sandbox 内至少区分：
 
 | 路径类别 | 用途 | 生命周期/权限 |
 |---|---|---|
-| Project working directory | 当前 E 的 Workspace clone | take 激活后可写；sandbox 销毁后不自动成为后继输入 |
+| Project working directory | take 后由 Runtime 写入的当前 E 专属项目文件树 | take 前不存在可写目录；take 后由 OS 权限授予当前 Bot 用户；sandbox 销毁后不自动成为后继输入 |
 | Runtime scratch | Pi 会话、NuRouter 状态、临时文件和缓存 | 仅当前 Bot sandbox 可见；新 Bot 不复制 |
 | Credentials/config | 当前 E 的短期服务凭据和 endpoint 配置 | 仅必要进程可读；不进入 Material/Candidate |
 | Logs/diagnostics | 当前 E 的运行日志 | 按审计策略在外部留存；不作为研究材料自动发布 |
 | Provider mounts | 显式配置的只读/临时卷 | 每个 mount 必须声明来源、读写模式和生命周期 |
 
-不要把上述路径混成一个可被后继克隆的 workspace。Workspace Repository 在 sandbox 外；sandbox 内项目目录只是当前 E 的工作副本。
+不要把上述路径混成一个可被后继克隆的 workspace。Workspace Repository 在 sandbox 外；sandbox 内项目目录只是 Runtime 为当前 E 准备的独立工作副本。
 
 ### 3.3.1 Take 时准备工作目录：不假设 Provider 支持动态挂载
 
