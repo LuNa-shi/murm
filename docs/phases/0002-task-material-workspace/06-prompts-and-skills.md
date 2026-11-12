@@ -212,7 +212,7 @@ take 通过 Bash CLI 的普通工具结果反馈给同一个 sandbox 内的同�
   },
   "allowed": ["current task progress", "material publish", "configured service operations"],
   "sandbox": {"id": "S1", "pi_session_id": "PIS1", "project_access": "read-write"},
-  "notice": "同一 sandbox 和 Pi Session 继续。先核对输入，随后执行 T1；finish 将结束本次 Execution 并恢复只读权限，Bot 可继续选择下一项工作。main 更新仍须满足独立合入合同。"
+  "notice": "同一 sandbox 和 Pi Session 继续。先核对输入，随后执行 T1；task finish 将结束本次 Execution 和 Bot 生命周期，Runtime 销毁 sandbox。main 更新仍须满足独立合入合同。"
 }
 ```
 
@@ -439,7 +439,7 @@ description: 正常完成、遇到无法推进的阻塞、预算或上下文限�
 
 已被服务持久接受的长期操作可按合同继续。把可查询的操作 ID 和输入版本留在公开接续信息中；不要承诺 release 会取消它，也不要把 pending 写成成功。
 
-如果只是 Task release 后继续工作，仍是同一 Bot/Sandbox/Pi Session；如果发生 Bot handoff/生命周期结束，则新 Bot 从公开 Workspace 和 Material 开始，不继承你的私有会话与文件。没有发布的内容不能被描述为已经 handoff。
+每次 Task finish、incomplete handoff 或超时都会结束当前 Bot/Sandbox/Pi Session；后继 Bot 在全新环境中从公开 Workspace、Task 和 Material 接续，不继承私有会话与文件。没有发布的内容不能被描述为已经 handoff。
 
 release 可能让 CLI 连接断开。这不等于任务已完成或请求失败；结果由外部 request 记录确定。确认 release 结果后，当前 Bot 生命周期随 finish 结束；后续 Task 由新的 Bot 在新的 sandbox 中接续。
 ```
