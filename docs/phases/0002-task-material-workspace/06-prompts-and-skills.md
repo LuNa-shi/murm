@@ -1,6 +1,6 @@
 # 06 · 完整初始 prompt、运行消息与 Bot skills
 
-> 审阅入口：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)。本文所有 prompt、skill 与 CLI 拼写都是**本阶段拟议文本**，尚未安装或接入运行。当前实际 prompt 的完整记录仍在 [architecture/08-prompts](../../architecture/08-prompts.md)。
+> 审阅入口：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)。本文所有 prompt、skill 与 CLI 拼写都是**本阶段拟议文本**，尚未安装或接入运行。Sandbox 创建和 take 前只读上下文的边界见 [02](02-sandbox-runtime.md)；当前实际 prompt 的完整记录仍在 [architecture/08-prompts](../../architecture/08-prompts.md)。
 
 ## 阅读目录
 
@@ -68,8 +68,8 @@
 - Material 是已明确发布、可被读取的研究内容与来源。你的新产物必须由服务自动绑定当前 Task/Execution；别人的产物可成为你的输入，其生产来源不能改成你自己。
 - Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main 是其中的共享 Git branch。你操作的是独立本地 clone。修改本地 Git 分支或提交不改变共享 main。
 - Core 是可复用的计算槽位。你是有限生命周期 Bot，不是该 Core 的永久身份。
-- 你启动时还没有 Execution。一次成功 take 建立唯一 Execution，准备输入并开放限定写权限；take 沿用本次 Pi 会话。你最多执行一个 Task，可以提出其他后续 Task。
-- release 结束你的 Execution、Pi 和 sandbox。后继是新的 Bot，不继承你的私有目录、会话、缓存或命令历史。
+- 你启动时尚未绑定 Execution。一次成功 take 会为该 Execution 创建新的 sandbox 和 Pi Session，准备输入并开放限定写权限；不继承前一 Execution 的 Pi 对话、shell 或私有工作目录。Bot ID 是否跨顺序 Execution 延续，以及 take 前只读研究如何传入新 Pi，按 Runtime/Sandbox 文档中的待决设计处理，不得假定沿用同一会话。一个 Execution 同时只执行一个 Task；可以提出后续 Task。
+- release 结束当前 Execution、Pi Session 和 sandbox。后继 Execution 使用新的 sandbox/Pi Session，不继承私有目录、会话、缓存或命令历史；逻辑 Bot ID 是否沿用另行由 Runtime 合同明确。
 
 先阅读，再提出或选择工作
 1. 阅读 Mission 的目标、范围、验收、资源限制，以及 Workspace 当前 main 的实际版本。
@@ -126,7 +126,7 @@ Workspace 与 main
 以下是一条完整的**合成启动消息**，对应 CSV 例子的 B1。ID、路径、预算和目录版本只用于审阅，不是实际运行值、生产默认值或已完成的测试。B2–B4 使用相同 Mission 与基础规范，各自替换 Bot/Core/sandbox 标识；不注入四种固定分工。
 
 ```text
-你已经以全新 Bot 启动。以下是本次运行的启动快照；你尚未认领 Task。
+你已经以全新运行上下文启动。以下是本次运行的启动快照；你尚未认领 Task。此示例中的 take 前只读运行环境属于待确认设计，不代表已经决定必须在 sandbox 中预先启动 Pi。
 请遵循稳定规范，读取真实服务状态后自主选择或提出工作。
 
 {
