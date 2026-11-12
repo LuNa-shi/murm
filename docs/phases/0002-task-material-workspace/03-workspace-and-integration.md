@@ -39,7 +39,7 @@ Mission 与 Workspace 一对一绑定。Workspace 就是该 Mission 的项目 Gi
 
 同一个 Task 未完成后再次被认领，会有新的 Execution 和新的私有副本。新副本取自当前公开 main 和明确选择的 Material，而不是克隆前一 Execution 的私有历史。后继可以读到“前任基于 v3 研究并发布了 M8”，但读不到前任未发布的目录、对话或命令历史。
 
-本章不使用 `workspace lineage` 作为必须理解的新概念。需要追溯时，直接记录“基于哪个主线版本”“使用了哪些 Material”“由哪个 Task / Execution 产生”“替代或修正了什么”。
+本章不使用 `workspace lineage` 作为必须理解的新概念。需要追溯时，直接记录“基于哪个主线版本”“使用了哪些 Material”“由哪个 Task/Execution 产生”“替代或修正了什么”。
 
 ## 2. 谁保存内容，谁维护主线
 
@@ -71,7 +71,7 @@ Workspace 可以在服务内部使用 Git 管理公开版本，但外部权威�
 
 ### 3.1 Mission 开始时
 
-负责人提供 Mission、原始项目文件或空项目、允许使用的服务、运行预算，以及适用于该项目的合入条件。启动过程在 sandbox 外创建本地 Git Repository，导入原始项目文件，建立 `main` 初始 commit，并初始化 Workspace revision `0.1`。项目说明、数据集等可独立引用的知识内容可以另存为 Material；Git 文件树本身不是 Material。v0 可以是空文件树和一个明确的输入说明；不要求为了初始化制造一段 Bot Execution。
+负责人提供 Mission、原始项目文件或空项目、允许使用的服务、运行预算，以及适用于该项目的合入条件。启动过程在 sandbox 外创建本地 Git Repository，导入原始项目文件，建立 `main` 初始 commit，并初始化 Workspace revision `0.1`。项目说明、数据集等可独立引用的知识内容可以另存为 Material；Git 文件树本身不是 Material。revision `0.1` 可以是空文件树和一个明确的输入说明；不要求为了初始化制造一段 Bot Execution。
 
 初始化操作应能安全重试，避免创建重复 Mission/Workspace。Workspace Repository 和初始 commit 建立并可物化前，不向 Bot 宣告主线已准备好。
 
@@ -81,7 +81,7 @@ Runtime 随后启动四个 Core 的全新 sandbox / Pi / Bot。它们共享 Miss
 
 认领前，Bot 可以查看当前 main、任务列表及已公开 Material，理解项目并提出任务。Bot 此时没有 Execution 贡献权限，也不能修改受保护项目目录。必要的 Pi 日志、会话、缓存写入放在单独运行目录，不能据此宣称“整个文件系统绝对只读”。权限细节见[运行协议](01-model-and-runtime.md)。
 
-take 认领成功后，Task 进入 `running`，Execution 进入 `preparing`。Runtime 选择并记录当前公开 main 的具体版本，解析 Task 输入与后继接续所需 Material，验证内容摘要，并在项目仍不可写时完成物化。若 Bot 阅读 v0 期间 main 已前进到 v1，take 的成功结果必须明确“本次实际从 v1 开始”，列出输入版本；Bot 应重新检查相关变化，不把之前对 v0 的判断直接当作 v1 的事实。
+take 认领成功后，Task 进入 `running`，Execution 进入 `preparing`。Runtime 选择并记录当前公开 main 的具体版本，解析 Task 输入与后继接续所需 Material，验证内容摘要，并在项目仍不可写时完成物化。若 Bot 阅读 v0 期间 main 已前进到 revision `0.2`，take 的成功结果必须明确“本次实际从 v1 开始”，列出输入版本；Bot 应重新检查相关变化，不把之前对 v0 的判断直接当作 v1 的事实。
 
 准备完成后才进入 `active` 并授予当前 Bot 私有项目写权限，随后提供 E 凭据并返回成功。Pi 会话保持不变，因此本次认领前的阅读上下文保留。准备失败进入关闭与补偿，不把半准备目录交给另一个 Task。
 
@@ -91,7 +91,7 @@ take 认领成功后，Task 进入 `running`，Execution 进入 `preparing`。Ru
 
 Bot 必须在 release 前显式选择需要保留的成果并完成 Material 发布。release 先撤销新贡献请求资格，进入 `closing`，再停止本地进程。Task 在确认旧执行停止并完成归属核对前仍保留 `running` 的占有事实；随后依据完成条件进入 `done`，或回到可继续的 `ready` / `blocked`。旧副本可以作为受限审计存档保留，但不成为下一个 Bot 的挂载、克隆源或搜索输入。
 
-一个 Mission 的 Workspace 和 main 不随 release 删除。下一个 Bot 从公开版本重新开始：若前任没有把本地成果发布出来，系统应诚实地承认那部分研究无法接续，不能用私有恢复旁路替它补上。
+一个 Mission 的 Workspace 和 main 不随 release 删除。下一个 Bot 从公开版本重新开始：若前任没有保存 candidate 或发布 Material，系统应诚实地承认那部分研究无法接续，不能用私有恢复旁路替它补上。
 
 ## 4. 可见性、权限与 Git 隔离
 
@@ -146,10 +146,10 @@ Bot 判断一个成果值得提出合入时，应回答：
 
 一个普通整合 Task 可以是：“把过滤模块 M1 合入 Workspace W 的当前 main，并通过项目规定的模块和回归检查；保持统计与输出接口兼容。”Bot 执行如下：
 
-1. 读取 Task、当前 main、M1 的实际内容与修正/质疑记录。确认没有同目标的整合正在进行，记录选择理由。
+1. 读取 Task、当前 main、candidate/Material 的实际内容与修正/质疑记录。确认没有同目标的整合正在进行，记录选择理由。
 2. take 后从 Runtime 准备的当前基线开始，在私有副本应用成果。发现旧基准差异时由自己处理，不要求 Runtime 猜测语义冲突。
 3. 运行适用检查。需要远程 Judge 时按普通 service call 提交固定输入，并记录其返回结果；单纯本地写一个 `PASS` 文件不构成可信的合入凭据。
-4. 选择公开文件并发布不可变候选 Material。检查与候选的内容摘要一致；若检查后还改了文件，则相关检查失效，须重新执行。
+4. 选择公开文件并发布不可变Workspace candidate。检查与candidate 的内容摘要一致；若检查后还改了文件，则相关检查失效，须重新执行。
 5. 按 Task 的合入政策请求推进 main，带候选、预期旧版本和稳定请求 ID。
 6. 若成功，读取服务返回的新 main 版本，登记到本 Task 的结果中。Task 完成条件满足后 release；这个 Bot 不继续 take 下一项工作。
 7. 若冲突或被拒，按下一节处理。可以在当前有效 E 内修正后再次提交新候选，或公开已完成部分并按未完成 release。
@@ -162,11 +162,12 @@ Bot 判断一个成果值得提出合入时，应回答：
 
 ```bash
 swarm workspace view --workspace W --revision main --json
-swarm workspace advance --workspace W --expected-revision 0.1 --candidate-commit C5 --request-id R --json
-swarm workspace request --workspace W --request-id R --json
+swarm workspace candidate save --json
+swarm workspace candidate view C5 --json
+swarm workspace integrate C5 --expected-revision 0.1 --json
 ```
 
-`view` 返回 main branch、Workspace revision、对应 commit 和公开历史，不返回私有目录。`candidate save` 由可信 Runtime 从当前 Execution 的独立 clone 导出允许文件并导入 Workspace 本地 Repository，返回 candidate ID 和 commit；candidate 不必关联 Material。`candidate view/diff` 返回基准、候选内容摘要、来源 Task/E 和差异。`integrate` 由 Bot 明确选择候选并请求更新 main，携带 expected revision；服务端验证当前 E、候选来源、政策及检查要求。普通调用同步返回结果；如果本地 Git 操作确实耗时而需要异步化，由 Workspace Service 自己定义状态查询，不引入通用 request/permit 框架。
+`view` 返回 main branch、Workspace revision、对应 commit 和公开历史，不返回私有目录。`candidate save` 由可信 Runtime 从当前 Execution 的独立 clone 导出允许文件并导入 Workspace 本地 Repository，返回 candidate ID 和 commit；candidate 不必关联 Material。`candidate view/diff` 返回基准、候选内容摘要、来源 Task/E 和差异。`integrate` 由 Bot 明确选择候选并请求更新 main，携带 expected revision；服务端验证当前 E、candidate 来源、政策及检查要求。普通调用同步返回结果；如果本地 Git 操作确实耗时而需要异步化，由 Workspace Service 自己定义状态查询，不引入通用 request/permit 框架。
 
 **合入政策在 Mission 初始化时确定并有版本。** 政策声明允许的变更范围、必需的检查、结果证据来源、是否需要人工批准。第一版建议在满足已批准政策的普通变更上自动执行服务端接纳，不要求负责人手工审每一次局部成果；若 Mission 配置要求人工审批，则必须携带相应批准，Bot 无权绕开。没有定义适用检查的项目，不应把“没有检查失败”当作已具备自动合入条件，应先补足政策。
 
@@ -174,7 +175,7 @@ swarm workspace request --workspace W --request-id R --json
 
 服务处理顺序：
 
-1. 认证调用者与请求 ID，查询已存在的同一请求结果；相同 ID 携带不同请求内容应拒绝。
+1. 验证调用者身份和当前 E；若 CLI/API 操作本身有重试语义，使用该操作自己的幂等键避免重复更新。
 2. 通过 Context API 解析候选及来源，确认可见性、内容持久性和完整摘要，记录当前已知的质疑/修正信息。Context 不可达或附件缺失时不推进 main。
 3. 从可信检查服务读取与候选摘要、输入、政策及检查器版本相符的结果。Bot 自述只能作为解释，不能冒充服务给出的通过事实。若项目需要人工接纳，核对针对该具体候选的批准。
 4. 在 Task / Workspace 同一事务中检查 E 仍为 `active`、属于当前 Task、Task 仍由它执行，且 E 范围与 Task 合同允许所申请的 Workspace 操作。候选的最终整合生产者必须是这个 Task/E；其他 Task/E 的成果通过候选的输入来源引用保留。确认当前 main 恰为请求的 `expected_main_revision`，候选也基于此版本，政策版本未改变。
@@ -191,7 +192,7 @@ Workspace candidate 的保存与 main 更新是两件事。候选保存成功但
 | 情形 | 服务与 Bot 的行为 | 保证与边界 |
 |---|---|---|
 | 两个 Bot 同时 take 同一整合 Task | Task 排他认领只允许一个成功 | 这是 Task 互斥，不阻止它们提出两个语义相同的 Task |
-| 不同整合 Task 都从 v1 生成候选 | 首个条件更新得到 v2；另一个得到版本冲突 | 不会把后提交候选静默覆盖成另一条 v2 |
+| 不同整合 Task 都从 v1 生成候选 | 首个条件更新得到 revision `0.3`；另一个得到版本冲突 | 不会把后提交候选静默覆盖成另一条 v2 |
 | 候选基于 revision 0.1，main 已到 0.3 | Bot 在自己的副本读取当前 main，重新整合并保存新 candidate | 不允许直接把旧快照当成新 main，从而丢掉中间改动 |
 | 合入有内容冲突 | Bot 解释冲突并解决，或发布局部成果后未完成退出 | v1 不要求自动语义合并器；不能仅因 Git 没报冲突就判定结果正确 |
 | 检查通过后文件又变了 | 旧结果与新候选摘要不匹配，拒绝接纳 | 重新检查受影响内容，不能复用过时的 PASS |
@@ -228,7 +229,7 @@ Mission 是为 CSV 分析工具添加过滤、分组统计和 JSON 输出。Work
 | 后继 Bot/T6 整合 M3 | 在 v1 整合，保留过滤功能，重新检查并发布 M6 | v1 → v2，指向 M6 | 不将 v0 + JSON 直接覆盖为最新 main |
 | B4 的验证资料 M4 被后继 Task 使用 | 记录有意义的使用关系；若测试文件值得保留，也可保存 Workspace candidate | 视后续判断而定 | Material 和 Git 文件候选各自独立 |
 
-若另一整合 Bot 在同一时段也以 v1 提交，只有一个请求能够把 v1 推进到 v2。失败者仍保有自己的候选 Material，但需要面对新的 v2 重新判断。这是共享主线的必要代价，不能在例子中省略。
+若另一整合 Bot 在同一时段也以 v1 提交，只有一个请求能够把 v1 推进到 v2。失败者仍保有自己的候选 commit，但需要面对新的 v2 重新判断。这是共享主线的必要代价，不能在例子中省略。
 
 最终报告应分别回答：哪些 Task 达成交付；哪些成果已公开；main 当前具备什么；哪些 Mission 验收条件已经验证。分组统计未完成时，即使过滤和 JSON 已合入，Mission 也没有因此完成。
 
