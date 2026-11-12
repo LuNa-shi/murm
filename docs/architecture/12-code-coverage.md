@@ -168,7 +168,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [scripts/opensandbox-agent-worker.mjs](../../scripts/opensandbox-agent-worker.mjs) | Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `7ddcaec73ec233c15650bcecdf503fd184afc587f2c494abebbfdb3c7a51687d` |
+| [scripts/opensandbox-agent-worker.mjs](../../scripts/opensandbox-agent-worker.mjs) | Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `edf20a76c9a626a3415b6743235cdc37e40e553d2e969fc1a92857f0018ab590` |
 | [src/runtime/opensandbox-manager.js](../../src/runtime/opensandbox-manager.js) | OpenSandbox lifecycle and Execd provider boundary for one Execution | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `3f07a7db349ff568ce0bbc2d5258577edf250f73d2cd888678b6bfd53042cea3` |
 
 ### service and Agent integration (3)

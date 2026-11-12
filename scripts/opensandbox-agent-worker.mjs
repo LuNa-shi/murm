@@ -3,7 +3,7 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 const argv = process.argv.slice(2);
@@ -60,6 +60,22 @@ function publish(record) {
   return value;
 }
 
+async function expandPiModelCatalog(environment) {
+  const agentDir = environment.PI_CODING_AGENT_DIR;
+  if (typeof agentDir !== 'string' || !agentDir.startsWith('/')) return;
+  const catalogPath = `${agentDir}/models.json`;
+  let source;
+  try { source = JSON.parse(await readFile(catalogPath, 'utf8')); } catch { return; }
+  const expand = (value) => {
+    if (Array.isArray(value)) return value.map(expand);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, expand(item)]));
+    if (typeof value !== 'string') return value;
+    const match = value.match(/^\$([A-Z_][A-Z0-9_]*)$/);
+    return match && typeof environment[match[1]] === 'string' ? environment[match[1]] : value;
+  };
+  await writeFile(catalogPath, `${JSON.stringify(expand(source), null, 2)}\n`, { mode: 0o600 });
+}
+
 function processStdout(chunk) {
   stdoutBuffer += chunk.toString();
   while (true) {
@@ -87,7 +103,9 @@ async function startAgent(input) {
   delete childEnv.SWARMENV_WORKER_TOKEN;
   const suppliedEnv = { ...(input.env ?? {}), ...(input.secret_env ?? {}) };
   delete suppliedEnv.SWARMENV_WORKER_TOKEN;
-  child = spawn(input.command, input.args, { cwd, env: { ...childEnv, ...suppliedEnv }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const agentEnvironment = { ...childEnv, ...suppliedEnv };
+  await expandPiModelCatalog(agentEnvironment);
+  child = spawn(input.command, input.args, { cwd, env: agentEnvironment, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdout.on('data', processStdout);
   child.stderr.on('data', (chunk) => { for (const response of subscribers) response.write(`event: stderr\ndata: ${JSON.stringify({ text: chunk.toString() })}\n\n`); });
   child.on('error', (error) => publish({ type: 'worker_error', message: error.message }));
