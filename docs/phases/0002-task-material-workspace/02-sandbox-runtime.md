@@ -84,7 +84,7 @@ Sandbox 内至少区分：
 | 路径类别 | 用途 | 生命周期/权限 |
 |---|---|---|
 | Project working directory | 当前 E 的 Workspace clone | take 激活后可写；sandbox 销毁后不自动成为后继输入 |
-| Runtime scratch | Pi 会话、NuRouter 状态、临时文件和缓存 | 仅当前 E 可见；新 E 不复制 |
+| Runtime scratch | Pi 会话、NuRouter 状态、临时文件和缓存 | 仅当前 Bot sandbox 可见；新 Bot 不复制 |
 | Credentials/config | 当前 E 的短期服务凭据和 endpoint 配置 | 仅必要进程可读；不进入 Material/Candidate |
 | Logs/diagnostics | 当前 E 的运行日志 | 按审计策略在外部留存；不作为研究材料自动发布 |
 | Provider mounts | 显式配置的只读/临时卷 | 每个 mount 必须声明来源、读写模式和生命周期 |
@@ -99,16 +99,18 @@ Sandbox 内至少区分：
 - Runtime 监督预算、TTL、进程状态、心跳/事件和异常退出。模型输出停止不等于 sandbox 内所有后台进程停止。
 - Agent 不得通过 sandbox 内命令访问 provider 管理 API、宿主 socket、其他 E 的 volume 或外部服务数据库。
 
-### 3.5 结束与销毁
+### 3.5 Task release 与 Bot sandbox 终止是两件事
 
-一次 Execution 结束时，Runtime 必须：
-1. 阻止该 E 发起新的服务写操作（由各服务验证 E 状态）。
-2. 停止 Pi、NuRouter、Bash 及全部子进程；不能只向 Pi 发送“请停止”文本。
-3. 确认 sandbox 已停止/隔离，再释放 Core 和相应运行资源。
-4. 删除临时 sandbox；私有卷和运行审计数据按明确留存策略处理，但不自动作为后继 E 输入。
-5. 保留已发布 Material、Workspace 中已保存 Candidate/main commits 和服务端操作结果。没有发布的私有文件不保证接续。
+**一次 Execution release 不销毁 Bot sandbox。** Runtime 必须：
+1. 阻止当前 E 发起新的服务写操作；服务端按 E 状态拒绝旧 E 的后续写请求。
+2. 撤销当前 E 的项目目录写权限和贡献型服务权限，将项目目录恢复只读。
+3. 停止或隔离由该 E 启动、可能继续修改项目的任务级后台进程；保留 Bot 主 Pi/NuRouter 和 sandbox。
+4. 关闭 E、释放 Task 占有并记录结果。当前 Bot 回到只读协调阶段，可以继续提出、选择并 take 下一项 Task。
+5. 不删除当前 Bot sandbox、Pi Session 或其运行目录。Material/Candidate/main commit 等外部持久成果按各自服务合同保留。
 
-Provider 删除响应丢失或 Runtime 重启时，reconciler 根据持久 E 状态、provider resource tags 和 sandbox ID 对账。未确认 sandbox 已停止前，不能将同一 Task 重新分配给另一个 E。
+**Bot 生命周期结束时才销毁 sandbox。** 例如 compaction/handoff、预算/时间上限、操作者停止或不可恢复故障。Runtime 此时停止 Pi、NuRouter、Bash 和所有剩余子进程，确认 sandbox 已停止/隔离，再销毁 sandbox。私有卷和运行审计数据按留存策略处理，但不作为后继 Bot 输入。
+
+Provider 删除响应丢失或 Runtime 重启时，reconciler 根据持久 Bot/E 状态、provider resource tags 和 sandbox ID 对账。Bot sandbox 未确认停止前，不能把 Core 重新分配给新的 Bot。
 
 ## 4. 文件系统与权限切换
 
@@ -118,7 +120,7 @@ Provider 删除响应丢失或 Runtime 重启时，reconciler 根据持久 E 状
 - 未 take：Agent 可以读 Mission、Task 列表、Workspace main 和有权限的 Material；不能写项目工作副本、发布研究成果或提交领域服务贡献。
 - Bot 启动阶段：Runtime 创建 sandbox、Pi Session 和 project clone；在 take 前项目目录仍只读。
 - take 成功并进入 active E：可信 Runtime 在当前 sandbox 授予项目目录写权限；服务端也验证当前 E 才接受写入。
-- closing/closed：服务端拒绝旧 E 的新写请求，Runtime 结束该 E 的任务级子进程并将项目目录恢复只读；Bot 主 sandbox 可继续运行，直到 Bot 生命周期结束。
+- closing/closed：服务端拒绝旧 E 的新写请求，Runtime 结束该 E 的任务级子进程并将项目目录恢复只读；Bot 主 sandbox/Pi 可继续运行，直到 Bot 生命周期结束。
 
 这里的只读指项目文件与业务贡献，不是禁止操作系统内所有写入。Pi 运行目录、缓存和临时文件可能需要可写，但它们不能成为项目目录的旁路。
 
