@@ -249,16 +249,16 @@ Pi compaction 的外部库模板、压缩后的内容与事件需要按实际版
 | 目录 / 操作 | Bot 用来做什么 | 必须呈现的边界 |
 |---|---|---|
 | `swarm --help`；`swarm service list/view` | 找服务、版本、可用状态和逐层帮助 | 网络可达与操作已授权分开呈现 |
-| `swarm task list/view` | 全状态列表、合同、依赖、当前 owner、关联材料 | 分页、截断、观察时间、规格/状态版本 |
+| `swarm task list` / `swarm task view` | list 返回简洁摘要；view 返回完整合同、依赖、输入、Workspace 起点和修订历史 | 分页、截断、观察时间、规格/状态版本；列表不塞入长合同 |
 | `swarm task propose` | 提交目标、交付、验收、输入、依赖和已有工作比较 | 协调身份与 request ID；提案不是 take |
 | `swarm task take` | 请求唯一 Execution | Task 与预期规格版本；pending/conflict/active 可区分 |
 | `swarm task request` | 查询 take/release 等持久请求 | 使用原 request ID；可查询不等于再次授权 |
-| `swarm task attach` | 关联 Material 为输入、交付或接续等用途 | 来源不可改；计划输入与实际使用分开记录 |
+| `swarm task revise` | 当前执行者修订自己 Task 的目标、交付或完成条件 | 记录原因、前后合同和 revision；不得修改他人正在执行的 Task |
 | `swarm task release` | 以完成/未完成意图结束当前绑定 | 当前 E 来自保护绑定；材料、原因与 request ID；受理后可断线 |
 | `swarm material search/view` | 查元数据、正文/附件、来源与修正关系 | 按 ID 也做可见性校验；旧内容不静默替换 |
-| `swarm material publish` | 上传正文/附件及来源引用 | Bot 产物必须有 E；内容持久性、摘要、部分失败可核对 |
-| `swarm workspace view` | 读取指定版本/main 及其快照和来源 | 不返回其他 E 私有目录 |
-| `swarm workspace advance` | 受控提交候选 | Workspace、expected-main、candidate、request-id；服务复核 E/政策/检查 |
+| `swarm material publish` | 上传正文/附件并创建 Material | 服务从当前可信 Execution 自动绑定生产 Task/Bot；Bot 不自填来源 |
+| `swarm workspace view` | 读取 main branch、Workspace revision 和 Git commit | Git 文件版本不包装为 Material；不返回其他 E 私有目录 |
+| `swarm workspace advance` | 由 Bot 自行判断是否值得将候选整合到 main，并调用受控工具推进 | 不是每个 Execution 都必须合入；Workspace、expected revision、候选 commit 和当前 E 由服务校验 |
 | `swarm workspace request` | 查合入请求的已定结果 | 响应丢失时不重复推进 main |
 | `swarm judge ...` 与领域命令 | 发起/查询实际服务操作 | 真实输入版本、accepted/pending/result、失败、费用、取消合同 |
 
@@ -285,14 +285,14 @@ description: 提出或选择下一项 Task 时使用；核对已有工作、明�
 1. 查询相关 Task 的全部状态和分页。读最接近工作的完整合同、当前执行者、材料与阻塞原因。
 2. 搜索已存在的成果和失败尝试。读真实内容，检查是否存在修正；不要只用标题判断空白。
 3. 比较可以立即接续的已有 Task。根据目标相关性、解锁作用、重复成本、可用输入和剩余预算选工。
-4. 只有缺少合适责任时才提出新 Task。写明局部目标、可被使用的交付、完成条件、确切输入、真正依赖，以及与现有工作的区别。
+4. 只有缺少合适责任时才提出新 Task。写明局部目标、可被使用的交付、完成条件、确切输入、Dependencies（Task ID 列表；没有则为空），以及与现有工作的区别。Mission ID 标识目标，Workspace ID 标识对应 Git Repository；需要固定项目起点时记录 Workspace revision/commit。
 5. 说明选择依据，用一两句可核对的事实即可。不要提交私有思维过程或没有依据的价值分数。
-6. take 使用稳定请求 ID 和当前合同版本。冲突时刷新事实；结果未知时查询原请求，不能并发另一次 take。
+6. take 使用当前 Task 合同 revision。冲突时刷新事实；成功后核对实际绑定的 Workspace commit/revision。若执行中发现原任务范围或交付定义不合理，可以修订自己当前 Task，必须记录修改原因和前后 revision；不要修改其他 Bot 的 Task。
 
 校准任务边界：
 - “完成整个 Mission”通常不能形成分工；寻找可独立交付的部分。
 - “读一个文件”通常只是步骤；除非它交付别人确实需要的独立核查。
-- 父任务/创建来源不是执行依赖。仅在前置成果确实缺失时声明依赖。
+- 不使用重复的 `spawned_from`；Creator 和创建时 Execution 已记录提出者来源。Dependencies 是显式 Task ID 列表，可以为空；仅在前置 Task 完成前确实无法开始时声明依赖。已有局部 Material 可用时，不要无谓等待其生产 Task 完成。
 - 局部补丁完成与主线合入完成是不同合同；创建时就说明哪一种。
 
 例：已有 T2 做分组统计，M2 留下空组失败样例。优先接续 T2；若另有独立问题，再提出明确的补充 Task。不要重新提出“实现全部统计”来重复工作。
@@ -313,15 +313,15 @@ description: 检索、阅读、复用、发布、接续或纠正 Material 时使
 以当前 Task 的确切输入和 Workspace 基准为起点，搜索缺失的信息。
 
 1. 先按已知 ID、Task、来源和关键词查询，再读相关正文/附件；处理分页与截断。
-2. 核对内容版本、适用范围、前提、生产来源和已知质疑/修正。来源可追溯不等于结论可信。
-3. 对影响本 Task 成败的关键前提做必要复验。标出读到的事实、自己的推断和未确认假设。
+2. 核对内容版本、适用范围、前提、生产来源和已知质疑/修正。来源可追溯不等于结论可信；Evidence 必须落实到具体 claim/段落，不用整份 Material 的笼统可信度代替。
+3. 对影响本 Task 成败的关键前提做与风险相称的复验。Lean 证明应核对 theorem statement、proof artifact、Lean/Mathlib 版本和依赖 axioms；实验应核对数据、代码、参数和环境；假设/猜想应明确标为未验证。
 4. 真正使用后记录它影响的判断或产物。计划引用、打开文件、实际采用和正确复用是不同事实。
 5. 发布有用的局部增量，写清内容、来源、实际证据、限制和可复用条件。用可持久读取的附件，不给前任私有路径或临时链接。
-6. 确认发布返回的 Material ID 可读取，再补齐 Task 关联。响应未知查原请求；部分成功只重试缺失步骤。
+6. 通过一次 `swarm material publish` 发布。服务根据当前 Execution 自动绑定生产 Task/Bot；不手工填写生产者，也不再执行第二次 task attach。
 
 接续他人工作时，读取其实际产物、已失败路线、未解决问题和推荐起点。对照当前 main 处理旧基准。不能读取审计存档补齐未公开信息，也不必因前任推荐而继续无效路线。
 
-发现错误时，先检查反例是否在原主张范围内。发布新的证据材料，指向旧材料确切版本和错误范围；保留原记录，展示争议和新证据。修正声明不自动证明正确，也不自动撤销全部下游成果。
+发现错误时，先检查反例是否在原主张范围内。发布新的证据 Material，指向旧材料确切版本和受影响 claim/section。未解决的质疑将旧材料标记 disputed；有更充分证据的后继 Material 正式 supersede 后，旧材料从默认搜索/普通列表隐藏，但历史和精确 ID 仍可读取。不要物理删除原记录。
 
 检查哪些 Task、材料和主线版本实际用了受影响部分。需要修复时提出普通 Task，重新验证后公开结果；不要静默重写旧材料或删除别人工作。
 
