@@ -1,11 +1,31 @@
-# Issue 与 PR
+# Issue tracker: GitHub
 
-仓库使用GitHub。Issue保存获批准的行为与验收合同，PR保存可审阅实现。可使用已授权的GitHub连接器或 `gh` CLI；不因具体工具差异改变权限与验收要求。
+> Configuration for Matt Pocock's engineering skills · Active
 
-当前仅草拟 [三个第一阶段Issue](../plans/phase-1/README.md)，未获发布指令前不创建/关闭Issues，不修改#107状态或标签。ready-for-agent只用于需求、前置条件及验收均已确认的工作。
+**Issues and specs live in the SwarmEnv GitHub repository:** [LuNa-shi/SwarmEnv](https://github.com/LuNa-shi/SwarmEnv). Use an authorized GitHub integration or `gh` CLI. Never publish a SwarmEnv Issue into the upstream `mattpocock/skills` repository.
 
-每项包括问题与证据、交付行为、两小时真实验收及反证、必要回归、依赖和不做的内容。Issue引用规范，不复制成第二套架构。仓库工作分支按 `codex/issue-<number>-<slug>` 或批准的docs分支命名。
+## Reading and writing
 
-一个总Issue跟踪三个sub-issues的完成。实现可以有明确依赖，但每项在其前置基线上必须独立演示与验收。不存在只改schema却把可用行为留给下一项的完成方式。
+- Read an Issue's **body, comments, labels, and linked tickets** before starting. The `/to-spec` Issue body is the spec; when `/triage` provides an accepted **Agent Brief** comment, use that brief and any later approved updates as the execution contract.
+- `/to-spec` publishes a spec Issue, generally using the `ready-for-agent` label. Publishing an Issue or adding that label describes readiness; a human instruction or approval is still required before **executing a new research hypothesis** or spending unapproved resources.
+- `/to-tickets` publishes complete vertical-slice GitHub Issues only after its proposed split and blocking relationships have been reviewed. Prefer GitHub sub-Issues and native blocked-by relationships; when unavailable, use explicit `Parent: #N` and `Blocked by: #N` links.
+- A one-Issue implementation with multiple PRs is also valid; do not force `/to-tickets`.
+- An explicit user request to use `/implement-spec` may authorize the ticket and branch state changes defined by that skill. Outside such authorization, do not merge PRs, close Issues, or change their labels/state unilaterally.
 
-**PRs as a request surface: no.** 文档草稿PR由本次用户直接授权提出，讨论中的数值门槛未自动成为已批准Issue。
+## GitHub CLI references
+
+```sh
+gh repo view --json nameWithOwner
+gh issue view <number> --json number,title,body,labels,comments
+gh issue list --state open --label ready-for-agent
+gh issue create --title "..." --body-file /path/to/spec.md
+gh issue comment <number> --body-file /path/to/comment.md
+```
+
+For native sub-Issues and blocking edges, use the operations supported by the installed `gh` version. Always check the target repository before publishing.
+
+## Roles and repository conventions
+
+**PRs as a request surface: no.** PRs are implementation/review artifacts; triage of new work starts from Issues unless the user explicitly asks to review a particular PR.
+
+The canonical triage-state mapping lives in [triage-labels.md](triage-labels.md). Domain vocabulary and decisions are configured in [domain.md](domain.md). For multi-PR Issues, report implementation progress and verification links in the Issue comments; do not close the parent merely because a partial PR merged.

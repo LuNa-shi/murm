@@ -1,24 +1,20 @@
-# ADR 0017：第一阶段Task-centric规范及共同Mission修订
+# ADR 0017: Shared Mission and Task-centric division of work
 
-- 状态：Proposed，PR #110审阅后生效；运行实现另见状态表。
-- 初稿：2026-11-01；本轮接续20261102运行契约及用户澄清。
+- Status: Recorded design decision. The original phase-one proposal remains available in Git history; actual implementation and evidence should be checked against source, the [architecture manual](../architecture/INDEX.md) and the relevant GitHub Issue/PR evidence.
+- Origin: 2026-11-01 to 2026-11-05; PR #110 and related task-centric revisions.
 
-## 背景
+## Context
 
-旧父子树、扁平Task和不同Judge流程同时存在于入口文档，导致实现依据不一致。初稿又将所有Task的单执行者、在制上限和复杂接续保护扩大为统一要求。用户进一步明确共同Mission不应被一人独占，本轮不设任务数量上限，保存失败允许丢弃未保存状态。
+Earlier parent-child approval trees, flat Tasks, and Judge retry gates coexisted. Predefined research routes and Task-count quotas also constrained self-directed work. Shared objectives, independent responsibilities, Execution authorization, and Session capacity were not consistently separated.
 
-## 决定
+## Decision
 
-AGENTS规定核心约束，GLOSSARY定义词汇，architecture说明完整流程，日期化运行契约细化语义；实现状态、审计证据与Issue验收分别维护。历史正文与实验不改写。
+- A Mission expresses the shared research objective. Its shared Mission Task permits multiple independent Executions. An ordinary Task represents separable work with its own delivery boundary and normally only one active Execution.
+- Agents decide whether to create independent work; Runtime manages physical resources. When no ordinary Task is suitable, an Agent may continue the shared Mission.
+- No Task-count quota applies. Overall budgets, model/Core capacity, and timeouts still constrain execution. Judge is an iterative checking tool, and a local PASS is not completion of the original Mission.
+- Progress Material references actual versions. File work uses a per-Execution local Git Workspace. Handoff and identity rotation must preserve prior valid work; saving failure must clearly disclose potential unsaved loss.
+- Exact register/switch, checking, authorization and continuation behavior is documented by [current Architecture](../architecture/INDEX.md) and corresponding source.
 
-共同Mission Task允许多个Execution，每个identity使用自己的Core lane和私有工作面；普通子任务保持单有效执行者。无子任务时继续Mission，不引入中央供给planner。不设置动态/在制/OPEN任务数量配额。总预算、并发容量和执行期限仍有效。
+## Consequences
 
-Progress/Git采用最小本地保存和对应commit接续，失败有界放弃本次未保存状态，不假报成功。identity最多完成三次compaction，第三次后继续，下一轮窗口达到80%时handoff，第四次禁止。运行细节见[契约](../20261102-agent-task-runtime-contract.md)。
-
-第一阶段仍三个完整Issue：S1工具检查；S2共同Mission/主动分工及基本保存接续；S3反馈和compaction轮换。每个实现对应可观察行为，正常路径真实验证、稀有失败受控验证，并各有两小时匹配主改善。
-
-## 取舍和后果
-
-共享Mission降低独立子任务供给不足时的单人瓶颈，但可能产生重复整体探索；本轮如实分开观察，不提前引入语义去重/调度优化。无任务配额允许观察自然工作形成，但仍需记录任务增长和资源消耗。允许丢弃未保存状态简化失败路径，正常保存可靠性仍必须验证。
-
-已有#107的Response门禁加固和新任务配额设计不能继续直接实施，其他正确性缺陷仍承接。文档合并不表示代码符合；不以设计变化重写旧实验事实。
+This reduces centralized approval and task-supply bottlenecks while leaving open the risks of redundant exploration, ineffective delegation and poor convergence. Research evidence must distinguish concurrent shared-Mission Executions, independent Task decomposition, and actual downstream reuse. This ADR does not maintain the old S1–S3 Issue list, fixed two-hour acceptance criteria, or earlier implementation-state assertions.
