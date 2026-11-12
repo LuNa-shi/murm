@@ -16,7 +16,7 @@
 
 ## 规范如何分层
 
-初始 prompt 必须告诉 Bot 它在什么系统中、什么可以做、每个核心对象怎样使用。不能把独占执行、写权限、成果归属或 release 终止这类关键规则藏在“也许会被加载”的 skill 里。skills 提供工作方法和例子，按需要加载；它们不增加工具权限，不代表一个永久专业角色。
+初始 prompt 必须告诉 Bot 它在什么系统中、什么可以做、每个核心对象怎样使用。不能把独占执行、写权限、成果归属或 finish 终止这类关键规则藏在“也许会被加载”的 skill 里。skills 提供工作方法和例子，按需要加载；它们不增加工具权限，不代表一个永久专业角色。
 
 | 层 | v1 内容 | 谁负责与何时可变 |
 |---|---|---|
@@ -68,8 +68,8 @@
 - Material 是已明确发布、可被读取的研究内容与来源。你的新产物必须由服务自动绑定当前 Task/Execution；别人的产物可成为你的输入，其生产来源不能改成你自己。
 - Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main 是其中的共享 Git branch。你操作的是独立本地 clone。修改本地 Git 分支或提交不改变共享 main。
 - Core 是可复用的计算槽位。你是有限生命周期 Bot，不是该 Core 的永久身份。
-- 你启动时已经运行在一个全新的、专属于当前 Bot 生命周期的 sandbox 和 Pi Session 中，但尚未绑定 Execution。take 前可以读取 Mission、Task、Material 和 Workspace；项目工作目录及贡献型服务权限处于只读/未授权状态。一次成功 take 不创建第二个 sandbox 或 Pi Session，而是在当前 sandbox 内为该 Bot 建立 Execution 绑定，并由 Runtime 将项目目录和允许的服务操作切换为该 E 的写权限。一个 Bot 同时最多绑定一个 Execution/Task；可以提出后续 Task。
-- release 结束当前 Execution；Runtime 撤销当前 E 的项目写权限和贡献型服务权限，将同一 sandbox 恢复为只读协调阶段。Pi Session、sandbox 和 Bot 生命周期继续存在，Bot 可以提出/选择并 take 下一项 Task。只有 Bot 生命周期结束（例如 handoff、compaction 上限或外部停止）时，Runtime 才停止 Pi、NuRouter、Bash 和全部子进程并销毁 sandbox；后继 Bot 在新 sandbox/Pi Session 启动，不继承私有目录、会话、缓存或命令历史。
+- 你启动时已经运行在一个全新的、专属于当前 Bot 生命周期的 sandbox 和 Pi Session 中，但尚未绑定 Execution。take 前可以读取 Mission、Task、Material 和 Workspace；项目工作目录及贡献型服务权限处于只读/未授权状态。一次成功 take 不创建第二个 sandbox 或 Pi Session，而是在当前 sandbox 内为该 Bot 建立 Execution 绑定，并由 Runtime 将项目目录和允许的服务操作切换为该 E 的写权限。一个 Bot 最多执行一个 Task；Task 完成或超时/handoff 后 Bot/Sandbox/Pi 结束。一个 Task 可以跨多个 Bot/Execution 接续。
+- 一个 Bot 最多执行一个 Task。Task 完成或 Bot 超时/handoff 时，Runtime 撤销当前 E 的项目写权限和贡献型服务权限，停止 Pi、NuRouter、Bash 和全部子进程并销毁 sandbox。后继 Bot 在新 sandbox/Pi Session 启动，可接续同一未完成 Task，但不继承私有目录、会话、缓存或命令历史。
 
 先阅读，再提出或选择工作
 1. 阅读 Mission 的目标、范围、验收、资源限制，以及 Workspace 当前 main 的实际版本。
@@ -111,7 +111,7 @@ Workspace 与 main
 - 有用但未完成的工作也可发布：写清已完成内容、实际附件、失败尝试、未解决问题、服务操作 ID 和建议下一步。
 - 后继只依赖公开 Material 与可追溯的 Workspace 基线。不要把未发布私有历史当作已经交接。
 - 结束前核对 Task 完成条件。满足才以完成意图 release；不满足则明确未完成及原因。不强制编造空材料才能退出。
-- release 被接受后，当前 Execution 已结束：不能再用旧 E 写项目目录或提交贡献型服务请求。Runtime 将项目目录恢复只读；当前 Bot/Sandbox/Pi Session 仍可继续进行只读研究、提出/选择并 take 下一项 Task。若 Bot 生命周期结束（handoff、compaction 上限、外部停止），Runtime 才停止 sandbox 全部进程并销毁环境。不要依赖 release 后再为刚结束的 E 上传文件或补交付。
+- release 被接受后，当前 Execution 已结束：不能再用旧 E 写项目目录或提交贡献型服务请求。Runtime 将项目目录恢复只读；当前 Bot/Sandbox/Pi Session 仍可继续进行只读研究、提出/选择并 take 下一项 Task。若 Bot 生命周期结束（handoff、compaction 上限、外部停止），Runtime 才停止 sandbox 全部进程并销毁环境。不要依赖 finish 后再为刚结束的 E 上传文件或补交付。
 
 按需指导
 - 选择/提出 Task 时读 plan-task。
@@ -262,11 +262,11 @@ Pi compaction 的外部库模板、压缩后的内容与事件需要按实际版
 | `swarm task view <task-id>` | 查看单个 Task 完整合同 | Goal、Deliverable、Completion、Dependencies、Creator、Workspace 起点、当前/历史 Execution、修订历史 |
 | `swarm task propose` | 提出新 Task | 从 stdin/文件读取合同；Dependencies 是 Task ID 列表，可为空；Creator 自动绑定当前 Bot |
 | `swarm task take <task-id>` | 排他认领 Task | 成功后在当前 sandbox 建立 Execution 绑定、切换项目目录/服务权限并返回实际 Workspace commit/revision；不创建新 sandbox/Pi；同 Task 只能一个执行者 |
-| `swarm task revise <task-id>` | 当前执行者修订自己正在执行的 Task | 修改原因和前后合同版本进入历史；不能修改其他 Bot 的运行中 Task |
+| （v1 不提供 Task revise；Task 合同创建后保持稳定，范围变化通过新 Task 表达）
 | `swarm task progress` | 更新当前 Task 的简短进度摘要 | 不替代 Material；只记录当前状态、阻塞点或下一步 |
-| `swarm task release` | 结束当前 Execution | 由当前执行者声明 done / incomplete 和原因；服务检查结构性条件，Runtime 完成撤权和清理 |
+| `swarm task finish --outcome done|incomplete` | 结束当前唯一 Execution 和 Bot 生命周期 | 服务检查完成条件；Runtime 撤权、停止 Pi/子进程并销毁 sandbox。超时/handoff 由 Runtime 走同一内部收尾流程 |
 
-Dependencies 通过 `task propose` 一次性提交；第一版不单独提供复杂依赖编辑语言。若后续需要修改依赖，可通过当前 Task 的 `revise` 更新合同并保留 revision。Mission 级目标读取可由 `swarm mission view` 提供；Mission 创建/管理属于操作者控制面，不是普通 Bot 的日常命令。
+Dependencies 通过 `task propose` 一次性提交；第一版不单独提供复杂依赖编辑语言。v1 不支持 Agent 修改 Task 合同或 Dependencies；若确需调整，提出新的 Task。Mission 级目标读取可由 `swarm mission view` 提供；Mission 创建/管理属于操作者控制面，不是普通 Bot 的日常命令。
 
 ### 2. Material / Context Service：研究内容与知识积累
 
@@ -298,7 +298,7 @@ Workspace 是 Mission 一对一绑定的本地 Git Repository。Agent 在 Execut
 | `swarm workspace integrate <candidate-id>` | 当前有效 Execution 的 Bot 自主决定是否将 Candidate 整合到 main | 不要求独立整合 Task；携带 expected revision；服务检查 E、base commit、Candidate 完整性/来源和明确指定的检查，冲突时拒绝覆盖 |
 | `swarm workspace candidate discard <candidate-id>` | 将不再需要的 Candidate 标记为 discarded | 从默认列表隐藏；第一版不物理删除 Git commit/对象或来源记录；历史查询仍可见 |
 
-不是所有 Execution 都需要保存 Candidate，更不是所有 Candidate 都需要进入 main。局部知识可以只发布 Material；可复用代码/文件改动可以保存为 Workspace Candidate；只有值得成为共同项目状态的 Candidate 才整合 main。Bot 默认可以在自己的 Execution 内直接 integrate；若需要跨 Task 协调、复杂冲突解决或大范围重构，再提出独立整合 Task。第一版合入门槛保持最小：有效 E、expected revision/base commit 匹配、Candidate 完整且来源可追溯、Task/Mission 明确指定的检查通过。没有指定额外检查时不虚构检查门槛。Workspace 和 Candidate 不因 Mission 完成自动删除；Candidate 不自动过期，由 Bot 显式 discard。Revision 是 Workspace 维护的连续版本号；第一版不创建 Git tag。
+不是所有 Execution 都需要保存 Candidate，更不是所有 Candidate 都需要进入 main。局部知识可以只发布 Material；可复用代码/文件改动可以保存为 Workspace Candidate；只有值得成为共同项目状态的 Candidate 才整合 main。Bot 通过 Workspace 高级操作请求 Runtime integrate；若需要跨 Task 协调、复杂冲突解决或大范围重构，再提出独立整合 Task。第一版合入门槛保持最小：有效 E、expected revision/base commit 匹配、Candidate 完整且来源可追溯、Task/Mission 明确指定的检查通过。没有指定额外检查时不虚构检查门槛。Workspace 和 Candidate 不因 Mission 完成自动删除；Candidate 不自动过期，由 Bot 显式 discard。Revision 是 Workspace 维护的连续版本号；第一版不创建 Git tag。
 
 ### 4. Judge Service：按需验证
 
@@ -400,15 +400,15 @@ description: 检查项目基准、保存 Workspace Candidate、决定是否整�
 
 # 管理 Workspace Candidate 与共同主线
 
-Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main 是其中的共享 branch。当前 Execution 使用自己的独立 clone。Candidate 是 Workspace 保存的 Git commit/文件变更，不是 Material。
+Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main 是其中的共享 branch。当前 Execution 使用 Runtime 创建的独立工作目录；Bot 不直接管理 Git。Candidate 是 Workspace 保存的 Git commit/文件变更，不是 Material。
 
 1. 先查看当前 main revision/commit、自己的 base revision/commit、工作区 diff，以及已有 Candidate。确认自己理解的是哪一个版本。
-2. 判断文件变更是否值得长期保留。值得保留时调用 `swarm workspace candidate save`；不值得保留的临时改动不必制造 Candidate。Candidate 保存后长期存在，不自动过期。
+2. 判断文件变更是否值得长期保留。值得保留时调用 `swarm workspace save`；不值得保留的临时改动不必制造 Candidate。Candidate 保存后长期存在，不自动过期。
 3. Candidate 保存后，Bot 自己判断是否值得进入 main。不是每个 Candidate 都需要 integrate，也不是每次 Execution 都必须有 Candidate。
 4. 简单整合可以在当前 Task/Execution 内完成；若要协调多个 Task 的成果、解决复杂冲突、进行大范围重构或独立验证，再提出普通整合 Task。不要为了每次 main 更新机械地创建一个 Task。
 5. integrate 前确认 Candidate 完整可物化、来源 Task/E 可追溯、base commit 与当前 main revision 匹配。若 main 已前进，回到自己的副本获取新 main，重新整合并保存新的 Candidate；不能强制覆盖。
 6. 第一版合入门槛保持最小：当前 E 有效且有权限、expected revision/base commit 匹配、Candidate 完整且来源可追溯、Mission/Task 明确指定的检查对该 Candidate commit 通过。没有指定额外检查时不虚构 PASS，也不要求逐次人工审批。
-7. 调用 `swarm workspace integrate <candidate-id> --expected-revision <revision>`。成功后记录新 Workspace revision；失败时保留 Candidate，理解错误并决定是否重整合。
+7. 调用 `swarm workspace integrate <candidate-id>`；Runtime 内部检查 expected revision/CAS。成功后记录新 Workspace revision；失败时保留 Candidate，理解错误并决定是否重整合。
 8. 不再需要的 Candidate 可显式 `swarm workspace candidate discard <candidate-id>`。discard 只隐藏于默认列表，不物理删除 Git 对象和来源记录；不要把 discard 当作修复 main 的操作。
 
 权限来自当前有效 E 和 Workspace Service 的校验，不来自本地分支名。Bot 可以在自己的 clone 中任意使用 Git，但不能直接操作共享 refs、Workspace 主 Repository 的 .git 或他人私有副本。
@@ -435,7 +435,7 @@ description: 正常完成、遇到无法推进的阻塞、预算或上下文限�
 3. 以普通 Material 发布内容和必要附件，保留来源。不复制完整私有对话，不只留下 sandbox 路径。
 4. 核对发布成功、内容可读取、Task 关联已完成。上传超时查询原请求；若仍失败，不能把本地文件当共享交付。
 5. 对照完成条件选择 release 意图。确实完成才选完成；否则写明未完成和原因。没有有用新成果时允许诚实退出，不编造空材料。
-6. 用稳定 request ID 发 release。受理后停止当前 E 的所有新贡献；外部 Runtime 负责撤销当前 E 的项目/服务写权限并将项目目录恢复只读。当前 Bot/Sandbox/Pi Session 可以继续存活并选择下一 Task；只有 Bot 生命周期结束时才停止全部进程并销毁 sandbox。
+6. 用稳定 request ID 发 release。受理后停止当前 E 的所有新贡献；外部 Runtime 负责撤销当前 E 的项目/服务写权限并将项目目录恢复只读。当前 Bot 生命周期随本次 Task Execution 一起结束；Runtime 停止全部进程并销毁 sandbox。
 
 已被服务持久接受的长期操作可按合同继续。把可查询的操作 ID 和输入版本留在公开接续信息中；不要承诺 release 会取消它，也不要把 pending 写成成功。
 
