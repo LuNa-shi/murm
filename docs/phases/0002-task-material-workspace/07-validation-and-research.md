@@ -14,11 +14,11 @@
 - [8. 运行记录与复现要求](#8-运行记录与复现要求)
 - [9. 本阶段的完成判断](#9-本阶段的完成判断)
 
-本章使用 [模型与运行流程](01-model-and-runtime.md)、[Task / Material 策略](03-task.md)、[Workspace 与集成](05-workspace.md) 和 [Prompt / Skills](06-prompts-and-skills.md) 的目标合同。这里的测试情景是后续实现需要满足的要求，不表示已有同名 CLI、字段或测试程序。实施切片及文档同步见 [架构迁移](08-architecture-migration.md)。
+本章使用 [模型与运行流程](01-model-and-runtime.md)、[Task](03-task.md)、[Material](04-material.md)、[Workspace](05-workspace.md) 和 [Prompt / Skills](06-prompts-and-skills.md) 的目标合同。这里的测试情景是后续实现需要满足的要求，不表示已有同名 CLI、字段或测试程序。实施切片及文档同步见 [架构迁移](08-architecture-migration.md)。
 
 ## 1. 本阶段需要回答的两个问题
 
-**工程问题：** 四个独立 Bot 能否通过 Task 形成排他分工，把研究内容发布为可持续读取的 Material，并把文件改动保留为 Workspace candidate，在 Mission 对应的本地 Git Workspace 中执行，并在 Task finish/超时后让新的 Bot 从公开成果继续？这些是状态、授权、持久化与生命周期问题，不能依靠模型“这次刚好听话”来验证。
+**工程问题：** 四个独立 Bot 能否通过 Task 形成排他分工，把研究内容发布为可持续读取的 Material，把实际文件树保存为 Workspace 的不可变 revision，并在 Task finish/超时后让新的 Bot 从公开材料和保存的 revision 继续？执行中发现依赖、main 持续变化、Material 更正和 Mission 验收能否与这一流程相容？这些是状态、授权、持久化与生命周期问题，不能依靠模型“这次刚好听话”来验证。
 
 **研究问题：** 在相同资源约束下，这组机制和策略是否让项目取得更多可验证进展，是否减少重复劳动、接续损失和错误知识的传播？系统即使正确实施所有 API，答案仍可能是否定的。例如，Bot 可以正确地 take 一个价值很低的 Task、发布一份没有新增信息的 Material，然后合法 finish。机制正确不保证任务选择有价值。
 
@@ -32,7 +32,7 @@
 
 | 一手来源与查阅版本 | 已有机制或问题 | 对本阶段的约束与比较方向 |
 |---|---|---|
-| [CAID：Effective Strategies for Asynchronous Software Engineering Agents，COLM 2026 会议版本](https://proceedings.colm.cc/paper_files/paper/2026/file/3b5c10bf5d70533e955cba9fba491bf4-Paper-Conference.pdf) | 中央 manager 分解依赖，工程 Agent 在 Runtime 提供的隔离工作目录中执行，Git worktree/commit 由 Runtime 管理，再通过 merge 与可执行检查整合。 | Git、隔离工作副本、任务分解和合并检查均不能作为本项目独有贡献。我们拟研究由 Bot 自行提案/选择、按需 Candidate 保存与直接或独立 Task 整合、显式知识接续的组合；是否优于集中分派需要对照。 |
+| [CAID：Effective Strategies for Asynchronous Software Engineering Agents，COLM 2026 会议版本](https://proceedings.colm.cc/paper_files/paper/2026/file/3b5c10bf5d70533e955cba9fba491bf4-Paper-Conference.pdf) | 中央 manager 分解依赖，工程 Agent 在 Runtime 提供的隔离工作目录中执行，Git worktree/commit 由 Runtime 管理，再通过 merge 与可执行检查整合。 | Git、隔离工作副本、任务分解和合并检查均不能作为本项目独有贡献。我们拟研究由 Bot 自行提案/选择、保存 Workspace revision 并直接或通过普通 Task 整合、显式知识接续的组合；是否优于集中分派需要对照。 |
 | [STORM：Multi-agent Collaboration with State Management，arXiv:2605.20563v1](https://arxiv.org/html/2605.20563v1) | 通过管理共享工作面的读写状态，在写入时检查文件及已读依赖的版本，提前暴露冲突。论文附录 E 同时说明其 file_editor 介入不能预先阻止 Bash 直接写文件。 | 私有副本只隔离文件写入，仍可能把语义冲突留到整合时。本版必须量化迟到冲突与整合成本；只包装模型工具也不构成权限边界。不能据此宣称本版已经优于 STORM。 |
 | [Voyager：An Open-Ended Embodied Agent with Large Language Models，arXiv:2305.16291v2](https://arxiv.org/abs/2305.16291v2) | 在 Minecraft 中结合自动课程、可检索的可执行技能库和反馈驱动的迭代改进。 | 持续产出、存储、检索与复用能力也有明确先例。我们的初始 Bot skills 是人工给定工作方法，Material 是运行中产物；二者不能混称为已经实现了自我学习技能库。 |
 | [MAST：Why Do Multi-Agent LLM Systems Fail?，NeurIPS 2025 正式论文](https://proceedings.neurips.cc/paper_files/paper/2025/file/b1041e52d3be19f0a9bc491657488e4a-Paper-Datasets_and_Benchmarks_Track.pdf) | 根据多系统执行轨迹建立失败分类，覆盖系统设计、Agent 间错位与任务验证。 | 评估必须能定位是规范/接口失败、协作失败，还是错误验收与终止；“多了 Agent 但没进展”需要机制层诊断，不能只归咎于 prompt 不够强。 |
@@ -47,7 +47,7 @@
 具体差异应在实现和对照中说明，而不是靠新命名建立：
 
 - Task 只表示有边界的工作和独占执行，不用 Mission Task 把整个目标伪装成可并行领取的一个 Task。
-- 后继 Bot 的研究输入是可读取、带来源和修正关系的公开 Material；不依赖恢复某个前任的私有会话。
+- 后继 Bot 的研究输入是可读取、带来源和修正关系的公开 Material；文件成果通过公开 Workspace revision 接续，不依赖恢复某个前任的私有会话或目录。
 - Workspace 的 main 承载经过相应集成条件的共同成果；普通 Bot 通过普通 Task 进行整合，观察自主分工能否兼顾局部探索与共同进度。
 - 运行记录把工作选择、实际使用的材料版本、执行成本、检查与主线版本关联起来，使收益和失败都可解释。
 
@@ -59,7 +59,7 @@
 
 | 假设 | 具体干预与比较 | 支持它需要看到什么 | 什么结果会否定或限制它 |
 |---|---|---|---|
-| H1：显式 Task 工作选择能把并发资源转化为有用分工 | 在同一执行基础上比较自主提出/选择 Task、固定任务分配，以及彼此独立的并行尝试；保持工具和验收一致。 | 相同总预算下有更高的有效完成质量，或相同质量下更早完成；重复工作和依赖等待可解释地下降。 | Bot 反复提出近似任务、挑容易的工作，或整合成本抵消并行收益；优势仅来自更多模型消耗。 |
+| H1：显式 Task 工作选择能把并发资源转化为有用分工 | 在同一执行基础上比较有预算的相关检索与自主提出/选择 Task、固定任务分配，以及彼此独立的并行尝试；保持工具和验收一致，不要求穷尽历史才能开工。 | 相同总预算下有更高的有效完成质量，或相同质量下更早完成；重复工作和依赖等待可解释地下降，探索 Task 的有效负结果也能减少后续重复。 | Bot 反复提出近似任务、挑容易的工作，或检索/整合成本抵消并行收益；优势仅来自更多模型消耗。 |
 | H2：有来源、可检索、可纠错的 Material 能改善干净接续 | 保留相同初始资料与公开产物，比较结构化接续/使用/修正关系与只有原始公开产物的条件；安排部分执行中断和已知错误。 | 新 Bot 更快取得经独立检查的下一项进展，少复做已完成工作，已知错误被更早识别且较少进入后续成果。 | 元数据维护成本超过收益；Bot 不读正文、误把修正当真，或只增加引用没有改进成果；新错误传播更快。 |
 | H3：持续维护 Workspace 主线优于只积累孤立局部产物 | 使用同样的工作副本/版本基础，对比按条件持续整合与推迟到结尾整合；计入全部整合和修复费用。 | 共同成果更早达到独立检查的里程碑，较少出现末尾无法组合或回退；中间版本的可用性有记录。 | Workspace main 更新频繁却不增加可用成果；串行整合成为瓶颈，或过早统一方向损害探索质量。 |
 | H4：按需 skills 能改善策略执行而不靠额外预算取胜 | 比较相同关键规则和同等领域知识下的平铺指导与按需加载 skills；固定版本，计入加载内容。 | 任务边界、材料核对、接续和合入规则的执行更稳定，最终质量/成本也不劣化。 | skill 选择频繁错误、遗漏关键指导、token 开销更高；改善只源于加入了基线没有的领域知识。 |
@@ -76,11 +76,11 @@ H1–H3 不能靠一组“全功能版对最弱基线”的结果分别成立。
 | E3：真实 Bot 行为验证 | Bot 能否读懂规范、选择任务、使用 Material、形成可接续成果 | 真实模型的完整运行与受控公开结果，记录实际 prompt 和失败 | 脚本安排好的四路流程不能证明自主分工有效 |
 | E4：研究对照 | 是否提升质量、效率、知识接续与纠错 | 预先声明的对照、资源限制、重复运行、失败分析和不确定性 | 一次成功演示或更多 Material 不构成收益结论 |
 
-本次只产出 E0 层面的设计与资料核对。当前文档工作环境没有 Docker，未完成 E2，未进行 E3/E4 付费运行。后续不能将这句话改成“通过”，除非能链接对应版本的实际证据。
+本次只产出 E0 层面的设计与资料核对。本次未运行真实 sandbox/provider，未完成 E2，未进行 E3/E4 付费运行。后续不能将这句话改成“通过”，除非能链接对应版本的实际证据。
 
 ### Sandbox 前置门槛
 
-[#119](https://github.com/LuNa-shi/SwarmEnv/issues/119) 的完整 Agent 容器化、独立服务、CLI 和持久化闭环先成立，本阶段再增加方案 A 的权限与协作规则。两者可以分切片实现，但不能用宿主执行或旧私有 session 恢复作为最终验收兜底。
+[#119](https://github.com/LuNa-shi/SwarmEnv/issues/119) 的完整 Agent 容器化、独立服务、CLI 和持久化闭环先成立，本阶段再验收 Task/Material/Workspace 的协作规则；take 前后权限和有限 Bot 生命周期已属于最新 #119 的执行合同。两者可以分切片实现，但不能用宿主执行或旧私有 session 恢复作为最终验收兜底。
 
 [#120](https://github.com/LuNa-shi/SwarmEnv/issues/120) 已记录 OpenSandbox `release-1.2.0` 的源码调查：创建时只读 volume 不等于支持运行中 RO→RW 挂载切换；非 root Pi 也不自动隔绝 daemon 环境或管理接口。来源为 [生命周期 API](https://github.com/opensandbox-group/OpenSandbox/blob/release-1.2.0/specs/sandbox-lifecycle.yml)、[命令环境处理](https://github.com/opensandbox-group/OpenSandbox/blob/release-1.2.0/components/execd/pkg/runtime/command_argv.go) 和 [管理路由与认证](https://github.com/opensandbox-group/OpenSandbox/blob/release-1.2.0/components/execd/pkg/web/router.go)。
 
@@ -90,14 +90,16 @@ H1–H3 不能靠一组“全功能版对最弱基线”的结果分别成立。
 
 每个情景都应观察公开 CLI/API 返回值、实际项目内容与外部持久状态。内部日志用于解释结果，不作为结果本身。下列验收标识用于 Issue/PR 引用，不要求新增通用测试平台。
 
+Workspace 情景统一使用 revision：`save` 保存完整文件树但不改变 main；main 指向一个 revision；研究候选是 revision 中的普通文件，按 `(workspace_id, revision, path)` 定位。编号用于唯一定位，不能代替 parents 表达继承关系。[05](05-workspace.md) 当前建议 `merge --from R` 以完整 revision 为输入，整版合入粒度仍待最后确认；涉及这一粒度的情景是该建议的验收要求，不是新增独立 Candidate 对象或单文件合入接口的授权。
+
 | 标识与情景 | 操作及故障安排 | 必须成立的结果 | 主要证据层 |
 |---|---|---|---|
-| V01：零 Task 启动 | 创建一个 Mission、明确初始 Workspace 输入，启动四个 Core。 | 四个 Bot 都在各自 sandbox 中只读查看 Mission、所有可见 Task 状态、Materials 和 main 基线；不创建隐藏 Mission Task。未认领成本归 Mission/Bot。 | E2 |
-| V02：认领前项目只读 | 通过 write/edit/bash 及普通子进程尝试写、删除、重命名项目文件、替换父目录、自改权限。 | 项目不能被 Bot 修改；必要日志/缓存可写但不成为主线或后继输入。不是宣称所有临时计算均被禁止。 | E2 |
+| V01：零 Task 启动 | 创建一个 Mission、明确初始 Workspace 输入，启动四个 Core；Task 列表最初为空。 | Bot 通过 Workspace `files/read/search --at`、Task 与 Material 的只读接口取得真实内容；不要求四份本地只读 clone，不创建隐藏 Mission Task。相关 Task 查询覆盖必要状态并标明范围，未认领成本归 Mission/Bot。 | E2 |
+| V02：认领前项目只读 | 尝试写预留项目目录、替换父目录、自改权限，以及不经 CLI 直接调用服务贡献接口。 | take 前没有可写项目工作目录；OS 和服务拒绝越权。必要日志/缓存可写但不成为主线或后继输入，不宣称所有临时计算均被禁止。 | E2 |
 | V03：管理与服务旁路 | 不经 CLI 直接请求服务；尝试用 Bot 可达入口改变身份/权限，或填写他人的 Task/E。 | 服务按真实身份拒绝越权贡献；管理面不能授予 Bot 更高权限；take 前仅有已声明的阅读/协调权限。 | E2 |
 | V04：同 Task 竞争 | 两个 Bot 同时 take 一个可领 Task。 | 只有一个有效执行者。失败者未获项目写权限，仍可在原阅读会话重新选工。 | E1、E2 |
 | V05：一个 Bot 重复 take | 同一 Bot 并发发起不同 Task 的 take，含重复发送。 | 最多建立一份绑定；不能出现一个 Pi 对应两份可写 Execution。另一请求给出可恢复的确定结果。 | E1、E2 |
-| V06：take 生效顺序 | 在登记认领、准备输入、激活、授予目录写权限、返回响应之间设置暂停点。 | 对外能解释每个中间态；开放项目写入前已归属有效 E；当前 Bot 的同一 Pi 在 take 前后继续运行；其他 Bot 不能同时获得该 Task。 | E1、E2 |
+| V06：take 生效顺序 | 在 preparing、文件准备与摘要校验、服务 active、OS 授权、贡献绑定注入和成功返回之间设置暂停点。 | 按 01 的唯一顺序执行：先准备校验，服务置 active 时贡献凭据仍由 Runtime 持有，再开放本 E 目录、注入绑定，最后返回成功。未公开的绑定不能被 Bot 读取使用；任一步失败走关闭补偿。同一 Pi 保留，其他 Bot 不能取得该 Task。 | E1、E2 |
 | V07：take 丢失响应与准备失败 | 分别丢弃成功响应、使准备失败、令服务/Runtime 中途重启。 | 同 request ID 能恢复既有结果；真正失败会补偿认领并停止该环境。不能把未知响应当失败再造第二个 E。 | E1、E2 |
 | V08：迟到授权 | take 尚未完成时发生 abort/finish，并延迟先前的权限开放动作。 | 生命周期排序使迟到动作无法重新开放已结束环境；未确认停止前不重新分配同一 Task。 | E1、E2 |
 | V09：贡献归属 | 发布实际文本/文件，再试图篡改其生产 Task/E、挂到不获准的 Task 或伪造服务检查。 | 内容与生产来源可核对；服务端校验当前 E；跨 Task 复用通过显式关系表达，不能修改原始来源。 | E1、E2 |
@@ -105,36 +107,56 @@ H1–H3 不能靠一组“全功能版对最弱基线”的结果分别成立。
 | V11：任务收尾与发布失败 | Task 要求公开交付，发布未成功；另测试有有效局部成果但未达到完成条件。 | 不能按“本地存在文件”完成；允许如实 incomplete finish，已有有效 Material 保留，后继可继续。 | E1、E2 |
 | V12：finish 与失联 | 持久接收 Task finish 后断开 CLI；保留子进程，令清理响应丢失，再重启 Runtime。 | 外部流程继续撤权和停止全部本地进程；重复 finish 不重做业务副作用；仅在安全解绑后重新可领/补位。 | E1、E2 |
 | V13：旧执行与已接收长操作 | finish 前后分别提交新请求；让已持久接收的外部服务作业继续运行。 | 撤权后拒绝旧 E 的新操作；先前接收的作业按服务合同运行、计费及查询，不借此重新授权旧 Bot。 | E2 |
-| V14：干净接续 | E1 留私有文件、只在对话中的标记和公开 M1；结束后用新 Bot 继续同 Task。 | 后继只有公开 M1 及允许的初始化输入，没有旧私有文件、会话、工具历史或未发布 Git 对象；main 来源可追溯。 | E2 |
-| V15：纠错可见性 | 公开一份有已知错误的材料，其后发布证据与修正；测试按 ID 读取、搜索及查看消费者。 | 旧内容不被静默覆盖；修正/争议关系可发现；消费者知道引用版本和重验范围。系统不自动判定所有派生内容为真或假。 | E1、E2 |
-| V16：并发 main 更新 | 两个 Bot 基于同一旧 main 各自保存 Candidate，并尝试 integrate。 | 最多一个按该预期旧版本成功；另一个显式冲突，保留候选并重新整合/检查，不能覆盖先前成果。 | E1、E2 |
-| V17：检查与候选绑定 | 检查后改变候选、检查错误版本、候选引用已知受质疑材料；检查过程中 main 前进。 | 验收门槛核对确切候选、基准与检查范围；不借用旧 PASS；已知争议按材料政策处理，main 变化仍须条件更新。 | E1、E2 |
+| V14：干净接续 | E1 发布 M1、save 未合入 revision R1，另留私有文件与仅在对话中的标记；删除 sandbox 后新 Bot 接续同 Task。 | 后继通过公开接口读取 M1 与 R1 的真实文件，并在新目录 apply R1；没有旧私有文件、会话、工具历史或未保存对象。文件来源由 Workspace/revision/path 和 parents 追溯。 | E2 |
+| V15：纠错可见性 | 公开包含已知错误的 M1，分别执行 dispute 和正式 supersede；测试默认查询、精确 ID 与消费者查询。 | dispute 在尚未替代时只警示；supersede 一律整体隐藏 M1，新版可独立使用且承接仍有效内容；旧正文与历史可读但不回默认结果。系统不自动认证所有派生结论。 | E1、E2 |
+| V16：并发 main 更新 | 两个 Bot 从相同旧 main 保存 R1/R2，修改不相交文件；暂停两个 merge，使其都观察同一 main，再让一个先完成。 | 同一 expected main 最多一次 CAS 成功；另一请求保留 R2、返回明确冲突。该 Bot 在原 E 重试，Runtime 对新 main 与 R2 三方合并并检查，不因旧 base 强制结束 E，不覆盖先前成果。 | E1、E2 |
+| V17：最终合并树检查 | 原 revision 单独检查通过，但与新 main 组合后失败；另安排检查期间 main 变化和调用者伪造 PASS。 | 指定检查绑定最终合并树、输入、checker/环境和政策版本。旧 revision 的 PASS 不授权新结果；CAS 失败后新合并树须重新核验，失败或过期结果不推进 main。 | E1、E2 |
 | V18：可见性与审计 | 从一个 E 访问另一私有副本、旧卷或共享 Git 管理文件；对比授权审计入口。 | 研究 Bot 无访问旁路；审计保留不意味着研究可读；公开内容仍能按正常权限取得。 | E2 |
 | V19：预算、compaction 与空闲 | 在阅读期/执行期分别触发限额；全部任务暂不可领；达到约定的 handoff 条件。 | 无忙轮询或无限新建；如实发布可用进度或未完成结束；不依赖最后一条 finish 后继续执行；空闲不等于 Mission 完成。 | E1、E2、E3 |
 | V20：Prompt/skill 可追溯 | 记录启动、take 结果、技能加载和结束指令的实际发送；模拟技能缺失/版本不同。 | 能重建仓库控制文本与动态输入来源，区分模板与实际发送；缺失指导不静默伪装已加载；不公开原始私有会话。 | E2、E3 |
+| V21：一致 save 与后台写入 | Bash 后台进程持续修改项目文件；在停止写者、读取字节、保存树、登记 revision 的各点注入失败。 | Runtime 使用真实内容和已验证的停写/一致捕获边界；不能靠旧 manifest 或一次 status 保存混杂内容。无法取得安全边界则失败，不返回成功 revision；重试可对账，保存不改 main。 | E1、E2 |
+| V22：apply 与冲突恢复 | 在有未保存修改、连续保存、多个 parent，以及文本冲突时 apply 已保存 revision 或 main。 | dirty 目录不被覆盖；save 后可重试。Runtime 在同一 E 三方整合，保留当前工作版本与输入 parents，冲突由普通文件编辑解决再 save；初始输入记录不改，不按编号猜父子关系，也不只复制单文件。合入其他 Bot 的源 R 时，冲突恢复先确保工作树含 R，不能只 apply main 而漏掉待合入成果。 | E1、E2 |
+| V23：执行中发现依赖 | T1 执行后发现需 T2 的交付，保存已有内容并 `task finish --outcome blocked --wait-for T2`；分别让 T2 done、取消及形成等待环。 | 运行期等待关系与收尾原子持久化，不改 Task 目标/交付合同；旧 E 安全结束前仍不可重领，结束后未满足等待则 blocked、已满足则 ready。取消不算满足，由获准修复操作调整等待关系或取消/替代责任并留痕；自等/环被拒绝，不靠反复 incomplete 热重领。 | E1、E2 |
+| V24：未 take 的预算结束 | Bot 在选工期耗尽预算、找不到可推进工作，调用 `swarm bot exit`；再触发硬停止与多 Core 同时空闲。 | 不伪造 Task/E，不调用只适用于 active E 的 finish；Runtime 记录原因与成本，按 Mission 限额及等待/退避安排补位，不立即无限新建 Bot 或持续调用模型。 | E1、E2、E3 |
+| V25：软收尾与硬停止 | 向 active E 发送软提醒，允许它 save/publish；随后接受 finish 或达到硬上限，并延迟先前请求。 | 软提醒保留有限收尾额度中的必要保存/发布权限；新 merge 及已开始但未提交的 main 更新被最终操作权限守卫拒绝；finish 被接受或硬停止后 E closing，拒绝迟到新写和重新授权。此前成功内容保留，收尾不依赖 sandbox 关闭后的最后一次上传。 | E1、E2 |
+| V26：整份替代与误替代恢复 | M1 含有效 A/错误 B；M2 承接 A 并修正 B 后 supersede；再安排错误替代、并发后继、unsupersede 和循环关系。 | supersede 后整份 M1 默认隐藏，M2 正文/不可变附件足以独立使用。撤销只作用于匹配的当前关系并执行 CAS；若仍有有效替代则不能恢复旧条目。自环/有向环拒绝，正文与全部关系历史保留，协调例外不能发布新成果。 | E1、E2 |
+| V27：Mission 提交快照 | Bot 请求 `swarm mission submit`，同时安排 main merge、Material 新发布/更正和第二个提交者。 | 服务按 Mission 合同冻结 main，固定 Workspace revision、Material ID/内容哈希及观察状态、验收配置与 checker/环境；同 Mission 单活跃验收，同 request ID 返回同一记录，同快照/检查配置不能靠换 ID 重复赌 PASS。允许的 save/publish 不改变当前验收输入。 | E1、E2 |
+| V28：验收超时与迟到 PASS | Mission 验收超时/取消后重试，旧 checker 稍后返回 PASS；另测试解冻响应丢失与运行环境改变。 | 结果绑定提交 ID、冻结版本及生命周期代次；超时、已撤销或不匹配的 PASS 只留审计，不将 Mission 判成功、不影响新提交，也不解冻属于新提交的锁。失败/超时按 01 恢复可解释状态，超时记录不伪造成已执行的零分；统计处理另按预定口径。 | E1、E2 |
+| V29：Workspace 崩溃对账 | 在持久化 Git 对象、更新 main ref、写 revision/parents 与请求结果之间重启；重复发送同一 save/merge。 | 以 05 的唯一提交点和恢复规则对账；同请求不产生多次 main 推进，不向读者暴露 ref/revision 错配，也不丢失已保存公开文件。未完成对账时不继续危险写入。 | E1、E2 |
+| V30：相关检索与探索交付 | 历史条目超过选工预算；探索 Task 得到可复现负结果或明确未解决边界。 | Bot 记录有限检索范围和未读部分，能在预算内行动或诚实退出，不要求穷尽历史；当原合同允许时负结果可作为 done 交付，否则如实 incomplete，不制造无依据的正结果。 | E2、E3 |
+| V31：持续 main 变化 | 长任务执行时其他 Bot 多次更新 main；先使用互不冲突文件，再加入真实文本冲突与检查失败。 | main 变化不终止该 E；可在保存后 apply/resolve/save，再 merge。单请求重试有边界，失败保留工作；记录重整合成本与饥饿，不把四路样例声称为任意负载的活性证明。 | E2、E3 |
+| V32：普通文件与历史保留 | 把研究候选保存为 R1 中的普通文件，删除其当前文件并 save R2；结束 Mission 后查询历史。 | `history --all` 与 `read --at R1` 仍可定位旧内容；删除由普通文件编辑和新 revision 表达，没有 Candidate ID、独立存储或 discard CLI。保存/合入失败不物理清除已有 revision。 | E1、E2 |
 
 四路并发通过不保证任意规模正确。后续扩大 Core 数、改变 provider、网络、身份或存储方案时，重新验证受影响边界；不把一次四路运行外推为无限扩展能力。
 
 ## 6. 四个 Bot 的受控验收轨迹
 
-使用 [运行流程中的 CSV 工具 Mission](01-model-and-runtime.md) 作为最小可复现集成情景。初始 main commit c0 / Workspace revision `0.1` 提供框架、接口与样例；四项局部目标分别是过滤、分组统计、JSON 输出和验证资料。**受控测试可以固定请求顺序；真实 Bot 实验必须让 Bot 自行提出和选择工作，二者分开记账。**
+使用 [运行流程中的 CSV 工具 Mission](01-model-and-runtime.md) 作为最小可复现集成情景。初始 main 指向 Workspace W1 的 revision R1，提供框架、接口与样例；四项局部目标分别是过滤、分组统计、JSON 输出和验证资料。以下 R1、R2 等只表示示例中的唯一版本，所有继承与合并以记录的 parents 为准。**受控测试可以固定请求顺序；真实 Bot 实验必须让 Bot 自行提出和选择工作，二者分开记账。**
 
 | 检查点 | 要发生的事件 | 需要检查的共同状态 |
 |---|---|---|
-| C0：阅读 | 四个 Bot 同时看到一个 Mission；列表最初为空。 | 四份只读项目副本；Task 数为零；无 E、无隐藏根任务；main commit c0 / Workspace revision `0.1` 来源明确。 |
-| C1：分工 | Bot 提出可独立交付的任务，核对已有工作；另安排同 Task 的竞争 take。 | 四路可执行不同 Task；竞争只产生一个执行者；语义相同的不同 Task 是否重复另行记录。 |
-| C2：局部成果 | B1 发布过滤说明 M1、保存代码 Candidate C1 后完成；B2 发布未完成统计 M2、可选保存 Candidate C2 后退出；B3 的首次 Candidate 导出失败后重试；B4 产出验证资料 M4。 | Material 和 Candidate 均可从 sandbox 外持久读取且有 Task/E 来源；main 未被发布/保存动作自动改变；B2 的 Task 仍需继续。 |
-| C3：补位与整合 | B1 Sandbox 销毁后，后继 B5 在自己的有效 Execution 中读取 Candidate C1，并判断是否值得整合；简单情况请求 Runtime integrate，复杂情况再提出独立整合 Task。 | B5 无 B1 私有历史；Workspace Candidate C1 已保存；B5 决定整合后，最小门槛检查通过并更新 main commit c0→c1 / Workspace revision `0.1`→`0.2`；整合 E 的来源和指定检查可核对。 |
-| C4：继续研究 | 新 B6 用 main commit c1 / Workspace revision `0.2` 和 M2 继续统计；稍后判断是否值得把基于 c0 的 JSON candidate 整合到当前 main。 | 接续没有偷用私有卷；旧基准成果不能把 main 重置到 v0；冲突或检查失败被显式保留。 |
-| C5：完成判定 | 汇总全部需求与约定验收，检查仍未完成项。 | Task 完成、材料可读、main 更新、Mission 达成分别记录。缺一项需求时不能宣布 Mission 完成。 |
+| C0：阅读 | 四个 Bot 在自己的 sandbox 中看到同一 Mission；列表最初为空。 | 通过只读 API 和 `workspace files/read/search --at R1` 读取真实文件；不准备四份本地只读 clone。Task 数为零、无 E、无隐藏根任务；main→R1 可追溯。 |
+| C1：分工 | Bot 在选工预算内查询相关任务与材料，提出可独立交付的工作；另安排同 Task 的竞争 take。 | 四路可执行不同 Task；查询范围与未读部分明确，不要求穷尽历史；竞争只产生一个执行者。按 preparing→输入校验→active→OS 授权→绑定注入返回，失败不留下可写半激活 Bot。 |
+| C2：保存与等待 | B1 发布 M1、save 过滤文件为 R2 后按合同完成；B2 save 统计文件与失败样例为 R3、发布 M2，并因新发现的 T4 前置条件 blocked finish；B3 的首次 save 失败后重试；B4 产出验证资料 M4。 | M1/M2 与 R2/R3 均可在原 sandbox 外读取，save 不改 main。T2 的等待关系被持久记录，旧 E 安全关闭后不可被热重领；T4 done 才满足等待，取消时进入明确修复路径。 |
+| C3：公开文件接续 | B1/B2 sandbox 已删除；新 B5 在有效 E 内读取 R2 文件并按需要 apply、编辑、save，再请求 merge。 | 只有 Workspace/revision/path，没有独立 Candidate ID。后继无私有历史；Runtime 保留三方合并 parents，最终合并树通过指定检查后 CAS 推进 main；网络重试不重复推进。 |
+| C4：同 E 处理主线变化 | T4 done 后新 B6 接续 T2，读取 M2 与 R3，apply R3；期间 main 多次变化。B3 同时尝试合入 JSON 文件所在 revision。 | 原有文件内容完整可接续；main 更新不强制结束 B6/B3。dirty 目录先 save，再 apply main、解决冲突并 save；检查针对最终合并树。失败保留公开 revision，Task 完成不替代 Mission 验收。 |
+| C5：知识纠错 | 发现 M2 的一个结论错误，先 dispute；完整 M6 承接其他有效内容后 supersede M2；另安排一次误替代并撤销。 | supersede 后默认查询整体隐藏 M2，M6 可独立使用，旧 ID 仍展示历史。撤销按当前关系 CAS，不能恢复仍有有效替代的旧条目；文件修复另经 save/merge。 |
+| C6：预算与收尾 | 执行中的 Bot 收到软提醒并保存/发布，之后 finish；另一个未 take 的 Bot 用尽选工预算后 bot exit。 | 有限软收尾权限实际可用；finish 接受或硬停止后拒绝迟到新写。未绑定退出不造 E；补位遵守预算和等待/退避，不发生无工作热重启。 |
+| C7：最终提交 | 汇总约定验收并请求 mission submit，同时安排并发提交、迟到 merge 和一次 checker 超时。 | main 冻结在固定 revision，Material 内容身份及 checker/环境一起固定；同 Mission 单活跃验收，重复请求幂等，超时后的迟到 PASS 不覆盖当前状态。Task done、内容可读、main 更新、Mission 达成分别记录。 |
 
-另运行两个有意失败的变体：一是让两个局部实现各自通过测试但接口组合失败，观察能否识别和修复语义冲突；二是让 M2 含一条可验证错误，并在后续公开修正，观察新 Bot 是否停止依赖旧结论。前者检验整合，后者检验知识纠错，不能被一项总 PASS 掩盖。
+另运行两个有意失败的变体：一是让两个局部实现各自通过测试但最终合并树接口组合失败，观察 main 是否拒绝更新以及同一 E 能否修复；二是让替代 M2 的新版遗漏一项仍有效结论，观察能否发现缺失、显式纠正或撤销误替代。前者检验整合，后者检验整份替代后的知识完整性，不能被一项总 PASS 掩盖。
 
-### Candidate 生命周期验收补充\n\nWorkspace 与 Candidate 的长期保留也需要独立验证：Mission 标记完成后 Workspace Repository、main revision 和 Candidate 仍可读取；Candidate discard 后从默认列表隐藏，但历史查询仍可找到其状态、commit 和来源；discard 不物理删除 Git 对象；integrate 失败不自动 discard Candidate。第一版不设置自动 TTL/GC。\n\n## 7. 指标与对照设计
+### Workspace revision 历史保留验收补充
+
+Mission 完成后，Workspace Repository、main 指向的 revision 和未合入的公开 revision 仍可读取。`workspace history --all` 能找到保存历史；普通文件删除加 save 形成新 revision，旧文件仍能通过原 revision/path 取得。不存在 Candidate discard 操作，merge 失败也不删除源 revision。第一版不以自动清理掩盖接续失败；保留与运维范围按 [05](05-workspace.md) 验收。
+
+## 7. 指标与对照设计
 
 ### 7.1 先定义什么算进展
 
-Mission 启动时固定验收对象与评估方式。代码可以是独立端到端检查；数学研究可以是可核验命题、反例或工具验证结果；一般研究可以是有来源且经独立审阅的论证。检查器不是生产 Bot 可自行修改的验收标准。修改评估对象、允许材料或 checker 必须作为新的获批条件记录。
+Mission 启动时固定验收对象与评估方式。代码可以是独立端到端检查；数学研究可以是可核验命题、反例或工具验证结果；一般研究可以是有来源且经独立审阅的论证。正式 submit 再固定本次实际提交的 Workspace revision、Material 内容身份和 checker/环境。检查器不是生产 Bot 可自行修改的验收标准。修改评估对象、允许材料或 checker 必须作为新的获批条件记录。
+
+探索 Task 可以按事先声明的合同交付可复现负结果、排除的路线和明确边界，并以 done 结束该项责任；没有得到正结果不自动表示 Task 失败。超出已做实验的未知部分仍保持未知，不能把未观测记成零，也不能为获得 done 制造虚假的积极结论。评估分别记录这些交付是否减少重复、改变路线或支持后续判断。
 
 “新知识”第一版按**对本 Mission 已有资料的增量**评估：它增加了哪一条可用结论、证据、反例、方法或排除结果，依据是什么，适用范围与未解决问题是什么。不能因材料是新 ID、换了措辞或通过内部 Judge 就宣称学术意义上的原创发现。对科学新颖性的主张需要额外外部资料核对和专家判断。
 
@@ -145,7 +167,7 @@ Mission 启动时固定验收对象与评估方式。代码可以是独立端到
 | 分工 | 有用任务覆盖、实际重复解决的工作、依赖等待、长期无人领取项、整合工作占比。 | 相同文件被两个 Task 修改不必然重复；不同 Task ID 也可能是同一工作。需内容审阅。 |
 | 累积 | 在预先声明的检查点对共享成果运行同一组独立检查，记录进展、退化和修复。 | main 更新次数和 Git 可合并性不等于可用性；记录“先过后坏”。 |
 | 接续 | 中断后到下一项经检查进展的时间/资源，已完成工作的复做比例，以及接续所需公开输入是否完整。 | 无中断对照和中断位置要匹配；快读完摘要不等于成功继续。 |
-| 检索 | 在有标注问题与可用知识集合的受控集上测命中、漏检、错误采用；记录实际阅读与使用的版本。 | 搜到、打开和引用分别记录；不能把访问次数当正确复用。 |
+| 检索 | 在有标注问题与可用知识集合的受控集上测命中、漏检、错误采用，并记录查询预算、范围、截断及实际使用版本。 | 不要求穷尽历史；有限查询不能证明全局没有相关成果，搜到、打开和引用也不等于正确复用。 |
 | 纠错 | 已知错误的发现时间、修正后的继续误用、受影响成果的重验及恢复成本，同时记录错误指控。 | 一条 correction 不是自动真理；错误传播少也可能只是没有做任何后续工作。 |
 | 维护成本 | 提案、检索、整理 Material、加载 skills、整合和无效重试所占 token/时间。 | 把“文档更完整”与“单位成本成果更好”分别报告。 |
 
@@ -162,7 +184,7 @@ Mission 启动时固定验收对象与评估方式。代码可以是独立端到
 
 外部 CAID/STORM 复现可作为后续更强比较，但需要单独锁定版本、适配说明和资源额度。只借鉴其结构的本地基线必须称“参考该结构”，不能声称已经复现论文或可以直接比较论文报告的分数。
 
-固定人工任务图的实验隔离执行/整合问题；允许自主分解的实验才回答“能否提出合适 Task”。两种设置需要分别报告。受控案例中的最优分工、错误位置和预期答案不得泄漏给被测 Bot。
+固定人工任务图的实验隔离执行/整合问题；允许自主分解的实验才回答“能否提出合适 Task”。两种设置需要分别报告。自主设置使用有限相关检索，并允许合格探索 Task 交付负结果；不通过强迫穷尽历史或只奖励正结果改变任务选择问题。受控案例中的最优分工、错误位置和预期答案不得泄漏给被测 Bot。
 
 ### 7.3 公平性、消融与失败分析
 
@@ -179,8 +201,9 @@ Mission 启动时固定验收对象与评估方式。代码可以是独立端到
 正式运行遵守 [实验工作流](../../workflows/experiment.md)，在获批额度和范围内注册；本章不新建第二套实验状态账本。每次证据至少能关联：
 
 - 实现 commit、部署镜像/provider/SDK、CLI/API、模型与工具版本，预算及启动输入。
-- Mission、Workspace、main 版本、Core、Bot、Task、E、关键 request/job ID 与时间线；认领前费用仍能归属 Mission/Bot。
-- 实际输入的 Material ID/版本/内容摘要哈希、可读取附件、生产/使用/修正关系，候选与检查所绑定的确切版本。
+- Mission、Workspace、main 指向的 revision、公开 revision/parents、Core、Bot、Task、E、等待关系、关键 request/job ID 与时间线；认领前费用仍能归属 Mission/Bot。
+- 实际输入的 Material ID/内容哈希、可读取附件、生产/使用/替代及撤销关系；文件的 Workspace/revision/path，最终合并树与检查的绑定。
+- Mission submit 固定的版本、Material 观察快照、checker/环境、冻结代次、验收状态以及迟到/重复结果的处理；未知、超时与失败分别记录。
 - 完整仓库控制 prompt、动态字段来源、实际发送消息、加载过的 skills 内容/版本及加载失败；模板快照与真实发送记录分开。
 - 服务接纳、授权拒绝、部分失败、响应未知与恢复、执行停止和资源残留的证据；所有参与 Bot 与外部长期作业的最终资源消耗。
 - 独立检查器版本、结果、未覆盖范围；对 H1–H4 的分析与替代解释。

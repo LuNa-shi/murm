@@ -1,237 +1,193 @@
-# 05. Workspace：Git Repository、Candidate 与 main 整合
+# 05. Workspace：文件、revision 与 main 合入
 
-> 设计附件：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · 状态：供审核的目标设计，尚未实现。
-> 已确认：Mission 与 Workspace 一对一；Workspace 是 sandbox 外的本地 Git Repository；main 是 Git branch；版本只使用 Workspace revision，不创建 Git tag；Candidate 长期保留，不要求全部合入 main。
+> 设计附件：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · 状态：目标设计，尚未实现。
+> 已确认：Mission 与 Workspace 一对一；Workspace 是 sandbox 外的本地 Git Repository；Runtime 管理全部 Git；candidate 是某个 Workspace revision 中的普通文件，不另设 Candidate 对象、ID、存储或调用接口。
+> 最后一项待确认：save/apply 已按完整文件树处理；本稿推荐 **merge 也以完整 revision 为单位**，文件仍按 revision + path 单独读取和引用。理由与影响见第 5 节；这项合入粒度尚不标为已批准。
 
-本文只定义 Workspace 本身：仓库与 revision、Execution 工作副本的 Git 边界、Candidate 保存/查看/discard、main 整合、并发和来源追踪。Sandbox 的创建、挂载、身份和销毁见 [02](02-sandbox-runtime.md)；Task 合同见 [03](03-task.md)；Material 内容及其 Evidence/纠错见 [04](04-material.md)。
+本文定义 Workspace 文件版本、只读访问、保存、接续、main 合入与失败恢复。Sandbox、固定路径和权限顺序以 [02](02-sandbox-runtime.md) 为准；Task 责任见 [03](03-task.md)；研究内容与纠错见 [04](04-material.md)；Mission 最终提交见 [01](01-model-and-runtime.md)。
 
-## 1. Workspace 对象和存储职责
+## 1. Workspace、revision 与文件引用
 
-Mission 与 Workspace 一对一绑定，但二者是不同对象：
-- Mission ID 标识共同目标。
-- Workspace ID 标识该 Mission 对应的 Git Repository。
-- main 是 Workspace Repository 中的普通 Git branch。
-- Git commit 固定文件树内容。
-- Workspace revision 是系统维护的连续版本标识，例如 0.1、0.2；第一版不创建 Git tag。
+Mission ID 标识整体目标，Workspace ID 标识其唯一项目仓库，两者不能混用。main 是该仓库内的真实 Git branch。Workspace 位于 sandbox 外，跨 Bot、Task 和 Execution 保留；Mission 结束不删除文件版本。第一版不需要远程 GitHub Repository，不创建 Git tag，不自动 TTL 或 GC。
 
-Workspace 位于 sandbox 外部，跨 Bot、Task 和 Execution 长期存在。Mission 完成或停止不自动删除 Workspace。一个 Workspace 可以保留 main 历史和 Candidate；Mission 完成不代表所有 Candidate 都必须合入。
+每个公开、不可变的文件树都取得 Workspace 范围内唯一的 revision，包括初始版本、尚未合入的保存版本，以及成功合入 main 的版本。revision 映射到完整 Git commit/tree；main 指向其中一个版本。编号可按分配顺序递增，但**编号大小不表示继承关系，也不表示已经进入 main**；父版本关系由 Git parents 表达。初始版本可显示为 `0.1`；本文 `R1`、`R12` 等是 revision 的可读代称，不是另一类 ID。
 
-| 对象 | Workspace 中的职责 | 不负责什么 |
+这替换旧稿“只有 main 更新才产生 Workspace revision”的定义。未合入成果也必须通过 Workspace revision 读取，不能另外引入 Candidate ID 才能访问。
+
+| 概念 | 权威事实 | 边界 |
 |---|---|---|
-| Workspace | 本地 Git Repository、main branch、revision、Candidate 元数据 | 不存研究材料正文，不替 Bot 判断研究价值 |
-| main | 所有 Bot 后续可选择的共同项目基线 | 不等于 Mission 完成，也不保证每条知识主张都正确 |
-| commit | 不可变文件树和父提交关系 | 不等于独立 Material |
-| revision | main 每次成功更新后递增的版本标识 | 不创建 Git tag |
-| Candidate | 从某个 Execution clone 导入的完整 Git commit/文件变更 | 不自动进入 main，不是 Material |
-| Execution clone | 当前 E 的独立本地 Git 副本 | 不作为后继 E 的私有恢复源 |
+| Workspace | 仓库身份、公开版本、main 与版本来源 | 不保存 Material 正文，不判断研究价值 |
+| revision | 不可变完整文件树、Git parents、来源与保存请求 | 未合入版本也是正式可读版本 |
+| main | 当前接纳的共同项目版本 | 不等于 Task done 或 Mission accepted |
+| 文件引用 | `(workspace_id, revision, path)`，可附内容摘要 | 路径须存在于该 revision；不能脱离仓库引用候选 ID |
+| E 工作目录 | 当前 E 独立、可编辑的项目文件树 | 未保存内容不成为后继可见的公开成果 |
 
-Material 与 Git 严格分离：Material 保存可独立读取、引用和纠错的研究内容及来源；Workspace 保存项目文件和版本。Material 可以引用 Workspace revision/commit，Candidate 可以引用相关 Material ID/版本，但两者不互相替代。
+“candidate”仅描述某文件正被考虑作为成果或检查输入。例如 `W1 / R12 / proofs/lemma.lean` 就是候选证明，通过普通文件读取、版本比较和 Workspace 操作使用。相同路径在不同 revision 中是不同的确定版本；改名、删除产生新版本，不改写历史引用。
 
-## 2. Workspace Repository 与服务职责
+Material 保存研究说明、结论、反例和证据，可以引用上述文件坐标。revision 来源可记录 Material ID/内容版本；文件不需复制成 Material 才能公开，Material 也不能代替实际文件字节。
 
-第一版 Workspace 逻辑模块可与 Task Service 同一协调进程部署，以复用可信 Execution 身份和 Task 状态；这只是部署选择，不意味着 Workspace 是 Task 的字段。Git Repository 和 Candidate 的实际文件内容由 Workspace 模块管理。Context Service 只管理 Material，不管理 Git Candidate；Workspace 需要检查 Candidate 引用的 Material 状态时，通过 Context API 查询，不直接打开 Context 数据库。
+## 2. 服务职责与最小版本记录
+
+Workspace 是独立逻辑模块，v1 与 Task Service 位于同一协调进程和事务域，协调 E 有效性、Mission 提交冻结和 main 更新。Context Service 独立持有 Material，通过 API 查询，不跨库读取正文。不要求新增微服务，也不引入通用 pending/permit 平台。
 
 | 责任 | 负责方 |
 |---|---|
-| 创建/保留 Workspace Repository、main、revision | Workspace Service / 可信 Runtime |
-| 为新 E 创建独立本地 clone 并记录 base commit/revision | Runtime |
-| 在 sandbox 内通过基础文件工具修改当前 Execution 工作目录 | 当前 E 的 Bot |
-| 从 E clone 导出并安全导入 Candidate | 可信 Runtime + Workspace Service |
-| 查看 Candidate、diff、来源和状态 | Workspace Service |
-| 判断是否值得保存 Candidate、是否值得 integrate | 当前有效 Execution 的 Bot |
-| 验证 E、Candidate、base revision 和更新 main | Workspace Service |
-| 保存研究说明、证明、实验结果和纠错关系 | Context / Material Service |
+| 仓库、revision、main 与请求结果 | Workspace 模块 |
+| 隔离工作树、稳定导出、物化输入与全部 Git 操作 | 可信 Runtime / Workspace 模块 |
+| 编辑文件、决定保存/接续/合入、解决内容冲突 | 当前有效 E 的 Bot |
+| 验证指定内容和环境、保留检查结果 | Mission/Task 配置的可信检查服务 |
+| 发布、检索和纠正研究内容 | Context / Material Service |
 
-Workspace 不需要远程 GitHub Repository。第一版使用本地 Git Repository，所有 Execution 的副本也通过本地 clone 创建。
+revision 最小记录包括 Workspace、revision、commit/tree、parents、来源 Task/E/Bot 或受控初始化来源、初始输入与 apply 的版本、真实改动路径/摘要、可选 Material 引用、请求 ID。Runtime 从真实身份和内容产生字段；Bot 不能自报 Git author、Task/E 或 SHA 来获得权限。保存发生在未解决的 apply 冲突中时，还记录冲突状态和路径，区分“可以接续”和“可以合入”。
 
-## 3. 初始化与 Execution 工作副本
+main 合入另记旧 main、新版本、检查输入/环境和请求结果。检查沿用服务自己的记录，不新增核心对象。索引可加快查询，但不能成为脱离 revision 的候选事实来源。
 
-### 3.1 Mission 初始化
+## 3. 初始化、只读浏览与工作目录
 
-操作者提供 Mission 和初始项目文件。Runtime/Workspace Service 在 sandbox 外创建本地 Git Repository，导入初始文件，建立 main 初始 commit，并初始化 Workspace revision 0.1。空项目也创建明确的初始 commit。独立说明、文献、数据集等研究输入可以另存为 Material；Git 文件树本身不包装成 Material。
+### 3.1 初始化与 take 前阅读
 
-Workspace 初始化必须可验证：Repository 和初始 commit 能从本地仓库物化前，不向 Bot 宣告 Workspace 已就绪。Mission 和 Workspace 一对一绑定，两个 ID 分别保存，不混用。
+操作者提供 Mission 与初始项目文件。Runtime 建立仓库、初始 commit/revision 与 main；空项目也有明确版本。只有文件树已持久且可重新物化，才宣告就绪。独立研究输入可受控发布为 Material。
 
-### 3.2 每个 Execution 的 clone
+Bot 启动时在 sandbox 中预留固定 `/workspace/project`；未 take 时为空且不可写，不假设存在完整本地只读 clone。Bot 经 Workspace 服务列目录、读文件、搜索内容和比较版本。Pi 会话、CLI 配置、skills、缓存及运行日志置于独立运行目录，不进入项目导出范围。
 
-每个新 Execution 的工作目录从明确的 Workspace main commit/revision 创建独立文件树。若 Task 指定 base revision/commit，就使用该版本；若没有指定，take 时解析当时 main HEAD，并把实际 commit 和 revision 固定到 Execution。
+只读接口允许 Mission 阅读身份在未绑定 E 时使用：
 
-Bot 启动后先通过 Workspace Service/只读 API 浏览 Workspace；take 成功时 Runtime 从指定 main commit 导出文件树，通过 Sandbox Provider 已验证的受信任文件传输接口写入 sandbox 中预留的 Execution 专属目录，再由 OS 权限授予当前 Bot 用户写权限。不要假设 Provider 支持运行时动态挂载新 volume。Bot 只使用 Pi 文件工具/Bash 修改文件，不创建 Git branch/commit，不访问任何 .git、共享 refs 或管理凭据。Sandbox 内目录准备和权限细节见 [02](02-sandbox-runtime.md)。
+- `files` 返回目录、路径、类型/大小与分页信息。
+- `read` 返回实际内容、摘要、范围与截断信息；二进制按声明的字节/下载接口返回，不能仅给摘要冒充正文。
+- `search` 支持路径与文本检索，说明命中、分页及未覆盖范围。
+- `history --all` 和 `diff` 能发现、比较尚未合入的公开 revision，显示来源 Task/E 与 main 可达关系。
 
-新 E 不克隆前任 E 的私有 clone，也不继承前任 Pi 会话、shell history 或未导出的 Git 对象。跨 Execution 的研究接续通过 Material；项目代码接续通过 Workspace main 或明确保存的 Candidate。
+`--at main` 是移动引用。一次查询先解析为确定 revision，结果返回该版本；分页和关联读取继续固定该 revision，不能翻页时切换到新 main。精确历史读取不需要当前 E。
 
-Sandbox 生命周期和权限切换不在本文重复，见 [02](02-sandbox-runtime.md)。
+### 3.2 take 的初始输入
 
-### 3.3 为什么第一版采用独立 local clone
+Task 可指定公开 Workspace revision；未指定时 take 解析当时 main。Runtime 固定实际初始 revision，从仓库导出完整树，通过已验证的 Provider 文件传输能力填充固定目录。顺序为：**准备并核对输入 → E active → 开放目录写权限 → 发布贡献绑定并返回 take 成功**。不假设 Provider 支持动态挂载，不向 Bot 暴露 `.git`、共享 refs 或管理凭据。
 
-Git linked worktree 共享主 Repository 的对象数据库和部分 refs/配置，不能直接当作不可信 Bot 的隔离边界。第一版宁可承担本地 clone 的磁盘成本，也不把共享可写 .git 暴露给 Bot。
+新 E 不读前任私有目录、会话、shell history 或未保存对象。接续来自公开 Task、Material 和 Workspace revision。默认 take 后可显式 `workspace apply --from R12` 接续未合入版本，无需 Candidate 下载或恢复接口。
 
-Runtime 为每个 Execution 创建独立、互不共享可写 .git 的工作副本；Bot 不需要知道底层使用 clone、worktree 还是受控文件树导出。第一版 Workspace Repository 内部可用本地 Git，但 sandbox 中只提供导出的项目文件树，不向 Bot 暴露 Git 元数据；不使用共享可写 .git、--shared alternates 或前任私有对象库。后续可根据实测磁盘成本评估 reflink/COW 或受控只读对象池，但不得降低隔离边界。
+### 3.3 初始输入不永久冻结工作基线
 
-## 4. Git 可见性、导出和安全边界
+初始 revision 是不可改写的审计事实；同一 Task、同一 E 内允许显式 apply 新 main 或其他公开 revision。`status` 分开说明 initial revision、last saved revision、applied revisions、未保存差异和冲突。apply 后未 save 的合成树不能被称为已持久 revision。
 
-| 操作/数据 | 当前 E 的 Bot | 其他 Bot | Workspace Service / Runtime |
-|---|---|---|---|
-| 当前 Execution 工作目录中的项目文件 | 可读写 | 不可读 | Runtime 管理导出 |
-| Workspace main 与公开历史 | 可读 | 可读 | 受控维护 |
-| Candidate | 可查看有权限的 Candidate | 可查看有权限的 Candidate | 管理对象和状态 |
-| Workspace 主 Repository 的 .git/refs | 不可访问 | 不可访问 | 独占管理 |
-| 其他 E 的私有 clone | 不可访问 | 不可访问 | 受控销毁/审计 |
+main 前进不强制结束 Bot，不修改 Task 的 Goal、Deliverable 或 Completion condition。若 Task 明确要求复现固定历史环境，更新工作树后不能声称仍在原环境完成复现；保留原验证，或提出目标不同的新 Task。普通开发 Task 更新输入不等于改变工作责任。
 
-Bot 只能修改 Runtime 为当前 Execution 准备的工作目录；不向 Bot 暴露 Git 管理能力。文件变更不会自动改变共享 main。Runtime 不把宿主 Git 凭据、Docker socket、服务数据库、provider 管理接口或共享可写 refs 放进 sandbox。
+## 4. 保存一致文件树
 
-导出 Candidate 时，可信 Runtime 必须读取真实文件字节并计算摘要，不能信任 Bot 自报的文件清单或可能滞后的本地 manifest。第一版拒绝：
-- 越出项目根目录的路径；
-- 符号链接和特殊文件；
-- 超过配置大小上限的文件；
-- .git、Pi 会话、运行日志、凭据和运行元数据；
-- 不属于明确导出范围的 sandbox 内容。
+`workspace save` 保存当前项目树为新 revision，返回 revision、真实改动路径、摘要、parents 与来源；不推进 main，不自动完成 Task。无内容和来源状态变化时可明确返回已有版本。连续 save 沿上次保存版本建立父关系，不能每次重挂初始 main；apply 后保存保留实际双方 parents 和输入来源。
 
-.gitignore 只影响 Git 跟踪，不是安全策略。Candidate 必须能在 Workspace Repository 中完整物化目标文件树；只有 patch 和前任 sandbox 路径、没有可访问基准内容，不能成为 Candidate。
+保存的顺序与失败合同：
 
-## 5. Candidate：保存、查看与放弃
+1. 在本 E 取得短暂的 Workspace 操作互斥，确认 E/Mission 允许保存。
+2. 等待当前写入完成，以经验证的暂停写入或一致快照机制稳定整个项目树。扫描两次、计算 hash、禁止新工具调用，都不能单独证明后台进程已停止写入。
+3. 无安全导出窗口时返回 `WORKSPACE_BUSY`，不宣告成功、不自动结束 E。硬停止不承诺临时内容一定保存。
+4. 读取真实字节，核对路径、类型、大小与范围，在同一 Workspace Repository 建立 commit 和 revision。
+5. 确认内容、来源与请求结果可重新读取后返回成功，释放短暂保护。结果未知时用原 request ID 查询/重试。
 
-### 5.1 Candidate 的意义
+v1 拒绝越出根目录的路径、符号链接、特殊文件、超限文件及 `.git`、会话、运行配置、日志和凭据。`.gitignore` 不是安全边界。仅有 patch、前任 sandbox 路径或自报 manifest，而没有完整可物化树，不算已保存。
 
-Candidate 是 Runtime 从某个 Execution 工作目录安全导入 Workspace Repository 后创建的 Git commit/文件变更，附带来源、base revision/commit、摘要和状态。Candidate 不属于 Material，不自动进入 main，也不要求最终合并。
+save 固定内容，不保证研究正确。可以保存未完成证明、失败实验和未解决冲突，但须如实显示。对于 apply 已报告的冲突，普通 save 保留进度；处理完成后 `save --resolved` 表达 Bot 已处理这些冲突，由 Runtime 核对树和冲突状态。未解决版本不能直接 merge；声明 resolved 也不代替指定检查。
 
-不是每个 Execution 都必须保存 Candidate：
-- 研究结论、证明、实验观察、反例、失败经验发布为 Material。
-- 值得复用的代码、证明文件、数据结构和项目文档变更保存为 Candidate。
-- 有些临时改动不值得保留，可以不创建 Candidate。
-- 同一个 Execution 可以同时发布 Material 和保存 Candidate，它们分别承担知识与文件版本职责。
+## 5. Candidate 文件化对操作的影响
 
-### 5.2 Candidate 最小信息
+文件引用与变更集合应分开：一个证明文件可以独立引用，代码、测试和配置却可能必须一起合入。save 固定完整文件树，apply 根据完整版本及父关系准备工作树。**推荐 v1 的 merge 也以完整 revision 为合入单位；candidate 仍只是其中的普通文件。** 只有 merge 的合入粒度留给用户最后确认。
 
-| 信息 | 用途 |
-|---|---|
-| Candidate ID / Workspace ID | 唯一定位候选和所属仓库 |
-| Git commit / tree | 固定候选文件树 |
-| base revision / base commit | 说明从哪个 main 版本开始 |
-| 来源 Task / Execution / Bot | 追溯贡献者和责任 |
-| 内容摘要 / diff | 查看实际改动 |
-| 相关 Material ID/版本（可选） | 说明候选依赖的研究知识 |
-| 指定检查引用（如有） | 确认检查绑定确切候选 |
-| 状态 active/discarded | 控制默认列表可见性 |
-
-### 5.3 Candidate 长期保留与 discard
-
-Candidate 长期保留，不因 integrate 失败或 Mission 完成自动清理。第一版不设置 TTL 或自动 GC。
-
-Bot 可以显式调用 candidate discard。discard 只将 Candidate 状态改为 discarded，并从默认列表隐藏；不物理删除 Git commit、对象或来源记录。历史查询仍可审计 discarded Candidate。这样既允许 Bot 清理日常候选列表，又避免误操作造成历史不可追溯。
-
-磁盘增长作为需要观测的运维问题，后续根据实测规模评估归档、配额或 GC；第一版不暗中清理。
-
-## 6. 什么时候以及如何整合 main
-
-### 6.1 由 Bot 自主判断
-
-不是所有 Candidate 都值得进入 main。Candidate 可以长期保留，供后继 Bot 参考或重新整合。
-
-默认情况下，当前有效 Execution 的 Bot 可以判断自己的 Candidate 值得成为共同项目基线时，直接调用 Workspace integrate，不必为每次合入额外创建 Task。
-
-若整合涉及多个 Task 的成果协调、复杂冲突解决、大范围重构或独立验证，Bot 可以提出普通整合 Task，由另一个 Bot 接续。整合 Task 不是特殊 Task 类型，也不设固定整合 Agent。
-
-Candidate 保存、Task 完成和 main 整合是不同事实：
-- Task 只要求交付可复用文件变更时，保存 Candidate 即可满足交付，不必 integrate。
-- Task 要求交付研究内容时，发布 Material。
-- 只有 Task 明确要求 main 已包含某项变更时，才必须等待 integrate 成功。
-
-### 6.2 最小整合政策
-
-第一版不建立通用审批 DSL、复杂 Mission policy engine 或逐次人工审批。Workspace Service 只检查：
-1. 当前调用者是有效 Execution，且有权操作该 Workspace；
-2. expected revision 与当前 main revision 一致，Candidate base commit 与该 revision 对应的 main commit 一致；
-3. Candidate commit 已完整导入、可物化且来源可追溯；
-4. Mission/Task 明确指定的检查已针对该 Candidate commit 执行并通过。
-
-若没有指定额外检查，不虚构测试门槛，但版本、完整性和来源检查仍必须通过。默认不要求逐次人工批准。
-
-main 表示项目接纳的当前共同工作基础，不保证里面每个研究主张已被证明为真。Material 的 disputed/superseded 状态不自动改写 Git 历史；如果 Candidate 依赖已被质疑的 Material，Bot 应重新判断并在必要时提出修复工作。
-
-### 6.3 integrate 流程
-
-1. Bot 读取当前 main revision/commit、自己的 base、Candidate 实际内容和来源。
-2. Bot 在当前 Execution 工作目录中完成必要的文件层面整合；底层 Git 操作由 Runtime 执行。Git 没有文本冲突不代表语义兼容。
-3. 若 Task/Mission 明确指定检查，运行真实检查并确保结果绑定 Candidate commit。检查后修改文件，旧检查即不再适用。
-4. Bot 调用 Workspace integrate，提交 Candidate ID；expected revision 由 Runtime 从 Candidate/当前 main 读取并做条件检查，Agent 不管理 Git SHA。
-5. Workspace Service 验证当前 E、Candidate 来源和完整性、base commit、expected revision 以及指定检查。
-6. 若检查通过且 main 未变化，Workspace Service 在本地 Repository 中受控推进 main，产生新 commit 并递增 Workspace revision。
-7. 返回新的 revision 和 commit。Bot 将结果记录到 Task 交付中。
-
-## 7. 并发、旧版本与失败处理
-
-| 情形 | 服务与 Bot 的行为 | 保证与边界 |
+| 旧稿操作 | 统一操作 | 影响 |
 |---|---|---|
-| 两个 Bot 都基于 revision 0.2 请求 integrate | 首个请求得到 revision 0.3；另一个得到版本冲突 | 不会静默覆盖 |
-| Candidate 基于 revision 0.1，main 已到 0.3 | Runtime 返回版本冲突；当前 Execution 不能自行切换 Git 基线；由 Agent 结束当前 Execution/提出后续 Task，新 Bot 从最新 main 开始重新整合并保存 Candidate | 不允许把旧快照直接当成新 main |
-| 合入有内容冲突 | Bot 解释冲突并解决，或保留 Candidate 暂不整合 | v1 不要求自动语义合并器 |
-| 检查通过后文件又变了 | 检查与 Candidate commit 不匹配，拒绝接纳 | 重新检查，不复用旧 PASS |
-| Candidate 导出失败或文件校验失败 | 当前 E 内修正/重试 | 不登记为可整合候选 |
-| integrate 失败 | Candidate 仍保留 | 不自动 discard |
-| Task finish 后旧 E 再请求 integrate | 服务验证当前 E 并拒绝 | 旧凭据不能更新 main |
+| 创建 Candidate / 取得 Candidate ID | `workspace save` 得到 revision 与改动路径 | 不另存候选正文、压缩包或 manifest |
+| candidate list / view | `history --all`、`files/read/search --at R` | 查版本和文件，不维护候选查询体系 |
+| Candidate diff / 引用 | `diff --from R1 --to R2`；引用 `(W, R, path)` | 固定内容，不依赖可变路径或独立 ID |
+| 接续 Candidate | `workspace apply --from R` | 物化并三方整合公开版本 |
+| integrate Candidate | `workspace merge --from R` | 根据 ancestry 合入变更集合，不用旧文件覆盖 main |
+| Candidate discard | 无独立 discard 状态/命令 | 不再选用该版本即可；后续项目树里的文件可普通删除再 save，旧 revision 仍可读 |
 
-多个 Bot 可以并行准备和保存 Candidate；main 更新是一条串行提交线。Workspace revision 每次成功推进递增。第一版不创建 Git tag。
+删除当前文件与删除历史不同。未入 main 的实验版本可以不合入；已入 main 的错误文件通过删除/修正、save 和 merge 形成新版本撤回。v1 不设置文件级 active/discarded 状态，不自动 GC。`history` 默认看 main 历史，`--all` 看所有保存版本，可按 Task/E 和路径筛选。
 
-Candidate 保存与 main 更新是两个操作。Candidate 导入成功但 integrate 失败时，Candidate 仍保留，可比较、重新整合或显式 discard。
+若要求按文件选取合入，需另外定义删除、重命名、依赖文件、路径基线和检查范围，不能把复制文件称作 PR 式 merge。本稿推荐先准备包含所需完整成果集合的新 revision，保持 v1 合同简单。
 
-## 8. 错误成果与 Workspace 修复
+## 6. 同一 Execution 内接续与冲突处理
 
-Material 纠错见 [04](04-material.md)。当某个 Candidate 或 main 文件依赖的研究主张被质疑/替代时：
-- Material 保留原文和纠错关系；
-- Candidate 和历史 commit 不被静默改写；
-- Workspace 查询/显示相关 Material 的当前纠错状态；
-- 需要修复时创建普通 Task，从最新 main 开始验证并修改；
-- 修复通过同样的 Candidate 保存和 integrate 流程形成新的 main revision。
+`workspace apply --from R` 将公开 revision 与当前工作状态做真实三方合并；`--from main` 先固定实际 main revision。它只更新本 E 工作树，不推进 main。Runtime 记录来源和 parents，Bot 不执行 Git。
 
-撤回以新版本表达，保留被撤回版本、原因、证据和后继版本关系；不要求 Bot force-push 或抹除历史。
+apply 前先 save 未保存改动；存在未完成写进程或不安全切换时返回 `WORKSPACE_BUSY`。使用与 save 相同的稳定窗口和 E 内互斥，防止后台写入与安装并发；不能靠一次 status 判断代替该保护，也不能静默覆盖目录。
 
-## 9. Workspace 长期生命周期
+无冲突时返回实际输入与改动摘要，Bot 核对后 save。有冲突时在工作目录交付可编辑合成结果和完整冲突说明，包括删除/重命名冲突，保留双方 parents；Bot 用普通文件工具处理后 `save --resolved`，再 merge。接续含未解决冲突的 revision 也继承并显示冲突状态，不能因为换了 E 就清除待处理事实。
 
-Workspace 与 Candidate 均不因 Mission 完成而删除。Mission 完成表示该目标的验收状态，不是仓库生命周期终止。
+apply 响应未知先查原请求，不重复安装；失败不能留下对 Bot 宣称成功的半棵树。Runtime 完成安装或从本 E 已固定版本恢复，对账前暂停该工作面的新写入。finish 与安装互斥；finish 已接受后，迟到 apply 不能重新开放目录。
 
-第一版：
-- Workspace Repository 和 main 历史长期保留；
-- Candidate 长期保留；
-- Candidate discard 只隐藏，不物理删除；
-- 不自动 TTL、不自动 GC；
-- 磁盘增长作为运维指标观察，未来再按真实数据讨论清理/归档策略。
+例如 B1 保存 `R12 / proofs/lemma.lean` 后退出；B2 take 后读取并 apply R12，补完证明、save R15、merge R15。全过程用公开版本和普通文件，不继承前任私有状态。
 
-Mission 完成后是否允许继续创建 Task、是否允许新的 Bot 继续贡献，属于 Mission 生命周期策略，不能由 Workspace 自行推断；本章只保证仓库和版本仍然保留。
+## 7. main 的三方合入与检查
 
-## 10. Workspace CLI 合同
+### 7.1 谁可以合入
 
-以下是拟议 CLI，不代表当前已实现命令。统一入口规范见 [06](06-prompts-and-skills.md)。
+当前有效 E 可自主请求 merge，不要求原 Task 预先包含整合责任。复杂冲突、跨 Task 协调或大范围重构可另建普通整合 Task；不设永久整合 Bot，不为每次 main 变化创建新 E。
 
-| 命令 | 用途 |
+Task 只要求可复用文件时，save 并给出文件引用即可交付；要求研究内容时发布 Material；只有 Completion condition 要求 main 包含变更时才必须等 merge。Task done、save、merge、Mission accepted 分别记录，互不替代。并非所有保存版本都要入 main。
+
+### 7.2 一次 merge 的顺序
+
+1. 用 request ID 固定 `merge --from R`，确认有效 E、其当前操作权限允许 merge（未进入仅允许保存/发布/finish 的软收尾）、同一 Workspace、Mission 未停止/冻结；源 revision 完整可物化、来源可追溯且无未解决冲突。
+2. 固定当前 main 为 M，按实际 Git ancestry 三方合并 M 与 R。旧初始版本本身不是拒绝理由；不把 R 的旧快照直接覆盖 main。
+3. 有冲突时返回固定 M/R 和冲突说明，main、源 revision 和当前 E 保持不变。Bot 先核对当前工作树是否已包含源 R。若未包含，先 save 自己的进度并 apply R，处理/保存该次冲突，再 apply 固定或更新后的 main，修复、save 后重试。若已包含 R，可直接 save 当前进度后 apply main。不能只更新 main 却遗漏待合入的 R；复杂工作才交给后继。
+4. 无冲突时，在隔离目录检查**最终合成树**，运行 Mission/Task 指定检查并固定 checker、环境/工具链和政策版本。R 上的旧 PASS 不自动覆盖与新 main 合成的内容；可信 checker 不能由 Bot 修改。
+5. 检查通过后，在提交临界区再次确认 E 有效且仍允许 merge、Mission 未冻结/停止、main 仍是 M，以 CAS 条件更新 main，登记新 revision、parents、检查与请求结果。
+6. 返回新 main revision。merge 成功不静默改当前 E 工作树；需要同步时显式 apply main。
+
+Git 三方合并依据共同祖先处理内容和重命名。[git merge-tree](https://git-scm.com/docs/git-merge-tree) 可不改调用方工作树/索引而构造合成树；[git update-ref](https://git-scm.com/docs/git-update-ref) 支持带旧值的条件更新。这些能力不代替语义检查，也不自动提供 Git 与业务数据库之间的事务。
+
+没有额外配置检查时，不虚构测试门槛；身份、内容完整性、冲突状态和 CAS 仍须验证。无文本冲突不等于研究正确。Material 纠错不静默修改历史；其消费者判断重验与修复。
+
+### 7.3 并发、重试与冻结
+
+| 情形 | 结果与下一步 |
 |---|---|
-| swarm workspace view | 查看 main、Workspace revision、commit 和公开历史 |
-| swarm workspace history | 查看 revision/commit 历史、来源 Task/E 和整合说明 |
-| swarm workspace status | 查看当前 Execution 工作目录的 base 和变更摘要 |
-| swarm workspace diff | 查看当前 Execution 相对 base 的文件差异 |
-| swarm workspace save | 请求 Runtime 保存当前 Execution 的文件成果并创建 Candidate；Bot 不提交 Git commit/SHA |
-| swarm workspace candidate list | 默认列出 active Candidate |
-| swarm workspace candidate list --include-discarded | 查看包含 discarded 的历史 Candidate |
-| swarm workspace candidate view ID | 查看 Candidate 来源、base、commit 和 diff |
-| swarm workspace candidate discard ID | 将 Candidate 标记 discarded；不物理删除对象 |
-| swarm workspace integrate ID | 请求 Runtime 按最小政策检查并整合 Candidate；revision/CAS 由 Runtime 内部管理 |
+| main 前进而 R 无冲突 | 对当前 M/R 合并并检查最终树，无需结束 E |
+| 两请求针对同一 M 检查 | 至多一个 CAS 成功，另一个 `MAIN_MOVED`；保留版本与 E |
+| 检查期间 main 再前进 | 本次 `MAIN_MOVED`；新尝试重新合并检查，不复用旧树 PASS |
+| 响应丢失、结果未知 | 原 request ID 查询/重试返回原结果；同 ID 改载荷拒绝 |
+| 已收到明确冲突后重试 | 新尝试 ID；CLI 管请求标识，Bot 不管理 SHA |
+| R 已包含在 main | 返回 already-included/no-op，不虚增版本和检查费用 |
+| 历史贡献被后续版本撤回 | 旧 merged 记录不证明当前有效；恢复须用新修正 revision |
+| Mission 正在最终验证 | `MISSION_SUBMITTING` 拒绝 merge；现有 E 按原权限/预算继续本地工作和 save/publish，验收快照不变，冻结本身不启动软收尾 |
+| E 进入软收尾、finish 已接受或失效 | 新 merge 拒绝；尚未提交的 merge 也在最终 guard 拒绝 main 更新，保存版本与既有检查记录保留 |
 
-所有命令由服务端验证身份与 E 状态。Bot 不得通过填写 Execution ID、Task ID 或 Git author 字段伪造权限。候选保存和整合都是普通 Service 调用；不建立通用 pending/permit 协议。若实际 Git 操作确实需要异步执行，由 Workspace Service 自己定义专属状态查询。
+v1 一请求只针对固定 M 尝试，不在服务内无限重试。竞争使用有限退避并计入预算；CAS 不保证每个 Bot 在有限时间内成功。保存、合并、等待、检查和失败成本均进入总成本。
 
-## 11. 当前实现差距与验收
+## 8. Git 与版本记录的故障一致性
 
-当前基线的 WorkspaceManager 会为每个 Execution 初始化自己的 Git 仓库及名为 main 的分支，并支持从前任 Workspace 的指定 revision/commit 克隆。它没有由所有 Bot 共同推进的 Workspace 主线。当前 architecture 还明确说明本地文件索引可能滞后于 shell 写入，Git 提交与元数据快照不等于一个覆盖全部实际字节的原子版本。事实来源：[固定版本 WorkspaceManager](https://github.com/LuNa-shi/SwarmEnv/blob/008ecdb9ab64adcd8135042ff2160ec1db704952/src/runtime/workspace-manager.js) 与 [当前 Workspace 实现手册](../../architecture/05-workspace-continuity.md)。
+每次 save/main 更新都有 Workspace 自己的持久请求记录，不是通用作业系统。成功响应表示内容、revision、来源和结果可在重启后恢复。Git 与数据库并非天然原子事务，不能只写“可对账”而没有恢复判据。
 
-实现验收至少应能观察到：
-- 一个 Mission 对应一个长期 Workspace Repository；Mission 完成后仓库仍可读取。
-- main 是真实 Git branch；每次成功推进生成 commit 并递增 Workspace revision；不创建 Git tag。
-- 每个 Execution 的工作目录由 Runtime 从固定 main commit 创建；Bot 不直接管理 Git；修改一个 Execution 工作目录不改变其他 E 或 main。
-- Bot 不能通过共享 .git、宿主卷、旧私有仓库或伪造 CLI 字段绕过权限。
-- Candidate 由 Runtime 保存后可在 sandbox 删除后完整物化，来源 Task/E 和 base revision/commit 可追溯。
-- Candidate 长期保留；discard 只隐藏默认列表，不物理删除 commit；历史查询可见。
-- Candidate 保存不自动推进 main；Bot 可以请求 Runtime integrate；复杂整合可使用独立普通 Task。Bot 不直接操作 Git。
-- 两个相同 expected revision 的 integrate 最多一个成功；失败者保留 Candidate 并重新整合。
-- 指定检查绑定确切 Candidate commit；文件变化后旧检查不能授权。
-- Material 纠错不会静默改写历史 commit，相关 main 可被识别并通过新 Task 修复。
+v1 使用本 Workspace 单写者和恢复屏障：先持久记录 request、旧 main、新 commit/revision、检查及提交意图，再 CAS 更新 ref，最后完成 revision/main 索引和请求结果。持久 revision 的 Git 对象由内部保留引用保护，不依赖悬空对象；这些引用不成为 Bot 操作的 branch/tag。
 
-这些是待实现验收。文档 PR 不能证明 sandbox 隔离、Git 安全或 main 更新路径已经运行通过。
+- ref 仍为意图的旧值：尚未成功推进，可恢复执行或明确失败。
+- ref 已为意图的新值：完成索引与原结果，不重复推进或登记版本。
+- ref 与旧/新值都不同：关闭写入口并报告对账错误，不猜测、不回退或覆盖版本。
+
+重启先恢复未完成请求再开放 main 读写；运行中 ref/索引临界区的读取须返回一致版本，或短暂不可用，不能旧 revision 配新文件。后续写者不可跳过未完成提交。只导入对象但 save 未登记完成时，不返回成功；原 ID 可安全完成同一保存请求。
+
+finish、Mission freeze 和 merge 最终提交在同一协调域决定先后：finish/freeze 先成立则迟到 merge 不提交；merge 已成功则后续 finish 不撤销。临界区只覆盖最终核验/持久提交，不运行长时间 checker。具体持久化与故障演练是实现验收门槛。
+
+## 9. Workspace CLI 合同
+
+以下是目标 CLI，尚未实现；服务执行授权，CLI 不是安全边界。Workspace 可来自可信 Mission 绑定，跨上下文引用须明确 Workspace ID。
+
+| 命令 | 用途与身份 |
+|---|---|
+| `swarm workspace view` | Mission 阅读身份看 Workspace、main 与状态 |
+| `swarm workspace history [--all]` | main 历史/全部公开版本，按 Task/E/路径过滤 |
+| `swarm workspace files --at R [path]` | 列目录，返回固定版本和分页 |
+| `swarm workspace read path --at R` | 读取实际文件，无需 E |
+| `swarm workspace search query --at R` | 检索版本的路径/内容，无需 E |
+| `swarm workspace diff --from R1 --to R2` | 比较公开版本；无参数时看当前 E 差异 |
+| `swarm workspace status` | 初始输入、保存版本、apply 输入、dirty/conflicts |
+| `swarm workspace save [--resolved]` | 有效 E 保存稳定树，不改 main |
+| `swarm workspace apply --from R` | 有效 E 三方整合到本 E 目录，允许 `main` |
+| `swarm workspace merge --from R` | 有效 E 请求检查并条件更新 main，推荐完整 revision 粒度 |
+
+副作用请求支持稳定 request ID 与原结果查询；普通网络重试沿用 ID，明确失败后的新尝试用新 ID。读请求固定 revision，不能用自填 Task/E 升级身份。完整提示与 skill 见 [06](06-prompts-and-skills.md)。
+
+## 10. 验收边界
+
+必须验证：未绑定 Bot 能读确定版本的真实文件；未合入 revision 在 sandbox 销毁后仍可接续；save/apply 保留 ancestry；稳定导出不混入后台写；安装失败不留假成功；main 持续变化不强制换 Bot；检查绑定最终树；CAS、结果未知、撤权/冻结竞态和 Git/索引崩溃窗口均有确定结果。
+
+还须验证没有第二套 Candidate 身份：读写只经普通 Workspace 接口，删除当前文件不破坏历史引用；多文件成果按第 5 节最终确认的粒度处理。组合场景见 [07](07-validation-and-research.md)，迁移见 [08](08-architecture-migration.md)。本次文档不证明这些运行路径已实现或通过真实 provider 测试。

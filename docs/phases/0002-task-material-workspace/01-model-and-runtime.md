@@ -1,8 +1,8 @@
 # 01 · Core Runtime：Mission、Core、Bot 与 Execution 生命周期
 
-> 设计 Issue：[#122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · 决策来源：[#120](https://github.com/LuNa-shi/SwarmEnv/issues/120)。本文是待审目标设计，当前实现仍以 [architecture](../../architecture/INDEX.md) 为准。
+> 设计 Issue：[#122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · 决策来源：[#120](https://github.com/LuNa-shi/SwarmEnv/issues/120)。本文描述经本轮决定修订的目标合同，不代表已实现或通过真实运行验收；当前实现仍以 [architecture](../../architecture/INDEX.md) 为准。
 >
-> 已确认：Mission 共享、Task 独占、Workspace 与 Mission 一对一、每个 Bot 最多执行一个 Task；Bot 生命周期与一次 Execution 对齐；take 前在独立 sandbox 中只读，take 后 Runtime 开放当前 Execution 工作目录写权限，完成/超时后结束 Bot 和 sandbox、跨 Execution 只通过 Material 接续。本文只讲 Core Runtime 如何组织 Mission、Bot 和 Execution；Sandbox 细节见 [02](02-sandbox-runtime.md)，Task 合同见 [03](03-task.md)，Material 见 [04](04-material.md)，Workspace 见 [05](05-workspace.md)。
+> Mission 共享，Task 独占；一个 Bot 在独立 sandbox/Pi 中运行，最多产生一个 Execution，也可以未 take 就正常退出。take 依次准备输入、激活 E、开放目录写权限、交付绑定。结束时先完成有限收尾，再接受 finish、撤权、停止全部进程和安全解绑。研究内容通过 Material 接续，项目文件通过公开 Workspace revision 接续。
 
 ## 阅读目录
 
@@ -11,187 +11,242 @@
 - [一次 Mission 的启动](#一次-mission-的启动)
 - [take 前后的权限](#take-前后的权限)
 - [take 的完整顺序](#take-的完整顺序)
-- [服务请求与撤权的先后关系](#服务请求与撤权的先后关系)
-- [Task finish 与异常退出](#task-finish-与异常退出)
-- [四个 Bot 的具体轨迹](#四个-bot-的具体轨迹)
+- [普通 Service 调用与 Execution 结束](#普通-service-调用与-execution-结束)
+- [Task 完成、超时与 Bot 结束](#task-完成超时与-bot-结束)
+- [Mission 提交、验收与停止](#mission-提交验收与停止)
+- [运行轨迹与验收入口](#运行轨迹与验收入口)
 - [最小配置与可观测记录](#最小配置与可观测记录)
-- [Runtime 与 Sandbox 的边界](#runtime-与-sandbox-的边界)
 
 ## 对象与关系
 
 | 对象 | 定义与存在时间 | 第一版关系和边界 |
 |---|---|---|
-| Mission | 全体 Bot 可见的最大共同目标、约束、最终验收和资源范围 | 一个 Mission 与一个 Workspace 一对一绑定；不被 take，不伪装成 Task，也没有隐藏 Mission Task |
-| Task | 具有局部目标、交付和完成条件的基本工作单元 | 属于 Mission 和一个 Workspace；同一时刻最多一个当前 Execution；可多次尝试，也可由不同 Bot 接续 |
-| Material | 明确发布、可持久读取的内容及来源 | Bot 产物绑定产生它的 Task/E；可以被其他 Task 使用。初始化资料有 input 来源，不伪造执行来源 |
-| Workspace | 与 Mission 一对一绑定的项目工作环境，由 Runtime 管理底层 Git Repository | 位于 sandbox 外并跨 Task、Bot、Execution 存在；Runtime 为每个 Execution 准备独立工作目录 |
-| main | Workspace Git Repository 中的共享主分支 | 就是 Git branch `main`；每次更新产生新 commit，并推进 Workspace revision。main 不是 Material |
-| Core | 一个可复用的计算槽位 | 例子配置四个；不再另造 Core lane；不代表某个固定研究角色 |
-| Bot | 在一个 Core 上启动的一次自主运行实例 | 一个 Bot 最多 take 一个 Task；完成或超时/handoff 后结束，新的 Bot 可接续同一个 Task |
-| Execution（E） | 一个 Bot 对一个 Task 的一次实际执行及其权限、输入和运行记录 | v1 与 Bot 生命周期一对一；一个 Task 可跨多个 Bot/Execution 接续 |
-| Session | Pi 的底层会话实现 | 每个 Bot 创建新的 Pi Session；只服务一个 Task Execution；Bot 完成/超时后销毁 |
-| Sandbox | 第三方隔离执行环境 | 每个 Bot/Execution 独立临时 sandbox；take 前项目目录只读，take 后当前 Task 工作目录可写；Task 完成/超时后销毁；细节见 [02](02-sandbox-runtime.md) |
+| Mission | 全体 Bot 可见的共同目标、约束、最终验收和资源范围 | 与一个 Workspace 一对一；不被 take，不伪装成 Task |
+| Task | 具有稳定目标、交付与完成条件的局部责任 | 属于 Mission/Workspace；同时最多一个当前 E；可由不同 Bot 先后接续 |
+| Material | 明确发布、可持久读取的研究内容及来源 | Bot 产物绑定产生它的 Task/E；初始化资料使用 input 来源；纠错规则见 [04](04-material.md) |
+| Workspace | 位于 sandbox 外、由 Runtime 管理底层 Git 的持久项目仓库 | 保存不可变 revision、文件树、来源和实际 parents；为每个 E 准备独立工作目录 |
+| revision / main | revision 标识一份不可变文件树；main 是指向某个 revision 的共享分支 | save 也产生 revision；编号在 Workspace 内唯一，不表示线性继承；main 不是 Material |
+| Core | 可复用的计算槽位 | 不代表固定研究角色；停止或隔离旧 Bot 后才能安全补位 |
+| Bot | 在一个 Core 上启动的一次自主运行 | 对应一个新 sandbox/Pi，具有零个或一个 E；未 take 的阅读期也是 Bot 生命周期的一部分 |
+| Execution（E） | 一个 Bot 对一个 Task 的一次排他执行及其授权、输入和记录 | 每个 E 恰好属于一个 Bot；Bot 最多一个 E；一个 Task 可有多次历史 E |
+| Session | Pi 的底层会话 | 一个 Bot 创建一份新 Session；可先读后 take，但不跨 Bot 或第二个 Task 复用 |
+| Sandbox | 每个 Bot 的临时第三方隔离环境 | 固定预留受保护的项目目录；take 后开放当前 E 的工作目录；Bot 退出后销毁 |
 
-Task 的创建关系只说明“谁提出了它”；依赖关系说明“什么前提满足后才值得执行”。两者都不产生永久经理、父任务控制权或同 Task 的多个执行者。需要并行工作时提出有各自交付的不同 Task。
+candidate 仅是 Workspace 某 revision 中用于表达候选成果的普通文件，以 `(workspace_id, revision, path)` 引用。它不新增 Candidate 实体、ID、专用存储或 CLI。保存文件树、显式应用版本和更新 main 的完整合同在 [05](05-workspace.md)。
 
-`handoff` 是“发布可接续的工作并结束当前执行”的行为，不是必须新增的对象或自动转移私有 Session。Progress Material、Feedback、CheckResult 可以作为内容/服务响应或内部审计记录，不进入本阶段的核心对象表。不要用 `workspace lineage` 统称不清楚的继承关系；明确写基准版本、来源 Material、产生它的 Task/E 和后续使用关系。
+Task 的创建来源不产生永久经理或父任务控制权。需要并行工作时提出各自有交付的 Task；新发现的前置工作通过 [03](03-task.md) 的动态等待关系表达，不修改原 Goal、Deliverable 或 Completion condition。
+
+`handoff` 是保存可接续工作并结束本次 Bot 的行为，不是自动转移私有 Session。后继读取 Material 与明确 Workspace revision；未发布的文件、对话、缓存和审计存档不会成为研究输入。
 
 ```mermaid
 flowchart TD
-    M[Mission] --> T[Task]
-    M --> W[Workspace]
-    T --> E[Execution]
-    B[Bot] --> E
-    E --> P[私有工作副本]
+    M["Mission"] --> T["Task"]
+    M --> W["Workspace"]
+    T --> E["Execution"]
+    B["Bot：零或一个 E"] --> E
+    E --> P["当前工作目录"]
     W --> P
-    W --> H[main branch]
-    E --> A[Material]
+    W --> R["不可变 revisions"]
+    W --> H["main 指向一个 revision"]
+    E --> A["Material"]
     A --> T
-
 ```
 
-图中的 Material→Task 表示显式使用关系。Material 与 Git 分开：Material 保存可独立引用的研究内容及来源；Workspace 的 main branch 保存项目文件树。Material 可以被某个 Execution 应用到当前工作目录，但发布 Material 不会自动修改 main。每个 E 的工作目录由 Runtime 从 Workspace 基线创建，Bot 只通过基础文件工具操作当前目录，不直接管理 Git。
+Material→Task 表示显式使用关系。Material 发布不会修改 main；Workspace save 保存整个一致文件树并产生不可变 revision，也不会自动推进 main。初次 take 固定的输入保留审计，但当前工作版本可以在同一 E 内通过显式 `workspace apply --from R/main` 改变；Runtime 不在后台悄悄更新工作目录。
 
 ## 组件各自负责什么
 
 | 组件 | 权威事实 | 不承担的判断 |
 |---|---|---|
-| Task Service | Mission/Task 合同、Task 当前执行者、E 状态/授权与请求记录 | 不替 Bot 自动发现所有高价值工作，不凭任务数判定 Mission 完成 |
-| Workspace 逻辑模块 | Workspace 配置、main 当前版本、合入请求及条件更新记录 | 不自动理解科研内容真假；不要求固定整合 Bot |
-| Context Service | Material 实际内容、不可变来源、检索/使用/修正关系 | 不因为某 Bot 声称正确就认证知识正确 |
-| Runtime | Core、Bot/Pi/sandbox 绑定、可信启动、权限切换、预算监督、停止和对账 | 不硬编码任务拆分或给四 Bot 固定研究角色 |
-| Judge / 领域 Service | 自己受理的输入、操作状态、检查/计算结果与费用 | 不作为所有 Task 的强制“完成裁判”，不经 runner 私有回调补齐真正功能 |
-| CLI | 帮助、参数、请求 ID、传输、结果和错误呈现 | 不持有最终授权权威，不通过隐藏命令实现安全边界 |
-| Pi / Bot | 读 Mission、选择/执行 Task、使用工具、发布与引用成果 | 不持有 provider 管理权限，不直接写共享 main 或服务数据库 |
+| Task / Mission 协调模块 | Mission 配置、Task 合同与等待关系、当前 owner、E 授权、finish 与最终 submission 记录 | 不自动判断所有任务价值，不把任务数等同于 Mission 成功 |
+| Workspace 模块 | revisions、文件树及 parents、main、save/apply/merge 和条件更新记录 | 不自动认定科研内容正确，不要求固定整合 Bot |
+| Context Service | Material 内容、来源、检索、实际使用和修正关系 | 不因发布者自称正确就认证结论 |
+| Runtime | Core/Bot/Pi/sandbox 绑定、可信启动、权限开放、预算、收尾和对账 | 不硬编码全部任务拆分或永久角色 |
+| Judge / 领域 Service | 自己受理的输入、具体长操作、结果与费用 | 不作为所有 Task 的强制完成裁判 |
+| CLI | help、参数、稳定请求标识、传输、结果和错误呈现 | 不构成授权权威或绕过服务检查 |
+| Pi / Bot | 阅读、提出与选择工作、操作项目文件、调用服务、保存与使用成果 | 不直接管理 Git、写共享 refs、访问 provider 管理面或服务数据库 |
 
-v1 建议 Workspace 逻辑模块与 Task Service 同一协调进程、一致性域部署，以便 E 有效性和 main 条件更新在本地事务内检查；内容通过 Context API 读取，不跨服务打开数据库。不因增加 Workspace 概念而强制新增一个微服务。Task、Context、Judge 的外部独立部署仍承接 [阶段 01](../0001-sandbox-services-cli.md)。
+v1 的 Task/Mission 协调模块与 Workspace 模块位于同一协调进程、一致性域；main merge 与 Mission 验收冻结使用同一串行化边界。Git refs 和元数据的崩溃对账见 [05](05-workspace.md)，不把它们假装成天然的同一事务。Context、Judge 和领域服务通过各自 API 接入，不跨库访问。
 
 ## 一次 Mission 的启动
 
-1. **操作者提供 Mission。** 包含目标、验收方式、可用服务、初始输入、资源上限和停止条件。本文的四路只是示例并发配置，不是每个 Mission 的固定算法。
-2. **初始化 Workspace W。** 在 sandbox 外创建本地 Git Repository，并导入用户/项目提供的初始文件；建立 `main` branch 和初始 commit，并初始化 Workspace revision（例如 `0.1`）。空项目也要显式创建空基线与说明。记录工具链/镜像版本；不从任意旧 E 私有目录猜测起点。
-3. **Task Service 可以仍为空。** 不生成共享 Mission Task，也不生成用于计费的占位 Task。
-4. **Runtime 填充四个 Core。** 每槽创建新的 sandbox、Pi 和 Bot。准备可读的 main 快照、任务/材料/API 读取入口、固定 CLI/help 和 skill 文本。模型运行目录与项目目录分开。
-5. **发送完整初始 prompt。** 先加载稳定规范，再提供准确的 Mission、Bot/Core、Workspace 版本、服务/skill 目录和预算快照。见 [04](06-prompts-and-skills.md)。这些是启动时的快照，不能替代新操作前的服务查询。
-6. **Bot 自行发现工作。** 读取 Task Service 各状态、有关材料与项目内容，先复用已有任务，再提出有局部交付的新 Task，选择并 take。
+1. **操作者提供 Mission。** 固定目标、验收配置、可用服务、初始输入、资源上限和停止条件。Core 数是配置，不是固定四路算法。
+2. **初始化 Workspace。** 在 sandbox 外导入初始项目，保存可物化的初始 revision 并让 main 指向它。空项目也有明确初始文件树；不从旧 Bot 的私有目录猜测起点。
+3. **允许零 Task。** 不创建隐藏 Mission Task 或计费占位任务。
+4. **启动 Bot。** 每个 Core 创建新 Bot ID、sandbox 和 Pi。预留空的、由可信身份控制的 `/workspace/project`；Pi 会话、缓存和临时文件放在另外的运行目录。take 前项目浏览通过 `workspace files/read/search --at R` 等只读 API 完成。
+5. **发送初始输入。** 提供 Mission、Bot/Core、Workspace 版本、服务/skill 目录和预算快照。完整文本由 [06](06-prompts-and-skills.md) 定义；启动快照不能替代操作前的服务查询。
+6. **Bot 发现工作。** 查询相关 Task 的所有状态、Material 和 Workspace 文件，先考虑已有责任，再提出并 take 新责任；也可以提交已经准备好的 Mission 交付，或诚实退出。
 
-启动后未 take 的模型调用、目录读取和等待也有成本，计入 Mission/Bot/Core，不需要虚构 E 或 Mission Task。没有可领任务时，Bot 给出阻塞原因，由 Runtime 有间隔地刷新或等待事件；无需持续调用模型或反复重建 sandbox。空列表或所有任务暂时 blocked 都不自动表示 Mission 已完成。
+### 未绑定 Bot 的等待与正常退出
+
+未 take 的模型调用、检索和等待费用归 Mission/Bot/Core，不虚构 E。Bot 找不到有价值的可推进工作时，可调用 `swarm bot exit --reason no-work`；选工预算耗尽时使用 `--reason selection-budget`。此操作持久记录原因，结束整份 Bot/sandbox，不产生 Task 或 E，也不表示 Mission 成功。
+
+Runtime 根据 Task 可领性变化、材料/Workspace 更新、服务恢复或有上限的退避定时重新评估启动。仅因 Core 空闲，不立即重复创建相同 Bot。事件要合并，定时要有退避和总预算约束；不能用模型忙轮询或 sandbox 热重启代替等待。Bot 也可在有限等待窗口内暂停模型调用，等待 Runtime 唤醒；等待或退出的实际选择与费用必须可观察。
+
+`bot exit` 仅适用于没有 E、也没有未决 take 的 Bot。有 take 结果未知时先恢复该请求；已有 E 时必须走 task finish，不能通过 bot exit 绕过 Task 收尾。
 
 ## take 前后的权限
 
 | 操作 | 未绑定 Bot | preparing | active E | closing / closed |
 |---|---|---|---|---|
-| 读取 Mission、所有 Task 状态、可见 Material、已发布 main | 按 Mission 权限可读 | 可读 | 可读 | Runtime 终止 Bot；不保留执行能力 |
-| 提出 Task、尝试 take | 协调凭据允许；提案前先核对已有工作 | 不再并发 take 其他 Task | 可提出后续 Task；不能再 take | 拒绝来自结束 Bot 的新协调变更 |
-| 修改项目文件/目录 | OS 强制拒绝 | OS 强制拒绝 | 只写本 E 私有副本 | 不接受新贡献；停止所有本地进程 |
-| Pi 会话、日志、必要缓存、临时文件 | 独立运行目录可写 | 同左 | 同左 | 仅保留受控审计存档 |
-| 发布/关联 Material、提交 Judge 新计算 | 无贡献权限 | 无贡献权限 | 使用当前 E 的范围和预算 | 撤权后不再受理新操作 |
-| 领域资料查询 | Mission 配置允许的只读查询 | 同左 | 依服务权限 | 结束后拒绝新调用 |
-| main 更新 | 无权 | 无权 | 必须通过 Workspace 条件更新合同 | 不得以旧 E 更新 |
-| 其他 E 私有文件、管理 API、服务数据库 | 不提供访问权限 | 同左 | 同左 | 同左 |
+| 读取 Mission、Task、Material、公开 Workspace revision | 按 Mission 权限可读 | 可读 | 可读 | 不保留 Bot 执行能力 |
+| propose / take | 协调凭据允许；先核对已有工作 | 不并发 take | 可提出后续 Task，不再 take | 拒绝结束 Bot 的新协调变更 |
+| 失效依赖修复 / 无 owner Task cancel / 获准的 Material unsupersede / Mission submit | 按明确的 Mission 协调权限与各自合同 | 不与 take 激活交叉发起 | 按各自合同 | 新请求拒绝；已受理的独立操作按记录继续 |
+| 项目文件修改 | 空预留目录，OS 拒写 | OS 拒写 | grant 成功后只写本 E 目录 | finish 后不再接受贡献，停止全部进程 |
+| 会话、日志、缓存、临时文件 | 独立运行目录可写 | 同左 | 同左 | 仅受控审计存档 |
+| Material publish、Workspace save/apply、领域贡献 | 无贡献权限 | 无贡献权限 | 按 E 权限和预算 | 新贡献拒绝 |
+| main merge | 无权 | 无权 | 按 Workspace 合同；Mission 验收冻结时拒绝 | 旧 E 无权 |
+| bot exit | 无未决 take 时允许 | 不允许 | 不允许，使用 task finish | 外部查询最终结果 |
+| 其他 E 私有文件、管理面、服务数据库 | 不提供权限 | 同左 | 同左 | 同左 |
 
-这里的“只读”有明确范围：**保护项目工作副本与业务贡献接口**。允许运行目录写日志、缓存、临时文件，意味着不能技术性禁止所有提前计算。Prompt 要求先 take 再做正式贡献；系统保证的是贡献归属和受控写入，而不是判断每一段思考是否属于“做题”。若未来需要更严格的临时计算限制，另立假设和成本评估。
+“只读”保护项目目录和研究贡献接口，不等于禁止操作系统中的所有写入。必要缓存可写，因此不声称能阻止每一段提前计算；系统保证贡献归属、受控保存和费用归属。获准的 unsupersede 仅按 04 撤销匹配的替代关系，不允许未绑定 Bot 发布正文、修改来源或自行获得其他 Material 写权限。
 
-Sandbox 的 OS 权限、mount、身份、凭据和网络边界统一由 [02 Sandbox 文档](02-sandbox-runtime.md) 定义；Runtime 不在本文件重复描述 provider 细节。本文只要求 Runtime 在 E active 前确认 Sandbox 已按该合同准备完成，closing 时确认整个 sandbox 已停止或隔离。
+软收尾不等于 closing：E 在有界收尾窗口内仍有效，只允许保存已有工作、发布已有内容和 finish，禁止扩展工作、提交新计算或 merge main。接受 finish 或到达硬停止边界才撤权进入 closing。Sandbox 强制措施见 [02](02-sandbox-runtime.md)。
 
 ## take 的完整顺序
 
-建议用户可见 Task 状态为 `ready / running / blocked / done / cancelled`。E 内部状态为 `preparing / active / closing / closed`，不是再给用户增加几种 Task。Task 在准备和安全解绑前的收尾阶段都保持 `running`，并展示 E 子状态供排障。
+Task 状态为 `ready / running / blocked / done / cancelled`；E 内部状态为 `preparing / active / closing / closed`。Task 在准备和未安全解绑的收尾期间保持 running，并展示 E 子状态。
 
 ```mermaid
 stateDiagram-v2
     [*] --> Unbound
-    Unbound --> Preparing: 原子认领
-    Unbound --> Unbound: 竞争失败或等待
-    Preparing --> Active: 输入就绪并授予权限
+    Unbound --> Preparing: 原子预留
+    Unbound --> Unbound: 竞争失败或有限等待
+    Unbound --> Exited: bot exit
+    Preparing --> Active: 输入就绪并激活 E
     Preparing --> Closing: 准备失败
-    Active --> Closing: finish、超时或故障
+    Active --> Closing: finish 或硬停止
     Closing --> Closed: 撤权且确认停止
+    Exited --> [*]
     Closed --> [*]
 ```
 
-`Unbound` 是尚未绑定 Execution 的逻辑 Bot 阶段；sandbox/Pi 在此前已启动并保持项目只读；成功预留产生 E 后进入 `preparing`。take 前 Bot 已在 sandbox 中只读研究；take 成功后 Runtime 在当前 sandbox 中准备当前 Task 的独立工作目录并授予写权限。只有工作目录和权限准备完成，才返回 E `active`。这样即使准备失败，也能追踪一次已取得排他资格的尝试，不把它和单纯抢占失败混淆。
+唯一顺序为：**准备输入 → E active → grant 本地写权限 → 交付贡献绑定并返回成功。** 内部 active 不等于 take 已经向 Bot 成功返回。
 
-1. **请求去重。** CLI 为 take 保存 request ID。Task Service 对 Bot 的未决请求及活跃 E 做约束：同一个 Bot 不能通过并发两个 take 获得两个活动 E；Bot ID 是否跨顺序 Execution 保留，待统一定义。
-2. **原子预留。** 在一个 Task 事务内检查 Mission 允许继续、Task 规格版本/依赖/状态、无当前执行者、Bot 未绑定；建立 `preparing` E，写入 `current_execution_id`，Task 变为 `running`。并发失败者收到明确 conflict，仍是原只读 Bot。
-3. **准备输入。** Bot 启动时 Runtime 已创建 sandbox/Pi Session 和只读项目目录；take 时核对/准备选定的 main 版本、Task 输入 Material 和服务配置，保存 E/Bot/Core/sandbox/私有副本对应关系。预览版本与此时版本不同时，take 结果必须说明变化，要求重读受影响文件；保留 Pi 不等于此前假设仍有效。
-4. **激活执行。** Task 协调域把 E 置为 active；绑定的身份、规格版本、Workspace/base 和预算确定。贡献凭据此时仍由可信 Runtime 持有。
-5. **开放本地写。** Runtime 对准备好的项目目录授权。此时即使旧的本地后台进程立即尝试写，它也已经处于这个有效 E 的归属范围。操作只能由可信生命周期控制器执行。
-6. **提供贡献绑定并返回。** 原子替换受保护的绑定文件，允许 CLI 获取当前 E 的贡献身份，返回 Task/E/Workspace/base/输入版本/权限/预算及变化摘要。一个 Bot 只执行一个 Task；完成或超时/handoff 时关闭 Execution，停止 Pi/全部子进程并销毁 sandbox。后继 Bot 使用新 sandbox/Pi，从 Task、Material 和 Workspace 公开成果接续。
+1. **请求去重。** CLI 保存稳定 request ID。一个 Bot 只能产生一个 E；并发或重复 take 不能得到第二个 E，也不能在关闭第一个 E 后再次 take。
+2. **原子预留。** 检查 Mission 允许继续、Task 合同/等待关系版本、状态和 owner、Bot 未绑定且未退出；创建 preparing E，写 current owner，使 Task running。
+3. **准备输入。** 解析指定 revision 或当时 main 的实际 revision/commit；从外部 Workspace 向受保护的 `/workspace/project` 导出文件树，验证清单/摘要。记录初始 Workspace、Material 版本和环境配置。预览与实际输入不一致时，返回差异并要求重读。
+4. **激活 E。** 协调域将准备好的 E 设为 active，固定初始输入、身份、预算和生命周期版本。贡献凭据此时仍由 Runtime 持有，目录仍不可写。
+5. **grant 写权限。** 可信 Runtime 在核对同一生命周期版本仍可授权后开放目录。即使 take 前启动的后台进程立即写入，也已经处于当前有效 E 的归属范围。
+6. **交付绑定。** 原子更新受保护的绑定文件，允许 CLI 取得 E 贡献身份，返回实际目录、初始 revision、输入版本、权限、预算和变化摘要。只有这一步完成才报告 take 成功。
 
-每 sandbox 的 grant、abort、finish 顺序执行，并带生命周期版本；关闭之后到达的迟延 grant 不得重新开放权限。若实际 provider 调用无法被取消，Runtime 必须等待其结果并继续停止该环境，不能把同一环境重新分配。
+每个 sandbox 的 grant、abort、finish 必须顺序处理，并携带生命周期版本。active 到 grant/绑定交付之间失败时，立即关门、转 closing、撤销 E 资格并清理；不得把 active 字段当成授权已经完成的证据。迟到 grant 不能重新开放已关闭环境；不可取消的 provider 调用必须等待结果后继续清理，不能重新分配该环境。
 
-### 失败不能混为一种重试
-
-| 情况 | 结果与处理 |
+| 情况 | 处理 |
 |---|---|
-| 另一个 Bot 已 take | 没产生 E；保留只读 Pi，刷新任务列表再选 |
-| 主动取消发生在原子预留前 | 未绑定 Bot 可以结束；没有 Task 认领要补偿 |
-| 已预留但输入/权限准备失败 | E 进入 closing，拒绝贡献、停止环境；确认停止后条件清除自己的认领，原 Bot 不继续换 Task |
-| take 响应丢失 | 结果未知；用同 request ID 查询/重试，恢复既有 E 结果；不能另造第二个请求抢新任务 |
-| E active 但授权或绑定文件更新失败 | 走同一关闭/补偿路径；不能返回成功或留下长期半激活 Bot |
-| Runtime 重启 | 以持久请求、provider 资源标签和 E 绑定对账；状态未明确前不重复创建/激活，也不释放仍可能运行的执行者 |
+| 竞争 take 失败 | 没产生 E；保留未绑定 Bot，刷新事实 |
+| 预留前 bot exit | 不创建 E，不产生待补偿 Task owner |
+| 已预留但输入/权限准备失败 | closing，拒绝贡献，停止环境；确认停止后条件清除自己的 owner |
+| take 响应丢失 | 查询/重试同 request ID，恢复既有结果；不换 ID 认领别的 Task |
+| E active 后 grant 或绑定失败 | 关闭补偿，不返回成功，不留长期半激活 E |
+| Runtime 重启 | 按持久 Bot、可选 E、request、sandbox ID 和资源标签对账，不重复激活或提前释放 |
 
-确认有 E 的请求失败后，Task 只有在旧本地执行已经停止/隔离、且当前 owner 仍是这个 E 时才回到可领状态。用条件更新防止迟到清理擦掉新 owner。
+只有旧执行已停止或隔离、Task 当前 owner 仍是本 E，才能清除认领。迟到清理不能擦掉后继 owner。
 
 ## 普通 Service 调用与 Execution 结束
 
-第一版不为每次 CLI 调用引入独立的 pending/permit/acceptance 协议。一次 CLI 命令对应一次普通 Service API 请求：CLI 发送请求，服务端验证调用身份、当前 Execution 是否有效及该操作所需权限，然后直接执行并返回结果。客户端提供的 Task ID 只能作为请求参数，不能代替可信身份。
+普通 CLI 对应普通 Service API；服务端验证可信调用身份和该操作要求的 Mission/Bot/E 状态后执行，不引入通用 pending/permit/acceptance 协议。未绑定 Bot 的协调操作与 active E 的研究贡献是两种明确权限，不能只用“是否存在 E”判断所有命令。
 
-- 普通读取按资源可见性执行。
-- 普通同步写入在处理时验证当前 E 有效且有权操作，然后完成写入并返回。
-- Execution 结束后，旧 E 发起的新写请求被拒绝。
-- 如果某个服务操作确实需要在客户端/sandbox 结束后继续运行，且输入已被服务持久接收，则该具体服务可以定义自己的异步受理与查询接口；这不是所有 CLI 调用的通用前置协议，也不属于 v1 必须新增的 Job 平台。
-
-因此，Execution 结束不回滚服务已经完成的普通写入，也不自动取消服务明确接纳的独立长操作。具体服务按自己的 API 合同返回成功、失败或处理中状态。详见 [03](05-workspace.md)。
+- 普通读取遵守资源可见性。
+- 同步贡献写入在服务的写入边界验证当前 E 与权限；closing 后到达的新贡献请求被拒绝。
+- 必要重试使用稳定请求标识，响应丢失不被改写成确定失败。
+- 已完成写入不因 Bot 结束而回滚。
+- 某个具体服务确实需要长操作时，由该服务在受理前持久保存输入、操作状态和费用上限；Bot 退出不隐式取消它。Mission 最终检查是其中一种明确操作，并非通用 Job 平台。
 
 ## Task 完成、超时与 Bot 结束
 
-v1 一个 Bot 最多执行一个 Task。Task 完成或 Bot 超时/handoff 时，当前 Execution 结束，Bot 生命周期随之结束；不在同一个 Pi/Sandbox 中 take 第二个 Task。Task 未完成时保持可由新 Bot 接续的状态。Bot 应在调用前发布交付或有用的部分材料，核对其实际可读性和任务关联。
+一个 Bot 最多执行一个 Task。四种 finish 结果由 [03](03-task.md) 定义：done、incomplete、blocked（附等待 Task）、cancelled（附原因及可选替代 Task）。
 
-1. **外部持久接收。** Task/Runtime 接收 `task finish`（或 Runtime 超时终止）请求，校验当前 E；只有满足 Task 完成条件才能标记 done，否则以 incomplete/blocked 等结果结束本次 Execution，不默默记 done。
-2. **撤销新操作资格。** E 转为 closing，记录结束原因；后续新贡献请求被拒绝。
-3. **终止整份 Bot。** Runtime 独立于 CLI 连接停止 Pi、NuRouter、Bash 和所有子进程，并销毁/隔离 sandbox。不要只给 Pi 发送一个“请停止”的文本消息。
-4. **确认停止后解绑。** 只有明确确认旧进程不能继续执行，且 Task 当前 owner 仍是本 E，才清除认领、关闭 E。符合完成条件的 Task 转 done；未完成 Task 按前提转 ready/blocked。未确认停止时保持 running/closing，不重叠启动同一 Task 的新 E。
-5. **留存与补位。** 外部保存已发布 Material、已保存的 Workspace Candidate/main commits、调用结果和受控审计存档。Core 在清理到可安全复用的边界后启动新 Bot/sandbox/Pi；新 Bot 可接续同一个未完成 Task。已确认隔离的残留资源可继续异步重试清理，不能丢失其记录。
+### 先收尾，再接受 finish
 
-finish CLI 可能在返回完整响应前因自己的 sandbox 被停止而断开。收尾不依赖 Bot 执行下一条命令，操作者/Runtime 可用 request ID 查询最终结果。服务已经受理的长期工作按上一节继续；finish 不是对所有副作用的回滚，也不默认取消所有服务作业。
+1. **正常完成或软限制提醒。** Bot 在仍有效的 E 内保存整个一致文件树为 Workspace revision，发布有用 Material，确认外部可读取，并准备 finish。不是每个 E 都必须同时保存文件和发布材料。
+2. **持久受理 finish。** 在 Task 协调事务内验证 owner、结果和结构条件，原子保存结束意图、动态等待关系/替代指向、request ID，并将 E 转 closing。该事务之后新贡献被拒绝。
+3. **停止整份 Bot。** Runtime 独立于 CLI 连接停止 Pi、NuRouter、Bash 和全部子进程，销毁或隔离 sandbox。
+4. **安全解绑。** 确认停止且 owner 仍是本 E 后，关闭 E，清除认领；Task 按已持久结果变为 done、cancelled，或按全部有效等待关系变为 ready/blocked。此前保持 running/closing。
+5. **留存与补位。** 保留 Material、全部已保存 revisions、main、调用结果和受控审计记录。Mission 仍运行且存在启动条件时，再按事件/退避启动新 Bot。
 
-### 研究接续和 compaction
+finish 的 CLI 可以在返回前被销毁，外部请求记录决定最终结果；不要求 Bot 在 finish 后再执行上传。接受 blocked 与记录等待关系必须原子完成，不能留下“Bot 已退出、任务却错误 ready”的窗口。
 
-需要交接时，Bot 发布一份普通 Material：当前 Task/版本、已验证结论、明确的不确定性、失败尝试及原因、实际附件/版本、推荐下一步和仍在服务端运行的操作 ID。后继读取并验证材料，再 take 原 Task 或提出不同的补充 Task。不能只写“去看前任目录”，也不提供通用私有状态恢复入口。
+### 硬停止、compaction 与未完成工作
 
-compaction 次数、上下文阈值、单 Bot 预算和保留的收尾额度是启动配置。例如“最多三次 compaction、接近 80% 时准备交接”只是讨论中的可选配置，不能写成提供方通用定律。Runtime 必须使用适配器实际能观测的上下文/compaction 信号；到达提前停止阈值时发送收尾通知，给予已配置的有限发布机会，硬上限到达后执行同一关闭流程。Task 完成或 Bot 主动结束也可以提前结束 Bot 生命周期。
+软阈值要早于硬上限，并预留明确的收尾时间/费用。软提醒期间不撤销必要的 save/publish/finish 权限；硬上限、崩溃或强制隔离则立即走关闭流程，只承认已经成功持久化的成果。Runtime 不为硬停止自动公开全部私有目录，不编造空 Material，也不宣称未完成上传已经交接。
 
-崩溃或预算耗尽时可能没有有用的新 Material。不要为了满足统计强制伪造研究产出，也不由 Runtime 把所有私有文件自动公开。未发布工作会丢失其研究可用性，审计存档不等于可接续成果；这是显式发布策略的真实代价。
+compaction 次数、上下文阈值和收尾额度均来自启动配置及适配器实际信号；“三次”“80%”不是固定算法。后继读取公开 Task/Material/Workspace 状态；同一 E 内显式 apply 的记录与最初 take 的输入都保留，二者不能互相覆盖。
 
-### Mission 的停止
+## Mission 提交、验收与停止
 
-Task done、Material publish、Workspace integrate 分别是局部责任、内容可用和共享版本更新的事实。Mission 是否达成，由启动时声明的验收方式决定，可能是固定 checker，也可能需要操作者审核；没有已配置的自动验收时不能自动宣布成功。预算到期、人工取消和失败停止也应有独立结束原因。Mission 停止先禁止新的 take/贡献，再收尾活跃 E 和按合同处理外部操作，保留费用和未完成状态。
+Task done、Material publish、Workspace save、main merge 与 Mission accepted 分别记录。最终验收必须针对固定交付，不能用空队列、任务数或某 Bot 的文字声明代替。
 
-## 运行轨迹的边界
+### 提交入口与不可变输入
 
-完整四 Bot 例子放在 [Overview](README.md)，Task/Material/Workspace 的具体交付过程分别见 [03](03-task.md)、[04](04-material.md) 和 [05](05-workspace.md)。本文件只约束 Runtime 的共同行为：每个 Bot 最多执行一个 Task；take 在 Bot 已启动的只读 sandbox 中由 Runtime 准备独立 Execution 工作目录并切换权限；Task 完成或超时/handoff 后 Bot/Sandbox/Pi 结束。新 Bot 可从公开 Task/Material/Workspace 成果接续。新 Bot 不继承前任私有会话或目录。
+`swarm mission submit --materials M1,M2` 使用有效 Mission 协调身份；未绑定 Bot 也可以提交已经存在的公开交付，无须为此虚构 Task 或 E。若有当前 E 则记录来源；如果没有，E 为空。命令不授予项目写权限，也不修改 Mission 验收标准。仅以文件验收的 Mission 可以明确提交空 Material 集合，不为最终提交编造材料。
+
+服务固定并持久保存：
+
+- Workspace ID、当前 main 的精确 revision/commit；
+- 明确指定的 Material ID、不可变内容版本/哈希；
+- Mission 验收配置、checker 和环境版本；
+- 提交者、可选 Task/E、稳定请求标识；
+- 检查的时间与费用上限，以及后续结果。
+
+读取 Material 或保存输入失败不能开始检查。验收输入不能在运行中改读“最新版本”；历史记录按精确版本解释，Material 的默认隐藏/纠错规则仍由 [04](04-material.md) 决定。
+
+### 验收期间冻结 main merge
+
+同一 Mission 同时最多一份活跃 submission。受理入口在与 main merge 相同的协调边界固定 main、登记 submission 及其冻结归属；已经开始的 merge 也必须在最终接纳时检查冻结，不能穿过该边界。输入准备和检查都有有限超时。
+
+检查期间：
+
+- main merge 暂停，返回可理解的验收中错误；main 保持在提交的 revision；
+- 读取、现有 E 的本地工作、Workspace save 和 Material publish 可以继续，但不改变当前验收清单；
+- 新的独立 submission 被拒绝并返回当前 submission；重复同 request ID 返回原记录；
+- `swarm mission submission view <id>` 查询持久结果，提交者退出也不丢失状态。
+
+没有配置可执行 checker 时，不自动宣告成功；按已固定的人工验收入口记录结果和有界等待。不得在检查途中让 Bot 改写 checker 或降低验收标准。
+
+### 成功、失败、超时与并发边界
+
+| 结果或并发情形 | 必须行为 |
+|---|---|
+| 检查 PASS | 仅当前有效 submission 可完成；再次确认 main 仍为提交版本、Mission 未取消/停止、验收配置匹配，记录 accepted revision 与完整输入清单，进入正常停止 |
+| 检查未通过 | 保存反馈；仅释放本 submission 的冻结，Mission 继续运行，允许修复和以后提交 |
+| 输入准备/检查错误或超时 | 记录 error/timed_out，不冒充研究失败；释放自己的冻结，若 Mission 未停止则继续运行 |
+| 重复请求 | 同 request ID 只对应一次受理；同一完整快照与 checker 配置复用已完成的验收结果，不能换 ID 重复检查直到偶然 PASS；基础设施 error/timeout 不作为科学 FAIL 缓存，可按预配置策略重新受理并记录关联尝试和费用 |
+| 受理与 task finish 并发 | 以协调域持久受理顺序为准：finish 先结束 Bot 则新提交拒绝；submission 已受理则成为服务持有的检查，不因提交者随后 finish 而丢失或撤销 |
+| 受理与 bot exit 并发 | 同样按持久顺序处理；退出 Bot 的协调凭据不能开启新检查，已受理检查继续可查询 |
+| 人工取消、硬预算停止、检查取消后迟到 PASS | 保留迟到结果作审计，不恢复已结束 Mission，不释放后续 submission 的冻结，不覆盖已终结的检查记录 |
+| Runtime 重启 | 按 submission、冻结归属、deadline 和服务操作记录对账；不遗留永久冻结，不重复开始收费检查 |
+
+检查重试限于已配置、可判定的基础设施失败策略；次数和成本计入同一 submission。旧结果必须匹配 submission ID、生命周期版本和当前状态；不能仅凭“收到 PASS”就变更 Mission。该具体异步合同不扩展为其他服务的通用许可平台。
+
+### 接受交付后的停止与费用
+
+PASS 持久记录后，main 的验收冻结转为 Mission 停止约束，不出现重新开放 merge 的空档。Runtime 禁止新 take、新提案和新研究计算，按已批准的有限收尾窗口允许现有 E 保存/发布已有增量及 finish，再撤权并销毁全部 Bot。验收中或停止中的 Mission 不阻止当前 E 合法 finish；服务按操作区分停止新研究与完成已有收尾。收尾保存形成其他 revisions 时，不改变已经接受的 revision。
+
+Mission 成功不会替未完成 Task 标 done。保存它们当时的实际完成度、结束原因及“Mission 已停止”的可领性门槛。预算到期、人工取消和失败停止也有独立原因；硬停止不保证最后一次保存成功。
+
+已受理的外部长期操作按原服务合同取消或完成，费用仍归原 Mission；停止 sandbox 不等于费用归零。检查、模型和收费服务均须有有限且单位明确的额度，计入并发已承诺消耗及收尾额度。实现门槛是证明总额度不会因并发接纳或退出后尾部操作失去约束，而不是让模型估计余额；不新增通用 permit 平台。
+
+## 运行轨迹与验收入口
+
+[07 验证](07-validation-and-research.md) 维护四 Bot 轨迹与工程验收。本章至少要求检查：零 Task 启动、未绑定退出与退避、take 竞争/响应丢失、active 到 grant 失败、动态阻塞和失效依赖修复、同 E 显式 apply、软收尾与硬停止、Mission submit 与 merge/finish/exit/取消的竞态。
+
+[03](03-task.md) 解释具体责任与等待，[04](04-material.md) 解释研究内容，[05](05-workspace.md) 解释文件树、parents、save/apply/merge。各模块使用同一生命周期合同，不再在不同章节定义相反的授权顺序。
 
 ## 最小配置与可观测记录
 
-启动配置至少要确定：Core 数、固定 sandbox/镜像/CLI/API 版本、工具/网络范围、Mission 与单 Bot 预算、上下文/compaction 阈值、收尾额度、操作超时/重试上限、空闲刷新间隔、main 合入检查和 Mission 验收方式。未填关键预算或验收不能用模型临时猜测的默认值掩盖；实现 PR 应列出每项实际默认值与来源。
+启动前固定 Core 数、镜像/CLI/API 版本、工具和网络范围、Mission/单 Bot/选工额度、有限上下文与收尾阈值、操作 deadline/重试上限、空闲退避、合入检查和最终验收配置。数值和单位必须明确；实现 PR 提供实际配置和验证证据，不再把这些已确定原则写成待拍板架构问题。
 
 | 事件/对象 | 至少记录什么 | 用途 |
 |---|---|---|
-| Bot 启动 | Mission/Core/Bot、sandbox/Pi、模板和 skill 版本、基线、实际初始消息引用、预算 | 重建它究竟看到了什么 |
-| take | request ID、Task/规格、E、输入材料版本、Workspace/base、预留/激活/授权时间 | 区分抢占失败、准备失败、真正执行 |
-| 服务操作 | request ID（若需要重试）、调用者、E 或协调身份、输入摘要、结果/费用 | 排查撤权竞态、重试和长期操作 |
-| Material | 内容 ID/哈希、Task/E 来源、输入引用、Agent Evidence 自述、争议/修正关系 | 检查实际复用与错误传播 |
-| main 更新 | 旧 revision、candidate commit、检查绑定、新 revision、来源 Task/E、更新结果 | 验证累积与防覆盖 |
-| 退出/清理 | 原因、撤权时间、进程停止证据、Task 条件更新、存档/残留资源、补位 Bot | 不将逻辑释放当作真实停止 |
+| Bot 启动/退出 | Mission/Core/Bot、sandbox/Pi、模板/skill、初始消息、选工费用、退出原因和重启条件 | 无 E 也能追踪完整生命周期 |
+| take | request、Task/合同与关系版本、E、初始输入、预留/激活/grant/交付时间 | 区分竞争、准备和实际执行 |
+| 工作版本变化 | 初始 revision、显式 apply 来源、工作基线、save revision、parents、文件变化与来源 | 不把当前版本覆盖为“从未变化的初始输入” |
+| 服务操作 | request/具体 operation、可信身份、输入、状态、费用上限与实际费用 | 解释响应未知、撤权与尾部操作 |
+| Task 结束 | outcome、动态等待/替代关系、撤权时间、停止证据、条件解绑 | 防止伪完成、重复认领和迟到清理 |
+| Material / 文件成果 | 内容版本、Task/E 来源、使用/修正记录；Workspace revision 与 path | 追踪公开成果，不另造 Candidate ID |
+| Mission submission | 固定清单、checker/environment、冻结归属、deadline、verdict、accepted revision、费用 | 还原最终交付与并发边界 |
 
-完整运行消息、工具结果、加载的 skill 原文和 compaction 事件属于受控运行证据；公开仓库只放模板、合成示例和脱敏摘要，不能公开凭据或原始私有会话。只有 prompt 哈希不够重建输入，只有存了一份组合文本也不证明它真正发给 Pi；[04](06-prompts-and-skills.md) 定义记录和发送的对应关系。
+运行消息、工具结果、skill 全文和 compaction 事件是受控证据，公开仓库只保留模板、合成例子和脱敏摘要。只保存 prompt 哈希不足以重建输入，组合文本也不证明实际发送；[06](06-prompts-and-skills.md) 定义发送记录。
 
-## Runtime 与 Sandbox 的边界
-
-Runtime 在 Bot 生命周期开始时创建独立第三方 sandbox 和 Pi Session。Bot 在 take 前已经运行于该 sandbox 中，读取 Mission、Task、Material 和 Workspace；此时项目目录只读，贡献型服务写操作未授权。take 成功后，Runtime 在当前 Bot sandbox 中建立 Execution 绑定、创建 Task 专属工作目录并开放权限；Task finish/超时/handoff 时停止全部进程并销毁 sandbox。后继 Bot 从全新 sandbox/Pi Session 开始。
-
-Sandbox 创建、挂载、文件权限、网络、凭据、provider 选型和失败回收的完整设计见 [02](02-sandbox-runtime.md)。本文件不重复这些细节。
-
-**v1 运行合同：** 一个 Bot ID 对应一个 Core 上的一次 Bot 运行、一个 sandbox/Pi Session 和最多一个 Execution。Bot 可以提出 Task，但只 take 一个；Task 完成、incomplete handoff 或超时后结束。未完成 Task 可以由新 Bot 接续。
+Sandbox 的完整进程、文件系统、凭据、网络和 provider 验收见 [02](02-sandbox-runtime.md)。以上均是目标设计合同，不是已通过的实现或研究结论。

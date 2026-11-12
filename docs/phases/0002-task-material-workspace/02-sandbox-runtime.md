@@ -1,160 +1,142 @@
 # 02. Sandbox 与 Execution Runtime：隔离环境的完整生命周期
 
 > 设计依据：[Sandbox Issue #119](https://github.com/LuNa-shi/SwarmEnv/issues/119) · 总体设计：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)。
-> 本文定义第三方 sandbox 的运行边界和接入合同。当前仍是目标设计，尚未完成真实 provider 集成与隔离验收。当前实现说明以 [architecture](../../architecture/INDEX.md) 为准。
+> 本文定义经本轮决定修订的目标运行边界，尚未完成真实 provider 集成与隔离验收。当前实现仍以 [architecture](../../architecture/INDEX.md) 为准。
 
-本文只回答：**一次 Execution 在哪里运行、谁创建和销毁环境、哪些目录/凭据/服务可以被访问，以及如何证明旧 Execution 结束后不能继续执行。** 不重新定义 Task、Material 或 Workspace 的业务规则。
+本文回答 Bot 在哪里运行、目录/凭据/服务如何隔离、take 如何开放工作目录，以及如何证明退出后全部本地进程已停止。业务生命周期以 [01](01-model-and-runtime.md) 为准，Task、Material 和 Workspace 分别见 [03](03-task.md)、[04](04-material.md)、[05](05-workspace.md)。
 
 ## 1. 已确定的运行约束
 
-来自 #119 的决定：
-
-1. **每个 Bot（v1 与一个 Execution 一一对应）使用独立、临时的第三方 sandbox。** 整个 Agent 执行环境都在 sandbox 内，包括 Pi、NuRouter、扩展、Bash 和本地子进程。至少达到 Docker 级隔离；不沿用当前自建 SandboxManager 作为目标隔离后端。
-2. **每个新 Bot 生命周期都从干净环境启动。** Bot 启动时创建 sandbox、新 Pi Session 和只读项目工作目录；take 前在同一 sandbox/Pi 中研究和选择 Task；take 成功后不创建第二个 sandbox/Pi，而是在当前环境建立 E 绑定、创建独立工作目录并切换权限；Task finish/超时后结束 Bot 并销毁 sandbox。后继 Bot 不继承前一 Bot 的私有文件、对话和工具历史。
-3. **跨 Execution 的研究接续只通过 Material。** 后继不能引用前任 sandbox 私有目录、私有 Git 对象或临时路径作为输入。
-4. **服务位于 sandbox 外。** Task、Context/Material、Judge 和启用的领域服务独立部署，各自拥有 API、持久状态和重启生命周期。sandbox 通过网络 API/CLI 调用，不共享进程对象或数据库。
-5. **Agent 使用 Pi 的 read/write/edit/bash。** 业务服务通过 Bash 调用统一 swarm CLI；不为每个业务操作单独注册裸模型 tool。
-6. **共享 Material 和当前 E 私有工作分别持久化。** Material 由 Context 管理；E 私有卷/运行记录可以留存用于审计，但不挂给后继 E 作为研究输入。容器删除不等于删除这些外部数据。
-7. **不做进程级恢复。** 不恢复前一 E 的 Pi 进程现场，不自动继承其 shell、文件和会话；跨 E 只恢复明确发布的 Material 和 Workspace 中公开的 Git 内容。
+1. **每个 Bot 使用独立临时 sandbox。** Pi、NuRouter、扩展、Bash 和全部子进程位于同一隔离边界，至少达到 Docker 级隔离。一个 Bot 有零个或一个 E；未 take 也有真实 sandbox、费用与正常退出路径。
+2. **每个新 Bot 从干净环境启动。** Runtime 创建新 Bot ID、sandbox 和 Pi Session，预留空的受保护项目目录。take 保留本 Bot 的阅读上下文，在同一 sandbox 中建立唯一 E；不会创建第二份 Pi 或复用其他 Bot 的私有状态。
+3. **公开成果有两种接续载体。** Material 保存研究内容，Workspace 不可变 revision 保存项目文件树。后继不能使用前任私有目录、未公开 Git 对象、会话或缓存。
+4. **服务与持久状态在 sandbox 外。** Task/Mission 与 Workspace 使用同一协调域，Context、Judge 和领域服务通过独立 API 接入；Bot 不直接访问服务数据库。
+5. **Bot 使用 Pi read/write/edit/bash 与 swarm CLI。** 领域能力通过 Bash CLI/API 发现和调用，不逐操作注册裸模型工具。
+6. **审计存档与研究输入分开。** 私有卷/日志可以按有限保留策略供授权审计，不能自动挂给后继。容器销毁不删除已经公开的 Material 或 Workspace revisions。
+7. **不做进程恢复。** Runtime 重启只恢复资源管理和生命周期对账，不把旧 shell/Pi 现场恢复成新的研究执行。
 
 ## 2. 部署拓扑与信任边界
 
-```text
-Host / Deployment
-├── Execution Runtime
-│   ├── Core slots / scheduling
-│   ├── Sandbox Provider Adapter
-│   ├── lifecycle state and cleanup reconciler
-│   └── private execution-volume manager
-├── External Services
-│   ├── Task Service
-│   ├── Context / Material Service
-│   ├── Workspace Service / local Git repository
-│   ├── Judge Service
-│   └── enabled domain services
-└── Per Execution: temporary sandbox
-    ├── Pi + provider/model adapter
-    ├── NuRouter + extensions
-    ├── read / write / edit / bash
-    ├── swarm CLI
-    ├── project working clone (from Workspace)
-    ├── runtime/session scratch
-    └── child processes
-```
-
-Sandbox 是不可信执行边界。即使 Bot 只收到一个 Task，也必须假设它会运行任意 Bash、启动后台进程、修改文件、读取其可见环境变量并尝试访问网络。不能把 prompt 约束当作隔离机制。
-
-| 边界 | 信任方 | 不可信方/禁止事项 |
+| 位置 | 组件和内容 | 边界 |
 |---|---|---|
-| Provider 管理 API | Runtime/Operator | Bot 不获得 provider 管理 token、Docker socket 或 sandbox create/delete 权限 |
-| Sandbox 内部 | 当前 Execution 的 Bot 及其子进程 | 不得访问其他 E 的目录、宿主机敏感路径或服务数据库 |
-| Workspace Repository | Workspace Service/Runtime | 不挂载共享可写 .git 或 main refs 给 Bot |
-| Context/Material | Context Service | Bot 只能通过受权限控制的 CLI/API 读取或发布，不直接访问数据库 |
-| Task/E 身份 | Runtime 与服务端认证 | 客户端自填 Task ID、环境变量或 JSON 字段不能单独构成身份 |
-| 外部网络 | 显式配置的网络策略 | 不假定 sandbox 天然只能访问指定域名；需验证实际 provider 网络能力 |
+| 可信 Runtime | Core、Bot/sandbox 管理、provider adapter、预算、生命周期与清理对账 | 管理凭据不进入 Bot |
+| 外部协调域 | Task/Mission、Workspace 模块与本地 Git Repository | Task owner、main 更新与验收冻结串行协调；Git/元数据仍需对账 |
+| 外部独立服务 | Context/Material、Judge、领域服务 | 通过真实 API 通信，各自持久保存输入和结果 |
+| 每 Bot sandbox | Pi、NuRouter、扩展、Bash、CLI、项目目录、运行 scratch、子进程 | 无共享可写 Git 元数据，无其他 E 私有目录 |
 
-## 3. 每个 Bot/Execution sandbox 的生命周期
+sandbox 是不可信执行边界。必须假设 Bot 会运行任意 Bash、启动后台进程、读取可见环境变量、修改可写文件并尝试联网，不能把 prompt 当作隔离机制。
 
-### 3.1 创建前：准备执行描述
-
-Bot sandbox 启动时，Runtime 准备只读启动环境；take 时再读取/确认权威服务并固定本次 Execution：
-- Mission ID、Task ID、Task 合同 revision；
-- 新 Execution ID、Core/Bot 运行身份；
-- Workspace ID、实际 base revision/commit；
-- 明确输入的 Material ID 和内容版本；
-- sandbox 镜像 digest、Pi/NuRouter/CLI/extension 版本；
-- 可用 Services、网络配置、资源预算和超时。
-
-不要把动态值只存在 prompt 模板里。Runtime 必须保留最终实际创建的配置快照，以便审计这个 E 实际拿到什么。
-
-### 3.2 创建 sandbox
-
-1. Bot 生命周期启动时，Runtime 调用 Provider API 创建全新 sandbox，设置 CPU、内存、磁盘、生命周期 TTL 和网络配置；此时尚未绑定 Task Execution。
-2. Provider 返回 sandbox ID 和连接信息；Runtime 先将 sandbox 与 Mission/Core/Bot 生命周期绑定；Task/E 在 take 成功时再绑定。
-3. Runtime 等待 provider 报告 sandbox ready，再执行健康检查；不能只凭 create API 返回 200 就启动 Agent。
-4. 在 sandbox 内启动受控 entrypoint/worker，由 worker 启动 Pi RPC 进程并转发 prompt、事件、steer/abort 和退出状态。
-5. Runtime 通过 Pi RPC 发送稳定系统规范和本次启动消息。具体 prompt 文本由 [06](06-prompts-and-skills.md) 维护。
-
-### 3.3 Bot 启动时的只读项目浏览与 Execution 工作目录
-
-Bot 启动时先通过 Workspace Service/只读 API 浏览项目文件和 main 基线，不预先创建可写 Git clone。take 成功后 Runtime 在当前 sandbox 内准备 Execution 专属工作目录，并按 3.3.1 的受信任文件传输和 OS 权限流程开放写入。Bot 不接触 Workspace 主 Repository 的 .git，也不直接管理 Git。Material 通过 Context API/CLI 获取真实内容或受控附件，不从前任私有目录复制。
-
-Sandbox 内至少区分：
-
-| 路径类别 | 用途 | 生命周期/权限 |
+| 边界 | 可信控制方 | 明确禁止 |
 |---|---|---|
-| Project working directory | take 后由 Runtime 写入的当前 E 专属项目文件树 | take 前不存在可写目录；take 后由 OS 权限授予当前 Bot 用户；sandbox 销毁后不自动成为后继输入 |
-| Runtime scratch | Pi 会话、NuRouter 状态、临时文件和缓存 | 仅当前 Bot sandbox 可见；新 Bot 不复制 |
-| Credentials/config | 当前 E 的短期服务凭据和 endpoint 配置 | 仅必要进程可读；不进入 Material/Candidate |
-| Logs/diagnostics | 当前 E 的运行日志 | 按审计策略在外部留存；不作为研究材料自动发布 |
-| Provider mounts | 显式配置的只读/临时卷 | 每个 mount 必须声明来源、读写模式和生命周期 |
+| Sandbox Provider 管理 API | Runtime/Operator | Bot 获取管理 token、Docker socket、create/delete 或提权接口 |
+| 项目与运行目录 | Runtime/可信 entrypoint | take 前写项目、替换受保护父目录、读取其他 E 私有数据 |
+| Workspace Repository | Workspace 模块/Runtime | Bot 访问共享可写 .git、refs、宿主 Git 工作副本 |
+| Mission/Bot/E 身份 | 服务端认证与生命周期状态 | 客户端自填 ID 冒充授权 |
+| 模型与收费服务 | 有限 Mission/Bot 额度及受控调用入口 | 无约束长效密钥绕过运行预算 |
+| 网络 | 显式部署策略 | 将“可联网”或 Compose DNS 当成授权依据 |
 
-不要把上述路径混成一个可被后继克隆的 workspace。Workspace Repository 在 sandbox 外；sandbox 内项目目录只是 Runtime 为当前 E 准备的独立工作副本。
+## 3. Bot sandbox 的完整生命周期
 
-### 3.3.1 Take 时准备工作目录：不假设 Provider 支持动态挂载
+### 3.1 创建前的描述与审计
 
-Sandbox 在 Bot 启动时就已创建，因此不能把“take 时再 attach 一个 volume”当作默认可行能力。OpenSandbox 1.2.0 的 volume readOnly 是创建参数，生命周期 API 没有已确认的运行时 RO/RW mount 切换接口。
+创建 Bot 时先固定 Mission/Core/Bot、sandbox 镜像 digest、Pi/NuRouter/CLI/extension 版本、服务 endpoint、网络和选工预算。此时没有 Task/E，也不伪造占位 E。
 
-v1 的实现顺序应是：
-1. Bot sandbox 启动时，Runtime/entrypoint 在固定项目路径预留一个空目录；该目录由可信启动身份持有，Bot 的非 root 用户没有写权限。take 前读取 Workspace 文件内容通过 Workspace Service/只读 API 完成，不要求提前把整个仓库挂载进 sandbox。
-2. take 成功并确定实际 base revision/commit 后，Runtime 从 Workspace Repository 导出该版本的文件树，通过 Provider 已验证的受信任文件传输/exec 接口写入预留目录。
-3. Runtime 校验文件清单和摘要，再把目录所有权/写权限授予当前 Bot 用户；只有这一步完成后才把 Execution 标记为 active 并向 Pi 返回 take 成功。
-4. finish/超时前先关闭 E 的服务端写请求，再停止所有任务级进程并销毁整个 sandbox。由于 v1 一个 Bot 只执行一个 Task，不需要在同一 sandbox 中回收后再切换到另一个 Task worktree。
+take 时再固定 Task 合同与等待关系版本、E、初始 Workspace revision/commit、Material ID/内容版本和执行额度。最初输入保留审计；后续显式 apply/save 的变化另行记录，不能把最初输入悄悄改成“最新版本”。
 
-这里“take 前只读”主要指 Agent 可以通过 Workspace/Material 服务读取项目内容，但还不能修改 Execution 工作目录或提交贡献型服务写入。若实现必须在 take 前提供完整的本地文件树浏览，则需要验证 Provider 是否支持一个由 Runtime 可写、对 Bot 只读的目录；不能只凭 prompt 声称实现了只读权限。
+### 3.2 创建与启动
 
-**实现前必须做的 Provider spike：** 验证 Runtime 能否在运行中的 sandbox 内安全创建/填充 root-owned 目录、校验文件摘要、切换目录所有权/权限，并证明 Bot 非 root 用户无法提前写入或自行提权。若当前 Provider 的文件 API 无法满足这一点，应调整 sandbox 初始化方式或 provider 适配，不得退化成只靠 CLI 拦截。
+1. Runtime 为 Bot 创建新 sandbox，配置有限 CPU、内存、磁盘、TTL 和网络。
+2. Provider 返回资源标识后，Runtime 持久绑定 Mission/Core/Bot/sandbox；只有 take 才增加 E 绑定。
+3. 等待 ready 并执行健康检查；create 返回 200 不等于可运行。
+4. 可信 entrypoint 创建受保护的父目录和空 `/workspace/project`，Bot 用户不能写入或替换它。
+5. 在单独运行目录启动非 root worker/Pi，通过 RPC 发送稳定规范和启动消息，实际发送内容按 [06](06-prompts-and-skills.md) 记录。
 
-### 3.4 执行期间
+Pi 的项目工具路径在启动时固定为 `/workspace/project`；会话数据库、NuRouter 缓存、日志和临时文件不写入该目录。take 前这里为空不是项目内容为空；项目内容应通过 Workspace API 浏览。
 
-- Pi、NuRouter、扩展、Bash 和所有子进程都必须在同一 sandbox 的隔离边界内运行。
-- Pi 四基础工具应访问同一项目工作目录；Bash 创建的文件应能被 read/write/edit 看到，反之亦然。
-- 服务调用通过 CLI/API 网络访问外部 Service。服务端根据可信认证验证当前 E 和操作权限；网络可达不代表有写权限。
-- Runtime 监督预算、TTL、进程状态、心跳/事件和异常退出。模型输出停止不等于 sandbox 内所有后台进程停止。
-- Agent 不得通过 sandbox 内命令访问 provider 管理 API、宿主 socket、其他 E 的 volume 或外部服务数据库。
+### 3.3 目录布局与 take 前浏览
 
-### 3.5 Task finish 与 Bot sandbox 终止
+| 目录/数据 | 用途 | 权限与生命周期 |
+|---|---|---|
+| `/workspace/project` | 当前 E 的项目文件树 | 启动时空且受保护；take 后物化并 grant；不含 Bot 可管理的 .git |
+| 独立 runtime scratch | Pi 会话、NuRouter、缓存、临时文件 | 本 Bot 可写，新 Bot 不继承；不可通过其路径替换项目父目录 |
+| 凭据与绑定 | Mission 协调身份、take 后的 E 身份和 endpoint | 由可信机制注入，不进入项目版本、Material 或公开日志 |
+| 诊断日志/私有审计 | 运行解释与资源对账 | 受控外部存档，不是后继研究输入 |
+| Provider mounts | 明确配置的外部/临时卷 | 每项记录来源、模式和生命周期，不动态假设热挂载能力 |
 
-**v1 一个 Bot 只执行一个 Execution，因此 Task finish、主动 incomplete/handoff 或超时都会结束 Bot sandbox。** Runtime 必须：
-1. 阻止当前 E 发起新的服务写操作；服务端按 E 状态拒绝旧 E 的后续写请求。
-2. 撤销当前 E 的项目目录写权限和贡献型服务权限。
-3. 停止 Pi、NuRouter、Bash 及全部子进程；不能保留后台进程继续写入。
-4. 确认 sandbox 已停止/隔离后关闭 E、释放 Task 占有并记录结果。
-5. 销毁临时 sandbox 和 Execution 工作目录；Material、Candidate/main commit 等外部持久成果按各自服务合同保留。未保存的私有文件不作为后继输入。
+未绑定 Bot 使用 `swarm workspace files/read/search --at R` 浏览指定公开 revision；查询 main 时服务返回实际解析出的 revision。没有本地只读 clone，也不要求为 take 前浏览挂载整份仓库。Material 使用 Context API 读取正文与附件。
 
+### 3.3.1 Take 的唯一授权顺序
 
+Sandbox 已经启动，不默认依赖运行中 attach 新 volume。OpenSandbox 1.2.0 的 volume readOnly 是创建参数，未确认运行中 RO/RW mount 切换；因此使用固定预留目录和可信文件传输/exec。
 
-Provider 删除响应丢失或 Runtime 重启时，reconciler 根据持久 Bot/E 状态、provider resource tags 和 sandbox ID 对账。Bot sandbox 未确认停止前，不能把 Core 重新分配给新的 Bot。
+顺序严格与 [01](01-model-and-runtime.md) 一致：
 
-## 4. 文件系统与权限切换
+1. Task 协调域原子预留并建立 preparing E，项目目录仍不可写。
+2. Runtime 解析初始 revision，从外部 Repository 导出完整文件树，通过受信任接口写入 `/workspace/project`，验证文件清单与摘要。
+3. 确认环境和输入就绪后，协调域将 E 置为 active；Bot 尚未拿到贡献绑定，项目仍不可写。
+4. Runtime 复核生命周期版本和 E 状态，再授予当前 Bot 项目写权限。
+5. 原子交付受保护的 E 绑定，返回 take 成功；四基础工具随后操作同一项目目录。
 
-### 4.1 Take 前只读、Take 后可写
+不得把第 4 步放在第 3 步之前：take 前的后台进程也可能在目录变得可写时立即写入。内部 active 与向 Bot 返回成功不同；在 active→grant→绑定之间失败，必须关门、撤销 E 资格并停止/隔离 sandbox，不能留长期半激活状态。
 
-本项目的业务规则是：
-- 未 take：Agent 可以读 Mission、Task 列表、Workspace main 和有权限的 Material；不能写项目工作副本、发布研究成果或提交领域服务贡献。
-- Bot 启动阶段：Runtime 创建 sandbox、Pi Session 和 project clone；在 take 前项目目录仍只读。
-- take 成功并进入 active E：可信 Runtime 在当前 sandbox 授予项目目录写权限；服务端也验证当前 E 才接受写入。
-- closing/closed：服务端拒绝旧 E 的新写请求，Runtime 停止整个 Bot sandbox 中所有进程并销毁环境。
+grant 与 abort/finish 按 sandbox 生命周期版本排序。迟到的 provider 响应不能重新授权已结束 Bot；不可取消的调用完成后仍须继续清理，不复用该环境。
 
-这里的只读指项目文件与业务贡献，不是禁止操作系统内所有写入。Pi 运行目录、缓存和临时文件可能需要可写，但它们不能成为项目目录的旁路。
+**实现门槛：** 在固定 provider/镜像上证明运行中可信写入、清单校验、非 root grant、受保护父目录和失败撤销。若文件 API 不能满足该合同，修正 adapter/初始化方式；不得退化成只在 CLI 或 prompt 中拒写。它是实现验证门槛，不是另一套待决定的生命周期。
 
-### 4.2 OS 权限不能只靠 CLI
+### 3.4 执行、save 与显式 apply
 
-不能只在 swarm workspace write 命令中拒绝写入，因为 Bot 还可以使用 Bash、Python 或其他进程直接写文件。必须在 OS 文件权限和 mount 边界实施：
-- 项目目录由可信 entrypoint/Runtime 管理所有权；
-- Bot 以非 root 身份运行；
-- take 前目录不可写，不能 chmod/chown 或替换父目录；
-- active 时只授予当前 E 项目目录写权限；
-- 不挂载宿主 Docker socket、服务数据库、共享 Git 元数据或其他 E 的路径；
-- 拒绝符号链接/路径穿越导出，不信任 .gitignore 作为安全规则。
+- Pi、NuRouter、扩展、Bash 和所有子进程都留在本 Bot sandbox；四基础工具看到同一 `/workspace/project`。
+- Runtime 管理全部 Git。Bot 修改普通项目文件，再通过 `workspace save` 请求保存一致文件树；只有持久成功返回的 revision 才是公开成果。
+- 同一 active E 可显式 `workspace apply --from R/main`。Runtime 将来源版本与当前工作树做受控整合，保留本地改动和冲突信息；不是逐文件盲拷贝，也不重新创建 Bot/E。
+- 初始 revision 保持原记录。apply 后的工作树在 save 前不能冒称新的持久 revision；记录已应用来源、最后保存版本以及 dirty/conflicts，详见 [05](05-workspace.md)。
+- main 不会在后台覆盖当前目录。项目文件更新不包含私有会话、凭据或审计历史。
+- 服务端验证身份、操作权限和预算；网络可达不代表可贡献。
+- Runtime 监督模型、进程、TTL、资源和服务费用；模型停止输出不等于后台进程已停止。
 
-### 4.3 凭据和环境变量
+### 3.5 软收尾与 finish
 
-- Provider 管理凭据只存在于 Runtime/Operator 环境，不传入 sandbox。
-- 服务凭据通过受保护的短期注入机制提供给必要 CLI/进程；不能写进初始 prompt、Material 或日志。
-- 不能假设“没有主动传 token”就不会泄漏。Provider entrypoint 可能继承 daemon 环境；启动前必须清理继承环境并做真实泄漏测试。
-- 凭据被撤销后，服务端仍需验证当前 E 状态；删除文件不能撤销已经被进程读取的 token。
-- CLI 不接受 --execution、--bot、--task-owner 作为授权凭据。
+软提醒期间 E 仍 active，Runtime 给出有限的保存/发布/finish 窗口。服务允许保存已有文件树和研究内容，不再接受扩展工作、新计算或 main merge。窗口结束前，Bot 确认持久结果后提交四种之一的 finish；未绑定 Bot 使用 bot exit。
+
+finish 持久受理后：
+
+1. E 进入 closing，服务拒绝新的贡献；Runtime 撤销项目写入资格。
+2. 停止 Pi、NuRouter、Bash 和全部子进程；不能只发送“请停止”的文本。
+3. 确认停止或隔离后关闭 E，条件释放 Task owner，按记录更新 Task 结果。
+4. 销毁 sandbox 和临时目录；保留外部 Material、Workspace revisions、请求结果及受控审计。
+5. 只在允许安全补位且有启动条件时分配 Core，不因空闲立即热重启。
+
+硬上限、崩溃或强制终止不承诺最后一次保存。只承认此前已成功持久化的内容，不从私有目录自动生成公开成果。正常 soft grace 与接受 finish 后的 closing 必须在日志和权限中区分。
+
+### 3.6 未绑定退出、重启与回收
+
+无 E 且无未决 take 时，`bot exit --reason no-work|selection-budget` 持久记录后结束 sandbox。清理用 Bot/sandbox 标识工作，不能假设每个资源都有 E。已有受理的 Mission submission 由外部服务继续持有，不依赖 Pi 存活。
+
+Runtime 依据事件和有上限的退避恢复选工，不在同一无进展状态下持续创建 Bot。Provider 删除响应丢失时保留资源记录；未确认停止/隔离前不重新分配同一 Core。已确认隔离的残留资源可异步删除，但不能丢失其清理责任。
+
+## 4. 文件权限、凭据与预算边界
+
+### 4.1 本地文件权限
+
+- `/workspace/project` 及其父目录由可信初始化控制；take 前非 root Bot 不能写、chmod/chown 提权或替换父目录。
+- grant 仅发生在 E active 后，且只开放当前项目工作目录。
+- scratch 的可写权限不能成为访问其他 E、宿主机或项目父目录的旁路。
+- finish 后先停止接纳贡献，再停止全部本地进程；不能仅以凭据文件删除作为撤权证明。
+- 导出文件树拒绝路径穿越、危险符号链接与外部路径，不信任 .gitignore 充当安全规则。
+
+### 4.2 身份与配置
+
+- Sandbox Provider 管理凭据只留在 Runtime/Operator，Bot 不获得管理 token 或 Docker socket。
+- 未绑定阶段有受限 Mission 协调身份；take 成功交付 E 贡献绑定。服务在写入边界核对当前生命周期，不相信客户端自填 ID。
+- 明确授权的依赖修复、无 owner Task cancel、Material unsupersede 和 Mission submit 是受限协调操作；unsupersede 只撤销 04 规定的匹配替代关系，它们均不授予 Material 正文发布或项目写权限。
+- 凭据/绑定由可信机制注入，不进入初始 prompt、公开成果、Workspace revision 或日志。
+- 启动前清理继承环境并做真实泄漏验证；即使删除 token 文件，服务端仍检查旧身份已失效。
+- 同一 Bot 的子进程可能读取其业务凭据，因此这些凭据本身必须有 Mission/E 范围和有限额度；不能依赖“Bot 大概不会读取”保护费用。
+
+### 4.3 有限预算是实现门槛
+
+启动配置给出 Mission、单 Bot、选工、最终验收与收尾的有限上限、单位和计费口径。Runtime/服务要计入已发生及已承诺的并发消耗；模型和收费服务使用能执行这些限制的入口或凭据，不将无约束密钥留给 Bot 绕过计量。
+
+已接受长操作的最大消耗和取消方式在其服务合同中确定。结束 Bot 不退回已发生费用，也不让后台操作获得无限尾部额度。真实集成验证并发接纳、模型断连、Bot 退出后操作继续和硬停止；这些是已确定要求的数值配置与验收，不增加通用 permit 平台或新的架构选择。
 
 ## 5. Pi、NuRouter 与基础工具的接入
 
@@ -170,7 +152,7 @@ OpenSandbox release-1.2.0 的源码调研给出以下限制，均需在固定版
 
 | 已核对事实 | 对设计的影响 | 一手依据 |
 |---|---|---|
-| Volume readOnly 是创建参数，生命周期接口没有运行中将 RO mount 改 RW 的操作 | 第一版使用固定卷和可信目录权限，不宣称 provider 支持热切换 mount | [lifecycle schema](https://github.com/opensandbox-group/OpenSandbox/blob/62a64f0b48cdd6b410f36e53c74dc7559c87719a/specs/sandbox-lifecycle.yml) |
+| Volume readOnly 是创建参数，生命周期接口没有运行中将 RO mount 改 RW 的操作 | 第一版使用固定预留目录、可信文件传输和目录权限，不宣称 provider 支持热切换 mount | [lifecycle schema](https://github.com/opensandbox-group/OpenSandbox/blob/62a64f0b48cdd6b410f36e53c74dc7559c87719a/specs/sandbox-lifecycle.yml) |
 | Execd command 支持 uid/gid，文件接口有权限操作 | 固定非 root 启动方式，验证 Pi/Bash/子进程身份一致 | [execd schema](https://github.com/opensandbox-group/OpenSandbox/blob/62a64f0b48cdd6b410f36e53c74dc7559c87719a/specs/execd-api.yaml) |
 | prepareCommand 合并 daemon 继承环境和覆盖项 | 启动 Bot 前清理管理环境并验证无凭据泄漏 | [command environment](https://github.com/opensandbox-group/OpenSandbox/blob/62a64f0b48cdd6b410f36e53c74dc7559c87719a/components/execd/pkg/runtime/command_argv.go) |
 | /internal/init 位于免管理 token 认证的预初始化路由集合 | Bot 必须无法访问管理初始化路径；需验证部署配置是否禁用/隔离该路径 | [router](https://github.com/opensandbox-group/OpenSandbox/blob/62a64f0b48cdd6b410f36e53c74dc7559c87719a/components/execd/pkg/web/router.go)、[handler](https://github.com/opensandbox-group/OpenSandbox/blob/62a64f0b48cdd6b410f36e53c74dc7559c87719a/components/execd/pkg/web/controller/init_runtime.go) |
@@ -180,59 +162,66 @@ OpenSandbox release-1.2.0 的源码调研给出以下限制，均需在固定版
 
 ## 6. 服务网络与外部访问
 
-- Task、Context、Workspace、Judge 和领域服务部署在 sandbox 外的独立进程/容器中。
-- Sandbox 通过明确配置的 service endpoint 访问服务，不直接访问服务数据库。
-- 服务间通信使用服务自身 API；不把 Docker network 作为授权机制。
-- 外网/包源按 Mission 配置。若 provider 只支持 IP/端口级网络策略，不宣称具有域名、URL 或 SNI 级限制。
-- Provider 无法实现所需网络边界时，应调整接入方案或重新选型，不能静默降低安全要求。
+- Task/Mission 与 Workspace 使用前述外部协调域；Context、Judge 和领域服务通过各自独立 API 接入，不因拓扑图把 Workspace 强制拆成新的独立一致性域。
+- Sandbox 使用显式 endpoint，不直接访问服务数据库或依赖进程内对象。
+- 服务间通过 API 调用；Docker network 可达不是身份和授权机制。
+- 外网/包源按 Mission 配置。若 provider 只提供 IP/端口限制，不宣称具备域名、URL 或 SNI 限制。
+- 管理 API、初始化/提权接口和宿主 socket 必须从 Bot 网络与身份中隔离。无法满足时修正适配或部署，不能静默降低边界。
 
-## 7. 私有卷、Material 与 Workspace 的区别
+## 7. 私有数据与公开成果
 
-| 数据 | 所属方 | 是否被后继 E 自动继承 |
+| 数据 | 所属方 | 后继如何取得 |
 |---|---|---|
-| 当前 E 的项目 clone 和未提交文件 | 当前 sandbox/E | 否 |
-| Pi 会话、shell history、临时文件和缓存 | 当前 sandbox/E | 否 |
-| 审计日志和私有卷留存 | Runtime/Operator | 否；只供授权审计 |
-| Material 正文和附件 | Context Service | 是，按 Mission 权限和显式查询 |
-| Workspace main commits/revisions | Workspace Repository | 是，作为新 E 的项目基线 |
-| 已保存 Workspace Candidate | Workspace Repository | 是，后继可显式查看/选择，不自动覆盖 main |
+| 当前 E 未保存文件、dirty 工作树 | 当前 sandbox/E | 不自动继承 |
+| Pi 会话、shell history、临时文件和缓存 | 当前 sandbox/Bot | 不继承 |
+| 私有审计卷与日志 | Runtime/Operator | 后继无权作为研究输入读取 |
+| Material 正文/附件 | Context | 按权限与明确 ID/版本读取，遵循修正规则 |
+| Workspace revisions、main、parents | 外部 Repository | 按公开 revision 浏览，take 选起点或显式 apply |
+| candidate 文件 | 对应 Workspace revision 的普通路径 | 用 workspace/revision/path 引用，跟随文件树历史保存 |
 
-不要把 sandbox 的临时工作目录称为 Mission Workspace。Workspace 是 sandbox 外的持久 Git Repository；sandbox 内 clone 是 Execution 私有工作副本。Material 是跨 Execution 的研究内容接续载体。
+candidate 没有独立 ID、专用存储或 discard 状态。删除当前版本中的候选文件通过普通文件变更和新 save 表达，历史 revision 仍可读取。是否将保存的 revision 合入 main 是独立操作；不是每次保存都必须合入。
 
-## 8. 故障、重启与资源回收
+## 8. 故障与对账
 
 | 故障 | 必须行为 |
 |---|---|
-| Sandbox 创建失败 | 不启动 Pi；若 Task 已预留，按 Task/Runtime 补偿路径处理，不复用半创建环境 |
-| Pi/worker 启动失败 | E 不进入 active；销毁/隔离 sandbox，保留可诊断错误 |
-| Provider API 超时 | 查询同一 sandbox/operation 状态；不能盲目创建第二个环境 |
-| Runtime 进程重启 | 从持久 E/sandbox ID/resource tags 恢复管理，不恢复 Bot 进程现场 |
-| Bot 主进程退出但子进程仍活 | Runtime 必须停止 sandbox 全部进程，不能释放 Core 后遗留后台写入 |
-| Sandbox 删除失败 | 保持资源记录和清理待办；不把 Core/Task 当成可安全复用 |
-| 外部 Service 暂时不可用 | sandbox 可报告错误或等待；不允许绕过 API 直接访问服务数据库 |
-| 服务请求在 finish 前发出、之后才到达 | Service 处理时重新检查 E 当前状态；closed/closing 的旧 E 新写请求拒绝 |
+| Sandbox 创建或 worker/Pi 启动失败 | 不宣告 Bot ready；按持久 Bot/resource 记录清理，不要求存在 E |
+| Provider create 响应未知 | 查询同一创建标识/资源标签，不盲目再建第二个环境 |
+| take 准备失败 | 按 01 关闭 E，确认环境停止后条件清除 owner |
+| active 后 grant/绑定失败 | 撤销 E、关门清理，不将 active 当成成功交付 |
+| apply/save 中断 | 按 Workspace 请求和文件树记录对账，不伪造 revision 或覆盖本地冲突 |
+| finish 或 bot exit 响应丢失 | 外部持久记录继续收尾，查询原请求，不重复产生结束副作用 |
+| Bot 主进程退出但子进程存活 | 停止或隔离全部进程后再释放 Core/Task |
+| Runtime 重启 | 用 Bot、可选 E、sandbox 和具体请求恢复资源管理，不恢复旧 Pi 私有会话 |
+| 删除失败 | 保留清理记录；未确认隔离前不复用 Core |
+| 服务不可用 | 有界失败/等待，不能绕过 API 访问数据库 |
+| 旧 E 的请求迟到 | 在服务写入边界拒绝 closing/closed 身份；已明确持久受理的长操作遵守自己的合同 |
+| Mission 检查期间 Bot 退出 | submission 留在外部；按 01 的受理、冻结和迟到结果规则完成或释放冻结 |
 
-不引入进程级 checkpoint/restore，也不让后继 E 恢复前任 shell/Pi 进程。Runtime 的恢复仅指恢复对 sandbox 资源和生命周期状态的管理能力。
+## 9. 实现验证与运维配置
 
-## 9. 尚待实现验证的关键问题
+以下是已定合同的实现门槛，不是重新征求设计方向：
 
-1. **Bot 与 Execution 的绑定。** v1 一个 Bot 生命周期最多一个 Execution；后续若允许一个 Bot 连续执行多个 Task，再重新评估 sandbox 复用和工作目录切换。
-2. **take 前只读浏览。** Bot 在自己的 sandbox 中先只读查看 Workspace/Task/Material；take 后 Runtime 在同一 sandbox 中挂载 Task 专属工作目录并开放写权限。
-3. **本地 Git clone 的磁盘成本。** Workspace 外部 Repository 与每 E 独立 clone 的对象复用策略需基于真实实验规模测量；第一版不以共享可写 .git 换取空间。
-4. **私有卷留存策略。** #119 允许私有卷用于审计，但后继不能读。需明确保留期限、磁盘位置、加密和删除策略；这不等于研究 handoff。
-5. **Provider 的管理面安全。** 尤其 OpenSandbox 预初始化接口、环境继承、文件 API 身份和网络访问必须真实测试；源码检查不能替代 sandbox 边界验收。
+1. 固定 provider/镜像证明受保护空目录、可信文件传输、active→grant→绑定的顺序和失败撤销。
+2. 证明 Pi 四工具路径一致、运行数据不混入项目版本、完整子进程树可停止。
+3. 验证目录传输与 Workspace revision 的大小/耗时，配置有限磁盘和操作超时；不共享可写 .git。
+4. 私有审计配置必须给出有限保留期、访问控制、存储位置与删除任务；不向后继开放私有恢复。
+5. 验证 OpenSandbox 管理初始化入口、环境继承、文件 API 身份和实际网络配置。
+6. 验证费用约束、未绑定退出、事件/退避补位、软收尾与硬停止。
 
 ## 10. 验收门槛
 
-真实集成至少要证明：
-- 两个并发 Bot/Execution 各自运行完整 Pi/NuRouter/Bash/子进程栈，文件系统互不可见；
-- 新 Bot 对旧 Bot 私有文件、shell history、Pi 会话、工具输出不可见；
-- 只通过 Material 能接续已发布内容；
-- Pi 四基础工具操作同一文件工作面；
-- Bot 无法读取 provider 管理凭据、Docker socket、其他 E volume、Workspace 主 .git 和服务数据库；
-- take 前项目目录不可写，active 后仅当前 E 可写，finish/closing 后旧 E 无法继续写入；
-- Runtime/Provider 重启后能对账 Bot sandbox 与当前 E，能区分 Task finish 与 Bot/Sandbox 终止；
-- 服务不可用、provider 超时、创建/删除失败时均不会产生重复活跃 sandbox 或提前释放 Task/Core；
-- CLI 可通过 Bash help 发现和调用真实服务，stdout/JSON/退出码/错误语义符合统一合同。
+真实集成至少证明：
 
-当前没有 Docker/真实 provider 集成运行证据。上述均为待实现验收，不可标记为已通过。
+- 两个并发 Bot 各自运行完整 Pi/NuRouter/Bash/子进程，私有文件互不可见；
+- Bot 可以未产生 E 就正常退出，Runtime 不立即无限重启；
+- take 前 `/workspace/project` 空且不可写，files/read/search API 可以读取真实项目；
+- 文件树准备后先 active 再 grant；提前后台 writer、迟到授权和绑定失败均不绕过生命周期；
+- 同 E 显式 apply 保留初始审计和未保存改动，save 返回真实不可变 revision；
+- 后继只能读取公开 Material 和 Workspace revisions，不取得前任私有目录或会话；
+- provider 管理面、共享 .git、其他 E 数据和服务数据库不可访问；
+- 软窗口允许保存/发布/finish，finish 接受后拒绝新贡献；硬停止不虚构未持久成果；
+- Provider/Runtime 故障后能对账全部 Bot 资源，包括没有 E 的 sandbox；
+- CLI 可通过逐层 help 完成真实服务调用，结果、分页、退出码、身份与费用可核对。
+
+当前没有真实 provider 集成运行证据；上述均是后续实现验收要求，不可标记为已通过。

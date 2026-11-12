@@ -2,98 +2,82 @@
 
 > 设计与决策入口：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · 原始讨论：[Issue #120](https://github.com/LuNa-shi/SwarmEnv/issues/120) · 前置 Sandbox 阶段：[Issue #119](https://github.com/LuNa-shi/SwarmEnv/issues/119) · 文档审阅：[PR #123](https://github.com/LuNa-shi/SwarmEnv/pull/123)。
 >
-> 状态：目标设计文档，按模块逐份审核；不代表代码已经实现或真实 sandbox 已验收。当前实现手册仍以 [docs/architecture](../../architecture/INDEX.md) 为准。
+> 状态：目标设计，已按本轮用户确认统一跨模块合同。仅 Workspace 整版 merge 粒度保留最后确认；设计审阅不代表运行实现或真实 sandbox 已验收。[Architecture](../../architecture/INDEX.md) 继续描述当前实现。
 
-## 1. 项目目的
+## 1. 项目目的与对象关系
 
-本项目有两个目标：
+本项目建立可复用的 Agent Swarm 环境：Services 提供独立持久能力，Task 组织工作责任，Material 保存研究内容，Workspace 累积项目文件。研究目标是验证 Bot 能否自主发现和选择工作、形成并行分工、复用和纠正成果，并跨 Execution 推进 Mission；机制可执行不等于研究收益已成立。
 
-1. 建立清晰、可复用的 Agent Swarm 运行环境与运行策略：以 Services 为核心将外部能力与计算单元分离；以 Task 组织工作；以 Material 保存有来源、可检索和纠错的研究内容；以 Workspace 管理项目文件、版本和共同主线。
-2. 验证系统能否支持自主研究协作：Bot 能发现、提出和选择工作，形成并行分工，复用并纠正已有成果，跨 Execution 接续，并逐步推进 Mission。
-
-核心对象的分工：
-
-| 对象 | 核心职责 |
+| 对象或称谓 | 职责与关系 |
 |---|---|
-| Mission | 所有 Bot 共享的整体目标和验收范围 |
-| Task | 局部工作责任、排他执行、依赖和完成条件 |
-| Material | 可持久读取、引用、复用和纠错的研究内容 |
-| Workspace | 与 Mission 一对一绑定的本地 Git Repository |
-| main | Workspace 中持续更新的共享 Git branch |
-| Candidate | 从 Execution clone 导入 Workspace 的 Git 变更，不等于 Material |
-| Core | 可复用的计算槽位 |
-| Bot | 逻辑自主工作单元；与 Pi Session/Execution 的精确 ID 关系需在 Runtime 设计中明确 |
-| Execution | 一次 Task 的排他执行及其权限、输入和运行记录 |
-| Sandbox | 每个 Bot/Execution 的独立、临时第三方隔离环境；take 前只读，take 后 Runtime 准备 Task 专属工作目录并开放写权限；Task 完成/超时后 Bot/Sandbox 一起结束 |
+| Mission | 所有 Bot 共享的整体目标、预算和最终验收范围；不可 take |
+| Task | 局部目标、交付与完成条件；同一时刻最多一个有效执行者 |
+| Material | 可持久读取、引用和纠错的研究内容 |
+| Workspace | 与 Mission 一对一、ID 不同的本地 Git Repository |
+| revision / main | revision 固定公开文件树，含未合入保存；main 是共同项目分支 |
+| candidate 文件 | 某 Workspace revision 中的普通文件；用 revision + path 引用，不是新增对象 |
+| Core | 可复用计算槽位 |
+| Bot | 一次全新 sandbox/Pi 生命周期；对应零个或一个 Execution |
+| Execution | take 原子预留时创建的一次排他尝试，记录输入、权限与准备/执行/清理 |
+| Sandbox | Bot 的独立临时环境；预留固定项目路径，take 后物化并开放写权限，Bot 结束后销毁 |
 
-整体关系只在本 Overview 说明。各模块文档只负责自己的对象和接口，不重复介绍整套系统。
+整体对象关系由本 Overview 给出；各章负责对应合同。跨 E 可读取公开 Task、Material 和 Workspace revision，不继承私有会话、目录或未保存状态。
 
-## 2. 设计文档地图
+## 2. 文档地图
 
-| 顺序 | 文档 | 只回答哪些问题 |
+| 顺序 | 文档 | 权威范围 |
 |---|---|---|
-| 01 | [Core Runtime：Mission、Core、Bot 与 Execution](01-model-and-runtime.md) | Runtime 如何调度 Core、Bot 和 Execution？take/finish 如何与服务状态协调？ |
-| 02 | [Sandbox 与 Execution Runtime](02-sandbox-runtime.md) | 每个 E 的 sandbox 如何创建、挂载、授权、运行、销毁和回收？Pi/Bash/子进程如何隔离？ |
-| 03 | [Task：任务合同、分工与执行责任](03-task.md) | Task 最小合同、list/detail、Dependencies、提出/选择、完成和取消规则是什么？ |
-| 04 | [Material：研究内容、Evidence、检索与纠错](04-material.md) | 什么值得发布？来源如何绑定？Evidence 如何表达？怎样搜索、复用、质疑和 supersede？ |
-| 05 | [Workspace：Git Repository、Candidate 与 main 整合](05-workspace.md) | 本地 Git 如何管理？每个 E 如何得到 clone？Candidate 如何保存、discard 和 integrate？ |
-| 06 | [完整 Prompt 与 Bot Skills](06-prompts-and-skills.md) | 初始规范全文、动态启动消息、CLI、skills 和实际发送记录是什么？ |
-| 07 | [验证、相关工作与研究假设](07-validation-and-research.md) | 工程机制如何验收？研究收益如何对照和衡量？ |
-| 08 | [架构迁移与实施切片](08-architecture-migration.md) | 当前代码需要怎样迁移？依赖、实施顺序和 architecture 更新要求是什么？ |
+| 01 | [Core Runtime：Mission、Core、Bot 与 Execution](01-model-and-runtime.md) | 启动、take/finish、无任务退出、软硬停止、Mission submit |
+| 02 | [Sandbox 与 Execution Runtime](02-sandbox-runtime.md) | 固定路径、进程/网络/凭据、准备与授权、停止和 provider 验收 |
+| 03 | [Task：任务合同、分工与执行责任](03-task.md) | 稳定合同、动态等待、提案/选工、完成、取消和依赖修复 |
+| 04 | [Material：研究内容、Evidence、检索与纠错](04-material.md) | 内容与来源、使用、质疑、整份替代及错误关系撤销 |
+| 05 | [Workspace：文件、revision 与 main 合入](05-workspace.md) | 统一文件读取、稳定保存、同 E apply、三方 merge、恢复一致性 |
+| 06 | [完整 Prompt 与 Bot Skills](06-prompts-and-skills.md) | 完整规范、动态输入、CLI、四份 skills 和真实发送记录 |
+| 07 | [验证、相关工作与研究假设](07-validation-and-research.md) | 工程与组合场景、四 Bot 轨迹、研究对照和成本 |
+| 08 | [架构迁移与实施切片](08-architecture-migration.md) | 实施顺序、源码职责映射、兼容迁移与 architecture 交付 |
 
-## 3. 文档职责与避免重复
+Prompt/Skills 只把模块合同转成可执行指导，不另创权限；Validation 检验这些合同与真实行为；Migration 说明如何从现状实施，旧代码差距不充当新设计缺陷。
 
-- **Overview** 只讲目标、对象关系、文档入口和跨模块总览，不复制模块的字段表、状态机或 CLI 细节。
-- **Runtime** 负责 Mission/Core/Bot/Execution 的调度与生命周期；**Sandbox** 负责容器、文件系统、凭据、网络、进程和 provider。
-- **Task** 负责工作责任和依赖；**Material** 负责研究内容、来源、Evidence 与纠错；**Workspace** 负责 Git 文件版本、Candidate 和 main。
-- **Prompt/Skills** 只把已经审核的模块合同转成 Agent 指令和 CLI 使用方法，不重新定义业务规则。
-- **Validation** 定义可观察的验收和研究对照；**Migration** 连接目标设计与现有源码。
-- 跨模块流程在所属模块说明“本模块负责的部分”，并链接到权威模块；不在每份文档重复一套全局流程。
+## 3. 已确认的跨模块合同
 
-## 4. 已确认的关键决定
+### 3.1 Task 与 Bot 生命周期
 
-### Mission / Task
-- Mission 是所有 Bot 可见的最大共同目标；没有 Mission Task。
-- Task 是分工、进度确认和计算分配的基本单元；同一 Task 同时最多一个执行者。
-- Task Dependencies 是必有但可空的 Task ID 列表；v1 不引入复杂依赖语言。
-- 当前执行者可以修订自己的 Task，必须记录修订原因和历史；不能修改其他 Bot 正在执行的 Task。
-- Task list 展示摘要，detail 展示完整合同。
+- Mission 可以从零 Task 启动多个 Bot，自主阅读、提案和选工；选工预算有限，不要求穷尽全部历史。
+- 一个 Bot 最多 take 一个 Task，take 前允许正常 `bot exit`；Runtime 退避或等待事件，不靠假 Task 合法退出。
+- Goal、Deliverable、Completion condition 创建后稳定，不提供通用 `revise`。运行中新发现的前置工作通过窄的 `finish blocked --wait-for` 表达，不改变验收标准。
+- finish 支持 done、incomplete、blocked、cancelled；取消不满足依赖，替代不自动等价。仅在无 owner 的 blocked Task 上显式修复已取消的依赖，并核对版本、权限与无环性。
+- take 顺序统一为准备输入、E active、开放目录写权限、发布绑定并返回成功。finish 接受后拒绝新贡献，Task 直到旧进程停止/隔离才释放。
+- 软收尾仍允许保存现有文件、发布接续 Material 和 finish；硬停止立即撤权，只承认之前已持久的成果。
 
-### Material
-- Material 保存独立可读取的研究内容和来源，不与 Git commit/main 混为一谈。
-- 发布时由服务根据当前可信 Execution 自动绑定生产来源。
-- Evidence 第一版是 Agent 在正文中撰写的自然语言说明，不建独立 Evidence 对象或全局可信度分数。
-- 有意义的实际使用才记录，不追踪每次打开/下载。
-- disputed 保留并警示；superseded 从默认列表/搜索隐藏，但保留历史和精确 ID 查询。
+### 3.2 文件与知识交付
 
-### Workspace
-- Mission 与 Workspace 一对一；两个 ID 不同。
-- Workspace 是 sandbox 外的本地 Git Repository；main 是 Git branch。
-- 每次 main 更新产生 commit 并递增 Workspace revision；第一版不创建 Git tag。
-- 每个 Execution 使用独立 local clone；不共享可写 .git。
-- Candidate 长期保留；Mission 完成不删除 Workspace/Candidate；Candidate 由 Bot 显式 discard，v1 不自动清理。
-- Bot 可以直接 integrate；复杂跨 Task 整合时再创建普通 Task。
-- 最小整合门槛：有效 E、expected revision/base commit 正确、Candidate 完整且来源可追溯、明确指定的检查通过。
+- Material 保存研究内容；文件成果保存为 Workspace revision，并用 Workspace/revision/path 引用。只发布“代码完成”的文字不构成文件交付。
+- Candidate 不再有独立 ID、存储、列表或 discard；读取走普通文件接口，删除当前文件产生新版本，历史不删除。
+- take 前通过 `files/read/search` 读取真实文件；本地固定项目目录尚未填充，prompt 不假设本地有只读 clone。
+- save 固定一致文件树，不自动改 main；同一 E 可显式 apply 公开 revision，初始输入保留审计。版本变化不强制换 Bot。
+- main 采用真实三方 merge、最终合成树检查和条件更新。Runtime 管全部 Git、parents 与请求幂等，Bot 不填 Git SHA。
+- 当前有效 E 可自主合入，复杂跨 Task 协调才另建普通整合 Task；Task done、文件保存、main 更新和 Mission accepted 各自独立。
 
-### Sandbox / Services
-- 每个 Bot 生命周期使用独立、临时的第三方 sandbox，包含 Pi、NuRouter、扩展、Bash 和所有子进程。
-- Bot 启动时获得干净 sandbox/Pi Session 和只读项目访问；take 在同一 sandbox/Pi 中绑定唯一 E，由 Runtime 准备独立工作目录并切换权限；一个 Bot 最多执行一个 Task，finish/超时/handoff 后销毁 sandbox，后继 Bot 使用新环境接续 Task。
-- Task、Context、Judge 和领域服务在 sandbox 外独立部署，通过 API/CLI 通信。
-- 不做进程级恢复，不向 Bot 暴露 provider 管理凭据、Docker socket 或服务数据库。
-- 普通 CLI/API 调用由服务在处理时验证身份和当前 Execution；不引入通用 pending/permit/acceptance 协议。
+### 3.3 Material 纠错与 Mission 提交
 
-## 5. 当前待明确的问题
+- Material 正文和生产来源不可变；Evidence v1 是正文中的自然语言说明，不新增 Evidence 对象。
+- disputed 保留警示；正式 supersede 一律从默认列表和搜索隐藏整份旧 Material，新版须承接仍有效内容。精确 ID 和历史仍可读取；错误替代可通过受控撤关系操作恢复可发现性。
+- `mission submit` 固定当前 main、显式选择的不可变 Material 内容版本、验收/checker/环境版本。验证期间冻结 main merge，现有 E 仍可保存成果。
+- 失败、错误或超时保留结果并解冻；PASS 固定 accepted revision，进入正常停止。单活跃提交、请求幂等和迟到结果 guard 防止验收错版本。
+- 未绑定但具 Mission 协调权限的 Bot 可以提交公开成果；不为点击最终提交而创建 Task，不把未完成 Task 全部标成 done。
 
-以下问题不能通过模块间重复叙述来掩盖，需在相应文档审核时单独决定：
+### 3.4 第一版边界
 
-1. **Bot/Execution 生命周期已简化。** Bot 启动时在独立 sandbox/Pi 中只读研究；take 后 Runtime 准备 Execution 专属工作目录并开放权限；一个 Bot 最多执行一个 Task，Task 完成/超时/handoff 后 Bot/Sandbox/Pi 结束。Task 可以由后继 Bot 接续。详见 [01](01-model-and-runtime.md)、[02](02-sandbox-runtime.md)。
-2. **Bot ID 与 Core 的关系已确定。** Core 是可复用计算槽位；每次在 Core 上启动 Bot 都生成新的 Bot ID。一个 Bot 对应一个 sandbox/Pi 和最多一个 Execution。
-3. **Workspace 模块部署位置与 Git/元数据一致性。** 当前建议与 Task Service 同协调进程，但需实现对账；Git ref 更新和 revision 元数据不是天然同一文件系统事务。
-4. **私有审计卷保留策略。** #119 允许 sandbox 外留存私有卷用于审计，但后继 E 不可读取；保留期限、加密和清理策略需在 Sandbox 文档/实现阶段明确。
-5. **Candidate 长期保留的磁盘成本。** v1 不自动 TTL/GC，先测量实际增长，再决定后续运维策略。
+v1 的 Workspace 与 Task/Mission 位于同一协调进程和一致性域；Context、Judge 和领域服务独立持久化。普通请求直接验证身份和状态，不引入通用许可/作业系统。Git 与版本索引通过服务专属持久请求记录和恢复屏障保持一致。Workspace 长期保留、不自动 GC；Runtime 不做进程级研究恢复。
 
-## 6. 审核与维护方式
+## 4. 唯一待确认项与实施门槛
 
-每份核心模块文档完整审核后，再进入下一份。审核结论先记录在 #122，并更新对应文档及下游 Prompt、Validation、Migration。若某个后续阶段改变了对象、权限或运行语义，必须同步更新相关模块文档和 [Architecture](../../architecture/INDEX.md)。
+**待确认：文件可以分别引用，但 merge 是否默认按完整 revision 原子合入？** 本稿推荐是，以免实现、测试和配置被拆开合入；不增加逐文件选取与依赖分析。影响与示例见 [05 第 5 节](05-workspace.md#5-candidate-文件化对操作的影响)。相关 prompt、示例和验收统一按这个推荐默认展开，尚不标为最终批准。
 
-当前设计与当前实现严格区分：文档中的未来 CLI、状态、Workspace main、Candidate、Sandbox 行为均是目标合同，不能因文档合并就声称实现完成。每个实施阶段完成后，需以实际代码和运行证据更新 Architecture；本目录保留设计决策和目标边界。
+以下属于实施与验证门槛，不再重复询问设计方向：Provider 是否能可靠暂停写入、授权和停止所有进程；Git/数据库故障恢复；私有审计数据按部署政策保留；实际磁盘增长；选工、收尾与服务尾部费用配置；真实模型和实验资源授权。实现前固定版本和范围，按 07 验证，不以设计文档代替运行证据。
+
+## 5. 审核与维护
+
+设计判据是：假设所有组件忠实实现合同，四个 Bot 是否仍因规则冲突、缺操作或不合理限制无法推进。当前代码中的旧循环、Session 复用或私有恢复只属于 08 的迁移背景，不作为本轮目标设计缺陷。
+
+用户决定与采纳版本记录在 #122/PR；本目录是可审阅的版本化附件。任何合同修订同步相关模块、Prompt、Validation 和 Migration；实现 PR 再据实际行为更新 Architecture。本次只修订设计，不改运行代码，不合并 PR，也不启动付费实验。
