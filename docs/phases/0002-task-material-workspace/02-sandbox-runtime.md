@@ -91,6 +91,20 @@ Sandbox 内至少区分：
 
 不要把上述路径混成一个可被后继克隆的 workspace。Workspace Repository 在 sandbox 外；sandbox 内项目目录只是当前 E 的工作副本。
 
+### 3.3.1 Take 时准备工作目录：不假设 Provider 支持动态挂载
+
+Sandbox 在 Bot 启动时就已创建，因此不能把“take 时再 attach 一个 volume”当作默认可行能力。OpenSandbox 1.2.0 的 volume readOnly 是创建参数，生命周期 API 没有已确认的运行时 RO/RW mount 切换接口。
+
+v1 的实现顺序应是：
+1. Bot sandbox 启动时，Runtime/entrypoint 在固定项目路径预留一个空目录；该目录由可信启动身份持有，Bot 的非 root 用户没有写权限。take 前读取 Workspace 文件内容通过 Workspace Service/只读 API 完成，不要求提前把整个仓库挂载进 sandbox。
+2. take 成功并确定实际 base revision/commit 后，Runtime 从 Workspace Repository 导出该版本的文件树，通过 Provider 已验证的受信任文件传输/exec 接口写入预留目录。
+3. Runtime 校验文件清单和摘要，再把目录所有权/写权限授予当前 Bot 用户；只有这一步完成后才把 Execution 标记为 active 并向 Pi 返回 take 成功。
+4. finish/超时前先关闭 E 的服务端写请求，再停止所有任务级进程并销毁整个 sandbox。由于 v1 一个 Bot 只执行一个 Task，不需要在同一 sandbox 中回收后再切换到另一个 Task worktree。
+
+这里“take 前只读”主要指 Agent 可以通过 Workspace/Material 服务读取项目内容，但还不能修改 Execution 工作目录或提交贡献型服务写入。若实现必须在 take 前提供完整的本地文件树浏览，则需要验证 Provider 是否支持一个由 Runtime 可写、对 Bot 只读的目录；不能只凭 prompt 声称实现了只读权限。
+
+**实现前必须做的 Provider spike：** 验证 Runtime 能否在运行中的 sandbox 内安全创建/填充 root-owned 目录、校验文件摘要、切换目录所有权/权限，并证明 Bot 非 root 用户无法提前写入或自行提权。若当前 Provider 的文件 API 无法满足这一点，应调整 sandbox 初始化方式或 provider 适配，不得退化成只靠 CLI 拦截。
+
 ### 3.4 执行期间
 
 - Pi、NuRouter、扩展、Bash 和所有子进程都必须在同一 sandbox 的隔离边界内运行。
