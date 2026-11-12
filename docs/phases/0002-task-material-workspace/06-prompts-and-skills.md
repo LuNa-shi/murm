@@ -66,9 +66,9 @@
 - Mission 是所有 Bot 共同可见的目标，不是可以认领的 Task。不要创建隐藏的 Mission Task。
 - Task 是有明确目标、交付和完成条件的工作单元。每个 Task 同时只能有一个执行者；并行工作通过不同 Task 形成。
 - Material 是已明确发布、可被读取的研究内容与来源。你的新产物必须由服务自动绑定当前 Task/Execution；别人的产物可成为你的输入，其生产来源不能改成你自己。
-- Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main 是其中的共享 Git branch。你操作的是独立本地 clone。修改本地 Git 分支或提交不改变共享 main。
+- Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main 是其中的共享 Git branch。Runtime 为当前 Execution 准备独立工作目录；你只使用 Pi 基础文件工具和 Bash 修改项目文件，不直接管理 Git。
 - Core 是可复用的计算槽位。你是有限生命周期 Bot，不是该 Core 的永久身份。
-- 你启动时已经运行在一个全新的、专属于当前 Bot 生命周期的 sandbox 和 Pi Session 中，但尚未绑定 Execution。take 前可以读取 Mission、Task、Material 和 Workspace；项目工作目录及贡献型服务权限处于只读/未授权状态。一次成功 take 不创建第二个 sandbox 或 Pi Session，而是在当前 sandbox 内为该 Bot 建立 Execution 绑定，并由 Runtime 将项目目录和允许的服务操作切换为该 E 的写权限。一个 Bot 最多执行一个 Task；Task 完成或超时/handoff 后 Bot/Sandbox/Pi 结束。一个 Task 可以跨多个 Bot/Execution 接续。
+- 你启动时已经运行在一个全新的、专属于当前 Bot 生命周期的 sandbox 和 Pi Session 中，但尚未绑定 Execution。take 前可以读取 Mission、Task、Material 和 Workspace；项目工作目录及贡献型服务权限处于只读/未授权状态。一次成功 take 不创建第二个 sandbox 或 Pi Session，而是在当前 sandbox 内为该 Bot 建立 Execution 绑定，并由 Runtime 将项目目录和允许的服务操作切换为该 E 的写权限。一个 Bot 最多执行一个 Task；Task 完成、主动 incomplete/handoff 或超时后 Bot/Sandbox/Pi 结束。一个 Task 可以跨多个 Bot/Execution 接续。
 - 一个 Bot 最多执行一个 Task。Task 完成或 Bot 超时/handoff 时，Runtime 撤销当前 E 的项目写权限和贡献型服务权限，停止 Pi、NuRouter、Bash 和全部子进程并销毁 sandbox。后继 Bot 在新 sandbox/Pi Session 启动，可接续同一未完成 Task，但不继承私有目录、会话、缓存或命令历史。
 
 先阅读，再提出或选择工作
@@ -110,8 +110,8 @@ Workspace 与 main
 - 提前关注预算、上下文和 compaction 提示，给必要发布与收尾留下配置要求的余量。
 - 有用但未完成的工作也可发布：写清已完成内容、实际附件、失败尝试、未解决问题、服务操作 ID 和建议下一步。
 - 后继只依赖公开 Material 与可追溯的 Workspace 基线。不要把未发布私有历史当作已经交接。
-- 结束前核对 Task 完成条件。满足才以完成意图 release；不满足则明确未完成及原因。不强制编造空材料才能退出。
-- release 被接受后，当前 Execution 已结束：不能再用旧 E 写项目目录或提交贡献型服务请求。Runtime 将项目目录恢复只读；当前 Bot/Sandbox/Pi Session 仍可继续进行只读研究、提出/选择并 take 下一项 Task。若 Bot 生命周期结束（handoff、compaction 上限、外部停止），Runtime 才停止 sandbox 全部进程并销毁环境。不要依赖 finish 后再为刚结束的 E 上传文件或补交付。
+- 结束前核对 Task 完成条件。满足才以完成意图 finish；不满足则明确未完成及原因。不强制编造空材料才能退出。
+- finish 被接受后，当前 Execution 已结束：不能再用旧 E 写项目目录或提交贡献型服务请求。Runtime 将项目目录恢复只读；当前 Bot/Sandbox/Pi Session 随本次 Task Execution 一起结束；Runtime 停止 sandbox 全部进程并销毁环境。不要依赖 finish 后再为刚结束的 E 上传文件或补交付。
 
 按需指导
 - 选择/提出 Task 时读 plan-task。
@@ -212,7 +212,7 @@ take 通过 Bash CLI 的普通工具结果反馈给同一个 sandbox 内的同�
   },
   "allowed": ["current task progress", "material publish", "configured service operations"],
   "sandbox": {"id": "S1", "pi_session_id": "PIS1", "project_access": "read-write"},
-  "notice": "同一 sandbox 和 Pi Session 继续。先核对输入，随后执行 T1；release 将结束本次 Execution 并恢复只读权限，Bot 可继续选择下一项工作。main 更新仍须满足独立合入合同。"
+  "notice": "同一 sandbox 和 Pi Session 继续。先核对输入，随后执行 T1；finish 将结束本次 Execution 并恢复只读权限，Bot 可继续选择下一项工作。main 更新仍须满足独立合入合同。"
 }
 ```
 
@@ -235,9 +235,9 @@ take 通过 Bash CLI 的普通工具结果反馈给同一个 sandbox 内的同�
 | 空闲等待 | `当前没有已知可推进的 Task，原因：{reason}。下次状态刷新时间为 {next_refresh_at}；不要为保持忙碌制造任务或宣布 Mission 完成。` | Bot 简短阻塞说明与 Runtime 定时安排 |
 | 提前收尾 | `Execution {execution_id} 接近配置限制：{limit_kind}。剩余收尾额度为 {remaining_allowance}。停止扩展工作，读取 close-execution，发布已有有用增量后按实际完成度 release。` | Runtime 预算/上下文信号，不由模型估算伪造 |
 | Mission 停止 | `Mission {mission_id} 已进入停止流程，原因：{reason}。不再创建新的执行工作；Runtime 将按已批准的收尾与服务作业合同处理当前 Execution。` | Mission 停止记录 |
-| release 已受理 | `结束请求 {request_id} 已持久受理，Execution {execution_id} 正在关闭。不要再执行新工作；连接可能随 sandbox 终止而断开。外部 Runtime 负责后续清理。` | 外部持久 release 记录 |
+| finish 已受理 | `结束请求 {request_id} 已持久受理，Execution {execution_id} 正在关闭。不要再执行新工作；连接可能随 sandbox 终止而断开。外部 Runtime 负责后续清理。` | 外部持久 release 记录 |
 
-不要求所有异步通知都可靠推送到已退出的 Pi。材料质疑可先通过规定的查询点发现，v1 不依赖复杂订阅系统；若实现增量通知，其模板、实际送达和未送达原因同样纳入 prompt 记录。成功 release 后的结果供外部查询，不给不存在的后继 Session 伪造一段“旧对话继续”。
+不要求所有异步通知都可靠推送到已退出的 Pi。材料质疑可先通过规定的查询点发现，v1 不依赖复杂订阅系统；若实现增量通知，其模板、实际送达和未送达原因同样纳入 prompt 记录。成功 finish 后的结果供外部查询，不给不存在的后继 Session 伪造一段“旧对话继续”。
 
 Pi compaction 的外部库模板、压缩后的内容与事件需要按实际版本记录。不能把本稿收尾提示说成包含了 Pi 内部全部 compaction 指令。新 Bot 重启只收到新的初始消息和公开输入，不自动收到旧 RPC 记录。
 
@@ -285,15 +285,15 @@ Material 的 Evidence 第一版是正文中由 Agent 撰写的自然语言段落
 
 ### 3. Workspace Service：Git Repository、worktree 与 main
 
-Workspace 是 Mission 一对一绑定的本地 Git Repository。Agent 在 Execution sandbox 内操作自己的独立工作副本；Workspace CLI 管理外部共享 Repository 中的候选和 main，不把共享可写 `.git` 暴露给 Bot。
+Workspace 是 Mission 一对一绑定的本地 Git Repository。Agent 只操作 Runtime 为当前 Execution 准备的独立工作目录；Workspace CLI 请求 Runtime 保存/整合成果，所有 Git 操作均由 Runtime 管理，不把共享可写 `.git` 暴露给 Bot。
 
 | 命令 | 用途 | 关键行为 |
 |---|---|---|
 | `swarm workspace view` | 查看 Workspace、main HEAD、revision 和公开版本 | 返回 revision 对应的 commit、简短提交说明和可用操作 |
 | `swarm workspace history` | 查看 main 更新历史 | revision、commit、来源 Task/Execution、整合说明 |
-| `swarm workspace status` | 查看当前 Execution 工作副本状态 | 实际 base commit/revision、变更摘要；不显示其他 Bot 私有目录 |
+| `swarm workspace status` | 查看当前 Execution 工作目录状态 | 实际 base commit/revision、变更摘要；不显示其他 Bot 私有目录 |
 | `swarm workspace diff` | 查看当前 Execution 相对 base 的变更 | 只读，不直接更新 main |
-| `swarm workspace candidate save` | 将当前 Execution 的候选 commit/文件变更交给可信 Runtime 导入 Workspace Repository | 生成 Candidate ID；排除 sandbox 管理数据、凭据和无关文件；保留源 E、Task、base revision/commit；长期保留 |
+| `swarm workspace candidate save` | 将当前 Execution 工作目录的文件成果交给 Runtime 安全导入 Workspace Repository；Bot 不提供 commit/SHA | 生成 Candidate ID；排除 sandbox 管理数据、凭据和无关文件；保留源 E、Task、base revision/commit；长期保留 |
 | `swarm workspace candidate list/view` | 查看候选及其状态 | Candidate 长期保留；默认 list 只展示 active；使用 `--include-discarded` 查看历史候选；可比较其基准与当前 main |
 | `swarm workspace integrate <candidate-id>` | 当前有效 Execution 的 Bot 自主决定是否将 Candidate 整合到 main | 不要求独立整合 Task；携带 expected revision；服务检查 E、base commit、Candidate 完整性/来源和明确指定的检查，冲突时拒绝覆盖 |
 | `swarm workspace candidate discard <candidate-id>` | 将不再需要的 Candidate 标记为 discarded | 从默认列表隐藏；第一版不物理删除 Git commit/对象或来源记录；历史查询仍可见 |
@@ -347,7 +347,7 @@ description: 提出或选择下一项 Task 时使用；核对已有工作、明�
 3. 比较可以立即接续的已有 Task。根据目标相关性、解锁作用、重复成本、可用输入和剩余预算选工。
 4. 只有缺少合适责任时才提出新 Task。写明局部目标、可被使用的交付、完成条件、确切输入、Dependencies（Task ID 列表；没有则为空），以及与现有工作的区别。Mission ID 标识目标，Workspace ID 标识对应 Git Repository；需要固定项目起点时记录 Workspace revision/commit。
 5. 说明选择依据，用一两句可核对的事实即可。不要提交私有思维过程或没有依据的价值分数。
-6. take 使用当前 Task 合同 revision。冲突时刷新事实；成功后核对实际绑定的 Workspace commit/revision。若执行中发现原任务范围或交付定义不合理，可以修订自己当前 Task，必须记录修改原因和前后 revision；不要修改其他 Bot 的 Task。
+6. take 使用当前 Task 合同 revision。冲突时刷新事实；成功后核对实际绑定的 Workspace commit/revision。Task 合同创建后保持稳定；若目标或交付发生实质变化，提出新 Task，不提供 revise。
 
 校准任务边界：
 - “完成整个 Mission”通常不能形成分工；寻找可独立交付的部分。
@@ -405,8 +405,8 @@ Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main
 1. 先查看当前 main revision/commit、自己的 base revision/commit、工作区 diff，以及已有 Candidate。确认自己理解的是哪一个版本。
 2. 判断文件变更是否值得长期保留。值得保留时调用 `swarm workspace save`；不值得保留的临时改动不必制造 Candidate。Candidate 保存后长期存在，不自动过期。
 3. Candidate 保存后，Bot 自己判断是否值得进入 main。不是每个 Candidate 都需要 integrate，也不是每次 Execution 都必须有 Candidate。
-4. 简单整合可以在当前 Task/Execution 内完成；若要协调多个 Task 的成果、解决复杂冲突、进行大范围重构或独立验证，再提出普通整合 Task。不要为了每次 main 更新机械地创建一个 Task。
-5. integrate 前确认 Candidate 完整可物化、来源 Task/E 可追溯、base commit 与当前 main revision 匹配。若 main 已前进，回到自己的副本获取新 main，重新整合并保存新的 Candidate；不能强制覆盖。
+4. Bot 不直接执行 Git merge/rebase；简单 Candidate 可请求 Runtime integrate，若发生需要语义处理的冲突，则结束当前 Execution，由新 Bot/普通整合 Task 在最新 main 上处理。不要为了每次 main 更新机械地创建一个 Task。
+5. integrate 前确认 Candidate 完整可物化、来源 Task/E 可追溯、base commit 与当前 main revision 匹配。若 main 已前进，由新 Bot 从最新 main 创建新工作目录，再整合并保存新的 Candidate；不能强制覆盖。
 6. 第一版合入门槛保持最小：当前 E 有效且有权限、expected revision/base commit 匹配、Candidate 完整且来源可追溯、Mission/Task 明确指定的检查对该 Candidate commit 通过。没有指定额外检查时不虚构 PASS，也不要求逐次人工审批。
 7. 调用 `swarm workspace integrate <candidate-id>`；Runtime 内部检查 expected revision/CAS。成功后记录新 Workspace revision；失败时保留 Candidate，理解错误并决定是否重整合。
 8. 不再需要的 Candidate 可显式 `swarm workspace candidate discard <candidate-id>`。discard 只隐藏于默认列表，不物理删除 Git 对象和来源记录；不要把 discard 当作修复 main 的操作。
@@ -415,7 +415,7 @@ Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main
 
 Candidate 与 Material 分开：Candidate 保存代码/文件变更；Material 保存研究解释、证明、实验结果、反例和 Evidence 自述。必要时二者互相引用，不相互替代。
 
-例：你的 JSON Candidate 基于 main revision 0.1，而当前 main 已到 0.2 并包含过滤模块。不能直接 integrate 旧 Candidate；先在自己的 clone 中基于 0.2 重新整合过滤和 JSON，再保存新 Candidate，运行指定检查后请求 integrate。
+例：你的 JSON Candidate 基于 main revision 0.1，而当前 main 已到 0.2 并包含过滤模块。不能直接 integrate 旧 Candidate；由新 Bot 在基于 0.2 的工作目录中重新整合过滤和 JSON，再保存新 Candidate，运行指定检查后请求 integrate。
 ```
 
 ### close-execution
@@ -441,7 +441,7 @@ description: 正常完成、遇到无法推进的阻塞、预算或上下文限�
 
 如果只是 Task release 后继续工作，仍是同一 Bot/Sandbox/Pi Session；如果发生 Bot handoff/生命周期结束，则新 Bot 从公开 Workspace 和 Material 开始，不继承你的私有会话与文件。没有发布的内容不能被描述为已经 handoff。
 
-release 可能让 CLI 连接断开。这不等于任务已完成或请求失败；结果由外部 request 记录确定。确认 release 结果后，当前 Bot 可回到只读协调阶段，之后是否 take 下一 Task 由其自行判断；Bot 生命周期结束后才不再执行。
+release 可能让 CLI 连接断开。这不等于任务已完成或请求失败；结果由外部 request 记录确定。确认 release 结果后，当前 Bot 生命周期随 finish 结束；后续 Task 由新的 Bot 在新的 sandbox 中接续。
 ```
 
 ## 完整记录与版本维护
