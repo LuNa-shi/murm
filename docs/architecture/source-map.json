@@ -1,0 +1,911 @@
+{
+  "schema_version": 1,
+  "runtime_baseline": "02adbb43d39e0b23befb7f2ffc4b19ffb386a36d",
+  "reviewed_date": "2026-11-11",
+  "scope_roots": [
+    "src",
+    "scripts",
+    "config",
+    "services",
+    "fixtures"
+  ],
+  "scope_root_files": [
+    "package.json",
+    "package-lock.json",
+    "components.json",
+    ".env.example",
+    ".gitignore"
+  ],
+  "excluded": [
+    {
+      "path": "test/ and test-support/",
+      "reason": "Verification code is linked from each narrative chapter; it is not production runtime input and is not represented as executed test evidence."
+    },
+    {
+      "path": "experiments/ and reports/",
+      "reason": "Historical/private run data; belongs to version-bound evidence, not current executable architecture."
+    },
+    {
+      "path": "node_modules/ and externally supplied service bundles",
+      "reason": "External dependency/provider implementations; versions and integration boundaries are documented, internal code and private context are not vendored."
+    },
+    {
+      "path": "docs/ and .codex/",
+      "reason": "Development governance and generated reference artifacts; reviewed by documentation/link checks, not part of research-Agent runtime except explicitly listed provider documents."
+    }
+  ],
+  "files": [
+    {
+      "path": ".env.example",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Nonsecret example environment-variable names"
+    },
+    {
+      "path": ".gitignore",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Raw evidence and credential retention boundary in the working tree"
+    },
+    {
+      "path": "components.json",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "UI component generator aliases/theme configuration"
+    },
+    {
+      "path": "config/putnambench-12.json",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Checked-in twelve-problem protocol and checker/toolchain pins"
+    },
+    {
+      "path": "fixtures/putnam-1966-a1/fixture-manifest.json",
+      "category": "controlled verification data",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Controlled fixture input/checker identity"
+    },
+    {
+      "path": "fixtures/putnam-1966-a1/invalid-candidate.lean",
+      "category": "controlled verification data",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Intentionally invalid deterministic fixture input; not benchmark input"
+    },
+    {
+      "path": "fixtures/putnam-1966-a1/putnam_1966_a1.lean",
+      "category": "controlled verification data",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Locked formalization used by controlled fixture"
+    },
+    {
+      "path": "fixtures/putnam-1966-a1/valid-candidate.lean",
+      "category": "controlled verification data",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Known controlled repair fixture; not benchmark solution input"
+    },
+    {
+      "path": "package-lock.json",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Exact dependency resolution, including external Pi/frontend packages"
+    },
+    {
+      "path": "package.json",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Node support, dependency requirements and executable package scripts"
+    },
+    {
+      "path": "scripts/analyze-experiment.mjs",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Offline analysis CLI arguments and failure reporting"
+    },
+    {
+      "path": "scripts/check-architecture.mjs",
+      "category": "documentation tooling",
+      "chapters": [
+        "docs/architecture/INDEX.md",
+        "docs/architecture/12-code-coverage.md"
+      ],
+      "role": "Offline documentation gate and local-link/anchor verification"
+    },
+    {
+      "path": "scripts/generate-architecture-api.mjs",
+      "category": "documentation tooling",
+      "chapters": [
+        "docs/architecture/INDEX.md",
+        "docs/architecture/12-code-coverage.md"
+      ],
+      "role": "Offline exact API/schema/SDK extraction and drift check"
+    },
+    {
+      "path": "scripts/generate-architecture-coverage.mjs",
+      "category": "documentation tooling",
+      "chapters": [
+        "docs/architecture/INDEX.md",
+        "docs/architecture/12-code-coverage.md"
+      ],
+      "role": "Explicit source inventory, file fingerprints and coverage drift check"
+    },
+    {
+      "path": "scripts/generate-architecture-prompts.mjs",
+      "category": "documentation tooling",
+      "chapters": [
+        "docs/architecture/INDEX.md",
+        "docs/architecture/12-code-coverage.md"
+      ],
+      "role": "Offline exact prompt extraction, synthetic composition and drift check"
+    },
+    {
+      "path": "scripts/mathlib-search-service.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Mathlib HTTP provider process and environment settings"
+    },
+    {
+      "path": "scripts/run-mvp-fixture.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Deterministic versus real-Agent fixture launcher and temporary cleanup"
+    },
+    {
+      "path": "scripts/run-putnambench-benchmark.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "CLI options, locked input, persistent observer, batch and aggregate outputs"
+    },
+    {
+      "path": "scripts/serve-observability.mjs",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Persistent observer, root/worktree/database discovery and metadata lifecycle"
+    },
+    {
+      "path": "scripts/service-host.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Built-in HTTP service process composition and environment settings"
+    },
+    {
+      "path": "services/builtin/Dockerfile",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Built-in service image recipe and persisted database mount"
+    },
+    {
+      "path": "services/builtin/README.md",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Built-in provider deployment configuration"
+    },
+    {
+      "path": "services/mathlib-search/Dockerfile",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Mathlib provider image recipe"
+    },
+    {
+      "path": "services/mathlib-search/README.md",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Mathlib provider configuration and operation notes"
+    },
+    {
+      "path": "services/mathlib-search/SKILL.md",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Repository-owned full Mathlib tool usage instructions loaded by bundle"
+    },
+    {
+      "path": "services/mathlib-search/references/loogle.md",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Repository-owned query guidance loaded by bundle"
+    },
+    {
+      "path": "services/mathlib-search/service.json",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Optional provider manifest, schemas, help and documentation declarations"
+    },
+    {
+      "path": "src/agent/agent-prompt.js",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Stable identity SOP, prompt compositions, task-loop guide and hashes"
+    },
+    {
+      "path": "src/agent/capability-profile.js",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Role-specific capability profile, binding requirements and tool directory"
+    },
+    {
+      "path": "src/agent/pi-adapter.js",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Provider routing, Pi process arguments, RPC, streaming and Session lifecycle"
+    },
+    {
+      "path": "src/agent/services-bridge.js",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Authenticated per-Core tool endpoint, binding and lifecycle orchestration"
+    },
+    {
+      "path": "src/agent/swarmenv-extension.mjs",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Pi named-tool registration and bounded text results"
+    },
+    {
+      "path": "src/agent/version-manifest.js",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Adapter/version/prompt/runtime provenance manifest"
+    },
+    {
+      "path": "src/analysis/experiment-analysis.js",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Offline evidence inventory, timeline reconstruction, metrics and report rendering"
+    },
+    {
+      "path": "src/benchmark/parallelism.js",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Core/turn intervals, readiness samples, utilization and work-unit projections"
+    },
+    {
+      "path": "src/benchmark/putnam-runner.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Project composition, Agent claim loop, Judge orchestration, stop and reports"
+    },
+    {
+      "path": "src/context/context-service.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Material publication, lineage, read/search and consumption persistence"
+    },
+    {
+      "path": "src/e2e/real-agent-path.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Controlled one-Core real-provider repair probe and sanitized acceptance report"
+    },
+    {
+      "path": "src/e2e/script-executor.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Deterministic scripted legacy fixture and checker health shim"
+    },
+    {
+      "path": "src/errors.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Shared structured error vocabulary and normalization"
+    },
+    {
+      "path": "src/index.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Public exports for domain services, Runtime, SDK, benchmark and fixtures"
+    },
+    {
+      "path": "src/judge/check-result.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Check outcome/diagnostic classification and caller-safe result projections"
+    },
+    {
+      "path": "src/judge/fixture.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Locked fixture metadata and Candidate identity validation"
+    },
+    {
+      "path": "src/judge/judge-service.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Idempotent checks, preflight health, retries and durable CheckResults"
+    },
+    {
+      "path": "src/judge/lean-adapter.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent Lean preflight/compiler process and diagnostic extraction"
+    },
+    {
+      "path": "src/observability/benchmark-report-importer.js",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Import exported reports into observation projections"
+    },
+    {
+      "path": "src/observability/client/App.jsx",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Dashboard navigation, experiment/Core/Task/Material/Check/Workspace views"
+    },
+    {
+      "path": "src/observability/client/components/ui/badge.jsx",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "State/status badge rendering"
+    },
+    {
+      "path": "src/observability/client/components/ui/button.jsx",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Shared button presentation"
+    },
+    {
+      "path": "src/observability/client/components/ui/card.jsx",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Shared card presentation"
+    },
+    {
+      "path": "src/observability/client/components/ui/trace.jsx",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Activity trace and timeline rendering"
+    },
+    {
+      "path": "src/observability/client/hooks/use-observation.js",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fetch, polling, SSE batching and client reconciliation"
+    },
+    {
+      "path": "src/observability/client/index.html",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Maintained dashboard HTML entry"
+    },
+    {
+      "path": "src/observability/client/lib/format.js",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Human-facing time, IDs, state and value formatting"
+    },
+    {
+      "path": "src/observability/client/lib/observation.js",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Client event/state aggregation and derived views"
+    },
+    {
+      "path": "src/observability/client/lib/utils.js",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Class-name composition for UI components"
+    },
+    {
+      "path": "src/observability/client/main.jsx",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "React mount entry point"
+    },
+    {
+      "path": "src/observability/client/styles.css",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Maintained dashboard theme, layout and animations"
+    },
+    {
+      "path": "src/observability/durable-event-log.js",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Append component NDJSON with raw/sanitized logging modes"
+    },
+    {
+      "path": "src/observability/observability-server.js",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "HTTP routes, SSE, multi-store queries, reports and bounded operator reads"
+    },
+    {
+      "path": "src/observability/observation-store.js",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "SQLite event/projection schema, visibility and multi-database collections"
+    },
+    {
+      "path": "src/observability/public/app.js",
+      "category": "generated served asset",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Generated dashboard JavaScript served by the observation server"
+    },
+    {
+      "path": "src/observability/public/index.html",
+      "category": "generated served asset",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Generated dashboard HTML served by the observation server"
+    },
+    {
+      "path": "src/observability/public/styles.css",
+      "category": "generated served asset",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Generated dashboard CSS served by the observation server"
+    },
+    {
+      "path": "src/observability/vite.config.js",
+      "category": "dashboard and build",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Dashboard build paths, asset naming and development API proxy"
+    },
+    {
+      "path": "src/observability/workspace-provider.js",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Workspace inspection adapter for observation routes"
+    },
+    {
+      "path": "src/protocol/envelope.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Identity/version envelope validation and stable serialization"
+    },
+    {
+      "path": "src/runtime/identity-task-loop.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Per-Core discovery/take supervisor, rescans, waiting and wake events"
+    },
+    {
+      "path": "src/runtime/runtime-capabilities.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Exact local Workspace/Sandbox/progress/lifecycle tool declarations"
+    },
+    {
+      "path": "src/runtime/runtime.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Binding, physical process/capacity ownership, fencing, recovery and rotation"
+    },
+    {
+      "path": "src/runtime/sandbox-manager.js",
+      "category": "Workspace and Sandbox",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/09-known-boundaries.md"
+      ],
+      "role": "Docker image/container lifecycle, bounded command transport and job registry"
+    },
+    {
+      "path": "src/runtime/scheduler.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Retained standalone scheduler API and compatibility tests; not benchmark selector"
+    },
+    {
+      "path": "src/runtime/task-controller.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Durable readiness reconciliation and idle-identity wake signals"
+    },
+    {
+      "path": "src/runtime/workspace-contract.js",
+      "category": "Workspace and Sandbox",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/09-known-boundaries.md"
+      ],
+      "role": "Workspace path normalization, input/output contracts and required-input validation"
+    },
+    {
+      "path": "src/runtime/workspace-manager.js",
+      "category": "Workspace and Sandbox",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/09-known-boundaries.md"
+      ],
+      "role": "Execution-owned filesystem, manifests, revisions, local Git and snapshots"
+    },
+    {
+      "path": "src/sdk/builtin-registry.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Built-in registered manifests and local/remote provider composition"
+    },
+    {
+      "path": "src/sdk/local-service-double.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Deterministic SDK/service test double; not production domain authority"
+    },
+    {
+      "path": "src/sdk/service-adapter.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "In-process and HTTP adapters, readiness, timeout and transport errors"
+    },
+    {
+      "path": "src/sdk/service-bundle.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Manifest and Service documentation loading with containment/hash checks"
+    },
+    {
+      "path": "src/sdk/service-catalog.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Operation schemas/help, discoverability and retained compatibility catalog"
+    },
+    {
+      "path": "src/sdk/service-host.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "HTTP manifest/readiness/invocation server and token/role/binding checks"
+    },
+    {
+      "path": "src/sdk/service-manifest.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Manifest/capability normalization, endpoint and schema metadata validation"
+    },
+    {
+      "path": "src/sdk/service-registry.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Provider registration, profile projection, readiness cache and invocation"
+    },
+    {
+      "path": "src/sdk/service-router.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Synchronous local control-plane routing and fallback operation sets"
+    },
+    {
+      "path": "src/sdk/services-sdk.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Public typed-by-convention wrappers and authorization envelope construction"
+    },
+    {
+      "path": "src/services/mathlib-search-service.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Upstream or local lexical Mathlib provider, cache, limits and fallback"
+    },
+    {
+      "path": "src/storage/context-schema.js",
+      "category": "durable storage",
+      "chapters": [
+        "docs/architecture/11-storage-reference.md",
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Material/consumption/operation SQL schema"
+    },
+    {
+      "path": "src/storage/judge-schema.js",
+      "category": "durable storage",
+      "chapters": [
+        "docs/architecture/11-storage-reference.md",
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Checker health/request/result/operation SQL schema"
+    },
+    {
+      "path": "src/storage/schema.js",
+      "category": "durable storage",
+      "chapters": [
+        "docs/architecture/11-storage-reference.md",
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Mission/Task/Execution/dependency/notification/operation SQL schema"
+    },
+    {
+      "path": "src/task/task-service.js",
+      "category": "Mission and Task",
+      "chapters": [
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Authoritative Task/Execution transactions, admission, projections and lifecycle"
+    },
+    {
+      "path": "src/task/task-types.js",
+      "category": "Mission and Task",
+      "chapters": [
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Task/Execution state vocabulary, legacy Task proposal defaults and completion-contract normalization"
+    }
+  ]
+}

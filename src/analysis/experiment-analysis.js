@@ -2025,7 +2025,7 @@ function deriveConclusions(analysis) {
   if (analysis.candidates.infrastructure_failure_count) conclusions.push({ type: 'Interpretation', text: `${analysis.candidates.infrastructure_failure_count} Candidate check(s) were infrastructure failures and produced no mathematical verdict. They are reported as unassessed rather than as proof failures.`, evidence: analysis.candidates.rows.filter((row) => row.result_class === 'infrastructure_failure').flatMap((row) => row.evidence).slice(0, 12) });
   if (analysis.candidates.all_failed) conclusions.push({ type: 'Interpretation', text: `None of the ${analysis.candidates.rows.length} recorded Candidate check(s) returned PASS. Repeated diagnostic classes are reported as route non-convergence, not as proof of a mathematical impossibility.`, evidence: analysis.candidates.rows.flatMap((row) => row.evidence).slice(0, 12) });
   if (analysis.terminal) conclusions.push({ type: 'Interpretation', text: analysis.terminal.interpretation, evidence: analysis.terminal.evidence.slice(0, 8) });
-  conclusions.push({ type: 'Derived metric', text: 'The report treats heartbeat, turn count, Material count, Task acceptance, and report.json made_progress as activity or supporting metrics. None is labeled productive Goal progress by itself.', evidence: ['docs/benchmark-analysis-sop.md'] });
+  conclusions.push({ type: 'Derived metric', text: 'The report treats heartbeat, turn count, Material count, Task acceptance, and report.json made_progress as activity or supporting metrics. None is labeled productive Goal progress by itself.', evidence: ['docs/workflows/experiment.md'] });
   return conclusions;
 }
 

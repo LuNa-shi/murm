@@ -1,44 +1,54 @@
 ---
 name: experiment-analysis
-description: Analyze a SwarmEnv experiment from local evidence, follow Task proposal, execution and updates, and evaluate the registered phase-one acceptance conditions.
+description: Analyze existing SwarmEnv experimental or diagnostic evidence, reconstruct Task/Execution/Material/Judge activity, and produce evidence-backed results and explanations.
 ---
 
 # SwarmEnv experiment analysis
 
-Read `AGENTS.md`, `docs/validation/phase-1-acceptance.md` and the originating Issue before judging acceptance. Write only `<experiment-directory>/analysis/experiment-analysis.md`; do not modify raw evidence. The report is Task-centric: trace why each relevant Task exists, its executions/materials, and feedback-driven changes. The four questions below are diagnostic lenses inside that account, not instructions to recreate a parent-child architecture.
+Analyze **existing evidence**. This skill cannot authorize paid runs, choose a new research direction, change an approved fixture/model/checker or rewrite raw traces. Follow [the experiment workflow](../../../docs/workflows/experiment.md), the relevant **human-approved GitHub Issue**, its approved comments, and linked tickets/PRs. No local Phase spec is needed.
+
+There are two output paths:
+- **Implementation diagnostics**: small tests and authorized debugging probes may be repeated autonomously and summarized locally or at a milestone. No formal EXP ID or individual report after every iteration.
+- **Formal research/acceptance experiments**: use the preregistered Experiment ID, its parent Issue, approved comparison, stop rules and [canonical report template](../../../docs/experiments/TEMPLATE.md). Write detailed analysis to `<experiment-directory>/analysis/experiment-analysis.md`. Publish only a reviewed, sanitized version to `docs/experiments/`.
 
 ## Evidence gate
 
-Record implementation commit and clean state, fixture/environment, model/provider, prompt/config/schema identity, resource limits, timebox and actual start/end. Inspect raw Agent JSONL, Runtime/Service events, authoritative Task/Execution state and necessary Material/Workspace/Judge evidence. Missing sources are `unknown`, not zero activity. Mark incomplete comparisons `diagnostic-only` and identify the limitation.
+Identify the tested Issue contract, code commit and clean state, actual inputs, fixture/environment, model/provider, prompt/tool/schema identity, resources, timebox and actual duration. Inventory metadata, authoritative Task/Execution state, Agent logs, Runtime/Service events, Workspace versions, Materials, Candidate/Judge checks and external observation stores.
 
-Use schemas serialized in the run or source at its exact implementation commit; otherwise write `schema unavailable`. A source path never exercised in the run is `source-verified only`. Preserve stable IDs. Unmatched or reusable-Core records cannot be silently assigned to the newest Session. Never infer hidden model reasoning.
+- Source-verified, deterministic tests, controlled probes and natural Agent runs are different evidence classes.
+- Missing sources or links are **unknown**, not zero. For a formal run, absent preregistration or unmatched comparison must be identified as retrospective or diagnostic-only.
+- Compare operations with the exact run schema or source commit; otherwise mark `schema unavailable`.
+- Preserve stable IDs. Do not assign an ambiguous record to the latest Session simply because the Core or timestamp is similar. Do not infer hidden model reasoning.
 
-### 1. Orchestration question
+## Evidence reconstruction
 
-Did a concrete Task pass through creation/admission, claim, Runtime binding and release/reopening using one authoritative identity? Explain broken transitions and competing causes. Separate effective Task execution from selection, waits, tool-only waiting and cleanup.
+Use [references/evidence-map.md](references/evidence-map.md) and trace each relevant Task from proposal/admission through Execution, delivery and termination.
 
-### 2. Coordination question
+**Orchestration:** Task selection, claim, authoritative owner/Execution, Runtime binding, waiting, release and cleanup. Distinguish ready work, discovery, productive execution and waiting.
 
-Build a **Task window** from proposal through all executions and updates, and a **Material window** from production through intended recipient, read, decision and subsequent work. A read alone proves neither reuse nor value. Distinguish self-checkpoints from cross-Task delivery, and preserve separate recipient decisions.
+**Coordination:** Material producer, recipient, delivery, read, decision and subsequent action. A read or count alone does not establish useful reuse. Preserve each recipient's independent decision.
 
-Historical labels such as `closed at child scope` only describe old run evidence. They do not prescribe current parent review. Under the task-centric model, delivery acceptance, producer completion and Mission success have distinct meanings. A real handoff differs from forced expiry without a Handoff Material.
+**Execution:** Keep Task, Execution, identity, Session, Core, Workspace and revision separate. For meaningful windows explain target, action, immediate result and next effect. Establish actual predecessor/successor lineage and distinguish handoff, expiry, fencing and cleanup.
 
-### 3. Execution question
+**Tools/Judge:** Link requests, responses, error/diagnostic codes and subsequent action. Preserve Candidate input/checker/environment identity. A replay or cache hit is not necessarily an independent research iteration; checker source failure is not infrastructure failure.
 
-For each Task, reconstruct the durable Execution and Session identities in temporal order. Do not rewrite historical IDs or assume attempt_no is a Task-wide sequence. State predecessor/continuation evidence and unknown lineage. Within a meaningful work window summarize Target, Action, Immediate result and Next effect. Cite observed actions without exporting transcripts or proof/candidate source.
+Group routine calls compactly and report mismatches with concrete evidence IDs and competing explanations.
 
-Check whether a successor uses earlier results rather than repeats work, and whether feedback is processed before terminal state. Preserve voluntary handoff, controlled process interruption, ordinary recovery and run-end cleanup as different causes.
+## Report
 
-### 4. Tool contract question
+Formal reports use:
+- **Setup**: parent approved Issue, fixed inputs, comparison and evidence boundary.
+- **Results**: observed execution, system and research outcomes with IDs, costs and versions.
+- **Analysis**: evidence-supported explanations, alternatives, confounds and remaining uncertainty.
+- **Next steps**: permitted Issue-scope fixes, proposals needing a new human decision, and any recorded approval.
+- **Evidence and limitations**: references, missing data and privacy restrictions.
 
-For every recorded request/response pair in the relevant evidence, compare request, service outcome, returned information and Agent reaction. Group normal calls compactly; list mismatches individually with expected result, actual result and operational effect. Keep checker infrastructure failures separate from mathematical source failures. Repeat checks require exact target/content/environment identity; replay or cache hits are not additional research iterations.
+For a local implementation probe, only document what is needed to reproduce the defect and verify the fix. Do not turn a debugging explanation into a self-approved research hypothesis.
 
-## Phase-one acceptance
+## Verification, costs and privacy
 
-Use the Issue's preregistered baseline and treatment, denominators, eligible events, minimum coverage, thresholds and guardrails. Report PASS/FAIL/INCONCLUSIVE/BLOCKED. Do not infer success from zero errors without exercised opportunities. Do not change thresholds after observing results, count filler tasks, count whitespace-only candidates, or equate delivered with processed.
+For formal studies use the Issue-approved criteria and preregistered comparisons; for diagnostics use the accepted contract and reproducible tests. Report PASS/FAIL/INCONCLUSIVE/BLOCKED with actual coverage. An untriggered condition is not a pass; high Task, Material or Core counts do not by themselves prove useful progress.
 
-Keep natural behavior and controlled interventions separate. Attach concise Task evidence chains for S1 checks, S2 task formation or S3 feedback/continuity as applicable. Report all runs and actual costs/unknowns; preserve mathematical outcomes separately. A paired single run demonstrates a case, not a universal effect.
+Report actual costs and unknown amounts, never zero-filled assumptions. Do not publish raw Agent conversations, private reasoning, candidate/proof source, credentials, stdout/stderr, private databases or private absolute paths. Use relative event/row/commit references; external stores use `<external>/<basename>` and store identity.
 
-## Privacy and output
-
-Use relative evidence references and event/row IDs. Sources outside the experiment use `<external>/<basename>` with commit/database identity. Never publish credentials, authorization headers, raw conversations, hidden reasoning, proof source, candidate source, stdout/stderr or private absolute paths. Keep unknown links explicit. The historical report template remains usable as a set of diagnostic questions, but Task continuity and the current Issue's acceptance contract determine the current narrative.
+[references/report-template.md](references/report-template.md) is a diagnostic checklist, not a second authoritative formal template.

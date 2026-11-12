@@ -1,34 +1,36 @@
 # SwarmEnv
 
-SwarmEnv 研究以显式任务组织的 Agent Swarm。Agent 在工作中提出新的 Task，通过 Material 共享阶段成果，并根据反馈调整正在进行的任务。Runtime 提供可接续执行、资源限制与公共服务。
+SwarmEnv is a research environment for autonomous collaboration among multiple Agents. Agents can work on a shared Mission, define independent Tasks, exchange versioned Materials, and use Judge, Workspace and Runtime capabilities to check and continue their work.
 
-## 当前状态
+Current research experiments primarily use PutnamBench and Lean/Mathlib to examine collaboration mechanisms. This benchmark choice does not limit the research agenda, and existing runs do not by themselves establish a multi-Agent performance advantage.
 
-仓库已有 Task、Runtime、Workspace、Context、Judge 和观测实现。本 PR 提议确立 task-centric 第一阶段基线；**文档中的目标行为尚未全部实现**。当前已知限制包括预设研究方向、累计新增任务额度、Judge 重试门禁和不完整的运行中反馈。详见 [实现状态](docs/implementation-status.md)。
+## Start here
 
-近期继续使用现有 PutnamBench/Lean 数学环境验证任务机制，不另建非数学环境。
+| Reader / question | Document |
+|---|---|
+| Research purpose and open questions | [PROJECT.md](docs/PROJECT.md) |
+| Coding Agent instructions and permissions | [AGENTS.md](AGENTS.md) |
+| Current documentation map | [docs/INDEX.md](docs/INDEX.md) |
+| Human-reviewed development task | **Approved GitHub Issue** (Issue discussion and acceptance criteria) |
+| Implementation decisions and handoff for an Issue | The originating **GitHub Issue / PR** |
+| Complete current implementation, prompts and interfaces | [docs/architecture/INDEX.md](docs/architecture/INDEX.md) |
+| Development and experiment workflows | [Development](docs/workflows/development.md) · [Experiments](docs/workflows/experiment.md) |
+| Domain vocabulary | [GLOSSARY.md](GLOSSARY.md) |
 
-## 设计与开发入口
+The GitHub Issue is the human-facing place to approve **why** a change matters, **what** it should do, and **which observations** constitute success. The GitHub Issue and its human-approved comments are the sole requirements and acceptance source. Implementation decisions, progress, handoffs and ticket dependencies stay on the Issue/PR, with no separate local Phase or spec document. Each implementation PR updates the affected architecture; each completed stage reconciles the manual with the final code and verification evidence.
 
-| 入口 | 内容 |
-| --- | --- |
-| [AGENTS.md](AGENTS.md) | 项目约束、核心设计准则、开发与验收要求 |
-| [GLOSSARY.md](GLOSSARY.md) | 统一领域术语 |
-| [目标架构](docs/architecture.md) | 启动、分工、检查、反馈、接续与结束的完整流程 |
-| [Agent Task运行契约](docs/20261102-agent-task-runtime-contract.md) | 四 Core、主动登记/认领、Progress Material、compaction 轮换与 Git Workspace lineage |
-| [架构复盘](docs/reviews/task-centric-baseline.md) | 固定代码和实验基线的发现与设计推导 |
-| [第一阶段计划](docs/plans/phase-1/README.md) | 三个完整代码 Issue 草案、依赖与范围 |
-| [两小时验收协议](docs/validation/phase-1-acceptance.md) | 匹配对照、指标定义、触发机会和失败条件 |
-| [文档索引](docs/README.md) | 当前规范、实现说明、历史证据与归档 |
+## Implementation map
 
-先阅读 [开发流程](docs/agents/workflow.md)。本次文档 PR 不修改程序或实验配置。具体运行参数使用当前脚本和 [环境说明](docs/benchmark-environment.md)，不要把尚未实现的设计接口当作已存在命令。
+- `src/agent/` — Pi Agent adapter, prompts, capability profiles, Services Bridge
+- `src/task/`, `src/context/`, `src/judge/` — authoritative domain state
+- `src/runtime/` — Execution processes, resources and Workspaces
+- `src/observability/` — event/state inspection
+- `scripts/`, `config/`, `services/`, `test/` — operation, configuration, integrations and tests
 
-## 服务与观测
+Operational references: [Benchmark](docs/operations/benchmark.md), [built-in services](services/builtin/README.md), and [Mathlib Search](services/mathlib-search/README.md).
 
-服务部署参考 [内置服务](services/builtin/README.md) 和 [Mathlib Search](services/mathlib-search/README.md)。观测运行参考 [观测文档](docs/observability.md)；它描述当前实现，不另行定义目标架构。
+## Evidence and history
 
-真实实验输出统一放在受忽略的 `experiments/<experiment-id>/`，共享观测数据放在 `experiments/.observability/`。脱敏历史报告保留于 [docs/experiments](docs/experiments/)，不得当作新版本已验收的证据。
+The [implementation manual](docs/architecture/INDEX.md) documents the pinned runtime baseline, while the [R16 retrospective example](docs/experiments/EXP-20261111-01-r16-example.md) records version-bound experimental activity. It does not establish mathematical success or a matched collaboration benefit. Implementation progress and outstanding checks belong in the relevant GitHub Issue/PR.
 
-## 文档版本
-
-当前规范由 `AGENTS.md`、目标架构和日期化的 Agent Task 运行契约共同定义。新建或新版本工程文档使用 `YYYYMMDD-标题短名.md`；稳定入口保留原路径，过时版本移入日期归档。旧设计已保留到 [归档](docs/archive/README.md)，原路径只保留导航。Notion 用于讨论，获确认的实现要求通过仓库 PR 维护；新讨论不会自动改写已经合并的规范。
+Obsolete documentation remains accessible from the [fixed Git history tree](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs). This working tree does not recreate an `archive/` directory. Ignored raw experiment data may not exist in Git history.

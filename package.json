@@ -9,12 +9,14 @@
   },
   "scripts": {
     "test": "node --test --test-concurrency=1",
-    "pretest": "npm run build:observability",
+    "pretest": "npm run docs:check && npm run build:observability",
     "analyze:experiment": "node scripts/analyze-experiment.mjs",
     "service:mathlib-search": "node scripts/mathlib-search-service.mjs",
     "service:builtin": "node scripts/service-host.mjs",
     "build:observability": "vite build --config src/observability/vite.config.js",
-    "dev:observability": "vite --config src/observability/vite.config.js"
+    "dev:observability": "vite --config src/observability/vite.config.js",
+    "docs:generate": "node scripts/generate-architecture-prompts.mjs && node scripts/generate-architecture-api.mjs && node scripts/generate-architecture-coverage.mjs",
+    "docs:check": "node scripts/check-architecture.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "1.3.0",

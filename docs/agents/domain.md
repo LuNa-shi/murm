@@ -1,7 +1,10 @@
-# 领域文档使用方式
+# Domain documentation configuration
 
-术语以 [GLOSSARY.md](../../GLOSSARY.md) 为准，运行约定以 [architecture.md](../architecture.md) 为准；项目约束见 [AGENTS.md](../../AGENTS.md)。`CONTEXT.md` 只是阅读地图，不再维护另一份术语定义。
+> Configuration for Matt Pocock's engineering skills · Single-context repository
 
-设计讨论中明确区分Task责任、Execution尝试、Agent Session和Core容量。若新用法与规范矛盾，提出明确的模型变更；不能因为旧代码仍有某字段就把它作为新含义。
+- Root [GLOSSARY.md](../../GLOSSARY.md) is the shared SwarmEnv vocabulary. Do not create a competing `CONTEXT.md` or glossary map for this single-context repository.
+- Accepted design and module boundaries live in [Architecture](../architecture/INDEX.md). Approved changes to those boundaries are specified by the relevant human-reviewed GitHub Issue or accepted Agent Brief.
+- Long-lived design rationale belongs in [ADRs](../adr/INDEX.md). ADRs do not replace the current approved Issue's acceptance criteria.
+- Coding Agent instructions are in [AGENTS.md](../../AGENTS.md), and practical work guidance is in the [development workflow](../workflows/development.md).
 
-[ADR](../adr/README.md) 只记录需要解释的重要取舍。历史ADR已归档，保留事实和理由，不与当前准则同时生效。术语表不包含实现方案或实验参数。
+When using `/to-spec`, `/to-tickets`, `/tdd`, `/code-review` or `/triage`, use these domain terms. Propose any newly necessary domain term or architecture rule to the human owner before treating it as an accepted requirement.
