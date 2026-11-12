@@ -145,8 +145,8 @@ Workspace 与 main
   "bot": {"id": "B1", "core_id": "C1", "sandbox_id": "S1", "phase": "unbound", "execution_id": null},
   "workspace_preview": {
     "id": "W-CSV-DEMO",
-    "main_revision": "demo-v0",
-    "snapshot_material_id": "M0",
+    "main_revision": "0.1",
+    "main_commit": "c0-demo",
     "project_path": "/workspace/project",
     "project_access": "read",
     "runtime_path": "/run/bot",
@@ -207,8 +207,8 @@ take 通过 Bash CLI 的普通工具结果反馈给同一 Pi。以下内容由�
   "workspace": {
     "id": "W-CSV-DEMO",
     "path": "/workspace/project",
-    "base_revision": "demo-v0",
-    "snapshot_material_id": "M0",
+    "base_revision": "0.1",
+    "base_commit": "c0-demo",
     "access": "write",
     "changed_since_preview": false
   },
