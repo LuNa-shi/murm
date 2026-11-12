@@ -138,7 +138,7 @@ Candidate 保存、Material 发布、Task 完成和 main 整合是不同事实�
 | 检查所用输入、检查器/政策版本和结果引用 | 防止把旧版本 PASS 贴到新候选上 |
 | 预期改善、兼容性、已知问题及知识确定程度 | 避免把代码通过或合入动作冒充科学结论 |
 
-第一版允许用 patch 作为局部成果，但交给 Workspace 模块推进 main 的候选应能完整物化目标文件树。只有一个 patch 和前任路径、没有可访问基准内容，不能成为可复现的主线版本。内容存储可以去重，逻辑上仍须给出完整可读的结果。
+第一版 Candidate 必须能在 Workspace 本地 Repository 中完整物化目标文件树。可以通过 commit/tree 存储，不要求复制多份文件；只有 patch 和前任 sandbox 路径、没有可访问基准内容，不能成为 Candidate。
 
 ## 6. 普通整合 Task 的完整流程
 
@@ -169,23 +169,23 @@ swarm workspace integrate C5 --expected-revision 0.1 --json
 
 `view` 返回 main branch、Workspace revision、对应 commit 和公开历史，不返回私有目录。`candidate save` 由可信 Runtime 从当前 Execution 的独立 clone 导出允许文件并导入 Workspace 本地 Repository，返回 candidate ID 和 commit；candidate 不必关联 Material。`candidate view/diff` 返回基准、候选内容摘要、来源 Task/E 和差异。`integrate` 由 Bot 明确选择候选并请求更新 main，携带 expected revision；服务端验证当前 E、candidate 来源、政策及检查要求。普通调用同步返回结果；如果本地 Git 操作确实耗时而需要异步化，由 Workspace Service 自己定义状态查询，不引入通用 request/permit 框架。
 
-**合入政策在 Mission 初始化时确定并有版本。** 政策声明允许的变更范围、必需的检查、结果证据来源、是否需要人工批准。第一版采用最小整合政策，不建立通用审批 DSL 或复杂 Mission policy engine。Workspace Service 至少检查：(1) 当前调用者是有效 Execution，且对该 Workspace 有整合权限；(2) expected revision 与当前 main revision 一致；(3) Candidate commit 已完整导入、可物化且来源可追溯；(4) Mission/Task 明确指定的检查已经针对该 Candidate commit 执行并通过。若没有指定额外检查，则不虚构测试门槛，但仍必须满足版本、完整性和来源要求。第一版默认不要求人工逐次批准。
+**第一版采用最小整合政策。** 不建立通用审批 DSL 或复杂 Mission policy engine。Workspace Service 只检查当前 E 身份与权限、expected revision/base commit、Candidate 完整性与来源，以及 Mission/Task 明确指定的检查是否通过。Workspace Service 至少检查：(1) 当前调用者是有效 Execution，且对该 Workspace 有整合权限；(2) expected revision 与当前 main revision 一致；(3) Candidate commit 已完整导入、可物化且来源可追溯；(4) Mission/Task 明确指定的检查已经针对该 Candidate commit 执行并通过。若 Mission/Task 没有指定额外检查，则不虚构测试门槛，但仍必须满足版本、完整性和来源要求。第一版默认不要求人工逐次批准。
 
 政策检查可以只验证材料格式、来源与范围，也可以验证编译、测试、形式证明或其他领域条件，取决于 Mission。研究性文件允许明确标注的假设与未决问题。**main 表示项目接纳的当前共同工作基础，不保证里面每个知识主张已被证明为真。**
 
 服务处理顺序：
 
 1. 验证调用者身份和当前 E；若 CLI/API 操作本身有重试语义，使用该操作自己的幂等键避免重复更新。
-2. 通过 Context API 解析候选及来源，确认可见性、内容持久性和完整摘要，记录当前已知的质疑/修正信息。Context 不可达或附件缺失时不推进 main。
-3. 从可信检查服务读取与候选摘要、输入、政策及检查器版本相符的结果。Bot 自述只能作为解释，不能冒充服务给出的通过事实。若项目需要人工接纳，核对针对该具体候选的批准。
-4. 检查当前 E 仍有效，且调用者有权操作该 Workspace。Candidate 的原始生产 Task/E 来源保持不变。确认当前 main 恰为请求的 `expected_revision`；若 main 已前进，拒绝本次整合并返回当前 revision。
+2. 从 Workspace 本地 Repository 读取 Candidate，确认 commit/tree 完整可物化、来源 Task/E、base revision/commit 和内容摘要可追溯。若 Candidate 引用了 Material，则通过 Context API 查询其当前 disputed/superseded 状态；不直接访问 Context 数据库。
+3. 检查 Mission/Task 是否明确指定了针对该 Candidate 的检查；若有，确认检查结果绑定该 commit 并通过。第一版不要求通用人工审批，也不因未指定检查而虚构 PASS。
+4. 检查当前 E 仍有效，且调用者有权操作该 Workspace。Candidate 的原始生产 Task/E 来源保持不变。确认当前 main revision 等于 `expected_revision`，且 Candidate 的 base commit 与该 revision 对应的 main commit 一致；若 main 已前进或 Candidate 基于旧基准，拒绝本次整合并返回当前 revision。Bot 可在自己的副本基于新 main 重新整合后保存新的 Candidate。
 5. 在 Workspace 本地 Repository 中更新 main 到 Candidate commit 或其整合后的新 commit，并递增 Workspace revision。任何检查失败或版本不匹配都不移动 main。
 
 main 更新是一次 Workspace Service 操作。服务在处理时检查当前 E；若 release 已结束该 E，则拒绝。若 integrate 已经完成并返回成功，release 不会回滚已经提交的 main。第一版不为普通操作引入通用跨服务事务协议。
 
 Git commit 本身固定文件树内容。若候选依赖 Material 中的研究主张，Workspace candidate 记录对应 Material ID/版本；integrate 前重新查询其纠错状态。Material 被后续 supersede 不会改写历史 commit，但会提示当前 main 可能需要普通修复 Task。
 
-Workspace Candidate 的保存与 main 更新是两件事。Candidate 保存后长期保留，不因 integrate 失败或 Mission 完成而自动清理。Bot 可以显式 discard；discard 只改变 Candidate 的可用状态并从默认列表隐藏，第一版不物理删除 Git 对象和审计来源。
+Workspace Candidate 的保存与 main 更新是两件事。Candidate 保存后长期保留，不因 integrate 失败或 Mission 完成而自动清理。Bot 可以显式 discard；discard 只将状态改为 `discarded` 并从默认列表隐藏，第一版不物理删除 Git 对象、commit 或来源记录。
 
 ## 8. 并发、旧版本与失败处理
 
@@ -229,17 +229,17 @@ Mission 是为 CSV 分析工具添加过滤、分组统计和 JSON 输出。Work
 | 后继 Bot/T6 整合 M3 | 在 v1 整合，保留过滤功能，重新检查并发布 M6 | v1 → v2，指向 M6 | 不将 v0 + JSON 直接覆盖为最新 main |
 | B4 的验证资料 M4 被后继 Task 使用 | 记录有意义的使用关系；若测试文件值得保留，也可保存 Workspace candidate | 视后续判断而定 | Material 和 Git 文件候选各自独立 |
 
-若另一整合 Bot 在同一时段也以 v1 提交，只有一个请求能够把 v1 推进到 v2。失败者仍保有自己的候选 commit，但需要面对新的 v2 重新判断。这是共享主线的必要代价，不能在例子中省略。
+若另一 Bot 在同一时段也基于 revision `0.2` 整合，只有一个请求能够把 `0.2` 推进到 `0.3`。失败者仍保有自己的 Candidate，但需要面对新的 main 重新判断。这是共享主线的必要代价，不能在例子中省略。
 
-最终报告应分别回答：哪些 Task 达成交付；哪些成果已公开；main 当前具备什么；哪些 Mission 验收条件已经验证。分组统计未完成时，即使过滤和 JSON 已合入，Mission 也没有因此完成。
+最终报告应分别回答：哪些 Task 达成交付；哪些 Material 已发布、哪些 Candidate 已保存/已 discard；main 当前具备什么；哪些 Mission 验收条件已经验证。分组统计未完成时，即使过滤和 JSON 已合入，Mission 也没有因此完成。
 
 ## 11. 第一版边界与后续问题
 
-第一版仅需要一个 Workspace、一条 main、每 E 一个私有副本、显式 Material 发布、普通整合 Task，以及可重试的条件更新。Git、分支、工作副本与 PR 式审核是工程基础；本项目不把使用这些机制本身作为创新声明。它们的作用是让分工形成的成果有一个可持续累积、可追踪的共同位置。
+第一版仅需要一个 Workspace、一条 main、每 E 一个独立本地 clone、Candidate 保存/查看/discard、按需 integrate，以及普通 Material 发布。整合可在当前 Task 内完成；复杂时再创建独立整合 Task。Git、分支、工作副本与 PR 式审核是工程基础；本项目不把使用这些机制本身作为创新声明。它们的作用是让分工形成的成果有一个可持续累积、可追踪的共同位置。
 
 值得研究的是 Task 选择、可检索和可纠错的 Material、受控主线累积如何共同影响实际工作质量与成本。是否比独立并行后一次性整合更好，是否减少重复探索与错误传播，需要[对照实验](05-validation-and-research.md)，目前没有本阶段的运行证据。
 
-以下内容不作为 v1 必需机制：多 Workspace/跨 Mission 合并、长期 Bot 身份、私有工作继承、自动语义冲突解决、通用合入队列、自动 Candidate TTL/GC、所有 Candidate 自动纳入 main、强制 GitHub 账号与真实 PR、自动科学判真。Workspace 和 Candidate 第一版均不因 Mission 完成而删除；Candidate 由 Bot 显式 discard，不自动清理。Candidate 磁盘增长作为需要观测的运维问题，后续依据实际规模再讨论配额或归档。
+以下内容不作为 v1 必需机制：多 Workspace/跨 Mission 合并、长期 Bot 身份、私有工作继承、自动语义冲突解决、通用合入队列、自动 Candidate TTL/GC、所有 Candidate 自动纳入 main、强制 GitHub 账号与真实 PR、自动科学判真。Workspace 和 Candidate 第一版均不因 Mission 完成而删除；Candidate 不自动过期或清理，由 Bot 显式 discard。discard 不物理删除 Git 对象。磁盘增长作为需要观测的运维问题，后续依据实际规模再讨论归档/GC 策略。
 
 ## 12. 与当前实现的差距及验收
 
@@ -251,10 +251,10 @@ Mission 是为 CSV 分析工具添加过滤、分组统计和 JSON 输出。Work
 
 - 四 E 各自从明确版本启动，修改自己的目录不会改变其他副本或 main。
 - Bot 不能通过共享 `.git`、宿主卷、旧私有仓库或伪造 CLI 字段绕过权限。
-- 原 sandbox 删除后，所有被接纳主线版本仍可从 Workspace 本地 Git Repository 的 commit 精确物化；未发布内容不能被后继取回。
-- 两个同预期版本的合入最多一个成功；响应丢失重试返回原结果，不产生重复版本。
+- 原 sandbox 删除后，main 和所有未 discard 的 Candidate 都可从 Workspace 本地 Git Repository 的 commit 精确物化；未导出的私有内容不能被后继取回。
+- 两个相同 expected revision 的 integrate 最多一个成功；具体 integrate 重试不产生重复 main revision。
 - 输入或候选字节变化使旧检查不能继续授权；release 先撤权时拒绝新的 main 更新。
-- 候选 commit 导入、Workspace main 更新、Task 收尾之间的部分失败都能重试并对账。
+- Candidate 导入、Workspace main 更新、Task 收尾之间的部分失败都有明确结果；Candidate 保存失败不能假装成功，integrate 失败不能删除 Candidate。
 - 纠正 Material 不静默改历史，当前 main 的来源与需重验部分可识别，并能用普通 Task 发布修复版本。
 - 真实运行记录能区分 Task 交付、Material 发布、main 前进与 Mission 验收；任何一项都不以 HTTP 成功或 Git 提交数量代替。
 
