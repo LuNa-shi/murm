@@ -111,7 +111,7 @@ Workspace 与 main
 - 有用但未完成的工作也可发布：写清已完成内容、实际附件、失败尝试、未解决问题、服务操作 ID 和建议下一步。
 - 后继只依赖公开 Material 与可追溯的 Workspace 基线。不要把未发布私有历史当作已经交接。
 - 结束前核对 Task 完成条件。满足才以完成意图 release；不满足则明确未完成及原因。不强制编造空材料才能退出。
-- release 被接受后不再发起新的工作。CLI 可能随 sandbox 被停止而断开，外部 Runtime 负责撤权、停止当前 sandbox 全部进程并销毁环境，不依赖你在 release 后再上传文件或清理。
+- release 被接受后，当前 Execution 已结束：不能再用旧 E 写项目目录或提交贡献型服务请求。Runtime 将项目目录恢复只读；当前 Bot/Sandbox/Pi Session 仍可继续进行只读研究、提出/选择并 take 下一项 Task。若 Bot 生命周期结束（handoff、compaction 上限、外部停止），Runtime 才停止 sandbox 全部进程并销毁环境。不要依赖 release 后再为刚结束的 E 上传文件或补交付。
 
 按需指导
 - 选择/提出 Task 时读 plan-task。
@@ -426,7 +426,7 @@ name: close-execution
 description: 正常完成、遇到无法推进的阻塞、预算或上下文限制、准备研究交接时使用；先保存可用贡献，再结束当前 Execution。
 ---
 
-# 结束并留下可接续工作
+# 结束当前 Execution，并为后续工作留下可接续内容
 
 停止扩展当前责任，核对原 Task 的交付和完成条件，以及剩余收尾额度。
 
@@ -435,13 +435,13 @@ description: 正常完成、遇到无法推进的阻塞、预算或上下文限�
 3. 以普通 Material 发布内容和必要附件，保留来源。不复制完整私有对话，不只留下 sandbox 路径。
 4. 核对发布成功、内容可读取、Task 关联已完成。上传超时查询原请求；若仍失败，不能把本地文件当共享交付。
 5. 对照完成条件选择 release 意图。确实完成才选完成；否则写明未完成和原因。没有有用新成果时允许诚实退出，不编造空材料。
-6. 用稳定 request ID 发 release。受理后停止所有新工作，不假设还能执行下一条上传或清理命令。外部 Runtime 负责撤销当前 E 的项目/服务权限、停止全部本地进程并销毁 sandbox。
+6. 用稳定 request ID 发 release。受理后停止当前 E 的所有新贡献；外部 Runtime 负责撤销当前 E 的项目/服务写权限并将项目目录恢复只读。当前 Bot/Sandbox/Pi Session 可以继续存活并选择下一 Task；只有 Bot 生命周期结束时才停止全部进程并销毁 sandbox。
 
 已被服务持久接受的长期操作可按合同继续。把可查询的操作 ID 和输入版本留在公开接续信息中；不要承诺 release 会取消它，也不要把 pending 写成成功。
 
-新 Bot 会从公开 Workspace 和 Material 开始，不继承你的私有会话与文件。没有发布的内容不能被描述为已经 handoff。
+如果只是 Task release 后继续工作，仍是同一 Bot/Sandbox/Pi Session；如果发生 Bot handoff/生命周期结束，则新 Bot 从公开 Workspace 和 Material 开始，不继承你的私有会话与文件。没有发布的内容不能被描述为已经 handoff。
 
-release 可能让 CLI 连接断开。这不等于任务已完成或请求失败；结果由外部 request 记录确定。本 Bot 不再 take 新任务。
+release 可能让 CLI 连接断开。这不等于任务已完成或请求失败；结果由外部 request 记录确定。确认 release 结果后，当前 Bot 可回到只读协调阶段，之后是否 take 下一 Task 由其自行判断；Bot 生命周期结束后才不再执行。
 ```
 
 ## 完整记录与版本维护
