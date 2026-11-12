@@ -108,7 +108,7 @@ Task Service 提供事实、筛选和排序字段；Bot 自主选择。建议它
 
 成功 take 返回 Task/Execution 绑定、私有工作目录、实际基准版本、输入 Material 和可用服务权限。Bot 应先确认这些与选择时观察的条件一致。选择期间 main 或材料状态可能已经变化；当前 Execution 的工作副本不会被后台改写。
 
-第一版的一个 Bot 最多绑定一个 Execution。它可以在执行中提出后续 Task，却不能以切换 Task 的方式保留旧私有对话并开始第二段计算。当前责任结束后 release，新的 Bot 再选择工作。工作目录与授权细节见 [01](01-model-and-runtime.md) 和 [03](03-workspace-and-integration.md)。
+第一版的一个 Bot 最多绑定一个 Execution。它可以在执行中提出后续 Task，却不能以切换 Task 的方式保留旧私有对话并开始第二段计算。当前责任结束后 release，新的 Bot 再选择工作。工作目录与授权细节见 [01](01-model-and-runtime.md) 和 [03](05-workspace.md)。
 
 ### 4.2 什么值得成为一次持续产出
 
@@ -154,6 +154,6 @@ release 的完成/未完成意图、材料引用和原因是持久请求的一�
 | 多套旧 Task/依赖状态和 CHECK_RESULT 依赖仍可运行 | 显式映射新生命周期，检查保留普通服务调用语义，不留无说明的兼容旁路 |
 | 已有内容哈希、来源、`supersedes`、消费记录 | 复用可用基础，但补齐可读内容、修正展示、有效执行资格和真实使用证据，不能把已有字段存在视为闭环完成 |
 
-事实来源：[当前 Task 实现](../../../src/task/task-service.js)、[当前状态/合同定义](../../../src/task/task-types.js)、[当前 Context 实现](../../../src/context/context-service.js)，以及 [当前 Mission/Task/Material 手册](../../architecture/03-mission-task.md)。完整迁移范围见 [06](06-architecture-migration.md)。这些相对源码链接用于核对当前分支，事实基线仍以上述固定 commit 为准。
+事实来源：[当前 Task 实现](../../../src/task/task-service.js)、[当前状态/合同定义](../../../src/task/task-types.js)、[当前 Context 实现](../../../src/context/context-service.js)，以及 [当前 Mission/Task/Material 手册](../../architecture/03-mission-task.md)。完整迁移范围见 [06](08-architecture-migration.md)。这些相对源码链接用于核对当前分支，事实基线仍以上述固定 commit 为准。
 
-后续验证至少覆盖：从零 Task 启动、全状态列表与分页、重复提案和竞争 take、来源不可伪造、T1 产物成为 T2 输入、删除原 sandbox 后材料可读、发布/关联的部分失败、无成果退出、纠错后的旧 ID 查询、并发修正、消费者重验与 Workspace 修复。研究评估还应检查任务的实际分工、材料有效复用、接续成本和错误扩散；具体对照设计见 [05](05-validation-and-research.md)。
+后续验证至少覆盖：从零 Task 启动、全状态列表与分页、重复提案和竞争 take、来源不可伪造、T1 产物成为 T2 输入、删除原 sandbox 后材料可读、发布/关联的部分失败、无成果退出、纠错后的旧 ID 查询、并发修正、消费者重验与 Workspace 修复。研究评估还应检查任务的实际分工、材料有效复用、接续成本和错误扩散；具体对照设计见 [05](07-validation-and-research.md)。
