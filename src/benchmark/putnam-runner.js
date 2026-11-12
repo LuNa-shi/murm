@@ -1914,6 +1914,7 @@ async function createProjectState(problem, config, options) {
   const judgeService = new JudgeService(database, {
     logger: judgeLogger,
     maxInfrastructureRetries: options.maxInfrastructureRetries,
+    fixtureManifest: fixture,
     checker: options.checker ?? new LeanChecker({
       workRoot: join(projectDir, 'judge-work'),
       logger: checkerLogger,
@@ -2468,13 +2469,6 @@ async function createProjectState(problem, config, options) {
       },
       onClaimAccepted: async () => {
       },
-      onSubmitCandidate: async ({ payload }) => {
-        // Candidate checking is synchronous tool work. Source-level results
-        // stay in the current Execution; retryable checker health failures
-        // are staged by judgeCandidate and checkpointed only after the bridge
-        // has flushed the tool result to the Agent.
-        return (await judgeCandidate(core.stateRef, core, payload.candidate_material_id)) ?? {};
-      },
       onSchedulerStatus: async (payload) => {
         if (core.stateRef) core.stateRef.schedulerStatusCount += 1;
         const cores = core.stateRef?.cores ?? [core];
@@ -2821,11 +2815,20 @@ async function createProjectState(problem, config, options) {
           });
           core.stateRef?.requestIdentityWake?.();
         } else if (operation === 'submit_candidate') {
-          const check = result?.check_result ?? result?.checkResult ?? {};
+          const check = result?.check_result ?? result?.checkResult ?? result ?? {};
+          const candidateMaterial = {
+            material_id: payload?.candidate_material_id ?? check.candidate_material_id ?? null,
+            content_hash: check.content_hash ?? null,
+          };
+          core.checks.push({
+            ...sanitizedCheck(check, candidateMaterial),
+            source_path: payload?.path ?? null,
+          });
           core.observe({
             source: 'judge-service', kind: 'candidate_submitted', visibility: 'operator',
             taskId, executionId, coreId: `core-${core.index}`,
             payload: {
+              candidate_path: payload?.path ?? result?.path ?? null,
               candidate_material_id: payload?.candidate_material_id ?? result?.candidate_material_id ?? null,
               check_result_id: check.check_result_id ?? result?.check_result_id ?? null,
               verdict: check.verdict ?? result?.verdict ?? null,

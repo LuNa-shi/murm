@@ -166,9 +166,9 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'judge_submit_candidate', service: 'judge', operation: 'submit_candidate', version: '1.0',
-    description: 'Submit a candidate Material for the Task completion checker. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes; a checker that never starts is not a proof failure.',
+    description: 'Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['candidate_material_id'], properties: { candidate_material_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['path'], properties: { path: { type: 'string', minLength: 1 }, workspace_revision: { type: 'integer', minimum: 1 }, content_hash: { type: 'string', minLength: 1 }, request_key: { type: 'string', minLength: 1 } }, additionalProperties: false },
   },
   {
     name: 'judge_get_check_result', service: 'judge', operation: 'get_check_result', version: '1.0',

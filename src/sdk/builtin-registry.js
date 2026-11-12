@@ -150,9 +150,6 @@ function serviceDispatch(serviceId, services, registry) {
       }
     }
     const service = services[serviceId];
-    if (serviceId === 'judge' && ['submit_candidate', 'apply_check_result'].includes(capability.operation)) {
-      return services.task?.dispatch(capability.operation, input ?? {}, envelope);
-    }
     if (!service || typeof service.dispatch !== 'function') {
       const error = new Error(`built-in Service is unavailable: ${serviceId}`);
       error.code = 'SERVICE_UNAVAILABLE';

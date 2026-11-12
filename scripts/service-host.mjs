@@ -62,9 +62,6 @@ function dispatch(capability, input, envelope, role = null) {
     }
     if (capability.operation === 'list_tools') return { tools: catalogRegistry.listTools(input?.service ?? null).filter(allowed) };
   }
-  if (serviceId === 'judge' && capability.operation === 'submit_candidate') {
-    return taskService.dispatch(capability.operation, input, envelope);
-  }
   const service = serviceId === 'task' ? taskService : serviceId === 'context' ? contextService : judgeService;
   return service.dispatch(capability.operation, input, envelope);
 }

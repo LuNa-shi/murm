@@ -33,13 +33,20 @@ function resultFromRow(row) {
 }
 
 export class JudgeService {
-  constructor(database = ':memory:', { checker, logger = null, maxInfrastructureRetries = 2, dependencyEventSink = null } = {}) {
+  constructor(database = ':memory:', {
+    checker,
+    logger = null,
+    maxInfrastructureRetries = 2,
+    dependencyEventSink = null,
+    fixtureManifest = null,
+  } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     ensureJudgeSchema(this.db);
     this.checker = checker ?? new LeanChecker();
     this.logger = logger;
     this.maxInfrastructureRetries = Number.isInteger(maxInfrastructureRetries) && maxInfrastructureRetries >= 0 ? maxInfrastructureRetries : 2;
     this.dependencyEventSink = dependencyEventSink;
+    this.fixtureManifest = fixtureManifest;
   }
 
   close() { this.db.close(); }
@@ -75,6 +82,7 @@ export class JudgeService {
   dispatch(operation, payload = {}, envelope) {
     validateEnvelope(envelope);
     if (operation === 'get_check_result') return this.getAgentCheckResult(required(payload.check_result_id, 'check_result_id'));
+    if (operation === 'submit_candidate') return this.submitCandidate(payload, envelope);
     if (operation !== 'submit_check_result') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Judge operation: ${operation}`);
     return this.#transaction(() => {
       const fingerprint = operationPayload(operation, payload, envelope);
@@ -84,6 +92,82 @@ export class JudgeService {
       this.#saveOperation(envelope.operation_id, operation, fingerprint, result);
       return result;
     });
+  }
+
+  /**
+   * Agent-facing Judge operation. The Bridge supplies the authenticated
+   * Execution envelope and an internal source descriptor after reading the
+   * private Workspace. No Task Service submission relay is involved.
+   */
+  async submitCandidate(payload = {}, envelope) {
+    validateEnvelope(envelope);
+    if (!envelope.task_id || !envelope.execution_id) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'submit_candidate requires a bound Task and Execution');
+    }
+    const source = payload.source ?? payload.candidate_source ?? null;
+    if (!source || typeof source.content !== 'string') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate requires a Workspace source');
+    }
+    const fixtureManifest = payload.fixture_manifest ?? this.fixtureManifest;
+    if (!fixtureManifest) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge checker binding is not configured');
+    }
+    const task = payload.target_task ?? payload.task ?? {
+      task_id: envelope.task_id,
+      spec_version: envelope.spec_version,
+      workspace: { input_metadata: fixtureManifest },
+      completion_contract: {},
+    };
+    if (task.task_id !== envelope.task_id) {
+      throw new SwarmEnvError(ERROR_CODES.FENCED, 'Judge source context does not match the current Task');
+    }
+    const execution = payload.execution ?? {
+      execution_id: envelope.execution_id,
+      task_id: envelope.task_id,
+      spec_version: envelope.spec_version,
+      state_version: envelope.state_version,
+      input_snapshot_hash: payload.input_snapshot_hash ?? fixtureManifest.input_snapshot_hash ?? 'judge-input',
+      workspace_ref: payload.workspace_ref ?? null,
+      workspace_revision: source.workspace_revision ?? null,
+    };
+    if (execution.execution_id !== envelope.execution_id || execution.task_id !== envelope.task_id) {
+      throw new SwarmEnvError(ERROR_CODES.FENCED, 'Judge Execution context does not match the envelope');
+    }
+    const sourceId = payload.candidate_material_id ??
+      `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${source.content_hash ?? contentHash(source.content)}`;
+    const result = await this.judgeCandidate({
+      request_key: payload.request_key ?? hash({
+        source_id: sourceId,
+        source_hash: source.content_hash ?? contentHash(source.content),
+        task_id: envelope.task_id,
+        execution_id: envelope.execution_id,
+        revision: source.workspace_revision ?? null,
+      }),
+      candidate_material_id: sourceId,
+      target_task_id: envelope.task_id,
+      target_spec_version: task.spec_version ?? envelope.spec_version,
+      input_snapshot_hash: execution.input_snapshot_hash ?? fixtureManifest.input_snapshot_hash ?? 'judge-input',
+      checker_ref: fixtureManifest.checker_ref,
+      checker_version: fixtureManifest.checker_version,
+      environment_ref: fixtureManifest.environment_ref,
+      execution_id: envelope.execution_id,
+      state_version: execution.state_version ?? envelope.state_version,
+      candidate: {
+        material_id: sourceId,
+        content: source.content,
+        content_hash: source.content_hash ?? contentHash(source.content),
+      },
+      target_task: task,
+      workspace: {
+        input_snapshot_hash: execution.input_snapshot_hash ?? fixtureManifest.input_snapshot_hash ?? 'judge-input',
+        execution_id: envelope.execution_id,
+        task_id: envelope.task_id,
+        workspace_ref: execution.workspace_ref ?? null,
+        workspace_revision: source.workspace_revision ?? execution.workspace_revision ?? null,
+      },
+      fixture_manifest: fixtureManifest,
+    }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref });
+    return agentCheckResult(result);
   }
 
   async judgeCandidate(input, { operationId = randomUUID(), actorRef = 'judge:lean' } = {}) {
