@@ -3,7 +3,7 @@
 > 设计附件：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)。本文是待审的迁移方案，**不是已经实现的 Architecture，也不构成 runtime 实施或付费运行授权**。
 > 当前实现对照固定为 `008ecdb9ab64adcd8135042ff2160ec1db704952`。前置阶段是 [#119](https://github.com/LuNa-shi/SwarmEnv/issues/119) / [阶段 01](../0001-sandbox-services-cli.md)；它尚未完成。Judge 职责修复关联 [#117](https://github.com/LuNa-shi/SwarmEnv/issues/117)。截至 2026-11-12，[PR #118](https://github.com/LuNa-shi/SwarmEnv/pull/118) 仍 open、未 merged，不能把 legacy 删除当作现状。
 
-本章把 [01 运行模型](01-model-and-runtime.md)、[02 Task 与 Material](03-task.md)、[03 Workspace](05-workspace.md)、[04 prompt 与 skills](06-prompts-and-skills.md) 和 [05 验证](07-validation-and-research.md) 连接到当前实现。它回答改动落在哪里、哪些能力必须一起交付、怎样迁移已有数据、何时可以停用旧接口，以及每个实施 PR 怎样交付可独立阅读的完整架构说明。
+本章把 [01 Core Runtime](01-model-and-runtime.md)、[02 Sandbox](02-sandbox-runtime.md)、[03 Task](03-task.md)、[04 Material](04-material.md)、[05 Workspace](05-workspace.md)、[06 Prompt/Skills](06-prompts-and-skills.md) 和 [07 Validation](07-validation-and-research.md) 连接到当前实现。它回答改动落在哪里、哪些能力必须一起交付、怎样迁移已有数据、何时可以停用旧接口，以及每个实施 PR 怎样交付可独立阅读的完整架构说明。
 
 ## 阅读目录
 
@@ -26,7 +26,7 @@
 |---|---|---|
 | 固定 main `008ecdb9…` 的源码、schema 和现有测试 | 核对现在存在的入口、状态、依赖和兼容路径 | 测试文件存在不表示本次运行过，也不表示真实隔离成立 |
 | [Architecture](../../architecture/INDEX.md) 及 [source-map.json](../../architecture/source-map.json) | 当前已记录的实现手册和覆盖清单；清单内仍声明 runtime baseline `02adbb43d39e0b23befb7f2ffc4b19ffb386a36d` | 不能仅将 baseline 字符串改成目标版本，就宣称完成了源码与语义复核 |
-| 本阶段六章设计与批准 Issue | 说明建议实现的完整目标及迁移合同；由 Issue 指明采纳的文档 revision | 文档审核通过不证明代码已实现、真实 Bot 已表现良好或预算已获准 |
+| 本阶段模块化设计文档与批准 Issue | 说明建议实现的完整目标及迁移合同；由 Issue 指明采纳的文档 revision | 文档审核通过不证明代码已实现、真实 Bot 已表现良好或预算已获准 |
 
 本次文档 PR 可以调整阶段目录规则、链接和相应文档检查；这与后续改变 Swarm 运行行为是不同工作。它不将未来 `swarm` 命令、Workspace 主线或新状态写成当前 API。
 
