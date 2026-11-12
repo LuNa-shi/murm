@@ -50,7 +50,7 @@ flowchart TD
 
 ```
 
-图中的 Material→Task 表示显式使用关系。Material 与 Git 分开：Material 保存可独立引用的研究内容及来源；Workspace 的 main branch 保存项目文件树。Material 可以被某个 Execution 应用到 worktree，但发布 Material 不会自动修改 main。每个 E 的工作目录由 Runtime 从 Workspace 基线创建，Bot 只通过基础文件工具操作当前目录，不直接管理 Git。
+图中的 Material→Task 表示显式使用关系。Material 与 Git 分开：Material 保存可独立引用的研究内容及来源；Workspace 的 main branch 保存项目文件树。Material 可以被某个 Execution 应用到当前工作目录，但发布 Material 不会自动修改 main。每个 E 的工作目录由 Runtime 从 Workspace 基线创建，Bot 只通过基础文件工具操作当前目录，不直接管理 Git。
 
 ## 组件各自负责什么
 
