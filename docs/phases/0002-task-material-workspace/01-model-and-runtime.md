@@ -171,7 +171,7 @@ Task done、Material publish、Workspace integrate 分别是局部责任、内�
 
 ## 运行轨迹的边界
 
-完整四 Bot 例子放在 [Overview](README.md)，Task/Material/Workspace 的具体交付过程分别见 [03](03-task.md)、[04](04-material.md) 和 [05](05-workspace.md)。本文件只约束 Runtime 的共同行为：每个 Bot 最多执行一个 Task；take 在 Bot 已启动的只读 sandbox 中准备独立 Execution 工作目录并切换权限；Task 完成或超时后 Bot/Sandbox/Pi 结束。新 Bot 可从公开 Task/Material/Workspace 成果接续。新 Bot 不继承前任私有会话或目录。
+完整四 Bot 例子放在 [Overview](README.md)，Task/Material/Workspace 的具体交付过程分别见 [03](03-task.md)、[04](04-material.md) 和 [05](05-workspace.md)。本文件只约束 Runtime 的共同行为：每个 Bot 最多执行一个 Task；take 在 Bot 已启动的只读 sandbox 中由 Runtime 准备独立 Execution 工作目录并切换权限；Task 完成或超时/handoff 后 Bot/Sandbox/Pi 结束。新 Bot 可从公开 Task/Material/Workspace 成果接续。新 Bot 不继承前任私有会话或目录。
 
 ## 最小配置与可观测记录
 
@@ -190,7 +190,7 @@ Task done、Material publish、Workspace integrate 分别是局部责任、内�
 
 ## Runtime 与 Sandbox 的边界
 
-Runtime 在 Bot 生命周期开始时创建独立第三方 sandbox 和 Pi Session。Bot 在 take 前已经运行于该 sandbox 中，读取 Mission、Task、Material 和 Workspace；此时项目目录只读，贡献型服务写操作未授权。take 成功后，Runtime 在同一个 sandbox/Pi Session 中建立 Execution 绑定并切换项目目录/服务权限；release 时撤销当前 E 的写权限并恢复只读；Bot 生命周期结束或不可恢复异常时才停止全部进程并销毁 sandbox。后继 Bot 从全新 sandbox/Pi Session 开始。
+Runtime 在 Bot 生命周期开始时创建独立第三方 sandbox 和 Pi Session。Bot 在 take 前已经运行于该 sandbox 中，读取 Mission、Task、Material 和 Workspace；此时项目目录只读，贡献型服务写操作未授权。take 成功后，Runtime 在当前 Bot sandbox 中建立 Execution 绑定、创建 Task 专属工作目录并开放权限；Task finish/超时/handoff 时停止全部进程并销毁 sandbox。后继 Bot 从全新 sandbox/Pi Session 开始。
 
 Sandbox 创建、挂载、文件权限、网络、凭据、provider 选型和失败回收的完整设计见 [02](02-sandbox-runtime.md)。本文件不重复这些细节。
 
