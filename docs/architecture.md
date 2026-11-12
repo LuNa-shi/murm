@@ -37,7 +37,7 @@ task_take保证责任与执行资格不冲突，工作面准备失败时撤销�
 
 ## 4. Judge和最终验收
 
-Agent直接检查当前版本，读取诊断，修正后在同一Execution再次检查。工具内部记录输入和结果，失败不自动生成研究Task，不要求先读其他任务的Response，不强制换执行者。
+Agent直接检查当前版本，读取诊断，修正后在同一Execution再次检查。`judge.submit_candidate`从当前Execution的私有Workspace提交相对文件路径，经Bridge读取并附带路径、revision和content hash的内部attestation，再由Registry直接送入Judge；不要求先发布Candidate Material，也不经过Task Service或Benchmark Runner callback。Judge保存CheckResult、区分源码失败与checker故障并提供幂等重放。PASS不会自动完成Task或Mission；需要完成责任时，Agent显式调用Task completion并引用CheckResult。
 
 局部引理、编译检查和完整原题结果分别报告。最终成功必须由固定原题与环境对确定候选版本验收；任一有权限的执行者可以提交，不限于最初身份。服务错误与数学失败分开，旧PASS不能验收新内容。
 

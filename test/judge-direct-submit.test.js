@@ -126,6 +126,30 @@ test('direct Judge submission rejects a stale Workspace revision before checking
   }
 });
 
+test('direct Judge binds a transport request key to the submitted source', async () => {
+  const state = setup();
+  try {
+    const first = await state.bridge.call({
+      operation: 'submit_candidate',
+      operation_id: 'direct-submit-idempotency',
+      payload: { path: 'Candidate.lean', workspace_revision: 1 },
+    });
+    assert.equal(first.verdict, 'FAIL');
+    state.setContent('theorem valid-proof-changed : True := by trivial');
+    await assert.rejects(
+      () => state.bridge.call({
+        operation: 'submit_candidate',
+        operation_id: 'direct-submit-idempotency',
+        payload: { path: 'Candidate.lean', workspace_revision: 2 },
+      }),
+      (error) => error.code === 'CONFLICT',
+    );
+  } finally {
+    await state.bridge.stop();
+    state.judge.close();
+  }
+});
+
 test('direct Judge submission is idempotent and rejects unsafe paths or hashes', async () => {
   const state = setup();
   try {

@@ -108,6 +108,19 @@ export class JudgeService {
     if (!source || typeof source.content !== 'string') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate requires a Workspace source');
     }
+    const sourceHash = source.content_hash ?? contentHash(source.content);
+    if (source.content_hash !== undefined && source.content_hash !== sourceHash) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace source content_hash does not match content');
+    }
+    const attestation = payload.source_attestation ?? null;
+    if (attestation !== null) {
+      if (attestation.task_id !== envelope.task_id || attestation.execution_id !== envelope.execution_id ||
+        (attestation.path ?? null) !== (source.path ?? null) ||
+        (attestation.workspace_revision ?? null) !== (source.workspace_revision ?? null) ||
+        attestation.content_hash !== sourceHash) {
+        throw new SwarmEnvError(ERROR_CODES.FENCED, 'Workspace source attestation does not match the current Execution source');
+      }
+    }
     // Checker and input bindings are provider configuration. Never accept a
     // fixture manifest, Task projection, or Execution object from the Agent
     // payload; the envelope and the configured Judge provider are authoritative.
@@ -136,11 +149,11 @@ export class JudgeService {
       workspace_ref: null,
       workspace_revision: source.workspace_revision ?? null,
     };
-    const sourceId = `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${source.content_hash ?? contentHash(source.content)}`;
+    const sourceId = `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${sourceHash}`;
     const result = await this.judgeCandidate({
-      request_key: hash({
+      request_key: payload.request_key ?? envelope.operation_id ?? hash({
         source_id: sourceId,
-        source_hash: source.content_hash ?? contentHash(source.content),
+        source_hash: sourceHash,
         task_id: envelope.task_id,
         execution_id: envelope.execution_id,
         revision: source.workspace_revision ?? null,
@@ -157,7 +170,7 @@ export class JudgeService {
       candidate: {
         material_id: sourceId,
         content: source.content,
-        content_hash: source.content_hash ?? contentHash(source.content),
+        content_hash: sourceHash,
       },
       target_task: task,
       workspace: {

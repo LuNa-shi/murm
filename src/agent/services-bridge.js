@@ -356,7 +356,7 @@ export class ServicesBridge {
     return matches[0] ?? null;
   }
 
-  async #prepareJudgeSubmission(payload, execution, task) {
+  async #prepareJudgeSubmission(payload, execution, task, operationId = null) {
     if (!execution || !task) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'submit_candidate requires a current Task and Execution');
     const path = payload.path ?? payload.workspace_file?.path ?? null;
     if ((typeof path !== 'string' || path.length === 0) && payload.candidate_material_id) {
@@ -368,13 +368,14 @@ export class ServicesBridge {
           // Context hashes the serialized Material value; Judge hashes source
           // bytes. Recompute the source hash in Judge for inline Material text.
           source: { content: material.content, content_hash: null, input_snapshot_hash: execution.input_snapshot_hash },
+          request_key: payload.request_key ?? operationId,
           target_task: task,
           execution,
         };
       }
       const materialPath = material.content?.path;
       if (typeof materialPath === 'string' && materialPath.length > 0) {
-        return this.#prepareJudgeSubmission({ ...payload, path: materialPath, workspace_revision: material.content.workspace_revision, content_hash: material.content.content_hash }, execution, task);
+        return this.#prepareJudgeSubmission({ ...payload, path: materialPath, workspace_revision: material.content.workspace_revision, content_hash: material.content.content_hash }, execution, task, operationId);
       }
     }
     if (typeof path !== 'string' || path.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate.path is required');
@@ -407,6 +408,14 @@ export class ServicesBridge {
         content_hash: file.content_hash,
         workspace_revision: file.workspace_revision,
         input_snapshot_hash: execution.input_snapshot_hash,
+      },
+      request_key: payload.request_key ?? operationId,
+      source_attestation: {
+        task_id: task.task_id,
+        execution_id: execution.execution_id,
+        path,
+        workspace_revision: file.workspace_revision,
+        content_hash: file.content_hash,
       },
       // These values are Bridge-owned context, not Agent-selected bindings.
       target_task: task,
@@ -627,7 +636,7 @@ export class ServicesBridge {
         if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
         const currentExecution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
         const invocationPayload = operation === 'submit_candidate'
-          ? await this.#prepareJudgeSubmission(payload, currentExecution, this.taskService.getTask(this.taskId))
+          ? await this.#prepareJudgeSubmission(payload, currentExecution, this.taskService.getTask(this.taskId), bridgeOperationId)
           : operation === 'task_take'
           ? {
             // Caller-supplied owner/prompt fields are not trusted identity
