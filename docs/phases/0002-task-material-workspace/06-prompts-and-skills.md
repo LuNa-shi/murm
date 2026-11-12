@@ -1,4 +1,4 @@
-# 04 · 完整初始 prompt、运行消息与 Bot skills
+# 06 · 完整初始 prompt、运行消息与 Bot skills
 
 > 审阅入口：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)。本文所有 prompt、skill 与 CLI 拼写都是**本阶段拟议文本**，尚未安装或接入运行。当前实际 prompt 的完整记录仍在 [architecture/08-prompts](../../architecture/08-prompts.md)。
 
