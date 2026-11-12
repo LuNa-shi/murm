@@ -35,7 +35,7 @@ Material 与 Git 严格分离：Material 保存可独立读取、引用和纠错
 |---|---|
 | 创建/保留 Workspace Repository、main、revision | Workspace Service / 可信 Runtime |
 | 为新 E 创建独立本地 clone 并记录 base commit/revision | Runtime |
-| 在 sandbox 内修改文件、创建本地分支和 commit | 当前 E 的 Bot |
+| 在 sandbox 内通过基础文件工具修改当前 Execution 工作目录 | 当前 E 的 Bot |
 | 从 E clone 导出并安全导入 Candidate | 可信 Runtime + Workspace Service |
 | 查看 Candidate、diff、来源和状态 | Workspace Service |
 | 判断是否值得保存 Candidate、是否值得 integrate | 当前有效 Execution 的 Bot |
@@ -72,7 +72,7 @@ Runtime 为每个 Execution 创建独立、互不共享可写 .git 的工作副�
 
 | 操作/数据 | 当前 E 的 Bot | 其他 Bot | Workspace Service / Runtime |
 |---|---|---|---|
-| 自己的 clone、分支、commit、diff | 可读写 | 不可读 | 按需导出 |
+| 当前 Execution 工作目录中的项目文件 | 可读写 | 不可读 | Runtime 管理导出 |
 | Workspace main 与公开历史 | 可读 | 可读 | 受控维护 |
 | Candidate | 可查看有权限的 Candidate | 可查看有权限的 Candidate | 管理对象和状态 |
 | Workspace 主 Repository 的 .git/refs | 不可访问 | 不可访问 | 独占管理 |
@@ -164,12 +164,12 @@ main 表示项目接纳的当前共同工作基础，不保证里面每个研究
 | 情形 | 服务与 Bot 的行为 | 保证与边界 |
 |---|---|---|
 | 两个 Bot 都基于 revision 0.2 请求 integrate | 首个请求得到 revision 0.3；另一个得到版本冲突 | 不会静默覆盖 |
-| Candidate 基于 revision 0.1，main 已到 0.3 | Runtime 返回版本冲突；Bot 请求当前 main 的新工作目录/基线，由 Runtime 准备新的 Execution 后重新整合并保存 Candidate | 不允许把旧快照直接当成新 main |
+| Candidate 基于 revision 0.1，main 已到 0.3 | Runtime 返回版本冲突；当前 Execution 不能自行切换 Git 基线；由 Agent 结束当前 Execution/提出后续 Task，新 Bot 从最新 main 开始重新整合并保存 Candidate | 不允许把旧快照直接当成新 main |
 | 合入有内容冲突 | Bot 解释冲突并解决，或保留 Candidate 暂不整合 | v1 不要求自动语义合并器 |
 | 检查通过后文件又变了 | 检查与 Candidate commit 不匹配，拒绝接纳 | 重新检查，不复用旧 PASS |
 | Candidate 导出失败或文件校验失败 | 当前 E 内修正/重试 | 不登记为可整合候选 |
 | integrate 失败 | Candidate 仍保留 | 不自动 discard |
-| release 后旧 E 再请求 integrate | 服务验证当前 E 并拒绝 | 旧凭据不能更新 main |
+| Task finish 后旧 E 再请求 integrate | 服务验证当前 E 并拒绝 | 旧凭据不能更新 main |
 
 多个 Bot 可以并行准备和保存 Candidate；main 更新是一条串行提交线。Workspace revision 每次成功推进递增。第一版不创建 Git tag。
 
@@ -225,9 +225,9 @@ Mission 完成后是否允许继续创建 Task、是否允许新的 Bot 继续�
 实现验收至少应能观察到：
 - 一个 Mission 对应一个长期 Workspace Repository；Mission 完成后仓库仍可读取。
 - main 是真实 Git branch；每次成功推进生成 commit 并递增 Workspace revision；不创建 Git tag。
-- 每个 E 从固定 main commit 创建独立 clone；修改一个 clone 不改变其他 E 或 main。
+- 每个 Execution 的工作目录由 Runtime 从固定 main commit 创建；Bot 不直接管理 Git；修改一个 clone 不改变其他 E 或 main。
 - Bot 不能通过共享 .git、宿主卷、旧私有仓库或伪造 CLI 字段绕过权限。
-- Candidate 导入后可在 sandbox 删除后完整物化，来源 Task/E 和 base revision/commit 可追溯。
+- Candidate 由 Runtime 保存后可在 sandbox 删除后完整物化，来源 Task/E 和 base revision/commit 可追溯。
 - Candidate 长期保留；discard 只隐藏默认列表，不物理删除 commit；历史查询可见。
 - Candidate 保存不自动推进 main；Bot 可以请求 Runtime integrate；复杂整合可使用独立普通 Task。Bot 不直接操作 Git。
 - 两个相同 expected revision 的 integrate 最多一个成功；失败者保留 Candidate 并重新整合。
