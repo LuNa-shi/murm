@@ -72,7 +72,7 @@ v1 建议 Workspace 逻辑模块与 Task Service 同一协调进程、一致性�
 2. **初始化 Workspace W。** 在 sandbox 外创建本地 Git Repository，并导入用户/项目提供的初始文件；建立 `main` branch 和初始 commit，并初始化 Workspace revision（例如 `0.1`）。空项目也要显式创建空基线与说明。记录工具链/镜像版本；不从任意旧 E 私有目录猜测起点。
 3. **Task Service 可以仍为空。** 不生成共享 Mission Task，也不生成用于计费的占位 Task。
 4. **Runtime 填充四个 Core。** 每槽创建新的 sandbox、Pi 和 Bot。准备可读的 main 快照、任务/材料/API 读取入口、固定 CLI/help 和 skill 文本。模型运行目录与项目目录分开。
-5. **发送完整初始 prompt。** 先加载稳定规范，再提供准确的 Mission、Bot/Core、Workspace 版本、服务/skill 目录和预算快照。见 [04](04-prompts-and-skills.md)。这些是启动时的快照，不能替代新操作前的服务查询。
+5. **发送完整初始 prompt。** 先加载稳定规范，再提供准确的 Mission、Bot/Core、Workspace 版本、服务/skill 目录和预算快照。见 [04](06-prompts-and-skills.md)。这些是启动时的快照，不能替代新操作前的服务查询。
 6. **Bot 自行发现工作。** 读取 Task Service 各状态、有关材料与项目内容，先复用已有任务，再提出有局部交付的新 Task，选择并 take。
 
 启动后未 take 的模型调用、目录读取和等待也有成本，计入 Mission/Bot/Core，不需要虚构 E 或 Mission Task。没有可领任务时，Bot 给出阻塞原因，由 Runtime 有间隔地刷新或等待事件；无需持续调用模型或反复重建 sandbox。空列表或所有任务暂时 blocked 都不自动表示 Mission 已完成。
@@ -102,7 +102,7 @@ v1 用固定私有卷，不依赖 provider 热切换只读 mount。take 前，�
 
 初始协调凭据与 E 贡献凭据分开。服务根据可信身份映射决定 Mission/Bot/E，不接受用户可编辑 JSON 中自报的身份或单独一个 Task ID。CLI 每次读取受保护的当前绑定配置；take 不要求一个已经启动的 Pi 进程的环境变量“自动变化”。提供方管理凭据不放入 Bot 环境，服务凭据不写进初始 prompt。
 
-pre-E 提出 Task 是受限的协调写，不等于任意编辑、取消别人的 Task。任务规格变更、取消和依赖修订的权限详见 [02](02-task-material-policies.md)。所有贡献服务验证同一 E 的当前资格；网络可达不代表有写权限。
+pre-E 提出 Task 是受限的协调写，不等于任意编辑、取消别人的 Task。任务规格变更、取消和依赖修订的权限详见 [02](03-task.md)。所有贡献服务验证同一 E 的当前资格；网络可达不代表有写权限。
 
 ## take 的完整顺序
 
@@ -153,7 +153,7 @@ stateDiagram-v2
 - release 后，旧 E 发起的新写请求被拒绝。
 - 如果某个服务操作确实需要在客户端/sandbox 结束后继续运行，且输入已被服务持久接收，则该具体服务可以定义自己的异步受理与查询接口；这不是所有 CLI 调用的通用前置协议，也不属于 v1 必须新增的 Job 平台。
 
-因此，release 不回滚服务已经完成的普通写入，也不自动取消服务明确接纳的独立长操作。具体服务按自己的 API 合同返回成功、失败或处理中状态。详见 [03](03-workspace-and-integration.md)。
+因此，release 不回滚服务已经完成的普通写入，也不自动取消服务明确接纳的独立长操作。具体服务按自己的 API 合同返回成功、失败或处理中状态。详见 [03](05-workspace.md)。
 
 ## release 与异常退出
 
@@ -215,7 +215,7 @@ Mission：完善已有 CSV 分析工具，提供条件过滤、分组统计和 J
 | main 更新 | 旧 revision、candidate commit、检查绑定、新 revision、来源 Task/E、更新结果 | 验证累积与防覆盖 |
 | 退出/清理 | 原因、撤权时间、进程停止证据、Task 条件更新、存档/残留资源、补位 Bot | 不将逻辑释放当作真实停止 |
 
-完整运行消息、工具结果、加载的 skill 原文和 compaction 事件属于受控运行证据；公开仓库只放模板、合成示例和脱敏摘要，不能公开凭据或原始私有会话。只有 prompt 哈希不够重建输入，只有存了一份组合文本也不证明它真正发给 Pi；[04](04-prompts-and-skills.md) 定义记录和发送的对应关系。
+完整运行消息、工具结果、加载的 skill 原文和 compaction 事件属于受控运行证据；公开仓库只放模板、合成示例和脱敏摘要，不能公开凭据或原始私有会话。只有 prompt 哈希不够重建输入，只有存了一份组合文本也不证明它真正发给 Pi；[04](06-prompts-and-skills.md) 定义记录和发送的对应关系。
 
 ## Runtime 与 Sandbox 的边界
 
