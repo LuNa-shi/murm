@@ -12,7 +12,7 @@
 - [take 前后的权限](#take-前后的权限)
 - [take 的完整顺序](#take-的完整顺序)
 - [服务请求与撤权的先后关系](#服务请求与撤权的先后关系)
-- [release 与异常退出](#release-与异常退出)
+- [Task finish 与异常退出](#task-finish-与异常退出)
 - [四个 Bot 的具体轨迹](#四个-bot-的具体轨迹)
 - [最小配置与可观测记录](#最小配置与可观测记录)
 - [Runtime 与 Sandbox 的边界](#runtime-与-sandbox-的边界)
@@ -105,7 +105,7 @@ stateDiagram-v2
     Unbound --> Unbound: 竞争失败或等待
     Preparing --> Active: 输入就绪并授予权限
     Preparing --> Closing: 准备失败
-    Active --> Closing: release 或故障
+    Active --> Closing: finish、超时或故障
     Closing --> Closed: 撤权且确认停止
     Closed --> [*]
 ```
@@ -119,7 +119,7 @@ stateDiagram-v2
 5. **开放本地写。** Runtime 对准备好的项目目录授权。此时即使旧的本地后台进程立即尝试写，它也已经处于这个有效 E 的归属范围。操作只能由可信生命周期控制器执行。
 6. **提供贡献绑定并返回。** 原子替换受保护的绑定文件，允许 CLI 获取当前 E 的贡献身份，返回 Task/E/Workspace/base/输入版本/权限/预算及变化摘要。一个 Bot 只执行一个 Task；完成或超时/handoff 时关闭 Execution，停止 Pi/全部子进程并销毁 sandbox。后继 Bot 使用新 sandbox/Pi，从 Task、Material 和 Workspace 公开成果接续。
 
-每 sandbox 的 grant、abort、release 顺序执行，并带生命周期版本；关闭之后到达的迟延 grant 不得重新开放权限。若实际 provider 调用无法被取消，Runtime 必须等待其结果并继续停止该环境，不能把同一环境重新分配。
+每 sandbox 的 grant、abort、finish 顺序执行，并带生命周期版本；关闭之后到达的迟延 grant 不得重新开放权限。若实际 provider 调用无法被取消，Runtime 必须等待其结果并继续停止该环境，不能把同一环境重新分配。
 
 ### 失败不能混为一种重试
 
@@ -155,7 +155,7 @@ v1 一个 Bot 最多执行一个 Task。Task 完成或 Bot 超时/handoff 时，
 4. **确认停止后解绑。** 只有明确确认旧进程不能继续执行，且 Task 当前 owner 仍是本 E，才清除认领、关闭 E。符合完成条件的 Task 转 done；未完成 Task 按前提转 ready/blocked。未确认停止时保持 running/closing，不重叠启动同一 Task 的新 E。
 5. **留存与补位。** 外部保存已发布 Material、已保存的 Workspace Candidate/main commits、调用结果和受控审计存档。Core 在清理到可安全复用的边界后启动新 Bot/sandbox/Pi；新 Bot 可接续同一个未完成 Task。已确认隔离的残留资源可继续异步重试清理，不能丢失其记录。
 
-finish CLI 可能在返回完整响应前因自己的 sandbox 被停止而断开。收尾不依赖 Bot 执行下一条命令，操作者/Runtime 可用 request ID 查询最终结果。服务已经受理的长期工作按上一节继续；release 不是对所有副作用的回滚，也不默认取消所有服务作业。
+finish CLI 可能在返回完整响应前因自己的 sandbox 被停止而断开。收尾不依赖 Bot 执行下一条命令，操作者/Runtime 可用 request ID 查询最终结果。服务已经受理的长期工作按上一节继续；finish 不是对所有副作用的回滚，也不默认取消所有服务作业。
 
 ### 研究接续和 compaction
 
