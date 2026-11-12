@@ -123,14 +123,14 @@ H1–H3 不能靠一组“全功能版对最弱基线”的结果分别成立。
 |---|---|---|
 | C0：阅读 | 四个 Bot 同时看到一个 Mission；列表最初为空。 | 四份只读项目副本；Task 数为零；无 E、无隐藏根任务；main commit c0 / Workspace revision `0.1` 来源明确。 |
 | C1：分工 | Bot 提出可独立交付的任务，核对已有工作；另安排同 Task 的竞争 take。 | 四路可执行不同 Task；竞争只产生一个执行者；语义相同的不同 Task 是否重复另行记录。 |
-| C2：局部成果 | B1 发布过滤 M1 并完成；B2 发布未完成统计 M2 后退出；B3 的首次发布失败后重试；B4 产出验证资料 M4。 | 发布成功的内容可读取且有 Task/E 来源；main 未被发布动作自动改变；B2 的 Task 仍需继续。 |
-| C3：补位与整合 | B1 环境回收后，B1 的当前 Bot 或后继 Bot 可以在有效 Execution 中判断 Candidate C1 是否值得整合；简单情况直接 integrate，复杂情况再提出独立整合 Task。 | B5 无 B1 私有历史；Workspace candidate C1 已保存；Bot 决定整合后，条件更新 main commit c0→c1 / Workspace revision `0.1`→`0.2`；整合 E 的来源和检查可核对。 |
+| C2：局部成果 | B1 发布过滤说明 M1、保存代码 Candidate C1 后完成；B2 发布未完成统计 M2、可选保存 Candidate C2 后退出；B3 的首次 Candidate 导出失败后重试；B4 产出验证资料 M4。 | Material 和 Candidate 均可从 sandbox 外持久读取且有 Task/E 来源；main 未被发布/保存动作自动改变；B2 的 Task 仍需继续。 |
+| C3：补位与整合 | B1 环境回收后，后继 B5 在自己的有效 Execution 中读取 Candidate C1，并判断是否值得整合；简单情况直接 integrate，复杂情况再提出独立整合 Task。 | B5 无 B1 私有历史；Workspace Candidate C1 已保存；B5 决定整合后，最小门槛检查通过并更新 main commit c0→c1 / Workspace revision `0.1`→`0.2`；整合 E 的来源和指定检查可核对。 |
 | C4：继续研究 | 新 B6 用 main commit c1 / Workspace revision `0.2` 和 M2 继续统计；稍后判断是否值得把基于 c0 的 JSON candidate 整合到当前 main。 | 接续没有偷用私有卷；旧基准成果不能把 main 重置到 v0；冲突或检查失败被显式保留。 |
 | C5：完成判定 | 汇总全部需求与约定验收，检查仍未完成项。 | Task 完成、材料可读、main 更新、Mission 达成分别记录。缺一项需求时不能宣布 Mission 完成。 |
 
 另运行两个有意失败的变体：一是让两个局部实现各自通过测试但接口组合失败，观察能否识别和修复语义冲突；二是让 M2 含一条可验证错误，并在后续公开修正，观察新 Bot 是否停止依赖旧结论。前者检验整合，后者检验知识纠错，不能被一项总 PASS 掩盖。
 
-## 7. 指标与对照设计
+### Candidate 生命周期验收补充\n\nWorkspace 与 Candidate 的长期保留也需要独立验证：Mission 标记完成后 Workspace Repository、main revision 和 Candidate 仍可读取；Candidate discard 后从默认列表隐藏，但历史查询仍可找到其状态、commit 和来源；discard 不物理删除 Git 对象；integrate 失败不自动 discard Candidate。第一版不设置自动 TTL/GC。\n\n## 7. 指标与对照设计
 
 ### 7.1 先定义什么算进展
 
