@@ -233,7 +233,7 @@ take 通过 Bash CLI 的普通工具结果反馈给同一个 sandbox 内的同�
 | main 版本冲突 | `候选 {candidate_id} 以 {expected_revision} 为基准，当前 main 为 {actual_revision}。main 未因本请求改变；读取新基准、重新整合和检查。` | Workspace CAS 结果 |
 | 必需检查未通过/不匹配 | `候选 {candidate_id} 未满足政策 {policy_version}：{reason_code}。main 未更新。按实际结果修复；内容变化后重新检查。` | 合入验证结果；说明不是模型自填 PASS |
 | 空闲等待 | `当前没有已知可推进的 Task，原因：{reason}。下次状态刷新时间为 {next_refresh_at}；不要为保持忙碌制造任务或宣布 Mission 完成。` | Bot 简短阻塞说明与 Runtime 定时安排 |
-| 提前收尾 | `Execution {execution_id} 接近配置限制：{limit_kind}。剩余收尾额度为 {remaining_allowance}。停止扩展工作，读取 finish-task，发布已有有用增量后按实际完成度 release。` | Runtime 预算/上下文信号，不由模型估算伪造 |
+| 提前收尾 | `Execution {execution_id} 接近配置限制：{limit_kind}。剩余收尾额度为 {remaining_allowance}。停止扩展工作，读取 finish-task，发布已有有用增量后按实际完成度 finish。` | Runtime 预算/上下文信号，不由模型估算伪造 |
 | Mission 停止 | `Mission {mission_id} 已进入停止流程，原因：{reason}。不再创建新的执行工作；Runtime 将按已批准的收尾与服务作业合同处理当前 Execution。` | Mission 停止记录 |
 | finish 已受理 | `结束请求 {request_id} 已持久受理，Execution {execution_id} 正在关闭 Bot/Sandbox。不要再执行新工作；连接可能随 sandbox 销毁而断开。外部 Runtime 负责后续清理。` | 外部持久 finish 记录 |
 
@@ -437,11 +437,11 @@ description: 正常完成、遇到无法推进的阻塞、预算或上下文限�
 5. 对照完成条件选择 finish outcome。确实完成才选完成；否则写明未完成和原因。没有有用新成果时允许诚实退出，不编造空材料。
 6. 用稳定 request ID 调用 `swarm task finish --outcome done|incomplete`。受理后停止当前 E 的所有新贡献；Runtime 撤销权限、停止 Pi/NuRouter/Bash 和全部子进程，并销毁 sandbox。当前 Bot 生命周期随本次 Task Execution 一起结束。
 
-已被服务持久接受的长期操作可按合同继续。把可查询的操作 ID 和输入版本留在公开接续信息中；不要承诺 release 会取消它，也不要把 pending 写成成功。
+已被服务持久接受的长期操作可按合同继续。把可查询的操作 ID 和输入版本留在公开接续信息中；不要承诺 finish 会取消它，也不要把 pending 写成成功。
 
 每次 Task finish、incomplete handoff 或超时都会结束当前 Bot/Sandbox/Pi Session；后继 Bot 在全新环境中从公开 Workspace、Task 和 Material 接续，不继承私有会话与文件。没有发布的内容不能被描述为已经 handoff。
 
-finish 可能让 CLI 连接断开。这不等于任务已完成或请求失败；结果由外部 request 记录确定。确认 release 结果后，当前 Bot 生命周期随 finish 结束；后续 Task 由新的 Bot 在新的 sandbox 中接续。
+finish 可能让 CLI 连接断开。这不等于任务已完成或请求失败；结果由外部 request 记录确定。确认 finish 结果后，当前 Bot 生命周期随 finish 结束；后续 Task 由新的 Bot 在新的 sandbox 中接续。
 ```
 
 ## 完整记录与版本维护
