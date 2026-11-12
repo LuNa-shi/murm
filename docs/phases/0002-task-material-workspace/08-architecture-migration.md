@@ -3,7 +3,7 @@
 > 设计附件：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)。本文是待审的迁移方案，**不是已经实现的 Architecture，也不构成 runtime 实施或付费运行授权**。
 > 当前实现对照固定为 `008ecdb9ab64adcd8135042ff2160ec1db704952`。前置阶段是 [#119](https://github.com/LuNa-shi/SwarmEnv/issues/119) / [阶段 01](../0001-sandbox-services-cli.md)；它尚未完成。Judge 职责修复关联 [#117](https://github.com/LuNa-shi/SwarmEnv/issues/117)。截至 2026-11-12，[PR #118](https://github.com/LuNa-shi/SwarmEnv/pull/118) 仍 open、未 merged，不能把 legacy 删除当作现状。
 
-本章把 [01 运行模型](01-core-runtime.md)、[02 Task 与 Material](03-task.md)、[03 Workspace](05-workspace.md)、[04 prompt 与 skills](06-prompts-and-skills.md) 和 [05 验证](07-validation-and-research.md) 连接到当前实现。它回答改动落在哪里、哪些能力必须一起交付、怎样迁移已有数据、何时可以停用旧接口，以及每个实施 PR 怎样交付可独立阅读的完整架构说明。
+本章把 [01 运行模型](01-model-and-runtime.md)、[02 Task 与 Material](03-task.md)、[03 Workspace](05-workspace.md)、[04 prompt 与 skills](06-prompts-and-skills.md) 和 [05 验证](07-validation-and-research.md) 连接到当前实现。它回答改动落在哪里、哪些能力必须一起交付、怎样迁移已有数据、何时可以停用旧接口，以及每个实施 PR 怎样交付可独立阅读的完整架构说明。
 
 ## 阅读目录
 
