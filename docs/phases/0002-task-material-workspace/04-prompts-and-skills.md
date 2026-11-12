@@ -259,7 +259,7 @@ Pi compaction 的外部库模板、压缩后的内容与事件需要按实际版
 | `swarm material publish` | 上传正文/附件并创建 Material | 服务从当前可信 Execution 自动绑定生产 Task/Bot；Bot 不自填来源 |
 | `swarm workspace view` | 读取 main branch、Workspace revision 和 Git commit | Git 文件版本不包装为 Material；不返回其他 E 私有目录 |
 | `swarm workspace advance` | 由 Bot 自行判断是否值得将候选整合到 main，并调用受控工具推进 | 不是每个 Execution 都必须合入；Workspace、expected revision、候选 commit 和当前 E 由服务校验 |
-| `swarm workspace request` | 查合入请求的已定结果 | 响应丢失时不重复推进 main |
+| 
 | `swarm judge ...` 与领域命令 | 发起/查询实际服务操作 | 真实输入版本、accepted/pending/result、失败、费用、取消合同 |
 
 各层 help 必须提供用途、必需/可选字段、文件/stdin 输入、JSON 输出形状、退出码、超时/重试和例子。身份取自受保护绑定，不能通过 `--execution someone-else` 自行提升权限。stdout 放可解析结果，stderr 放诊断；业务检查 FAIL 与通信/授权错误区分。大结果返回明确游标或稳定内容引用，不能无提示截断重要失败信息。
