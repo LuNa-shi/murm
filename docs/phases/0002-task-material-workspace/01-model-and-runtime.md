@@ -21,11 +21,11 @@
 
 | 对象 | 定义与存在时间 | 第一版关系和边界 |
 |---|---|---|
-| Mission | 全体 Bot 可见的项目目标、约束、最终验收和资源范围 | 初始化一个 Mission；不被 take，不伪装成 Task，也没有隐藏 Mission Task |
+| Mission | 全体 Bot 可见的最大共同目标、约束、最终验收和资源范围 | 一个 Mission 与一个 Workspace 一对一绑定；不被 take，不伪装成 Task，也没有隐藏 Mission Task |
 | Task | 具有局部目标、交付和完成条件的基本工作单元 | 属于 Mission 和一个 Workspace；同一时刻最多一个当前 Execution；可多次尝试，也可由不同 Bot 接续 |
 | Material | 明确发布、可持久读取的内容及来源 | Bot 产物绑定产生它的 Task/E；可以被其他 Task 使用。初始化资料有 input 来源，不伪造执行来源 |
-| Workspace | 管理项目文件、共享版本和执行工作副本的核心对象 | v1 每 Mission 一个 Workspace；包含 main 主分支和各 E 的私有工作副本。Workspace 不随某个 sandbox 销毁 |
-| main | Workspace 中当前共享、可物化的主线版本 | 是 Workspace 的一个分支/版本指针；由可追溯的已发布 Material 表达内容，不是新的顶层对象 |
+| Workspace | 与 Mission 一对一绑定的项目工作环境，可按一个本地 Git Repository 理解 | 位于 sandbox 外并跨 Task、Bot、Execution 存在；包含 main 分支及各 E 的独立 worktree/工作副本 |
+| main | Workspace Git Repository 中的共享主分支 | 就是 Git branch `main`；每次更新产生新 commit，并推进 Workspace revision。main 不是 Material |
 | Core | 一个可复用的计算槽位 | 例子配置四个；不再另造 Core lane；不代表某个固定研究角色 |
 | Bot | 一次有限的自主工作单元 | v1 新 Pi 对应新 Bot ID；可先阅读、提出多个 Task，最多成功绑定一个 Execution，结束后由新 Bot 补位 |
 | Execution（E） | 一次 take 建立的任务执行区间及其权限、输入和运行记录 | 从排他认领开始到 release/异常收尾结束；准备和收尾也在记录中，不能只记模型正在回答的时间 |
@@ -44,13 +44,13 @@ flowchart TD
     B[Bot] --> E
     E --> P[私有工作副本]
     W --> P
-    W --> H[main 版本]
+    W --> H[main branch]
     E --> A[Material]
     A --> T
-    A --> H
+
 ```
 
-图中的 Material→Task 表示显式使用关系，Material→main 表示主线内容来自已发布、可追溯的版本；均不意味着发布即自动合入。一个 E 的私有副本属于 Workspace，但其他 Bot 不因此获得读取权限。
+图中的 Material→Task 表示显式使用关系。Material 与 Git 分开：Material 保存可独立引用的研究内容及来源；Workspace 的 main branch 保存项目文件树。Material 可以被某个 Execution 应用到 worktree，但发布 Material 不会自动修改 main。一个 E 的 worktree 属于 Workspace，但其他 Bot 不因此获得读取权限。
 
 ## 组件各自负责什么
 
@@ -69,7 +69,7 @@ v1 建议 Workspace 逻辑模块与 Task Service 同一协调进程、一致性�
 ## 一次 Mission 的启动
 
 1. **操作者提供 Mission。** 包含目标、验收方式、可用服务、初始输入、资源上限和停止条件。本文的四路只是示例并发配置，不是每个 Mission 的固定算法。
-2. **初始化 Workspace W。** 将用户/项目提供的文件发布为有 input 来源的 Material，建立 main `v0`。空项目也要显式创建空基线与说明。记录工具链/镜像版本；不从任意旧 E 私有目录猜测起点。
+2. **初始化 Workspace W。** 在 sandbox 外创建本地 Git Repository，并导入用户/项目提供的初始文件；建立 `main` branch 和初始 commit，并初始化 Workspace revision（例如 `0.1`）。空项目也要显式创建空基线与说明。记录工具链/镜像版本；不从任意旧 E 私有目录猜测起点。
 3. **Task Service 可以仍为空。** 不生成共享 Mission Task，也不生成用于计费的占位 Task。
 4. **Runtime 填充四个 Core。** 每槽创建新的 sandbox、Pi 和 Bot。准备可读的 main 快照、任务/材料/API 读取入口、固定 CLI/help 和 skill 文本。模型运行目录与项目目录分开。
 5. **发送完整初始 prompt。** 先加载稳定规范，再提供准确的 Mission、Bot/Core、Workspace 版本、服务/skill 目录和预算快照。见 [04](04-prompts-and-skills.md)。这些是启动时的快照，不能替代新操作前的服务查询。
@@ -144,19 +144,16 @@ stateDiagram-v2
 
 确认有 E 的请求失败后，Task 只有在旧本地执行已经停止/隔离、且当前 owner 仍是这个 E 时才回到可领状态。用条件更新防止迟到清理擦掉新 owner。
 
-## 服务请求与撤权的先后关系
+## 普通 Service 调用与 release
 
-仅在服务开头 GET 一次“E active”随后任意延迟写入，不能定义清晰的 release 边界。v1 建议使用少量持久请求记录，把每个新贡献操作的受理与撤权排出先后：
+第一版不为每次 CLI 调用引入独立的 pending/permit/acceptance 协议。一次 CLI 命令对应一次普通 Service API 请求：CLI 发送请求，服务端验证调用身份、当前 Execution 是否有效及该操作所需权限，然后直接执行并返回结果。客户端提供的 Task ID 只能作为请求参数，不能代替可信身份。
 
-1. 服务校验请求格式，先保存 request ID、输入内容/不可变引用和操作摘要为 pending；此时没有可见业务贡献。大文件先在暂存区传输，未发布内容不可被其他 Bot 当成果读取。
-2. 服务以自己的可信身份向 Task 协调域请求受理许可，绑定 E、操作、request ID 和输入摘要。许可事务验证 E active、权限、版本与预算，并与 release 的撤权事务串行。
-3. 取得许可是该操作的受理时点。许可前进入 closing 的 E 被拒绝；许可成功的请求可按合同继续，即使随后发生 release。服务已经持有实际输入，不依赖将被销毁的 sandbox。
-4. 相同请求重试恢复同一操作；同 request ID 改输入、改 E 或改操作必须冲突，不能拿旧许可执行新工作。v1 不缓存一段可无限复用的“E 仍 active”结果。
-5. 服务以自己的身份完成已受理操作。最终结果可查询，费用仍归原 Mission/E。服务结果本身不会自动发布为研究 Material，也不自动将已关闭 Task 设成完成。
+- 普通读取按资源可见性执行。
+- 普通同步写入在处理时验证当前 E 有效且有权操作，然后完成写入并返回。
+- release 后，旧 E 发起的新写请求被拒绝。
+- 如果某个服务操作确实需要在客户端/sandbox 结束后继续运行，且输入已被服务持久接收，则该具体服务可以定义自己的异步受理与查询接口；这不是所有 CLI 调用的通用前置协议，也不属于 v1 必须新增的 Job 平台。
 
-这是 Task 授权记录与各服务既有请求状态的衔接，不是新增一个通用任务队列/Job 平台。服务不可用、Task 授权不可达时，新贡献失败关闭或保持 pending，不能假定许可成功。读操作仍遵循可见性规则，未绑定协调操作用其独立权限。
-
-Workspace 的 main 更新位于 Task 一致性域时，可将 E 有效性、候选检查、预期旧版本、指针更新和幂等记录放在同一事务，无需另做跨服务授权事务。Context 中的候选内容必须事先持久化并确认；内容发布成功但 main 更新失败会留下可追溯的未合入材料，不能伪称成功。详见 [03](03-workspace-and-integration.md)。
+因此，release 不回滚服务已经完成的普通写入，也不自动取消服务明确接纳的独立长操作。具体服务按自己的 API 合同返回成功、失败或处理中状态。详见 [03](03-workspace-and-integration.md)。
 
 ## release 与异常退出
 
@@ -184,7 +181,7 @@ Task done、Material publish、main advance 分别是局部责任、内容可用
 
 ## 四个 Bot 的具体轨迹
 
-Mission：完善已有 CSV 分析工具，提供条件过滤、分组统计和 JSON 输出，留下可复用的验证资料。W 的 main `v0` 是操作者提供的命令框架、接口约定和样例，以初始化 Material `M0` 发布；Task 列表为空。
+Mission：完善已有 CSV 分析工具，提供条件过滤、分组统计和 JSON 输出，留下可复用的验证资料。W 的 main 初始 commit 是操作者提供的命令框架、接口约定和样例，以初始化 Material `M0` 发布；Task 列表为空。
 
 四个 Bot 都读相同 Mission 和 Task/Material 服务。以下是可能形成的分工，不是 Runtime 提前分配的四个角色：
 
@@ -196,8 +193,8 @@ Mission：完善已有 CSV 分析工具，提供条件过滤、分组统计和 J
 | C4 / B4 | T4 验证资料 | P4，base v0 | 输入样例、预期输出、覆盖范围和验证方法 M4 |
 
 1. 如果 B1、B2 同时 take T1，只有一个预留成功，另一 Bot 保持原只读会话并重新选工。不同 Task ID 的重复语义仍可能出现，由提案前检查、后续纠偏和评估处理；不宣称一次查询消除所有重复。
-2. B1 的同一 Pi 在 take 成功后可写 P1。它完成局部检查，发布 M1、确认可读取且已关联 T1，再以完成结束。T1 done，main 仍为 v0。
-3. C1 启动新的 B5。B5 读到 M1，检查已有整合工作；没有合适任务时提出并 take 普通 T5“把 M1 整合进 W 的 main”。它在自己的新副本里合入、检查，发布候选 M5，携带 expected-main=v0 成功推进 v1，才按 T5 的交付条件完成。
+2. B1 的同一 Pi 在 take 成功后可写 P1。它完成局部检查，发布 M1、确认可读取且已关联 T1，再以完成结束。T1 done，main 仍指向初始 commit。
+3. C1 启动新的 B5。B5 读到 M1，检查已有整合工作；没有合适任务时提出并 take 普通 T5“把 M1 整合进 W 的 main”。它在自己的新副本里合入、检查，发布候选 M5，携带 expected Workspace revision=`0.1` 成功推进 main 并将 revision 更新为 `0.2`，才按 T5 的交付条件完成。
 4. B2 发现空分组边界尚未解决，发布部分材料 M2 后未完成退出。C2 的 B6 从当前公开版本 v1 启动，读取 M2 的代码/反例和当前 T2。它可以 take T2 继续；既不复用 P2，也看不到 B2 对话。
 5. B3 上传失败时，只有本地文件，不能声称 M3 已共享。它在 E 有效期间用同请求重试；成功后 M3 仍标明 base=v0。后续整合 Bot 必须在当前 v1 上重做组合检查，不能把 main 直接重置成旧 v0 的完整目录。
 6. 若两个不同整合 Task 都基于 v1 产生候选，只有先提交者更新成功；另一方得到版本冲突，读新版本并重做受影响的整合/检查。相同文件没有文本冲突也不等于语义兼容。
