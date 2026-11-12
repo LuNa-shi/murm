@@ -31,6 +31,7 @@ function environment({ checker = null } = {}) {
   contextService.taskService = taskService;
   const configuredChecker = checker ?? { check: async () => ({ verdict: 'PASS', evidence: { exit_code: 0 } }) };
   const judgeService = new JudgeService(database, {
+    fixtureManifest,
     checker: typeof configuredChecker.preflight === 'function'
       ? configuredChecker
       : {
@@ -51,7 +52,7 @@ function environment({ checker = null } = {}) {
       },
   });
   taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
-  const router = new ServicesRouter({ taskService, contextService });
+  const router = new ServicesRouter({ taskService, contextService, judgeService });
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   return { database, contextService, taskService, judgeService, router, sdk };
 }
@@ -89,6 +90,18 @@ function saveCheckpoint(env, execution, checkpointRef = `checkpoint:${execution.
   return env.taskService.dispatch('save_checkpoint', {
     checkpoint_ref: checkpointRef, checkpoint_hash: `hash:${checkpointRef}`, workspace_ref: current.workspace_ref, workspace_revision: current.workspace_revision,
   }, makeEnvelope({ operationId: `checkpoint-op:${checkpointRef}`, actorRef: execution.owner_ref, taskId: execution.task_id, executionId: execution.execution_id, specVersion: execution.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version })).execution;
+}
+
+function recordCandidate(env, taskId, execution, materialId, operationId) {
+  return env.taskService.dispatch('submit_candidate', { candidate_material_id: materialId }, makeEnvelope({
+    operationId,
+    actorRef: 'system:test-completion',
+    taskId,
+    executionId: execution.execution_id,
+    specVersion: execution.spec_version,
+    stateVersion: execution.state_version,
+    fencingVersion: execution.fencing_version,
+  })).execution;
 }
 
 function waitWithCheckpoint(env, sdk, execution, type, waitKey, checkpointRef = `checkpoint:${execution.execution_id}`) {
@@ -156,21 +169,19 @@ test('a research Task can run diagnostic Judge iterations without requiring a ch
   const first = run.sdk.withContext({ stateVersion: started.execution.state_version }).publishMaterial({
     kind: 'artifact', scope: 'proof_relevant', content: 'first candidate',
   }, { operationId: 'research-diagnostic-candidate-1' }).material;
-  const submittedFirst = run.sdk.withContext({ stateVersion: env.taskService.getExecution(run.claim.execution.execution_id).state_version }).submitCandidate({
-    candidate_material_id: first.material_id,
-  }, { operationId: 'research-diagnostic-submit-1' });
+  const submittedFirst = recordCandidate(env, task.task_id, env.taskService.getExecution(run.claim.execution.execution_id), first.material_id, 'research-diagnostic-submit-1');
   const firstResult = await env.judgeService.judgeCandidate({
     request_key: 'research-diagnostic-check-1', candidate_material_id: first.material_id,
     target_task_id: task.task_id, target_spec_version: task.spec_version,
-    input_snapshot_hash: submittedFirst.execution.input_snapshot_hash,
+    input_snapshot_hash: submittedFirst.input_snapshot_hash,
     checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
-    environment_ref: fixtureManifest.environment_ref, execution_id: submittedFirst.execution.execution_id,
-    state_version: submittedFirst.execution.state_version,
+    environment_ref: fixtureManifest.environment_ref, execution_id: submittedFirst.execution_id,
+    state_version: submittedFirst.state_version,
     candidate: { material_id: first.material_id, content: 'first candidate' }, target_task: env.taskService.getTask(task.task_id),
-    workspace: { task_id: task.task_id, execution_id: submittedFirst.execution.execution_id, input_snapshot_hash: submittedFirst.execution.input_snapshot_hash },
+    workspace: { task_id: task.task_id, execution_id: submittedFirst.execution_id, input_snapshot_hash: submittedFirst.input_snapshot_hash },
     fixture_manifest: fixtureManifest,
   });
-  const afterFirst = run.sdk.withContext({ stateVersion: submittedFirst.execution.state_version }).applyCheckResult({
+  const afterFirst = run.sdk.withContext({ stateVersion: submittedFirst.state_version }).applyCheckResult({
     check_result_id: firstResult.check_result_id,
   }, { operationId: 'research-diagnostic-apply-1' });
   assert.equal(afterFirst.check_result.verdict, 'FAIL');
@@ -181,21 +192,19 @@ test('a research Task can run diagnostic Judge iterations without requiring a ch
   const second = run.sdk.withContext({ stateVersion: current.state_version }).publishMaterial({
     kind: 'artifact', scope: 'proof_relevant', content: 'revised candidate', supersedes: first.material_id,
   }, { operationId: 'research-diagnostic-candidate-2' }).material;
-  const submittedSecond = run.sdk.withContext({ stateVersion: env.taskService.getExecution(current.execution_id).state_version }).submitCandidate({
-    candidate_material_id: second.material_id,
-  }, { operationId: 'research-diagnostic-submit-2' });
+  const submittedSecond = recordCandidate(env, task.task_id, env.taskService.getExecution(current.execution_id), second.material_id, 'research-diagnostic-submit-2');
   const secondResult = await env.judgeService.judgeCandidate({
     request_key: 'research-diagnostic-check-2', candidate_material_id: second.material_id,
     target_task_id: task.task_id, target_spec_version: task.spec_version,
-    input_snapshot_hash: submittedSecond.execution.input_snapshot_hash,
+    input_snapshot_hash: submittedSecond.input_snapshot_hash,
     checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
-    environment_ref: fixtureManifest.environment_ref, execution_id: submittedSecond.execution.execution_id,
-    state_version: submittedSecond.execution.state_version,
+    environment_ref: fixtureManifest.environment_ref, execution_id: submittedSecond.execution_id,
+    state_version: submittedSecond.state_version,
     candidate: { material_id: second.material_id, content: 'revised candidate' }, target_task: env.taskService.getTask(task.task_id),
-    workspace: { task_id: task.task_id, execution_id: submittedSecond.execution.execution_id, input_snapshot_hash: submittedSecond.execution.input_snapshot_hash },
+    workspace: { task_id: task.task_id, execution_id: submittedSecond.execution_id, input_snapshot_hash: submittedSecond.input_snapshot_hash },
     fixture_manifest: fixtureManifest,
   });
-  const afterSecond = run.sdk.withContext({ stateVersion: submittedSecond.execution.state_version }).applyCheckResult({
+  const afterSecond = run.sdk.withContext({ stateVersion: submittedSecond.state_version }).applyCheckResult({
     check_result_id: secondResult.check_result_id,
   }, { operationId: 'research-diagnostic-apply-2' });
   assert.equal(afterSecond.check_result.verdict, 'PASS');
@@ -524,7 +533,7 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
   const run = claimTask(env, task, { executionId: 'proof-execution', actorRef: 'owner:root' });
   const workspace = ({ task_id: task.task_id, execution_id: run.claim.execution.execution_id, input_snapshot_hash: run.claim.execution.input_snapshot_hash });
   const firstCandidate = run.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'bad proof' } }, { operationId: 'proof-candidate-1' }).material;
-  let current = run.sdk.submitCandidate({ candidate_material_id: firstCandidate.material_id }, { operationId: 'submit-candidate-1' });
+  let current = { execution: recordCandidate(env, task.task_id, env.taskService.getExecution(run.claim.execution.execution_id), firstCandidate.material_id, 'submit-candidate-1') };
   let checkpointed = saveCheckpoint(env, current.execution, 'proof-checkpoint-1');
   let currentSdk = run.sdk.withContext({ stateVersion: current.execution.state_version });
   let waited = currentSdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
@@ -552,8 +561,7 @@ test('proof FAIL is retained and recoverable, then matching PASS completes the T
     specVersion: failed.execution.spec_version, stateVersion: failed.execution.state_version, fencingVersion: failed.execution.fencing_version,
   })).material;
   currentSdk = env.sdk.withContext({ taskId: task.task_id, executionId: failed.execution.execution_id, specVersion: 1, stateVersion: failed.execution.state_version, fencingVersion: 1 });
-  current = currentSdk
-    .submitCandidate({ candidate_material_id: secondMaterial.material_id }, { operationId: 'submit-candidate-2' });
+  current = { execution: recordCandidate(env, task.task_id, env.taskService.getExecution(failed.execution.execution_id), secondMaterial.material_id, 'submit-candidate-2') };
   checkpointed = saveCheckpoint(env, current.execution, 'proof-checkpoint-2');
   waited = currentSdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
     wait_key: 'proof-check-2', checkpoint_ref: checkpointed.checkpoint_ref, checkpoint_hash: checkpointed.checkpoint_hash,
@@ -589,7 +597,7 @@ test('exhausted checker infrastructure failures block the Task without claiming 
   const task = env.sdk.proposeTask(proofInput(), { operationId: 'infra-block-propose' }).task;
   const run = claimTask(env, task, { executionId: 'infra-block-execution', actorRef: 'owner:root' });
   const material = run.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'candidate' } }, { operationId: 'infra-block-candidate' }).material;
-  const submitted = run.sdk.submitCandidate({ candidate_material_id: material.material_id }, { operationId: 'infra-block-submit' });
+  const submitted = { execution: recordCandidate(env, task.task_id, env.taskService.getExecution(run.claim.execution.execution_id), material.material_id, 'infra-block-submit') };
   const result = await env.judgeService.judgeCandidate({
     request_key: 'infra-block-request', candidate_material_id: material.material_id, target_task_id: task.task_id,
     target_spec_version: task.spec_version, input_snapshot_hash: submitted.execution.input_snapshot_hash,
@@ -643,7 +651,7 @@ test('candidate Material ID wakes a waiting proof Execution when Judge uses an i
   const task = env.sdk.proposeTask(proofInput(), { operationId: 'candidate-wait-propose' }).task;
   const run = claimTask(env, task, { executionId: 'candidate-wait-execution', actorRef: 'owner:root' });
   const candidate = run.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'candidate' } }, { operationId: 'candidate-wait-material' }).material;
-  const submitted = run.sdk.submitCandidate({ candidate_material_id: candidate.material_id }, { operationId: 'candidate-wait-submit' });
+  const submitted = { execution: recordCandidate(env, task.task_id, env.taskService.getExecution(run.claim.execution.execution_id), candidate.material_id, 'candidate-wait-submit') };
   const checkpointed = saveCheckpoint(env, submitted.execution, 'candidate-wait-checkpoint');
   const waited = run.sdk.withContext({ stateVersion: checkpointed.state_version }).requestWait({
     wait_key: 'candidate-wait-request',
@@ -680,7 +688,7 @@ test('a CheckResult that arrives before wait registration makes the condition im
   const task = env.sdk.proposeTask(proofInput(), { operationId: 'early-result-propose' }).task;
   const run = claimTask(env, task, { executionId: 'early-result-execution', actorRef: 'owner:root' });
   const candidate = run.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'early candidate' } }, { operationId: 'early-result-material' }).material;
-  const submitted = run.sdk.submitCandidate({ candidate_material_id: candidate.material_id }, { operationId: 'early-result-submit' });
+  const submitted = { execution: recordCandidate(env, task.task_id, env.taskService.getExecution(run.claim.execution.execution_id), candidate.material_id, 'early-result-submit') };
   const timestamp = new Date().toISOString();
   env.taskService.db.prepare(`INSERT INTO check_results (
     check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
@@ -764,7 +772,7 @@ test('fenced and cancelled Executions cannot be revived by late CheckResults', a
   const task = env.sdk.proposeTask(proofInput(), { operationId: 'late-propose' }).task;
   const run = claimTask(env, task, { executionId: 'late-execution', actorRef: 'owner:root' });
   const material = run.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'late candidate' } }, { operationId: 'late-candidate' }).material;
-  const submitted = run.sdk.submitCandidate({ candidate_material_id: material.material_id }, { operationId: 'late-submit' });
+  const submitted = { execution: recordCandidate(env, task.task_id, env.taskService.getExecution(run.claim.execution.execution_id), material.material_id, 'late-submit') };
   const workspace = ({ task_id: task.task_id, execution_id: run.claim.execution.execution_id, input_snapshot_hash: run.claim.execution.input_snapshot_hash });
   const result = await env.judgeService.judgeCandidate({
     request_key: 'late-request', candidate_material_id: material.material_id, target_task_id: task.task_id, target_spec_version: 1,
@@ -781,7 +789,7 @@ test('fenced and cancelled Executions cannot be revived by late CheckResults', a
   const cancelledTask = env.sdk.proposeTask(proofInput({ goal: 'cancelled late result' }), { operationId: 'cancelled-propose' }).task;
   const cancelledRun = claimTask(env, cancelledTask, { executionId: 'cancelled-execution', actorRef: 'owner:root' });
   const cancelledMaterial = cancelledRun.sdk.publishMaterial({ kind: 'artifact', scope: 'proof_relevant', content: { source: 'cancelled candidate' } }, { operationId: 'cancelled-candidate' }).material;
-  const cancelledSubmitted = cancelledRun.sdk.submitCandidate({ candidate_material_id: cancelledMaterial.material_id }, { operationId: 'cancelled-submit' });
+  const cancelledSubmitted = { execution: recordCandidate(env, cancelledTask.task_id, env.taskService.getExecution(cancelledRun.claim.execution.execution_id), cancelledMaterial.material_id, 'cancelled-submit') };
   const cancelledWorkspace = ({ task_id: cancelledTask.task_id, execution_id: cancelledRun.claim.execution.execution_id, input_snapshot_hash: cancelledRun.claim.execution.input_snapshot_hash });
   const cancelledResult = await env.judgeService.judgeCandidate({
     request_key: 'cancelled-request', candidate_material_id: cancelledMaterial.material_id, target_task_id: cancelledTask.task_id, target_spec_version: 1,

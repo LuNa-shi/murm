@@ -125,3 +125,24 @@ test('direct Judge submission rejects a stale Workspace revision before checking
     state.judge.close();
   }
 });
+
+test('direct Judge submission is idempotent and rejects unsafe paths or hashes', async () => {
+  const state = setup();
+  try {
+    await assert.rejects(
+      () => state.bridge.call({ operation: 'submit_candidate', payload: { path: '../Candidate.lean' } }),
+      (error) => error.code === 'INVALID_CONTRACT',
+    );
+    await assert.rejects(
+      () => state.bridge.call({ operation: 'submit_candidate', payload: { path: 'Candidate.lean', content_hash: 'wrong' } }),
+      (error) => error.code === 'STALE_VERSION',
+    );
+    const first = await state.bridge.call({ operation: 'submit_candidate', payload: { path: 'Candidate.lean', workspace_revision: 1 } });
+    const replay = await state.bridge.call({ operation: 'submit_candidate', payload: { path: 'Candidate.lean', workspace_revision: 1 } });
+    assert.equal(replay.check_result_id, first.check_result_id);
+    assert.equal(state.getChecks(), 1);
+  } finally {
+    await state.bridge.stop();
+    state.judge.close();
+  }
+});

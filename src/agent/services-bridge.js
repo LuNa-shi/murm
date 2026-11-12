@@ -169,7 +169,7 @@ function switchProgress(payload) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onBeforeSubmitCandidate = null, onSubmitCandidate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -196,8 +196,6 @@ export class ServicesBridge {
     this.onWorkspaceWrite = onWorkspaceWrite;
     this.onWorkUnit = onWorkUnit;
     this.onTaskCreate = onTaskCreate;
-    this.onBeforeSubmitCandidate = onBeforeSubmitCandidate;
-    this.onSubmitCandidate = onSubmitCandidate;
     this.onSchedulerStatus = onSchedulerStatus;
     this.onError = onError;
     this.agentPrompt = agentPrompt;
@@ -206,11 +204,6 @@ export class ServicesBridge {
     this.token = randomUUID();
     this.server = null;
     this.address = null;
-    // Candidate feedback is returned synchronously. A normal-flow checker
-    // failure may then stage a typed Task block, which is applied only after
-    // the HTTP response has been handed to the Agent.
-    this.deferredLifecycle = null;
-    this.deferredLifecyclePromise = null;
     // The most recent task_take attempt made through this identity, used by
     // the Core loop to distinguish "invalid choice" from "lost a claim race".
     // It is reset by the Runner at the start of each discovery turn.
@@ -372,7 +365,9 @@ export class ServicesBridge {
       if (typeof material.content === 'string') {
         return {
           ...payload,
-          source: { content: material.content, content_hash: material.content_hash ?? null },
+          // Context hashes the serialized Material value; Judge hashes source
+          // bytes. Recompute the source hash in Judge for inline Material text.
+          source: { content: material.content, content_hash: null, input_snapshot_hash: execution.input_snapshot_hash },
           target_task: task,
           execution,
         };
@@ -383,6 +378,9 @@ export class ServicesBridge {
       }
     }
     if (typeof path !== 'string' || path.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate.path is required');
+    if (path.startsWith('/') || path.startsWith('\\') || path.split(/[\\/]+/).includes('..')) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate.path must stay within the Execution Workspace');
+    }
     if (typeof this.runtime?.readWorkspaceFile !== 'function') {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Runtime does not expose Workspace file reads');
     }
@@ -408,6 +406,7 @@ export class ServicesBridge {
         content: file.content,
         content_hash: file.content_hash,
         workspace_revision: file.workspace_revision,
+        input_snapshot_hash: execution.input_snapshot_hash,
       },
       // These values are Bridge-owned context, not Agent-selected bindings.
       target_task: task,
@@ -453,41 +452,7 @@ export class ServicesBridge {
     if (this.onRelease) await this.onRelease(released);
   }
 
-  /** Apply a staged typed block after the Agent has received its result. */
-  async flushDeferredLifecycle() {
-    const deferred = this.deferredLifecycle;
-    if (!deferred) return null;
-    this.deferredLifecycle = null;
-    const settled = await this.runtime.blockExecution(deferred.executionId, deferred.block);
-    if (this.taskId === deferred.taskId && this.executionId === deferred.executionId) {
-      await this.releaseClaim({
-        result: {
-          ...deferred.result,
-          applied: {
-            ...(deferred.result?.applied ?? {}),
-            execution: settled?.execution ?? deferred.result?.applied?.execution,
-            task: settled?.task ?? deferred.result?.applied?.task,
-          },
-        },
-      });
-    }
-    return settled;
-  }
-
   async stop() {
-    // A synchronous Judge response may stage a typed block to run after the
-    // HTTP response is sent. Drain that lifecycle work before the caller
-    // tears down Runtime/log directories; otherwise the setImmediate
-    // callback can write after experiment cleanup and surface an unhandled
-    // ENOENT instead of a durable Task transition.
-    if (this.deferredLifecycle) {
-      try {
-        await this.flushDeferredLifecycle();
-      } catch (error) {
-        this.logger?.append({ event: 'bridge.lifecycle_error', operation: 'deferred_block', ok: false, error: { name: error.name, code: error.code, message: error.message } });
-      }
-    }
-    if (this.deferredLifecyclePromise) await this.deferredLifecyclePromise.catch(() => undefined);
     if (!this.server) return;
     const server = this.server;
     this.server = null;
@@ -522,14 +487,6 @@ export class ServicesBridge {
       const result = await this.call(input);
       send(response, 200, { ok: true, result });
       this.logger?.append({ event: 'bridge.response_sent', operation: input.operation });
-      if (this.deferredLifecycle && !this.deferredLifecyclePromise) {
-        const deferredPromise = Promise.resolve().then(() => this.flushDeferredLifecycle()).catch((error) => {
-          this.logger?.append({ event: 'bridge.lifecycle_error', operation: 'deferred_block', ok: false, error: { name: error.name, code: error.code, message: error.message } });
-        }).finally(() => {
-          if (this.deferredLifecyclePromise === deferredPromise) this.deferredLifecyclePromise = null;
-        });
-        this.deferredLifecyclePromise = deferredPromise;
-      }
     } catch (error) {
       if (!response.writableEnded) send(response, 400, { ok: false, error: errorBody(error) });
       else this.logger?.append({ event: 'bridge.error_after_response', operation: input?.operation ?? null, ok: false, error: { name: error.name, code: error.code, message: error.message } });
@@ -707,35 +664,7 @@ export class ServicesBridge {
           const registeredPayload = operation === 'task_create' || operation === 'task_register'
             ? (({ progress: _progress, ...rest }) => ({ ...rest, required_capabilities: requiredTaskCapabilities(payload) }))(invocationPayload)
             : invocationPayload;
-          try {
-            return await this.#invokeRegistered(capability, registeredPayload, bridgeOperationId);
-          } catch (error) {
-            // Keep legacy unit fixtures usable when they intentionally omit a
-            // Judge provider. Production registries with a Judge provider
-            // never enter this callback path.
-            if (operation === 'submit_candidate' && this.onSubmitCandidate && error?.code === ERROR_CODES.SERVICE_UNAVAILABLE) {
-              const guard = this.onBeforeSubmitCandidate?.({ taskId: this.taskId, executionId: this.executionId, payload });
-              if (guard && typeof guard.then === 'function') await guard;
-              const callbackResult = await this.onSubmitCandidate({ taskId: this.taskId, executionId: this.executionId, payload, result: null });
-              const { deferred_block: deferredBlock = null, ...visibleCallbackResult } = callbackResult ?? {};
-              if (deferredBlock) {
-                this.deferredLifecycle = {
-                  taskId: this.taskId,
-                  executionId: this.executionId,
-                  block: {
-                    reason: deferredBlock.reason,
-                    dependency: deferredBlock.dependency,
-                    checkpoint: deferredBlock.checkpoint ?? {},
-                    files: deferredBlock.files ?? {},
-                    terminalState: deferredBlock.terminal_state ?? 'FAILED',
-                  },
-                  result: visibleCallbackResult,
-                };
-              }
-              return visibleCallbackResult;
-            }
-            throw error;
-          }
+          return this.#invokeRegistered(capability, registeredPayload, bridgeOperationId);
         };
         let result = operation === 'task_create' && this.taskCreateMutex
           ? await this.taskCreateMutex.run(invoke)
@@ -909,31 +838,7 @@ export class ServicesBridge {
         case 'consume_materials': result = sdk.consumeMaterials(payload, options); break;
         case 'publish_material': result = sdk.publishMaterial(payload, options); break;
         case 'submit_candidate':
-          {
-            const guard = this.onBeforeSubmitCandidate?.({ taskId: boundTaskId, executionId: boundExecutionId, payload });
-            if (guard && typeof guard.then === 'function') await guard;
-          }
           result = sdk.submitCandidate(payload, options);
-          if (this.onSubmitCandidate) {
-            const callbackResult = await this.onSubmitCandidate({ taskId: boundTaskId, executionId: boundExecutionId, payload, result });
-            const { deferred_block: deferredBlock = null, ...visibleCallbackResult } = callbackResult ?? {};
-            result = { ...result, ...visibleCallbackResult };
-            if (deferredBlock) {
-              if (this.deferredLifecycle) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'a candidate Task block is already pending');
-              this.deferredLifecycle = {
-                taskId: boundTaskId,
-                executionId: boundExecutionId,
-                block: {
-                  reason: deferredBlock.reason,
-                  dependency: deferredBlock.dependency,
-                  checkpoint: deferredBlock.checkpoint ?? {},
-                  files: deferredBlock.files ?? {},
-                  terminalState: deferredBlock.terminal_state ?? 'FENCED',
-                },
-                result,
-              };
-            }
-          }
           break;
         case 'heartbeat': result = sdk.heartbeat(payload, options); break;
         case 'create_child_task': result = sdk.createChildTask(payload, options); break;

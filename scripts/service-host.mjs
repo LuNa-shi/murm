@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { ContextService } from '../src/context/context-service.js';
@@ -24,6 +24,14 @@ const databasePath = resolve(process.env.SWARMENV_SERVICE_DATABASE ?? `./data/${
 await mkdir(dirname(databasePath), { recursive: true });
 const database = new DatabaseSync(databasePath);
 
+async function loadJudgeFixtureManifest() {
+  const configured = process.env.SWARMENV_JUDGE_FIXTURE_MANIFEST;
+  if (!configured) return null;
+  const raw = configured.trim();
+  if (raw.startsWith('{')) return JSON.parse(raw);
+  return JSON.parse(await readFile(resolve(raw), 'utf8'));
+}
+
 // Task and Context share a durable SQLite database when they are launched as
 // separate processes against the same mounted volume. The service boundary is
 // still HTTP: each process owns its handler, health, readiness, and manifest.
@@ -31,6 +39,7 @@ const contextService = new ContextService(database);
 const taskService = new TaskService(database, { contextService });
 contextService.taskService = taskService;
 const judgeService = new JudgeService(database, {
+  fixtureManifest: await loadJudgeFixtureManifest(),
   checker: new LeanChecker({
     workRoot: resolve(process.env.SWARMENV_JUDGE_WORK_ROOT ?? `./data/${serviceId}-judge-work`),
     command: process.env.SWARMENV_LEAN_COMMAND ?? 'lake',
