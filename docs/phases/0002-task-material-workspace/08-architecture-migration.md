@@ -131,7 +131,7 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 **依赖：** P0，以及 #122 对 v1 生命周期、权限和数据版本边界的明确批准。
 
-**闭环：** 创建 Mission、Workspace main 初始 commit/revision `0.1`；独立知识输入另存为 Material，Task 表为空；启动一个只读 Bot，展示并记录真实初始 prompt；Bot 读取/提出 Task、take 后保留同一 Pi，写自己的副本、发布最小有效 Material，再按完成或未完成 release。清理完成后用新 Bot 读取该 Material。补充双 Bot 竞争同 Task 和同 Bot 双重 take 的故障安排。
+**闭环：** 创建 Mission、Workspace main 初始 commit/revision `0.1`；独立知识输入另存为 Material，Task 表为空；启动一个只读 Bot，展示并记录真实初始 prompt；Bot 读取/提出 Task、take 后保留同一 Pi 在 take 前只读，take 后由 Runtime 准备独立工作目录并授予写权限、发布最小有效 Material，再按 done/incomplete 调用 task finish。清理完成后用新 Bot 读取该 Material。补充双 Bot 竞争同 Task 和同 Bot 双重 take 的故障安排。
 
 **必须一起交付：** 新 schema 的隔离运行边界、Task/E/Bot 排他、准备与关闭请求持久化、可信权限开放、普通 Service 写请求校验/撤权、无 E 成本、停止对账、实际 take 返回和最小 UI 事实。Material 单次发布自动绑定来源，只需足够完成此闭环，不提前宣称检索/纠错策略已完善。
 
@@ -195,7 +195,7 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 |---|---|---|
 | Mission / Bot / Core | Mission 预算与验收版本；Bot/Core/sandbox 身份；阅读期起止和费用；有 E 时的绑定 | E 可以为空；没有 E 的模型或工具费用不得丢弃或归入假 Task |
 | Task / E | Workspace、规格/状态版本、当前 E、Bot 唯一绑定、preparing/active/closing/closed、结束意图、关闭证据 | 独占检查必须在事务/约束中成立；未安全停止不能清掉 owner；历史 attempt 不变成活跃 owner |
-| 请求 / 授权 | request ID、操作/输入摘要、Mission/Bot/E、生命周期版本、通用受理许可、结果或未知状态 | take、release、普通 Service 请求中的 Execution 有效性/权限校验和 main 更新与重复/迟到请求可对账；同 ID 换载荷拒绝 |
+| 请求 / 授权 | request ID、操作/输入摘要、Mission/Bot/E、生命周期版本、通用受理许可、结果或未知状态 | take、finish、普通 Service 请求中的 Execution 有效性/权限校验和 main 更新与重复/迟到请求可对账；同 ID 换载荷拒绝 |
 | Workspace / Git main branch | Workspace ID、Mission ID、main branch、Workspace revision、对应 Git commit、candidate、来源 Task/E 和检查引用 | Workspace Service 管理本地 Git refs；integrate 按 expected revision 条件更新；Material 不存 Git 快照 |
 | Material / 关系 | 内容、摘要、媒体/附件清单、不可变生产来源、Evidence 自述、实际使用、disputed/superseded 与派生关系 | Material 不保存 Git main 快照；生产者与消费者分开，初始化输入可无生产 Task/E |
 | 服务操作 | 具体长操作确需异步时由对应 Service 定义的输入、执行状态、费用、结果与取消合同 | Bot 结束后仍可查询；没有“总事务”自动撤销所有服务副作用 |
@@ -240,7 +240,7 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 | `task_register(take:true)` 同 Session 换 Task | 提案与 take 分离；已经绑定的 Bot 不再 take 第二项 | Bridge 回调、Runtime detach、checkpoint、prompt 示例、并发请求 |
 | `workspace_mode=resume`、source E/path/revision、waiting/rework 私有恢复 | 新模式拒绝 private resume；仅允许明确公开 main/Material 输入 | claim 默认、clone/restore 分支、缺快照时 live-file fallback、旧 workspace 指针复用 |
 | rotation/recovery 自动继承私有上下文 | 新 Bot 只读公开资料；同一活跃 E 的 Runtime 重启仅做状态/进程对账 | Pi session 目录、工具历史、checkpoint 提示、recovery prompt、隐藏文件/卷及 Git objects |
-| `execution_progress` 的隐式 checkpoint/发布/handoff 组合 | 改为显式 Material 发布和 release 合同；必要内部审计 checkpoint 不变成共享知识 | 完成门槛、自动提醒、进度统计、旧 tools/help/SDK；不新增 Progress 核心对象 |
+| `execution_progress` 的隐式 checkpoint/发布/handoff 组合 | 改为显式 Material 发布和 finish 合同；必要内部审计 checkpoint 不变成共享知识 | 完成门槛、自动提醒、进度统计、旧 tools/help/SDK；不新增 Progress 核心对象 |
 | named business tools、业务 Workspace/Sandbox tool 代理 | 承接 #119，Bot 使用四工具与 CLI；可信 Runtime/provider 控制面不暴露给 Bot | extension、profile、Bridge、registry、启动参数和旧别名入口 |
 | `swarm context` 旧提议或已交付入口 | 新标准为 `swarm material`；仅在实际已交付且需要兼容时设有版本/期限的同义转发 | 参数、结果、错误、request ID 语义必须相同；help 明示退役，最终删除并给出迁移错误 |
 | Task→runner→Judge 私有提交回调 | 由 #117/获准实施提供直接独立 Judge 服务合同 | Task candidate 状态、输入/fixture 绑定、检查返回和后续完成；不能仅改工具名称 |
@@ -277,7 +277,7 @@ Observation Store 和 UI 是投影。事件丢失或落后时，应能从权威�
 [04](06-prompts-and-skills.md) 是拟议文本及策略合同；实施后的 [Architecture 08](../../architecture/08-prompts.md) 必须写实际安装和发送的版本。完整覆盖至少包括：
 
 - 稳定 system addendum、零 Task 的初始 user 消息、Mission/Workspace/预算动态字段、目录与装配顺序；字段缺失与默认值也要解释。
-- 未绑定阅读、提案与 take 的指令；实际 take 返回；普通执行继续、等待/唤醒、预算和 compaction 收尾、release 拒绝、故障/重启通知及仍存在的 legacy 路径。
+- 未绑定阅读、提案与 take 的指令；实际 take 返回；take 前只读、active 执行、task finish/超时/handoff、预算和 compaction 收尾、finish 后旧 E 请求拒绝、故障/重启通知及仍存在的 legacy 路径。
 - 四基础工具的仓库配置、CLI help/schema/错误文本、服务说明，以及通过 Bash/read 返回给模型的材料、任务、检查结果、通知和 lifecycle rejection。
 - 所有 runtime skills 的**完整正文**、目录、适用条件、版本/hash、安装来源、读取方式；缺失或版本不一致的行为。目录出现某 skill 不代表它的正文已进入模型上下文。
 - 工具结果的截断、格式化、重试/超时提示，以及 Pi/provider 产生的 compaction/内部上下文边界。仓库无法提供的外部文本必须标明未知，不能从模板反推。
