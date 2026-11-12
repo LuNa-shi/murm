@@ -194,4 +194,4 @@ Runtime 在 Bot 生命周期开始时创建独立第三方 sandbox 和 Pi Sessio
 
 Sandbox 创建、挂载、文件权限、网络、凭据、provider 选型和失败回收的完整设计见 [02](02-sandbox-runtime.md)。本文件不重复这些细节。
 
-**仍待确认：** Bot ID 是否与单个 sandbox 生命周期一一对应，以及 Bot 生命周期何时结束。已确认v1 一个 Bot ID 对应一个 sandbox/Pi 生命周期和一个 Execution；Task 可以由多个 Bot 先后接续。超时/handoff 结束当前 Bot，Core 启动新 Bot。
+**v1 运行合同：** 一个 Bot ID 对应一个 Core 上的一次 Bot 运行、一个 sandbox/Pi Session 和最多一个 Execution。Bot 可以提出 Task，但只 take 一个；Task 完成、incomplete handoff 或超时后结束。未完成 Task 可以由新 Bot 接续。
