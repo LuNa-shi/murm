@@ -150,7 +150,7 @@ Bot 判断一个成果值得提出合入时，应回答：
 2. take 后从 Runtime 准备的当前基线开始，在私有副本应用成果。发现旧基准差异时由自己处理，不要求 Runtime 猜测语义冲突。
 3. 运行适用检查。需要远程 Judge 时按普通 service call 提交固定输入，并记录其返回结果；单纯本地写一个 `PASS` 文件不构成可信的合入凭据。
 4. 选择公开文件并发布不可变Workspace candidate。检查与candidate 的内容摘要一致；若检查后还改了文件，则相关检查失效，须重新执行。
-5. 按 Task 的合入政策请求推进 main，带候选、预期旧版本和稳定请求 ID。
+5. 若 Bot 判断候选值得进入共同主线，按 Task/Mission 合入政策调用 Workspace integrate，带 candidate 和预期 Workspace revision。
 6. 若成功，读取服务返回的新 main 版本，登记到本 Task 的结果中。Task 完成条件满足后 release；这个 Bot 不继续 take 下一项工作。
 7. 若冲突或被拒，按下一节处理。可以在当前有效 E 内修正后再次提交新候选，或公开已完成部分并按未完成 release。
 
@@ -178,7 +178,7 @@ swarm workspace integrate C5 --expected-revision 0.1 --json
 1. 验证调用者身份和当前 E；若 CLI/API 操作本身有重试语义，使用该操作自己的幂等键避免重复更新。
 2. 通过 Context API 解析候选及来源，确认可见性、内容持久性和完整摘要，记录当前已知的质疑/修正信息。Context 不可达或附件缺失时不推进 main。
 3. 从可信检查服务读取与候选摘要、输入、政策及检查器版本相符的结果。Bot 自述只能作为解释，不能冒充服务给出的通过事实。若项目需要人工接纳，核对针对该具体候选的批准。
-4. 在 Task / Workspace 同一事务中检查 E 仍为 `active`、属于当前 Task、Task 仍由它执行，且 E 范围与 Task 合同允许所申请的 Workspace 操作。候选的最终整合生产者必须是这个 Task/E；其他 Task/E 的成果通过候选的输入来源引用保留。确认当前 main 恰为请求的 `expected_main_revision`，候选也基于此版本，政策版本未改变。
+4. 在 Task / Workspace 同一事务中检查 E 仍为 `active`、属于当前 Task、Task 仍由它执行，且 E 范围与 Task 合同允许所申请的 Workspace 操作。本次 integrate 的调用者必须是当前有效 Task/E；candidate 的原始生产 Task/E 来源保持不变，其他 Task/E 的成果通过 candidate 来源引用保留。确认当前 main 恰为请求的 `expected_main_revision`，候选也基于此版本，政策版本未改变。
 5. 原子写入新 main 版本、父版本、候选及来源引用、证据摘要和该请求的成功结果。任何一项条件不成立都不移动指针。返回新的版本与快照引用。
 
 main 更新是一次 Workspace Service 操作。服务在处理时检查当前 E；若 release 已结束该 E，则拒绝。若 integrate 已经完成并返回成功，release 不会回滚已经提交的 main。第一版不为普通操作引入通用跨服务事务协议。
