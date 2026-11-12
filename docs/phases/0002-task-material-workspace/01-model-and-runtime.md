@@ -147,7 +147,7 @@ stateDiagram-v2
 
 ## release 与异常退出
 
-release 是结束当前 E 并销毁当前 Bot sandbox，不是清空 CLI 当前任务，也不一定代表 Task 完成。v1 使用完成/未完成的结束意图，并记录原因；具体 API 字段待实现审阅。Bot 应在调用前发布交付或有用的部分材料，核对其实际可读性和任务关联。
+release 是结束当前 E 并将 Bot sandbox 恢复只读，不是结束 Bot 生命周期，也不一定代表 Task 完成；当前 Bot 可以继续选择下一 Task。v1 使用完成/未完成的结束意图，并记录原因；具体 API 字段待实现审阅。Bot 应在调用前发布交付或有用的部分材料，核对其实际可读性和任务关联。
 
 1. **外部持久接收。** Task/Runtime 接收带 request ID 的结束请求，校验当前 E 和任务版本；完成意图须满足 Task 交付条件，不满足时返回拒绝或明确的未完成结果，不能默默记 done。
 2. **撤销新操作资格。** E 转为 closing，记录结束意图和已接纳操作边界；后续新贡献许可被拒绝。协调凭据也不再允许这个 Bot 新提案或认领。
@@ -171,7 +171,7 @@ Task done、Material publish、Workspace integrate 分别是局部责任、内�
 
 ## 运行轨迹的边界
 
-完整四 Bot 例子放在 [Overview](README.md)，Task/Material/Workspace 的具体交付过程分别见 [03](03-task.md)、[04](04-material.md) 和 [05](05-workspace.md)。本文件只约束 Runtime 的共同行为：每次 take 建立一个新的 Execution；每个 E 使用独立 sandbox 和 Pi Session；release 后旧 sandbox 停止；新 E 不继承前任私有会话或目录。
+完整四 Bot 例子放在 [Overview](README.md)，Task/Material/Workspace 的具体交付过程分别见 [03](03-task.md)、[04](04-material.md) 和 [05](05-workspace.md)。本文件只约束 Runtime 的共同行为：每次 take 建立一个新的 Execution；每个 E 使用独立 sandbox 和 Pi Session；release 后当前 sandbox 恢复只读，Bot 可继续选择下一 Task；Bot 生命周期结束后 sandbox 才停止。新 Bot 不继承前任私有会话或目录。
 
 ## 最小配置与可观测记录
 
@@ -194,4 +194,4 @@ Runtime 在 Bot 生命周期开始时创建独立第三方 sandbox 和 Pi Sessio
 
 Sandbox 创建、挂载、文件权限、网络、凭据、provider 选型和失败回收的完整设计见 [02](02-sandbox-runtime.md)。本文件不重复这些细节。
 
-**仍待确认：** 逻辑 Bot ID 是否跨顺序 Bot 生命周期延续；一个 Bot 生命周期是否只允许一次 take/release，还是允许 release 后继续留在同一只读 sandbox 再 take 另一个 Task。当前建议先采用一个 Bot 生命周期最多一次成功 take，release 后 Bot/sandbox 结束；若需要第二个 Task，启动新的 Bot/sandbox。
+**仍待确认：** Bot ID 是否与单个 sandbox 生命周期一一对应，以及 Bot 生命周期何时结束。已确认一个 Bot 可以在同一 sandbox/Pi Session 中经历多次 take/release；每次最多一个 active Execution。当前建议 Bot ID 与 sandbox 生命周期一一对应，handoff/compaction 上限时创建新 Bot。
