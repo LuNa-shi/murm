@@ -596,6 +596,11 @@ async function startAgentSession(core) {
   core.sessionHistory.push(session);
   core.versionManifest = session.manifest ?? null;
   await session.waitForReady({ timeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000 });
+  // Configure retry/compaction on every reusable identity before the first
+  // discovery turn. Adapters apply these flags only for an inline startup
+  // prompt; the benchmark sends discovery as the first later turn.
+  await session.setAutoCompaction?.(true);
+  await session.setAutoRetry?.(true);
   // The identity loop supplies a bounded Task view to this reusable identity.  The
   // first prompt is sent by the identity's task_take loop, not by a separate
   // old selection transport.
@@ -1480,8 +1485,13 @@ async function createProjectState(problem, config, options) {
         execdPort: sandboxConfig.execdPort,
         commandTimeoutMs: sandboxConfig.commandTimeoutMs,
         maxOutputBytes: sandboxConfig.maxOutputBytes,
-        foregroundSession: sandboxConfig.foregroundSession ?? true,
-        logger: (event) => sandboxObservationStore?.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_event', payload: event }),
+        // Execd v1.1's session endpoint is not a durable stdin transport for
+        // direct Pi workers. Use the command endpoint by default; callers may
+        // opt into sessions only after verifying provider support.
+        foregroundSession: sandboxConfig.foregroundSession ?? false,
+        logger: (event) => {
+          if (sandboxObservationStore?.getExperiment?.(runId)) sandboxObservationStore.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_event', payload: event });
+        },
       })
       : new ContainerSandboxManager({
       image: options.sandbox.image,
@@ -1495,7 +1505,9 @@ async function createProjectState(problem, config, options) {
       pidsLimit: options.sandbox.pidsLimit ?? 256,
       commandTimeoutMs: options.sandbox.commandTimeoutMs,
       maxOutputBytes: options.sandbox.maxOutputBytes,
-      logger: (event) => sandboxObservationStore?.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_event', payload: event }),
+        logger: (event) => {
+          if (sandboxObservationStore?.getExperiment?.(runId)) sandboxObservationStore.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_event', payload: event });
+        },
     })
     : null;
   if (sandboxManager) await sandboxManager.preflight({ timeoutMs: options.sandbox.preflightTimeoutMs ?? 20_000 });
@@ -1756,6 +1768,7 @@ async function createProjectState(problem, config, options) {
   try {
     for (let index = 1; index <= 4; index += 1) {
     const coreDir = join(workspaceRoot, `core-${index}`);
+    await mkdir(coreDir, { recursive: true });
     const childEnv = { ...process.env };
     const adapter = sandboxManager && (sandboxProvider === 'opensandbox' || sandboxProvider === 'open-sandbox')
       ? new OpenSandboxAgentAdapter({
@@ -1768,7 +1781,12 @@ async function createProjectState(problem, config, options) {
         env: childEnv,
         agentEnvironment: sandboxConfig.agentEnvironment ?? {},
         secretEnv: sandboxConfig.secretEnvironment ?? {},
-        systemPrompt: SYSTEM_IDENTITY_PROMPT,
+        // The native gpt_proxy catalog is currently incompatible with Pi's
+        // append-system-prompt request path (the gateway returns `Invalid URL`
+        // before processing the first turn). The full identity contract is
+        // still sent in the bounded discovery/follow-up user prompt; callers
+        // may opt back into a provider that supports system prompts.
+        systemPrompt: sandboxConfig.systemPrompt ?? null,
         // The provider image carries the repository extension and all of its
         // source imports. A guest path is required; the controller's source
         // tree is outside the sandbox and must never be passed through.

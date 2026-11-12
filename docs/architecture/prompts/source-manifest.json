@@ -33,7 +33,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "a7ce030957632c0dc95ad45535da1b5424be0a38e5022c310177ff80ad370228"
+      "sha256": "171432f46555c9698b9a130ebfb35bc0343a677e850415ee358ffa66571c943d"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -108,49 +108,49 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const modeInstructions = ",
-      "line": 1668,
+      "line": 1680,
       "sha256": "3828a9225b58c322c5dcfe0abc589e0ba5151fb58dc5635da413b7734ca77213"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const dependencyInstruction = ",
-      "line": 1671,
+      "line": 1683,
       "sha256": "6183c85158d9d0366ce9547e85305645fc3cc032ce7d3bd20afaaaa2d3cb495b"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const taskSpecificInstruction = ",
-      "line": 1672,
+      "line": 1684,
       "sha256": "a5c864d39b6125b61f29029465c2355a561501a2ae0406d9af5fdf09712f67fc"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "    task_instructions: ",
-      "line": 1682,
+      "line": 1694,
       "sha256": "8479420714749b57dcc3fabee1933091d37c0f8a33a5ae0dc6e6cdbbbce6bcae"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 691,
+      "line": 696,
       "sha256": "effea448619569d91a147989248427c95b573da2d88fc5fca4774927f0e6c825"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "      takePrompt: ",
-      "line": 2631,
+      "line": 2649,
       "sha256": "5f88452ecabb10d03f484569a3af6758c6388dd71ad156c14c1320dcb6cae9be"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const message = ",
-      "line": 740,
+      "line": 745,
       "sha256": "54186b4259d4b70593492b5c8a24e3a8cb30d730dde9a44092eb333ac0e7dace"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const basePrompt = ",
-      "line": 2622,
+      "line": 2640,
       "sha256": "6be42e0ba4e7c5c99afffc42d9d0a74f4ef9c76f92d2179ae27b94c195b043f4"
     },
     {
@@ -208,7 +208,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 748,
+      "line": 753,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
     },
     {

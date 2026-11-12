@@ -107,6 +107,24 @@ async function loadDotEnv(path = '.env') {
 
 await loadDotEnv();
 
+async function loadPiProviderSettings(provider) {
+  const configuredDir = process.env.PI_CODING_AGENT_DIR
+    ?? (process.env.HOME ? join(process.env.HOME, '.pi', 'agent') : null);
+  if (!configuredDir) return {};
+  try {
+    const catalog = JSON.parse(await readFile(join(configuredDir, 'models.json'), 'utf8'));
+    const settings = catalog?.providers?.[provider];
+    if (!settings || typeof settings !== 'object') return {};
+    return {
+      baseUrl: typeof settings.baseUrl === 'string' ? settings.baseUrl : null,
+      apiKey: typeof settings.apiKey === 'string' ? settings.apiKey : null,
+    };
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.name !== 'SyntaxError') throw error;
+    return {};
+  }
+}
+
 function optionsFromArgs(argv) {
   const runId = Date.now();
   const options = {
@@ -126,6 +144,17 @@ function optionsFromArgs(argv) {
     observabilityMetadataPath: process.env.SWARMENV_OBSERVABILITY_METADATA ?? null,
     model: process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL ?? 'gpt-6.1-sol',
     provider: process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER ?? 'gpt_proxy',
+    sandbox: {
+      enabled: process.env.SWARMENV_SANDBOX_ENABLED === 'true',
+      provider: process.env.SWARMENV_SANDBOX_PROVIDER ?? 'opensandbox',
+      image: process.env.SWARMENV_SANDBOX_IMAGE,
+      lifecycleBaseUrl: process.env.SWARMENV_OPENSANDBOX_URL,
+      endpointHost: process.env.SWARMENV_OPENSANDBOX_ENDPOINT_HOST ?? null,
+      bridgeHost: process.env.SWARMENV_BRIDGE_HOST ?? null,
+      bridgeUrl: process.env.SWARMENV_BRIDGE_PUBLIC_URL ?? null,
+      agentEnvironment: {},
+      secretEnvironment: {},
+    },
     parallelMode: 'semantic',
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -201,6 +230,21 @@ if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Erro
 if (!['direct', 'semantic', 'root-only'].includes(options.parallelMode)) throw new Error('--parallel-mode must be direct, semantic, or root-only');
 if (!options.provider) throw new Error('PI_PROVIDER is required; set it in .env or the environment');
 if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the environment');
+
+// Native Pi keeps provider credentials in its local models catalog. Copy only
+// the selected provider's endpoint and key into the explicit sandbox
+// deployment boundary; the host environment and the rest of the catalog never
+// enter the worker.
+const piProviderSettings = await loadPiProviderSettings(options.provider);
+const piProviderEnvPrefix = `PI_${options.provider.toUpperCase().replaceAll('-', '_')}`;
+options.sandbox.agentEnvironment = {
+  [`${piProviderEnvPrefix}_BASE_URL`]: process.env[`${piProviderEnvPrefix}_BASE_URL`] ?? piProviderSettings.baseUrl,
+};
+options.sandbox.secretEnvironment = {
+  [`${piProviderEnvPrefix}_API_KEY`]: process.env[`${piProviderEnvPrefix}_API_KEY`] ?? piProviderSettings.apiKey,
+};
+for (const [key, value] of Object.entries(options.sandbox.agentEnvironment)) if (typeof value !== 'string' || value.length === 0) delete options.sandbox.agentEnvironment[key];
+for (const [key, value] of Object.entries(options.sandbox.secretEnvironment)) if (typeof value !== 'string' || value.length === 0) delete options.sandbox.secretEnvironment[key];
 
 options.experimentRoot = resolve(options.experimentRoot);
 options.experimentDir = resolve(options.experimentDir);
