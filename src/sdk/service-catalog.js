@@ -24,82 +24,10 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', properties: { root_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, task_type: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, available_only: { type: 'boolean' } }, additionalProperties: false },
   },
   {
-    name: 'task_create_child', service: 'task', operation: 'create_child_task', version: '1.0',
-    description: 'Create a bounded direct child Task for a genuinely separate responsibility.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['child_creation_key', 'task_type', 'goal', 'expected_output', 'acceptance_conditions'], properties: { child_creation_key: { type: 'string' }, task_type: { type: 'string' }, goal: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { type: 'object' }, priority: { type: 'integer', minimum: 0 } }, additionalProperties: true },
-  },
-  {
-    name: 'task_create_branch_group', service: 'task', operation: 'create_branch_group', version: '1.0',
-    description: 'Create a versioned group of alternative ordinary Tasks. Branch membership expresses alternatives; it does not create an implicit wait, ownership, or execution dependency, and the creating Task may continue useful work.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['parent_task_id', 'branch_tasks'], properties: { parent_task_id: { type: 'string' }, branch_tasks: { type: 'array', items: { type: 'object' } }, group_key: { type: 'string' }, expected_structural_version: { type: 'integer', minimum: 0 } }, additionalProperties: true },
-  },
-  {
-    name: 'task_add_required_subtask', service: 'task', operation: 'add_required_subtask', version: '1.0',
-    description: 'Add an ordinary Task as a jointly required subtask. Required subtasks may become ready concurrently; only an explicit execution dependency blocks work, and provenance remains audit information.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['owner_task_id'], properties: { owner_task_id: { type: 'string' }, subtask_task_id: { type: 'string' }, subtask: { type: 'object' }, expected_structural_version: { type: 'integer', minimum: 0 } }, additionalProperties: true },
-  },
-  {
-    name: 'task_get_structure', service: 'task', operation: 'get_task_structure', version: '1.0',
-    description: 'Inspect a Task structure in one view: alternative branches, jointly required subtasks, explicit execution dependencies, creation provenance, completion status, unresolved work, and structural version.',
-    scope: 'task-read', side_effect: false,
-    parameters: { type: 'object', properties: { task_id: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'task_propose_structure_change', service: 'task', operation: 'propose_structure_change', version: '1.0',
-    description: 'Propose an auditable, version-checked Task structure change based on new evidence. Structural membership, explicit execution dependencies, and creation provenance stay distinct; active work is preserved.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['task_id', 'change'], properties: { task_id: { type: 'string' }, expected_structural_version: { type: 'integer', minimum: 0 }, change: { type: 'object' }, change_key: { type: 'string' } }, additionalProperties: true },
-  },
-  {
-    name: 'task_explain_readiness', service: 'task', operation: 'explain_task_readiness', version: '1.0',
-    description: 'Explain why a Task is READY, BLOCKED, or SATISFIED, including missing contract evidence and explicit dependencies; branch alternatives and required subtasks are not generic waits.',
-    scope: 'task-read', side_effect: false,
-    parameters: { type: 'object', properties: { task_id: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'task_create_rework', service: 'task', operation: 'create_rework_task', version: '1.0',
-    description: 'Create a new rework Task linked to a prior deliverable, feedback, Materials, and Workspace lineage. Rework reuses prior evidence through explicit provenance and does not silently reopen the old Execution.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['prior_task_id'], properties: { prior_task_id: { type: 'string' }, instruction: { type: 'string' }, feedback: {}, input_material_refs: { type: 'array', items: { type: 'string' } }, workspace_source_execution_id: { type: 'string' }, workspace_revision: { type: 'integer', minimum: 1 } }, additionalProperties: true },
-  },
-  {
-    name: 'task_accept', service: 'task', operation: 'accept_task', version: '1.0',
-    description: 'Complete a Task whose own completion contract is satisfied. A parent review is required only when the target contract explicitly sets parent_review=true; otherwise the current Task owner may accept its own work after reading the evidence.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['target_task_id'], properties: { target_task_id: { type: 'string' }, target_state_version: { type: 'integer', minimum: 0 } }, additionalProperties: false },
-  },
-  {
-    name: 'task_request_rework', service: 'task', operation: 'request_rework', version: '1.0',
-    description: 'Send a child Task back for focused rework with a durable steer Material. The child must be WAITING for parent_review; leave OPEN or RUNNING children with their worker.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['target_task_id', 'instruction'], properties: { target_task_id: { type: 'string' }, instruction: { type: 'string' }, scope: { type: 'string' } }, additionalProperties: false },
-  },
-  {
     name: 'execution_get', service: 'execution', operation: 'get_execution', version: '1.0',
     description: 'Read the current Execution lease, Workspace revision and checkpoint.',
     scope: 'execution-read', side_effect: false,
     parameters: { type: 'object', properties: { execution_id: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'execution_heartbeat', service: 'execution', operation: 'heartbeat', version: '1.0',
-    description: 'Extend the current Execution lease.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', properties: { lease_expires_at: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'execution_wait', service: 'execution', operation: 'request_wait', version: '1.0',
-    description: 'Save a checkpoint and release the active Execution for a durable Task dependency wait. Use child_task_terminal, a non-empty children_all_terminal set, parent_review, or timer. Candidate submission is synchronous and returns its CheckResult; do not wait for a candidate.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['wait_condition'], properties: { wait_condition: { type: 'object', properties: { type: { type: 'string' }, child_task_id: { type: 'string' }, check_request_key: { type: 'string' }, candidate_material_id: { type: 'string' }, deadline: { type: 'string' } }, additionalProperties: true }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } }, wait_deadline: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'execution_block', service: 'execution', operation: 'block_execution', version: '1.0',
-    description: 'Save a checkpoint, end the current Execution, release its Core, and mark the Task BLOCKED for a concrete external dependency. Use this instead of leaving a live Execution in WAITING.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['reason', 'dependency'], properties: { reason: { type: 'string' }, dependency: { type: 'object', properties: { dependency_kind: { type: 'string', enum: ['TASK', 'MATERIAL', 'CHECK_RESULT'] }, prerequisite_task_id: { type: 'string' }, material_id: { type: 'string' }, check_result_id: { type: 'string' }, requirement: { type: 'object' } }, additionalProperties: false }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } } }, additionalProperties: false },
   },
   {
     name: 'workspace_get', service: 'workspace', operation: 'get_workspace', version: '1.0',
@@ -166,15 +94,15 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'judge_submit_candidate', service: 'judge', operation: 'submit_candidate', version: '1.0',
-    description: 'Submit a candidate Material for the Task completion checker. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes; a checker that never starts is not a proof failure.',
+    description: 'Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['candidate_material_id'], properties: { candidate_material_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['path'], properties: { path: { type: 'string', minLength: 1 }, workspace_revision: { type: 'integer', minimum: 1 }, content_hash: { type: 'string', minLength: 1 }, request_key: { type: 'string', minLength: 1 } }, additionalProperties: false },
   },
   {
     name: 'judge_get_check_result', service: 'judge', operation: 'get_check_result', version: '1.0',
     description: 'Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.',
     scope: 'execution-read', side_effect: false,
-    parameters: { type: 'object', required: ['check_result_id'], properties: { check_result_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', properties: { check_result_id: { type: 'string' }, request_key: { type: 'string' } }, additionalProperties: false },
   },
 ]);
 
@@ -352,15 +280,15 @@ const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'c
 // the Execution lease/liveness controls; modern Mission Tasks use the semantic
 // entries above and the Registry-backed profile.
 const LEGACY_AGENT_OPERATIONS = new Set([
-  'abort', 'accept_task', 'apply_check_result', 'block_execution',
+  'abort', 'apply_check_result', 'block_execution',
   'claim', 'list_claimable_tasks', 'select_task',
-  'create_rework_task', 'fence_execution', 'heartbeat', 'request_rework',
+  'fence_execution', 'heartbeat',
   'request_wait', 'resume_execution', 'start_execution', 'stop_execution',
   'wake', 'wake_execution',
 ]);
 
 const LEGACY_AGENT_TOOL_NAMES = new Set([
-  'execution_wait', 'task_accept', 'task_create_rework', 'task_request_rework',
+  'execution_wait',
   'service_call', 'swarmenv_call',
 ]);
 
@@ -391,7 +319,6 @@ export function isLegacyAgentSurface(tool, { runtimeOwned = false } = {}) {
   if (!tool || typeof tool !== 'object') return false;
   const operation = tool.operation ?? null;
   const name = tool.name ?? tool.tool_name ?? tool.toolName ?? null;
-  if (runtimeOwned && operation === 'accept_task') return false;
   return LEGACY_AGENT_OPERATIONS.has(operation) || LEGACY_AGENT_TOOL_NAMES.has(name);
 }
 
@@ -439,11 +366,6 @@ export function listTools(service = null, options = {}) {
   return clone(includeInternal
     ? selected
     : deduplicateNamedTools(selected.filter((tool) => !isLegacyAgentSurface(tool))));
-}
-
-/** Internal adapters can inspect the full pre-#100 catalog explicitly. */
-export function listLegacyTools(service = null) {
-  return listTools(service, { includeInternal: true });
 }
 
 export function serviceCatalog(options = {}) {

@@ -490,6 +490,8 @@ test('JudgeService stores CheckResult truth, keeps Task untouched, and deduplica
   const replay = await judge.judgeCandidate(input, { operationId: 'judge-op-2' });
   assert.equal(replay.check_result_id, first.check_result_id);
   assert.equal(checks, 1, 'same request_key must not run Lean twice');
+  const queried = judge.dispatch('get_check_result', { request_key: input.request_key }, makeEnvelope({ operationId: 'judge-query-by-request', actorRef: 'test:judge-query', taskId: targetTask.task_id, executionId: 'execution-proof' }));
+  assert.equal(queried.check_result_id, first.check_result_id, 'a lost submit response must be recoverable by request_key');
   assert.equal(judge.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get(), undefined);
   await assert.rejects(
     () => judge.judgeCandidate({ ...input, candidate_material_id: 'material-2', candidate: candidate('changed', 'material-2') }, { operationId: 'judge-op-3' }),

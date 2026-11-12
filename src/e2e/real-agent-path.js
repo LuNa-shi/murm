@@ -24,8 +24,8 @@ import { createMathlibSearchManifest, createMathlibSearchService } from '../serv
 const execFile = promisify(defaultExecFile);
 const extensionPath = fileURLToPath(new URL('../agent/swarmenv-extension.mjs', import.meta.url));
 const ROUTING_FIELDS = Object.freeze([
-  'NUROUTER_PI_PROVIDER',
-  'NUROUTER_PI_MODEL',
+  'PI_PROVIDER',
+  'PI_MODEL',
 ]);
 
 function present(value) {
@@ -54,10 +54,10 @@ async function commandVersion(command) {
 export async function probeRealAgentConfig({ env = process.env } = {}) {
   const missing = ROUTING_FIELDS.filter((field) => !present(env[field]));
   const routeBlockers = [];
-  if (present(env.NUROUTER_PI_PROVIDER)) {
+  if (present(env.PI_PROVIDER ?? env.NUROUTER_PI_PROVIDER)) {
     try {
       resolveAgentCoreRoute({
-        provider: env.NUROUTER_PI_PROVIDER,
+        provider: env.PI_PROVIDER ?? env.NUROUTER_PI_PROVIDER,
         account: env.NUROUTER_PI_ACCOUNT,
         group: env.NUROUTER_PI_GROUP,
       });
@@ -507,7 +507,7 @@ export async function runRealAgentPath({
   const contextService = new ContextService(databaseConnection);
   const taskService = new TaskService(databaseConnection, { contextService });
   contextService.taskService = taskService;
-  const judgeService = new JudgeService(databaseConnection, { checker: new LeanChecker({ workRoot: rootDir }) });
+  const judgeService = new JudgeService(databaseConnection, { fixtureManifest: lockedFixture, checker: new LeanChecker({ workRoot: rootDir }) });
   taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
   judgeService.setDependencyEventSink((event) => taskService.notifyDependencyEvent(event));
   const router = new ServicesRouter({ taskService, contextService, judgeService });
@@ -543,7 +543,10 @@ export async function runRealAgentPath({
     }
   }
   const ownerSdk = new ServicesSDK(router, { actorRef: 'owner:root' });
-  const task = ownerSdk.proposeTask({
+  const mission = ownerSdk.createMission({ mission_id: 'mission:real-agent', goal: 'Prove the locked PutnamBench fixture theorem with the real Agent Core', acceptance_conditions: { fixture_id: lockedFixture.fixture_id } }, { operationId: 'real:mission' }).mission;
+  const task = ownerSdk.createTask({
+    mission_id: mission.mission_id,
+    summary: 'Prove the locked PutnamBench fixture theorem with the real Agent Core',
     task_type: 'proof',
     goal: 'Prove the locked PutnamBench fixture theorem with the real Agent Core',
     expected_output: 'A Lean proof Artifact compiled in the locked fixture',
@@ -557,7 +560,7 @@ export async function runRealAgentPath({
         environment_ref: lockedFixture.environment_ref,
       },
     },
-  }, { operationId: 'real:propose' }).task;
+  }, { operationId: 'real:task' }).task;
   const executionId = 'real-agent-execution';
   const candidatePrompt = promptForCandidates({ firstCandidate });
   const claimed = ownerSdk.withContext({ actorRef: 'agent:real', taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
@@ -573,11 +576,11 @@ export async function runRealAgentPath({
   };
 
   const childEnv = { ...env };
-  const launchCommand = command ?? (env.NUROUTER_PI_PROVIDER === 'openai-codex' ? 'pi' : 'nurouter');
+  const launchCommand = command ?? 'pi';
   const adapter = new AgentCoreAdapter({
     command: launchCommand,
-    provider: env.NUROUTER_PI_PROVIDER,
-    model: env.NUROUTER_PI_MODEL,
+    provider: env.PI_PROVIDER ?? env.NUROUTER_PI_PROVIDER,
+    model: env.PI_MODEL ?? env.NUROUTER_PI_MODEL,
     account: env.NUROUTER_PI_ACCOUNT,
     group: env.NUROUTER_PI_GROUP,
     extensionPath,
@@ -610,85 +613,22 @@ export async function runRealAgentPath({
   });
   let bridge;
   const checkHistory = [];
-  const checkAttempts = new Map();
-  let candidateSubmission = Promise.resolve();
-  const submitCandidate = async ({ taskId, executionId: submittedExecutionId, payload }) => {
-    const currentTask = taskService.getTask(taskId);
-    const currentExecution = taskService.getExecution(submittedExecutionId);
+  const recordDirectCandidate = async ({ taskId, executionId: submittedExecutionId, payload, result }) => {
     const material = contextService.getMaterial(payload.candidate_material_id);
-    const candidateSource = candidateMaterialSource(material);
-    if (!currentTask || !currentExecution || !material || candidateSource === null) {
-      throw new Error('real-agent candidate submission has no checkable Material or Execution');
-    }
-    const workspaceMetadata = await runtime.getWorkspace(submittedExecutionId);
-    const workspace = {
-      task_id: taskId,
-      execution_id: submittedExecutionId,
-      input_snapshot_hash: currentExecution.input_snapshot_hash,
-      workspace_ref: workspaceMetadata.workspace?.workspace_ref ?? currentExecution.workspace_ref,
-      workspace_revision: workspaceMetadata.workspace?.workspace_revision ?? currentExecution.workspace_revision,
-    };
-    const attempt = (checkAttempts.get(material.material_id) ?? 0) + 1;
-    checkAttempts.set(material.material_id, attempt);
-    const requestKey = `real:check:${material.material_id}:${attempt}`;
-    const result = await judgeService.judgeCandidate(checkRequest({
-      task: currentTask,
-      execution: currentExecution,
-      workspace,
-      fixtureManifest: lockedFixture,
-      material,
-      requestKey,
-    }));
+    const currentExecution = taskService.getExecution(submittedExecutionId);
+    if (!material || !currentExecution || !result?.check_result_id) throw new Error('direct Judge submission did not return a durable CheckResult');
     const fresh = taskService.getExecution(submittedExecutionId);
-    let applied = ownerSdk.withContext({
+    const applied = ownerSdk.withContext({
       taskId,
       executionId: submittedExecutionId,
       specVersion: fresh.spec_version,
       stateVersion: fresh.state_version,
       fencingVersion: fresh.fencing_version,
-    }).applyCheckResult({ check_result_id: result.check_result_id }, { operationId: `real:apply:${material.material_id}:${attempt}` });
-    const retryableInfrastructure = result.result_class === 'infrastructure_failure' && result.retryable && !result.evidence?.retry_exhausted;
-    let deferredBlock = null;
-    if (retryableInfrastructure) {
-      const preflight = judgeService.getCheckerPreflight(result.evidence?.preflight_key);
-      if (!preflight?.health_fingerprint) throw new Error('real-agent retryable checker failure has no preflight fingerprint');
-      deferredBlock = {
-        reason: 'checker health unavailable',
-        dependency: {
-          dependency_kind: 'CHECK_RESULT',
-          check_result_id: result.check_result_id,
-          requirement: {
-            checker_health: {
-              preflight_key: result.evidence.preflight_key,
-              health_fingerprint: preflight.health_fingerprint,
-            },
-          },
-        },
-        checkpoint: {
-          phase: 'checker_unavailable',
-          candidate_material_id: material.material_id,
-          check_result_id: result.check_result_id,
-          preflight_key: result.evidence.preflight_key,
-          diagnostic_code: result.diagnostic_code,
-        },
-        terminal_state: 'FAILED',
-      };
-    }
+    }).applyCheckResult({ check_result_id: result.check_result_id }, { operationId: `real:apply:${result.check_result_id}` });
     const record = { material_id: material.material_id, result: taskService.getCheckResult(result.check_result_id), applied };
     record.lifecycle_event_count_before = runtimeLifecycleEvents.length;
     checkHistory.push(record);
     record.lifecycle_event_count_after = runtimeLifecycleEvents.length;
-    return {
-      // Keep the synchronous tool response consistent with the durable Judge
-      // read route after TaskService applies the result.
-      check_result: agentCheckResult(taskService.getCheckResult(result.check_result_id)),
-      applied,
-      ...(deferredBlock ? { deferred_block: deferredBlock } : {}),
-    };
-  };
-  const onSubmitCandidate = (args) => {
-    candidateSubmission = submitCandidate(args);
-    return candidateSubmission;
   };
   bridge = new ServicesBridge({
     taskService,
@@ -698,7 +638,9 @@ export async function runRealAgentPath({
     registry: capabilityRegistry,
     taskId: task.task_id,
     executionId,
-    onSubmitCandidate,
+    onWorkUnit: async (event) => {
+      if (event.operation === 'submit_candidate') await recordDirectCandidate(event);
+    },
     onRelease: async () => {
       // ServicesBridge clears its own binding before invoking this hook. The
       // callback is present so this path has the same explicit release seam as
@@ -717,7 +659,6 @@ export async function runRealAgentPath({
     report.agent_flow = await runAgentTurn(firstRun.session, { timeoutMs });
     report.first_agent = report.agent_flow;
     report.second_agent = null;
-    await candidateSubmission;
     const firstRecord = checkHistory[0];
     const secondRecord = checkHistory[1];
     const firstMaterial = firstRecord ? contextService.getMaterial(firstRecord.material_id) : null;

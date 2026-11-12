@@ -133,12 +133,13 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
     this.agentAdapter = agentAdapter;
     this.sandboxManager = sandboxManager;
+    this.cleanExecutionWorkspaces = cleanExecutionWorkspaces === true;
     this.maxWorkers = maxWorkers;
     this.runtimeGeneration = runtimeGeneration;
     this.actorRef = actorRef;
@@ -248,6 +249,22 @@ export class Runtime {
     while (this.pendingReleasePromises.size > 0) {
       await Promise.allSettled([...this.pendingReleasePromises]);
     }
+  }
+
+  /** Reconcile provider-owned sandboxes against the durable Execution store. */
+  async reconcileProviderExecutions({ executionIds = null } = {}) {
+    if (typeof this.sandboxManager?.reconcileExecutions !== 'function') {
+      return { provider: null, adopted: [] };
+    }
+    const ids = executionIds ?? this.taskService.listActiveExecutions().map((execution) => execution.execution_id);
+    const result = await this.sandboxManager.reconcileExecutions({ executionIds: ids });
+    this.logger?.append({
+      event: 'runtime.provider_reconciled',
+      provider: result.provider ?? null,
+      requested_execution_count: ids.length,
+      adopted_execution_count: result.adopted?.length ?? 0,
+    });
+    return result;
   }
 
   /** Wait until Runtime no longer owns an Execution process. */
@@ -474,13 +491,19 @@ export class Runtime {
   async #stopSandbox(executionId) {
     if (!this.sandboxManager || !executionId) return;
     try {
-      await this.sandboxManager.stopExecution(executionId);
+      const current = this.taskService.getExecution(executionId);
+      if (typeof this.sandboxManager.syncWorkspaceBack === 'function' && current?.workspace_ref) await this.sandboxManager.syncWorkspaceBack({ executionId, workspaceRef: current.workspace_ref });
     } catch (error) {
       this.logger?.append({
-        event: 'runtime.sandbox_stop_error',
+        event: 'runtime.sandbox_sync_error',
         execution_id: executionId,
         error_class: error?.code ?? error?.name ?? 'sandbox_stop_error',
       });
+    }
+    try {
+      await this.sandboxManager.stopExecution(executionId);
+    } catch (error) {
+      this.logger?.append({ event: 'runtime.sandbox_stop_error', execution_id: executionId, error_class: error?.code ?? error?.name ?? 'sandbox_stop_error' });
     }
   }
 
@@ -495,11 +518,13 @@ export class Runtime {
     let current = execution;
     let startedDurably = false;
     try {
-      workspace = await this.#prepareWorkspace(execution);
+      const recoverySession = sessionReason === 'recovery' || sessionReason === 'session_recovery' || sessionReason === 'wake';
+      const freshWorkspace = this.cleanExecutionWorkspaces && !recoverySession;
+      workspace = await this.#prepareWorkspace(execution, null, { fresh: freshWorkspace });
       // A recovery start restores the already persisted revision. Rewriting
       // that same revision would violate the Workspace Manager's monotonic
       // CAS rule.
-      current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
+      current = execution.workspace_ref && !freshWorkspace ? execution : this.#saveWorkspaceReference(execution, workspace);
       current = this.taskService.dispatch('start_execution', {
         ...this.#executionTimingPayload(this.clock(), current),
         ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
@@ -559,8 +584,10 @@ export class Runtime {
     let boundSession = session;
     let startedDurably = false;
     try {
-      workspace = await this.#prepareWorkspace(execution, workspaceRef);
-      current = execution.workspace_ref ? execution : this.#saveWorkspaceReference(execution, workspace);
+      const recoverySession = sessionReason === 'recovery' || sessionReason === 'session_recovery' || sessionReason === 'wake';
+      const freshWorkspace = this.cleanExecutionWorkspaces && !recoverySession;
+      workspace = await this.#prepareWorkspace(execution, workspaceRef, { fresh: freshWorkspace });
+      current = execution.workspace_ref && !freshWorkspace ? execution : this.#saveWorkspaceReference(execution, workspace);
       if (!initialPromptSnapshot && capabilityProfile) {
         const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
         const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
@@ -1550,10 +1577,16 @@ export class Runtime {
     }
   }
 
-  async #prepareWorkspace(execution, workspaceRef = null) {
+  async #prepareWorkspace(execution, workspaceRef = null, { fresh = false } = {}) {
     const task = this.taskService.getTask(execution.task_id);
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Task is missing for execution: ${execution.execution_id}`);
-    if (execution.workspace_ref) {
+    if (fresh && execution.workspace_ref) {
+      throw new SwarmEnvError(ERROR_CODES.FENCED, 'clean Execution preparation cannot replace an already recorded Workspace', {
+        execution_id: execution.execution_id,
+        workspace_ref: execution.workspace_ref,
+      });
+    }
+    if (execution.workspace_ref && !fresh) {
       const workspace = await this.workspaceManager.restoreWorkspace({
         workspaceRef: execution.workspace_ref,
         executionId: execution.execution_id,
@@ -1567,14 +1600,14 @@ export class Runtime {
       spec_hash: execution.spec_hash,
       workspace_snapshot_hash: execution.input_snapshot_hash,
       material_refs: execution.input_material_refs,
-      selection: execution.workspace_selection ?? { mode: 'clean', revision: null },
+      selection: fresh ? { mode: 'clean', revision: null } : (execution.workspace_selection ?? { mode: 'clean', revision: null }),
     };
     const inputSnapshotManifest = {
       workspace_snapshot_hash: execution.input_snapshot_hash,
       material_refs: execution.input_material_refs,
     };
-    const selection = execution.workspace_selection ?? {};
-    if (selection.mode === 'resume' && selection.source_workspace_ref) {
+    const selection = fresh ? {} : (execution.workspace_selection ?? {});
+    if (!fresh && selection.mode === 'resume' && selection.source_workspace_ref) {
       return this.workspaceManager.cloneWorkspace({
         sourceWorkspaceRef: selection.source_workspace_ref,
         targetWorkspaceRef: workspaceRef ?? this.workspaceManager.workspacePath(execution.execution_id),
@@ -1587,11 +1620,14 @@ export class Runtime {
         runtimeManifest: { runtime_generation: this.runtimeGeneration, actor_ref: this.actorRef },
       });
     }
+    const freshWorkspaceRef = fresh
+      ? this.workspaceManager.workspacePath(`${execution.execution_id}-fresh-${execution.fencing_version}`)
+      : workspaceRef;
     const workspace = await this.workspaceManager.createWorkspace({
       executionId: execution.execution_id,
       fencingVersion: execution.fencing_version,
       task,
-      ...(workspaceRef ? { workspaceRef } : {}),
+      ...(freshWorkspaceRef ? { workspaceRef: freshWorkspaceRef } : {}),
       workspaceManifest,
       inputSnapshotManifest,
       runtimeManifest: { runtime_generation: this.runtimeGeneration, actor_ref: this.actorRef },
@@ -1722,10 +1758,8 @@ export class Runtime {
 
   #dynamicPromptContext(execution, workspace, promptOverride = null) {
     const task = this.taskService.getTask(execution.task_id);
-    // Legacy Tasks have no Mission record. Keep their exact prompt semantics
-    // so compatibility fixtures remain deterministic; modern Mission Tasks
-    // receive the bounded context required by Issue #100.
-    if (!task?.mission_id) return { prompt: promptOverride ?? execution.agent_prompt, notifications: [] };
+    // Every research Execution must now belong to a Mission-scoped Task.
+    if (!task?.mission_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Execution Task has no Mission binding');
     const mission = this.taskService.getMission?.(task.mission_id) ?? null;
     const judgeEnabled = taskUsesJudge(task);
     const workspaceEnabled = taskUsesWorkspace(task);

@@ -17,7 +17,7 @@ These are repository-owned texts and deterministic examples, not transcripts of 
 | task-service.js action | Material-available notification payload, or invalid typed dependency error. Runtime renders a separate notification user message; the payload action is visible when the notification data itself is read/composed. |
 
 The action value integration is a consumption/contract enum, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.
-## action — src/agent/services-bridge.js:79
+## action — src/agent/services-bridge.js:67
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -26,7 +26,7 @@ Body SHA-256: `a5e4874eff88bd459015734cb36e2d7e5cbb7a9312337c2df58750686d29a4f3`
 ````text
 modify_task_contract_or_register_capability
 ````
-## hint — src/agent/services-bridge.js:80
+## hint — src/agent/services-bridge.js:68
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the hint field, without JSON quoting. See delivery conditions above.
 
@@ -35,7 +35,7 @@ Body SHA-256: `78b0d192a0cf7b1c85211b38fdcc05b704665f974c6108666838d664cfa210c7`
 ````text
 Use exact capability IDs or operation names from available_capabilities; do not invent conceptual names. Register and verify the required Service before creating the Task if no listed capability is suitable.
 ````
-## action — src/agent/services-bridge.js:110
+## action — src/agent/services-bridge.js:98
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -44,7 +44,7 @@ Body SHA-256: `db7537154d8f0502c90a002ac7beb7277abf6956a1eb41f091912c0ee5ddd35a`
 ````text
 call_the_capability_or_block_on_a_real_dependency
 ````
-## hint — src/agent/services-bridge.js:111
+## hint — src/agent/services-bridge.js:99
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the hint field, without JSON quoting. See delivery conditions above.
 
@@ -53,7 +53,7 @@ Body SHA-256: `673e95051277d00105789af93b179d303c03fa05c6f4059045488ca6619bbdbd`
 ````text
 Call the listed tool directly. If it returned an error, treat that structured error as feedback; block only on a capability absent from the Callable capability directory or on a prerequisite Task.
 ````
-## action — src/agent/services-bridge.js:496
+## action — src/agent/services-bridge.js:549
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -62,7 +62,7 @@ Body SHA-256: `a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd`
 ````text
 call_list_tools_or_get_service_metadata
 ````
-## action — src/agent/services-bridge.js:503
+## action — src/agent/services-bridge.js:556
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -70,42 +70,6 @@ Body SHA-256: `7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e`
 
 ````text
 retry_with_the_registered_input_schema
-````
-## remediation — src/benchmark/putnam-runner.js:368
-
-Source: [src/benchmark/putnam-runner.js](../../../src/benchmark/putnam-runner.js). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
-
-Body SHA-256: `5e89ba154ddca9812b4d5e4ee9f4953cef39ed3853860ea6f7f927e5aadad014`
-
-````text
-Publish the candidate as one artifact Material whose content is the complete source text, or a {path, workspace_revision, content_hash} reference to a Workspace file.
-````
-## remediation — src/benchmark/putnam-runner.js:375
-
-Source: [src/benchmark/putnam-runner.js](../../../src/benchmark/putnam-runner.js). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
-
-Body SHA-256: `afebc43726f83cd1a8357aef78d43fa51710aacc4022afb4b4ed4f824cc2a2e7`
-
-````text
-Read the current Workspace revision and re-publish the candidate reference.
-````
-## remediation — src/benchmark/putnam-runner.js:384
-
-Source: [src/benchmark/putnam-runner.js](../../../src/benchmark/putnam-runner.js). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
-
-Body SHA-256: `99d0db01668396463ccfe6a12253fd248e62991bef684da48a373080966ea1cf`
-
-````text
-Re-read the Workspace file after saving and use its current revision/hash.
-````
-## remediation — src/benchmark/putnam-runner.js:392
-
-Source: [src/benchmark/putnam-runner.js](../../../src/benchmark/putnam-runner.js). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
-
-Body SHA-256: `6ed9d396db23f132ca21acbef5f18b169ecbe3160f5a193230fc46a99cfad3a7`
-
-````text
-The Workspace file changed after the reference was created. Re-read the file and publish a fresh artifact Material with its current hash.
 ````
 ## remediation — src/runtime/workspace-contract.js:36
 
@@ -206,7 +170,7 @@ Body SHA-256: `510f8ad7edbb8964875921dfd292cd680e99a32f1d473f35364b43b29c984b4a`
 ````text
 Use workspace_list_files as the authoritative existing-file index; write only declared allowed_outputs.
 ````
-## action — src/task/task-service.js:1427
+## action — src/task/task-service.js:1388
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -215,7 +179,7 @@ Body SHA-256: `70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f`
 ````text
 inspect_material_and_record_task_feedback
 ````
-## action — src/task/task-service.js:1653
+## action — src/task/task-service.js:1626
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 

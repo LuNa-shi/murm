@@ -30,16 +30,16 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `7f5cda792573559306864a124ef9e0fb88c74db766bd741ee2261fe0431f29f5` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `42571c8b0c4231fd2039f2a096f0d123cdc132290d06f7832b8e7366ac73d0e6` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `a252c92ded38707c130f98266cb67ef44dca78e0a45a5dde2ea66683112e823b` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `c0aa628a1ae62af6d0bddd6d5ba5199289dbda971c8053cd25642a353615df23` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `860472091ce4673b581a495909ad7bfdddbabcf8ae80954c18e8d4ecee176422` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `079b3b57f7ce2c4efabb64d5499bfcbde7f034a898e291c8b9af1f3ecbf39fca` |
-| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `e7c5fcf6d45d15c433d5ed349d4c9c7e8a2818317a1dba3742b1566d07a7ab29` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `73a873ab891b530dd1e287b1131aaeed8423a70bca851d1adc8fb32113f000c0` |
-| [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `4bffe717abd7837ded6f953123c22359aa7d693c747b775363c6dd5b66f2ddb5` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `057833aa04b5f1c72ae5508498fe8f8c1dc428d4bb0f29d158a8ca9dfac0f227` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `aa199f6121dda2abde87c42e60f49e899cffabebf10872a75a353714d0daa2b4` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `d88e8112cd40b79c2e7520bc1ce6f3f6bb5d0422a34b5c562b11f56f7a7dcad1` |
+| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `98af8ed5bd2d1066032513c865dc44e26b674105861d749e560cd6fe680baaf0` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `974e6e4147166b1de629dba073c48300ea9f2b654ebb729df7f20112fc11b380` |
+| [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `c84da0cad1ede4d1e0b97b30eb844af4e3182fd8297c6d386018c7554ae21b8f` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `a7ce030957632c0dc95ad45535da1b5424be0a38e5022c310177ff80ad370228` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `eedbc3e6869e525c16369ca1aca042d12bdc0877a3f4447be4319f23e54e3ddc` |
 
@@ -47,45 +47,41 @@ This section is generated from executable exports and checked against the source
 
 The four columns apply the benchmark's current Task-model and Sandbox filters. Optional registered Services add capabilities. Both built-in `bound` and `recovery` roles currently have the same named surface. Presence in this table does not bypass the Bridge's Task/Execution binding, modern-retired-operation or Workspace-contract checks. `swarmenv_` is the Pi extension prefix.
 
-| Capability identity | flat; Sandbox off | flat; Sandbox on | legacy; Sandbox off | legacy; Sandbox on |
-|---|---|---|---|---|
-| `catalog.catalog_get_service_metadata` | `swarmenv_catalog_get_service_metadata` | `swarmenv_catalog_get_service_metadata` | `swarmenv_catalog_get_service_metadata` | `swarmenv_catalog_get_service_metadata` |
-| `catalog.catalog_list_services` | `swarmenv_catalog_list_services` | `swarmenv_catalog_list_services` | `swarmenv_catalog_list_services` | `swarmenv_catalog_list_services` |
-| `catalog.catalog_list_tools` | `swarmenv_catalog_list_tools` | `swarmenv_catalog_list_tools` | `swarmenv_catalog_list_tools` | `swarmenv_catalog_list_tools` |
-| `context.context_consume` | `swarmenv_context_consume` | `swarmenv_context_consume` | `swarmenv_context_consume` | `swarmenv_context_consume` |
-| `context.context_get_material` | `swarmenv_context_get_material` | `swarmenv_context_get_material` | `swarmenv_context_get_material` | `swarmenv_context_get_material` |
-| `context.context_publish` | `swarmenv_context_publish` | `swarmenv_context_publish` | `swarmenv_context_publish` | `swarmenv_context_publish` |
-| `context.context_publish_material` | `swarmenv_context_publish_material` | `swarmenv_context_publish_material` | `swarmenv_context_publish_material` | `swarmenv_context_publish_material` |
-| `context.context_read` | `swarmenv_context_read` | `swarmenv_context_read` | `swarmenv_context_read` | `swarmenv_context_read` |
-| `context.context_search_materials` | `swarmenv_context_search_materials` | `swarmenv_context_search_materials` | `swarmenv_context_search_materials` | `swarmenv_context_search_materials` |
-| `judge.judge_get_check_result` | `swarmenv_judge_get_check_result` | `swarmenv_judge_get_check_result` | `swarmenv_judge_get_check_result` | `swarmenv_judge_get_check_result` |
-| `judge.judge_submit_candidate` | `swarmenv_judge_submit_candidate` | `swarmenv_judge_submit_candidate` | `swarmenv_judge_submit_candidate` | `swarmenv_judge_submit_candidate` |
-| `runtime.execution_get` | `swarmenv_execution_get` | `swarmenv_execution_get` | `swarmenv_execution_get` | `swarmenv_execution_get` |
-| `runtime.sandbox_exec` | Absent | `swarmenv_sandbox_exec` | Absent | `swarmenv_sandbox_exec` |
-| `runtime.sandbox_job` | Absent | `swarmenv_sandbox_job` | Absent | `swarmenv_sandbox_job` |
-| `runtime.task_block` | Absent | Absent | `swarmenv_runtime_task_block` | `swarmenv_runtime_task_block` |
-| `runtime.task_complete` | Absent | Absent | `swarmenv_runtime_task_complete` | `swarmenv_runtime_task_complete` |
-| `runtime.workspace_diff` | `swarmenv_workspace_diff` | `swarmenv_workspace_diff` | `swarmenv_workspace_diff` | `swarmenv_workspace_diff` |
-| `runtime.workspace_get` | `swarmenv_workspace_get` | `swarmenv_workspace_get` | `swarmenv_workspace_get` | `swarmenv_workspace_get` |
-| `runtime.workspace_list_files` | `swarmenv_workspace_list_files` | `swarmenv_workspace_list_files` | `swarmenv_workspace_list_files` | `swarmenv_workspace_list_files` |
-| `runtime.workspace_read_file` | `swarmenv_workspace_read_file` | `swarmenv_workspace_read_file` | `swarmenv_workspace_read_file` | `swarmenv_workspace_read_file` |
-| `runtime.workspace_write_file` | `swarmenv_workspace_write_file` | `swarmenv_workspace_write_file` | `swarmenv_workspace_write_file` | `swarmenv_workspace_write_file` |
-| `task.execution_progress` | `swarmenv_execution_progress` | `swarmenv_execution_progress` | `swarmenv_execution_progress` | `swarmenv_execution_progress` |
-| `task.task_block` | `swarmenv_task_block` | `swarmenv_task_block` | `swarmenv_task_task_block` | `swarmenv_task_task_block` |
-| `task.task_close` | `swarmenv_task_close` | `swarmenv_task_close` | `swarmenv_task_close` | `swarmenv_task_close` |
-| `task.task_complete` | `swarmenv_task_complete` | `swarmenv_task_complete` | `swarmenv_task_task_complete` | `swarmenv_task_task_complete` |
-| `task.task_create` | `swarmenv_task_create` | `swarmenv_task_create` | `swarmenv_task_create` | `swarmenv_task_create` |
-| `task.task_create_child` | `swarmenv_task_create_child` | `swarmenv_task_create_child` | `swarmenv_task_create_child` | `swarmenv_task_create_child` |
-| `task.task_discover` | `swarmenv_task_discover` | `swarmenv_task_discover` | `swarmenv_task_discover` | `swarmenv_task_discover` |
-| `task.task_feedback` | `swarmenv_task_feedback` | `swarmenv_task_feedback` | `swarmenv_task_feedback` | `swarmenv_task_feedback` |
-| `task.task_link_material` | `swarmenv_task_link_material` | `swarmenv_task_link_material` | `swarmenv_task_link_material` | `swarmenv_task_link_material` |
-| `task.task_list` | `swarmenv_task_list` | `swarmenv_task_list` | `swarmenv_task_list` | `swarmenv_task_list` |
-| `task.task_register` | `swarmenv_task_register` | `swarmenv_task_register` | `swarmenv_task_register` | `swarmenv_task_register` |
-| `task.task_status` | `swarmenv_task_status` | `swarmenv_task_status` | `swarmenv_task_status` | `swarmenv_task_status` |
-| `task.task_take` | `swarmenv_task_take` | `swarmenv_task_take` | `swarmenv_task_take` | `swarmenv_task_take` |
-| `task.task_view` | `swarmenv_task_view` | `swarmenv_task_view` | `swarmenv_task_view` | `swarmenv_task_view` |
+| Capability identity | flat; Sandbox off | flat; Sandbox on |
+|---|---|---|
+| `catalog.catalog_get_service_metadata` | `swarmenv_catalog_get_service_metadata` | `swarmenv_catalog_get_service_metadata` |
+| `catalog.catalog_list_services` | `swarmenv_catalog_list_services` | `swarmenv_catalog_list_services` |
+| `catalog.catalog_list_tools` | `swarmenv_catalog_list_tools` | `swarmenv_catalog_list_tools` |
+| `context.context_consume` | `swarmenv_context_consume` | `swarmenv_context_consume` |
+| `context.context_get_material` | `swarmenv_context_get_material` | `swarmenv_context_get_material` |
+| `context.context_publish` | `swarmenv_context_publish` | `swarmenv_context_publish` |
+| `context.context_publish_material` | `swarmenv_context_publish_material` | `swarmenv_context_publish_material` |
+| `context.context_read` | `swarmenv_context_read` | `swarmenv_context_read` |
+| `context.context_search_materials` | `swarmenv_context_search_materials` | `swarmenv_context_search_materials` |
+| `judge.judge_get_check_result` | `swarmenv_judge_get_check_result` | `swarmenv_judge_get_check_result` |
+| `judge.judge_submit_candidate` | `swarmenv_judge_submit_candidate` | `swarmenv_judge_submit_candidate` |
+| `runtime.execution_get` | `swarmenv_execution_get` | `swarmenv_execution_get` |
+| `runtime.sandbox_exec` | Absent | `swarmenv_sandbox_exec` |
+| `runtime.sandbox_job` | Absent | `swarmenv_sandbox_job` |
+| `runtime.workspace_diff` | `swarmenv_workspace_diff` | `swarmenv_workspace_diff` |
+| `runtime.workspace_get` | `swarmenv_workspace_get` | `swarmenv_workspace_get` |
+| `runtime.workspace_list_files` | `swarmenv_workspace_list_files` | `swarmenv_workspace_list_files` |
+| `runtime.workspace_read_file` | `swarmenv_workspace_read_file` | `swarmenv_workspace_read_file` |
+| `runtime.workspace_write_file` | `swarmenv_workspace_write_file` | `swarmenv_workspace_write_file` |
+| `task.execution_progress` | `swarmenv_execution_progress` | `swarmenv_execution_progress` |
+| `task.task_block` | `swarmenv_task_block` | `swarmenv_task_block` |
+| `task.task_close` | `swarmenv_task_close` | `swarmenv_task_close` |
+| `task.task_complete` | `swarmenv_task_complete` | `swarmenv_task_complete` |
+| `task.task_create` | `swarmenv_task_create` | `swarmenv_task_create` |
+| `task.task_feedback` | `swarmenv_task_feedback` | `swarmenv_task_feedback` |
+| `task.task_link_material` | `swarmenv_task_link_material` | `swarmenv_task_link_material` |
+| `task.task_list` | `swarmenv_task_list` | `swarmenv_task_list` |
+| `task.task_register` | `swarmenv_task_register` | `swarmenv_task_register` |
+| `task.task_status` | `swarmenv_task_status` | `swarmenv_task_status` |
+| `task.task_take` | `swarmenv_task_take` | `swarmenv_task_take` |
+| `task.task_view` | `swarmenv_task_view` | `swarmenv_task_view` |
 
-`task_create_child` remains advertised by the built-in Registry, but a bound Mission Task is explicitly forbidden from calling `create_child_task`. `task_handoff` is retained in the catalog/SDK but excluded from the normal built-in Registry; the normal handoff tool is `execution_progress` with `kind: "handoff"`. These are current implementation details, not proposed changes.
+The flat Mission Task profile is the only Agent-facing Task model. Retired structural and lease operations may remain in internal catalog definitions for storage/analysis compatibility, but are filtered from the built-in Registry and cannot be called by a bound Agent. The normal handoff tool is `execution_progress` with `kind: "handoff"`.
 
 ### Service Catalog: 3 registered capabilities
 
@@ -257,7 +253,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 14 registered capabilities
+### Task Service: 12 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -280,41 +276,35 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "71569528f619cba6d2db7632208a05036497350439796e2133535004f005c8ef"
+  "manifest_hash": "4076af4c1291d012096a930682552786bbc3a3787103446cdc5aa7a858b48db1"
 }
 ```
 
-#### task.task_discover
+#### task.task_list
 
-Discover the bounded Mission Task view and relevant shared work.
+List Mission Tasks and search their short summaries before proposing new work.
 
 ```json
 {
-  "name": "task_discover",
-  "operation": "list_tasks",
-  "description": "Discover the bounded Mission Task view and relevant shared work.",
+  "name": "task_list",
+  "operation": "task_list",
+  "description": "List Mission Tasks and search their short summaries before proposing new work.",
   "input_schema": {
     "type": "object",
     "properties": {
-      "root_id": {
+      "mission_id": {
         "type": "string"
       },
-      "states": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
+      "query": {
+        "type": "string"
       },
-      "task_type": {
+      "state": {
         "type": "string"
       },
       "limit": {
         "type": "integer",
         "minimum": 1,
         "maximum": 100
-      },
-      "available_only": {
-        "type": "boolean"
       }
     },
     "additionalProperties": false
@@ -340,88 +330,14 @@ Discover the bounded Mission Task view and relevant shared work.
     "execution"
   ],
   "requires_binding": false,
-  "scope": "public-read",
+  "scope": "task-read",
   "help": {
-    "when": "Discover the bounded Mission Task view and relevant shared work.",
-    "ref": "service://task/list_tasks",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Discover the bounded Mission Task view and relevant shared work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "when": "List Mission Tasks and search their short summaries before proposing new work.",
+    "ref": "service://task/task_list",
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: List Mission Tasks and search their short summaries before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
-  "path": "/v1/list_tasks",
-  "errors": []
-}
-```
-
-#### task.task_create_child
-
-Create a bounded direct child Task for a genuinely separate responsibility.
-
-```json
-{
-  "name": "task_create_child",
-  "operation": "create_child_task",
-  "description": "Create a bounded direct child Task for a genuinely separate responsibility.",
-  "input_schema": {
-    "type": "object",
-    "required": [
-      "child_creation_key",
-      "task_type",
-      "goal",
-      "expected_output",
-      "acceptance_conditions"
-    ],
-    "properties": {
-      "child_creation_key": {
-        "type": "string"
-      },
-      "task_type": {
-        "type": "string"
-      },
-      "goal": {
-        "type": "string"
-      },
-      "expected_output": {
-        "type": "string"
-      },
-      "acceptance_conditions": {
-        "type": "object"
-      },
-      "priority": {
-        "type": "integer",
-        "minimum": 0
-      }
-    },
-    "additionalProperties": true
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "execution-write",
-  "help": {
-    "when": "Create a bounded direct child Task for a genuinely separate responsibility.",
-    "ref": "service://task/create_child_task",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Create a bounded direct child Task for a genuinely separate responsibility.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/create_child_task",
+  "path": "/v1/task_list",
   "errors": []
 }
 ```
@@ -829,68 +745,6 @@ Save a bounded Progress Material and either continue the current Execution or ha
   },
   "method": "POST",
   "path": "/v1/execution_progress",
-  "errors": []
-}
-```
-
-#### task.task_list
-
-List Mission Tasks and search their short summaries before proposing new work.
-
-```json
-{
-  "name": "task_list",
-  "operation": "task_list",
-  "description": "List Mission Tasks and search their short summaries before proposing new work.",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "mission_id": {
-        "type": "string"
-      },
-      "query": {
-        "type": "string"
-      },
-      "state": {
-        "type": "string"
-      },
-      "limit": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 100
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "task-read",
-  "help": {
-    "when": "List Mission Tasks and search their short summaries before proposing new work.",
-    "ref": "service://task/task_list",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: List Mission Tasks and search their short summaries before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/task_list",
   "errors": []
 }
 ```
@@ -1802,27 +1656,40 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "985ffe00d122fe98e74cc8cf34db11fb6c808d956ee19b48185a663050c2cb10"
+  "manifest_hash": "e88808e0d986b3a75dcebd21bea4a3bacbc7ba9e461c581803f5c6827393b9a1"
 }
 ```
 
 #### judge.judge_submit_candidate
 
-Submit a candidate Material for the Task completion checker. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes; a checker that never starts is not a proof failure.
+Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.
 
 ```json
 {
   "name": "judge_submit_candidate",
   "operation": "submit_candidate",
-  "description": "Submit a candidate Material for the Task completion checker. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes; a checker that never starts is not a proof failure.",
+  "description": "Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.",
   "input_schema": {
     "type": "object",
     "required": [
-      "candidate_material_id"
+      "path"
     ],
     "properties": {
-      "candidate_material_id": {
-        "type": "string"
+      "path": {
+        "type": "string",
+        "minLength": 1
+      },
+      "workspace_revision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "content_hash": {
+        "type": "string",
+        "minLength": 1
+      },
+      "request_key": {
+        "type": "string",
+        "minLength": 1
       }
     },
     "additionalProperties": false
@@ -1850,9 +1717,9 @@ Submit a candidate Material for the Task completion checker. The returned CheckR
   "requires_binding": false,
   "scope": "execution-write",
   "help": {
-    "when": "Submit a candidate Material for the Task completion checker. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes; a checker that never starts is not a proof failure.",
+    "when": "Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.",
     "ref": "service://judge/submit_candidate",
-    "text": "Purpose: Candidate checking and structured CheckResults.\nUse when: Submit a candidate Material for the Task completion checker. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes; a checker that never starts is not a proof failure.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Candidate checking and structured CheckResults.\nUse when: Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/submit_candidate",
@@ -1871,11 +1738,11 @@ Read a Judge CheckResult, checker process status, result class, retryability, an
   "description": "Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.",
   "input_schema": {
     "type": "object",
-    "required": [
-      "check_result_id"
-    ],
     "properties": {
       "check_result_id": {
+        "type": "string"
+      },
+      "request_key": {
         "type": "string"
       }
     },
@@ -1924,7 +1791,7 @@ These declarations are merged into a Session profile after deployment filtering.
 {
   "id": "runtime.task_complete",
   "name": "task_complete",
-  "operation": "accept_task",
+  "operation": "task_complete",
   "service_id": "runtime",
   "service_title": "SwarmEnv Runtime",
   "service_purpose": "Task-scoped completion and dependency actions",
@@ -2283,7 +2150,7 @@ These declarations are merged into a Session profile after deployment filtering.
   "service_id": "runtime",
   "service_title": "Task Sandbox",
   "service_purpose": "Bounded command execution inside the Execution Sandbox",
-  "description": "Run a bounded shell command inside the current Execution Sandbox. The private Workspace is mounted at /workspace; shell edits become durable only after execution_progress saves them.",
+  "description": "Run a bounded shell command inside the current Execution Sandbox at /workspace. With an external provider, /workspace is provider-owned and must not be assumed to be the host Runtime Workspace until the provider worker integration is enabled; shell edits become durable only after the configured continuity path saves them.",
   "audience": [
     "bound",
     "recovery"
@@ -2557,264 +2424,39 @@ Exact repository bundle declaration. Loading the bundle additionally binds its d
 
 This section records every extra catalog declaration not represented by the registered built-in operation set above. It is not an authorization list for the current Agent. Internal SDK/domain methods can have additional operations that are never a model tool; see the operation routing section in [Services](04-services.md).
 
-#### Catalog task.task_create_branch_group / create_branch_group
+#### Catalog task.task_list / list_tasks
 
 ```json
 {
-  "name": "task_create_branch_group",
+  "name": "task_list",
   "service": "task",
-  "operation": "create_branch_group",
+  "operation": "list_tasks",
   "version": "1.0",
-  "description": "Create a versioned group of alternative ordinary Tasks. Branch membership expresses alternatives; it does not create an implicit wait, ownership, or execution dependency, and the creating Task may continue useful work.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "parent_task_id",
-      "branch_tasks"
-    ],
-    "properties": {
-      "parent_task_id": {
-        "type": "string"
-      },
-      "branch_tasks": {
-        "type": "array",
-        "items": {
-          "type": "object"
-        }
-      },
-      "group_key": {
-        "type": "string"
-      },
-      "expected_structural_version": {
-        "type": "integer",
-        "minimum": 0
-      }
-    },
-    "additionalProperties": true
-  }
-}
-```
-
-#### Catalog task.task_add_required_subtask / add_required_subtask
-
-```json
-{
-  "name": "task_add_required_subtask",
-  "service": "task",
-  "operation": "add_required_subtask",
-  "version": "1.0",
-  "description": "Add an ordinary Task as a jointly required subtask. Required subtasks may become ready concurrently; only an explicit execution dependency blocks work, and provenance remains audit information.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "owner_task_id"
-    ],
-    "properties": {
-      "owner_task_id": {
-        "type": "string"
-      },
-      "subtask_task_id": {
-        "type": "string"
-      },
-      "subtask": {
-        "type": "object"
-      },
-      "expected_structural_version": {
-        "type": "integer",
-        "minimum": 0
-      }
-    },
-    "additionalProperties": true
-  }
-}
-```
-
-#### Catalog task.task_get_structure / get_task_structure
-
-```json
-{
-  "name": "task_get_structure",
-  "service": "task",
-  "operation": "get_task_structure",
-  "version": "1.0",
-  "description": "Inspect a Task structure in one view: alternative branches, jointly required subtasks, explicit execution dependencies, creation provenance, completion status, unresolved work, and structural version.",
-  "scope": "task-read",
+  "description": "List the highest-priority claimable Tasks in a root Task tree.",
+  "scope": "public-read",
   "side_effect": false,
   "parameters": {
     "type": "object",
     "properties": {
-      "task_id": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  }
-}
-```
-
-#### Catalog task.task_propose_structure_change / propose_structure_change
-
-```json
-{
-  "name": "task_propose_structure_change",
-  "service": "task",
-  "operation": "propose_structure_change",
-  "version": "1.0",
-  "description": "Propose an auditable, version-checked Task structure change based on new evidence. Structural membership, explicit execution dependencies, and creation provenance stay distinct; active work is preserved.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "task_id",
-      "change"
-    ],
-    "properties": {
-      "task_id": {
+      "root_id": {
         "type": "string"
       },
-      "expected_structural_version": {
-        "type": "integer",
-        "minimum": 0
-      },
-      "change": {
-        "type": "object"
-      },
-      "change_key": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": true
-  }
-}
-```
-
-#### Catalog task.task_explain_readiness / explain_task_readiness
-
-```json
-{
-  "name": "task_explain_readiness",
-  "service": "task",
-  "operation": "explain_task_readiness",
-  "version": "1.0",
-  "description": "Explain why a Task is READY, BLOCKED, or SATISFIED, including missing contract evidence and explicit dependencies; branch alternatives and required subtasks are not generic waits.",
-  "scope": "task-read",
-  "side_effect": false,
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "task_id": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  }
-}
-```
-
-#### Catalog task.task_create_rework / create_rework_task
-
-```json
-{
-  "name": "task_create_rework",
-  "service": "task",
-  "operation": "create_rework_task",
-  "version": "1.0",
-  "description": "Create a new rework Task linked to a prior deliverable, feedback, Materials, and Workspace lineage. Rework reuses prior evidence through explicit provenance and does not silently reopen the old Execution.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "prior_task_id"
-    ],
-    "properties": {
-      "prior_task_id": {
-        "type": "string"
-      },
-      "instruction": {
-        "type": "string"
-      },
-      "feedback": {},
-      "input_material_refs": {
+      "states": {
         "type": "array",
         "items": {
           "type": "string"
         }
       },
-      "workspace_source_execution_id": {
+      "task_type": {
         "type": "string"
       },
-      "workspace_revision": {
+      "limit": {
         "type": "integer",
-        "minimum": 1
-      }
-    },
-    "additionalProperties": true
-  }
-}
-```
-
-#### Catalog task.task_accept / accept_task
-
-```json
-{
-  "name": "task_accept",
-  "service": "task",
-  "operation": "accept_task",
-  "version": "1.0",
-  "description": "Complete a Task whose own completion contract is satisfied. A parent review is required only when the target contract explicitly sets parent_review=true; otherwise the current Task owner may accept its own work after reading the evidence.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "target_task_id"
-    ],
-    "properties": {
-      "target_task_id": {
-        "type": "string"
+        "minimum": 1,
+        "maximum": 100
       },
-      "target_state_version": {
-        "type": "integer",
-        "minimum": 0
-      }
-    },
-    "additionalProperties": false
-  }
-}
-```
-
-#### Catalog task.task_request_rework / request_rework
-
-```json
-{
-  "name": "task_request_rework",
-  "service": "task",
-  "operation": "request_rework",
-  "version": "1.0",
-  "description": "Send a child Task back for focused rework with a durable steer Material. The child must be WAITING for parent_review; leave OPEN or RUNNING children with their worker.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "target_task_id",
-      "instruction"
-    ],
-    "properties": {
-      "target_task_id": {
-        "type": "string"
-      },
-      "instruction": {
-        "type": "string"
-      },
-      "scope": {
-        "type": "string"
+      "available_only": {
+        "type": "boolean"
       }
     },
     "additionalProperties": false
@@ -3029,147 +2671,6 @@ This section records every extra catalog declaration not represented by the regi
 }
 ```
 
-#### Catalog execution.execution_heartbeat / heartbeat
-
-```json
-{
-  "name": "execution_heartbeat",
-  "service": "execution",
-  "operation": "heartbeat",
-  "version": "1.0",
-  "description": "Extend the current Execution lease.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "lease_expires_at": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  }
-}
-```
-
-#### Catalog execution.execution_wait / request_wait
-
-```json
-{
-  "name": "execution_wait",
-  "service": "execution",
-  "operation": "request_wait",
-  "version": "1.0",
-  "description": "Save a checkpoint and release the active Execution for a durable Task dependency wait. Use child_task_terminal, a non-empty children_all_terminal set, parent_review, or timer. Candidate submission is synchronous and returns its CheckResult; do not wait for a candidate.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "wait_condition"
-    ],
-    "properties": {
-      "wait_condition": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string"
-          },
-          "child_task_id": {
-            "type": "string"
-          },
-          "check_request_key": {
-            "type": "string"
-          },
-          "candidate_material_id": {
-            "type": "string"
-          },
-          "deadline": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": true
-      },
-      "checkpoint": {
-        "type": "object"
-      },
-      "files": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "string"
-        }
-      },
-      "wait_deadline": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  }
-}
-```
-
-#### Catalog execution.execution_block / block_execution
-
-```json
-{
-  "name": "execution_block",
-  "service": "execution",
-  "operation": "block_execution",
-  "version": "1.0",
-  "description": "Save a checkpoint, end the current Execution, release its Core, and mark the Task BLOCKED for a concrete external dependency. Use this instead of leaving a live Execution in WAITING.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "reason",
-      "dependency"
-    ],
-    "properties": {
-      "reason": {
-        "type": "string"
-      },
-      "dependency": {
-        "type": "object",
-        "properties": {
-          "dependency_kind": {
-            "type": "string",
-            "enum": [
-              "TASK",
-              "MATERIAL",
-              "CHECK_RESULT"
-            ]
-          },
-          "prerequisite_task_id": {
-            "type": "string"
-          },
-          "material_id": {
-            "type": "string"
-          },
-          "check_result_id": {
-            "type": "string"
-          },
-          "requirement": {
-            "type": "object"
-          }
-        },
-        "additionalProperties": false
-      },
-      "checkpoint": {
-        "type": "object"
-      },
-      "files": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "string"
-        }
-      }
-    },
-    "additionalProperties": false
-  }
-}
-```
-
 #### Catalog workspace.workspace_get / get_workspace
 
 ```json
@@ -3355,15 +2856,7 @@ The SDK constructor requires `dispatch` and `actorRef`. `withContext` creates an
 | `consumeMaterials` | `consume_materials` | write |
 | `listMaterialConsumptions` | `list_material_consumptions` | read |
 | `getCheckResult` | `get_check_result` | read |
-| `proposeTask` | `propose_task` | write |
 | `taskRegister` | `task_register` | write |
-| `createChildTask` | `create_child_task` | write |
-| `createBranchGroup` | `create_branch_group` | write |
-| `addRequiredSubtask` | `add_required_subtask` | write |
-| `getTaskStructure` | `get_task_structure` | read |
-| `proposeStructureChange` | `propose_structure_change` | write |
-| `explainTaskReadiness` | `explain_task_readiness` | read |
-| `createReworkTask` | `create_rework_task` | write |
 | `claim` | `claim` | write |
 | `taskTake` | `task_take` | write |
 | `taskFeedback` | `task_feedback` | write |
@@ -3371,8 +2864,6 @@ The SDK constructor requires `dispatch` and `actorRef`. `withContext` creates an
 | `heartbeat` | `heartbeat` | write |
 | `requestWait` | `request_wait` | write |
 | `submitCandidate` | `submit_candidate` | write |
-| `acceptTask` | `accept_task` | write |
-| `requestRework` | `request_rework` | write |
 | `applyCheckResult` | `apply_check_result` | write |
 | `wakeExecution` | `wake_execution` | write |
 | `publishMaterial` | `publish_material` | write |
@@ -3392,31 +2883,20 @@ Registry matches are resolved first by capability name or operation and must be 
 [
   "abort",
   "claim",
-  "create_child_task",
   "fence_execution",
   "get_execution",
   "get_task",
   "heartbeat",
-  "list_children",
   "list_tasks",
   "list_claimable_tasks",
   "list_executions",
-  "propose_task",
   "request_wait",
   "resume_execution",
   "start_execution",
   "stop_execution",
   "submit_candidate",
-  "accept_task",
-  "request_rework",
   "apply_check_result",
   "wake_execution",
-  "create_branch_group",
-  "add_required_subtask",
-  "get_task_structure",
-  "propose_structure_change",
-  "explain_task_readiness",
-  "create_rework_task",
   "create_mission",
   "get_mission",
   "create_task",

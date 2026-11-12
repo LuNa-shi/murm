@@ -38,7 +38,7 @@ export async function createVersionManifest({
   // `resolveNpmLatestVersion` remains available for an explicit catalog check,
   // but it is not part of the runtime startup path.
   const resolvedPi = exactVersion(piVersion ?? await resolveCommandVersion('pi', resolver), 'pi_version');
-  const resolvedNuRouter = exactVersion(nurouterVersion ?? await resolveCommandVersion('nurouter', resolver), 'nurouter_version');
+  const resolvedNuRouter = nurouterVersion === null ? null : exactVersion(nurouterVersion ?? await resolveCommandVersion('nurouter', resolver), 'nurouter_version');
   const resolvedNode = exactVersion(nodeVersion, 'node_version');
   if (!Array.isArray(launchArgs) || launchArgs.length === 0) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'launch_args must be a non-empty array');

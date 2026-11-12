@@ -44,3 +44,20 @@ test('Bridge keeps the reusable identity profile across binding and release', as
   await bridge.releaseClaim();
   assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.BOUND);
 });
+
+test('Bridge advertises a provider-reachable URL when bound to a non-loopback host', async () => {
+  const bridge = new ServicesBridge({
+    taskService: {},
+    contextService: {},
+    runtime: {},
+    role: AGENT_ROLES.BOUND,
+    host: '0.0.0.0',
+    publicUrl: 'http://host-gateway:{port}',
+  });
+  const environment = await bridge.start();
+  try {
+    assert.match(environment.SWARMENV_BRIDGE_URL, /^http:\/\/host-gateway:\d+$/);
+  } finally {
+    await bridge.stop();
+  }
+});

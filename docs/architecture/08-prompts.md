@@ -10,7 +10,7 @@ A research Agent does not receive one fixed paragraph called “the prompt.” I
 |---|---|
 | [01 Stable identity](prompts/01-system-identity.md) | The entire system addendum, shared by all five exported prompt aliases; current system version `3`, composition version `5` |
 | [02 Tool instructions](prompts/02-task-loop-and-tools.md) | Exact Task-loop guides for built-ins, Sandbox, and Sandbox plus Mathlib; full built-in capability-directory text; all extension description/snippet/guidance fields; full Mathlib `SKILL.md` and reference text |
-| [03 Benchmark turns](prompts/03-benchmark-turns.md) | Default take prompt, complete synthetic discovery turn, both continuation forms, legacy treatment wrappers and all eight Task-instruction combinations |
+| [03 Benchmark turns](prompts/03-benchmark-turns.md) | Default take prompt, complete synthetic discovery turn, flat continuation body and the current direct/root-only treatment instructions |
 | [04 Runtime messages](prompts/04-runtime-messages.md) | Deadline, Material, dependency, compaction, recovery and controlled E2E repair messages, including fallback text |
 | [05 Composed context](prompts/05-composed-context-examples.md) | Full synthetic Runtime start/restart and recovery user bodies, preserving the current two-stage composition; dynamic helper defaults |
 | [06 Tool-return guidance](prompts/06-tool-return-guidance.md) | Every fixed `hint`, `remediation` and `guidance` field in runtime sources, plus instructional `action` values; delivery conditions distinguish errors, notifications and an exported helper unused by the benchmark |
@@ -30,14 +30,14 @@ This table is the key to interpreting the catalog. A function that can compose a
 | Normal benchmark reusable Session start | `SYSTEM_IDENTITY_PROMPT`, passed as Pi file addendum | No user message is sent by `adapter.start` because `agentPrompt` is absent | Extension loads its profile and registers tool metadata; runner waits for readiness |
 | First or later unbound discovery | Existing Session's system addendum | SOP + exact Task-loop guide + same-identity take instructions + bounded candidate JSON | `takeTaskWithAgent` is the sender; it does not call `composeAgentPrompt` |
 | Successful `task_take` during discovery | Unchanged | No second initial user prompt | `bindAgentExecution(..., sendInitialPrompt:false)` activates the existing Session, but Bridge returns the original Task Service claim snapshot, not the refreshed Runtime binding/Workspace object; a composed snapshot can still be logged |
-| Bound continuation inside the `onClaim` loop | Unchanged | `modePrompt(mode, BOUND_AGENT_PROMPT, taskModel)` | Flat mode sends the SOP; legacy treatments can prepend their wrapper |
+| Bound continuation inside the `onClaim` loop | Unchanged | The bound SOP plus the current flat Task-loop guide | Treatment choice changes research guidance only; there is no legacy Task-model wrapper |
 | Bound continuation from the outer benchmark loop | Unchanged | `basePrompt(core)`: SOP + Task-loop guide + continuation paragraph, passed through treatment selection where called | Distinct from the shorter `onClaim` continuation; it does not automatically append all Materials |
 | Generic `AgentCoreAdapter.start({agentPrompt})` | Only if configured | Caller-supplied `agentPrompt` verbatim | Adapter waits for readiness, enables compaction/retry and sends; it does no Mission composition itself |
 | Runtime start/restart/wake with Registry | Adapter's configured addendum | `buildPromptSnapshot` body, then Mission wrapper when applicable | Two stages can repeat profile/Task/Workspace/Service context; source hashes logged before the final wrapper are not final-message hashes |
 | Runtime recovery | Adapter's configured addendum | Recovery instructions in a recovery snapshot, then current Mission wrapper | Persisted Execution rows do not carry `session_reason`; the outer wrapper uses its default bound profile in this baseline |
 | Material/deadline/dependency notification | Unchanged | One selected notification message with runtime IDs | Queued with `streamingBehavior:followUp`; successful delivery is separate from `task_feedback` processing |
 | Compaction completion | Unchanged | Substantive `execution_progress(kind=checkpoint)` reminder when enabled and still active | Pi's own compaction operation/summary is a separate external mechanism |
-| Non-Mission deadline reminder | Unchanged | Three-line legacy reminder | Mission Tasks instead receive the durable `handoff_warning` notification |
+| Non-Mission deadline reminder | Unchanged | Three-line compatibility reminder | Mission Tasks instead receive the durable `handoff_warning` notification |
 | Controlled real-Agent repair probe | Stable addendum configured by E2E harness | Candidate repair instructions, then Runtime's applicable composition | Intentionally invalid first candidate is a probe input, not production research policy |
 
 Sources: [benchmark runner](../../src/benchmark/putnam-runner.js), [Runtime](../../src/runtime/runtime.js), [Pi adapter](../../src/agent/pi-adapter.js), [real-Agent harness](../../src/e2e/real-agent-path.js). The [generated send-site list](prompts/source-manifest.json) covers two runner sends, four Runtime sends, and the adapter's optional startup send. All use the adapter's common RPC forwarding method.
@@ -226,11 +226,11 @@ The private raw logs can contain complete repository-issued user messages. The p
 | Normal discovery suppresses the full initial composer send | Full bundle docs in the composer/catalog are not proof of first-turn delivery |
 | Runtime can wrap a complete snapshot in another context | Repeated context is a real input-size/clarity cost, not an appendix formatting mistake |
 | Stored Task instructions prohibit shell; optional profile exposes bounded Sandbox execution | Prompt and exposed capability are not fully consistent; do not silently rewrite either in this description |
-| A Task instruction says the Task can call Judge directly | This describes the logical tool action; current backend still relays through Task Service/runner before Judge Service |
+| A Task instruction says the Task can call Judge directly | The Agent-facing route is direct through Bridge/Registry to Judge; Task completion remains a separate explicit projection |
 | Pi registers tools once; Bridge can refresh its cached profile | Adding a Registry capability later does not automatically create a callable Pi tool in the old Session |
 | Composition and base-SOP hashes are used in evidence | They cannot replace a hash of the actual final user message or a full transcript |
 
-The Judge integration redesign belongs to [Issue #117](https://github.com/LuNa-shi/SwarmEnv/issues/117). Other changes require their own approved scope. This PR documents what runs and supplies a way to keep those records aligned; it does not claim these implementation gaps have been fixed.
+The Judge integration is implemented under [Issue #117](https://github.com/LuNa-shi/SwarmEnv/issues/117). Other changes require their own approved scope. This chapter documents the direct Workspace submission path and keeps generated prompt/catalog records aligned with it.
 
 ## 10. Keeping the catalog current at stage closeout
 

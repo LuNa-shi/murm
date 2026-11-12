@@ -63,6 +63,10 @@ test('ServicesSDK exposes the Mission-scoped Task seam without parent-specific m
   }, { operationId: 'sdk:task' }).task;
   assert.equal(sdk.listMissionTasks({ mission_id: mission.mission_id }).length, 1);
   assert.equal(sdk.viewTask(task.task_id).task.summary, 'Find one independent route');
+  for (const method of ['proposeTask', 'createChildTask', 'createBranchGroup', 'addRequiredSubtask', 'getTaskStructure', 'createReworkTask']) {
+    assert.equal(typeof sdk[method], 'undefined', `retired SDK method ${method} must not be reachable`);
+  }
+  assert.throws(() => service.dispatch('propose_task', {}, op('sdk:legacy', 'agent:sdk')), /unsupported Task Service operation/);
   service.close();
 });
 

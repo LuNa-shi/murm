@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { ContextService } from '../src/context/context-service.js';
@@ -9,6 +9,7 @@ import { LeanChecker } from '../src/judge/lean-adapter.js';
 import { TaskService } from '../src/task/task-service.js';
 import { createServiceHost } from '../src/sdk/service-host.js';
 import { builtInServiceManifest, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
+import { createHttpDomainProxy } from '../src/sdk/http-domain-proxy.js';
 
 const SERVICE_IDS = new Set(['task', 'context', 'judge', 'catalog']);
 const serviceId = process.env.SWARMENV_SERVICE_ID ?? '';
@@ -20,27 +21,57 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('SWARM
 const advertiseHost = process.env.SWARMENV_SERVICE_ADVERTISE_HOST
   ?? (host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host);
 const endpointUrl = process.env.SWARMENV_SERVICE_PUBLIC_URL ?? `http://${advertiseHost}:${port}`;
-const databasePath = resolve(process.env.SWARMENV_SERVICE_DATABASE ?? `./data/${serviceId}.sqlite`);
-await mkdir(dirname(databasePath), { recursive: true });
-const database = new DatabaseSync(databasePath);
-
-// Task and Context share a durable SQLite database when they are launched as
-// separate processes against the same mounted volume. The service boundary is
-// still HTTP: each process owns its handler, health, readiness, and manifest.
-const contextService = new ContextService(database);
-const taskService = new TaskService(database, { contextService });
-contextService.taskService = taskService;
-const judgeService = new JudgeService(database, {
-  checker: new LeanChecker({
-    workRoot: resolve(process.env.SWARMENV_JUDGE_WORK_ROOT ?? `./data/${serviceId}-judge-work`),
-    command: process.env.SWARMENV_LEAN_COMMAND ?? 'lake',
-  }),
-});
 const catalogEndpoints = Object.fromEntries(['task', 'context', 'judge', 'catalog']
   .map((id) => [id, process.env[`SWARMENV_${id.toUpperCase()}_SERVICE_URL`]
     ? { url: process.env[`SWARMENV_${id.toUpperCase()}_SERVICE_URL`], token: process.env[`SWARMENV_${id.toUpperCase()}_SERVICE_TOKEN`] ?? null }
     : undefined])
   .filter(([, endpoint]) => endpoint));
+
+const isolated = process.env.SWARMENV_SERVICE_ISOLATED === 'true';
+const databasePath = isolated && serviceId === 'catalog'
+  ? null
+  : resolve(process.env.SWARMENV_SERVICE_DATABASE ?? `./data/${serviceId}.sqlite`);
+let database = null;
+if (databasePath) {
+  await mkdir(dirname(databasePath), { recursive: true });
+  database = new DatabaseSync(databasePath);
+}
+const endpointProxy = (id) => catalogEndpoints[id]
+  ? createHttpDomainProxy({ serviceId: id, url: catalogEndpoints[id].url, token: catalogEndpoints[id].token, actorRef: `service:${serviceId}` })
+  : null;
+
+async function loadJudgeFixtureManifest() {
+  const configured = process.env.SWARMENV_JUDGE_FIXTURE_MANIFEST;
+  if (!configured) return null;
+  const raw = configured.trim();
+  if (raw.startsWith('{')) return JSON.parse(raw);
+  return JSON.parse(await readFile(resolve(raw), 'utf8'));
+}
+const judgeFixtureManifest = await loadJudgeFixtureManifest();
+let contextService = null;
+let taskService = null;
+let judgeService = null;
+if (isolated) {
+  if (serviceId === 'task') taskService = new TaskService(database, { contextService: endpointProxy('context') });
+  if (serviceId === 'context') contextService = new ContextService(database, { taskService: endpointProxy('task') });
+  if (serviceId === 'judge') judgeService = new JudgeService(database, {
+    fixtureManifest: judgeFixtureManifest,
+    checker: new LeanChecker({ workRoot: resolve(process.env.SWARMENV_JUDGE_WORK_ROOT ?? `./data/${serviceId}-judge-work`), command: process.env.SWARMENV_LEAN_COMMAND ?? 'lake' }),
+  });
+} else {
+  // Compatibility composition for local-first fixtures. Production isolated
+  // deployments set SWARMENV_SERVICE_ISOLATED=true and use HTTP proxies above.
+  contextService = new ContextService(database);
+  taskService = new TaskService(database, { contextService });
+  contextService.taskService = taskService;
+  judgeService = new JudgeService(database, {
+    fixtureManifest: judgeFixtureManifest,
+    checker: new LeanChecker({
+      workRoot: resolve(process.env.SWARMENV_JUDGE_WORK_ROOT ?? `./data/${serviceId}-judge-work`),
+      command: process.env.SWARMENV_LEAN_COMMAND ?? 'lake',
+    }),
+  });
+}
 const catalogRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, serviceEndpoints: catalogEndpoints });
 if (process.env.SWARMENV_CATALOG_MANIFESTS) {
   const manifests = JSON.parse(process.env.SWARMENV_CATALOG_MANIFESTS);
@@ -62,10 +93,8 @@ function dispatch(capability, input, envelope, role = null) {
     }
     if (capability.operation === 'list_tools') return { tools: catalogRegistry.listTools(input?.service ?? null).filter(allowed) };
   }
-  if (serviceId === 'judge' && capability.operation === 'submit_candidate') {
-    return taskService.dispatch(capability.operation, input, envelope);
-  }
   const service = serviceId === 'task' ? taskService : serviceId === 'context' ? contextService : judgeService;
+  if (!service) throw new Error(`isolated ${serviceId} Service is not available in this process`);
   return service.dispatch(capability.operation, input, envelope);
 }
 
@@ -92,9 +121,9 @@ console.log(JSON.stringify({
 const stop = async () => {
   await serviceHost.stop();
   for (const service of [judgeService, contextService, taskService]) {
-    try { service.close?.(); } catch { /* process is exiting */ }
+    try { service?.close?.(); } catch { /* process is exiting */ }
   }
-  try { database.close(); } catch { /* process is exiting */ }
+  try { database?.close(); } catch { /* process is exiting */ }
   process.exit(0);
 };
 process.once('SIGINT', stop);

@@ -124,11 +124,9 @@ function optionsFromArgs(argv) {
     observabilityHost: '0.0.0.0',
     observabilityAdvertiseHost: null,
     observabilityMetadataPath: process.env.SWARMENV_OBSERVABILITY_METADATA ?? null,
-    model: process.env.NUROUTER_PI_MODEL,
-    provider: process.env.NUROUTER_PI_PROVIDER,
+    model: process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL ?? 'gpt-6.1-sol',
+    provider: process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER ?? 'gpt_proxy',
     parallelMode: 'semantic',
-    taskModel: 'legacy',
-    normalFlow: process.env.SWARMENV_NORMAL_FLOW === 'true',
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -155,14 +153,8 @@ function optionsFromArgs(argv) {
       '--model': 'model',
       '--provider': 'provider',
       '--parallel-mode': 'parallelMode',
-      '--task-model': 'taskModel',
-      '--normal-flow': 'normalFlow',
     };
     if (!fields[key]) throw new Error(`unknown option: ${arg}`);
-    if (fields[key] === 'normalFlow') {
-      options.normalFlow = inline === undefined ? true : inline !== 'false';
-      continue;
-    }
     const value = inline ?? argv[++index];
     options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'turnTimeoutMs', 'observabilityPort'].includes(fields[key])
       ? Number(value)
@@ -181,8 +173,6 @@ function usage() {
     '    --project-parallelism 3',
     '    --timebox-ms 3600000',
     '    --parallel-mode direct|semantic|root-only',
-    '    --task-model legacy|flat',
-    '    --normal-flow',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
     '    --report-dir reports/putnambench-runs/run-<id>',
@@ -196,6 +186,10 @@ function usage() {
 }
 
 const options = optionsFromArgs(process.argv.slice(2));
+// Issue 119's benchmark entrypoint is provider-backed by contract. Library
+// callers may still use deterministic compatibility fixtures explicitly, but
+// the production CLI must never silently fall back to the old local backend.
+options.requireThirdPartySandbox = true;
 if (options.help) {
   process.stdout.write(usage());
   process.exit(0);
@@ -205,9 +199,8 @@ if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark p
 if (!Number.isInteger(options.projectParallelism) || options.projectParallelism < 1) throw new Error('--project-parallelism must be a positive integer');
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
 if (!['direct', 'semantic', 'root-only'].includes(options.parallelMode)) throw new Error('--parallel-mode must be direct, semantic, or root-only');
-if (!['legacy', 'flat'].includes(options.taskModel)) throw new Error('--task-model must be legacy or flat');
-if (!options.provider) throw new Error('NUROUTER_PI_PROVIDER is required; set it in .env or the environment');
-if (!options.model) throw new Error('NUROUTER_PI_MODEL is required; set it in .env or the environment');
+if (!options.provider) throw new Error('PI_PROVIDER is required; set it in .env or the environment');
+if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the environment');
 
 options.experimentRoot = resolve(options.experimentRoot);
 options.experimentDir = resolve(options.experimentDir);
@@ -253,7 +246,7 @@ const metadata = {
     project_parallelism: options.projectParallelism,
     timebox_ms: options.timeboxMs,
     parallel_mode: options.parallelMode,
-    task_model: options.taskModel,
+    task_model: 'flat',
     initial_task_count: null,
     dynamic_task_budget: null,
     turn_timeout_ms: options.turnTimeoutMs,
@@ -322,7 +315,7 @@ const aggregate = {
     child_task_count: report.run?.progress_evidence?.child_task_count ?? null,
     child_claim_count: report.run?.child_claim_count ?? null,
     parallel_mode: report.protocol?.parallel_mode ?? options.parallelMode,
-    task_model: report.protocol?.task_model ?? options.taskModel,
+    task_model: 'flat',
     initial_task_count: null,
     dynamic_task_budget: null,
     dynamic_task_count: report.run?.dynamic_task_count ?? 0,

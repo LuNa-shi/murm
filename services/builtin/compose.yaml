@@ -1,0 +1,81 @@
+name: swarmenv-services
+
+x-builtin-build: &builtin-build
+  context: ../..
+  dockerfile: services/builtin/Dockerfile
+
+x-builtin-environment: &builtin-environment
+  SWARMENV_SERVICE_ISOLATED: "true"
+  SWARMENV_SERVICE_HOST: 0.0.0.0
+  SWARMENV_SERVICE_PORT: 8787
+  SWARMENV_SERVICE_TOKEN: ${SWARMENV_SERVICE_TOKEN:-}
+
+services:
+  task:
+    build: *builtin-build
+    environment:
+      <<: *builtin-environment
+      SWARMENV_SERVICE_ID: task
+      SWARMENV_SERVICE_PUBLIC_URL: http://task:8787
+      SWARMENV_SERVICE_DATABASE: /var/lib/swarmenv/task.sqlite
+      SWARMENV_CONTEXT_SERVICE_URL: http://context:8787
+      SWARMENV_CONTEXT_SERVICE_TOKEN: ${SWARMENV_SERVICE_TOKEN:-}
+    ports:
+      - "${SWARMENV_TASK_PORT:-8781}:8787"
+    volumes:
+      - task-data:/var/lib/swarmenv
+
+  context:
+    build: *builtin-build
+    environment:
+      <<: *builtin-environment
+      SWARMENV_SERVICE_ID: context
+      SWARMENV_SERVICE_PUBLIC_URL: http://context:8787
+      SWARMENV_SERVICE_DATABASE: /var/lib/swarmenv/context.sqlite
+      SWARMENV_TASK_SERVICE_URL: http://task:8787
+      SWARMENV_TASK_SERVICE_TOKEN: ${SWARMENV_SERVICE_TOKEN:-}
+    ports:
+      - "${SWARMENV_CONTEXT_PORT:-8782}:8787"
+    volumes:
+      - context-data:/var/lib/swarmenv
+
+  judge:
+    build: *builtin-build
+    environment:
+      <<: *builtin-environment
+      SWARMENV_SERVICE_ID: judge
+      SWARMENV_SERVICE_PUBLIC_URL: http://judge:8787
+      SWARMENV_SERVICE_DATABASE: /var/lib/swarmenv/judge.sqlite
+      SWARMENV_TASK_SERVICE_URL: http://task:8787
+      SWARMENV_TASK_SERVICE_TOKEN: ${SWARMENV_SERVICE_TOKEN:-}
+      # Configure a mounted, pinned checker project before enabling candidate
+      # checks; the service remains healthy and reports unavailable until the
+      # fixture binding is provided.
+      SWARMENV_JUDGE_FIXTURE_MANIFEST: ${SWARMENV_JUDGE_FIXTURE_MANIFEST:-}
+      SWARMENV_JUDGE_PREBUILD: ${SWARMENV_JUDGE_PREBUILD:-false}
+      SWARMENV_JUDGE_PROJECT_ROOT: ${SWARMENV_JUDGE_PROJECT_ROOT:-/checker}
+      SWARMENV_JUDGE_PREBUILD_KEY: ${SWARMENV_JUDGE_PREBUILD_KEY:-}
+    ports:
+      - "${SWARMENV_JUDGE_PORT:-8783}:8787"
+    volumes:
+      - judge-data:/var/lib/swarmenv
+
+  catalog:
+    build: *builtin-build
+    environment:
+      <<: *builtin-environment
+      SWARMENV_SERVICE_ID: catalog
+      SWARMENV_SERVICE_PUBLIC_URL: http://catalog:8787
+      SWARMENV_TASK_SERVICE_URL: http://task:8787
+      SWARMENV_TASK_SERVICE_TOKEN: ${SWARMENV_SERVICE_TOKEN:-}
+      SWARMENV_CONTEXT_SERVICE_URL: http://context:8787
+      SWARMENV_CONTEXT_SERVICE_TOKEN: ${SWARMENV_SERVICE_TOKEN:-}
+      SWARMENV_JUDGE_SERVICE_URL: http://judge:8787
+      SWARMENV_JUDGE_SERVICE_TOKEN: ${SWARMENV_SERVICE_TOKEN:-}
+    ports:
+      - "${SWARMENV_CATALOG_PORT:-8784}:8787"
+
+volumes:
+  task-data:
+  context-data:
+  judge-data:
