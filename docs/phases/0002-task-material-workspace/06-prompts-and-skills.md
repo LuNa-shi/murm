@@ -170,7 +170,7 @@ Workspace 与 main
     {"name": "plan-task", "version": "draft.1", "path": "/opt/swarm/skills/plan-task.md", "purpose": "提出与选择 Task"},
     {"name": "use-material", "version": "draft.1", "path": "/opt/swarm/skills/use-material.md", "purpose": "检索、复用、接续与纠错 Material"},
     {"name": "integrate-workspace", "version": "draft.1", "path": "/opt/swarm/skills/integrate-workspace.md", "purpose": "候选、版本与主线整合"},
-    {"name": "finish-task", "version": "draft.1", "path": "/opt/swarm/skills/close-execution.md", "purpose": "结束当前 Task 与 Bot 生命周期"}
+    {"name": "finish-task", "version": "draft.1", "path": "/opt/swarm/skills/finish-task.md", "purpose": "结束当前 Task 与 Bot 生命周期"}
   ]
 }
 
