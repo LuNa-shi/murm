@@ -99,7 +99,7 @@ Sandbox 内至少区分：
 - Runtime 监督预算、TTL、进程状态、心跳/事件和异常退出。模型输出停止不等于 sandbox 内所有后台进程停止。
 - Agent 不得通过 sandbox 内命令访问 provider 管理 API、宿主 socket、其他 E 的 volume 或外部服务数据库。
 
-### 3.5 Task release 与 Bot sandbox 终止是两件事
+### 3.5 Task finish 与 Bot sandbox 终止
 
 **v1 一个 Bot 只执行一个 Execution，因此 Task finish 或超时会结束 Bot sandbox。** Runtime 必须：
 1. 阻止当前 E 发起新的服务写操作；服务端按 E 状态拒绝旧 E 的后续写请求。
@@ -196,14 +196,14 @@ OpenSandbox release-1.2.0 的源码调研给出以下限制，均需在固定版
 | Bot 主进程退出但子进程仍活 | Runtime 必须停止 sandbox 全部进程，不能释放 Core 后遗留后台写入 |
 | Sandbox 删除失败 | 保持资源记录和清理待办；不把 Core/Task 当成可安全复用 |
 | 外部 Service 暂时不可用 | sandbox 可报告错误或等待；不允许绕过 API 直接访问服务数据库 |
-| 服务请求在 release 前发出、之后才到达 | Service 处理时重新检查 E 当前状态；closed/closing 的旧 E 新写请求拒绝 |
+| 服务请求在 finish 前发出、之后才到达 | Service 处理时重新检查 E 当前状态；closed/closing 的旧 E 新写请求拒绝 |
 
 不引入进程级 checkpoint/restore，也不让后继 E 恢复前任 shell/Pi 进程。Runtime 的恢复仅指恢复对 sandbox 资源和生命周期状态的管理能力。
 
 ## 9. 尚待实现验证的关键问题
 
-1. **Sandbox 与 Bot 的精确绑定关系。** #119 明确 sandbox 按 Execution 创建；同一个逻辑 Bot 是否跨多个 Execution 保留身份、以及 Bot ID 如何随新 Pi session 变化，需要在 01 Runtime 文档中统一定义，不能在两个文档各写一套。
-2. **take 前阅读环境。** 若 Bot 在 take 前就需要读取 Workspace/Task/Material，应明确这是同一个新 E sandbox 的只读准备阶段，还是一个不绑定 E 的只读 sandbox。#119 倾向每个 E 新建 sandbox；必须与 Task 认领顺序一起设计，避免无 E 却长期占用 sandbox。
+1. **Bot 与 Execution 的绑定。** v1 一个 Bot 生命周期最多一个 Execution；后续若要允许一个 Bot 连续执行多个 Task，才需要重新评估 sandbox 复用和工作目录切换。
+2. **take 前只读浏览。** Bot 在自己的 sandbox 中先只读查看 Workspace/Task/Material；take 后 Runtime 在同一 sandbox 中挂载 Task 专属工作目录并开放写权限。
 3. **本地 Git clone 的磁盘成本。** Workspace 外部 Repository 与每 E 独立 clone 的对象复用策略需基于真实实验规模测量；第一版不以共享可写 .git 换取空间。
 4. **私有卷留存策略。** #119 允许私有卷用于审计，但后继不能读。需明确保留期限、磁盘位置、加密和删除策略；这不等于研究 handoff。
 5. **Provider 的管理面安全。** 尤其 OpenSandbox 预初始化接口、环境继承、文件 API 身份和网络访问必须真实测试；源码检查不能替代 sandbox 边界验收。
