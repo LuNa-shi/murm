@@ -55,7 +55,7 @@
 | Pi 四基础工具与 `swarm` CLI | 文件操作、help、参数、传输、请求 ID、结果呈现 | 业务动作经 Bash CLI 调服务；授权由服务和 Runtime 执行，CLI 不是安全边界 |
 | Observation / UI / 分析 | 对权威记录的有版本投影、运行证据、解释清楚的成本与结果 | 不用投影反向授予权限、重写 main 或宣布 Mission 达成；保留未知和不完整证据 |
 
-一个服务操作允许继续完成，不代表旧 Bot 继续有效。01 的通用受理许可把贡献请求与 release 排出先后；03 的 main 更新则在 Task/Workspace 本地事务中核对 E、候选和预期旧版本。服务内容持久化、任务关联和 main 接纳是三个有各自失败结果的事实，不能假装跨服务拥有一份总事务。
+一个服务操作已经同步完成，不代表旧 Bot 继续有效。普通 CLI/API 请求在服务处理时验证当前 Execution，直接执行并返回；release 后旧 Execution 的新写请求被拒绝。若某项服务确实需要跨 sandbox 生命周期继续运行，由该服务单独定义异步接口。Workspace main 更新在 Workspace 本地操作中核对 E、candidate 和 expected revision；不建立当前 Execution 有效性校验协议。
 
 ### 2.2 新增或重建的接口面
 
@@ -65,7 +65,7 @@
 |---|---|---|
 | Mission / Workspace 初始化 | 受控输入发布、Mission 创建、Workspace v0 建立、稳定请求查询；不需要 E | 内容成功而初始化未完成可对账；不伪造 Task/Execution 来源 |
 | 协调与选工 | 全状态 Task 查询、分页、提案、依赖、受限规格修订、take 及 take 请求查询 | 重复提案请求、旧规格、竞争失败、同 Bot 双重 take、无工作等待 |
-| E 贡献与 release | 当前绑定、范围/预算、贡献通用受理许可、完成或未完成 release、最终关闭查询 | 迟到 grant、失联、重复 release、旧 E 请求、清理未确认、已接纳外部操作 |
+| E 贡献与 release | 当前绑定、范围/预算、当前 Execution 绑定、范围/预算、普通写请求身份校验、完成或未完成 release | 迟到 grant、失联、重复 release、旧 E 请求、清理未确认、已接纳外部操作 |
 | Material | 发布实际正文/附件、按 ID 读、搜索、Task 关联、使用记录、质疑/更正与消费者查询 | 内容/关联部分完成、缺附件、截断、同 request ID 改载荷、跨 Mission 越权 |
 | Workspace | 读公开版本、导出候选、`advance` 条件更新、按 request ID 查结果 | 旧 main、错误输入摘要、过期检查、内容不可达、响应丢失、撤权后的请求 |
 | Runtime / provider 控制 | 新环境、固定项目卷物化、可信权限开放、全进程停止、资源隔离、重启对账 | 部分创建、开放失败、关闭中迟到动作、provider 不可达、未确认清理 |
@@ -133,7 +133,7 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 **闭环：** 创建 Mission、Workspace main 初始 commit/revision `0.1`；独立知识输入另存为 Material，Task 表为空；启动一个只读 Bot，展示并记录真实初始 prompt；Bot 读取/提出 Task、take 后保留同一 Pi，写自己的副本、发布最小有效 Material，再按完成或未完成 release。清理完成后用新 Bot 读取该 Material。补充双 Bot 竞争同 Task 和同 Bot 双重 take 的故障安排。
 
-**必须一起交付：** 新 schema 的隔离运行边界、Task/E/Bot 排他、准备与关闭请求持久化、可信权限开放、普通 Service 写请求校验/撤权、无 E 成本、停止对账、实际 take 返回和最小 UI 事实。材料发布只需足够完成此闭环，不提前宣称检索/纠错策略已完善。
+**必须一起交付：** 新 schema 的隔离运行边界、Task/E/Bot 排他、准备与关闭请求持久化、可信权限开放、普通 Service 写请求校验/撤权、无 E 成本、停止对账、实际 take 返回和最小 UI 事实。Material 单次发布自动绑定来源，只需足够完成此闭环，不提前宣称检索/纠错策略已完善。
 
 **验收出口：** [05](05-validation-and-research.md) 的 V01–V08、V09–V13 中相关发布/授权路径，以及 V18、V20；通过真实 E2 的目录、直接服务旁路、迟到 grant、响应丢失、CLI 被杀和清理后拒写验证。E1 通过但 E2 未完成时，记录实现与未验证边界，不将新模式设为正式默认。
 
@@ -151,15 +151,15 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 **回退：** 暂停新增关系/发布，保留不可变内容和关系日志；坏的检索投影可重建，不能删除原材料来掩盖错误。旧 API 如暂保留，只能按已声明版本解释历史记录，不能重新施加旧全局 role 约束破坏新关系。
 
-### S3：普通 Task 使共同 main 前进
+### S3：普通 Task 使用 Workspace candidate 推进共同 main
 
 **依赖：** S2；Workspace 事务边界、合入政策已批准；使用 Judge 的工作量还依赖 #117 的实际服务闭环。
 
 **闭环：** 两个局部 Task 各自产生可读成果；新 Bot 认领普通整合 Task，在自己的副本合入和检查，保存完整 Workspace candidate，请求 main 条件更新；另一个基于相同旧 main 的候选冲突并重新整合。下一 Bot 实际取得新 main 内容。
 
-**必须一起交付：** Task 服务内 Workspace 模块、公开版本及来源链、内容导出与安全校验、检查/候选/政策绑定、CAS 与请求重放、错误 main 的补偿修正、UI 的候选/已接纳区别。Context 仍持有内容，不把“同进程部署”扩成直接读其他服务数据库。
+**必须一起交付：** Task 服务内 Workspace 模块、公开版本及来源链、内容导出与安全校验、检查/candidate commit/政策绑定、CAS 与请求重放、错误 main 的补偿修正、UI 的候选/已接纳区别。Context 仍持有内容，不把“同进程部署”扩成直接读其他服务数据库。
 
-**验收出口：** V16–V18，并复验相关 V09、V10、V13；公开快照可完整物化，两个相同 expected-main 最多一项成功，修改候选后旧 PASS 不可复用，超时可查询原结果。Task done、Workspace integrate、Mission accepted 三类记录互不替代。
+**验收出口：** V16–V18，并复验相关 V09、V10、V13；Workspace candidate commit 可导入并物化，两个相同 expected Workspace revision 的 integrate 请求最多一项成功，修改候选后旧 PASS 不可复用，超时可查询原结果。Task done、Workspace integrate、Mission accepted 三类记录互不替代。
 
 **回退：** 停止新 advance；保留已经发布的候选及已接纳版本。内容回退通过新修正候选推进一个后继版本，保留误入版本和检查证据；不得倒写 main 历史或把“回滚程序版本”当作撤销已发生服务副作用。
 
@@ -196,7 +196,7 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 | Mission / Bot / Core | Mission 预算与验收版本；Bot/Core/sandbox 身份；阅读期起止和费用；有 E 时的绑定 | E 可以为空；没有 E 的模型或工具费用不得丢弃或归入假 Task |
 | Task / E | Workspace、规格/状态版本、当前 E、Bot 唯一绑定、preparing/active/closing/closed、结束意图、关闭证据 | 独占检查必须在事务/约束中成立；未安全停止不能清掉 owner；历史 attempt 不变成活跃 owner |
 | 请求 / 授权 | request ID、操作/输入摘要、Mission/Bot/E、生命周期版本、通用受理许可、结果或未知状态 | take、release、普通 Service 请求中的 Execution 有效性/权限校验和 main 更新与重复/迟到请求可对账；同 ID 换载荷拒绝 |
-| Workspace / Git main branch | Workspace 身份；main 当前版本；父版本；Git commit；来源材料与 E；政策/检查引用 | E 有效性与 main revision 条件更新 同一协调事务；实际内容先在 Context 持久可读 |
+| Workspace / Git main branch | Workspace ID、Mission ID、main branch、Workspace revision、对应 Git commit、candidate、来源 Task/E 和检查引用 | Workspace Service 管理本地 Git refs；integrate 按 expected revision 条件更新；Material 不存 Git 快照 |
 | Material / 关系 | 内容、摘要、媒体/附件清单、不可变生产来源、Evidence 自述、实际使用、disputed/superseded 与派生关系 | Material 不保存 Git main 快照；生产者与消费者分开，初始化输入可无生产 Task/E |
 | 服务操作 | 具体长操作确需异步时由对应 Service 定义的输入、执行状态、费用、结果与取消合同 | Bot 结束后仍可查询；没有“总事务”自动撤销所有服务副作用 |
 | 观测 / 报告 | schema/事件版本；生命周期、内容版本、发送证据和成本投影 | 权威数据可重建投影；历史缺失保持 unknown，不补成零 |
