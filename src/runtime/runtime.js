@@ -1679,10 +1679,14 @@ export class Runtime {
     // tools. Keep the child-process role in lockstep with the Runtime
     // lifecycle, including recovery restarts.
     const agentEnvironment = this.agentAdapter?.config?.env;
-    if (agentEnvironment && typeof agentEnvironment === 'object') {
-      agentEnvironment.SWARMENV_AGENT_ROLE = sessionReason === 'recovery' || sessionReason === 'session_recovery'
-        ? AGENT_ROLES.RECOVERY
-        : AGENT_ROLES.BOUND;
+    if (agentEnvironment && typeof agentEnvironment === 'object' && !agentEnvironment.SWARMENV_AGENT_ROLE) {
+      // A reusable Core's Bridge remains bound across Runtime recovery.  Do
+      // not switch the child process to the recovery profile unless the
+      // caller explicitly configured that role: the extension validates the
+      // profile returned by that authenticated Bridge during startup, and a
+      // recovery-only process on a bound Bridge fails before it can retry the
+      // interrupted Execution.
+      agentEnvironment.SWARMENV_AGENT_ROLE = AGENT_ROLES.BOUND;
     }
     const session = await this.agentAdapter.start({
       executionId: execution.execution_id,

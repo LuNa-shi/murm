@@ -324,6 +324,23 @@ export class IdentityTaskLoop {
       // another identity won it, or the Task became unavailable. It is not an
       // invalid model choice and must not consume the bounded take attempts.
       if (take && typeof take === 'object' && take.take_failed === true) {
+        const takeError = take.error ?? {};
+        // A Task claim conflict is a bounded rescan. Provider/session and
+        // other infrastructure failures must use the same bounded retry
+        // cooldown as a failed selection; treating every `take_failed` as a
+        // conflict lets an unavailable provider reclaim the same Task in a
+        // tight loop and can exhaust an external sandbox's resources.
+        if (!isConflict(takeError)) {
+          this.takeFailureCount += 1;
+          this.lastError = errorView(takeError);
+          this.#emit({ kind: 'identity_loop_take_failed', core_id: this.coreId, reason, error: this.lastError, timestamp: this.now() });
+          this.#setIdle({ reason: 'take_failed' });
+          if (this.takeFailureCount >= this.maxTakeAttempts) {
+            this.takeExhausted = true;
+            this.takeRetryAt = this.now() + this.takeRetryCooldownMs;
+          }
+          return { disposition: 'take_failed', error: this.lastError, snapshot: this.snapshot() };
+        }
         this.claimConflictCount += 1;
         this.#emit({ kind: 'identity_loop_take_conflict', core_id: this.coreId, reason, rescan: rescans, error: errorView(take.error) });
         if (rescans >= this.maxClaimRescans) {

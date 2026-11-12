@@ -318,6 +318,33 @@ test('IdentityTaskLoop re-arms a selection failure after its bounded cooldown', 
   assert.equal(selectionAttempts, 2);
 });
 
+test('IdentityTaskLoop bounds infrastructure take failures instead of treating them as claim conflicts', async () => {
+  let now = 1_000;
+  let attempts = 0;
+  const daemon = new IdentityTaskLoop({
+    coreId: 'core-provider-failure',
+    maxTakeAttempts: 2,
+    takeRetryCooldownMs: 100,
+    now: () => now,
+    listClaimableTasks: () => [{ task_id: 'task-provider-failure' }],
+    takeTask: async () => {
+      attempts += 1;
+      return { take_failed: true, error: { code: 'SERVICE_UNAVAILABLE', message: 'provider unavailable' } };
+    },
+    claimTask: async () => { throw new Error('claim should not be reached'); },
+  });
+
+  assert.equal((await daemon.runOnce({ reason: 'provider-failure' })).disposition, 'take_failed');
+  assert.equal(daemon.snapshot().take_exhausted, false);
+  assert.equal((await daemon.runOnce({ reason: 'provider-failure-retry' })).disposition, 'take_failed');
+  assert.equal(daemon.snapshot().take_exhausted, true);
+  assert.equal(daemon.snapshot().claim_conflict_count, 0);
+  assert.equal(attempts, 2);
+  now += 100;
+  daemon.notify('provider-recovered');
+  assert.equal(daemon.snapshot().take_exhausted, false);
+});
+
 test('IdentityTaskLoop uses a fresh claim key when the same Task is reclaimed later', async () => {
   const claimKeys = [];
   let executionNumber = 0;
