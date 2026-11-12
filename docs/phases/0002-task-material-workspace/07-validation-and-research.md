@@ -18,9 +18,9 @@
 
 ## 1. 本阶段需要回答的两个问题
 
-**工程问题：** 四个独立 Bot 能否通过 Task 形成排他分工，把研究内容发布为可持续读取的 Material，并把文件改动保留为 Workspace candidate，在 Mission 对应的本地 Git Workspace 中执行，并在 release 后让新的 Bot 从公开成果继续？这些是状态、授权、持久化与生命周期问题，不能依靠模型“这次刚好听话”来验证。
+**工程问题：** 四个独立 Bot 能否通过 Task 形成排他分工，把研究内容发布为可持续读取的 Material，并把文件改动保留为 Workspace candidate，在 Mission 对应的本地 Git Workspace 中执行，并在 Task finish/超时后让新的 Bot 从公开成果继续？这些是状态、授权、持久化与生命周期问题，不能依靠模型“这次刚好听话”来验证。
 
-**研究问题：** 在相同资源约束下，这组机制和策略是否让项目取得更多可验证进展，是否减少重复劳动、接续损失和错误知识的传播？系统即使正确实施所有 API，答案仍可能是否定的。例如，Bot 可以正确地 take 一个价值很低的 Task、发布一份没有新增信息的 Material，然后合法 release。机制正确不保证任务选择有价值。
+**研究问题：** 在相同资源约束下，这组机制和策略是否让项目取得更多可验证进展，是否减少重复劳动、接续损失和错误知识的传播？系统即使正确实施所有 API，答案仍可能是否定的。例如，Bot 可以正确地 take 一个价值很低的 Task、发布一份没有新增信息的 Material，然后合法 finish。机制正确不保证任务选择有价值。
 
 本阶段可以先交付通用框架和可观察实验面；研究收益必须单独报告。Task 数、Material 数、工具调用成功率、主分支更新次数都不能单独证明协作有效。
 
@@ -32,7 +32,7 @@
 
 | 一手来源与查阅版本 | 已有机制或问题 | 对本阶段的约束与比较方向 |
 |---|---|---|
-| [CAID：Effective Strategies for Asynchronous Software Engineering Agents，COLM 2026 会议版本](https://proceedings.colm.cc/paper_files/paper/2026/file/3b5c10bf5d70533e955cba9fba491bf4-Paper-Conference.pdf) | 中央 manager 分解依赖，工程 Agent 在隔离的 Git worktree 中异步执行，再通过 merge 与可执行检查整合。 | Git、隔离工作副本、任务分解和合并检查均不能作为本项目独有贡献。我们拟研究由 Bot 自行提案/选择、按需 Candidate 保存与直接或独立 Task 整合、显式知识接续的组合；是否优于集中分派需要对照。 |
+| [CAID：Effective Strategies for Asynchronous Software Engineering Agents，COLM 2026 会议版本](https://proceedings.colm.cc/paper_files/paper/2026/file/3b5c10bf5d70533e955cba9fba491bf4-Paper-Conference.pdf) | 中央 manager 分解依赖，工程 Agent 在 Runtime 提供的隔离工作目录中执行，Git worktree/commit 由 Runtime 管理，再通过 merge 与可执行检查整合。 | Git、隔离工作副本、任务分解和合并检查均不能作为本项目独有贡献。我们拟研究由 Bot 自行提案/选择、按需 Candidate 保存与直接或独立 Task 整合、显式知识接续的组合；是否优于集中分派需要对照。 |
 | [STORM：Multi-agent Collaboration with State Management，arXiv:2605.20563v1](https://arxiv.org/html/2605.20563v1) | 通过管理共享工作面的读写状态，在写入时检查文件及已读依赖的版本，提前暴露冲突。论文附录 E 同时说明其 file_editor 介入不能预先阻止 Bash 直接写文件。 | 私有副本只隔离文件写入，仍可能把语义冲突留到整合时。本版必须量化迟到冲突与整合成本；只包装模型工具也不构成权限边界。不能据此宣称本版已经优于 STORM。 |
 | [Voyager：An Open-Ended Embodied Agent with Large Language Models，arXiv:2305.16291v2](https://arxiv.org/abs/2305.16291v2) | 在 Minecraft 中结合自动课程、可检索的可执行技能库和反馈驱动的迭代改进。 | 持续产出、存储、检索与复用能力也有明确先例。我们的初始 Bot skills 是人工给定工作方法，Material 是运行中产物；二者不能混称为已经实现了自我学习技能库。 |
 | [MAST：Why Do Multi-Agent LLM Systems Fail?，NeurIPS 2025 正式论文](https://proceedings.neurips.cc/paper_files/paper/2025/file/b1041e52d3be19f0a9bc491657488e4a-Paper-Datasets_and_Benchmarks_Track.pdf) | 根据多系统执行轨迹建立失败分类，覆盖系统设计、Agent 间错位与任务验证。 | 评估必须能定位是规范/接口失败、协作失败，还是错误验收与终止；“多了 Agent 但没进展”需要机制层诊断，不能只归咎于 prompt 不够强。 |
@@ -84,7 +84,7 @@ H1–H3 不能靠一组“全功能版对最弱基线”的结果分别成立。
 
 [#120](https://github.com/LuNa-shi/SwarmEnv/issues/120) 已记录 OpenSandbox `release-1.2.0` 的源码调查：创建时只读 volume 不等于支持运行中 RO→RW 挂载切换；非 root Pi 也不自动隔绝 daemon 环境或管理接口。来源为 [生命周期 API](https://github.com/opensandbox-group/OpenSandbox/blob/release-1.2.0/specs/sandbox-lifecycle.yml)、[命令环境处理](https://github.com/opensandbox-group/OpenSandbox/blob/release-1.2.0/components/execd/pkg/runtime/command_argv.go) 和 [管理路由与认证](https://github.com/opensandbox-group/OpenSandbox/blob/release-1.2.0/components/execd/pkg/web/router.go)。
 
-因此，E2 必须对**实际部署配置**证明：受控非 root 启动、受保护项目目录、无管理凭据泄漏、Bot 无法使用管理入口改变身份或权限、release 后全部本地进程停止。若采用修正后的 provider 构建，记录具体修正和版本；若能力不匹配，回到 provider 接入决策。不能把“尚待修正的官方版本”写成已经满足这些条件。
+因此，E2 必须对**实际部署配置**证明：受控非 root 启动、受保护项目目录、无管理凭据泄漏、Bot 无法使用管理入口改变身份或权限、Task finish/超时后全部本地进程停止。若采用修正后的 provider 构建，记录具体修正和版本；若能力不匹配，回到 provider 接入决策。不能把“尚待修正的官方版本”写成已经满足这些条件。
 
 ## 5. 工程验收矩阵
 
@@ -92,25 +92,25 @@ H1–H3 不能靠一组“全功能版对最弱基线”的结果分别成立。
 
 | 标识与情景 | 操作及故障安排 | 必须成立的结果 | 主要证据层 |
 |---|---|---|---|
-| V01：零 Task 启动 | 创建一个 Mission、明确初始 Workspace 输入，启动四个 Core。 | 四个 Bot 都能读 Mission、所有可见 Task 状态、Materials 和 main 基线；不创建隐藏 Mission Task。未认领成本归 Mission/Bot。 | E2 |
+| V01：零 Task 启动 | 创建一个 Mission、明确初始 Workspace 输入，启动四个 Core。 | 四个 Bot 都在各自 sandbox 中只读查看 Mission、所有可见 Task 状态、Materials 和 main 基线；不创建隐藏 Mission Task。未认领成本归 Mission/Bot。 | E2 |
 | V02：认领前项目只读 | 通过 write/edit/bash 及普通子进程尝试写、删除、重命名项目文件、替换父目录、自改权限。 | 项目不能被 Bot 修改；必要日志/缓存可写但不成为主线或后继输入。不是宣称所有临时计算均被禁止。 | E2 |
 | V03：管理与服务旁路 | 不经 CLI 直接请求服务；尝试用 Bot 可达入口改变身份/权限，或填写他人的 Task/E。 | 服务按真实身份拒绝越权贡献；管理面不能授予 Bot 更高权限；take 前仅有已声明的阅读/协调权限。 | E2 |
 | V04：同 Task 竞争 | 两个 Bot 同时 take 一个可领 Task。 | 只有一个有效执行者。失败者未获项目写权限，仍可在原阅读会话重新选工。 | E1、E2 |
-| V05：一个 Bot 双重认领 | 同一 Bot 并发发起不同 Task 的 take，含重复发送。 | 最多建立一份绑定；不能出现一个 Pi 对应两份可写 Execution。另一请求给出可恢复的确定结果。 | E1、E2 |
-| V06：take 生效顺序 | 在登记认领、准备输入、激活、授予目录写权限、返回响应之间设置暂停点。 | 对外能解释每个中间态；开放项目写入前已归属有效 E；同一 Pi 继续运行；其他 Bot 不能同时获得该 Task。 | E1、E2 |
+| V05：一个 Bot 重复 take | 同一 Bot 并发发起不同 Task 的 take，含重复发送。 | 最多建立一份绑定；不能出现一个 Pi 对应两份可写 Execution。另一请求给出可恢复的确定结果。 | E1、E2 |
+| V06：take 生效顺序 | 在登记认领、准备输入、激活、授予目录写权限、返回响应之间设置暂停点。 | 对外能解释每个中间态；开放项目写入前已归属有效 E；当前 Bot 的同一 Pi 在 take 前后继续运行；其他 Bot 不能同时获得该 Task。 | E1、E2 |
 | V07：take 丢失响应与准备失败 | 分别丢弃成功响应、使准备失败、令服务/Runtime 中途重启。 | 同 request ID 能恢复既有结果；真正失败会补偿认领并停止该环境。不能把未知响应当失败再造第二个 E。 | E1、E2 |
 | V08：迟到授权 | take 尚未完成时发生 abort/release，并延迟先前的权限开放动作。 | 生命周期排序使迟到动作无法重新开放已结束环境；未确认停止前不重新分配同一 Task。 | E1、E2 |
 | V09：贡献归属 | 发布实际文本/文件，再试图篡改其生产 Task/E、挂到不获准的 Task 或伪造服务检查。 | 内容与生产来源可核对；服务端校验当前 E；跨 Task 复用通过显式关系表达，不能修改原始来源。 | E1、E2 |
 | V10：发布持久性 | 上传失败、附件保存成功但登记响应丢失、删除原 sandbox。 | 失败不被报告成共享成功；重试不产生不可解释的重复；成功材料的实际内容在原环境删除后仍可读取。 | E1、E2 |
 | V11：任务收尾与发布失败 | Task 要求公开交付，发布未成功；另测试有有效局部成果但未达到完成条件。 | 不能按“本地存在文件”完成；允许如实未完成 release，已有有效 Material 保留，后继可继续。 | E1、E2 |
-| V12：release 与失联 | 持久接收 release 后断开 CLI；保留子进程，令清理响应丢失，再重启 Runtime。 | 外部流程继续撤权和停止全部本地进程；重复 release 不重做业务副作用；仅在安全解绑后重新可领/补位。 | E1、E2 |
-| V13：旧执行与已接收长操作 | release 前后分别提交新请求；让已持久接收的外部服务作业继续运行。 | 撤权后拒绝旧 E 的新操作；先前接收的作业按服务合同运行、计费及查询，不借此重新授权旧 Bot。 | E2 |
+| V12：finish 与失联 | 持久接收 Task finish 后断开 CLI；保留子进程，令清理响应丢失，再重启 Runtime。 | 外部流程继续撤权和停止全部本地进程；重复 finish 不重做业务副作用；仅在安全解绑后重新可领/补位。 | E1、E2 |
+| V13：旧执行与已接收长操作 | finish 前后分别提交新请求；让已持久接收的外部服务作业继续运行。 | 撤权后拒绝旧 E 的新操作；先前接收的作业按服务合同运行、计费及查询，不借此重新授权旧 Bot。 | E2 |
 | V14：干净接续 | E1 留私有文件、只在对话中的标记和公开 M1；结束后用新 Bot 继续同 Task。 | 后继只有公开 M1 及允许的初始化输入，没有旧私有文件、会话、工具历史或未发布 Git 对象；main 来源可追溯。 | E2 |
 | V15：纠错可见性 | 公开一份有已知错误的材料，其后发布证据与修正；测试按 ID 读取、搜索及查看消费者。 | 旧内容不被静默覆盖；修正/争议关系可发现；消费者知道引用版本和重验范围。系统不自动判定所有派生内容为真或假。 | E1、E2 |
 | V16：并发 main 更新 | 两个 Bot 基于同一旧 main 各自保存 Candidate，并尝试 integrate。 | 最多一个按该预期旧版本成功；另一个显式冲突，保留候选并重新整合/检查，不能覆盖先前成果。 | E1、E2 |
 | V17：检查与候选绑定 | 检查后改变候选、检查错误版本、候选引用已知受质疑材料；检查过程中 main 前进。 | 验收门槛核对确切候选、基准与检查范围；不借用旧 PASS；已知争议按材料政策处理，main 变化仍须条件更新。 | E1、E2 |
 | V18：可见性与审计 | 从一个 E 访问另一私有副本、旧卷或共享 Git 管理文件；对比授权审计入口。 | 研究 Bot 无访问旁路；审计保留不意味着研究可读；公开内容仍能按正常权限取得。 | E2 |
-| V19：预算、compaction 与空闲 | 在阅读期/执行期分别触发限额；全部任务暂不可领；达到约定的 handoff 条件。 | 无忙轮询或无限新建；如实发布可用进度或未完成结束；不依赖最后一条 release 后继续执行；空闲不等于 Mission 完成。 | E1、E2、E3 |
+| V19：预算、compaction 与空闲 | 在阅读期/执行期分别触发限额；全部任务暂不可领；达到约定的 handoff 条件。 | 无忙轮询或无限新建；如实发布可用进度或未完成结束；不依赖最后一条 finish 后继续执行；空闲不等于 Mission 完成。 | E1、E2、E3 |
 | V20：Prompt/skill 可追溯 | 记录启动、take 结果、技能加载和结束指令的实际发送；模拟技能缺失/版本不同。 | 能重建仓库控制文本与动态输入来源，区分模板与实际发送；缺失指导不静默伪装已加载；不公开原始私有会话。 | E2、E3 |
 
 四路并发通过不保证任意规模正确。后续扩大 Core 数、改变 provider、网络、身份或存储方案时，重新验证受影响边界；不把一次四路运行外推为无限扩展能力。
@@ -157,7 +157,7 @@ Mission 启动时固定验收对象与评估方式。代码可以是独立端到
 
 1. **单 Bot 基线**：同模型、输入、工具、检查器和总预算；允许它按自己的方式推进，避免人为削弱。该基线用于判断并发系统的总体代价与收益。
 2. **四路独立尝试基线**：同样的四路容量和总预算，各自完成明确定义的独立尝试，使用预先固定的选取或整合规则，计入最后整合费用。该基线区分协作收益与单纯多次采样收益。
-3. **四路普通分支协作基线**：同样的 sandbox、私有副本与 main 更新安全机制，采用固定分派/普通产物交接，不添加本阶段拟评估的知识维护策略。由此检验 Task/Material 策略是否有额外价值，避免把基础设施差异算成策略贡献。
+3. **四路 Runtime 管理工作目录的协作基线**：同样的 sandbox、私有副本与 main 更新安全机制，采用固定分派/普通产物交接，不添加本阶段拟评估的知识维护策略。由此检验 Task/Material 策略是否有额外价值，避免把基础设施差异算成策略贡献。
 4. **本阶段完整策略**：自主提案与选择、明确 Material 接续/纠错、持续整合、所选 prompt/skills。只有 E2 机制验收通过后才比较其行为。
 
 外部 CAID/STORM 复现可作为后续更强比较，但需要单独锁定版本、适配说明和资源额度。只借鉴其结构的本地基线必须称“参考该结构”，不能声称已经复现论文或可以直接比较论文报告的分数。
