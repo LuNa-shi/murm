@@ -2,7 +2,7 @@
 
 > 设计 Issue：[#122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · 决策来源：[#120](https://github.com/LuNa-shi/SwarmEnv/issues/120)。本文是待审目标设计，当前实现仍以 [architecture](../../architecture/INDEX.md) 为准。
 >
-> 已确认：Mission 共享、Task 独占、Workspace 与 Mission 一对一、每个 Execution 使用独立的全新 sandbox/Pi 会话、跨 Execution 只通过 Material 接续。本文只讲 Core Runtime 如何组织 Mission、Bot 和 Execution；Sandbox 细节见 [02](02-sandbox-runtime.md)，Task 合同见 [03](03-task.md)，Material 见 [04](04-material.md)，Workspace 见 [05](05-workspace.md)。
+> 已确认：Mission 共享、Task 独占、Workspace 与 Mission 一对一、每个 Bot 生命周期使用独立 sandbox/Pi Session；take 前只读、take 后在同一环境切换权限、跨 Execution 只通过 Material 接续。本文只讲 Core Runtime 如何组织 Mission、Bot 和 Execution；Sandbox 细节见 [02](02-sandbox-runtime.md)，Task 合同见 [03](03-task.md)，Material 见 [04](04-material.md)，Workspace 见 [05](05-workspace.md)。
 
 ## 阅读目录
 
