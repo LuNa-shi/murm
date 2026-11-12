@@ -155,11 +155,11 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 **依赖：** S2；Workspace 事务边界、合入政策已批准；使用 Judge 的工作量还依赖 #117 的实际服务闭环。
 
-**闭环：** 两个局部 Task 各自产生可读成果；新 Bot 认领普通整合 Task，在自己的副本合入和检查，保存完整 Workspace candidate，请求 main 条件更新；另一个基于相同旧 main 的候选冲突并重新整合。下一 Bot 实际取得新 main 内容。
+**闭环：** 两个局部 Task 各自产生可读成果并保存 Workspace Candidate；Bot 默认可在自己的有效 Execution 中直接整合简单 Candidate，复杂跨 Task 冲突时再提出独立整合 Task；integrate 按 expected Workspace revision 更新 main，另一个基于相同旧 main 的请求冲突并重新整合。未合入 Candidate 长期保留，Mission 结束或 integrate 失败不触发自动清理；Bot 显式 discard 只隐藏，不物理删除，Bot 可显式 discard。下一 Bot 实际取得新 main 内容。
 
-**必须一起交付：** Task 服务内 Workspace 模块、公开版本及来源链、内容导出与安全校验、检查/candidate commit/政策绑定、CAS 与请求重放、错误 main 的补偿修正、UI 的候选/已接纳区别。Context 仍持有内容，不把“同进程部署”扩成直接读其他服务数据库。
+**必须一起交付：** Workspace 本地 Git Repository、公开版本及来源链、独立 clone 的 Candidate 导出与安全校验、最小整合检查（有效 E、expected revision/base commit、Candidate 完整性/来源、明确指定的检查）、条件更新、错误 main 的补偿修正、Candidate active/discarded 与 main 已接纳状态的 UI 区分。Context 仍持有内容，不把“同进程部署”扩成直接读其他服务数据库。
 
-**验收出口：** V16–V18，并复验相关 V09、V10、V13；Workspace candidate commit 可导入并物化，两个相同 expected Workspace revision 的 integrate 请求最多一项成功，修改候选后旧 PASS 不可复用，超时可查询原结果。Task done、Workspace integrate、Mission accepted 三类记录互不替代。
+**验收出口：** V16–V18，并复验相关 V09、V10、V13；Workspace candidate commit 可导入并物化，两个相同 expected Workspace revision 的 integrate 请求最多一项成功；未合入 Candidate 不因冲突自动丢弃，修改候选后旧 PASS 不可复用，超时可查询原结果。Task done、Workspace integrate、Mission accepted 三类记录互不替代。
 
 **回退：** 停止新 advance；保留已经发布的候选及已接纳版本。内容回退通过新修正候选推进一个后继版本，保留误入版本和检查证据；不得倒写 main 历史或把“回滚程序版本”当作撤销已发生服务副作用。
 
@@ -343,7 +343,7 @@ PR 需要完成以下工作，而不是留下“以后补架构”的任务：
 | Workspace 部署 | 首版位于 Task Service 协调进程/事务域；Context 独立持有内容 | 实施中确认事务与 API 边界，不擅自扩成新微服务平台 |
 | provider 和权限 | OpenSandbox Docker 是 #119 的候选；非 root、受保护父目录、管理面隔离和可靠全进程停止必须验证 | 固定实际版本/镜像/配置的 E2；当前没有 Docker、尚未运行，不承诺现成 API 已满足全部要求 |
 | Task/Material 关系 | 用途放关联，保留生产来源；不新增 Progress/CheckResult/Feedback 核心对象 | schema/API/completion/通知/UI 一致变更，输入初始化例外受控 |
-| 合入与 Mission 验收 | 每 Mission 固定政策；自动接纳仅在批准政策内；需要人工审批的项目保留对应门槛 | 选定工作量和可信检查输入/版本；未定义政策时不能按“没有失败”放行 |
+| 合入与 Mission 验收 | 第一版采用最小整合政策：有效 E、expected revision/base commit 匹配、Candidate 完整且来源可追溯、Mission/Task 明确指定的检查通过；默认不要求逐次人工审批 | 选定工作量和可信检查输入/版本；未定义政策时不能按“没有失败”放行 |
 | compaction / 收尾预算 | 阈值和次数配置化，使用适配器实际可观察信号；示例 3 次/80% 不是固定规则 | 确认信号可用性、预留收尾额度和硬停止行为，再绑定运行配置 |
 | 历史数据 | 默认旧运行只读、新 Mission 显式输入；额外导入需预览与来源报告 | 明确需保留/导入的数据范围；不自动公开、删除或恢复私有研究状态 |
 | 真实模型和研究 | 按 05 分层验证；新机制不预设策略必然有效 | 获得对应 provider/model、时间、重复次数和总预算授权；完整设计审核本身不授予这些资源 |
