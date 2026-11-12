@@ -68,13 +68,13 @@
 
 暂不要求多 Workspace 合并、复杂调度器、永久经理、长期 Bot 私有记忆、自研 sandbox 平台、自动语义合并器、必选向量数据库、自动知识判真、所有服务结果自动转 Material，或每个运行时候选都开真实 GitHub PR。未来扩展应针对实测瓶颈提出，而不是先把所有机制一次塞入第一版。
 
-这里的“提 PR”需要区分：我们开发 SwarmEnv 时用 GitHub Issue/PR 进行工程审阅；运行中的 Bot 则可以把Workspace candidate 作为可审查的 Git 变更，由服务按合入政策接纳。后者不要求开放 GitHub 凭据给研究 Bot。
+这里的“提 PR”需要区分：我们开发 SwarmEnv 时用 GitHub Issue/PR 进行工程审阅；运行中的 Bot 则可以把 Workspace Candidate 作为可审查的 Git 变更，并由 Bot 自主决定是否调用 integrate。后者不要求开放 GitHub 凭据给研究 Bot。
 
 ## 5. 从一次具体运行看累积
 
 CSV 例子从 Workspace main 初始 commit `c0` / revision `0.1` 开始。B1–B4 读同一 Mission 和工作列表后，可能分别选择过滤、统计、JSON、验证资料四个普通 Task。B1 发布研究说明 Material M1，并保存代码 Candidate C1。若整合简单，B1 可以在当前 Execution 内直接 integrate；若需要跨 Task 协调，则新 B5 领取独立整合 Task。成功后 main 从 revision `0.1` 推进到 `0.2`。Candidate 保存和 Material 发布都不自动更新 main；Bot 可以在当前 Task 内直接 integrate，复杂时另建整合 Task。
 
-B2 未完成统计，但发布了有反例和部分补丁的 M2。新 B6 从 v1 加公开 M2 接续原 Task；它看不到 B2 的私有会话。B3 的 JSON candidate 若仍基于 commit `c0`，后续整合必须保留当前 main 中已有的过滤成果并重验，再推进下一个 Workspace revision。B4 的验证资料可供其他工作使用，但它的存在不等于 Mission 已通过验收。
+B2 未完成统计，但发布了有反例和部分补丁的 M2，并可保存 Candidate C2。新 B6 从当前 main revision 和公开 M2/C2 接续原 Task；它看不到 B2 的私有会话。B3 的 JSON candidate 若仍基于 commit `c0`，后续整合必须保留当前 main 中已有的过滤成果并重验，再推进下一个 Workspace revision。B4 的验证资料可供其他工作使用，但它的存在不等于 Mission 已通过验收。
 
 这个例子在 [01](01-model-and-runtime.md) 给出完整生命周期，在 [03](03-workspace-and-integration.md) 给出版本轨迹，在 [05](05-validation-and-research.md) 给出故障和四路验收情景。脚本安排出这条轨迹，只能证明工程接口可用；真实 Bot 是否自主形成这种分工，仍需单独评估。
 
@@ -106,7 +106,7 @@ B2 未完成统计，但发布了有反例和部分补丁的 M2。新 B6 从 v1 
 | US12 新 Bot 接续 | [02 接续包](02-task-material-policies.md)；[03 新工作副本](03-workspace-and-integration.md) |
 | US13 纠错与影响追踪 | [02 质疑/修正](02-task-material-policies.md)；[03 主线修复](03-workspace-and-integration.md) |
 | US14 Workspace 初始化与 Task/E 关系 | [03 对象、初始化与副本](03-workspace-and-integration.md) |
-| US15 候选/整合/合入条件 | [03 普通整合 Task 与政策](03-workspace-and-integration.md) |
+| US15 候选/整合/合入条件 | [03 Candidate 管理与 main 整合](03-workspace-and-integration.md) |
 | US16 并发 main 与版本失败 | [03 条件更新和故障表](03-workspace-and-integration.md) |
 | US17 局部完成/发布/合入/验收 | [02 四种事实](02-task-material-policies.md) |
 | US18 完整 prompt/skills | [04 全文、动态示例、消息和记录](04-prompts-and-skills.md) |
