@@ -138,7 +138,7 @@ Material 内容不可变。纠错不覆盖旧正文，而是发布新的 Materia
 
 一个上游材料被质疑，不会自动证明所有下游材料错误：下游可能使用了未受影响的部分，或者已独立验证。系统应标明“存在待审影响”及来源关系，实际使用者解释是否需要重验。已完成 Task 的历史交付仍保留；若结论被推翻，用修复 Task 和更正记录表达后续事实，不篡改历史验收记录。
 
-正在执行的 Bot 应在开始依赖关键材料、发布结果和提出合入前刷新相关修正状态。v1 可以使用这些显式查询点，不要求可靠即时广播作为前提。若某个重要输入存在未解决的反证，应在结果中披露，或暂停依赖它的结论；不能通过只引用旧 ID 避开提示。Workspace 的候选和检查必须绑定实际使用的版本，见 [03](03-workspace-and-integration.md)。
+正在执行的 Bot 应在开始依赖关键材料、发布结果和提出合入前刷新相关修正状态。v1 可以使用这些显式查询点，不要求可靠即时广播作为前提。若某个重要输入存在未解决的反证，应在结果中披露，或暂停依赖它的结论；不能通过只引用旧 ID 避开提示。Workspace 的候选和检查必须绑定实际使用的版本，见 [03](05-workspace.md)。
 
 被标为“有修正”的旧内容仍允许研究和重现，避免丢失为什么出错的知识。默认检索的提示、实际读取结果和用于生成成果的输入版本都应可查，才能评估纠错是否真正被后续工作吸收。
 
@@ -177,6 +177,6 @@ Task Service 和 Context 各自持有自己的持久状态，通过 API 交换�
 | 多套旧 Task/依赖状态和 CHECK_RESULT 依赖仍可运行 | 显式映射新生命周期，检查保留普通服务调用语义，不留无说明的兼容旁路 |
 | 已有内容哈希、来源、`supersedes`、消费记录 | 复用可用基础，但补齐可读内容、修正展示、有效执行资格和真实使用证据，不能把已有字段存在视为闭环完成 |
 
-事实来源：[当前 Task 实现](../../../src/task/task-service.js)、[当前状态/合同定义](../../../src/task/task-types.js)、[当前 Context 实现](../../../src/context/context-service.js)，以及 [当前 Mission/Task/Material 手册](../../architecture/03-mission-task.md)。完整迁移范围见 [06](06-architecture-migration.md)。这些相对源码链接用于核对当前分支，事实基线仍以上述固定 commit 为准。
+事实来源：[当前 Task 实现](../../../src/task/task-service.js)、[当前状态/合同定义](../../../src/task/task-types.js)、[当前 Context 实现](../../../src/context/context-service.js)，以及 [当前 Mission/Task/Material 手册](../../architecture/03-mission-task.md)。完整迁移范围见 [06](08-architecture-migration.md)。这些相对源码链接用于核对当前分支，事实基线仍以上述固定 commit 为准。
 
 后续验证要求见 [07](07-validation-and-research.md)。
