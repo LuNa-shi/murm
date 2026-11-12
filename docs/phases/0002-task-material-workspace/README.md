@@ -32,9 +32,9 @@
 
 | 顺序 | 文档 | 只回答哪些问题 |
 |---|---|---|
-| 01 | [Core Runtime：Mission、Core、Bot 与 Execution](01-model-and-runtime.md) | Runtime 如何调度 Core、Bot 和 Execution？take/release 如何与服务状态协调？ |
+| 01 | [Core Runtime：Mission、Core、Bot 与 Execution](01-model-and-runtime.md) | Runtime 如何调度 Core、Bot 和 Execution？take/finish 如何与服务状态协调？ |
 | 02 | [Sandbox 与 Execution Runtime](02-sandbox-runtime.md) | 每个 E 的 sandbox 如何创建、挂载、授权、运行、销毁和回收？Pi/Bash/子进程如何隔离？ |
-| 03 | [Task：任务合同、分工与执行责任](03-task.md) | Task 最小合同、list/detail、Dependencies、提出/选择、修订、完成和取消规则是什么？ |
+| 03 | [Task：任务合同、分工与执行责任](03-task.md) | Task 最小合同、list/detail、Dependencies、提出/选择、完成和取消规则是什么？ |
 | 04 | [Material：研究内容、Evidence、检索与纠错](04-material.md) | 什么值得发布？来源如何绑定？Evidence 如何表达？怎样搜索、复用、质疑和 supersede？ |
 | 05 | [Workspace：Git Repository、Candidate 与 main 整合](05-workspace.md) | 本地 Git 如何管理？每个 E 如何得到 clone？Candidate 如何保存、discard 和 integrate？ |
 | 06 | [完整 Prompt 与 Bot Skills](06-prompts-and-skills.md) | 初始规范全文、动态启动消息、CLI、skills 和实际发送记录是什么？ |
