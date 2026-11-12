@@ -54,7 +54,7 @@ Workspace 初始化必须可验证：Repository 和初始 commit 能从本地仓
 
 ### 3.2 每个 Execution 的 clone
 
-每个新 Execution 从明确的 Workspace main commit/revision 创建独立 local clone。若 Task 指定 base revision/commit，就使用该版本；若没有指定，take 时解析当时 main HEAD，并把实际 commit 和 revision 固定到 Execution。
+每个新 Execution 的工作目录从明确的 Workspace main commit/revision 创建独立文件树。若 Task 指定 base revision/commit，就使用该版本；若没有指定，take 时解析当时 main HEAD，并把实际 commit 和 revision 固定到 Execution。
 
 Bot 启动后先通过 Workspace Service/只读 API 浏览 Workspace；take 成功时 Runtime 从指定 main commit 导出文件树，通过 Sandbox Provider 已验证的受信任文件传输接口写入 sandbox 中预留的 Execution 专属目录，再由 OS 权限授予当前 Bot 用户写权限。不要假设 Provider 支持运行时动态挂载新 volume。Bot 只使用 Pi 文件工具/Bash 修改文件，不创建 Git branch/commit，不访问任何 .git、共享 refs 或管理凭据。Sandbox 内目录准备和权限细节见 [02](02-sandbox-runtime.md)。
 
@@ -225,7 +225,7 @@ Mission 完成后是否允许继续创建 Task、是否允许新的 Bot 继续�
 实现验收至少应能观察到：
 - 一个 Mission 对应一个长期 Workspace Repository；Mission 完成后仓库仍可读取。
 - main 是真实 Git branch；每次成功推进生成 commit 并递增 Workspace revision；不创建 Git tag。
-- 每个 Execution 的工作目录由 Runtime 从固定 main commit 创建；Bot 不直接管理 Git；修改一个 clone 不改变其他 E 或 main。
+- 每个 Execution 的工作目录由 Runtime 从固定 main commit 创建；Bot 不直接管理 Git；修改一个 Execution 工作目录不改变其他 E 或 main。
 - Bot 不能通过共享 .git、宿主卷、旧私有仓库或伪造 CLI 字段绕过权限。
 - Candidate 由 Runtime 保存后可在 sandbox 删除后完整物化，来源 Task/E 和 base revision/commit 可追溯。
 - Candidate 长期保留；discard 只隐藏默认列表，不物理删除 commit；历史查询可见。
