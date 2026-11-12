@@ -9,7 +9,7 @@
 
 来自 #119 的决定：
 
-1. **每个 Bot 生命周期使用独立、临时的第三方 sandbox。** 整个 Agent 执行环境都在 sandbox 内，包括 Pi、NuRouter、扩展、Bash 和本地子进程。至少达到 Docker 级隔离；不沿用当前自建 SandboxManager 作为目标隔离后端。
+1. **每个 Bot/Execution 使用独立、临时的第三方 sandbox。** 整个 Agent 执行环境都在 sandbox 内，包括 Pi、NuRouter、扩展、Bash 和本地子进程。至少达到 Docker 级隔离；不沿用当前自建 SandboxManager 作为目标隔离后端。
 2. **每个新 Bot 生命周期都从干净环境启动。** Bot 启动时创建 sandbox、新 Pi Session 和只读项目工作目录；take 前在同一 sandbox/Pi 中研究和选择 Task；take 成功后不创建第二个 sandbox/Pi，而是在当前环境建立 E 绑定并切换目录/服务权限；release 结束 E 并恢复只读权限，Bot 可继续；Bot 生命周期结束时才销毁 sandbox。后继 Bot 不继承前一 Bot 的私有文件、对话和工具历史。
 3. **跨 Execution 的研究接续只通过 Material。** 后继不能引用前任 sandbox 私有目录、私有 Git 对象或临时路径作为输入。
 4. **服务位于 sandbox 外。** Task、Context/Material、Judge 和启用的领域服务独立部署，各自拥有 API、持久状态和重启生命周期。sandbox 通过网络 API/CLI 调用，不共享进程对象或数据库。
@@ -53,7 +53,7 @@ Sandbox 是不可信执行边界。即使 Bot 只收到一个 Task，也必须�
 | Task/E 身份 | Runtime 与服务端认证 | 客户端自填 Task ID、环境变量或 JSON 字段不能单独构成身份 |
 | 外部网络 | 显式配置的网络策略 | 不假定 sandbox 天然只能访问指定域名；需验证实际 provider 网络能力 |
 
-## 3. 每个 Bot sandbox 的生命周期
+## 3. 每个 Execution sandbox 的生命周期
 
 ### 3.1 创建前：准备执行描述
 
@@ -77,7 +77,7 @@ Bot sandbox 启动时，Runtime 准备只读启动环境；take 时再读取/确
 
 ### 3.3 新 Execution 的干净工作目录
 
-每个 Bot sandbox 启动时就准备一个全新工作目录。项目工作目录从 Workspace Service 导出的当前 main revision/commit 创建独立 clone；take 前由 OS 权限强制只读，take 成功后 Runtime 在同一 sandbox 中将其切换为当前 E 可写。Bot 不接触 Workspace 主 Repository 的 .git。Material 通过 Context API/CLI 获取真实内容或受控附件，不从前任私有目录复制。
+Bot 启动时只提供只读项目浏览能力；take 成功后 Runtime 从 Workspace 当前/指定 revision 创建 Execution 专属工作目录（独立 clone 或受控导出目录），挂载到 sandbox 并开放写权限。Bot 不接触 Workspace 主 Repository 的 .git，也不直接管理 Git。Material 通过 Context API/CLI 获取真实内容或受控附件，不从前任私有目录复制。
 
 Sandbox 内至少区分：
 
@@ -101,14 +101,14 @@ Sandbox 内至少区分：
 
 ### 3.5 Task release 与 Bot sandbox 终止是两件事
 
-**一次 Execution release 不销毁 Bot sandbox。** Runtime 必须：
+**v1 一个 Bot 只执行一个 Execution，因此 Task finish 或超时会结束 Bot sandbox。** Runtime 必须：
 1. 阻止当前 E 发起新的服务写操作；服务端按 E 状态拒绝旧 E 的后续写请求。
-2. 撤销当前 E 的项目目录写权限和贡献型服务权限，将项目目录恢复只读。
-3. 停止或隔离由该 E 启动、可能继续修改项目的任务级后台进程；保留 Bot 主 Pi/NuRouter 和 sandbox。
-4. 关闭 E、释放 Task 占有并记录结果。当前 Bot 回到只读协调阶段，可以继续提出、选择并 take 下一项 Task。
-5. 不删除当前 Bot sandbox、Pi Session 或其运行目录。Material/Candidate/main commit 等外部持久成果按各自服务合同保留。
+2. 撤销当前 E 的项目目录写权限和贡献型服务权限。
+3. 停止 Pi、NuRouter、Bash 及全部子进程；不能保留后台进程继续写入。
+4. 确认 sandbox 已停止/隔离后关闭 E、释放 Task 占有并记录结果。
+5. 销毁临时 sandbox 和 Execution 工作目录；Material、Candidate/main commit 等外部持久成果按各自服务合同保留。未保存的私有文件不作为后继输入。
 
-**Bot 生命周期结束时才销毁 sandbox。** 例如 compaction/handoff、预算/时间上限、操作者停止或不可恢复故障。Runtime 此时停止 Pi、NuRouter、Bash 和所有剩余子进程，确认 sandbox 已停止/隔离，再销毁 sandbox。私有卷和运行审计数据按留存策略处理，但不作为后继 Bot 输入。
+
 
 Provider 删除响应丢失或 Runtime 重启时，reconciler 根据持久 Bot/E 状态、provider resource tags 和 sandbox ID 对账。Bot sandbox 未确认停止前，不能把 Core 重新分配给新的 Bot。
 
@@ -120,7 +120,7 @@ Provider 删除响应丢失或 Runtime 重启时，reconciler 根据持久 Bot/E
 - 未 take：Agent 可以读 Mission、Task 列表、Workspace main 和有权限的 Material；不能写项目工作副本、发布研究成果或提交领域服务贡献。
 - Bot 启动阶段：Runtime 创建 sandbox、Pi Session 和 project clone；在 take 前项目目录仍只读。
 - take 成功并进入 active E：可信 Runtime 在当前 sandbox 授予项目目录写权限；服务端也验证当前 E 才接受写入。
-- closing/closed：服务端拒绝旧 E 的新写请求，Runtime 结束该 E 的任务级子进程并将项目目录恢复只读；Bot 主 sandbox/Pi 可继续运行，直到 Bot 生命周期结束。
+- closing/closed：服务端拒绝旧 E 的新写请求，Runtime 停止整个 Bot sandbox 中所有进程并销毁环境。
 
 这里的只读指项目文件与业务贡献，不是禁止操作系统内所有写入。Pi 运行目录、缓存和临时文件可能需要可写，但它们不能成为项目目录的旁路。
 
@@ -211,7 +211,7 @@ OpenSandbox release-1.2.0 的源码调研给出以下限制，均需在固定版
 ## 10. 验收门槛
 
 真实集成至少要证明：
-- 两个并发 Execution 各自运行完整 Pi/NuRouter/Bash/子进程栈，文件系统互不可见；
+- 两个并发 Bot/Execution 各自运行完整 Pi/NuRouter/Bash/子进程栈，文件系统互不可见；
 - 新 E 对旧 E 私有文件、shell history、Pi 会话、工具输出不可见；
 - 只通过 Material 能接续已发布内容；
 - Pi 四基础工具操作同一文件工作面；
