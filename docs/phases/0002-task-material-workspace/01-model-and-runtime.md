@@ -92,17 +92,7 @@ v1 建议 Workspace 逻辑模块与 Task Service 同一协调进程、一致性�
 
 这里的“只读”有明确范围：**保护项目工作副本与业务贡献接口**。允许运行目录写日志、缓存、临时文件，意味着不能技术性禁止所有提前计算。Prompt 要求先 take 再做正式贡献；系统保证的是贡献归属和受控写入，而不是判断每一段思考是否属于“做题”。若未来需要更严格的临时计算限制，另立假设和成本评估。
 
-### 本地文件边界
-
-v1 用固定私有卷，不依赖 provider 热切换只读 mount。take 前，可信身份持有项目文件、目录及可替换它们的父目录，非 root Bot 只能读；Bot 无权 chmod/chown、删除后重建目录、替换挂载或借管理 API 获得特权。Pi 四基础工具、Bash 及其子进程全部使用这个受限身份。运行目录不能通过符号链接、共享可写 Git 元数据或额外挂载变成项目写入旁路。
-
-可信 Runtime 在 E 激活后授予该固定项目目录的写权限。不能把“在 CLI 里拒绝 write”当成保证，因为 Bot 还有 Bash、文件 API 和直接服务请求。也不能仅删除 token 文件后宣称撤权：已读入内存的 token 和已打开的文件描述符仍需由服务校验、进程停止和 sandbox 隔离共同处理。
-
-### 远程权限边界
-
-初始协调凭据与 E 贡献凭据分开。服务根据可信身份映射决定 Mission/Bot/E，不接受用户可编辑 JSON 中自报的身份或单独一个 Task ID。CLI 每次读取受保护的当前绑定配置；take 不要求一个已经启动的 Pi 进程的环境变量“自动变化”。提供方管理凭据不放入 Bot 环境，服务凭据不写进初始 prompt。
-
-pre-E 提出 Task 是受限的协调写，不等于任意编辑、取消别人的 Task。任务规格变更、取消和依赖修订的权限详见 [02](03-task.md)。所有贡献服务验证同一 E 的当前资格；网络可达不代表有写权限。
+Sandbox 的 OS 权限、mount、身份、凭据和网络边界统一由 [02 Sandbox 文档](02-sandbox-runtime.md) 定义；Runtime 不在本文件重复描述 provider 细节。本文只要求 Runtime 在 E active 前确认 Sandbox 已按该合同准备完成，closing 时确认整个 sandbox 已停止或隔离。
 
 ## take 的完整顺序
 
@@ -120,14 +110,14 @@ stateDiagram-v2
     Closed --> [*]
 ```
 
-`Unbound` 是 Bot 阶段，还没有 E；成功预留产生 E 后进入 `preparing`。API 的 take 成功响应只在 E `active` 且新 sandbox、Pi Session、工作副本和权限准备完成时返回。这样即使准备失败，也能追踪一次已取得排他资格的尝试，不把它和单纯抢占失败混淆。
+`Unbound` 是尚未绑定 Execution 的逻辑 Bot 阶段；成功预留产生 E 后进入 `preparing`。take 前只读运行环境与 take 后新 E 的关系仍待确认，见 [02](02-sandbox-runtime.md)。API 的 take 成功响应只在 E `active` 且新 sandbox、Pi Session、工作副本和权限准备完成时返回。这样即使准备失败，也能追踪一次已取得排他资格的尝试，不把它和单纯抢占失败混淆。
 
-1. **请求去重。** CLI 为 take 保存 request ID。Task Service 对 Bot 的未决请求及活跃 E 做约束：一个 Bot 不能通过并发两个 take 获得两个 E。
+1. **请求去重。** CLI 为 take 保存 request ID。Task Service 对 Bot 的未决请求及活跃 E 做约束：同一个 Bot 不能通过并发两个 take 获得两个活动 E；Bot ID 是否跨顺序 Execution 保留，待统一定义。
 2. **原子预留。** 在一个 Task 事务内检查 Mission 允许继续、Task 规格版本/依赖/状态、无当前执行者、Bot 未绑定；建立 `preparing` E，写入 `current_execution_id`，Task 变为 `running`。并发失败者收到明确 conflict，仍是原只读 Bot。
 3. **准备输入。** Runtime 创建新的 Execution sandbox/Pi Session，在项目仍只读时物化选定的 main 版本、Task 输入 Material 和服务配置，保存 E/Bot/Core/sandbox/私有副本对应关系。预览版本与此时版本不同时，take 结果必须说明变化，要求重读受影响文件；保留 Pi 不等于此前假设仍有效。
 4. **激活执行。** Task 协调域把 E 置为 active；绑定的身份、规格版本、Workspace/base 和预算确定。贡献凭据此时仍由可信 Runtime 持有。
 5. **开放本地写。** Runtime 对准备好的项目目录授权。此时即使旧的本地后台进程立即尝试写，它也已经处于这个有效 E 的归属范围。操作只能由可信生命周期控制器执行。
-6. **提供贡献绑定并返回。** 原子替换受保护的绑定文件，允许 CLI 获取当前 E 的贡献身份，返回 Task/E/Workspace/base/输入版本/权限/预算及变化摘要。Pi PID 与本次阅读上下文保持，进入执行策略。
+6. **提供贡献绑定并返回。** 原子替换受保护的绑定文件，允许 CLI 获取当前 E 的贡献身份，返回 Task/E/Workspace/base/输入版本/权限/预算及变化摘要。该 E 使用全新 Pi Session；take 前阅读上下文是否以摘要形式传入新 Session，仍是待确认问题，不默认继承旧会话。
 
 每 sandbox 的 grant、abort、release 顺序执行，并带生命周期版本；关闭之后到达的迟延 grant 不得重新开放权限。若实际 provider 调用无法被取消，Runtime 必须等待其结果并继续停止该环境，不能把同一环境重新分配。
 
@@ -163,7 +153,7 @@ release 是结束当前 E，不是清空 CLI 当前任务，也不一定代表 T
 2. **撤销新操作资格。** E 转为 closing，记录结束意图和已接纳操作边界；后续新贡献许可被拒绝。协调凭据也不再允许这个 Bot 新提案或认领。
 3. **终止整份执行。** Runtime 独立于 CLI 连接停止 Pi、NuRouter、Bash 和所有子进程，并销毁/隔离 sandbox。不要只给 Pi 发送一个“请停止”的文本消息。
 4. **确认停止后解绑。** 只有明确确认旧进程不能继续执行，且 Task 当前 owner 仍是本 E，才清除认领、关闭 E。符合完成条件的 Task 转 done；未完成 Task 按前提转 ready/blocked。未确认停止时保持 running/closing，不重叠启动同一 Task 的新 E。
-5. **留存与补位。** 外部保存已发布 Material、调用结果和受控审计存档。Core 在清理到可安全复用的边界后启动下一 Bot/Execution sandbox/Pi，后继只看公开输入。已确认隔离的残留资源可继续异步重试清理，不能丢失其记录。
+5. **留存与补位。** 外部保存已发布 Material、已保存的 Workspace Candidate、调用结果和受控审计存档。Core 在清理到可安全复用的边界后启动下一 Bot/Execution sandbox/Pi，后继只看公开输入。已确认隔离的残留资源可继续异步重试清理，不能丢失其记录。
 
 release CLI 可能在返回完整响应前因自己的 sandbox 被停止而断开。收尾不依赖 Bot 执行下一条命令，操作者/Runtime 可用 request ID 查询最终结果。服务已经受理的长期工作按上一节继续；release 不是对所有副作用的回滚，也不默认取消所有服务作业。
 
@@ -177,30 +167,11 @@ compaction 次数、上下文阈值、单 Bot 预算和保留的收尾额度是�
 
 ### Mission 的停止
 
-Task done、Material publish、main advance 分别是局部责任、内容可用和共享版本更新的事实。Mission 是否达成，由启动时声明的验收方式决定，可能是固定 checker，也可能需要操作者审核；没有已配置的自动验收时不能自动宣布成功。预算到期、人工取消和失败停止也应有独立结束原因。Mission 停止先禁止新的 take/贡献，再收尾活跃 E 和按合同处理外部操作，保留费用和未完成状态。
+Task done、Material publish、Workspace integrate 分别是局部责任、内容可用和共享版本更新的事实。Mission 是否达成，由启动时声明的验收方式决定，可能是固定 checker，也可能需要操作者审核；没有已配置的自动验收时不能自动宣布成功。预算到期、人工取消和失败停止也应有独立结束原因。Mission 停止先禁止新的 take/贡献，再收尾活跃 E 和按合同处理外部操作，保留费用和未完成状态。
 
-## 四个 Bot 的具体轨迹
+## 运行轨迹的边界
 
-Mission：完善已有 CSV 分析工具，提供条件过滤、分组统计和 JSON 输出，留下可复用的验证资料。Workspace main 初始 commit `c0` / revision `0.1` 来自操作者提供的项目文件；独立说明可另存为 Material M0；Task 列表为空。
-
-四个逻辑 Bot/Core 读取相同 Mission 和 Task/Material 服务；每次 take 后的 Execution 使用各自独立 sandbox/Pi。以下是可能形成的分工，不是 Runtime 提前分配的四个角色：
-
-| Core / Bot | 提出并 take 的 Task | 执行工作副本 | 目标交付 |
-|---|---|---|---|
-| C1 / B1 | T1 过滤模块 | W 的私有副本 独立 E1 sandbox clone，base commit c0/revision 0.1 | 可应用的过滤变更及检查证据 M1 |
-| C2 / B2 | T2 分组统计 | 独立 E2 sandbox clone，base commit c0/revision 0.1 | 统计功能及边界说明 |
-| C3 / B3 | T3 JSON 输出 | 独立 E3 sandbox clone，base commit c0/revision 0.1 | 输出模块变更及检查证据 M3 |
-| C4 / B4 | T4 验证资料 | 独立 E4 sandbox clone，base commit c0/revision 0.1 | 输入样例、预期输出、覆盖范围和验证方法 M4 |
-
-1. 如果 B1、B2 同时 take T1，只有一个预留成功，另一 Bot 保持原只读会话并重新选工。不同 Task ID 的重复语义仍可能出现，由提案前检查、后续纠偏和评估处理；不宣称一次查询消除所有重复。
-2. B1 的同一 Pi 在 take 成功后可写 P1。它完成局部检查，发布 Material M1，并保存代码 Candidate C1；若 Task 合同要求这些交付，确认可读取后再完成。T1 done，main 仍指向初始 commit。
-3. C1 启动新的 B5。后继 Execution 可读取 M1/C1；若整合简单，当前 Bot 可直接 integrate；复杂时提出独立 Task。Candidate 不是 Material。
-4. B2 发现空分组边界尚未解决，发布部分材料 M2 后未完成退出。后继 E6 从当前 Workspace main commit/revision 创建新 clone，读取 M2 和已保存 Candidate C2；它不复用前任 sandbox，也看不到 B2 对话。
-5. B3 的 Candidate 导出失败时，只有 sandbox 私有文件，不能声称已保存 Candidate。修复后重新导出；Candidate 记录实际 base commit/revision。后续整合 Bot 必须在当前 v1 上重做组合检查，不能把 main 直接重置成旧 v0 的完整目录。
-6. 若两个不同 Execution 都基于相同 main revision 产生 Candidate，只有先提交者更新成功；另一方得到版本冲突，读新版本并重做受影响的整合/检查。相同文件没有文本冲突也不等于语义兼容。
-7. B4 的 M4 可以成为其他 Task 的验证输入；它不代表全项目已通过验收。T2 未完成或最终验收未通过时，Mission 仍未完成。
-
-上述例子同时展示三种累积：Task 记录谁在做什么和局部完成度；Material 保留真正可读的贡献与失败经验；Workspace main 记录已经整合的项目版本。四路并行最多同时占四个 Core，Bot 编号随补位增长，不能把“四 Bot”误读为四个永久私有记忆体。
+完整四 Bot 例子放在 [Overview](README.md)，Task/Material/Workspace 的具体交付过程分别见 [03](03-task.md)、[04](04-material.md) 和 [05](05-workspace.md)。本文件只约束 Runtime 的共同行为：每次 take 建立一个新的 Execution；每个 E 使用独立 sandbox 和 Pi Session；release 后旧 sandbox 停止；新 E 不继承前任私有会话或目录。
 
 ## 最小配置与可观测记录
 
