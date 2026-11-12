@@ -6,6 +6,8 @@ This directory is written for the owner who wants to understand the implementati
 
 The baseline still contains both flat Mission Tasks and legacy Root/Child Tasks. The benchmark CLI defaults to `legacy`. It also still relays `judge.submit_candidate` through Task Service and the runner. These executable paths are documented here. Removing legacy behavior and [redesigning Judge submission in Issue #117](https://github.com/LuNa-shi/SwarmEnv/issues/117) are separate changes; they are not completed by a documentation update.
 
+The next [Task–Material–Workspace stage](../phases/0002-task-material-workspace/README.md), tracked in [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122), describes the proposed replacement model, including Workspace as a core object with its own main branch. It is a design under review; the runtime narrative below remains the implemented baseline until the corresponding code changes land.
+
 ## Reading map
 
 Read 00 first, then 07 for the actual launch and outer loop. Read 01–06 for the mechanisms inside that run. Use 08–12 as full references and a review checklist.
@@ -39,11 +41,12 @@ Source coverage is an inventory, not a formal proof that every branch is correct
 | Artifact | Owns | Update point |
 |---|---|---|
 | Approved GitHub Issue / accepted Agent Brief | Intended change, scope, resources and acceptance | Human decisions and meaningful implementation progress |
+| Numbered phase design | Complete target design attached to an Issue, including proposed prompts and migration | Design PR review; exact approved revision linked from the Issue |
 | Architecture | Current reviewed implementation and explicit discrepancies | In the same PR as behavior changes; complete reconciliation at stage closeout |
 | Experiments | Inputs and observations of a particular version/run | Registration and evidence-backed reporting |
 | ADR | Durable decision rationale and tradeoffs | Only when a significant decision warrants a lasting record |
 
-Implementation notes and handoffs stay in the originating Issue/PR. There is no separate phase specification directory. An approved Issue may change the existing baseline within its agreed scope; an unreviewed implementation or regenerated reference cannot silently change the intended contract.
+Implementation progress and handoffs stay in the originating Issue/PR. Phase designs are versioned attachments to that approval process, with target behavior explicitly separated from the current implementation. An approved Issue may change the existing baseline within its agreed scope; an unreviewed implementation or regenerated reference cannot silently change the intended contract.
 
 ## Required update and verification procedure
 

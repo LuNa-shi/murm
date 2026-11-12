@@ -89,7 +89,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `88c8c350b83e4ebf66de0b530d52fe99829aa33c0ac5618d088dddefa65404b8` |
+| [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `60a718baf79b4ee81d16aed9813cef6f1b7c31d66810ea41e1c087cffc4fd2a8` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `c97eae9650825385e9459fce904d83432381b4c86a5ef88bd208878aec424987` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `ec37f40041d98d5def24755a6fbb2acc4f1404f43376f43d206fd91db78af102` |
 | [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `b00115226bf4604cc93ea5f4044a36be24afb594c53fbf42e0cd28a15d4b4a3e` |

@@ -1,6 +1,6 @@
 # Development workflow — Matt engineering skills adapter
 
-> Type: Project-specific workflow · Status: Active · Updated: 2026-11-11
+> Type: Project-specific workflow · Status: Active · Updated: 2026-11-12
 
 The default engineering procedure is defined by the [installed Matt Pocock engineering skills](https://github.com/mattpocock/skills/tree/main/skills/engineering). This file adds only SwarmEnv-specific context and verification boundaries. [AGENTS.md](../../AGENTS.md) defines human/Agent autonomy and permissions.
 
@@ -8,7 +8,7 @@ The default engineering procedure is defined by the [installed Matt Pocock engin
 
 - **GitHub Issue is the sole requirements and acceptance source.** Use `/to-spec` to convert a design discussion into a GitHub spec Issue. Read the complete Issue, its comments, accepted Agent Brief and later human decisions.
 - **`/to-tickets` is optional.** For large work, propose independently verifiable vertical slices and blocking dependencies for human review, then publish them to GitHub. An umbrella Issue with several PRs is also valid.
-- The full ticket graph, implementation plans, technical decisions and cross-session handoff pointers belong on GitHub Issues/PRs (with exact commits when helpful), **not in a local `docs/phases/` or Implementation Spec**.
+- Keep the ticket graph, approvals, progress and cross-session handoff pointers on GitHub Issues/PRs. Substantial stage designs may use numbered [phase documents](../phases/INDEX.md) as versioned Issue attachments, reviewed through a corresponding PR. Link the exact approved revision in the Issue; distinguish confirmed direction, proposed detail, implemented behavior and verified outcomes.
 - Review the [accepted Architecture](../architecture/INDEX.md), [GLOSSARY](../../GLOSSARY.md), and relevant ADRs before modifying code. Current source behavior is not independent permission to change approved requirements.
 
 ## Implementation and review
@@ -17,6 +17,12 @@ The default engineering procedure is defined by the [installed Matt Pocock engin
 - Use `/tdd` at pre-agreed public seams; for tricky defects use `/diagnosing-bugs`. Repeat tests, fixes and authorized diagnostic probes within Issue scope **without reporting after each iteration**.
 - Run relevant tests, full suite when available, and `git diff --check`. Run `/code-review` with separate **Spec** and **Standards** findings. Use `/pr` for a concise Summary, before/after Evidence and Merge Danger.
 - If a skill is unavailable, report that limitation and follow the applicable documented engineering requirements without claiming the skill ran.
+
+## Design-stage documentation
+
+Create a design Issue plus a documentation PR when the owner requests a new stage. The Issue states the problem, scope, user outcomes, decisions and acceptance. Its phase attachment explains the full target model, workflows, permissions, prompts/skills, failure behavior, verification plan and migration in reviewable chapters. Do not label a design as ready for runtime implementation merely because its documentation has been published.
+
+During design review, keep current Architecture accurate to current code and link the target design. After implementation begins, each runtime PR updates the affected manual and references. Keep pending choices and evidence in the Issue/PR; do not maintain a duplicate local progress ledger. A change to a reviewed requirement must be made visible in the Issue and the document revision together.
 
 ## SwarmEnv verification and synchronization
 

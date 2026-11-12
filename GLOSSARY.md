@@ -1,8 +1,16 @@
 # SwarmEnv domain glossary
 
-> Type: Vocabulary · Status: Active · Updated: 2026-11-11
+> Type: Vocabulary · Status: Current runtime with target migration note · Updated: 2026-11-12
 >
 > This document defines domain terms only; it does **not** define state transitions, experiment thresholds, human approval policy or implementation plans. See [Architecture](docs/architecture/INDEX.md) for runtime behavior and [AGENTS.md](AGENTS.md) for human/Coding Agent boundaries.
+
+## Current implementation and target terminology
+
+The table below describes the runtime documented in PR #116. It is **not** an endorsement of retaining every term. [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) and the [Phase 02 model](docs/phases/0002-task-material-workspace/01-model-and-runtime.md) specify the target vocabulary under review: Mission is the shared objective; every Task has at most one current executor; Bot replaces the narrative identity term; Core is a slot; Execution runs from take through release; Workspace is the project work environment containing main and private execution working copies. Mission Task, Core lane and Workspace lineage are retired in that target. Progress, handoff and service results need no additional core object types.
+
+Until runtime migration lands, the existing terms remain labeled here so the current manual can be read correctly. Each implementation PR must reconcile this glossary with actual behavior; a wording change alone does not remove a code path.
+
+## Runtime baseline vocabulary
 
 | Term | Meaning |
 |---|---|
@@ -17,7 +25,7 @@
 | Claim / `task_take` | Acquiring a valid Task Execution on the identity's own Core lane |
 | Material | A shareable result or evidence object with origin, content version and purpose |
 | Progress Material | Material describing completed work, findings, open questions, next steps and optionally a Workspace snapshot |
-| Workspace | A private writable working area for an Execution |
+| Workspace (current implementation) | A private writable working area for an Execution; the target expands this into the project object that also owns main |
 | Workspace lineage | The source and continuation relationship between input revisions, saved revisions and successor Executions |
 | Checkpoint | Saving progress while continuing the current Execution |
 | Handoff | Ending an Execution's authorization while leaving the responsibility available for continuation |
