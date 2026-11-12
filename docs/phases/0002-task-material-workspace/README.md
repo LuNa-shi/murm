@@ -36,9 +36,9 @@
 | Mission 与 Task 分开 | 全体 Bot 看到同一 Mission；Mission 不被 take；删除 Mission Task 特例与隐藏占位任务 |
 | Task 是分工单元 | 同 Task 同时一个执行者；Task Service 提供全部状态；不同 Task 承担并行责任 |
 | 先查已有工作 | Bot 提案前检查任务与材料；第一版依赖 prompt 处理语义去重，不宣称原子认领能消除不同 Task ID 的重复 |
-| Workspace 为核心对象 | main 属于 Workspace；Execution 使用其私有副本；main 累积共同成果 |
+| Workspace 为核心对象 | Mission 与 Workspace 一对一；Workspace 是 sandbox 外的本地 Git Repository；main 是其 Git branch，Execution 使用独立本地 clone |
 | 采用方案 A | 新 Pi/sandbox 先阅读，take 绑定唯一 E 并开放限定写权限；release 结束本 Bot，后继全新启动 |
-| 接续通过明确发布的内容 | 公开 Material 和以 Material 表达的 Workspace 版本可用；旧私有会话、文件、Git 历史和审计存档不继承 |
+| 接续通过明确发布的内容 | 公开 Material 和 Workspace 中已保存的 candidate/main commit 可用；旧私有会话、未导出的工作目录和审计存档不继承 |
 | 服务与计算分离 | 外部服务持久接纳工作；CLI 是客户端，服务与 OS 执行授权 |
 | 精简概念 | Core 就是槽位；Bot 表示独立单元；不再把进度、handoff、检查返回值或反馈扩大成必需核心对象 |
 | Git 作为 v1 基础可接受 | 使用熟悉的版本与副本管理，研究创新不靠采用 Git 或改名来宣称 |
@@ -54,27 +54,27 @@
 | 生命周期表示 | Task ready/running/blocked/done/cancelled；E 内部分准备、active、closing、closed | 中间态、并发和失败能否解释；没有伪释放 |
 | 权限实现 | 固定私有卷、可信身份管理项目目录权限；协调和贡献身份分离 | provider 管理接口不能被绕过；真实 sandbox 必须验证 |
 | Workspace 部署 | 逻辑 Workspace 模块与 Task 同一协调事务域；内容由 Context 外部 API 保管 | 使 main 更新与 E 撤权有确定顺序，避免新增必需微服务 |
-| main 接纳 | 普通整合 Task、候选为 Material、版本化政策、检查绑定和 expected-main 条件更新 | 检查政策覆盖与成本；主线串行更新的瓶颈 |
+| main 接纳 | Bot 自主判断是否保存 candidate/是否整合；Workspace candidate 是 Git commit/文件变更，不是 Material；integrate 按 expected Workspace revision 条件更新 | 检查政策覆盖与成本；主线串行更新的瓶颈 |
 | Material 模型 | 内容/生产来源不可变，用途放 Task 关系；新增质疑和修正，不覆盖原文 | 纠错如何被消费者看见；元数据是否足够且不过重 |
-| Task 规格修订 | 未绑定协调身份不自动获得任意编辑/取消权；运行中不静默改合同 | 自主纠偏是否被限制过多；第一版先避免越权改别人责任 |
+| Task 规格修订 | Bot 可提出和 take Task；当前执行者可修订自己的 Task 并保留版本历史，不能改他人运行中 Task | 自主纠偏是否被限制过多；第一版先避免越权改别人责任 |
 | 初始规范与 skills | 关键规则始终注入，四份通用 skills 按需读取；领域工具另有 help | 能否理解、何时加载、上下文成本、真实行为证据 |
 | 研究假设 | 对自主分工、Material 接续纠错、持续整合、skills 各有可反驳比较 | 不把工程机制正确当收益；模型、基准和预算另行批准 |
 
 ## 4. 最小第一版的边界
 
-第一版可以从一个 Mission、一个 Workspace、一条 main、四个 Core 和一组独立服务开始。没有 Task 时由 Bot 阅读和提案；每 Bot 只执行一个 Task。可用成果显式发布，main 由普通 Task 在私有副本中整合后通过受控接口推进。
+第一版可以从一个 Mission、一个 Workspace、一条 main、四个 Core 和一组独立服务开始。没有 Task 时由 Bot 阅读和提案；每 Bot 只执行一个 Task。可用成果显式发布，main 由 Bot 决定是否推进；需要时通过普通 Task 在私有副本整合，再调用 Workspace 工具更新。
 
 这足以覆盖一条完整闭环：**发现需要做的工作 → 排他执行 → 形成公开局部成果 → 新 Bot 理解并使用 → 集成到共同版本 → 验证 Mission 进展。** 失败、修正和未完成退出是这条闭环的常规部分。
 
 暂不要求多 Workspace 合并、复杂调度器、永久经理、长期 Bot 私有记忆、自研 sandbox 平台、自动语义合并器、必选向量数据库、自动知识判真、所有服务结果自动转 Material，或每个运行时候选都开真实 GitHub PR。未来扩展应针对实测瓶颈提出，而不是先把所有机制一次塞入第一版。
 
-这里的“提 PR”需要区分：我们开发 SwarmEnv 时用 GitHub Issue/PR 进行工程审阅；运行中的 Bot 则可以把候选 Material 作为 Workspace 的可审查变更请求，由服务按合入政策接纳。后者不要求开放 GitHub 凭据给研究 Bot。
+这里的“提 PR”需要区分：我们开发 SwarmEnv 时用 GitHub Issue/PR 进行工程审阅；运行中的 Bot 则可以把Workspace candidate 作为可审查的 Git 变更，由服务按合入政策接纳。后者不要求开放 GitHub 凭据给研究 Bot。
 
 ## 5. 从一次具体运行看累积
 
-CSV 例子从 main v0 开始。B1–B4 读同一 Mission 和工作列表后，可能分别选择过滤、统计、JSON、验证资料四个普通 Task。B1 先发布过滤补丁 M1 并结束；新 B5 领取普通整合 Task，在自己的副本检查 M1，发布候选 M5，再将 main 从 v0 推到 v1。
+CSV 例子从 Workspace main 初始 commit `c0` / revision `0.1` 开始。B1–B4 读同一 Mission 和工作列表后，可能分别选择过滤、统计、JSON、验证资料四个普通 Task。B1 发布研究说明 Material M1，并保存代码 candidate C1 后结束；新 B5 可以领取普通整合 Task，在自己的副本检查 C1，保存整合后的 candidate 并决定是否推进 main revision `0.1`→`0.2`。候选保存和 Material 发布都不自动更新 main。
 
-B2 未完成统计，但发布了有反例和部分补丁的 M2。新 B6 从 v1 加公开 M2 接续原 Task；它看不到 B2 的私有会话。B3 的 JSON 成果若仍基于 v0，后续整合必须保留 v1 中的过滤成果并重验，再推进 v2。B4 的验证资料可供其他工作使用，但它的存在不等于 Mission 已通过验收。
+B2 未完成统计，但发布了有反例和部分补丁的 M2。新 B6 从 v1 加公开 M2 接续原 Task；它看不到 B2 的私有会话。B3 的 JSON candidate 若仍基于 commit `c0`，后续整合必须保留当前 main 中已有的过滤成果并重验，再推进下一个 Workspace revision。B4 的验证资料可供其他工作使用，但它的存在不等于 Mission 已通过验收。
 
 这个例子在 [01](01-model-and-runtime.md) 给出完整生命周期，在 [03](03-workspace-and-integration.md) 给出版本轨迹，在 [05](05-validation-and-research.md) 给出故障和四路验收情景。脚本安排出这条轨迹，只能证明工程接口可用；真实 Bot 是否自主形成这种分工，仍需单独评估。
 
