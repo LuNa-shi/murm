@@ -155,9 +155,9 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 **依赖：** S2；Workspace 事务边界、合入政策已批准；使用 Judge 的工作量还依赖 #117 的实际服务闭环。
 
-**闭环：** 两个局部 Task 各自产生可读成果并保存 Workspace Candidate；Bot 默认可在自己的有效 Execution 中直接整合简单 Candidate，复杂跨 Task 冲突时再提出独立整合 Task；integrate 按 expected Workspace revision 更新 main，另一个基于相同旧 main 的请求冲突并重新整合。未合入 Candidate 长期保留，Mission 结束或 integrate 失败不触发自动清理；Bot 显式 discard 只隐藏，不物理删除，Bot 可显式 discard。下一 Bot 实际取得新 main 内容。
+**闭环：** 两个局部 Task 各自产生可读成果并保存 Workspace Candidate；Bot 默认可在自己的有效 Execution 中直接整合简单 Candidate，复杂跨 Task 冲突时再提出独立整合 Task；integrate 按 expected Workspace revision 更新 main，另一个基于相同旧 main 的请求冲突并重新整合。未合入 Candidate 长期保留，Mission 结束或 integrate 失败不触发自动清理；Bot 显式 discard 只隐藏，不物理删除。下一 Bot 实际取得新 main 内容。
 
-**必须一起交付：** Workspace 本地 Git Repository、公开版本及来源链、独立 clone 的 Candidate 导出与安全校验、最小整合检查（有效 E、expected revision/base commit、Candidate 完整性/来源、明确指定的检查）、条件更新、错误 main 的补偿修正、Candidate active/discarded 与 main 已接纳状态的 UI 区分。Context 仍持有内容，不把“同进程部署”扩成直接读其他服务数据库。
+**必须一起交付：** Workspace 本地 Git Repository、公开版本及来源链、独立 clone 的 Candidate 导出与安全校验、Candidate 长期保留和显式 discard、最小整合检查（有效 E、expected revision/base commit、Candidate 完整性/来源、明确指定的检查）、条件更新、错误 main 的补偿修正、Candidate active/discarded 与 main 已接纳状态的 UI 区分。Context 仍持有内容，不把“同进程部署”扩成直接读其他服务数据库。
 
 **验收出口：** V16–V18，并复验相关 V09、V10、V13；Workspace candidate commit 可导入并物化，两个相同 expected Workspace revision 的 integrate 请求最多一项成功；未合入 Candidate 不因冲突自动丢弃，修改候选后旧 PASS 不可复用，超时可查询原结果。Task done、Workspace integrate、Mission accepted 三类记录互不替代。
 
