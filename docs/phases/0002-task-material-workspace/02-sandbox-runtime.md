@@ -10,7 +10,7 @@
 来自 #119 的决定：
 
 1. **每个 Bot（v1 与一个 Execution 一一对应）使用独立、临时的第三方 sandbox。** 整个 Agent 执行环境都在 sandbox 内，包括 Pi、NuRouter、扩展、Bash 和本地子进程。至少达到 Docker 级隔离；不沿用当前自建 SandboxManager 作为目标隔离后端。
-2. **每个新 Bot 生命周期都从干净环境启动。** Bot 启动时创建 sandbox、新 Pi Session 和只读项目工作目录；take 前在同一 sandbox/Pi 中研究和选择 Task；take 成功后不创建第二个 sandbox/Pi，而是在当前环境建立 E 绑定并切换目录/服务权限；release 结束 E 并恢复只读权限，Bot 可继续；Bot 生命周期结束时才销毁 sandbox。后继 Bot 不继承前一 Bot 的私有文件、对话和工具历史。
+2. **每个新 Bot 生命周期都从干净环境启动。** Bot 启动时创建 sandbox、新 Pi Session 和只读项目工作目录；take 前在同一 sandbox/Pi 中研究和选择 Task；take 成功后不创建第二个 sandbox/Pi，而是在当前环境建立 E 绑定、创建独立工作目录并切换权限；Task finish/超时后结束 Bot 并销毁 sandbox。后继 Bot 不继承前一 Bot 的私有文件、对话和工具历史。
 3. **跨 Execution 的研究接续只通过 Material。** 后继不能引用前任 sandbox 私有目录、私有 Git 对象或临时路径作为输入。
 4. **服务位于 sandbox 外。** Task、Context/Material、Judge 和启用的领域服务独立部署，各自拥有 API、持久状态和重启生命周期。sandbox 通过网络 API/CLI 调用，不共享进程对象或数据库。
 5. **Agent 使用 Pi 的 read/write/edit/bash。** 业务服务通过 Bash 调用统一 swarm CLI；不为每个业务操作单独注册裸模型 tool。
@@ -216,8 +216,8 @@ OpenSandbox release-1.2.0 的源码调研给出以下限制，均需在固定版
 - 只通过 Material 能接续已发布内容；
 - Pi 四基础工具操作同一文件工作面；
 - Bot 无法读取 provider 管理凭据、Docker socket、其他 E volume、Workspace 主 .git 和服务数据库；
-- take 前项目目录不可写，active 后仅当前 E 可写，closing 后旧 E 无法继续写入；
-- Runtime/Provider 重启后能对账 Bot sandbox 与当前 E，能区分 E release 和 Bot 终止；
+- take 前项目目录不可写，active 后仅当前 E 可写，finish/closing 后旧 E 无法继续写入；
+- Runtime/Provider 重启后能对账 Bot sandbox 与当前 E，能区分 Task finish 与 Bot/Sandbox 终止；
 - 服务不可用、provider 超时、创建/删除失败时均不会产生重复活跃 sandbox 或提前释放 Task/Core；
 - CLI 可通过 Bash help 发现和调用真实服务，stdout/JSON/退出码/错误语义符合统一合同。
 
