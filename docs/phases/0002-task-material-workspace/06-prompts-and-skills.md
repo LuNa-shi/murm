@@ -262,7 +262,6 @@ Pi compaction 的外部库模板、压缩后的内容与事件需要按实际版
 | `swarm task view <task-id>` | 查看单个 Task 完整合同 | Goal、Deliverable、Completion、Dependencies、Creator、Workspace 起点、当前/历史 Execution、修订历史 |
 | `swarm task propose` | 提出新 Task | 从 stdin/文件读取合同；Dependencies 是 Task ID 列表，可为空；Creator 自动绑定当前 Bot |
 | `swarm task take <task-id>` | 排他认领 Task | 成功后在当前 sandbox 建立 Execution 绑定、切换项目目录/服务权限并返回实际 Workspace commit/revision；不创建新 sandbox/Pi；同 Task 只能一个执行者 |
-| （v1 不提供 Task revise；Task 合同创建后保持稳定，范围变化通过新 Task 表达）
 | `swarm task progress` | 更新当前 Task 的简短进度摘要 | 不替代 Material；只记录当前状态、阻塞点或下一步 |
 | `swarm task finish --outcome done|incomplete` | 结束当前唯一 Execution 和 Bot 生命周期 | 服务检查完成条件；Runtime 撤权、停止 Pi/子进程并销毁 sandbox。超时/handoff 由 Runtime 走同一内部收尾流程 |
 
