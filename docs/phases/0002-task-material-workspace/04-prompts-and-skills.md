@@ -242,30 +242,91 @@ take 通过 Bash CLI 的普通工具结果反馈给同一 Pi。以下内容由�
 
 Pi compaction 的外部库模板、压缩后的内容与事件需要按实际版本记录。不能把本稿收尾提示说成包含了 Pi 内部全部 compaction 指令。新 Bot 重启只收到新的初始消息和公开输入，不自动收到旧 RPC 记录。
 
-## 最小 CLI 语义与帮助
+## CLI 设计：按 Service 组织命令，统一调用体验
 
-下表是让上述规范可执行的目标命令目录，**不是当前可运行命令**。字段最终以实现 PR 的 CLI schema/help 为准；改名必须同步本章和实际 prompt。Material 的实现服务仍叫 Context，对 Bot 的命令域建议统一成 `swarm material`，替代 #119 曾使用的拟议 `swarm context` 称呼。
+以下是 v1 的**目标 CLI 设计**，不是当前可运行命令。核心原则是：CLI 是 Agent 调用 Services 的统一入口；命令分组反映服务职责，不把所有业务混成一个巨大的 CLI 子系统。每个命令是一轮普通请求，服务端验证当前 Bot/Execution 身份和操作权限后直接返回。CLI 不接受用户自行填写的 Execution ID 来获得权限。
 
-| 目录 / 操作 | Bot 用来做什么 | 必须呈现的边界 |
+### 通用约定
+
+- 统一入口：`swarm <service> <resource> <operation>`，例如 `swarm task list`、`swarm material publish`。
+- `--json` 输出机器可读结果；默认输出适合 Bot 阅读的简洁摘要。stdout 只放结果，stderr 放诊断。
+- `--help` 在根命令、Service 和具体操作三级可用；help 说明参数、文件/stdin、返回结构、退出码和例子。
+- 大内容优先通过文件或 stdin 输入，避免把证明、数据集、补丁放在命令行参数中。大响应返回内容引用或分页，不静默截断。
+- 当前 Bot/Core/Execution 身份从 sandbox 内受保护的运行凭据或 CLI 运行环境取得；Bot 不能通过 `--bot`、`--execution` 或 `--task-owner` 伪造身份。
+- CLI 不承载复杂业务事务。普通调用请求服务并得到结果；若操作失败，返回明确错误。只有某个服务确实有长时间异步操作时，才由该服务定义自己的查询命令。
+
+### 1. Task Service：任务组织与执行责任
+
+| 命令 | 用途 | 关键行为 |
 |---|---|---|
-| `swarm --help`；`swarm service list/view` | 找服务、版本、可用状态和逐层帮助 | 网络可达与操作已授权分开呈现 |
-| `swarm task list` / `swarm task view` | list 返回简洁摘要；view 返回完整合同、依赖、输入、Workspace 起点和修订历史 | 分页、截断、观察时间、规格/状态版本；列表不塞入长合同 |
-| `swarm task propose` | 提交目标、交付、验收、输入、依赖和已有工作比较 | 协调身份与 request ID；提案不是 take |
-| `swarm task take` | 请求唯一 Execution | Task 与预期规格版本；pending/conflict/active 可区分 |
-| `swarm task request` | 查询 take/release 等持久请求 | 使用原 request ID；可查询不等于再次授权 |
-| `swarm task revise` | 当前执行者修订自己 Task 的目标、交付或完成条件 | 记录原因、前后合同和 revision；不得修改他人正在执行的 Task |
-| `swarm task release` | 以完成/未完成意图结束当前绑定 | 当前 E 来自保护绑定；材料、原因与 request ID；受理后可断线 |
-| `swarm material search/view` | 查元数据、正文/附件、来源与修正关系 | 按 ID 也做可见性校验；旧内容不静默替换 |
-| `swarm material publish` | 上传正文/附件并创建 Material | 服务从当前可信 Execution 自动绑定生产 Task/Bot；Bot 不自填来源 |
-| `swarm workspace view` | 读取 main branch、Workspace revision 和 Git commit | Git 文件版本不包装为 Material；不返回其他 E 私有目录 |
-| `swarm workspace advance` | 由 Bot 自行判断是否值得将候选整合到 main，并调用受控工具推进 | 不是每个 Execution 都必须合入；Workspace、expected revision、候选 commit 和当前 E 由服务校验 |
-| 
-| `swarm judge ...` 与领域命令 | 发起/查询实际服务操作 | 真实输入版本、accepted/pending/result、失败、费用、取消合同 |
+| `swarm task list` | 查看 Mission 下所有 Task 的摘要和状态 | 支持状态筛选、关键词、分页；默认是轻量列表，不展开长合同 |
+| `swarm task view <task-id>` | 查看单个 Task 完整合同 | Goal、Deliverable、Completion、Dependencies、Creator、Workspace 起点、当前/历史 Execution、修订历史 |
+| `swarm task propose` | 提出新 Task | 从 stdin/文件读取合同；Dependencies 是 Task ID 列表，可为空；Creator 自动绑定当前 Bot |
+| `swarm task take <task-id>` | 排他认领 Task | 成功后创建 Execution、准备工作目录并返回实际 Workspace commit/revision；同 Task 只能一个执行者 |
+| `swarm task revise <task-id>` | 当前执行者修订自己正在执行的 Task | 修改原因和前后合同版本进入历史；不能修改其他 Bot 的运行中 Task |
+| `swarm task progress` | 更新当前 Task 的简短进度摘要 | 不替代 Material；只记录当前状态、阻塞点或下一步 |
+| `swarm task release` | 结束当前 Execution | 由当前执行者声明 done / incomplete 和原因；服务检查结构性条件，Runtime 完成撤权和清理 |
 
-各层 help 必须提供用途、必需/可选字段、文件/stdin 输入、JSON 输出形状、退出码、超时/重试和例子。身份取自受保护绑定，不能通过 `--execution someone-else` 自行提升权限。stdout 放可解析结果，stderr 放诊断；业务检查 FAIL 与通信/授权错误区分。大结果返回明确游标或稳定内容引用，不能无提示截断重要失败信息。
+Dependencies 通过 `task propose` 一次性提交；第一版不单独提供复杂依赖编辑语言。若后续需要修改依赖，可通过当前 Task 的 `revise` 更新合同并保留 revision。Mission 级目标读取可由 `swarm mission view` 提供；Mission 创建/管理属于操作者控制面，不是普通 Bot 的日常命令。
 
-因此完整 prompt 不需要硬编码每个数学工具的全部 help。它需要可发现的真实目录、正确加载方法、稳定核心规则和可追溯的实际 help 输入。服务指南属于工具如何使用，人工给定通用 skill 属于工作怎么组织；运行时产出的 Material 不自动变成安装到全体 Bot 的新 skill。
+### 2. Material / Context Service：研究内容与知识积累
 
+对 Agent 使用 `material` 这个领域名称；底层服务可以继续叫 Context。
+
+| 命令 | 用途 | 关键行为 |
+|---|---|---|
+| `swarm material search <query>` | 搜索可见 Material | 支持全文、关键词、Task/来源过滤和基本相关性排序；默认隐藏 superseded |
+| `swarm material view <material-id>` | 读取完整内容 | 正文/附件、Creator Task/Execution、Evidence 自述、disputed/superseded 状态和关联 |
+| `swarm material publish` | 发布新 Material | 从 stdin/文件读取正文和附件；服务自动绑定当前 Mission/Task/Execution/Bot，不要求 Bot 自填来源或再 task attach |
+| `swarm material use <material-id>` | 记录有意义的实际使用 | 附简短说明它影响了哪个推导、实验、决策或产物；不记录普通打开/下载 |
+| `swarm material dispute <material-id>` | 对 Material 提出质疑 | 指定 claim/section 范围，说明原因并附新证据或引用；旧材料进入 disputed，不被隐藏 |
+| `swarm material supersede <old-id> --with <new-id>` | 声明后继 Material 替代旧材料 | 说明替代范围和理由；普通列表/搜索隐藏旧版本，历史和精确 ID 查询仍可见；服务检查引用与状态完整性，不替代领域判断 |
+
+Material 的 Evidence 第一版是正文中由 Agent 撰写的自然语言段落，不要求 CLI 提交结构化 Evidence 对象。纠错接口负责保存质疑/替代关系，不自动宣称数学结论已被机器证明。
+
+### 3. Workspace Service：Git Repository、worktree 与 main
+
+Workspace 是 Mission 一对一绑定的本地 Git Repository。Agent 在 Execution sandbox 内操作自己的独立工作副本；Workspace CLI 管理外部共享 Repository 中的候选和 main，不把共享可写 `.git` 暴露给 Bot。
+
+| 命令 | 用途 | 关键行为 |
+|---|---|---|
+| `swarm workspace view` | 查看 Workspace、main HEAD、revision 和公开版本 | 返回 revision 对应的 commit、简短提交说明和可用操作 |
+| `swarm workspace history` | 查看 main 更新历史 | revision、commit、来源 Task/Execution、整合说明 |
+| `swarm workspace status` | 查看当前 Execution 工作副本状态 | 实际 base commit/revision、变更摘要；不显示其他 Bot 私有目录 |
+| `swarm workspace diff` | 查看当前 Execution 相对 base 的变更 | 只读，不直接更新 main |
+| `swarm workspace candidate save` | 将当前 Execution 的候选 commit/文件变更交给可信 Runtime 导入 Workspace Repository | 生成候选 ID；排除 sandbox 管理数据、凭据和无关文件；保留源 E、Task、base commit |
+| `swarm workspace candidate list/view` | 查看候选及其状态 | 候选可以保留而不合入 main；可比较其基准与当前 main |
+| `swarm workspace integrate <candidate-id>` | 请求将候选整合到 main | Bot 自主决定是否调用；携带 expected revision；服务验证当前 E、候选来源和必要政策，冲突时拒绝覆盖 |
+| `swarm workspace candidate discard <candidate-id>` | 放弃候选 | 只改变候选可用状态，不删除必要审计来源 |
+
+不是所有 Execution 都需要保存候选，更不是所有候选都需要进入 main。局部知识可以只发布 Material；可复用代码/文件改动可以保存为 Workspace candidate；只有值得成为共同项目状态的候选才整合 main。具体合入门槛由 Mission/Workspace 政策及 Bot 的判断共同决定。Revision 是 Workspace 维护的连续版本号；第一版不创建 Git tag。
+
+### 4. Judge Service：按需验证
+
+| 命令 | 用途 | 关键行为 |
+|---|---|---|
+| `swarm judge check` | 对指定内容/文件/候选发起检查 | 输入和版本必须明确；同步返回结果，或由 Judge 自己返回异步操作 ID |
+| `swarm judge result <id>` | 查询 Judge 自己定义的异步检查 | 只有实际异步执行才需要；不是通用 request/permit 框架 |
+
+Judge 返回值就是检查结果，不要求 Bot 再创建一个 CheckResult 核心对象。若后续工作需要长期引用某次检查，可以把实际返回内容发布为普通 Material，或在 Material 的 Evidence 中引用它。
+
+### 5. 其他领域 Services：统一发现、按服务提供命令
+
+数学证明、Lean、实验执行、文献检索等领域服务不应全部塞进 Task/Material/Workspace 命令。它们在目录中注册自己的 Service 名称和 CLI 帮助，例如：
+
+- `swarm service list`：列出当前 Mission 可用的 Services、版本和能力摘要。
+- `swarm service view <name>`：查看某个 Service 的权限、输入输出和帮助入口。
+- `swarm lean check ...`、`swarm math ...`、`swarm experiment ...`：由具体领域 Service 定义实际子命令与参数。
+
+所有领域命令遵循同样的身份、JSON 输出、错误和 help 约定；服务可用不代表当前 Execution 自动拥有所有权限。Mission 没有配置的 Service 不应伪装成可用。
+
+### 6. 哪些不是 Bot CLI
+
+Core 调度、Bot 启停、sandbox 创建/销毁、权限切换、Pi 启动、凭据注入、超时回收和运行证据采集属于 Runtime/Operator 控制面，不暴露成 Bot 可以自行调用的普通业务命令。Bot 只调用 Task、Material、Workspace、Judge 和 Mission 配置允许的领域 Services。
+
+### CLI 设计边界
+
+以上命令名是本阶段建议的统一用户界面，不预设每个 Service 必须是独立进程或独立二进制。可以由一个 `swarm` CLI 根据 service registry 路由到本地/远程服务。底层部署拓扑、HTTP endpoint 和数据库归属在架构实现阶段定义；不能因为命令统一，就让各服务共享数据库或互相绕过 API。
 ## 四份默认 skill 草案
 
 以下四个代码块是完整指导草案，供评审内容与触发条件。它们不是已经安装的个人技能，也没有修改当前服务 skill。实现阶段可将审核文本拆成只读文件，并由实际 Pi 适配器加载。每个 skill 的前置条件都不能替代服务器验证。
