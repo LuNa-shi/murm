@@ -88,7 +88,11 @@ class RemoteAgentChild extends EventEmitter {
 
   kill(signal = 'SIGTERM') {
     if (this.closed) return;
-    void this.manager.stopAgent(this.executionId, signal).finally(() => this.#close(null, signal));
+    void this.manager.stopAgent(this.executionId, signal)
+      .catch(() => undefined)
+      .then(() => this.manager.stopExecution?.(this.executionId))
+      .catch(() => undefined)
+      .finally(() => this.#close(null, signal));
   }
 
   #close(code, signal) {

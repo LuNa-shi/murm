@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createOpenSandboxAgentAdapter } from '../src/index.js';
 
 class FakeSandboxManager {
-  constructor() { this.started = null; this.stopped = false; this.releaseEvents = null; }
+  constructor() { this.started = null; this.stopped = false; this.executionStopped = false; this.releaseEvents = null; }
   async ensureExecution() {}
   async startAgent(input) { this.started = input; }
   async agentRpc(executionId, message) {
@@ -12,6 +12,7 @@ class FakeSandboxManager {
   }
   async *agentEvents() { await new Promise((resolve) => { this.releaseEvents = resolve; }); }
   async stopAgent() { this.stopped = true; this.releaseEvents?.(); }
+  async stopExecution() { this.executionStopped = true; }
 }
 
 test('OpenSandbox Agent adapter keeps Pi RPC inside the provider worker', async () => {
@@ -26,6 +27,7 @@ test('OpenSandbox Agent adapter keeps Pi RPC inside the provider worker', async 
   assert.equal(session.sessionId, 'session-remote');
   await session.stop();
   assert.equal(manager.stopped, true);
+  assert.equal(manager.executionStopped, true);
 });
 
 test('OpenSandbox Agent adapter passes the guest extension path to Pi', () => {
