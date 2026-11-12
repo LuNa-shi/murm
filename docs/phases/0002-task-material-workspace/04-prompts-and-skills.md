@@ -102,7 +102,7 @@ Workspace 与 main
 - 工作期间 main 更新不会自动改你的目录。需要整合新版本时显式读取、处理差异并重验。
 - 有用 Material 不一定应进入 main。只有适合作为共同起点、来源和限制清楚、满足项目合入政策的内容才提出合入。
 - 合入可以由普通 Task 完成，不需要永久整合者。若当前 Task 原合同已包含合入，可在当前 Execution 完成；否则检查已有整合工作并提出恰当 Task。
-- 发布完整可物化候选，绑定基准、来源和检查。检查后又改内容则重新检查。调用受控 workspace advance，提供预期旧 main 版本和候选。
+- 发布完整可物化候选，绑定基准、来源和检查。检查后又改内容则重新检查。若判断值得进入 main，调用 `swarm workspace integrate`，提供 Candidate ID 和 expected Workspace revision。
 - 版本冲突时重读当前 main，保留别人已合入内容，再整合和检查；禁止以旧快照静默覆盖主线。不能用本地写入的 PASS 文件冒充可信检查结果。
 - Material 发布、Workspace candidate 保存、Task done、main 更新和 Mission 验收是不同的事实。只报告已有证据支持的事实。
 
@@ -396,27 +396,27 @@ description: 检索、阅读、复用、发布、接续或纠正 Material 时使
 ```markdown
 ---
 name: integrate-workspace
-description: 初始化工作基准、提出主线候选、整合成果或处理版本冲突时使用；遵守当前 Task 合同和 Workspace 合入政策。
+description: 检查项目基准、保存 Workspace Candidate、决定是否整合 main 或处理版本冲突时使用。
 ---
 
-# 维护 Workspace 的共同主线
+# 管理 Workspace Candidate 与共同主线
 
-先确认当前 Task 是否包含 main 整合责任。没有时，发布局部成果，并查询已有整合工作；必要时提出普通整合 Task，不在当前 Bot 切换第二段 Execution。
+Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main 是其中的共享 branch。当前 Execution 使用自己的独立 clone。Candidate 是 Workspace 保存的 Git commit/文件变更，不是 Material。
 
-1. 读取当前 main、实际工作副本基准、候选来源 Material 及已知修正。主线不会自动改你的工作目录。
-2. 判断成果是否适合成为共同起点。失败尝试、未完成推导等可作为 Material 保留，不必全部进入 main。
-3. 在自己的副本整合，保留别人已经合入的成果。旧基准需要显式处理差异；Git 没有文本冲突不代表语义兼容。
-4. 按 Mission 的版本化政策运行检查。使用真实服务结果，不伪造 PASS，也不修改验收来适应自己的结果。
-5. 导出允许发布的实际文件，形成完整可物化候选与差异说明。记录基准、来源、输入版本、检查和限制；排除 Git 管理数据、会话、凭据、无关日志和根目录外路径。
-6. 确保候选内容与被检查的内容完全对应。检查后任何相关修改都需重新检查。
-7. 先持久发布候选，再调用 workspace advance，携带 expected-main、candidate 和稳定 request-id。
-8. 成功后记录新 Workspace revision。版本冲突时读取新 main、重新整合/检查并保存新 candidate，不能强制覆盖。
+1. 先查看当前 main revision/commit、自己的 base revision/commit、工作区 diff，以及已有 Candidate。确认自己理解的是哪一个版本。
+2. 判断文件变更是否值得长期保留。值得保留时调用 `swarm workspace candidate save`；不值得保留的临时改动不必制造 Candidate。Candidate 保存后长期存在，不自动过期。
+3. Candidate 保存后，Bot 自己判断是否值得进入 main。不是每个 Candidate 都需要 integrate，也不是每次 Execution 都必须有 Candidate。
+4. 简单整合可以在当前 Task/Execution 内完成；若要协调多个 Task 的成果、解决复杂冲突、进行大范围重构或独立验证，再提出普通整合 Task。不要为了每次 main 更新机械地创建一个 Task。
+5. integrate 前确认 Candidate 完整可物化、来源 Task/E 可追溯、base commit 与当前 main revision 匹配。若 main 已前进，回到自己的副本获取新 main，重新整合并保存新的 Candidate；不能强制覆盖。
+6. 第一版合入门槛保持最小：当前 E 有效且有权限、expected revision/base commit 匹配、Candidate 完整且来源可追溯、Mission/Task 明确指定的检查对该 Candidate commit 通过。没有指定额外检查时不虚构 PASS，也不要求逐次人工审批。
+7. 调用 `swarm workspace integrate <candidate-id> --expected-revision <revision>`。成功后记录新 Workspace revision；失败时保留 Candidate，理解错误并决定是否重整合。
+8. 不再需要的 Candidate 可显式 `swarm workspace candidate discard <candidate-id>`。discard 只隐藏于默认列表，不物理删除 Git 对象和来源记录；不要把 discard 当作修复 main 的操作。
 
-权限来自当前有效 E 和 Workspace Service 的最小校验，不来自本地分支名。可以在自己的 Git 副本做提交，但不能直接操作共享 refs 或他人 .git，也不能从前任私有仓库复制未发布历史。
+权限来自当前有效 E 和 Workspace Service 的校验，不来自本地分支名。Bot 可以在自己的 clone 中任意使用 Git，但不能直接操作共享 refs、Workspace 主 Repository 的 .git 或他人私有副本。
 
-例：你的 JSON 补丁基于 main revision `0.1`，当前 main revision `0.2` 已有过滤模块。候选必须保留过滤并通过组合检查，不能把 v0 加 JSON 的目录直接当最新 main。
+Candidate 与 Material 分开：Candidate 保存代码/文件变更；Material 保存研究解释、证明、实验结果、反例和 Evidence 自述。必要时二者互相引用，不相互替代。
 
-main 接纳意味着项目使用这个版本，不代表里面每项研究主张已经被证明。发现已合入错误时发布更正和普通修复 Task，以新版本修复并保留历史。
+例：你的 JSON Candidate 基于 main revision 0.1，而当前 main 已到 0.2 并包含过滤模块。不能直接 integrate 旧 Candidate；先在自己的 clone 中基于 0.2 重新整合过滤和 JSON，再保存新 Candidate，运行指定检查后请求 integrate。
 ```
 
 ### close-execution
