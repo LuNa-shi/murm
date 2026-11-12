@@ -59,7 +59,7 @@ Dependencies 是 Task 合同中的基本关系，字段始终存在，但可以�
 
 Dependency 与 Material Input 不同：Dependency 表示“必须等待另一项 Task 完成”；Material Input 表示“已经有一份可用内容可以先拿来工作”。例如 T1 尚未完成，但已发布局部 Material M1；T2 可以立即读取 M1 并开展工作，不必把 T1 标为 done。只有确实需要 T1 的完整交付才能开始时，才建立依赖。
 
-Bot 可以修改自己当前正在执行的 Task 合同，包括目标范围、预期交付和完成条件，但必须通过 Task Service 更新，并留下修订号、修改原因、修改前后内容和时间。当前 Execution 应能读取最新合同；修改不能静默覆盖历史版本。修改应保持在原责任的合理调整范围内；如果工作目标已经变成另一项独立责任，应提出新的 Task，而不是无限扩张当前 Task。其他 Bot 不得修改当前执行者的合同。
+Task 合同在创建后保持稳定。v1 不提供 Agent 自主修改 Task 目标、交付、Dependencies 或完成条件的 `revise` 命令。执行中发现范围根本变化或新问题时，提出新的 Task；当前 Task 以 done、incomplete/blocked 或 cancelled 等明确结果结束。确有录入错误需要修正时，由受信任的操作者/控制面处理并保留审计记录，不作为普通 Bot 工作接口。
 
 ## 3. 提出并选择有价值的 Task
 
