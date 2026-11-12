@@ -56,7 +56,7 @@ Workspace 初始化必须可验证：Repository 和初始 commit 能从本地仓
 
 每个新 Execution 从明确的 Workspace main commit/revision 创建独立 local clone。若 Task 指定 base revision/commit，就使用该版本；若没有指定，take 时解析当时 main HEAD，并把实际 commit 和 revision 固定到 Execution。
 
-Bot 启动后先在 sandbox 中只读浏览 Workspace；take 成功时 Runtime 在 sandbox 外从指定 main commit 创建 Execution 专属工作目录，并将其挂载到 sandbox。Bot 只使用 Pi 文件工具/Bash 修改文件，不创建 Git branch/commit，不访问任何 .git、共享 refs 或管理凭据。
+Bot 启动后先通过 Workspace Service/只读 API 浏览 Workspace；take 成功时 Runtime 从指定 main commit 导出文件树，通过 Sandbox Provider 已验证的受信任文件传输接口写入 sandbox 中预留的 Execution 专属目录，再由 OS 权限授予当前 Bot 用户写权限。不要假设 Provider 支持运行时动态挂载新 volume。Bot 只使用 Pi 文件工具/Bash 修改文件，不创建 Git branch/commit，不访问任何 .git、共享 refs 或管理凭据。Sandbox 内目录准备和权限细节见 [02](02-sandbox-runtime.md)。
 
 新 E 不克隆前任 E 的私有 clone，也不继承前任 Pi 会话、shell history 或未导出的 Git 对象。跨 Execution 的研究接续通过 Material；项目代码接续通过 Workspace main 或明确保存的 Candidate。
 
@@ -66,7 +66,7 @@ Sandbox 生命周期和权限切换不在本文重复，见 [02](02-sandbox-runt
 
 Git linked worktree 共享主 Repository 的对象数据库和部分 refs/配置，不能直接当作不可信 Bot 的隔离边界。第一版宁可承担本地 clone 的磁盘成本，也不把共享可写 .git 暴露给 Bot。
 
-Runtime 为每个 Execution 创建独立、互不共享可写 .git 的工作副本；Bot 不需要知道底层使用 clone、worktree 还是受控导出目录。第一版优先采用独立 clone，不使用共享可写 .git、--shared alternates 或前任私有对象库。后续可根据实测磁盘成本评估 reflink/COW 或受控只读对象池，但不得降低隔离边界。
+Runtime 为每个 Execution 创建独立、互不共享可写 .git 的工作副本；Bot 不需要知道底层使用 clone、worktree 还是受控文件树导出。第一版 Workspace Repository 内部可用本地 Git，但 sandbox 中只提供导出的项目文件树，不向 Bot 暴露 Git 元数据；不使用共享可写 .git、--shared alternates 或前任私有对象库。后续可根据实测磁盘成本评估 reflink/COW 或受控只读对象池，但不得降低隔离边界。
 
 ## 4. Git 可见性、导出和安全边界
 
