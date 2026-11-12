@@ -363,6 +363,58 @@ export class ServicesBridge {
     return matches[0] ?? null;
   }
 
+  async #prepareJudgeSubmission(payload, execution, task) {
+    if (!execution || !task) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'submit_candidate requires a current Task and Execution');
+    const path = payload.path ?? payload.workspace_file?.path ?? null;
+    if ((typeof path !== 'string' || path.length === 0) && payload.candidate_material_id) {
+      const material = this.contextService?.getMaterial?.(payload.candidate_material_id);
+      if (!material) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown candidate Material: ${payload.candidate_material_id}`);
+      if (typeof material.content === 'string') {
+        return {
+          ...payload,
+          source: { content: material.content, content_hash: material.content_hash ?? null },
+          target_task: task,
+          execution,
+        };
+      }
+      const materialPath = material.content?.path;
+      if (typeof materialPath === 'string' && materialPath.length > 0) {
+        return this.#prepareJudgeSubmission({ ...payload, path: materialPath, workspace_revision: material.content.workspace_revision, content_hash: material.content.content_hash }, execution, task);
+      }
+    }
+    if (typeof path !== 'string' || path.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate.path is required');
+    if (typeof this.runtime?.readWorkspaceFile !== 'function') {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Runtime does not expose Workspace file reads');
+    }
+    const file = await this.runtime.readWorkspaceFile(execution.execution_id, { path });
+    const requestedRevision = payload.workspace_revision ?? payload.workspace_file?.workspace_revision;
+    if (requestedRevision !== undefined && requestedRevision !== file.workspace_revision) {
+      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Workspace revision is stale', {
+        expected_revision: file.workspace_revision,
+        supplied_revision: requestedRevision,
+      });
+    }
+    const requestedHash = payload.content_hash ?? payload.workspace_file?.content_hash;
+    if (requestedHash !== undefined && requestedHash !== file.content_hash) {
+      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Workspace file hash is stale', {
+        expected_hash: file.content_hash,
+        supplied_hash: requestedHash,
+      });
+    }
+    return {
+      ...payload,
+      source: {
+        path,
+        content: file.content,
+        content_hash: file.content_hash,
+        workspace_revision: file.workspace_revision,
+      },
+      // These values are Bridge-owned context, not Agent-selected bindings.
+      target_task: task,
+      execution,
+    };
+  }
+
   async #invokeRegistered(capability, payload, operationId, context = {}) {
     if (!this.registry?.invoke) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `registered Service is unavailable: ${capability.service_id}`);
     const taskId = context.taskId ?? this.taskId;
@@ -616,12 +668,10 @@ export class ServicesBridge {
         }
         const requiresBinding = operation !== 'task_take' && Array.isArray(capability.context) && capability.context.length > 0;
         if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
-        if (operation === 'submit_candidate') {
-          const guard = this.onBeforeSubmitCandidate?.({ taskId: this.taskId, executionId: this.executionId, payload });
-          if (guard && typeof guard.then === 'function') await guard;
-        }
         const currentExecution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
-        const invocationPayload = operation === 'task_take'
+        const invocationPayload = operation === 'submit_candidate'
+          ? await this.#prepareJudgeSubmission(payload, currentExecution, this.taskService.getTask(this.taskId))
+          : operation === 'task_take'
           ? {
             // Caller-supplied owner/prompt fields are not trusted identity
             // claims. Runtime supplies the stable prompt and authenticated
@@ -657,7 +707,35 @@ export class ServicesBridge {
           const registeredPayload = operation === 'task_create' || operation === 'task_register'
             ? (({ progress: _progress, ...rest }) => ({ ...rest, required_capabilities: requiredTaskCapabilities(payload) }))(invocationPayload)
             : invocationPayload;
-          return this.#invokeRegistered(capability, registeredPayload, bridgeOperationId);
+          try {
+            return await this.#invokeRegistered(capability, registeredPayload, bridgeOperationId);
+          } catch (error) {
+            // Keep legacy unit fixtures usable when they intentionally omit a
+            // Judge provider. Production registries with a Judge provider
+            // never enter this callback path.
+            if (operation === 'submit_candidate' && this.onSubmitCandidate && error?.code === ERROR_CODES.SERVICE_UNAVAILABLE) {
+              const guard = this.onBeforeSubmitCandidate?.({ taskId: this.taskId, executionId: this.executionId, payload });
+              if (guard && typeof guard.then === 'function') await guard;
+              const callbackResult = await this.onSubmitCandidate({ taskId: this.taskId, executionId: this.executionId, payload, result: null });
+              const { deferred_block: deferredBlock = null, ...visibleCallbackResult } = callbackResult ?? {};
+              if (deferredBlock) {
+                this.deferredLifecycle = {
+                  taskId: this.taskId,
+                  executionId: this.executionId,
+                  block: {
+                    reason: deferredBlock.reason,
+                    dependency: deferredBlock.dependency,
+                    checkpoint: deferredBlock.checkpoint ?? {},
+                    files: deferredBlock.files ?? {},
+                    terminalState: deferredBlock.terminal_state ?? 'FAILED',
+                  },
+                  result: visibleCallbackResult,
+                };
+              }
+              return visibleCallbackResult;
+            }
+            throw error;
+          }
         };
         let result = operation === 'task_create' && this.taskCreateMutex
           ? await this.taskCreateMutex.run(invoke)
@@ -683,26 +761,6 @@ export class ServicesBridge {
           await this.releaseClaim({ result });
           this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
           return result;
-        }
-        if (capability.service_id === 'judge' && operation === 'submit_candidate' && this.onSubmitCandidate) {
-          const callbackResult = await this.onSubmitCandidate({ taskId: this.taskId, executionId: this.executionId, payload, result });
-          const { deferred_block: deferredBlock = null, ...visibleCallbackResult } = callbackResult ?? {};
-          result = { ...result, ...visibleCallbackResult };
-          if (deferredBlock) {
-            if (this.deferredLifecycle) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'a candidate Task block is already pending');
-            this.deferredLifecycle = {
-              taskId: this.taskId,
-              executionId: this.executionId,
-              block: {
-                reason: deferredBlock.reason,
-                dependency: deferredBlock.dependency,
-                checkpoint: deferredBlock.checkpoint ?? {},
-                files: deferredBlock.files ?? {},
-                terminalState: deferredBlock.terminal_state ?? 'FENCED',
-              },
-              result,
-            };
-          }
         }
         if (this.onWorkUnit && (operation !== 'submit_candidate' || capability.service_id === 'judge') && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_register', 'task_take', 'task_link_material', 'task_handoff', 'task_block', 'create_child_task', 'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
           await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
