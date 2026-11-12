@@ -90,7 +90,7 @@
 2. **Bot ID 与 Core 的关系已确定。** Core 是可复用计算槽位；每次在 Core 上启动 Bot 都生成新的 Bot ID。一个 Bot 对应一个 sandbox/Pi 和最多一个 Execution。
 3. **Workspace 模块部署位置与 Git/元数据一致性。** 当前建议与 Task Service 同协调进程，但需实现对账；Git ref 更新和 revision 元数据不是天然同一文件系统事务。
 4. **私有审计卷保留策略。** #119 允许 sandbox 外留存私有卷用于审计，但后继 E 不可读取；保留期限、加密和清理策略需在 Sandbox 文档/实现阶段明确。
-5. **Execution 工作目录已确定。** 每个 Execution 使用 Runtime 创建的独立工作目录；Bot 不直接创建 worktree/branch/commit，也不管理 Git。\n6. **Candidate 长期保留的磁盘成本。** v1 不自动 TTL/GC，先测量实际增长，再决定后续运维策略。
+5. **Candidate 长期保留的磁盘成本。** v1 不自动 TTL/GC，先测量实际增长，再决定后续运维策略。
 
 ## 6. 审核与维护方式
 
