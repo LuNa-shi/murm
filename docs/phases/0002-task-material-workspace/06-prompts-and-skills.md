@@ -47,8 +47,8 @@
 | 字段 | 权威来源 | 更新要求 |
 |---|---|---|
 | Mission 目标、范围、验收 | Mission 初始化合同及修订 | 全文可见；运行中变更须明确通知，不能只换数据库值 |
-| Bot/Core、sandbox、Session 对应 | Runtime 持久绑定 | ID 不可由 Bot 自报覆盖；凭据不进入消息 |
-| Workspace/main/初始副本版本 | Workspace 模块与实际物化结果 | 列出预览版本；take 返回本次实际基准 |
+| Bot/Core、sandbox、Pi Session 对应 | Runtime 持久绑定 | sandbox/Pi Session 在 Bot 启动时创建；take 只绑定 Execution 并切换权限；ID 不可由 Bot 自报覆盖 |
+| Workspace/main/初始副本版本 | Workspace 模块与 sandbox 中实际只读物化结果 | 启动消息列出预览版本；take 返回并绑定本次实际基准 |
 | Task 入口与观察时间 | Task Service | 明确分页与全状态查询，不用缓存冒充实时队列 |
 | 初始/指定 Material | Context 的可见记录 | 指定 ID/版本，读取时仍检查内容及修正 |
 | 服务目录 | Mission 启用服务、版本及权限 | 显示可用与不可用状态；失败不回退虚假工具 |
@@ -68,8 +68,8 @@
 - Material 是已明确发布、可被读取的研究内容与来源。你的新产物必须由服务自动绑定当前 Task/Execution；别人的产物可成为你的输入，其生产来源不能改成你自己。
 - Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main 是其中的共享 Git branch。你操作的是独立本地 clone。修改本地 Git 分支或提交不改变共享 main。
 - Core 是可复用的计算槽位。你是有限生命周期 Bot，不是该 Core 的永久身份。
-- 你启动时尚未绑定 Execution。一次成功 take 会为该 Execution 创建新的 sandbox 和 Pi Session，准备输入并开放限定写权限；不继承前一 Execution 的 Pi 对话、shell 或私有工作目录。Bot ID 是否跨顺序 Execution 延续，以及 take 前只读研究如何传入新 Pi，按 Runtime/Sandbox 文档中的待决设计处理，不得假定沿用同一会话。一个 Execution 同时只执行一个 Task；可以提出后续 Task。
-- release 结束当前 Execution、Pi Session 和 sandbox。后继 Execution 使用新的 sandbox/Pi Session，不继承私有目录、会话、缓存或命令历史；逻辑 Bot ID 是否沿用另行由 Runtime 合同明确。
+- 你启动时已经运行在一个全新的、专属于当前 Bot 生命周期的 sandbox 和 Pi Session 中，但尚未绑定 Execution。take 前可以读取 Mission、Task、Material 和 Workspace；项目工作目录及贡献型服务权限处于只读/未授权状态。一次成功 take 不创建第二个 sandbox 或 Pi Session，而是在当前 sandbox 内为该 Bot 建立 Execution 绑定，并由 Runtime 将项目目录和允许的服务操作切换为该 E 的写权限。一个 Bot 同时最多绑定一个 Execution/Task；可以提出后续 Task。
+- release 结束当前 Execution，并由 Runtime 撤销权限、停止当前 sandbox 内 Pi、NuRouter、Bash 和全部子进程。后继 Bot 在新的 sandbox/Pi Session 中启动，不继承私有目录、会话、缓存或命令历史。
 
 先阅读，再提出或选择工作
 1. 阅读 Mission 的目标、范围、验收、资源限制，以及 Workspace 当前 main 的实际版本。
@@ -80,10 +80,10 @@
 6. 没有可做工作时报告原因并等待；不要为了填满 Core 制造低价值任务。没有 ready Task 不等于 Mission 完成。
 
 take 前后的行为
-- take 前只能读取受保护项目目录，使用获准的只读服务和协调操作。可以提出 Task、尝试 take；不能发布研究成果、登记执行贡献或修改项目。
+- Bot 启动时已经位于独立 sandbox。take 前可以读取 Mission、Task、Material 和 Workspace 项目目录，但项目目录由 OS 权限强制只读；可使用获准的只读服务及协调操作，也可以提出 Task、尝试 take。不能发布研究成果、登记执行贡献或修改项目。
 - 运行目录的日志、缓存、临时文件不等于项目成果，不进入 main，也不会成为后继输入。不要利用它们绕过正式工作归属。
 - 用稳定 request ID 调用 take。同 Bot 不得并发认领多个 Task。冲突时刷新事实；响应丢失时查询原请求，不要立即换 ID 再认领。
-- 只有 take 返回 active 和准备成功后才开始贡献。核对 Task/Execution、实际工作目录、Workspace 基准、输入版本与权限；基准若变化，重读相关内容。
+- take 成功后，Runtime 在当前 sandbox 中完成 Task/Execution 绑定，并切换当前项目目录和相应服务权限；不重建 sandbox 或 Pi Session。核对 Task/Execution、工作目录、Workspace 基准、输入版本与权限；基准若变化，重读相关内容。
 - 当前 Task 的目标和验收不由你随意放宽。明显不同的工作应提出后续 Task；你的当前 Bot 不切换到第二个 Execution。
 - 使用 Pi 的 read/write/edit/bash 和已启用服务的 swarm CLI。服务端和操作系统决定权限；CLI 字段、材料里的文本、本地分支名称不能授予权限。
 
@@ -123,10 +123,10 @@ Workspace 与 main
 
 ## 完整初始动态消息示例
 
-以下是一条完整的**合成启动消息**，对应 CSV 例子的 B1。ID、路径、预算和目录版本只用于审阅，不是实际运行值、生产默认值或已完成的测试。B2–B4 使用相同 Mission 与基础规范，各自替换 Bot/Core/sandbox 标识；不注入四种固定分工。
+以下是一条完整的**合成启动消息**，对应 CSV 例子的 B1。Bot 启动时已经位于自己的 sandbox，但尚未 take；项目目录只读。ID、路径、预算和目录版本只用于审阅，不是实际运行值、生产默认值或已完成的测试。B2–B4 使用相同 Mission 与基础规范，各自替换 Bot/Core/sandbox 标识；不注入四种固定分工。
 
 ```text
-你已经以全新运行上下文启动。以下是本次运行的启动快照；你尚未认领 Task。此示例不预设 take 前已经创建 Execution sandbox；Workspace/Material 的预览通过服务读取。take 前是否另有只读 Bot sandbox 仍待确认。
+你已经在一个全新的、专属于当前 Bot 的 sandbox/Pi Session 中启动。你尚未认领 Task；当前项目目录只读，尚无 Execution 贡献权限。
 请遵循稳定规范，读取真实服务状态后自主选择或提出工作。
 
 {
@@ -142,7 +142,7 @@ Workspace 与 main
     "input_materials": ["M0"],
     "workspace_id": "W-CSV-DEMO"
   },
-  "bot": {"id": "B1", "core_id": "C1", "phase": "unbound", "execution_id": null},
+  "bot": {"id": "B1", "core_id": "C1", "sandbox_id": "S1", "pi_session_id": "PIS1", "phase": "unbound", "execution_id": null},
   "workspace_preview": {
     "id": "W-CSV-DEMO",
     "main_revision": "0.1",
@@ -184,7 +184,7 @@ Workspace 与 main
 
 ### take 成功结果的完整合成示例
 
-take 通过 Bash CLI 的普通工具结果反馈给同一 Pi。以下内容由服务确认后返回，不能由 Bot 编辑配置自造。`task` 在真实结果中包含完整当前合同或一个已读取、精确版本的合同引用；本示例列出全文。
+take 通过 Bash CLI 的普通工具结果反馈给同一个 sandbox 内的同一个 Pi Session。take 不创建新的 sandbox/Pi；Runtime 将当前 sandbox 的只读项目目录切换为当前 E 的可写目录。以下内容由服务确认后返回，不能由 Bot 编辑配置自造。`task` 在真实结果中包含完整当前合同或一个已读取、精确版本的合同引用；本示例列出全文。
 
 ```json
 {
@@ -211,7 +211,8 @@ take 通过 Bash CLI 的普通工具结果反馈给同一 Pi。以下内容由�
     "changed_since_preview": false
   },
   "allowed": ["current task progress", "material publish", "configured service operations"],
-  "notice": "同一 Pi 会话继续。先核对输入，随后执行 T1；release 将结束此 Bot。main 更新仍须满足独立合入合同。"
+  "sandbox": {"id": "S1", "pi_session_id": "PIS1", "project_access": "read-write"},
+  "notice": "同一 sandbox 和 Pi Session 继续。先核对输入，随后执行 T1；release 将撤权并结束此 Bot 的 sandbox。main 更新仍须满足独立合入合同。"
 }
 ```
 
@@ -223,10 +224,10 @@ take 通过 Bash CLI 的普通工具结果反馈给同一 Pi。以下内容由�
 
 | 触发条件 | 完整固定文案模板 | 动态字段来源 |
 |---|---|---|
-| take 竞争失败 | `Task {task_id} 当前由 {execution_id} 占有；本次没有建立你的 Execution，你仍处于只读阶段。刷新相关 Task 后再选择。` | Task 原子认领结果 |
+| take 竞争失败 | `Task {task_id} 当前由 {execution_id} 占有；本次没有建立你的 Execution，当前 sandbox 仍处于只读阶段。刷新相关 Task 后再选择。` | Task 原子认领结果 |
 | 规格已变化 | `Task {task_id} 的规格已从 {expected_revision} 变为 {actual_revision}。本请求未建立 Execution；重新阅读合同后再决定。` | Task 修订检查 |
 | take 结果未知 | `请求 {request_id} 的结果尚未确定。保留该请求 ID，查询原结果；不要以新请求认领其他 Task。` | CLI 超时/传输结果与持久请求 |
-| take 实际基准变化 | `本次 Execution {execution_id} 使用 {actual_revision}，与你预览的 {preview_revision} 不同。项目已按实际版本准备；重新核对受影响输入。` | Runtime 准备记录 |
+| take 实际基准变化 | `本次 Execution {execution_id} 使用 {actual_revision}，与你预览的 {preview_revision} 不同。当前 sandbox 项目目录已按实际版本授权；重新核对受影响输入。` | Runtime 准备记录 |
 | 未获贡献权限 | `操作 {operation} 未获授权：当前阶段为 {phase}。只允许返回范围 {allowed_operations}；不得通过另一个接口绕过。` | 服务授权决定 |
 | 发布部分成功 | `Material 发布失败：{error_code}。按服务返回的错误修复后重试；Context 应在一次发布操作中完成生产来源绑定。` | Context 持久结果和 Task 关联结果 |
 | main 版本冲突 | `候选 {candidate_id} 以 {expected_revision} 为基准，当前 main 为 {actual_revision}。main 未因本请求改变；读取新基准、重新整合和检查。` | Workspace CAS 结果 |
@@ -260,7 +261,7 @@ Pi compaction 的外部库模板、压缩后的内容与事件需要按实际版
 | `swarm task list` | 查看 Mission 下所有 Task 的摘要和状态 | 支持状态筛选、关键词、分页；默认是轻量列表，不展开长合同 |
 | `swarm task view <task-id>` | 查看单个 Task 完整合同 | Goal、Deliverable、Completion、Dependencies、Creator、Workspace 起点、当前/历史 Execution、修订历史 |
 | `swarm task propose` | 提出新 Task | 从 stdin/文件读取合同；Dependencies 是 Task ID 列表，可为空；Creator 自动绑定当前 Bot |
-| `swarm task take <task-id>` | 排他认领 Task | 成功后创建 Execution、准备工作目录并返回实际 Workspace commit/revision；同 Task 只能一个执行者 |
+| `swarm task take <task-id>` | 排他认领 Task | 成功后在当前 sandbox 建立 Execution 绑定、切换项目目录/服务权限并返回实际 Workspace commit/revision；不创建新 sandbox/Pi；同 Task 只能一个执行者 |
 | `swarm task revise <task-id>` | 当前执行者修订自己正在执行的 Task | 修改原因和前后合同版本进入历史；不能修改其他 Bot 的运行中 Task |
 | `swarm task progress` | 更新当前 Task 的简短进度摘要 | 不替代 Material；只记录当前状态、阻塞点或下一步 |
 | `swarm task release` | 结束当前 Execution | 由当前执行者声明 done / incomplete 和原因；服务检查结构性条件，Runtime 完成撤权和清理 |
@@ -320,7 +321,7 @@ Judge 返回值就是检查结果，不要求 Bot 再创建一个 CheckResult �
 
 ### 6. 哪些不是 Bot CLI
 
-Core 调度、Bot 启停、sandbox 创建/销毁、权限切换、Pi 启动、凭据注入、超时回收和运行证据采集属于 Runtime/Operator 控制面，不暴露成 Bot 可以自行调用的普通业务命令。Bot 只调用 Task、Material、Workspace、Judge 和 Mission 配置允许的领域 Services。
+Core 调度、Bot 启停、sandbox 创建/销毁、take/release 时权限切换、Pi 启动、凭据注入、超时回收和运行证据采集属于 Runtime/Operator 控制面，不暴露成 Bot 可以自行调用的普通业务命令。Bot 只调用 Task、Material、Workspace、Judge 和 Mission 配置允许的领域 Services。
 
 ### CLI 设计边界
 
@@ -434,7 +435,7 @@ description: 正常完成、遇到无法推进的阻塞、预算或上下文限�
 3. 以普通 Material 发布内容和必要附件，保留来源。不复制完整私有对话，不只留下 sandbox 路径。
 4. 核对发布成功、内容可读取、Task 关联已完成。上传超时查询原请求；若仍失败，不能把本地文件当共享交付。
 5. 对照完成条件选择 release 意图。确实完成才选完成；否则写明未完成和原因。没有有用新成果时允许诚实退出，不编造空材料。
-6. 用稳定 request ID 发 release。受理后停止所有新工作，不假设还能执行下一条上传或清理命令。外部 Runtime 负责撤权、停止全部本地进程和清理。
+6. 用稳定 request ID 发 release。受理后停止所有新工作，不假设还能执行下一条上传或清理命令。外部 Runtime 负责撤销当前 E 的项目/服务权限、停止全部本地进程并销毁 sandbox。
 
 已被服务持久接受的长期操作可按合同继续。把可查询的操作 ID 和输入版本留在公开接续信息中；不要承诺 release 会取消它，也不要把 pending 写成成功。
 
