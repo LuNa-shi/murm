@@ -294,12 +294,12 @@ Workspace 是 Mission 一对一绑定的本地 Git Repository。Agent 在 Execut
 | `swarm workspace history` | 查看 main 更新历史 | revision、commit、来源 Task/Execution、整合说明 |
 | `swarm workspace status` | 查看当前 Execution 工作副本状态 | 实际 base commit/revision、变更摘要；不显示其他 Bot 私有目录 |
 | `swarm workspace diff` | 查看当前 Execution 相对 base 的变更 | 只读，不直接更新 main |
-| `swarm workspace candidate save` | 将当前 Execution 的候选 commit/文件变更交给可信 Runtime 导入 Workspace Repository | 生成候选 ID；排除 sandbox 管理数据、凭据和无关文件；保留源 E、Task、base commit |
-| `swarm workspace candidate list/view` | 查看候选及其状态 | 候选可以保留而不合入 main；可比较其基准与当前 main |
-| `swarm workspace integrate <candidate-id>` | 请求将候选整合到 main | Bot 自主决定是否调用；携带 expected revision；服务验证当前 E、候选来源和必要政策，冲突时拒绝覆盖 |
-| `swarm workspace candidate discard <candidate-id>` | 放弃候选 | 只改变候选可用状态，不删除必要审计来源 |
+| `swarm workspace candidate save` | 将当前 Execution 的候选 commit/文件变更交给可信 Runtime 导入 Workspace Repository | 生成 Candidate ID；排除 sandbox 管理数据、凭据和无关文件；保留源 E、Task、base revision/commit；长期保留 |
+| `swarm workspace candidate list/view` | 查看候选及其状态 | Candidate 长期保留；默认 list 展示 active，历史查询可包含 discarded；可比较其基准与当前 main |
+| `swarm workspace integrate <candidate-id>` | 当前有效 Execution 的 Bot 自主决定是否将 Candidate 整合到 main | 不要求独立整合 Task；携带 expected revision；服务检查 E、base commit、Candidate 完整性/来源和明确指定的检查，冲突时拒绝覆盖 |
+| `swarm workspace candidate discard <candidate-id>` | 将不再需要的 Candidate 标记为 discarded | 从默认列表隐藏；第一版不物理删除 Git commit/对象或来源记录；历史查询仍可见 |
 
-不是所有 Execution 都需要保存候选，更不是所有候选都需要进入 main。局部知识可以只发布 Material；可复用代码/文件改动可以保存为 Workspace candidate；只有值得成为共同项目状态的候选才整合 main。具体合入门槛由 Mission/Workspace 政策及 Bot 的判断共同决定。Revision 是 Workspace 维护的连续版本号；第一版不创建 Git tag。
+不是所有 Execution 都需要保存 Candidate，更不是所有 Candidate 都需要进入 main。局部知识可以只发布 Material；可复用代码/文件改动可以保存为 Workspace Candidate；只有值得成为共同项目状态的 Candidate 才整合 main。Bot 默认可以在自己的 Execution 内直接 integrate；若需要跨 Task 协调、复杂冲突解决或大范围重构，再提出独立整合 Task。第一版合入门槛保持最小：有效 E、expected revision/base commit 匹配、Candidate 完整且来源可追溯、Task/Mission 明确指定的检查通过。没有指定额外检查时不虚构检查门槛。Workspace 和 Candidate 不因 Mission 完成自动删除；Candidate 不自动过期，由 Bot 显式 discard。Revision 是 Workspace 维护的连续版本号；第一版不创建 Git tag。
 
 ### 4. Judge Service：按需验证
 
@@ -412,7 +412,7 @@ description: 初始化工作基准、提出主线候选、整合成果或处理�
 7. 先持久发布候选，再调用 workspace advance，携带 expected-main、candidate 和稳定 request-id。
 8. 成功后记录新 Workspace revision。版本冲突时读取新 main、重新整合/检查并保存新 candidate，不能强制覆盖。
 
-权限来自 E 与服务端政策，不来自本地分支名。可以在自己的 Git 副本做提交，但不能直接操作共享 refs 或他人 .git，也不能从前任私有仓库复制未发布历史。
+权限来自当前有效 E 和 Workspace Service 的最小校验，不来自本地分支名。可以在自己的 Git 副本做提交，但不能直接操作共享 refs 或他人 .git，也不能从前任私有仓库复制未发布历史。
 
 例：你的 JSON 补丁基于 main revision `0.1`，当前 main revision `0.2` 已有过滤模块。候选必须保留过滤并通过组合检查，不能把 v0 加 JSON 的目录直接当最新 main。
 
