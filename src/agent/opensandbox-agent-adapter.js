@@ -143,7 +143,15 @@ export class OpenSandboxAgentAdapter {
     await this.sandboxManager.ensureExecution({ executionId, bindingVersion: observationContext.fencingVersion ?? null });
     if (cwd) await this.sandboxManager.syncWorkspace({ executionId, workspaceRef: cwd });
     const workerEnvironment = publicAgentEnvironment(this.config.env, this.config.agentEnvironment);
-    const workerSecretEnvironment = secretAgentEnvironment(this.config.secretEnv);
+    // Runtime creates the bridge token when each Core's bridge starts. The
+    // bridge URL is public worker configuration, but its bearer token must
+    // cross the authenticated worker start request as a secret. `env` is the
+    // live Core environment object, so this also observes the token added
+    // after the adapter was constructed.
+    const workerSecretEnvironment = secretAgentEnvironment({
+      ...this.config.secretEnv,
+      SWARMENV_BRIDGE_TOKEN: this.config.env.SWARMENV_BRIDGE_TOKEN ?? this.config.secretEnv.SWARMENV_BRIDGE_TOKEN,
+    });
     let guestVersions = null;
     const directPi = this.command === 'pi' || this.command.endsWith('/pi');
     const explicitVersions = {

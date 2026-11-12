@@ -61,7 +61,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/agent/opensandbox-agent-adapter.js](../../src/agent/opensandbox-agent-adapter.js) | Pi/NuRouter RPC adapter over an OpenSandbox worker endpoint | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `dd58ef0407984b781353ae0b02fbda64e376b3b4482aa3c039d337d69f1adfa0` |
+| [src/agent/opensandbox-agent-adapter.js](../../src/agent/opensandbox-agent-adapter.js) | Pi/NuRouter RPC adapter over an OpenSandbox worker endpoint | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `08e837529d6b52a0ddfe86cad513dbc4e08a1e96d092a35858374ff2791969b9` |
 
 ### controlled verification data (4)
 
