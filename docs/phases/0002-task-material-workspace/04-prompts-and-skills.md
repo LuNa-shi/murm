@@ -295,7 +295,7 @@ Workspace 是 Mission 一对一绑定的本地 Git Repository。Agent 在 Execut
 | `swarm workspace status` | 查看当前 Execution 工作副本状态 | 实际 base commit/revision、变更摘要；不显示其他 Bot 私有目录 |
 | `swarm workspace diff` | 查看当前 Execution 相对 base 的变更 | 只读，不直接更新 main |
 | `swarm workspace candidate save` | 将当前 Execution 的候选 commit/文件变更交给可信 Runtime 导入 Workspace Repository | 生成 Candidate ID；排除 sandbox 管理数据、凭据和无关文件；保留源 E、Task、base revision/commit；长期保留 |
-| `swarm workspace candidate list/view` | 查看候选及其状态 | Candidate 长期保留；默认 list 展示 active，历史查询可包含 discarded；可比较其基准与当前 main |
+| `swarm workspace candidate list/view` | 查看候选及其状态 | Candidate 长期保留；默认 list 只展示 active；使用 `--include-discarded` 查看历史候选；可比较其基准与当前 main |
 | `swarm workspace integrate <candidate-id>` | 当前有效 Execution 的 Bot 自主决定是否将 Candidate 整合到 main | 不要求独立整合 Task；携带 expected revision；服务检查 E、base commit、Candidate 完整性/来源和明确指定的检查，冲突时拒绝覆盖 |
 | `swarm workspace candidate discard <candidate-id>` | 将不再需要的 Candidate 标记为 discarded | 从默认列表隐藏；第一版不物理删除 Git commit/对象或来源记录；历史查询仍可见 |
 
