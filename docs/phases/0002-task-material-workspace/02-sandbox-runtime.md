@@ -118,7 +118,7 @@ Provider 删除响应丢失或 Runtime 重启时，reconciler 根据持久 E 状
 - 未 take：Agent 可以读 Mission、Task 列表、Workspace main 和有权限的 Material；不能写项目工作副本、发布研究成果或提交领域服务贡献。
 - Bot 启动阶段：Runtime 创建 sandbox、Pi Session 和 project clone；在 take 前项目目录仍只读。
 - take 成功并进入 active E：可信 Runtime 在当前 sandbox 授予项目目录写权限；服务端也验证当前 E 才接受写入。
-- closing/closed：服务端拒绝旧 E 的新写请求，Runtime 停止整个 sandbox，旧进程不能继续运行。
+- closing/closed：服务端拒绝旧 E 的新写请求，Runtime 结束该 E 的任务级子进程并将项目目录恢复只读；Bot 主 sandbox 可继续运行，直到 Bot 生命周期结束。
 
 这里的只读指项目文件与业务贡献，不是禁止操作系统内所有写入。Pi 运行目录、缓存和临时文件可能需要可写，但它们不能成为项目目录的旁路。
 
@@ -215,7 +215,7 @@ OpenSandbox release-1.2.0 的源码调研给出以下限制，均需在固定版
 - Pi 四基础工具操作同一文件工作面；
 - Bot 无法读取 provider 管理凭据、Docker socket、其他 E volume、Workspace 主 .git 和服务数据库；
 - take 前项目目录不可写，active 后仅当前 E 可写，closing 后旧 E 无法继续写入；
-- Runtime/Provider 重启后能对账 sandbox 资源，能停止所有子进程，不恢复旧执行现场；
+- Runtime/Provider 重启后能对账 Bot sandbox 与当前 E，能区分 E release 和 Bot 终止；
 - 服务不可用、provider 超时、创建/删除失败时均不会产生重复活跃 sandbox 或提前释放 Task/Core；
 - CLI 可通过 Bash help 发现和调用真实服务，stdout/JSON/退出码/错误语义符合统一合同。
 
