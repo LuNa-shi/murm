@@ -52,6 +52,7 @@ test('OpenSandbox Agent adapter forwards only configured service environment and
       SWARMENV_TASK_SERVICE_URL: 'http://task:8787',
       SWARMENV_BRIDGE_URL: 'http://host-gateway:40123',
       SWARMENV_OPENSANDBOX_URL: 'http://host-provider:8080',
+      PI_CODING_AGENT_DIR: '/home/host/.pi/agent',
       OPENAI_API_KEY: 'must-not-be-inherited',
     },
     agentEnvironment: { SWARMENV_CONTEXT_SERVICE_URL: 'http://context:8787' },
@@ -61,6 +62,7 @@ test('OpenSandbox Agent adapter forwards only configured service environment and
   assert.equal(manager.started.env.SWARMENV_TASK_SERVICE_URL, 'http://task:8787');
   assert.equal(manager.started.env.SWARMENV_CONTEXT_SERVICE_URL, 'http://context:8787');
   assert.equal(manager.started.env.SWARMENV_OPENSANDBOX_URL, undefined);
+  assert.equal(manager.started.env.PI_CODING_AGENT_DIR, undefined);
   assert.equal(manager.started.env.SWARMENV_BRIDGE_URL, 'http://host-gateway:40123');
   assert.equal(manager.started.env.OPENAI_API_KEY, undefined);
   assert.equal(manager.started.secretEnvironment.SWARMENV_TASK_SERVICE_TOKEN, 'task-secret');

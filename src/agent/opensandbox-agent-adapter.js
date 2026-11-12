@@ -16,7 +16,7 @@ function required(value, name) {
 // provider lifecycle URL, host paths, or arbitrary host credentials.  Secret
 // values are supplied separately through `secretEnv` so callers can audit the
 // exact allow-list at the deployment boundary.
-const PUBLIC_AGENT_ENV = /^(?:NUROUTER_PI_(?:PROVIDER|MODEL|ACCOUNT|GROUP)|PI_(?:PROVIDER|MODEL|CODING_AGENT_DIR|[A-Z0-9_]+_BASE_URL)|SWARMENV_(?:AGENT_ROLE|BRIDGE_URL|PI_VERSION|NUROUTER_VERSION|SERVICE_ENDPOINTS|[A-Z0-9_]+_SERVICE_URL))$/;
+const PUBLIC_AGENT_ENV = /^(?:NUROUTER_PI_(?:PROVIDER|MODEL|ACCOUNT|GROUP)|PI_(?:PROVIDER|MODEL|[A-Z0-9_]+_BASE_URL)|SWARMENV_(?:AGENT_ROLE|BRIDGE_URL|PI_VERSION|NUROUTER_VERSION|SERVICE_ENDPOINTS|[A-Z0-9_]+_SERVICE_URL))$/;
 
 function publicAgentEnvironment(value, explicit = {}) {
   const source = { ...(value ?? {}), ...(explicit ?? {}) };
