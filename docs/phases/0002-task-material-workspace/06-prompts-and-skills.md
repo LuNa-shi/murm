@@ -283,7 +283,7 @@ Dependencies 通过 `task propose` 一次性提交；第一版不单独提供复
 
 Material 的 Evidence 第一版是正文中由 Agent 撰写的自然语言段落，不要求 CLI 提交结构化 Evidence 对象。纠错接口负责保存质疑/替代关系，不自动宣称数学结论已被机器证明。
 
-### 3. Workspace Service：Git Repository、worktree 与 main
+### 3. Workspace：由 Runtime 管理 Git Repository、工作目录与 main
 
 Workspace 是 Mission 一对一绑定的本地 Git Repository。Agent 只操作 Runtime 为当前 Execution 准备的独立工作目录；Workspace CLI 请求 Runtime 保存/整合成果，所有 Git 操作均由 Runtime 管理，不把共享可写 `.git` 暴露给 Bot。
 
@@ -293,9 +293,9 @@ Workspace 是 Mission 一对一绑定的本地 Git Repository。Agent 只操作 
 | `swarm workspace history` | 查看 main 更新历史 | revision、commit、来源 Task/Execution、整合说明 |
 | `swarm workspace status` | 查看当前 Execution 工作目录状态 | 实际 base commit/revision、变更摘要；不显示其他 Bot 私有目录 |
 | `swarm workspace diff` | 查看当前 Execution 相对 base 的变更 | 只读，不直接更新 main |
-| `swarm workspace candidate save` | 将当前 Execution 工作目录的文件成果交给 Runtime 安全导入 Workspace Repository；Bot 不提供 commit/SHA | 生成 Candidate ID；排除 sandbox 管理数据、凭据和无关文件；保留源 E、Task、base revision/commit；长期保留 |
+| `swarm workspace save` | 请求 Runtime 保存当前 Execution 工作目录的文件成果并创建 Candidate；Bot 不提供 commit/SHA | 生成 Candidate ID；排除 sandbox 管理数据、凭据和无关文件；保留源 E、Task、base revision/commit；长期保留 |
 | `swarm workspace candidate list/view` | 查看候选及其状态 | Candidate 长期保留；默认 list 只展示 active；使用 `--include-discarded` 查看历史候选；可比较其基准与当前 main |
-| `swarm workspace integrate <candidate-id>` | 当前有效 Execution 的 Bot 自主决定是否将 Candidate 整合到 main | 不要求独立整合 Task；携带 expected revision；服务检查 E、base commit、Candidate 完整性/来源和明确指定的检查，冲突时拒绝覆盖 |
+| `swarm workspace integrate <candidate-id>` | 当前有效 Execution 的 Bot 自主决定是否请求 Runtime 将 Candidate 整合到 main | Agent 不管理 Git merge/commit/revision；Runtime 检查 E、base revision、Candidate 完整性/来源和明确指定的检查，冲突时返回错误 |
 | `swarm workspace candidate discard <candidate-id>` | 将不再需要的 Candidate 标记为 discarded | 从默认列表隐藏；第一版不物理删除 Git commit/对象或来源记录；历史查询仍可见 |
 
 不是所有 Execution 都需要保存 Candidate，更不是所有 Candidate 都需要进入 main。局部知识可以只发布 Material；可复用代码/文件改动可以保存为 Workspace Candidate；只有值得成为共同项目状态的 Candidate 才整合 main。Bot 通过 Workspace 高级操作请求 Runtime integrate；若需要跨 Task 协调、复杂冲突解决或大范围重构，再提出独立整合 Task。第一版合入门槛保持最小：有效 E、expected revision/base commit 匹配、Candidate 完整且来源可追溯、Task/Mission 明确指定的检查通过。没有指定额外检查时不虚构检查门槛。Workspace 和 Candidate 不因 Mission 完成自动删除；Candidate 不自动过期，由 Bot 显式 discard。Revision 是 Workspace 维护的连续版本号；第一版不创建 Git tag。
@@ -400,9 +400,9 @@ description: 检查项目基准、保存 Workspace Candidate、决定是否整�
 
 # 管理 Workspace Candidate 与共同主线
 
-Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main 是其中的共享 branch。当前 Execution 使用 Runtime 创建的独立工作目录；Bot 不直接管理 Git。Candidate 是 Workspace 保存的 Git commit/文件变更，不是 Material。
+Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main 是其中的共享 branch。当前 Execution 使用 Runtime 创建的独立工作目录；Bot 不直接管理 Git。Candidate 是 Runtime 保存的 Git commit/文件变更，不是 Material。
 
-1. 先查看当前 main revision/commit、自己的 base revision/commit、工作区 diff，以及已有 Candidate。确认自己理解的是哪一个版本。
+1. 先查看当前 Workspace/main、当前 Task 工作目录的基准摘要和已有 Candidate。确认自己理解的是哪一个版本；无需查看或管理 Git SHA。
 2. 判断文件变更是否值得长期保留。值得保留时调用 `swarm workspace save`；不值得保留的临时改动不必制造 Candidate。Candidate 保存后长期存在，不自动过期。
 3. Candidate 保存后，Bot 自己判断是否值得进入 main。不是每个 Candidate 都需要 integrate，也不是每次 Execution 都必须有 Candidate。
 4. Bot 不直接执行 Git merge/rebase；简单 Candidate 可请求 Runtime integrate，若发生需要语义处理的冲突，则结束当前 Execution，由新 Bot/普通整合 Task 在最新 main 上处理。不要为了每次 main 更新机械地创建一个 Task。
@@ -411,22 +411,22 @@ Workspace 与 Mission 一对一，是 sandbox 外的本地 Git Repository；main
 7. 调用 `swarm workspace integrate <candidate-id>`；Runtime 内部检查 expected revision/CAS。成功后记录新 Workspace revision；失败时保留 Candidate，理解错误并决定是否重整合。
 8. 不再需要的 Candidate 可显式 `swarm workspace candidate discard <candidate-id>`。discard 只隐藏于默认列表，不物理删除 Git 对象和来源记录；不要把 discard 当作修复 main 的操作。
 
-权限来自当前有效 E 和 Workspace Service 的校验，不来自本地分支名。Bot 可以在自己的 clone 中任意使用 Git，但不能直接操作共享 refs、Workspace 主 Repository 的 .git 或他人私有副本。
+权限来自当前有效 E 和 Workspace Service 的校验，不来自本地分支名。Bot 只能使用 Pi 基础文件工具/Bash 修改当前 Execution 工作目录；不能运行 Git 管理命令，也不能访问共享 refs、Workspace 主 Repository 的 .git 或他人私有副本。
 
 Candidate 与 Material 分开：Candidate 保存代码/文件变更；Material 保存研究解释、证明、实验结果、反例和 Evidence 自述。必要时二者互相引用，不相互替代。
 
-例：你的 JSON Candidate 基于 main revision 0.1，而当前 main 已到 0.2 并包含过滤模块。不能直接 integrate 旧 Candidate；由新 Bot 在基于 0.2 的工作目录中重新整合过滤和 JSON，再保存新 Candidate，运行指定检查后请求 integrate。
+例：你的 JSON Candidate 基于 main revision 0.1，而当前 main 已到 0.2 并包含过滤模块。Runtime 拒绝旧 Candidate 的直接整合；由新 Bot 在 Runtime 从 0.2 创建的工作目录中重新整合过滤和 JSON，再调用 workspace save，运行指定检查后请求 integrate。
 ```
 
-### close-execution
+### finish-task
 
 ```markdown
 ---
-name: close-execution
+name: finish-task
 description: 正常完成、遇到无法推进的阻塞、预算或上下文限制、准备研究交接时使用；先保存可用贡献，再结束当前 Execution。
 ---
 
-# 结束当前 Execution，并为后续工作留下可接续内容
+# 结束当前 Task Execution，并为后继 Bot 留下可接续内容
 
 停止扩展当前责任，核对原 Task 的交付和完成条件，以及剩余收尾额度。
 
@@ -435,7 +435,7 @@ description: 正常完成、遇到无法推进的阻塞、预算或上下文限�
 3. 以普通 Material 发布内容和必要附件，保留来源。不复制完整私有对话，不只留下 sandbox 路径。
 4. 核对发布成功、内容可读取、Task 关联已完成。上传超时查询原请求；若仍失败，不能把本地文件当共享交付。
 5. 对照完成条件选择 release 意图。确实完成才选完成；否则写明未完成和原因。没有有用新成果时允许诚实退出，不编造空材料。
-6. 用稳定 request ID 发 release。受理后停止当前 E 的所有新贡献；外部 Runtime 负责撤销当前 E 的项目/服务写权限并将项目目录恢复只读。当前 Bot 生命周期随本次 Task Execution 一起结束；Runtime 停止全部进程并销毁 sandbox。
+6. 用稳定 request ID 调用 `swarm task finish --outcome done|incomplete`。受理后停止当前 E 的所有新贡献；Runtime 撤销权限、停止 Pi/NuRouter/Bash 和全部子进程，并销毁 sandbox。当前 Bot 生命周期随本次 Task Execution 一起结束。
 
 已被服务持久接受的长期操作可按合同继续。把可查询的操作 ID 和输入版本留在公开接续信息中；不要承诺 release 会取消它，也不要把 pending 写成成功。
 
