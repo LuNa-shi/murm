@@ -24,7 +24,7 @@
 | Core | 可复用的计算槽位 |
 | Bot | 逻辑自主工作单元；与 Pi Session/Execution 的精确 ID 关系需在 Runtime 设计中明确 |
 | Execution | 一次 Task 的排他执行及其权限、输入和运行记录 |
-| Sandbox | 每个 Execution 的独立、临时第三方隔离环境 |
+| Sandbox | 每个 Bot 生命周期的独立、临时第三方隔离环境；take 前只读，take 后在同一环境切换权限，release 后销毁 |
 
 整体关系只在本 Overview 说明。各模块文档只负责自己的对象和接口，不重复介绍整套系统。
 
@@ -76,8 +76,8 @@
 - 最小整合门槛：有效 E、expected revision/base commit 正确、Candidate 完整且来源可追溯、明确指定的检查通过。
 
 ### Sandbox / Services
-- 每个 Execution 使用独立、临时的第三方 sandbox，包含 Pi、NuRouter、扩展、Bash 和所有子进程。
-- 每个新 E 使用干净工作目录和新的 Pi Session；跨 E 只通过 Material 和 Workspace 中公开的内容接续。
+- 每个 Bot 生命周期使用独立、临时的第三方 sandbox，包含 Pi、NuRouter、扩展、Bash 和所有子进程。
+- Bot 启动时获得干净 sandbox/Pi Session 和只读项目目录；take 在同一 sandbox/Pi 中绑定 E 并切换权限，release 后销毁；后继 Bot 使用新环境，只通过 Material 和 Workspace 公开内容接续。
 - Task、Context、Judge 和领域服务在 sandbox 外独立部署，通过 API/CLI 通信。
 - 不做进程级恢复，不向 Bot 暴露 provider 管理凭据、Docker socket 或服务数据库。
 - 普通 CLI/API 调用由服务在处理时验证身份和当前 Execution；不引入通用 pending/permit/acceptance 协议。
@@ -86,8 +86,8 @@
 
 以下问题不能通过模块间重复叙述来掩盖，需在相应文档审核时单独决定：
 
-1. **Take 前的只读研究如何运行？** Bot 需要先读取 Mission、Task、Material 和 Workspace，再选择并 take；但 #119 要求每个 Execution 创建独立 sandbox/Pi Session。需要决定 take 前是否有只读 Bot sandbox，或先由外部控制面提供读取/提案，再在 take 后创建全新 E sandbox。新 Pi 是否继承任何 take 前摘要也需明确。
-2. **Bot ID 与 Execution ID 的关系。** 逻辑 Bot 是否可跨多个 Execution 延续身份，还是每个新 Pi Session 对应新的 Bot ID？必须和 #119 的每 E 新 Pi 约束统一。
+1. **Take 前只读 sandbox 与 take 后 Execution 的边界已澄清。** Bot 启动时已经运行在自己的 sandbox/Pi Session 中，项目目录和贡献型服务权限只读；take 不新建 sandbox/Pi，而是在当前环境建立 E 绑定并切换权限；release 后销毁。详见 [02](02-sandbox-runtime.md) 和 [06](06-prompts-and-skills.md)。
+2. **Bot ID 与 Core 的关系。** 当前建议每个 Bot sandbox 生命周期对应一个新的 Bot ID；Core 是可复用槽位，不是 Bot 身份。release 后 Core 启动新的 Bot ID。请确认这一点是否符合你对 Bot 作为独立单元的定义。
 3. **Workspace 模块部署位置与 Git/元数据一致性。** 当前建议与 Task Service 同协调进程，但需实现对账；Git ref 更新和 revision 元数据不是天然同一文件系统事务。
 4. **私有审计卷保留策略。** #119 允许 sandbox 外留存私有卷用于审计，但后继 E 不可读取；保留期限、加密和清理策略需在 Sandbox 文档/实现阶段明确。
 5. **Candidate 长期保留的磁盘成本。** v1 不自动 TTL/GC，先测量实际增长，再决定后续运维策略。
