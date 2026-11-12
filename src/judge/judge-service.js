@@ -203,6 +203,14 @@ export class JudgeService {
       } catch (error) {
         checked = { verdict: 'ERROR', evidence: { diagnostic: error.message, error: error.name, checker_started: false } };
       }
+      if (typeof normalized.candidate.content === 'string' && /\b(?:sorry|admit|axiom)\b/i.test(normalized.candidate.content)) {
+        checked = {
+          ...(checked ?? {}),
+          verdict: 'ERROR',
+          result_class: 'request_failure',
+          evidence: { ...(checked?.evidence ?? {}), forbidden_placeholder: true, checker_started: false, diagnostic: 'candidate contains a forbidden placeholder' },
+        };
+      }
       if (!checked || !['PASS', 'FAIL', 'INCONCLUSIVE', 'ERROR'].includes(checked.verdict)) {
         checked = { verdict: 'ERROR', evidence: { diagnostic: 'checker returned an invalid verdict', checker_started: false } };
       }

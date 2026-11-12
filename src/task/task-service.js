@@ -1457,7 +1457,19 @@ export class TaskService {
     if (unlinked.length > 0) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.complete can reference only linked Materials', { unlinked_material_ids: unlinked });
     }
-    const completion = this.#completion(task, execution, payload.check_result_id ?? null);
+    const requestedCheckResultId = payload.check_result_id ?? null;
+    if (requestedCheckResultId) {
+      const requestedCheck = this.getCheckResult(requestedCheckResultId);
+      if (!requestedCheck) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown CheckResult: ${requestedCheckResultId}`);
+      if (requestedCheck.execution_id !== execution.execution_id || requestedCheck.target_task_id !== task.task_id) {
+        throw new SwarmEnvError(ERROR_CODES.FENCED, 'CheckResult does not belong to the current Task Execution');
+      }
+      if (requestedCheck.status === 'RECEIVED') {
+        this.db.prepare("UPDATE check_results SET status = 'APPLIED', applied_task_state_version = ?, applied_at = ?, updated_at = ? WHERE check_result_id = ?")
+          .run(task.state_version + 1, now(), now(), requestedCheckResultId);
+      }
+    }
+    const completion = this.#completion(task, execution, requestedCheckResultId);
     if (!completion.satisfied) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'completion_contract is not satisfied', { missing: completion.missing });
     }
@@ -4223,7 +4235,12 @@ export class TaskService {
     }
     if (contract.required_candidate) {
       const candidate = execution?.candidate_material_id && this.contextService?.getMaterial(execution.candidate_material_id);
-      if (!candidate || candidate.kind !== contract.required_candidate.kind || (contract.required_candidate.scope && candidate.scope !== contract.required_candidate.scope)) {
+      const appliedCheck = appliedCheckResultId ? this.getCheckResult(appliedCheckResultId) : null;
+      const workspaceCandidate = appliedCheck?.status === 'APPLIED' && appliedCheck.verdict === 'PASS' &&
+        appliedCheck.execution_id === execution?.execution_id && typeof appliedCheck.candidate_material_id === 'string' &&
+        appliedCheck.candidate_material_id.startsWith('workspace:');
+      if ((!candidate && !workspaceCandidate) || (candidate && (candidate.kind !== contract.required_candidate.kind ||
+        (contract.required_candidate.scope && candidate.scope !== contract.required_candidate.scope)))) {
         missing.push('required_candidate');
       }
     }

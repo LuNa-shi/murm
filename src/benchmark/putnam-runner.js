@@ -858,6 +858,7 @@ async function releaseTerminalExecution(core) {
 
 function sanitizedCheck(result, material) {
   const evidence = result.evidence ?? {};
+  const processEvidence = result.process_evidence ?? {};
   const checkerProcessStatus = result.checker_process_status ?? evidence.checker_process_status ?? 'unknown';
   const resultClass = result.result_class ?? evidence.result_class ?? 'unassessed';
   const mathematicalOutcome = evidence.mathematical_outcome ?? (resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed');
@@ -871,7 +872,7 @@ function sanitizedCheck(result, material) {
     checker_version: result.checker_version ?? null,
     environment_ref: result.environment_ref ?? null,
     checker_process_status: checkerProcessStatus,
-    checker_started: evidence.checker_started ?? (checkerProcessStatus === 'started' || checkerProcessStatus === 'completed'),
+    checker_started: evidence.checker_started ?? result.checker_started ?? (checkerProcessStatus === 'started' || checkerProcessStatus === 'completed'),
     result_class: resultClass,
     retryable: result.retryable ?? Boolean(evidence.retryable),
     diagnostic_code: result.diagnostic_code ?? evidence.diagnostic_code ?? null,
@@ -887,10 +888,10 @@ function sanitizedCheck(result, material) {
     infrastructure_attempt_count: evidence.infrastructure_attempt_count ?? null,
     retry_exhausted: Boolean(evidence.retry_exhausted),
     process_evidence: {
-      exit_code: evidence.exit_code ?? null,
-      signal: evidence.signal ?? null,
-      timed_out: Boolean(evidence.timed_out),
-      error_code: evidence.error_code ?? null,
+      exit_code: evidence.exit_code ?? processEvidence.exit_code ?? null,
+      signal: evidence.signal ?? processEvidence.signal ?? null,
+      timed_out: Boolean(evidence.timed_out ?? processEvidence.timed_out),
+      error_code: evidence.error_code ?? processEvidence.error_code ?? null,
     },
     check_result_id: result.check_result_id,
     diagnostic_class: evidence.forbidden_placeholder === true
@@ -2520,6 +2521,9 @@ async function createProjectState(problem, config, options) {
             ...sanitizedCheck(check, candidateMaterial),
             source_path: payload?.path ?? null,
           });
+          if (check.evidence?.forbidden_placeholder === true || check.diagnostic_class === 'forbidden_placeholder' || check.diagnostic_code === 'checker_request_rejected') {
+            core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: check.material_hash ?? null });
+          }
           core.observe({
             source: 'judge-service', kind: 'candidate_submitted', visibility: 'operator',
             taskId, executionId, coreId: `core-${core.index}`,
