@@ -117,7 +117,7 @@ Workspace 与 main
 - 选择/提出 Task 时读 plan-task。
 - 检索、使用、发布、接续或纠错 Material 时读 use-material。
 - 准备主线候选或处理基准/合入冲突时读 integrate-workspace。
-- 正常结束、预算/上下文提醒、未完成交接时读 close-execution。
+- 正常结束、预算/上下文提醒、未完成交接时读 finish-task。
 - skills 是方法指导，不改变上述关键规则。若规则、实际接口或权限互相矛盾，保留明确错误和版本，停止有问题的写操作并报告，不自行扩大权限。
 ```
 
@@ -170,7 +170,7 @@ Workspace 与 main
     {"name": "plan-task", "version": "draft.1", "path": "/opt/swarm/skills/plan-task.md", "purpose": "提出与选择 Task"},
     {"name": "use-material", "version": "draft.1", "path": "/opt/swarm/skills/use-material.md", "purpose": "检索、复用、接续与纠错 Material"},
     {"name": "integrate-workspace", "version": "draft.1", "path": "/opt/swarm/skills/integrate-workspace.md", "purpose": "候选、版本与主线整合"},
-    {"name": "close-execution", "version": "draft.1", "path": "/opt/swarm/skills/close-execution.md", "purpose": "结束与研究交接"}
+    {"name": "finish-task", "version": "draft.1", "path": "/opt/swarm/skills/close-execution.md", "purpose": "结束当前 Task 与 Bot 生命周期"}
   ]
 }
 
@@ -233,9 +233,9 @@ take 通过 Bash CLI 的普通工具结果反馈给同一个 sandbox 内的同�
 | main 版本冲突 | `候选 {candidate_id} 以 {expected_revision} 为基准，当前 main 为 {actual_revision}。main 未因本请求改变；读取新基准、重新整合和检查。` | Workspace CAS 结果 |
 | 必需检查未通过/不匹配 | `候选 {candidate_id} 未满足政策 {policy_version}：{reason_code}。main 未更新。按实际结果修复；内容变化后重新检查。` | 合入验证结果；说明不是模型自填 PASS |
 | 空闲等待 | `当前没有已知可推进的 Task，原因：{reason}。下次状态刷新时间为 {next_refresh_at}；不要为保持忙碌制造任务或宣布 Mission 完成。` | Bot 简短阻塞说明与 Runtime 定时安排 |
-| 提前收尾 | `Execution {execution_id} 接近配置限制：{limit_kind}。剩余收尾额度为 {remaining_allowance}。停止扩展工作，读取 close-execution，发布已有有用增量后按实际完成度 release。` | Runtime 预算/上下文信号，不由模型估算伪造 |
+| 提前收尾 | `Execution {execution_id} 接近配置限制：{limit_kind}。剩余收尾额度为 {remaining_allowance}。停止扩展工作，读取 finish-task，发布已有有用增量后按实际完成度 release。` | Runtime 预算/上下文信号，不由模型估算伪造 |
 | Mission 停止 | `Mission {mission_id} 已进入停止流程，原因：{reason}。不再创建新的执行工作；Runtime 将按已批准的收尾与服务作业合同处理当前 Execution。` | Mission 停止记录 |
-| finish 已受理 | `结束请求 {request_id} 已持久受理，Execution {execution_id} 正在关闭。不要再执行新工作；连接可能随 sandbox 终止而断开。外部 Runtime 负责后续清理。` | 外部持久 release 记录 |
+| finish 已受理 | `结束请求 {request_id} 已持久受理，Execution {execution_id} 正在关闭 Bot/Sandbox。不要再执行新工作；连接可能随 sandbox 销毁而断开。外部 Runtime 负责后续清理。` | 外部持久 finish 记录 |
 
 不要求所有异步通知都可靠推送到已退出的 Pi。材料质疑可先通过规定的查询点发现，v1 不依赖复杂订阅系统；若实现增量通知，其模板、实际送达和未送达原因同样纳入 prompt 记录。成功 finish 后的结果供外部查询，不给不存在的后继 Session 伪造一段“旧对话继续”。
 
@@ -321,7 +321,7 @@ Judge 返回值就是检查结果，不要求 Bot 再创建一个 CheckResult �
 
 ### 6. 哪些不是 Bot CLI
 
-Core 调度、Bot 启停、sandbox 创建/销毁、take/release 时权限切换、Pi 启动、凭据注入、超时回收和运行证据采集属于 Runtime/Operator 控制面，不暴露成 Bot 可以自行调用的普通业务命令。Bot 只调用 Task、Material、Workspace、Judge 和 Mission 配置允许的领域 Services。
+Core 调度、Bot 启停、sandbox 创建/销毁、take/finish 时权限切换、Pi 启动、凭据注入、超时回收和运行证据采集属于 Runtime/Operator 控制面，不暴露成 Bot 可以自行调用的普通业务命令。Bot 只调用 Task、Material、Workspace、Judge 和 Mission 配置允许的领域 Services。
 
 ### CLI 设计边界
 
@@ -347,7 +347,7 @@ description: 提出或选择下一项 Task 时使用；核对已有工作、明�
 3. 比较可以立即接续的已有 Task。根据目标相关性、解锁作用、重复成本、可用输入和剩余预算选工。
 4. 只有缺少合适责任时才提出新 Task。写明局部目标、可被使用的交付、完成条件、确切输入、Dependencies（Task ID 列表；没有则为空），以及与现有工作的区别。Mission ID 标识目标，Workspace ID 标识对应 Git Repository；需要固定项目起点时记录 Workspace revision/commit。
 5. 说明选择依据，用一两句可核对的事实即可。不要提交私有思维过程或没有依据的价值分数。
-6. take 使用当前 Task 合同 revision。冲突时刷新事实；成功后核对实际绑定的 Workspace commit/revision。Task 合同创建后保持稳定；若目标或交付发生实质变化，提出新 Task，不提供 revise。
+6. take 使用当前 Task 合同。冲突时刷新事实；成功后核对实际绑定的 Workspace 基准。Task 合同创建后保持稳定；若目标或交付发生实质变化，提出新 Task，不提供 revise。
 
 校准任务边界：
 - “完成整个 Mission”通常不能形成分工；寻找可独立交付的部分。
@@ -434,14 +434,14 @@ description: 正常完成、遇到无法推进的阻塞、预算或上下文限�
 2. 若需接续，说明 Task/版本、已完成部分、公开材料 ID、工作基准、可复现失败、未决问题、服务操作 ID 和一个具体下一步。
 3. 以普通 Material 发布内容和必要附件，保留来源。不复制完整私有对话，不只留下 sandbox 路径。
 4. 核对发布成功、内容可读取、Task 关联已完成。上传超时查询原请求；若仍失败，不能把本地文件当共享交付。
-5. 对照完成条件选择 release 意图。确实完成才选完成；否则写明未完成和原因。没有有用新成果时允许诚实退出，不编造空材料。
+5. 对照完成条件选择 finish outcome。确实完成才选完成；否则写明未完成和原因。没有有用新成果时允许诚实退出，不编造空材料。
 6. 用稳定 request ID 调用 `swarm task finish --outcome done|incomplete`。受理后停止当前 E 的所有新贡献；Runtime 撤销权限、停止 Pi/NuRouter/Bash 和全部子进程，并销毁 sandbox。当前 Bot 生命周期随本次 Task Execution 一起结束。
 
 已被服务持久接受的长期操作可按合同继续。把可查询的操作 ID 和输入版本留在公开接续信息中；不要承诺 release 会取消它，也不要把 pending 写成成功。
 
 每次 Task finish、incomplete handoff 或超时都会结束当前 Bot/Sandbox/Pi Session；后继 Bot 在全新环境中从公开 Workspace、Task 和 Material 接续，不继承私有会话与文件。没有发布的内容不能被描述为已经 handoff。
 
-release 可能让 CLI 连接断开。这不等于任务已完成或请求失败；结果由外部 request 记录确定。确认 release 结果后，当前 Bot 生命周期随 finish 结束；后续 Task 由新的 Bot 在新的 sandbox 中接续。
+finish 可能让 CLI 连接断开。这不等于任务已完成或请求失败；结果由外部 request 记录确定。确认 release 结果后，当前 Bot 生命周期随 finish 结束；后续 Task 由新的 Bot 在新的 sandbox 中接续。
 ```
 
 ## 完整记录与版本维护
