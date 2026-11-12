@@ -9,8 +9,8 @@
 
 来自 #119 的决定：
 
-1. **每个 Execution 使用独立、临时的第三方 sandbox。** 整个 Agent 执行环境都在 sandbox 内，包括 Pi、NuRouter、扩展、Bash 和本地子进程。至少达到 Docker 级隔离；不沿用当前自建 SandboxManager 作为目标隔离后端。
-2. **每个新 Execution 都从干净环境启动。** 新建 sandbox、新 Pi 会话和新的执行工作目录；同 Task 再次认领、同 Core 后续执行、任务切换和异常后新建 E 都适用。允许注入固定镜像、工具和明确的任务输入，但不继承前一 E 的私有文件、对话和工具历史。
+1. **每个 Bot 生命周期使用独立、临时的第三方 sandbox。** 整个 Agent 执行环境都在 sandbox 内，包括 Pi、NuRouter、扩展、Bash 和本地子进程。至少达到 Docker 级隔离；不沿用当前自建 SandboxManager 作为目标隔离后端。
+2. **每个新 Bot 生命周期都从干净环境启动。** Bot 启动时创建 sandbox、新 Pi Session 和只读项目工作目录；take 前在同一 sandbox/Pi 中研究和选择 Task；take 成功后不创建第二个 sandbox/Pi，而是在当前环境建立 E 绑定并切换目录/服务权限；release 后销毁 sandbox。后继 Bot 不继承前一 Bot 的私有文件、对话和工具历史。
 3. **跨 Execution 的研究接续只通过 Material。** 后继不能引用前任 sandbox 私有目录、私有 Git 对象或临时路径作为输入。
 4. **服务位于 sandbox 外。** Task、Context/Material、Judge 和启用的领域服务独立部署，各自拥有 API、持久状态和重启生命周期。sandbox 通过网络 API/CLI 调用，不共享进程对象或数据库。
 5. **Agent 使用 Pi 的 read/write/edit/bash。** 业务服务通过 Bash 调用统一 swarm CLI；不为每个业务操作单独注册裸模型 tool。
@@ -53,7 +53,7 @@ Sandbox 是不可信执行边界。即使 Bot 只收到一个 Task，也必须�
 | Task/E 身份 | Runtime 与服务端认证 | 客户端自填 Task ID、环境变量或 JSON 字段不能单独构成身份 |
 | 外部网络 | 显式配置的网络策略 | 不假定 sandbox 天然只能访问指定域名；需验证实际 provider 网络能力 |
 
-## 3. 每个 Execution 的 sandbox 生命周期
+## 3. 每个 Bot sandbox 的生命周期
 
 ### 3.1 创建前：准备执行描述
 
