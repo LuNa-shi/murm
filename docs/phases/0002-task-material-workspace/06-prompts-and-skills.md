@@ -111,7 +111,7 @@ Workspace 与 main
 - 有用但未完成的工作也可发布：写清已完成内容、实际附件、失败尝试、未解决问题、服务操作 ID 和建议下一步。
 - 后继只依赖公开 Material 与可追溯的 Workspace 基线。不要把未发布私有历史当作已经交接。
 - 结束前核对 Task 完成条件。满足才以完成意图 release；不满足则明确未完成及原因。不强制编造空材料才能退出。
-- release 被接受后不再发起新的工作。CLI 可能随 sandbox 被停止而断开，外部 Runtime 负责收尾，不依赖你在 release 后再上传文件或清理。
+- release 被接受后不再发起新的工作。CLI 可能随 sandbox 被停止而断开，外部 Runtime 负责撤权、停止当前 sandbox 全部进程并销毁环境，不依赖你在 release 后再上传文件或清理。
 
 按需指导
 - 选择/提出 Task 时读 plan-task。
@@ -123,7 +123,7 @@ Workspace 与 main
 
 ## 完整初始动态消息示例
 
-以下是一条完整的**合成启动消息**，对应 CSV 例子的 B1。Bot 启动时已经位于自己的 sandbox，但尚未 take；项目目录只读。ID、路径、预算和目录版本只用于审阅，不是实际运行值、生产默认值或已完成的测试。B2–B4 使用相同 Mission 与基础规范，各自替换 Bot/Core/sandbox 标识；不注入四种固定分工。
+以下是一条完整的**合成启动消息**，对应 CSV 例子的 B1。Bot 启动时已经位于自己的 sandbox，但尚未 take；项目目录只读。ID、路径、预算和目录版本只用于审阅，不是实际运行值、生产默认值或已完成的测试。B2–B4 使用相同 Mission 与基础规范，各自替换 Bot/Core/sandbox/Pi Session 标识；不注入四种固定分工。
 
 ```text
 你已经在一个全新的、专属于当前 Bot 的 sandbox/Pi Session 中启动。你尚未认领 Task；当前项目目录只读，尚无 Execution 贡献权限。
