@@ -29,7 +29,7 @@ The current Agent-facing operations are principally:
 
 `task_register` with `take: true` **attempts** a Runtime checkpoint of the current Execution before a same-lane switch. The old Execution is fenced and the new Task claimed atomically within a **Task Service database transaction**; the preceding Workspace/Progress save is separate and may return `save_failed`, which does not by itself abort the switch. Do not claim an all-or-nothing disk + database save. Registration without `take` leaves the Task for others; a direct `task_take` acquires an existing eligible Task. See `src/agent/services-bridge.js` and `src/task/task-service.js`.
 
-In the **flat Mission Task registration path** no fixed numerical Task-count admission quota is enforced; distinct responsibility and key/idempotency checks still apply. The **legacy** structural Task path additionally supports configurable limits such as `max_unfinished_tasks` and `max_open_tasks` (`TaskService.#normalizeAdmissionPolicy` / `#assertChildAdmission`). Those legacy limits must not be mistaken for flat admission behavior. Task counts, claims, handoffs and readiness intervals are also observation metrics, not proof of useful work.
+In the **flat Mission Task registration path** no fixed numerical Task-count admission quota is enforced; distinct responsibility and key/idempotency checks still apply. Task counts, claims, handoffs and readiness intervals are observation metrics, not proof of useful work. Core/model capacity, total budget, tool timeouts and the single Execution timebox remain runtime limits.
 
 ## Material and completion
 

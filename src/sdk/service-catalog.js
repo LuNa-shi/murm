@@ -280,15 +280,15 @@ const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'c
 // the Execution lease/liveness controls; modern Mission Tasks use the semantic
 // entries above and the Registry-backed profile.
 const LEGACY_AGENT_OPERATIONS = new Set([
-  'abort', 'accept_task', 'apply_check_result', 'block_execution',
+  'abort', 'apply_check_result', 'block_execution',
   'claim', 'list_claimable_tasks', 'select_task',
-  'create_rework_task', 'fence_execution', 'heartbeat', 'request_rework',
+  'fence_execution', 'heartbeat',
   'request_wait', 'resume_execution', 'start_execution', 'stop_execution',
   'wake', 'wake_execution',
 ]);
 
 const LEGACY_AGENT_TOOL_NAMES = new Set([
-  'execution_wait', 'task_accept', 'task_create_rework', 'task_request_rework',
+  'execution_wait',
   'service_call', 'swarmenv_call',
 ]);
 
@@ -319,7 +319,6 @@ export function isLegacyAgentSurface(tool, { runtimeOwned = false } = {}) {
   if (!tool || typeof tool !== 'object') return false;
   const operation = tool.operation ?? null;
   const name = tool.name ?? tool.tool_name ?? tool.toolName ?? null;
-  if (runtimeOwned && operation === 'accept_task') return false;
   return LEGACY_AGENT_OPERATIONS.has(operation) || LEGACY_AGENT_TOOL_NAMES.has(name);
 }
 

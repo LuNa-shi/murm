@@ -96,7 +96,10 @@ export class ScriptExecutor {
 
   async run() {
     const { contextService, taskService, judgeService, sdk, runtime } = this.environment;
-    const task = sdk.proposeTask({
+    const mission = sdk.createMission({ mission_id: `mission:${this.executionId}`, goal: 'Prove the locked PutnamBench fixture theorem', acceptance_conditions: { fixture_id: this.fixtureManifest.fixture_id } }, { operationId: 'script:mission' }).mission;
+    const task = sdk.createTask({
+      mission_id: mission.mission_id,
+      summary: 'Prove the locked PutnamBench fixture theorem',
       task_type: 'proof',
       goal: 'Prove the locked PutnamBench fixture theorem',
       expected_output: 'A Lean proof Artifact compiled in the locked fixture',
@@ -110,7 +113,7 @@ export class ScriptExecutor {
           environment_ref: this.fixtureManifest.environment_ref,
         },
       },
-    }, { operationId: 'script:propose' }).task;
+    }, { operationId: 'script:task' }).task;
     const claimed = sdk.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
       execution_id: this.executionId,
       claim_key: `script:claim:${this.executionId}`,

@@ -15,7 +15,7 @@ const revision = { type: 'integer', minimum: 1 };
 
 export const RUNTIME_CAPABILITIES = Object.freeze([
   {
-    id: 'runtime.task_complete', name: 'task_complete', operation: 'accept_task', service_id: 'runtime',
+    id: 'runtime.task_complete', name: 'task_complete', operation: 'task_complete', service_id: 'runtime',
     service_title: 'SwarmEnv Runtime', service_purpose: 'Task-scoped completion and dependency actions',
     description: 'Complete the current Task after its own contract and result references are satisfied.',
     audience: ['bound', 'recovery'], side_effect: 'write', idempotent: true, runtime_owned: true,

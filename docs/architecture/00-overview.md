@@ -55,7 +55,7 @@ Agent reads capability profile and Mission/Task state
   → the same identity may take another responsibility
 ```
 
-The **flat Mission Task model** is the baseline described by this architecture. In this reviewed code tree, the benchmark still exposes `taskModel=flat|legacy` and the CLI defaults to `legacy`; legacy Root/Child structure and compatibility operations remain in source and tests. This does not make them part of the flat model. A separate cleanup PR will remove that implementation split. The normal bound flat profile uses named Task, Context, Judge, Workspace and Runtime capabilities.
+The **flat Mission Task model** is the only runtime Task model described by this architecture. The benchmark CLI has no Task-model selector, and the Agent/SDK surface exposes Mission Tasks, relations, Materials and Execution progress without Root/Child structure operations. The normal bound profile uses named Task, Context, Judge, Workspace and Runtime capabilities.
 
 Within the flat benchmark path, `TaskController` observes claimable work and signals idle `IdentityTaskLoop`s; the Agent chooses its Task through `task_take`. Controller and Runner do not select the mathematical research route. See `src/benchmark/putnam-runner.js`, `src/runtime/task-controller.js`, and `src/runtime/identity-task-loop.js`.
 

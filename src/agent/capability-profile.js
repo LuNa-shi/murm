@@ -204,11 +204,8 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
   }
   const usedNames = new Set();
   const capabilities = normalizedCapabilities.map((capability) => {
-    // A Runtime-owned compatibility alias (for example accept_task) may
-    // share the semantic name of a registered Task capability. Keep the
-    // first deterministic capability name stable and qualify later names so
-    // profile metadata remains one-to-one while operation routing continues
-    // to use the explicit operation field.
+    // Keep the first deterministic capability name stable and qualify later
+    // names so profile metadata remains one-to-one.
     let name = capability.name;
     if (nameCounts.get(name) > 1 && (usedNames.has(name) || (capability.service_id === 'runtime' && preferredServices.has(name)))) {
       name = `${capability.service_id}_${name}`;

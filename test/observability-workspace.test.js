@@ -13,10 +13,13 @@ test('ObservabilityServer exposes the selected Execution Workspace files and rev
   const root = await mkdtemp('/tmp/swarmenv-observability-workspace-');
   const database = new DatabaseSync(join(root, 'state.sqlite'));
   const taskService = new TaskService(database);
-  const task = taskService.proposeTask({
-    task_type: 'research', goal: 'Inspect Workspace', expected_output: 'notes',
-    acceptance_conditions: {}, owner_ref: 'owner:test', workspace: { project: 'test' },
-  }).task;
+  const mission = taskService.createMission({
+    mission_id: 'mission:observability-workspace', goal: 'Inspect Workspace', acceptance_conditions: {}, created_by: 'owner:test',
+  }, makeEnvelope({ operationId: 'mission:observability-workspace', actorRef: 'owner:test' })).mission;
+  const task = taskService.createTask({
+    mission_id: mission.mission_id, summary: 'Inspect the selected Workspace and record one bounded observation', task_type: 'research', goal: 'Inspect Workspace', expected_output: 'notes',
+    acceptance_conditions: { workspace: 'test' }, owner_ref: 'owner:test', workspace: { project: 'test' },
+  }, makeEnvelope({ operationId: 'task:observability-workspace', actorRef: 'owner:test' })).task;
   const claimed = taskService.dispatch('claim', { task_id: task.task_id, claim_key: 'claim-workspace', owner_ref: 'agent:test', workspace_mode: 'clean' }, makeEnvelope({ operationId: 'claim-workspace', actorRef: 'agent:test', taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }));
   const workspaceManager = new WorkspaceManager({ rootDir: join(root, 'workspaces') });
   const workspace = await workspaceManager.createWorkspace({

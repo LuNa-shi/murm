@@ -42,9 +42,6 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
 const FORBIDDEN_PLACEHOLDER = /\b(?:sorry|admit|axiom)\b/i;
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const PARALLEL_MODES = new Set(['direct', 'semantic', 'root-only']);
-const STRUCTURE_OPERATIONS = new Set([
-  'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task',
-]);
 
 class SerialTaskCreateAdmission {
   constructor() {
@@ -156,11 +153,6 @@ function lifecycleEvents(taskService) {
   });
 }
 
-const ADMISSION_OPERATIONS = new Set([
-  'propose_task', 'create_child_task', 'create_branch_group', 'add_required_subtask',
-  'create_rework_task', 'propose_structure_change',
-]);
-
 function taskLifecycleEvents(taskService) {
   const rows = taskService.db.prepare('SELECT operation_id, operation, result_json, created_at FROM operations ORDER BY created_at, operation_id').all();
   return rows.map((row) => {
@@ -192,7 +184,6 @@ function safeObservationEvent(event) {
 
 function executionNarratives(state, taskTree, materials) {
   return taskTree.flatMap((task) => {
-    const structure = state.taskService.getTaskStructure(task.task_id);
     const materialLinks = taskMaterialLinks(state, task);
     return state.taskService.listExecutions(task.task_id).map((execution) => {
       const events = state.observationStore.listEvents({
@@ -210,13 +201,11 @@ function executionNarratives(state, taskTree, materials) {
           content_hash: material.content_hash,
           version: material.version,
         }));
-      const dependencies = structure.dependencies.map((dependency) => ({
-        dependency_id: dependency.dependency_id,
-        dependency_kind: dependency.dependency_kind,
-        prerequisite_task_id: dependency.prerequisite_task_id,
-        material_id: dependency.material_id,
-        check_result_id: dependency.check_result_id,
-        satisfied: dependency.satisfied,
+      const dependencies = (task.relations?.depends_on ?? []).map((dependency) => ({
+        dependency_id: dependency.relation_id,
+        dependency_kind: 'TASK',
+        prerequisite_task_id: dependency.related_task_id,
+        satisfied: !(task.blockers ?? []).some((blocker) => blocker.related_task_id === dependency.related_task_id),
       }));
       return {
         execution_id: execution.execution_id,
@@ -1311,94 +1300,36 @@ function forceFenceCoreExecutions(state, core, reason) {
 }
 
 function structureEvidence(taskService, taskTree, cores, mode) {
-  const structures = taskTree.map((task) => taskService.getTaskStructure(task.task_id));
-  const structureByTaskId = new Map(structures.map((structure) => [structure.task.task_id, structure]));
-  const safePayload = (payload) => {
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-    const keys = ['child_task_id', 'rework_task_id', 'prior_task_id', 'relationship', 'group_id', 'task_id', 'task_ids',
-      'dependency_id', 'source_material_count', 'source_material_refs'];
-    const safe = Object.fromEntries(keys.filter((key) => Object.hasOwn(payload, key)).map((key) => [key, payload[key]]));
-    if (payload.dependency && typeof payload.dependency === 'object' && !Array.isArray(payload.dependency)) {
-      const dependencyKeys = ['dependency_id', 'dependency_kind', 'prerequisite_task_id', 'material_id', 'check_result_id'];
-      const dependency = Object.fromEntries(dependencyKeys
-        .filter((key) => Object.hasOwn(payload.dependency, key))
-        .map((key) => [key, payload.dependency[key]]));
-      if (Object.keys(dependency).length > 0) safe.dependency = dependency;
-    }
-    return safe;
-  };
-  const events = structures.flatMap((structure) => structure.events.map((event) => ({
-    task_id: structure.task.task_id,
-    structural_version: event.structural_version,
-    event_type: event.event_type,
-    actor_ref: event.actor_ref,
-    execution_id: event.execution_id,
-    created_at: event.created_at,
-    payload: safePayload(event.payload),
-  }))).sort((left, right) => left.created_at.localeCompare(right.created_at) || left.task_id.localeCompare(right.task_id) || left.structural_version - right.structural_version);
-  const groups = structures.flatMap((structure) => [...structure.branch_groups, ...structure.required_subtask_groups].map((group) => ({
-    group_id: group.group_id,
-    owner_task_id: group.owner_task_id,
-    group_kind: group.group_kind,
-    structural_version: group.structural_version,
-    member_count: group.members.length,
-    member_task_ids: group.members.map((member) => member.task_id),
-    members: group.members.map((member) => ({
-      task_id: member.task_id,
-      state: member.state,
-      satisfied: member.satisfied,
-      readiness: member.readiness?.status ?? null,
-    })),
-    satisfaction: group.satisfaction,
-    satisfied: group.satisfied,
-    created_by_task_id: group.created_by_task_id,
-    created_by_execution_id: group.created_by_execution_id,
-    created_by_actor_ref: group.created_by_actor_ref,
-    created_at: group.created_at,
+  const relations = taskTree.flatMap((task) => (task.relations?.depends_on ?? []).map((relation) => ({
+    task_id: task.task_id,
+    relation_kind: relation.relation_kind,
+    related_task_id: relation.related_task_id,
+    created_at: relation.created_at,
   })));
-  const provenance = [...structures.reduce((counts, structure) => {
-    const kind = structure.provenance?.creation_kind;
-    if (kind) counts.set(kind, (counts.get(kind) ?? 0) + 1);
-    return counts;
-  }, new Map())].sort(([left], [right]) => left.localeCompare(right)).map(([creation_kind, count]) => ({ creation_kind, count }));
-  const agentOperations = cores.flatMap((core) => core.structureOperations.map((operation) => ({ core: core.index, ...operation })));
-  const operationCounts = Object.fromEntries([...new Set(agentOperations.map((operation) => operation.operation))]
-    .map((operation) => [operation, agentOperations.filter((candidate) => candidate.operation === operation).length]));
-  const root = taskTree.find((task) => task.parent_id === null) ?? null;
-  const completion = {
-    task_contracts: taskTree.map((task) => ({
-      task_id: task.task_id,
-      state: task.state,
-      satisfied: completedTaskState(task.state),
-      structure_satisfied: structureByTaskId.get(task.task_id)?.satisfaction.satisfied ?? false,
-    })),
-    branch_and_subtask_groups: groups.map((group) => ({
-      group_id: group.group_id,
-      owner_task_id: group.owner_task_id,
-      group_kind: group.group_kind,
-      satisfaction: group.satisfaction,
-      satisfied: group.satisfied,
-      member_task_ids: group.member_task_ids,
-    })),
-    root: root ? {
-      task_id: root.task_id,
-      state: root.state,
-      task_contract_satisfied: completedTaskState(root.state),
-      structure_satisfied: structureByTaskId.get(root.task_id)?.satisfaction.satisfied ?? false,
-    } : null,
-  };
+  const operationCounts = {};
+  const operations = [];
   return {
     mode,
-    agent_operation_count: agentOperations.length,
+    agent_operation_count: 0,
     agent_operation_counts: operationCounts,
-    agent_operations: agentOperations,
-    event_count: events.length,
-    events,
-    branch_group_count: groups.filter((group) => group.group_kind === 'BRANCH').length,
-    required_subtask_group_count: groups.filter((group) => group.group_kind === 'REQUIRED_SUBTASK').length,
-    groups,
-    completion,
-    creation_provenance_counts: provenance,
+    agent_operations: operations,
+    event_count: 0,
+    events: [],
+    branch_group_count: 0,
+    required_subtask_group_count: 0,
+    groups: [],
+    relations,
+    completion: {
+      task_contracts: taskTree.map((task) => ({
+        task_id: task.task_id,
+        state: task.state,
+        satisfied: completedTaskState(task.state),
+        structure_satisfied: (task.blockers ?? []).length === 0,
+      })),
+      branch_and_subtask_groups: [],
+      root: null,
+    },
+    creation_provenance_counts: [{ creation_kind: 'MISSION_TASK', count: taskTree.length }],
   };
 }
 
@@ -1445,8 +1376,12 @@ function recordReadinessSnapshot(state, at = Date.now()) {
   state.readinessSamples.push({
     at_ms: at,
     tasks: tasks.map((task) => {
-      const explanation = state.taskService.explainTaskReadiness(task.task_id);
-      return { task_id: task.task_id, readiness: explanation.readiness, missing: explanation.missing };
+      const blockers = task.blockers ?? [];
+      const readiness = blockers.length > 0 ? 'BLOCKED'
+        : task.state === 'RUNNING' ? 'RUNNING'
+          : task.state === 'DONE' || task.state === 'CLOSED' || task.state === 'CANCELED' ? task.state
+            : 'READY';
+      return { task_id: task.task_id, readiness, missing: blockers.map((blocker) => blocker.related_task_id ?? blocker.dependency_id ?? blocker.dependency_kind) };
     }),
   });
 }
@@ -1545,7 +1480,6 @@ function projectReport(state, startedAt, deadline) {
   const lifecycle = lifecycleEvents(state.taskService);
   const taskLifecycle = taskLifecycleEvents(state.taskService);
   const notifications = state.taskService.listNotifications?.({ missionId: state.missionId }) ?? [];
-  const admissionEvents = taskLifecycle.filter((event) => ADMISSION_OPERATIONS.has(event.operation));
   const narratives = executionNarratives(state, taskTree, materials);
   const invalidWaitAttemptCount = cores.reduce((count, core) => count + (core.toolErrors ?? []).filter((error) =>
     error.operation === 'request_wait' && ['INVALID_CONTRACT', 'NOT_ALLOWED', 'FENCED'].includes(error.code)).length, 0);
@@ -1768,7 +1702,7 @@ function projectReport(state, startedAt, deadline) {
       route_gates: [],
       lifecycle_events: lifecycle,
       task_lifecycle_events: taskLifecycle,
-      admission_events: admissionEvents,
+      admission_events: [],
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
       claimed_core_count: new Set(state.cores.filter((core) => core.claimHistory.length > 0).map((core) => core.index)).size,
       claim_count: claimHistory.length,
@@ -1777,8 +1711,8 @@ function projectReport(state, startedAt, deadline) {
       resumed_execution_count: resumedExecutionCount,
       wait_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_wait'").get().count,
       wake_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'wake_execution'").get().count,
-      accept_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'accept_task'").get().count,
-      rework_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_rework'").get().count,
+      accept_count: 0,
+      rework_count: 0,
       resume_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'resume_execution'").get().count,
       checker_preflights: checkerPreflights,
       checker_infrastructure_failure_count: cores.reduce((count, core) => count + core.checks.filter((check) => check.result_class === 'infrastructure_failure').length, 0),
@@ -2538,37 +2472,10 @@ async function createProjectState(problem, config, options) {
       },
       onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
         const materialPublishOperation = operation === 'publish_material' || operation === 'context_publish_material';
-        if (materialPublishOperation || ['task_link_material', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+        if (materialPublishOperation || ['task_link_material', 'submit_candidate'].includes(operation)) {
           core.stateRef?.requestIdentityWake?.();
         }
-        if (STRUCTURE_OPERATIONS.has(operation)) {
-          const structureResult = result && typeof result === 'object' ? result : {};
-          const operationEvidence = {
-            operation,
-            task_id: taskId,
-            execution_id: executionId,
-            group_id: structureResult.group?.group_id ?? payload?.group_id ?? null,
-            task_ids: [
-              ...(Array.isArray(structureResult.tasks) ? structureResult.tasks.map((task) => task?.task_id) : []),
-              structureResult.task?.task_id,
-              structureResult.rework_link?.rework_task_id,
-            ].filter(Boolean),
-            dependency_id: structureResult.change?.dependency_id ?? null,
-          };
-          core.structureOperations.push(operationEvidence);
-          core.observe({
-            source: 'task-service', kind: 'semantic_structure_operation', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
-            payload: operationEvidence,
-          });
-          core.parallelism.recordWorkUnit({
-            task_id: taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'semantic_structure',
-          });
-          core.stateRef?.requestIdentityWake?.();
-        } else if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
+        if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
           const materialsRead = operation === 'context_get_material'
             ? [result?.material ?? result].filter(Boolean)
             : Array.isArray(result) ? result : Array.isArray(result?.materials) ? result.materials : [];
@@ -2631,15 +2538,6 @@ async function createProjectState(problem, config, options) {
             core: core.index,
             progress_kind: 'material_consumption',
           });
-        } else if (operation === 'create_child_task') {
-          const child = result?.task ?? result;
-          core.parallelism.recordWorkUnit({
-            task_id: child?.task_id ?? taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'child_task',
-          });
-          core.stateRef?.requestIdentityWake?.();
         } else if (operation === 'task_create') {
           const created = result?.task ?? result ?? {};
           const state = core.stateRef;
@@ -2715,22 +2613,6 @@ async function createProjectState(problem, config, options) {
             execution_id: executionId,
             core: core.index,
             progress_kind: 'material_link',
-          });
-        } else if (operation === 'accept_task' || operation === 'request_rework') {
-          const reviewed = result?.task ?? result?.target_task ?? result ?? {};
-          core.observe({
-            source: 'task-service', kind: 'task_review', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
-            payload: {
-              decision: operation === 'accept_task' ? 'accept' : 'request_rework',
-              target_task_id: payload?.target_task_id ?? reviewed.task_id ?? null,
-            },
-          });
-          core.parallelism.recordWorkUnit({
-            task_id: payload?.target_task_id ?? taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'parent_review',
           });
         } else if (operation === 'task_handoff' || operation === 'task_block') {
           const lifecycleResult = result && typeof result === 'object' ? result : {};

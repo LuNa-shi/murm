@@ -251,7 +251,7 @@ test('built-in Task, Context, Judge, and Catalog providers can all be replaced b
       assert.equal((await registry.checkReadiness(id)).ok, true);
     }
     const taskResult = await registry.invoke({
-      serviceId: 'task', capability: 'list_tasks', input: { limit: 1 },
+      serviceId: 'task', capability: 'task_list', input: { limit: 1 },
       envelope: makeEnvelope({ operationId: 'remote-task-list', actorRef: 'agent:bound' }), role: 'bound',
     });
     assert.ok(Array.isArray(taskResult));

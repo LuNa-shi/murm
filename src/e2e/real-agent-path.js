@@ -543,7 +543,10 @@ export async function runRealAgentPath({
     }
   }
   const ownerSdk = new ServicesSDK(router, { actorRef: 'owner:root' });
-  const task = ownerSdk.proposeTask({
+  const mission = ownerSdk.createMission({ mission_id: 'mission:real-agent', goal: 'Prove the locked PutnamBench fixture theorem with the real Agent Core', acceptance_conditions: { fixture_id: lockedFixture.fixture_id } }, { operationId: 'real:mission' }).mission;
+  const task = ownerSdk.createTask({
+    mission_id: mission.mission_id,
+    summary: 'Prove the locked PutnamBench fixture theorem with the real Agent Core',
     task_type: 'proof',
     goal: 'Prove the locked PutnamBench fixture theorem with the real Agent Core',
     expected_output: 'A Lean proof Artifact compiled in the locked fixture',
@@ -557,7 +560,7 @@ export async function runRealAgentPath({
         environment_ref: lockedFixture.environment_ref,
       },
     },
-  }, { operationId: 'real:propose' }).task;
+  }, { operationId: 'real:task' }).task;
   const executionId = 'real-agent-execution';
   const candidatePrompt = promptForCandidates({ firstCandidate });
   const claimed = ownerSdk.withContext({ actorRef: 'agent:real', taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({

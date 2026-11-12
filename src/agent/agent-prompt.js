@@ -184,7 +184,7 @@ export function taskLoopGuide(profile, { toolPrefix = 'swarmenv_' } = {}) {
   const register = tool('task_register', 'task_create');
   const feedback = tool('task_feedback');
   const progress = tool('execution_progress');
-  const complete = tool('task_complete', 'accept_task');
+  const complete = tool('task_complete');
   const block = tool('task_block');
   const aids = capabilities
     .filter((capability) => !CORE_SERVICES.has(capability.service_id))

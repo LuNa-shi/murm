@@ -2,7 +2,7 @@
 
 > Type: Accepted system baseline · Implementation reference: `02adbb43` (PR #115 tree), reviewed 2026-11-11.
 >
-> This directory describes the reviewed **Mission-scoped flat Task architecture** as implemented at the pinned baseline. It is **not** an unreviewed future proposal or a claim of real-Agent acceptance. The code and CLI at this commit still support a **legacy Root/Child model** (and the benchmark CLI defaults to `legacy`); that is a distinct compatibility/test path, not the flat architecture described here. A follow-up removal PR will retire this split.
+> This directory describes the reviewed **Mission-scoped flat Task architecture** as implemented by the flat-only cleanup branch. It is **not** a claim of real-Agent acceptance. The benchmark CLI has one Task model; removed model selectors and legacy Root/Child Agent APIs are rejected rather than selected at runtime.
 
 ## Read as needed
 

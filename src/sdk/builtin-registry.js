@@ -26,7 +26,6 @@ const EXPOSED_OPERATIONS = Object.freeze({
 const TOOL_OVERRIDES = Object.freeze({
   list_tasks: { name: 'task_discover', description: 'Discover the bounded Mission Task view and relevant shared work.' },
   get_task: { name: 'task_view', description: 'Read one Task contract, current state, provenance, and result references.' },
-  accept_task: { name: 'task_complete', description: 'Complete the current Task after its own contract and result references are satisfied.' },
 });
 
 function publicTools(serviceId) {
