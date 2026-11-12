@@ -45,7 +45,7 @@ Mission 与 Workspace 一对一绑定。Workspace 就是该 Mission 的项目 Gi
 
 第一版建议把 **Workspace 协调模块放在 Task Service 的协调进程与同一持久状态事务域中**。这是部署简化，不是把 Workspace 降格成 Task 的字段集合。模块负责 Workspace 元数据、Execution 与副本的绑定、main 指针、Candidate 管理及整合操作结果。它在 Workspace 本地 Repository 中管理 refs、commit 和 revision；普通操作按一次 CLI/API 请求处理，服务在执行时校验当前 E。不得把每次服务调用包装成通用 pending/permit/acceptance 协议。
 
-Context Service 继续独立拥有 Material 的内容、附件、可见性、来源与修正关系。Workspace 模块通过 Context 的 API 核对并读取候选，不能直接打开 Context 的数据库。Runtime 通过 sandbox provider 准备副本、授予本地写权限、启动/停止进程并执行资源清理。第一版不为 Workspace 再增加一个必需的独立微服务。
+Context Service 继续独立拥有 Material 的内容、附件、可见性、来源、Evidence 自述与修正关系。Candidate 完全由 Workspace 本地 Git Repository 管理；Workspace 模块只通过 Context API 查询 Candidate 引用的 Material 及其当前纠错状态，不能直接打开 Context 的数据库。Runtime 通过 sandbox provider 准备副本、授予本地写权限、启动/停止进程并执行资源清理。第一版不为 Workspace 再增加一个必需的独立微服务。
 
 | 责任 | 负责方 | 不应暗中承担的责任 |
 |---|---|---|
@@ -167,7 +167,7 @@ swarm workspace candidate view C5 --json
 swarm workspace integrate C5 --expected-revision 0.1 --json
 ```
 
-`view` 返回 main branch、Workspace revision、对应 commit 和公开历史，不返回私有目录。`candidate save` 由可信 Runtime 从当前 Execution 的独立 clone 导出允许文件并导入 Workspace 本地 Repository，返回 candidate ID 和 commit；candidate 不必关联 Material。`candidate view/diff` 返回基准、候选内容摘要、来源 Task/E 和差异。`integrate` 由 Bot 明确选择候选并请求更新 main，携带 expected revision；服务端验证当前 E、candidate 来源、政策及检查要求。普通调用同步返回结果；如果本地 Git 操作确实耗时而需要异步化，由 Workspace Service 自己定义状态查询，不引入通用 request/permit 框架。
+`view` 返回 main branch、Workspace revision、对应 commit 和公开历史，不返回私有目录。`candidate save` 由可信 Runtime 从当前 Execution 的独立 clone 导出允许文件并导入 Workspace 本地 Repository，返回 candidate ID 和 commit；candidate 不必关联 Material。`candidate list` 默认只列 active 项，可显式包含 discarded；`candidate view/diff` 返回基准、候选内容摘要、来源 Task/E 和差异。`integrate` 由 Bot 明确选择候选并请求更新 main，携带 expected revision；服务端验证当前 E、candidate 来源、政策及检查要求。普通调用同步返回结果；如果本地 Git 操作确实耗时而需要异步化，由 Workspace Service 自己定义状态查询，不引入通用 request/permit 框架。
 
 **第一版采用最小整合政策。** 不建立通用审批 DSL、复杂 Mission policy engine 或逐次人工审批。Workspace Service 只检查四件事：(1) 当前调用者是有效 Execution，且有权操作该 Workspace；(2) expected revision 与当前 main revision 一致，Candidate base commit 与该 revision 对应的 main commit 一致；(3) Candidate commit 已完整导入、可物化且来源可追溯；(4) Mission/Task 明确指定的检查已针对该 Candidate commit 执行并通过。若没有指定额外检查，不虚构测试门槛，但版本、完整性和来源检查仍然必须通过。
 
@@ -185,7 +185,7 @@ main 更新是一次 Workspace Service 操作。服务在处理时检查当前 E
 
 Git commit 本身固定文件树内容。若候选依赖 Material 中的研究主张，Workspace candidate 记录对应 Material ID/版本；integrate 前重新查询其纠错状态。Material 被后续 supersede 不会改写历史 commit，但会提示当前 main 可能需要普通修复 Task。
 
-Workspace Candidate 的保存与 main 更新是两件事。Candidate 保存后长期保留，不因 integrate 失败或 Mission 完成而自动清理。Bot 可以显式 discard；discard 只将状态改为 `discarded` 并从默认列表隐藏，第一版不物理删除 Git 对象、commit 或来源记录。默认 list 只展示 active Candidate；显式包含 discarded 的历史查询仍可查看它们。
+Workspace Candidate 的保存与 main 更新是两件事。Candidate 保存后长期保留，不因 integrate 失败或 Mission 完成而自动清理。Bot 可以显式 discard；discard 只将状态改为 `discarded` 并从默认列表隐藏，第一版不物理删除 Git 对象、commit 或来源记录。默认 list 只展示 active Candidate；使用显式历史选项（例如 `--include-discarded`）仍可查看 discarded Candidate。
 
 ## 8. 并发、旧版本与失败处理
 
