@@ -29,8 +29,8 @@
 | Core | 一个可复用的计算槽位 | 例子配置四个；不再另造 Core lane；不代表某个固定研究角色 |
 | Bot | Swarm 中一个逻辑自主工作单元 | Bot ID 与 Core/Execution/Pi Session 的精确绑定策略仍需统一；不能默认 Bot ID 等于长期 Pi 会话 |
 | Execution（E） | 一次 take 建立的任务执行区间及其权限、输入和运行记录 | 从排他认领开始到 release/异常收尾结束；准备和收尾也在记录中，不能只记模型正在回答的时间 |
-| Session | Pi 的底层会话实现 | 每个新 Execution 创建新的 Pi Session；不跨 E resume 或继承私有对话 |
-| Sandbox | 第三方隔离执行环境 | 每个 Execution 使用独立临时 sandbox，容纳 Pi、NuRouter、四基础工具及所有子进程；创建、权限、挂载和销毁见 [02](02-sandbox-runtime.md) |
+| Session | Pi 的底层会话实现 | 每个 Bot 生命周期创建新的 Pi Session；take 前后沿用同一 Session，release 后销毁；后继 Bot 不继承 |
+| Sandbox | 第三方隔离执行环境 | 每个 Bot 生命周期使用独立临时 sandbox，容纳 Pi、NuRouter、四基础工具及所有子进程；take 前只读，take 后在同一 sandbox 切换权限，release 后销毁；细节见 [02](02-sandbox-runtime.md) |
 
 Task 的创建关系只说明“谁提出了它”；依赖关系说明“什么前提满足后才值得执行”。两者都不产生永久经理、父任务控制权或同 Task 的多个执行者。需要并行工作时提出有各自交付的不同 Task。
 
@@ -110,14 +110,14 @@ stateDiagram-v2
     Closed --> [*]
 ```
 
-`Unbound` 是尚未绑定 Execution 的逻辑 Bot 阶段；成功预留产生 E 后进入 `preparing`。take 前只读运行环境与 take 后新 E 的关系仍待确认，见 [02](02-sandbox-runtime.md)。API 的 take 成功响应只在 E `active` 且新 sandbox、Pi Session、工作副本和权限准备完成时返回。这样即使准备失败，也能追踪一次已取得排他资格的尝试，不把它和单纯抢占失败混淆。
+`Unbound` 是尚未绑定 Execution 的逻辑 Bot 阶段；sandbox/Pi 在此前已启动并保持项目只读；成功预留产生 E 后进入 `preparing`。take 前只读运行环境与 take 后新 E 的关系仍待确认，见 [02](02-sandbox-runtime.md)。API 的 take 成功响应只在 E `active` 且新 sandbox、Pi Session、工作副本和权限准备完成时返回。这样即使准备失败，也能追踪一次已取得排他资格的尝试，不把它和单纯抢占失败混淆。
 
 1. **请求去重。** CLI 为 take 保存 request ID。Task Service 对 Bot 的未决请求及活跃 E 做约束：同一个 Bot 不能通过并发两个 take 获得两个活动 E；Bot ID 是否跨顺序 Execution 保留，待统一定义。
 2. **原子预留。** 在一个 Task 事务内检查 Mission 允许继续、Task 规格版本/依赖/状态、无当前执行者、Bot 未绑定；建立 `preparing` E，写入 `current_execution_id`，Task 变为 `running`。并发失败者收到明确 conflict，仍是原只读 Bot。
-3. **准备输入。** Runtime 在 Bot 启动时创建 sandbox/Pi Session，在项目仍只读时物化选定的 main 版本、Task 输入 Material 和服务配置，保存 E/Bot/Core/sandbox/私有副本对应关系。预览版本与此时版本不同时，take 结果必须说明变化，要求重读受影响文件；保留 Pi 不等于此前假设仍有效。
+3. **准备输入。** Bot 启动时 Runtime 已创建 sandbox/Pi Session 和只读项目目录；take 时核对/准备选定的 main 版本、Task 输入 Material 和服务配置，保存 E/Bot/Core/sandbox/私有副本对应关系。预览版本与此时版本不同时，take 结果必须说明变化，要求重读受影响文件；保留 Pi 不等于此前假设仍有效。
 4. **激活执行。** Task 协调域把 E 置为 active；绑定的身份、规格版本、Workspace/base 和预算确定。贡献凭据此时仍由可信 Runtime 持有。
 5. **开放本地写。** Runtime 对准备好的项目目录授权。此时即使旧的本地后台进程立即尝试写，它也已经处于这个有效 E 的归属范围。操作只能由可信生命周期控制器执行。
-6. **提供贡献绑定并返回。** 原子替换受保护的绑定文件，允许 CLI 获取当前 E 的贡献身份，返回 Task/E/Workspace/base/输入版本/权限/预算及变化摘要。该 E 使用全新 Pi Session；take 前阅读上下文是否以摘要形式传入新 Session，仍是待确认问题，不默认继承旧会话。
+6. **提供贡献绑定并返回。** 原子替换受保护的绑定文件，允许 CLI 获取当前 E 的贡献身份，返回 Task/E/Workspace/base/输入版本/权限/预算及变化摘要。take 前后沿用同一个 Pi Session；take 不重建 sandbox 或 Pi。
 
 每 sandbox 的 grant、abort、release 顺序执行，并带生命周期版本；关闭之后到达的迟延 grant 不得重新开放权限。若实际 provider 调用无法被取消，Runtime 必须等待其结果并继续停止该环境，不能把同一环境重新分配。
 
@@ -147,7 +147,7 @@ stateDiagram-v2
 
 ## release 与异常退出
 
-release 是结束当前 E，不是清空 CLI 当前任务，也不一定代表 Task 完成。v1 使用完成/未完成的结束意图，并记录原因；具体 API 字段待实现审阅。Bot 应在调用前发布交付或有用的部分材料，核对其实际可读性和任务关联。
+release 是结束当前 E 并销毁当前 Bot sandbox，不是清空 CLI 当前任务，也不一定代表 Task 完成。v1 使用完成/未完成的结束意图，并记录原因；具体 API 字段待实现审阅。Bot 应在调用前发布交付或有用的部分材料，核对其实际可读性和任务关联。
 
 1. **外部持久接收。** Task/Runtime 接收带 request ID 的结束请求，校验当前 E 和任务版本；完成意图须满足 Task 交付条件，不满足时返回拒绝或明确的未完成结果，不能默默记 done。
 2. **撤销新操作资格。** E 转为 closing，记录结束意图和已接纳操作边界；后续新贡献许可被拒绝。协调凭据也不再允许这个 Bot 新提案或认领。
@@ -190,14 +190,8 @@ Task done、Material publish、Workspace integrate 分别是局部责任、内�
 
 ## Runtime 与 Sandbox 的边界
 
-Runtime 负责创建并管理每个 Execution 对应的第三方 sandbox，但不自行实现容器隔离。每个 E 都有新的 sandbox、新 Pi Session 和干净项目工作副本；Runtime 记录 sandbox/provider ID、镜像版本、实际输入、权限状态和销毁结果。Bot 不能访问 provider 管理 API。
-
-本文只定义 Runtime 与业务生命周期的关系：
-- take 需要准备一个新 Execution 环境，并在环境准备和授权完成后才报告成功；
-- active 期间，Bot 通过该 E 的 sandbox 执行本地计算，并通过 CLI/API 调用外部服务；
-- release/异常时，Runtime 停止 sandbox 中 Pi、NuRouter、Bash 和所有子进程，确认隔离后才释放 Core/Task 占用；
-- 新 Execution 不恢复旧 Pi、旧 shell、旧项目目录或工具历史；后继只使用明确发布的 Material 和 Workspace 的 main/Candidate。
+Runtime 在 Bot 生命周期开始时创建独立第三方 sandbox 和 Pi Session。Bot 在 take 前已经运行于该 sandbox 中，读取 Mission、Task、Material 和 Workspace；此时项目目录只读，贡献型服务写操作未授权。take 成功后，Runtime 在同一个 sandbox/Pi Session 中建立 Execution 绑定并切换项目目录/服务权限；release 或异常收尾时撤权、停止全部进程并销毁 sandbox。后继 Bot 从全新 sandbox/Pi Session 开始。
 
 Sandbox 创建、挂载、文件权限、网络、凭据、provider 选型和失败回收的完整设计见 [02](02-sandbox-runtime.md)。本文件不重复这些细节。
 
-**待确认的生命周期边界：** Bot 在 take 前可以读取 Mission、Task 列表、Material 和 Workspace，以便提出/选择 Task；但 #119 又要求每个 Execution 才创建独立 sandbox。需要明确 take 前的只读研究由什么进程/环境承载，以及 take 成功后是否启动一个全新的 Pi（从而不继承 take 前的 Pi 上下文）。不能同时假设“take 前已有 Pi 上下文”和“take 后新 Pi 且不继承上下文”而不解释这段上下文如何交接。该问题列为待决设计，不在本稿偷偷选择实现。
+**仍待确认：** 逻辑 Bot ID 是否跨顺序 Bot 生命周期延续；一个 Bot 生命周期是否只允许一次 take/release，还是允许 release 后继续留在同一只读 sandbox 再 take 另一个 Task。当前建议先采用一个 Bot 生命周期最多一次成功 take，release 后 Bot/sandbox 结束；若需要第二个 Task，启动新的 Bot/sandbox。
