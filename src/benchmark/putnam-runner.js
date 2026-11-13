@@ -724,7 +724,7 @@ function selectionView(candidates) {
  * already-created claim from this same identity and never asks another
  * process to choose on its behalf.
  */
-async function takeTaskWithAgent(core, candidates, prompt) {
+async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false } = {}) {
   // An active Execution owns the identity. Never open a parallel discovery
   // turn or ask the model to take a second responsibility.
   if (core.taskId || core.executionId) return { take_deferred: true };
@@ -747,8 +747,10 @@ async function takeTaskWithAgent(core, candidates, prompt) {
   const message = [
     prompt,
     'You are the reusable identity for this Core. Continue on this same Session; do not delegate Task selection to another Agent/session.',
-    'Inspect the bounded Task view below and call task_take exactly once for one listed task_id. The task_take result binds this same Core lane to the Task; after it succeeds, continue the Task in this Session.',
-    'If the list is empty, end this turn without claiming work.',
+    bootstrap
+      ? 'The Mission has no Task yet. Read the public Mission Workspace and Mission status, propose one valuable Task with task_create, then call task_take exactly once for the returned task_id. Continue the Task in this Session after it succeeds.'
+      : 'Inspect the bounded Task view below and call task_take exactly once for one listed task_id. The task_take result binds this same Core lane to the Task; after it succeeds, continue the Task in this Session.',
+    ...(bootstrap ? [] : ['If the list is empty, end this turn without claiming work.']),
     `Bounded Task view (complete candidate set):\n${JSON.stringify(selectionView(candidates))}`,
   ].join('\n\n');
   try {
@@ -786,7 +788,7 @@ async function takeTaskWithAgent(core, candidates, prompt) {
     // empty selections do not reserve the Core.
     const selectedTaskId = core.takeResult?.task?.task_id ?? null;
     const handoffPending = !handedOff && typeof selectedTaskId === 'string' &&
-      candidates.some((candidate) => String(candidate.task_id ?? candidate.taskId ?? candidate.id) === selectedTaskId);
+      candidates.some((candidate) => String(candidate.task_id ?? candidate.taskId ?? candidate.id) === selectedTaskId) || (bootstrap && selectedTaskId !== null);
     if (!handedOff && !handoffPending) {
       core.turnInFlight = false;
       core.dispatchReserved = false;
@@ -1101,12 +1103,12 @@ function projectReport(state, startedAt, deadline) {
   const materialConsumptions = state.contextService.listMaterialConsumptions({});
   const taskTree = projectTasks(state, { limit: 100, availableOnly: false });
   const claimHistory = state.cores.flatMap((core) => core.claimHistory);
-  const allowedTaskIds = new Set([state.rootTaskId, ...claimHistory.map((claim) => claim.task_id)]);
+  const allowedTaskIds = new Set((state.rootTaskId ? [state.rootTaskId] : []).concat(claimHistory.map((claim) => claim.task_id)));
   const allowedExecutionIds = new Set(claimHistory.map((claim) => claim.execution_id));
   const materialBoundaryViolation = materials.some((material) =>
     !allowedTaskIds.has(material.source_task) || !allowedExecutionIds.has(material.source_execution));
   const rootTask = state.taskService.getTask(state.rootTaskId);
-  const inputMaterialViolation = !rootTask?.workspace || rootTask.workspace.source_hash !== state.inputMaterialHash;
+  const inputMaterialViolation = Boolean(rootTask && (!rootTask.workspace || rootTask.workspace.source_hash !== state.inputMaterialHash));
   const allowedInputMaterialIds = new Set(materials
     .filter((material) => allowedTaskIds.has(material.source_task) && allowedExecutionIds.has(material.source_execution))
     .map((material) => material.material_id));
@@ -1595,6 +1597,7 @@ async function createProjectState(problem, config, options) {
     taskService,
     contextService,
     judgeService,
+    missionWorkspace,
     serviceEndpoints,
     customServices: options.customServices ?? [],
   });
@@ -1661,7 +1664,7 @@ async function createProjectState(problem, config, options) {
   // Owner/controller SDK calls are synchronous local transactions. Keep that
   // control-plane registry local even when Agent-facing providers are remote;
   // ServicesBridge uses capabilityRegistry for the named HTTP calls.
-  const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService });
+  const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace });
   const router = new ServicesRouter({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore, registry: routerRegistry, logger: routerLogger });
   // Flat Mission Tasks complete and block through the registered Task
   // capabilities. The Runtime lifecycle aliases serve retired Tasks only;
@@ -1762,20 +1765,14 @@ async function createProjectState(problem, config, options) {
     workspace_id: publicWorkspace.workspace_id,
   } });
   observationStore.append({ experimentId: runId, source: 'runtime', kind: 'mission_started_zero_tasks', payload: { mission_id: mission.mission_id, workspace_id: publicWorkspace.workspace_id } });
-  const root = owner.createTask({
-    ...taskPayload, mission_id: mission.mission_id,
-    workspace: { ...taskPayload.workspace, workspace_id: publicWorkspace.workspace_id },
-    timebox_ms: options.taskTimeboxMs ?? flatExecutionTimeoutMs(options),
-    owner_ref: 'owner:benchmark',
-  }, { operationId: `benchmark:task:create:${runId}` }).task;
-  const initialTasks = [root];
-  observationStore.append({ experimentId: runId, source: 'task-service', kind: 'task_proposed', taskId: root.task_id, payload: { mission_id: mission.mission_id, proposer: 'operator:benchmark', proposal_kind: 'locked_workload' } });
-  observationStore.registerExperiment({ experimentId: runId, rootTaskId: root.task_id, status: 'RUNNING', metadata: { initial_task_count: 0, proposed_task_count: 1, workspace_id: publicWorkspace.workspace_id } });
+  const root = null;
+  const initialTasks = [];
+  observationStore.registerExperiment({ experimentId: runId, rootTaskId: null, status: 'RUNNING', metadata: { initial_task_count: 0, proposed_task_count: 0, workspace_id: publicWorkspace.workspace_id } });
   observationStore.append({
     experimentId: runId,
     source: 'runtime',
     kind: 'experiment_started',
-    taskId: root.task_id,
+    taskId: null,
     payload: {
       problem_id: problem.id,
       core_count: 4,
@@ -1785,7 +1782,7 @@ async function createProjectState(problem, config, options) {
       mission_id: mission?.mission_id ?? null,
       workspace_id: publicWorkspace.workspace_id,
       initial_task_count: 0,
-      proposed_task_count: 1,
+      proposed_task_count: 0,
       normal_flow: normalFlow,
     },
   });
@@ -2345,6 +2342,11 @@ async function createProjectState(problem, config, options) {
           const created = result?.task ?? result ?? {};
           const state = core.stateRef;
           const dynamic = Boolean(created.task_id && !state.initialTaskIds.includes(created.task_id));
+          if (dynamic && state && !state.rootTaskId) {
+            state.rootTaskId = created.task_id;
+            state.observationStore.registerExperiment({ experimentId: state.runId, rootTaskId: created.task_id, status: 'RUNNING', metadata: { initial_task_count: 0, proposed_task_count: 1, workspace_id: state.publicWorkspace?.workspace_id ?? null } });
+            state.observationStore.append({ experimentId: state.runId, source: 'task-service', kind: 'task_proposed', taskId: created.task_id, executionId, coreId: `core-${core.index}`, payload: { mission_id: created.mission_id ?? payload?.mission_id ?? null, proposer: core.actorRef, proposal_kind: 'bot_bootstrap' } });
+          }
           if (dynamic && state) {
             state.dynamicTaskEvents.push({
               task_id: created.task_id ?? null,
@@ -2525,7 +2527,7 @@ async function createProjectState(problem, config, options) {
     fixtureManifest: fixture,
     databasePath,
     projectDir,
-    rootTaskId: root.task_id,
+    rootTaskId: root?.task_id ?? null,
     initialTaskIds: initialTasks.map((task) => task.task_id),
     reportProjectDir,
     experimentDir: experimentRoot,
@@ -2537,6 +2539,8 @@ async function createProjectState(problem, config, options) {
     contextService,
     router,
     capabilityRegistry,
+    mission,
+    publicWorkspace,
     allowedAgentToolNames,
     agentTaskLoopGuide,
     judgeService,
@@ -2692,7 +2696,9 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       idleBackoffMs: options.identityLoopIdleBackoffMs ?? 5_000,
       taskService: state.taskService,
       listClaimableTasks: () => projectClaimableTasks(state, { limit: options.controllerShortlistLimit ?? 16 }),
-      takeTask: ({ candidates, prompt }) => takeTaskWithAgent(core, candidates, prompt),
+      takeTask: ({ candidates, prompt, bootstrap = false }) => takeTaskWithAgent(core, candidates, prompt, { bootstrap }),
+      allowEmptyDiscovery: core.index === 1,
+      bootstrapPrompt: `Mission ${mission.mission_id} starts with zero Tasks. Public Workspace is ${publicWorkspace.workspace_id} at revision 0.1. Use the registered public Workspace reads and task_status, then create one independent proof Task for ${problem.id}. The proposal must use mission_id ${mission.mission_id}, summary "Prove ${problem.id} with an independently checked candidate and a clear boundary from other Mission work.", goal "Prove ${problem.id}", expected_output "A verified Lean proof for the locked PutnamBench problem", acceptance_conditions {"project":"${problem.id}","source_hash":"${problem.source_hash}"}, completion_contract {"normal_flow":true,"required_materials":[{"kinds":["fact","experience","conjecture","artifact","failure"],"scope":"proof_relevant","min_count":1,"requires_consumption":true,"cross_task":true,"action":"integration"}],"final_candidate":true,"required_candidate":{"kind":"artifact","scope":"proof_relevant"},"required_check":{"checker_ref":"lean","checker_version":"${fixture.checker_version}","environment_ref":"${fixture.environment_ref}"}}, and workspace {"project":"${problem.id}","problem_file":"${problem.problem_file}","source_hash":"${problem.source_hash}","workspace_id":"${publicWorkspace.workspace_id}"}.`,
       claimTask: async (selectedTaskId, context) => {
         // The old selection transport may already have claimed the Task. Reuse that
         // durable result rather than creating a second Execution.

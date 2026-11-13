@@ -178,6 +178,7 @@ const publicTaskTools = [
         acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] },
         required_capabilities: { type: 'array', items: { type: 'string', minLength: 1 } },
         completion_contract: { type: 'object' },
+        workspace: { type: 'object' },
         input_material_refs: { type: 'array', items: { type: 'string' } },
         responsibility_key: { type: 'string', minLength: 1, maxLength: 256 },
         priority: { type: 'integer', minimum: 0 },
@@ -272,6 +273,26 @@ const publicContextTools = [
 const publicWorkspaceTools = TOOL_DEFINITIONS
   .filter((tool) => tool.service === 'workspace')
   .map((tool) => ({ ...tool, service: 'task', capability: 'workspace' }));
+const publicMissionWorkspaceTools = [
+  {
+    name: 'workspace_public_files', service: 'task', operation: 'workspace_public_files', version: '1.0',
+    description: 'List files in the immutable Mission Workspace revision before a Task is claimed.',
+    scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, path: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_public_read', service: 'task', operation: 'workspace_public_read', version: '1.0',
+    description: 'Read one file from an immutable Mission Workspace revision before a Task is claimed.',
+    scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id', 'path'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, path: { type: 'string' }, max_bytes: { type: 'integer', minimum: 1, maximum: 10000000 } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_public_search', service: 'task', operation: 'workspace_public_search', version: '1.0',
+    description: 'Search text in an immutable Mission Workspace revision before a Task is claimed.',
+    scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id', 'query'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, path: { type: 'string' }, query: { type: 'string' }, max_results: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false },
+  },
+];
 const publicJudgeTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge');
 const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'catalog');
 
@@ -297,7 +318,7 @@ const SERVICE_DEFINITIONS = Object.freeze([
     name: 'task',
     version: '1.0',
     description: 'Task goals, Mission-scoped Material links, semantic completion, explicit dependencies, and canonical task_take.',
-    tools: [...TOOL_DEFINITIONS.filter((tool) => tool.service === 'task'), ...publicTaskTools, ...publicWorkspaceTools],
+    tools: [...TOOL_DEFINITIONS.filter((tool) => tool.service === 'task'), ...publicTaskTools, ...publicWorkspaceTools, ...publicMissionWorkspaceTools],
   },
   { name: 'execution', version: '1.0', description: 'Internal Execution lease, heartbeat, wait, and lifecycle metadata.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'execution') },
   { name: 'workspace', version: '1.0', description: 'Runtime-owned Workspace materialization, revisions, and checkpoint lineage.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace') },

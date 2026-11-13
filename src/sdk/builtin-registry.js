@@ -17,6 +17,7 @@ const EXPOSED_OPERATIONS = Object.freeze({
     'list_tasks', 'get_task', 'list_executions',
     'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_block', 'task_close',
     'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
+    'workspace_public_files', 'workspace_public_read', 'workspace_public_search',
   ]),
   context: new Set(['publish_material', 'read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material']),
   judge: new Set(['submit_candidate', 'get_check_result']),
@@ -61,6 +62,7 @@ function strictInputSchema(parameters) {
 }
 
 function audienceFor(tool) {
+  if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search'].includes(tool.operation)) return ALL_ROLES;
   if (['list_tasks', 'task_list', 'task_view'].includes(tool.operation)) return ALL_ROLES;
   if (SHARED_READ_OPERATIONS.has(tool.operation)) return ALL_ROLES;
   if (tool.service === 'catalog' && tool.scope === 'public-read' && tool.side_effect === false) return ALL_ROLES;
@@ -115,7 +117,7 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
       audience: audienceFor(tool),
       side_effect: tool.side_effect ? 'write' : 'read',
       idempotent: !tool.side_effect,
-      context: serviceId === 'catalog' ? [] : ['task', 'execution'],
+      context: serviceId === 'catalog' || ['workspace_public_files', 'workspace_public_read', 'workspace_public_search'].includes(tool.operation) ? [] : ['task', 'execution'],
       help: {
         when: tool.description,
         ref: `service://${serviceId}/${tool.operation}`,
@@ -128,6 +130,7 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
       path: `/v1/${tool.operation}`,
       errors: [],
       scope: tool.scope ?? null,
+      capability: tool.capability ?? null,
     })),
   }, { allowOpenObjects: true });
 }
@@ -146,6 +149,16 @@ function serviceDispatch(serviceId, services, registry) {
       if (capability.operation === 'list_tools') {
         return { tools: registry.listTools(input?.service ?? null).filter(allowed) };
       }
+    }
+    if (serviceId === 'task' && ['workspace_public_files', 'workspace_public_read', 'workspace_public_search'].includes(capability.operation)) {
+      if (!services.missionWorkspace) {
+        const error = new Error('Mission Workspace is unavailable');
+        error.code = 'SERVICE_UNAVAILABLE';
+        throw error;
+      }
+      if (capability.operation === 'workspace_public_files') return services.missionWorkspace.files({ workspaceId: input?.workspace_id, revision: input?.revision, prefix: input?.path ?? '' });
+      if (capability.operation === 'workspace_public_read') return services.missionWorkspace.read({ workspaceId: input?.workspace_id, revision: input?.revision, path: input?.path, maxBytes: input?.max_bytes });
+      if (capability.operation === 'workspace_public_search') return services.missionWorkspace.search({ workspaceId: input?.workspace_id, revision: input?.revision, prefix: input?.path ?? '', query: input?.query, maxResults: input?.max_results });
     }
     const service = services[serviceId];
     if (!service || typeof service.dispatch !== 'function') {
@@ -166,6 +179,7 @@ export function createBuiltinServiceRegistry({
   taskService,
   contextService,
   judgeService = null,
+  missionWorkspace = null,
   customServices = [],
   // A configured endpoint replaces the local provider for that Service. Each
   // value may be a URL, `{ url, token }`, or `{ endpoint, manifest, adapter }`.
@@ -176,7 +190,7 @@ export function createBuiltinServiceRegistry({
   logger = null,
 } = {}) {
   const registry = new ServiceRegistry({ logger });
-  const services = { task: taskService, context: contextService, judge: judgeService };
+  const services = { task: taskService, context: contextService, judge: judgeService, missionWorkspace };
   for (const serviceId of ['task', 'context', 'judge']) {
     const tools = publicTools(serviceId);
     if (tools.length === 0) continue;

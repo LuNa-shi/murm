@@ -75,6 +75,8 @@ export class IdentityTaskLoop {
     handoffTimeoutMs = Number.POSITIVE_INFINITY,
     handoffPollMs = 25,
     idleBackoffMs = 5_000,
+    allowEmptyDiscovery = false,
+    bootstrapPrompt = null,
     waitForSignal = null,
     now = () => Date.now(),
     onEvent = null,
@@ -117,6 +119,9 @@ export class IdentityTaskLoop {
     this.handoffTimeoutMs = handoffTimeoutMs;
     this.handoffPollMs = handoffPollMs;
     this.idleBackoffMs = idleBackoffMs;
+    this.allowEmptyDiscovery = allowEmptyDiscovery;
+    this.bootstrapPrompt = bootstrapPrompt;
+    this.bootstrapUsed = false;
     this.waitForSignal = waitForSignal;
     this.now = now;
     this.onEvent = onEvent;
@@ -166,6 +171,7 @@ export class IdentityTaskLoop {
       take_exhausted: this.takeExhausted,
       take_retry_at: this.takeRetryAt,
       idle_backoff_ms: this.idleBackoffMs,
+      bootstrap_used: this.bootstrapUsed,
       idle_generation: this.idleGeneration,
       last_error: this.lastError,
       last_event_at: this.lastEventAt,
@@ -287,7 +293,9 @@ export class IdentityTaskLoop {
       const discovered = asArray(await this.listClaimableTasks({ core_id: this.coreId, limit: this.shortlistLimit, reason }), ['claimable_tasks', 'ready_tasks', 'tasks']);
       const candidates = discovered.slice(0, this.shortlistLimit);
       this.#emit({ kind: 'identity_loop_discovery', core_id: this.coreId, reason, candidate_count: candidates.length, task_ids: candidates.map(taskId).filter(Boolean), timestamp: this.now() });
-      if (candidates.length === 0) {
+      const bootstrap = candidates.length === 0 && this.allowEmptyDiscovery && !this.bootstrapUsed;
+      if (bootstrap) this.bootstrapUsed = true;
+      if (candidates.length === 0 && !bootstrap) {
         this.#setIdle({ reason: 'no_claimable_task' });
         return { disposition: 'idle', reason, candidates: [], snapshot: this.snapshot() };
       }
@@ -299,7 +307,8 @@ export class IdentityTaskLoop {
         take = await this.takeTask({
           core_id: this.coreId,
           candidates: Object.freeze(candidateView),
-          prompt: this.takePrompt,
+          prompt: bootstrap ? (this.bootstrapPrompt ?? this.takePrompt) : this.takePrompt,
+          bootstrap,
           reason,
           rescan: rescans,
         });
@@ -351,7 +360,8 @@ export class IdentityTaskLoop {
         this.rescanCount += 1;
         continue;
       }
-      const selected = candidates.find((candidate) => String(taskId(candidate)) === String(selectedId));
+      const selected = candidates.find((candidate) => String(taskId(candidate)) === String(selectedId))
+        ?? (bootstrap && claimed?.task ? claimed.task : null);
       if (!selected) {
         this.takeFailureCount += 1;
         const error = new SwarmEnvError('TAKE_INVALID', 'take must choose one task_id from the bounded shortlist', { task_id: selectedId, candidate_task_ids: candidates.map(taskId) });

@@ -32,7 +32,7 @@ export class ServicesRouter {
     this.judgeService = judgeService;
     this.missionWorkspace = missionWorkspace;
     this.missionSubmissionStore = missionSubmissionStore;
-    this.registry = registry ?? createBuiltinServiceRegistry({ taskService, contextService, judgeService, serviceEndpoints, customServices });
+    this.registry = registry ?? createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace, serviceEndpoints, customServices });
     this.logger = logger;
   }
 
