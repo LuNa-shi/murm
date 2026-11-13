@@ -2,7 +2,7 @@
 
 > As built: runtime code at the source baseline named in [INDEX](INDEX.md), including the flat-only benchmark and OpenSandbox provider changes. This describes implementation, including compatibility paths and limits; it does not claim a new real-Agent acceptance run.
 
-An Execution is a durable authorization for an identity to work on a Task. Runtime binds that authorization to a Core, a Workspace and a model Session. These objects have different lifetimes: a reusable Session can take several successive Tasks, and one Execution can survive several replacement Sessions. Neither a model reply nor the end of a turn automatically completes an Execution or Task.
+An Execution is a durable authorization for a Bot to work on a Task. Runtime binds that authorization to a Core, a Workspace and a model Session. The compatibility default still permits a reusable Session to take successive Tasks, but the Issue #122 migration seam `Runtime({ freshBotPerExecution: true })` removes the Session from Runtime's reusable set and stops it with the Sandbox when the Execution releases. A later Execution then requires a fresh Bot/Session. Neither a model reply nor the end of a turn automatically completes an Execution or Task.
 
 Read [07 Run configuration](07-run-configuration.md) for deployment/runner composition and whole-run termination, [03 Mission and Task](03-mission-task.md) for responsibility transitions, [05 Workspace and continuity](05-workspace-continuity.md) for files and compaction, and [01 Agent Core](01-agent-core.md) for prompt and Bridge behavior.
 

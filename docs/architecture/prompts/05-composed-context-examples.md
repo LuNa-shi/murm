@@ -7,7 +7,7 @@ These examples reproduce both composition stages of the current Mission Runtime 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Runtime Mission start/restart: exact two-stage composed body for synthetic inputs
 
-Body SHA-256: `33340c23610db694729b9d4035e67c9ba9f05cc3aaf67556ea70e926332e283d`
+Body SHA-256: `5f4867d1c28324692c7a4d07c22e02ab2ab966486eaa6790f349dbb388024d68`
 
 ````text
 You are one SwarmEnv Bot lifecycle working with other Bots toward the supplied Mission; never lower its original acceptance requirements or treat one local Task as Mission completion.
@@ -70,7 +70,7 @@ Callable capability directory:
   - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
 
 Task loop (exact tool names in this Session):
-1. Look: without an Execution, read the Task view supplied in this turn (it lists every claimable Task, including the shared Mission). With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
+1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
 2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_submit_candidate with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_submit_candidate again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
@@ -325,7 +325,7 @@ Callable capability directory:
   - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
 
 Task loop (exact tool names in this Session):
-1. Look: without an Execution, read the Task view supplied in this turn (it lists every claimable Task, including the shared Mission). With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
+1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
 2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_submit_candidate with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_submit_candidate again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
@@ -667,7 +667,7 @@ Recovery: none.
 ````
 ## Runtime Mission recovery: exact two-stage composed body for synthetic inputs
 
-Body SHA-256: `7611e1693d2ab6c54500ac198a5f4577d9a2a03467dfe59f2aa151cdcc54d6f1`
+Body SHA-256: `896e5ea93669ff586c08cde7dab550f205084dec84b2c7d7e105e364609a6fe4`
 
 ````text
 Resume the claimed Task from its durable Workspace and checkpoint.
@@ -721,7 +721,7 @@ Callable capability directory:
   - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
 
 Task loop (exact tool names in this Session):
-1. Look: without an Execution, read the Task view supplied in this turn (it lists every claimable Task, including the shared Mission). With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
+1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
 2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_submit_candidate with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_submit_candidate again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
@@ -978,7 +978,7 @@ Callable capability directory:
   - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
 
 Task loop (exact tool names in this Session):
-1. Look: without an Execution, read the Task view supplied in this turn (it lists every claimable Task, including the shared Mission). With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
+1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
 2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_submit_candidate with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_submit_candidate again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.

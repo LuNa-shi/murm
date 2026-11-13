@@ -190,7 +190,7 @@ export function taskLoopGuide(profile, { toolPrefix = 'swarmenv_' } = {}) {
     .filter((capability) => !CORE_SERVICES.has(capability.service_id))
     .map((capability) => `${toolPrefix}${capability.tool_name ?? capability.name}`);
   const steps = [
-    line('1. Look:', `without an Execution, read the Task view supplied in this turn (it lists every claimable Task, including the shared Mission). With an Execution, use ${view} and ${materials} to read Task state and existing Materials.`, view, materials),
+    line('1. Look:', `without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use ${view} and ${materials} to read Task state and existing Materials.`, view, materials),
     line('2. Take:', `call ${take} with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.`, take),
     line('3. Work:', `read and edit the Workspace with ${files}${aids.length > 0 ? `; use ${aids.join(', ')} as service aids` : ''}.`, files),
     line('4. Check:', `write the answer file in the Workspace, then call ${submit} with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics${checkResult ? ` (re-read with ${checkResult})` : ''}. On FAIL, revise the file and call ${submit} again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.`, submit),

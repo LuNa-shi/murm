@@ -133,7 +133,7 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionSubmissionStore = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionSubmissionStore = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = false, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -146,6 +146,7 @@ export class Runtime {
     this.agentAdapter = agentAdapter;
     this.sandboxManager = sandboxManager;
     this.cleanExecutionWorkspaces = cleanExecutionWorkspaces === true;
+    this.freshBotPerExecution = freshBotPerExecution === true;
     this.maxWorkers = maxWorkers;
     this.runtimeGeneration = runtimeGeneration;
     this.actorRef = actorRef;
@@ -1994,18 +1995,18 @@ export class Runtime {
   }
 
   /**
-   * Release one Execution's claim on a reusable identity Session. The
-   * Session survives a normal completion/handoff/block so the same identity
-   * can take the next responsibility; only explicit rotation, process
-   * failure, or shutdown stops it.
+   * Release one Execution's claim on its Bot Session. Compatibility mode may
+   * retain a reusable identity Session; freshBotPerExecution deliberately
+   * stops and removes it so the next responsibility starts a new Bot.
    */
   async #releaseSessionBinding(active, executionId) {
     if (!active?.session) return;
     if (active.session.boundExecutionId === executionId) active.session.boundExecutionId = null;
-    if (active.session.identitySession === true) {
+    if (active.session.identitySession === true && !this.freshBotPerExecution) {
       this.identitySessions.add(active.session);
       return;
     }
+    if (active.session.identitySession === true) this.identitySessions.delete(active.session);
     await Promise.resolve(active.session.stop?.()).catch(() => undefined);
   }
 
@@ -2310,7 +2311,7 @@ export class Runtime {
         active.workspace = workspace;
         this.logger?.append({ event: 'runtime.compaction_checkpoint_saved', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, workspace_revision: workspace.workspace_revision, checkpoint_ref: savedCheckpoint.checkpoint_ref });
         // Metadata alone is not research Progress. At this safe point ask the
-        // same identity to record substantive progress; the prompt is queued
+        // current Bot to record substantive progress; the prompt is queued
         // only after the current turn settled and is skipped when this
         // identity is already due to rotate.
         if (this.compactionCheckpointReminder && !active.closing && !active.rotationPromise && typeof active.session.prompt === 'function') {

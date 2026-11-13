@@ -7,11 +7,11 @@ The first profile below is the benchmark flat Task model with built-in Services 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Flat built-ins, no Sandbox: exact task-loop guide
 
-Body SHA-256: `9d0b72f1b701f368278157da51279f8c4bef352759f10d89ce69186cc3ee3c4c`
+Body SHA-256: `0a52d7545268b3e838f621b0f1d37531c8b0426c0dd8a1fb977ee77fb8641765`
 
 ````text
 Task loop (exact tool names in this Session):
-1. Look: without an Execution, read the Task view supplied in this turn (it lists every claimable Task, including the shared Mission). With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
+1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
 2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_submit_candidate with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_submit_candidate again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
@@ -23,11 +23,11 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins with Sandbox: exact task-loop guide
 
-Body SHA-256: `9d0b72f1b701f368278157da51279f8c4bef352759f10d89ce69186cc3ee3c4c`
+Body SHA-256: `0a52d7545268b3e838f621b0f1d37531c8b0426c0dd8a1fb977ee77fb8641765`
 
 ````text
 Task loop (exact tool names in this Session):
-1. Look: without an Execution, read the Task view supplied in this turn (it lists every claimable Task, including the shared Mission). With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
+1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
 2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_submit_candidate with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_submit_candidate again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
@@ -39,11 +39,11 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins with Sandbox and Mathlib Search: exact task-loop guide
 
-Body SHA-256: `f7685175cc384c4b28078f4abad5419ee493bbbd7d23d2102c982b54372b0a73`
+Body SHA-256: `810ff55377ed8f18ee82ddbb068e0bc7a91da4889df1c3fccf627b43ee11a847`
 
 ````text
 Task loop (exact tool names in this Session):
-1. Look: without an Execution, read the Task view supplied in this turn (it lists every claimable Task, including the shared Mission). With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
+1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
 2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff; use swarmenv_mathlib_search as service aids.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_submit_candidate with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_submit_candidate again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
