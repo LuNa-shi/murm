@@ -33,13 +33,20 @@ function resultFromRow(row) {
 }
 
 export class JudgeService {
-  constructor(database = ':memory:', { checker, logger = null, maxInfrastructureRetries = 2, dependencyEventSink = null } = {}) {
+  constructor(database = ':memory:', {
+    checker,
+    logger = null,
+    maxInfrastructureRetries = 2,
+    dependencyEventSink = null,
+    fixtureManifest = null,
+  } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     ensureJudgeSchema(this.db);
     this.checker = checker ?? new LeanChecker();
     this.logger = logger;
     this.maxInfrastructureRetries = Number.isInteger(maxInfrastructureRetries) && maxInfrastructureRetries >= 0 ? maxInfrastructureRetries : 2;
     this.dependencyEventSink = dependencyEventSink;
+    this.fixtureManifest = fixtureManifest;
   }
 
   close() { this.db.close(); }
@@ -74,7 +81,12 @@ export class JudgeService {
 
   dispatch(operation, payload = {}, envelope) {
     validateEnvelope(envelope);
-    if (operation === 'get_check_result') return this.getAgentCheckResult(required(payload.check_result_id, 'check_result_id'));
+    if (operation === 'get_check_result') {
+      if (payload.check_result_id) return this.getAgentCheckResult(required(payload.check_result_id, 'check_result_id'));
+      if (payload.request_key) return agentCheckResult(this.getByRequestKey(required(payload.request_key, 'request_key')));
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'get_check_result requires check_result_id or request_key');
+    }
+    if (operation === 'submit_candidate') return this.submitCandidate(payload, envelope);
     if (operation !== 'submit_check_result') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Judge operation: ${operation}`);
     return this.#transaction(() => {
       const fingerprint = operationPayload(operation, payload, envelope);
@@ -84,6 +96,97 @@ export class JudgeService {
       this.#saveOperation(envelope.operation_id, operation, fingerprint, result);
       return result;
     });
+  }
+
+  /**
+   * Agent-facing Judge operation. The Bridge supplies the authenticated
+   * Execution envelope and an internal source descriptor after reading the
+   * private Workspace. No Task Service submission relay is involved.
+   */
+  async submitCandidate(payload = {}, envelope) {
+    validateEnvelope(envelope);
+    if (!envelope.task_id || !envelope.execution_id) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'submit_candidate requires a bound Task and Execution');
+    }
+    const source = payload.source ?? payload.candidate_source ?? null;
+    if (!source || typeof source.content !== 'string') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate requires a Workspace source');
+    }
+    const sourceHash = source.content_hash ?? contentHash(source.content);
+    if (source.content_hash !== undefined && source.content_hash !== sourceHash) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace source content_hash does not match content');
+    }
+    const attestation = payload.source_attestation ?? null;
+    if (attestation !== null) {
+      if (attestation.task_id !== envelope.task_id || attestation.execution_id !== envelope.execution_id ||
+        (attestation.path ?? null) !== (source.path ?? null) ||
+        (attestation.workspace_revision ?? null) !== (source.workspace_revision ?? null) ||
+        attestation.content_hash !== sourceHash) {
+        throw new SwarmEnvError(ERROR_CODES.FENCED, 'Workspace source attestation does not match the current Execution source');
+      }
+    }
+    // Checker and input bindings are provider configuration. Never accept a
+    // fixture manifest, Task projection, or Execution object from the Agent
+    // payload; the envelope and the configured Judge provider are authoritative.
+    const fixtureManifest = this.fixtureManifest;
+    if (!fixtureManifest) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge checker binding is not configured');
+    }
+    const targetSpecVersion = Number.isInteger(envelope.spec_version) ? envelope.spec_version : 0;
+    const inputSnapshotHash = fixtureManifest.input_snapshot_hash ?? hash({
+      fixture_id: fixtureManifest.fixture_id,
+      problem_file_hash: fixtureManifest.problem_file_hash,
+      putnambench_commit: fixtureManifest.putnambench_commit,
+    });
+    const task = {
+      task_id: envelope.task_id,
+      spec_version: targetSpecVersion,
+      workspace: { input_metadata: fixtureManifest },
+      completion_contract: {},
+    };
+    const execution = {
+      execution_id: envelope.execution_id,
+      task_id: envelope.task_id,
+      spec_version: targetSpecVersion,
+      state_version: envelope.state_version,
+      input_snapshot_hash: source.input_snapshot_hash ?? inputSnapshotHash,
+      workspace_ref: null,
+      workspace_revision: source.workspace_revision ?? null,
+    };
+    const sourceId = `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${sourceHash}`;
+    const result = await this.judgeCandidate({
+      request_key: payload.request_key ?? envelope.operation_id ?? hash({
+        source_id: sourceId,
+        source_hash: sourceHash,
+        task_id: envelope.task_id,
+        execution_id: envelope.execution_id,
+        revision: source.workspace_revision ?? null,
+      }),
+      candidate_material_id: sourceId,
+      target_task_id: envelope.task_id,
+      target_spec_version: task.spec_version,
+      input_snapshot_hash: execution.input_snapshot_hash,
+      checker_ref: fixtureManifest.checker_ref,
+      checker_version: fixtureManifest.checker_version,
+      environment_ref: fixtureManifest.environment_ref,
+      execution_id: envelope.execution_id,
+      state_version: execution.state_version ?? envelope.state_version,
+      candidate: {
+        material_id: sourceId,
+        content: source.content,
+        content_hash: sourceHash,
+      },
+      target_task: task,
+      workspace: {
+        input_snapshot_hash: execution.input_snapshot_hash,
+        execution_id: envelope.execution_id,
+        task_id: envelope.task_id,
+        workspace_ref: execution.workspace_ref ?? null,
+        workspace_revision: source.workspace_revision ?? execution.workspace_revision ?? null,
+      },
+      fixture_manifest: fixtureManifest,
+    }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref });
+    return agentCheckResult(result);
   }
 
   async judgeCandidate(input, { operationId = randomUUID(), actorRef = 'judge:lean' } = {}) {
@@ -116,6 +219,14 @@ export class JudgeService {
         checked = await this.checker.check({ candidate: normalized.candidate, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest });
       } catch (error) {
         checked = { verdict: 'ERROR', evidence: { diagnostic: error.message, error: error.name, checker_started: false } };
+      }
+      if (typeof normalized.candidate.content === 'string' && /\b(?:sorry|admit|axiom)\b/i.test(normalized.candidate.content)) {
+        checked = {
+          ...(checked ?? {}),
+          verdict: 'ERROR',
+          result_class: 'request_failure',
+          evidence: { ...(checked?.evidence ?? {}), forbidden_placeholder: true, checker_started: false, diagnostic: 'candidate contains a forbidden placeholder' },
+        };
       }
       if (!checked || !['PASS', 'FAIL', 'INCONCLUSIVE', 'ERROR'].includes(checked.verdict)) {
         checked = { verdict: 'ERROR', evidence: { diagnostic: 'checker returned an invalid verdict', checker_started: false } };

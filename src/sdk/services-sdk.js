@@ -1,11 +1,6 @@
 import { asSwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 
-function taskReadPayload(taskOrPayload) {
-  if (taskOrPayload && typeof taskOrPayload === 'object' && !Array.isArray(taskOrPayload)) return taskOrPayload;
-  return { task_id: taskOrPayload };
-}
-
 /**
  * Agent-facing public boundary. The method list is deliberately limited to
  * Task/Execution and Context Service operations; Workspace Manager is a
@@ -133,70 +128,13 @@ export class ServicesSDK {
     return this.#read('list_material_consumptions', filters);
   }
 
-  getCheckResult(checkResultId) {
-    return this.#read('get_check_result', { check_result_id: checkResultId });
-  }
-
-  proposeTask(task, options = {}) {
-    return this.#write('propose_task', task, { ...options, taskId: null, executionId: null, fencingVersion: null });
+  getCheckResult(checkResultId, { requestKey = null } = {}) {
+    return this.#read('get_check_result', requestKey ? { request_key: requestKey } : { check_result_id: checkResultId });
   }
 
   /** Register one independent responsibility with the current identity provenance. */
   taskRegister(task, options = {}) {
     return this.#write('task_register', task, options);
-  }
-
-  createChildTask(task, options = {}) {
-    return this.#write('create_child_task', task, {
-      ...options,
-      stateVersion: options.stateVersion ?? options.taskStateVersion ?? this.context.stateVersion ?? this.context.taskStateVersion,
-    });
-  }
-
-  /**
-   * Create alternative ordinary Tasks that pursue the same parent objective.
-   * The Task Service records the branch relationship; it is not an ownership
-   * or implicit execution-wait dependency.
-   */
-  createBranchGroup(payload = {}, options = {}) {
-    return this.#write('create_branch_group', payload, {
-      ...options,
-      stateVersion: options.stateVersion ?? options.taskStateVersion ?? this.context.stateVersion ?? this.context.taskStateVersion,
-    });
-  }
-
-  /** Add a jointly required ordinary Task to an existing Task or branch. */
-  addRequiredSubtask(payload = {}, options = {}) {
-    return this.#write('add_required_subtask', payload, {
-      ...options,
-      stateVersion: options.stateVersion ?? options.taskStateVersion ?? this.context.stateVersion ?? this.context.taskStateVersion,
-    });
-  }
-
-  /** Read the durable branch, subtask, dependency, and provenance structure. */
-  getTaskStructure(taskOrPayload = this.context.taskId) {
-    return this.#read('get_task_structure', taskReadPayload(taskOrPayload));
-  }
-
-  /** Propose an auditable additive or explicitly versioned structure change. */
-  proposeStructureChange(payload = {}, options = {}) {
-    return this.#write('propose_structure_change', payload, {
-      ...options,
-      stateVersion: options.stateVersion ?? options.taskStateVersion ?? this.context.stateVersion ?? this.context.taskStateVersion,
-    });
-  }
-
-  /** Explain which contract or explicit dependency makes a Task ready/blocking. */
-  explainTaskReadiness(taskOrPayload = this.context.taskId) {
-    return this.#read('explain_task_readiness', taskReadPayload(taskOrPayload));
-  }
-
-  /** Create a new rework responsibility linked to prior evidence and feedback. */
-  createReworkTask(payload = {}, options = {}) {
-    return this.#write('create_rework_task', payload, {
-      ...options,
-      stateVersion: options.stateVersion ?? options.taskStateVersion ?? this.context.stateVersion ?? this.context.taskStateVersion,
-    });
   }
 
   claim(payload = {}, options = {}) {
@@ -236,14 +174,6 @@ export class ServicesSDK {
 
   submitCandidate(payload, options = {}) {
     return this.#write('submit_candidate', payload, options);
-  }
-
-  acceptTask(payload = {}, options = {}) {
-    return this.#write('accept_task', payload, options);
-  }
-
-  requestRework(payload, options = {}) {
-    return this.#write('request_rework', payload, options);
   }
 
   applyCheckResult(payload, options = {}) {

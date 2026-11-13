@@ -1,8 +1,8 @@
 # 05. Workspace, Sandbox and continuity
 
-This chapter describes the filesystem and process behavior implemented at PR #116
-head `086946893222c91f7844538d7f7af234faac361b`. The runtime code is unchanged
-from `02adbb43d39e0b23befb7f2ffc4b19ffb386a36d`. [Execution](02-execution.md)
+This chapter describes the current filesystem and process behavior, including
+the direct Workspace-to-Judge input boundary added for Issue #117.
+[Execution](02-execution.md)
 explains durable ownership; [Mission and Task](03-mission-task.md) explains how a
 successor obtains responsibility. This chapter explains which files, commits,
 checkpoints, process state and feedback survive that transition.
@@ -218,6 +218,34 @@ saving that reference. This handles heartbeat races, not arbitrary divergence
 between filesystem revision and database revision. Files, Git commit,
 metadata, snapshot, database reference, checkpoint and Material writes remain
 separate steps with separately observable failure.
+
+### Direct Judge reads of a Workspace file
+
+`swarmenv_judge_submit_candidate` requires a relative `path` in the current
+Execution Workspace. Its optional `workspace_revision` and `content_hash`
+are expected-value guards. Bridge reads through `Runtime.readWorkspaceFile`,
+rejects mismatched supplied values as `STALE_VERSION`, and sends the returned
+content, revision and hash with an authenticated Task/Execution/path
+attestation to Judge. This call does not save a revision, export an old Git
+commit, require a Candidate Material, or route submission through Task Service.
+Judge uses its own configured fixture/checker and persists the resulting check;
+Task completion is separate. See [the direct submission contract](04-services.md#the-as-built-submission-route)
+and [ADR 0019](../adr/0019-direct-judge-workspace-submission.md).
+
+This boundary inherits the live-file behavior above. An optional revision
+checks the current metadata revision; it does not request bytes from that
+historical revision. Bridge uses the file-read default of 1,000,000 bytes and
+forwards its content/hash, without a separate full-file snapshot or truncation
+branch. Judge recomputes the supplied content's SHA-256 before checking, so a
+stale indexed hash or truncated source with a full-file hash fails request
+validation. Direct submission therefore does not remove the current
+metadata-index limitations or establish the phase-02 immutable shared-revision
+contract.
+
+Sources: [Bridge source preparation](../../src/agent/services-bridge.js),
+[Runtime read boundary](../../src/runtime/runtime.js),
+[Workspace live-file read](../../src/runtime/workspace-manager.js),
+[Judge source validation](../../src/judge/judge-service.js).
 
 ## 5. Progress and handoff persistence
 
@@ -498,9 +526,9 @@ presence of the word “resume”, “checkpoint” or “handoff” in a log:
 
 Relevant focused tests are
 [Workspace contracts](../../test/workspace-contract.test.js),
-[Runtime](../../test/runtime.test.js),
+[Workspace contract](../../test/workspace-contract.test.js),
 [progress and bounded save failure](../../test/phase1-progress.test.js),
-[feedback, compaction and rotation](../../test/phase1-s3.test.js), and
+[feedback, compaction and rotation](../../test/task-handoff-notifications.test.js), and
 [SandboxManager](../../test/sandbox-manager.test.js). They cover public seams
 and use controlled/mock collaborators in several paths; their existence is
 not a claim that this documentation change reran a live Docker/provider run.

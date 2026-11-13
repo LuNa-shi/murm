@@ -77,8 +77,8 @@ Dependencies 与 Material 输入不同。若 T2 尚未 done，但已有局部成
 2. 保存值得保留的文件 revision 和 Material，供后继使用。
 3. 调用 `swarm task finish --outcome blocked --wait-for T2 --reason ...`。
 4. Service 验证当前 E、依赖和环，在同一协调事务中保存 request、结束意图及新增等待关系，并把 E 转 closing。
-5. Runtime 停止整份 Bot；安全解绑后 T1 根据全部依赖进入 blocked。
-6. T2 done 后，Service 重新计算 T1；全部条件满足时变 ready，由新 Bot 在新 sandbox 中 take。
+5. Runtime 停止整份 Bot；安全解绑后 T1 按全部依赖的当前状态计算 blocked/ready。前置已全部 done 时直接 ready，不等待一个已经发生的完成事件。
+6. 若仍有未满足前置，后续 T2 done 时 Service 再重新计算 T1；全部条件满足时变 ready，由新 Bot 在新 sandbox 中 take。
 
 `--wait-for` 将明确前置加入当前有效关系，不静默删除原有依赖。若 T2 在处理期间已经 done，收尾后可以直接 ready；若拟增加的 T2 已 cancelled，拒绝这次 finish blocked 并说明需要选取有效前置，当前 E 仍可处理错误。
 
@@ -190,7 +190,9 @@ main 的后续变化不会后台改写当前目录。需要接入公开新成果
 | `finish --outcome blocked --wait-for T2 --reason ...` | 新发现必须先完成的 Task | 记录依赖，依据实际状态 blocked/ready |
 | `finish --outcome cancelled --reason ... [--replacement T3]` | 责任应撤回或由新合同替代 | cancelled |
 
-准备结束时先 save/publish、确认外部结果，再 finish。允许无新成果的诚实 incomplete/cancelled，不为退出创建空材料。blocked 必须有可检查的 Task 前置，不能只写不可判定的自由文本等待条件；服务短暂故障按运行层有界重试处理，不伪造研究 Task。
+准备结束时先尝试 save/publish、确认外部结果，再按真实责任 finish。没有新成果也能如实 blocked/cancelled/incomplete，不为退出创建空材料。blocked 必须有可检查的 Task 前置，不能只写不可判定的自由文本等待条件；服务短暂故障按运行层有界重试处理，不伪造研究 Task。
+
+保存或发布失败只影响可交接成果，不能把已确认的等待关系抹去：仍需等待明确前置时使用 blocked，责任确已撤回时使用 cancelled，未完成且没有新前置时才使用 incomplete。结束记录如实说明未持久内容无法接续，不要求为记录阻塞先成功发布 Material。
 
 finish 的结束意图、动态等待/替代信息、request 与 E closing 同时持久受理。受理后拒绝新贡献，Runtime 独立完成全进程停止和条件解绑；连接断开不等于失败。Bot 不在 finish 后再上传或修改文件。
 

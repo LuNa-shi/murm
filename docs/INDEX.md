@@ -1,6 +1,6 @@
 # SwarmEnv documentation index
 
-> Status: Active · Reviewed 2026-11-12
+> Status: Active · Reviewed 2026-11-13
 
 This is the entry point to current maintained documentation. Historical design documents and experiment reports remain available from pinned Git history, not a live archive.
 
@@ -33,7 +33,7 @@ Keep approvals, dependencies, progress, handoff notes and discussion in the Issu
 
 `experiments/` holds version-bound observations: what was run, with which inputs and resources, what occurred, and which conclusions the evidence supports. Architecture explains how the current implementation works and cannot replace a past result. The registry, report template and cited R16 retrospective therefore remain.
 
-`adr/` retains the rationale for durable decisions. ADR 0017 explains shared Missions and independent responsibilities; ADR 0018 explains Issue-led development and the documentation contract. ADRs do not introduce a parallel phase plan, need not be created for each stage, and do not override later approved Issue decisions. Superseded details belong in pinned Git history.
+`adr/` retains the rationale for durable decisions. ADR 0017 explains shared Missions and independent responsibilities; ADR 0018 explains Issue-led development and the documentation contract; [ADR 0019](adr/0019-direct-judge-workspace-submission.md) explains direct Workspace-file submission to Judge and the separate Task completion decision. ADRs do not introduce a parallel phase plan, need not be created for each stage, and do not override later approved Issue decisions. Superseded details belong in pinned Git history.
 
 ## Historical records
 

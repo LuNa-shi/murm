@@ -22,7 +22,7 @@ A programmatic project call must supply at least one of `experimentDir` or `repo
 
 ## 2. Benchmark CLI: every flag and its actual default
 
-Arguments accept `--name value` or `--name=value`, except the boolean `--normal-flow`. The launcher first loads `.env` from the working directory, ignoring blank/comment lines and preserving existing environment values. Values are simple trimmed strings with surrounding quotes removed; this is not a general shell/dotenv interpreter.
+Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is the no-value help flag. The removed `--normal-flow` flag is rejected. The launcher first loads `.env` from the working directory, ignoring blank/comment lines and preserving existing environment values. Values are simple trimmed strings with surrounding quotes removed; this is not a general shell/dotenv interpreter.
 
 | Flag | Default / behavior |
 |---|---|
@@ -34,10 +34,10 @@ Arguments accept `--name value` or `--name=value`, except the boolean `--normal-
 | `--timebox-ms` | `3600000`; positive finite execution-loop duration per project |
 | `--turn-timeout-ms` | `540000`; per-turn settling bound, not the overall project deadline |
 | `--parallel-mode` | `semantic`; accepts `direct`, `semantic`, `root-only` |
-| `--task-model` | `legacy`; accepts `legacy` or `flat` in this baseline |
-| `--normal-flow` | Initially `SWARMENV_NORMAL_FLOW === 'true'`; bare flag enables; `--normal-flow=false` disables; an inline value other than `false` enables |
-| `--provider` | `NUROUTER_PI_PROVIDER`; required |
-| `--model` | `NUROUTER_PI_MODEL`; required |
+| `--task-model` | Rejected; the benchmark has one flat Mission Task model |
+| `--normal-flow` | Rejected; the flat Mission Task contract is always used |
+| `--provider` | `PI_PROVIDER`, then `NUROUTER_PI_PROVIDER`, otherwise `gpt_proxy`; empty values are rejected |
+| `--model` | `PI_MODEL`, then `NUROUTER_PI_MODEL`, otherwise `gpt-6.1-sol`; empty values are rejected |
 | `--experiment-root` | `experiments` |
 | `--experiment-dir` | `experiments/putnambench-runs/run-<startup timestamp>`; resolved path must be strictly below experiment root |
 | `--report-dir` | `reports/putnambench-runs/run-<startup timestamp>` |
@@ -47,9 +47,9 @@ Arguments accept `--name value` or `--name=value`, except the boolean `--normal-
 | `--observability-metadata` | `SWARMENV_OBSERVABILITY_METADATA`, otherwise look under the experiment root |
 | `--help`, `-h` | Print usage and exit before requiring benchmark arguments |
 
-Unknown options throw. Numeric flags are converted with `Number`; only the explicit validations above and downstream constructors apply. The CLI does not have flags for Sandbox, stop-on-solve, custom adapters or all Runtime timers; those are programmatic options.
+Unknown options throw. Numeric flags are converted with `Number`; only the explicit validations above and downstream constructors apply. The CLI has no Sandbox flags: it builds its required OpenSandbox configuration from `SWARMENV_SANDBOX_ENABLED` (the literal string `true` enables it), `SWARMENV_SANDBOX_PROVIDER` (default `opensandbox`), `SWARMENV_SANDBOX_IMAGE`, `SWARMENV_OPENSANDBOX_URL`, optional endpoint/Bridge host variables and the selected provider settings. A disabled or non-OpenSandbox deployment is rejected. Stop-on-solve, custom adapters and the remaining Runtime timers are programmatic options.
 
-**CLI and library defaults differ.** Calling the exported runner directly defaults to `parallelMode='direct'`. Its accepted modes also include the historical `legacy` treatment value. `taskModel` defaults to `legacy` unless `taskOriented === true`, which selects flat. If `normalFlow` is omitted, the library enables it for the semantic treatment. The CLI always supplies its boolean default, so CLI semantic mode does not by itself enable normal flow. Record the actual options instead of inferring them from a treatment name.
+The exported runner and CLI both construct the flat Mission Task model. `parallelMode` remains a treatment choice (`direct`, `semantic` or `root-only`); it does not select a second Task model. Removed `taskModel` and `normalFlow` options are rejected by the CLI. Record the actual treatment and resource options rather than inferring them from historical names.
 
 ## 3. Locked input and environment
 
@@ -68,7 +68,7 @@ The checked-in [configuration](../../config/putnambench-12.json) pins:
 
 These values identify this configuration; they are not proof that the local checker has already passed preflight. Judge performs its own environment checks. The input formalization is allowed to contain an unsolved marker; a submitted Candidate is a separate file/material and is checked against the Candidate policy.
 
-Provider/model/account/group routing uses `NUROUTER_PI_PROVIDER`, `NUROUTER_PI_MODEL`, `NUROUTER_PI_ACCOUNT` and `NUROUTER_PI_GROUP`, overridden by corresponding programmatic options. The adapter supports `openai`, `openai-codex` and `kimi`; OpenAI routes reject setting both account and group. The runner chooses command `pi` for `openai-codex`, otherwise `nurouter`, unless `command` overrides it. [Agent Core](01-agent-core.md) gives the full argv and RPC behavior.
+Direct Pi routing uses `PI_PROVIDER` and `PI_MODEL` (with the older `NUROUTER_PI_*` names retained as compatibility fallbacks). The CLI defaults to the native `gpt_proxy` provider and direct `pi`; `PI_GPT_PROXY_BASE_URL` and secret `PI_GPT_PROXY_API_KEY` configure the compatible endpoint through the image models catalog. The launcher can read only the selected provider's endpoint/key from `models.json` in `PI_CODING_AGENT_DIR` or the default Pi agent directory, with the explicit provider environment variables taking precedence. The route resolver also accepts `kimi_proxy`, `openai`, `openai-codex` and the NuRouter-specific `kimi` route when explicitly selected; the deployment must supply a compatible command/image. Direct library calls do not inherit the CLI's fallback provider/model values. [Agent Core](01-agent-core.md) gives the full argv and RPC behavior.
 
 ## 4. Startup in execution order
 
@@ -76,8 +76,9 @@ Provider/model/account/group routing uses `NUROUTER_PI_PROVIDER`, `NUROUTER_PI_M
 2. **Attach an observer.** Reuse a healthy metadata-declared server. Without an explicit metadata override, the server must use the expected observation database. An explicitly configured unavailable server causes an error. Otherwise spawn a detached observer, poll health up to 80 times at 250 ms intervals, then open the observation database and write `metadata/observability.json`. The observer is persistent and is not stopped at project cleanup.
 3. **Create project storage.** The runner creates project SQLite, Workspace, report and log directories. Task, Context and Judge share the project database. Unless an Observation Store is injected, observation tables can live in that same connection. CLI runs inject the separate persistent store.
 4. **Construct services.** Wire Context to Task Service, Judge health lookup to Task Service, and Judge dependency events back to Task Service. Create LeanChecker unless a checker was injected. Build the Agent-facing capability registry from local providers, configured HTTP endpoints and optional bundles. Keep a second local registry/router for synchronous owner/controller transactions.
+   The checked-in `services/builtin/compose.yaml` starts Task, Context, Judge and Catalog as separate HTTP processes with independent stateful volumes; the runner still uses in-process services unless its deployment supplies external endpoints and an integration path for controller transactions.
 5. **Resolve Mathlib Search.** Prefer a configured external URL/provider. Otherwise, if the pinned project's Mathlib source tree exists, register the local source provider. Missing source in a synthetic fixture leaves the capability absent; admission can then reject a Task needing it. Registration does not create a hidden alternative search service.
-6. **Create the responsibility.** Flat mode creates a Mission and its first/shared proof Task. Legacy mode proposes a root proof Task. The Task contains the goal, instructions, completion contract, source hash and formal source in Workspace metadata. The flat contract includes proof-relevant cross-Task consumption and a final checked Candidate; legacy semantic mode has its own root-integration Material requirement. Full instruction variants appear in [08](08-prompts.md).
+6. **Create the responsibility.** The runner creates a Mission and its first/shared proof Task. The Task contains the goal, instructions, completion contract, source hash and formal source in Workspace metadata, including proof-relevant Material consumption and a final checked Candidate. Full instruction variants appear in [08](08-prompts.md).
 7. **Optional preparation hook.** Await `prepareProject` for deterministic callers to seed Tasks through the same services before Agent startup. Normal benchmark code does not pre-create a fixed research Task pool.
 8. **Create four Core environments.** Each Core receives an adapter, one-worker Runtime, shared project Workspace root, lane-specific Bridge, raw Agent log and sanitized observation hooks. Flat profiles omit Runtime's duplicate `task_complete`/`task_block` aliases. Sandbox tools are exposed only when Sandbox is enabled. Start Bridges and pass their endpoint/token environment into the respective Agent process.
 9. **Create supervisors and start the clock.** Build Task Controller and four identity loops, subscribe to post-commit Task events, reconcile readiness and start loop supervisors. Reset the parallelism tracker at execution-loop start. Flat Runtime deadlines use this common run deadline. The Pi Session is launched when a loop actually needs it.
@@ -86,17 +87,18 @@ Failures while creating Core environments stop any created Sessions, shut down R
 
 ## 5. Programmatic options and timer precedence
 
-The exported runner accepts the options below in addition to CLI-equivalent `provider`, `model`, `parallelMode`, `taskModel`, `normalFlow`, `experimentDir`, `reportDir`, `projectParallelism`, `timeboxMs` and `turnTimeoutMs`. Passing an option is configuration, not authorization to spend resources.
+The exported runner accepts the options below in addition to CLI-equivalent `provider`, `model`, `parallelMode`, `experimentDir`, `reportDir`, `projectParallelism`, `timeboxMs` and `turnTimeoutMs`. Passing an option is configuration, not authorization to spend resources.
 
 | Option | Default and role |
 |---|---|
-| `taskOriented` | `true` selects flat only when `taskModel` is absent |
+| `taskModel`, `taskOriented` | Removed; supplying either property is rejected, regardless of its value |
+| `normalFlow` | No longer selects behavior; the runner fixes normal flow to `true` and does not read this option |
 | `runId`, `startedAt` | Random UUID and current time for setup identity/tracker; active-loop timing is set after setup |
 | `repositoryCommit`, `repositoryWorktreeDirty` | `null` unless caller/CLI supplies them; report provenance |
 | `stopOnSolved` | Only literal `true` enables early exit; otherwise continue toward the deadline |
 | `taskTimeboxMs` | Flat initial Task timebox: run timebox unless supplied |
-| `executionTimeoutMs` | Flat: run timebox; legacy: Runtime default one hour |
-| `handoffReminderMs` | Flat: run `timeboxMs` minus `min(5 min, floor(timeboxMs/10))`, at least 1 ms; legacy: 55 min. This default is not recalculated from an explicit `executionTimeoutMs` override; Runtime requires it below execution timeout. |
+| `executionTimeoutMs` | Run timebox; Runtime owns the active Execution deadline |
+| `handoffReminderMs` | Run `timeboxMs` minus `min(5 min, floor(timeboxMs/10))`, at least 1 ms. This default is not recalculated from an explicit `executionTimeoutMs` override; Runtime requires it below execution timeout. |
 | `handoffTimeoutMs` | Identity-loop ownership wait: `max(executionTimeoutMs, 2 * turnTimeoutMs)` |
 | `turnIntervalMs` | `1000`; bound continuation waits at most 100 ms before its next turn, while periodic scheduling also checks this interval |
 | `pollMs` | `5000`; outer repair/observation wake fallback |
@@ -110,8 +112,8 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `identityLoopStopGraceMs` | `15000`; wait before continuing finalization with a recorded supervisor-stop timeout |
 | `checker`, `leanCommand`, `checkerTimeoutMs` | Inject checker or use LeanChecker, command `lake`, timeout `120000` |
 | `maxInfrastructureRetries` | Forwarded to JudgeService; see exact Judge defaults in [04](04-services.md) |
-| `command`, `account`, `group`, `extensionPath` | Override adapter command, route identity and SwarmEnv extension location |
-| `agentAdapterFactory` | Caller-supplied adapter factory; used for controlled tests, not an extra Agent-selection process |
+| `command`, `account`, `group`, `extensionPath` | Override command and routing; runner command defaults to `pi`. Top-level `extensionPath` applies to the local compatibility adapter; OpenSandbox uses `sandbox.extensionPath` in the guest |
+| `agentAdapterFactory` | Caller-supplied compatibility adapter factory when an OpenSandbox manager is not selected; used for controlled tests, not an extra Agent-selection process |
 | `observationStore` | Inject persistent observation store; otherwise project-local storage |
 | `prepareProject` | Awaited preparation hook after initial Task creation and before Core construction |
 | `serviceRegistry` | Inject full Agent-facing registry; skips built-in bundle and Mathlib auto-registration; local owner/controller router still exists |
@@ -123,12 +125,13 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `mathlibSearchSourceRoot` | Otherwise `MATHLIB_SEARCH_SOURCE_ROOT` or `<lean project>/.lake/packages/mathlib/Mathlib` |
 | `mathlibRevision`, `leanVersion` | Otherwise the fixture's pinned revision/toolchain; provider metadata |
 | `sandbox` | Enabled only when `sandbox.enabled === true`; exact settings below |
+| `requireThirdPartySandbox` | CLI sets `true`: require enabled OpenSandbox. Direct library calls can omit it for explicitly configured compatibility fixtures |
 
 The runner does not pass every Runtime constructor option through. For example `maxRecoveryAttempts=1`, `maxCompactions=3`, `handoffWindowRatio=0.8` and compaction checkpoint reminders use Runtime defaults here; assigning similarly named fields on runner options does not configure them.
 
-Sandbox settings are `image` (required when enabled), optional `imageDigest`, `allowedReadOnlyRoots=[]`, `network='none'`, `user='1000:1000'`, `memory='2g'`, `cpus=2`, `pidsLimit=256`, `commandTimeoutMs=120000`, `maxOutputBytes=1048576`, and `preflightTimeoutMs=20000`. [Workspace and continuity](05-workspace-continuity.md) describes the container boundaries and detached-job timeout limitation. The shipped Dockerfiles for HTTP services are deployment recipes; they are not a preconfigured Lean/Sandbox experiment environment.
+Sandbox settings are `image` (required when enabled), optional `provider` (the compatibility default is `docker`; Issue 119 uses `opensandbox`), `commandTimeoutMs=120000`, `maxOutputBytes=1048576`, and `preflightTimeoutMs=20000`. The `run-putnambench-benchmark.mjs` CLI sets `requireThirdPartySandbox=true` and rejects a disabled sandbox or any provider other than OpenSandbox before creating Tasks or Agents; deterministic library fixtures must opt into their compatibility provider explicitly. The OpenSandbox provider additionally accepts `lifecycleBaseUrl` (or `SWARMENV_OPENSANDBOX_URL`), optional `endpointHost` (or `SWARMENV_OPENSANDBOX_ENDPOINT_HOST` when a local Docker server advertises an internal address that must be reached through its published host port), `apiKey`/`OPEN_SANDBOX_API_KEY`, `execdToken`/`SWARMENV_EXECD_ACCESS_TOKEN`, `entrypoint`, `resourceLimits`, `environment`, `agentEnvironment`, `secretEnvironment`, `volumes`, `execdPort=44772`, `workerPort=44100`, `workerCommand`, `foregroundSession=false` (the runner default; set true only for a verified provider session endpoint), `bridgeHost` and `bridgeUrl`. `bridgeUrl` is optional for loopback-only test doubles; when workers must call the controller Bridge over a provider network, bind `bridgeHost` to a reachable interface and set a public URL template such as `http://172.17.0.1:{port}`. `agentEnvironment` is the explicit public configuration passed to the worker (`SWARMENV_BRIDGE_URL`, `SWARMENV_*_SERVICE_URL`, endpoint discovery and routing/version fields); `secretEnvironment` is the explicit bearer/provider-key allow-list passed only in the authenticated `/start` request and includes `SWARMENV_BRIDGE_TOKEN` when supplied by Runtime. It creates a provider sandbox per Execution and never mounts the host Workspace; the runner enables clean preparation and the Agent adapter copies bounded initial Task files into the guest `/workspace`. The image creates `/workspace` explicitly so the provider command cwd is present before the first sync. The image recipe at [services/opensandbox-agent/Dockerfile](../../services/opensandbox-agent/Dockerfile) carries the pinned Pi package, direct `gpt_proxy` model catalog, Bash, Git, CLI and repository extension source. The API key and base URL are supplied at runtime through Pi environment interpolation; no provider binary or credential is baked into the image. The compatibility Docker provider retains `imageDigest`, `allowedReadOnlyRoots=[]`, `network='none'`, `user='1000:1000'`, `memory='2g'`, `cpus=2` and `pidsLimit=256`. [Workspace and continuity](05-workspace-continuity.md) describes the container boundaries and detached-job timeout limitation. The shipped Dockerfiles for HTTP services are deployment recipes; they are not a preconfigured Lean/Sandbox experiment environment.
 
-There is an as-built startup defect in this optional runner path: `createProjectState` awaits Sandbox preflight before initializing its `observationStore` constant, while the Sandbox logger closes over that constant. A successful Docker preflight invokes the logger and therefore reaches an uninitialized binding (`ReferenceError`) before project storage setup. The default Sandbox-disabled path avoids this branch. This source-level finding is not a claim that a real Docker/Lean deployment was exercised for the documentation review; the configuration surface exists, but the current enabled runner path must not be described as validated working deployment.
+Sandbox preflight and provider reconciliation run before the experiment row is registered. Provider events emitted during that short window are intentionally dropped; once the experiment is registered, later lifecycle events are recorded in the observation stream. A failed preflight is still surfaced before any Task or Agent is created.
 
 ## 6. The active outer loop
 
@@ -173,7 +176,7 @@ The top-level ignored `experiments/` raw evidence directory and committed `docs/
 
 ## 9. Fixture, service and frontend boundaries
 
-The deterministic `ScriptExecutor` uses scripted Sessions and a supplied checker, with an explicit healthy deterministic preflight shim. It proposes/claims a legacy-style Task, publishes an invalid Candidate, checks it, resumes after waiting, publishes a repaired Candidate and applies PASS. The fixture launcher uses a temporary directory and deletes it unless `--keep` is set.
+The deterministic `ScriptExecutor` uses scripted Sessions and a supplied checker, with an explicit healthy deterministic preflight shim. It creates a Mission and Mission-scoped Task without `normal_flow: true`, claims that Task, publishes an invalid Candidate, checks it, resumes through the low-level compatibility wait/wake path, publishes a repaired Candidate and applies PASS. This retained fixture path does not select a legacy Task model in the benchmark runner. The fixture launcher uses a temporary directory and deletes it unless `--keep` is set.
 
 `--real-agent` probes local Node/NuRouter/Pi/Lean/Lake commands and provider/model routing before launch. It returns `BLOCKED` for missing prerequisites and `FAILED_TO_LAUNCH` for missing root/input. Its first Candidate is intentionally derived by changing a valid fixture's `ring` to `rfl`; this probes diagnostic consumption and repair. It is not a benchmark run with only an unsolved problem as input. The real-probe environment metadata fields are `SWARMENV_IMPLEMENTATION_COMMIT`, `SWARMENV_WORKTREE_DIRTY`, `SWARMENV_WORKTREE_STATUS`, `SWARMENV_TIMEBOX_MS`, `SWARMENV_PUTNAMBENCH_ROOT`; they record caller context and do not themselves prove it.
 
@@ -185,4 +188,4 @@ The dashboard's maintained source is `src/observability/client/`; Vite builds it
 
 Sources: [benchmark CLI](../../scripts/run-putnambench-benchmark.mjs), [runner](../../src/benchmark/putnam-runner.js), [locked config](../../config/putnambench-12.json), [parallelism tracker](../../src/benchmark/parallelism.js), [fixture launcher](../../scripts/run-mvp-fixture.mjs), [script fixture](../../src/e2e/script-executor.js), [real probe](../../src/e2e/real-agent-path.js), [observer launcher](../../scripts/serve-observability.mjs), [service launcher](../../scripts/service-host.mjs), [search launcher](../../scripts/mathlib-search-service.mjs), [Vite config](../../src/observability/vite.config.js), [package scripts](../../package.json).
 
-Relevant deterministic tests: [benchmark runner](../../test/putnam-runner.test.js), [orchestration](../../test/orchestration-roles.test.js), [parallelism](../../test/parallelism.test.js), [end-to-end fixtures](../../test/e2e.test.js), [observation server](../../test/observability-server.test.js). Real provider/Lean acceptance still requires separate version-bound evidence.
+Relevant deterministic tests: [flat benchmark CLI](../../test/flat-only-cli.test.js), [orchestration](../../test/orchestration-roles.test.js), [parallelism](../../test/parallelism.test.js), [end-to-end fixtures](../../test/e2e.test.js), [observation server](../../test/observability-server.test.js). Real provider/Lean acceptance still requires separate version-bound evidence.

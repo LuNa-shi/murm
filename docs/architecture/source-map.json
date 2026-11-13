@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "02adbb43d39e0b23befb7f2ffc4b19ffb386a36d",
-  "reviewed_date": "2026-11-11",
+  "runtime_baseline": "e6f97bc0d56709f94374a5f824c8e2cd9c312cb2",
+  "reviewed_date": "2026-11-13",
   "scope_roots": [
     "src",
     "scripts",
@@ -180,6 +180,16 @@
       "role": "Mathlib HTTP provider process and environment settings"
     },
     {
+      "path": "scripts/opensandbox-agent-worker.mjs",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/02-execution.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface"
+    },
+    {
       "path": "scripts/run-mvp-fixture.mjs",
       "category": "launch and composition",
       "chapters": [
@@ -216,6 +226,24 @@
       "role": "Built-in HTTP service process composition and environment settings"
     },
     {
+      "path": "scripts/service-host-entrypoint.sh",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Explicit Judge checker prebuild gate and persistent volume marker"
+    },
+    {
+      "path": "scripts/swarm.mjs",
+      "category": "service and Agent integration",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Executable swarm CLI entry point and exit-code boundary"
+    },
+    {
       "path": "services/builtin/Dockerfile",
       "category": "provider deployment and instructions",
       "chapters": [
@@ -236,6 +264,15 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Built-in provider deployment configuration"
+    },
+    {
+      "path": "services/builtin/compose.yaml",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Four-process isolated service deployment with independent persistent volumes"
     },
     {
       "path": "services/mathlib-search/Dockerfile",
@@ -293,6 +330,24 @@
       "role": "Optional provider manifest, schemas, help and documentation declarations"
     },
     {
+      "path": "services/opensandbox-agent/Dockerfile",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "OpenSandbox agent image recipe containing the worker, Pi package and native shell tools"
+    },
+    {
+      "path": "services/opensandbox-agent/pi-models.json",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Native Pi compatible-provider catalog with runtime environment interpolation"
+    },
+    {
       "path": "src/agent/agent-prompt.js",
       "category": "Agent and prompts",
       "chapters": [
@@ -311,6 +366,16 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Role-specific capability profile, binding requirements and tool directory"
+    },
+    {
+      "path": "src/agent/opensandbox-agent-adapter.js",
+      "category": "agent core and transport",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/02-execution.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pi/NuRouter RPC adapter over an OpenSandbox worker endpoint"
     },
     {
       "path": "src/agent/pi-adapter.js",
@@ -378,6 +443,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Project composition, Agent claim loop, Judge orchestration, stop and reports"
+    },
+    {
+      "path": "src/cli/swarm-cli.js",
+      "category": "service and Agent integration",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Non-interactive Bash CLI parser, discovery and HTTP JSON invocation"
     },
     {
       "path": "src/context/context-service.js",
@@ -677,6 +751,15 @@
       "role": "Per-Core discovery/take supervisor, rescans, waiting and wake events"
     },
     {
+      "path": "src/runtime/opensandbox-manager.js",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "OpenSandbox lifecycle and Execd provider boundary for one Execution"
+    },
+    {
       "path": "src/runtime/runtime-capabilities.js",
       "category": "Execution and control",
       "chapters": [
@@ -756,6 +839,15 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Built-in registered manifests and local/remote provider composition"
+    },
+    {
+      "path": "src/sdk/http-domain-proxy.js",
+      "category": "service and Agent integration",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Bounded HTTP proxy for synchronous cross-domain service dependencies in isolated hosts"
     },
     {
       "path": "src/sdk/local-service-double.js",

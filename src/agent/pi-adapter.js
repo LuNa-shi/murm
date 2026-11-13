@@ -13,14 +13,14 @@ function required(value, name) {
   return value;
 }
 
-const PROVIDER_ARG_PLACEMENT = Object.freeze({ openai: 'pi', 'openai-codex': 'pi', kimi: 'nurouter' });
+const PROVIDER_ARG_PLACEMENT = Object.freeze({ openai: 'pi', 'openai-codex': 'pi', gpt_proxy: 'pi', kimi: 'nurouter', kimi_proxy: 'pi' });
 
 export function resolveAgentCoreRoute({ provider, account, group } = {}) {
   if (!Object.hasOwn(PROVIDER_ARG_PLACEMENT, provider)) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported NuRouter/Pi provider: ${provider}`);
   }
   const placement = PROVIDER_ARG_PLACEMENT[provider];
-  if ((provider === 'openai' || provider === 'openai-codex') && account && group) {
+  if ((provider === 'openai' || provider === 'openai-codex' || provider === 'gpt_proxy' || provider === 'kimi_proxy') && account && group) {
     throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'OpenAI NuRouter routing cannot set both account and group');
   }
   return placement;

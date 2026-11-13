@@ -63,7 +63,7 @@ Prompt/Skills 只把模块合同转成可执行指导，不另创权限；Valida
 - Material 正文和生产来源不可变；Evidence v1 是正文中的自然语言说明，不新增 Evidence 对象。
 - disputed 保留警示；正式 supersede 一律从默认列表和搜索隐藏整份旧 Material，新版须承接仍有效内容。精确 ID 和历史仍可读取；错误替代可通过受控撤关系操作恢复可发现性。
 - `mission submit` 固定当前 main、显式选择的不可变 Material 内容版本、验收/checker/环境版本。验证期间冻结 main merge，现有 E 仍可保存成果。
-- 失败、错误或超时保留结果并解冻；PASS 固定 accepted revision，进入正常停止。单活跃提交、请求幂等和迟到结果 guard 防止验收错版本。
+- 失败、错误或超时保留结果，只释放本 submission 的冻结；main 是否恢复合入还取决于当前 Mission 状态和冻结归属。有效 PASS 固定 accepted revision，进入正常停止；迟到结果不能影响较新提交或已停止 Mission。
 - 未绑定但具 Mission 协调权限的 Bot 可以提交公开成果；不为点击最终提交而创建 Task，不把未完成 Task 全部标成 done。
 
 ### 3.4 第一版边界
@@ -80,4 +80,4 @@ v1 的 Workspace 与 Task/Mission 位于同一协调进程和一致性域；Cont
 
 设计判据是：假设所有组件忠实实现合同，四个 Bot 是否仍因规则冲突、缺操作或不合理限制无法推进。当前代码中的旧循环、Session 复用或私有恢复只属于 08 的迁移背景，不作为本轮目标设计缺陷。
 
-用户决定与采纳版本记录在 #122/PR；本目录是可审阅的版本化附件。任何合同修订同步相关模块、Prompt、Validation 和 Migration；实现 PR 再据实际行为更新 Architecture。本次只修订设计，不改运行代码，不合并 PR，也不启动付费实验。
+用户决定与采纳版本记录在 #122/PR；本目录是可审阅的版本化附件。任何合同修订同步相关模块、Prompt、Validation 和 Migration；实现 PR 再据实际行为更新 Architecture。本次修订设计与对应文档，不改变运行代码，也不启动付费实验；文档 PR 的合入按用户已给出的授权执行。

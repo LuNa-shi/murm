@@ -161,7 +161,7 @@ stateDiagram-v2
 
 1. **正常完成或软限制提醒。** Bot 在仍有效的 E 内保存整个一致文件树为 Workspace revision，发布有用 Material，确认外部可读取，并准备 finish。不是每个 E 都必须同时保存文件和发布材料。
 2. **持久受理 finish。** 在 Task 协调事务内验证 owner、结果和结构条件，原子保存结束意图、动态等待关系/替代指向、request ID，并将 E 转 closing。该事务之后新贡献被拒绝。
-3. **停止整份 Bot。** Runtime 独立于 CLI 连接停止 Pi、NuRouter、Bash 和全部子进程，销毁或隔离 sandbox。
+3. **停止整份 Bot。** Runtime 独立于 CLI 连接停止 Pi、实际启用的模型路由扩展、Bash 和全部子进程，销毁或隔离 sandbox。
 4. **安全解绑。** 确认停止且 owner 仍是本 E 后，关闭 E，清除认领；Task 按已持久结果变为 done、cancelled，或按全部有效等待关系变为 ready/blocked。此前保持 running/closing。
 5. **留存与补位。** 保留 Material、全部已保存 revisions、main、调用结果和受控审计记录。Mission 仍运行且存在启动条件时，再按事件/退避启动新 Bot。
 
@@ -209,7 +209,7 @@ Task done、Material publish、Workspace save、main merge 与 Mission accepted 
 | 结果或并发情形 | 必须行为 |
 |---|---|
 | 检查 PASS | 仅当前有效 submission 可完成；再次确认 main 仍为提交版本、Mission 未取消/停止、验收配置匹配，记录 accepted revision 与完整输入清单，进入正常停止 |
-| 检查未通过 | 保存反馈；仅释放本 submission 的冻结，Mission 继续运行，允许修复和以后提交 |
+| 检查未通过 | 保存反馈；仅释放本 submission 的冻结。Mission 未停止且没有其他有效冻结时才恢复 main merge，允许修复和以后提交；迟到结果不能改变较新提交 |
 | 输入准备/检查错误或超时 | 记录 error/timed_out，不冒充研究失败；释放自己的冻结，若 Mission 未停止则继续运行 |
 | 重复请求 | 同 request ID 只对应一次受理；同一完整快照与 checker 配置复用已完成的验收结果，不能换 ID 重复检查直到偶然 PASS；基础设施 error/timeout 不作为科学 FAIL 缓存，可按预配置策略重新受理并记录关联尝试和费用 |
 | 受理与 task finish 并发 | 以协调域持久受理顺序为准：finish 先结束 Bot 则新提交拒绝；submission 已受理则成为服务持有的检查，不因提交者随后 finish 而丢失或撤销 |

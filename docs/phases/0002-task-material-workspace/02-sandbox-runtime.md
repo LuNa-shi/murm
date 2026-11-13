@@ -7,7 +7,7 @@
 
 ## 1. 已确定的运行约束
 
-1. **每个 Bot 使用独立临时 sandbox。** Pi、NuRouter、扩展、Bash 和全部子进程位于同一隔离边界，至少达到 Docker 级隔离。一个 Bot 有零个或一个 E；未 take 也有真实 sandbox、费用与正常退出路径。
+1. **每个 Bot 使用独立临时 sandbox。** Pi、实际启用的模型路由扩展、其他扩展、Bash 和全部子进程位于同一隔离边界，至少达到 Docker 级隔离。一个 Bot 有零个或一个 E；未 take 也有真实 sandbox、费用与正常退出路径。
 2. **每个新 Bot 从干净环境启动。** Runtime 创建新 Bot ID、sandbox 和 Pi Session，预留空的受保护项目目录。take 保留本 Bot 的阅读上下文，在同一 sandbox 中建立唯一 E；不会创建第二份 Pi 或复用其他 Bot 的私有状态。
 3. **公开成果有两种接续载体。** Material 保存研究内容，Workspace 不可变 revision 保存项目文件树。后继不能使用前任私有目录、未公开 Git 对象、会话或缓存。
 4. **服务与持久状态在 sandbox 外。** Task/Mission 与 Workspace 使用同一协调域，Context、Judge 和领域服务通过独立 API 接入；Bot 不直接访问服务数据库。
@@ -22,7 +22,7 @@
 | 可信 Runtime | Core、Bot/sandbox 管理、provider adapter、预算、生命周期与清理对账 | 管理凭据不进入 Bot |
 | 外部协调域 | Task/Mission、Workspace 模块与本地 Git Repository | Task owner、main 更新与验收冻结串行协调；Git/元数据仍需对账 |
 | 外部独立服务 | Context/Material、Judge、领域服务 | 通过真实 API 通信，各自持久保存输入和结果 |
-| 每 Bot sandbox | Pi、NuRouter、扩展、Bash、CLI、项目目录、运行 scratch、子进程 | 无共享可写 Git 元数据，无其他 E 私有目录 |
+| 每 Bot sandbox | Pi、实际启用的模型路由扩展、其他扩展、Bash、CLI、项目目录、运行 scratch、子进程 | 无共享可写 Git 元数据，无其他 E 私有目录 |
 
 sandbox 是不可信执行边界。必须假设 Bot 会运行任意 Bash、启动后台进程、读取可见环境变量、修改可写文件并尝试联网，不能把 prompt 当作隔离机制。
 
@@ -39,7 +39,7 @@ sandbox 是不可信执行边界。必须假设 Bot 会运行任意 Bash、启�
 
 ### 3.1 创建前的描述与审计
 
-创建 Bot 时先固定 Mission/Core/Bot、sandbox 镜像 digest、Pi/NuRouter/CLI/extension 版本、服务 endpoint、网络和选工预算。此时没有 Task/E，也不伪造占位 E。
+创建 Bot 时先固定 Mission/Core/Bot、sandbox 镜像 digest、Pi/CLI/extension 及实际启用的模型路由版本、服务 endpoint、网络和选工预算。此时没有 Task/E，也不伪造占位 E。
 
 take 时再固定 Task 合同与等待关系版本、E、初始 Workspace revision/commit、Material ID/内容版本和执行额度。最初输入保留审计；后续显式 apply/save 的变化另行记录，不能把最初输入悄悄改成“最新版本”。
 
@@ -51,14 +51,14 @@ take 时再固定 Task 合同与等待关系版本、E、初始 Workspace revisi
 4. 可信 entrypoint 创建受保护的父目录和空 `/workspace/project`，Bot 用户不能写入或替换它。
 5. 在单独运行目录启动非 root worker/Pi，通过 RPC 发送稳定规范和启动消息，实际发送内容按 [06](06-prompts-and-skills.md) 记录。
 
-Pi 的项目工具路径在启动时固定为 `/workspace/project`；会话数据库、NuRouter 缓存、日志和临时文件不写入该目录。take 前这里为空不是项目内容为空；项目内容应通过 Workspace API 浏览。
+Pi 的项目工具路径在启动时固定为 `/workspace/project`；会话数据库、已启用路由器的缓存、日志和临时文件不写入该目录。take 前这里为空不是项目内容为空；项目内容应通过 Workspace API 浏览。
 
 ### 3.3 目录布局与 take 前浏览
 
 | 目录/数据 | 用途 | 权限与生命周期 |
 |---|---|---|
 | `/workspace/project` | 当前 E 的项目文件树 | 启动时空且受保护；take 后物化并 grant；不含 Bot 可管理的 .git |
-| 独立 runtime scratch | Pi 会话、NuRouter、缓存、临时文件 | 本 Bot 可写，新 Bot 不继承；不可通过其路径替换项目父目录 |
+| 独立 runtime scratch | Pi 会话、已启用路由器的数据、缓存、临时文件 | 本 Bot 可写，新 Bot 不继承；不可通过其路径替换项目父目录 |
 | 凭据与绑定 | Mission 协调身份、take 后的 E 身份和 endpoint | 由可信机制注入，不进入项目版本、Material 或公开日志 |
 | 诊断日志/私有审计 | 运行解释与资源对账 | 受控外部存档，不是后继研究输入 |
 | Provider mounts | 明确配置的外部/临时卷 | 每项记录来源、模式和生命周期，不动态假设热挂载能力 |
@@ -85,7 +85,7 @@ grant 与 abort/finish 按 sandbox 生命周期版本排序。迟到的 provider
 
 ### 3.4 执行、save 与显式 apply
 
-- Pi、NuRouter、扩展、Bash 和所有子进程都留在本 Bot sandbox；四基础工具看到同一 `/workspace/project`。
+- Pi、实际启用的模型路由扩展、其他扩展、Bash 和所有子进程都留在本 Bot sandbox；四基础工具看到同一 `/workspace/project`。
 - Runtime 管理全部 Git。Bot 修改普通项目文件，再通过 `workspace save` 请求保存一致文件树；只有持久成功返回的 revision 才是公开成果。
 - 同一 active E 可显式 `workspace apply --from R/main`。Runtime 将来源版本与当前工作树做受控整合，保留本地改动和冲突信息；不是逐文件盲拷贝，也不重新创建 Bot/E。
 - 初始 revision 保持原记录。apply 后的工作树在 save 前不能冒称新的持久 revision；记录已应用来源、最后保存版本以及 dirty/conflicts，详见 [05](05-workspace.md)。
@@ -100,7 +100,7 @@ grant 与 abort/finish 按 sandbox 生命周期版本排序。迟到的 provider
 finish 持久受理后：
 
 1. E 进入 closing，服务拒绝新的贡献；Runtime 撤销项目写入资格。
-2. 停止 Pi、NuRouter、Bash 和全部子进程；不能只发送“请停止”的文本。
+2. 停止 Pi、已启用的模型路由扩展、Bash 和全部子进程；不能只发送“请停止”的文本。
 3. 确认停止或隔离后关闭 E，条件释放 Task owner，按记录更新 Task 结果。
 4. 销毁 sandbox 和临时目录；保留外部 Material、Workspace revisions、请求结果及受控审计。
 5. 只在允许安全补位且有启动条件时分配 Core，不因空闲立即热重启。
@@ -138,14 +138,16 @@ Runtime 依据事件和有上限的退避恢复选工，不在同一无进展状
 
 已接受长操作的最大消耗和取消方式在其服务合同中确定。结束 Bot 不退回已发生费用，也不让后台操作获得无限尾部额度。真实集成验证并发接纳、模型断连、Bot 退出后操作继续和硬停止；这些是已确定要求的数值配置与验收，不增加通用 permit 平台或新的架构选择。
 
-## 5. Pi、NuRouter 与基础工具的接入
+## 5. Pi、模型接入与基础工具
+
+模型接入采用实际配置的固定版本。当前 main 的 OpenSandbox 使用 direct Pi；NuRouter 是兼容配置可选的模型路由扩展，不是目标合同的强制组件。使用该扩展时，它与 Pi 一起位于 sandbox 内，其凭据、缓存、资源消耗和停止同样受控。
 
 目标执行栈：
 
-1. sandbox 镜像包含固定版本的 Pi、NuRouter、扩展、swarm CLI 和项目工具。
+1. sandbox 镜像包含固定版本的 Pi、所选扩展、swarm CLI 和项目工具。
 2. Provider 启动一个受控 worker/entrypoint。
 3. Worker 在 sandbox 内以 pipe/RPC 启动 Pi，提供可双向交互的输入输出通道。
-4. NuRouter 和扩展在 Pi 进程中加载；Bash 命令和所有子进程继承 sandbox 内受限身份。
+4. 实际选择的模型路由扩展及其他 Pi 扩展按固定配置加载；Bash 命令和所有子进程继承 sandbox 内受限身份。
 5. Runtime 将实际发送的 prompt、工具配置、skill 版本和关键事件写入外部审计记录。
 
 OpenSandbox release-1.2.0 的源码调研给出以下限制，均需在固定版本的真实 sandbox 中再次验证：
@@ -213,7 +215,7 @@ candidate 没有独立 ID、专用存储或 discard 状态。删除当前版本�
 
 真实集成至少证明：
 
-- 两个并发 Bot 各自运行完整 Pi/NuRouter/Bash/子进程，私有文件互不可见；
+- 两个并发 Bot 各自运行完整 Pi/所选扩展/Bash/子进程，私有文件互不可见；
 - Bot 可以未产生 E 就正常退出，Runtime 不立即无限重启；
 - take 前 `/workspace/project` 空且不可写，files/read/search API 可以读取真实项目；
 - 文件树准备后先 active 再 grant；提前后台 writer、迟到授权和绑定失败均不绕过生命周期；

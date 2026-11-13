@@ -50,7 +50,7 @@ Bot 启动时 `/workspace/project` 是受保护的空目录，尚未向 Bot 授�
 | 字段 | 权威来源 | 更新要求 |
 |---|---|---|
 | Mission 目标、范围、验收 | Mission 初始化合同及受控变更 | 全文可见；变更须通知并记录版本 |
-| Bot/Core/sandbox/Pi 对应 | Runtime 持久绑定 | Bot 启动时创建；成功 take 最多绑定一个 E |
+| Bot/Core/sandbox/Pi 对应 | Runtime 持久绑定 | Bot 启动时创建；take 原子预留时最多绑定一个 E，准备失败也保留该 E 的终止记录 |
 | Workspace 预览 | Workspace Service | `main` 查询返回解析后的不可变 revision；预览不等于 take 的实际输入 |
 | E 初始输入 | take 准备记录 | 保留初始 revision、Material 版本和配置；后续 apply 不覆写这一记录 |
 | E 当前工作状态 | Runtime / Workspace Service | 记录 initial_revision、last_saved_revision、applied_revisions、dirty、conflicts；未保存的 apply 结果不冒充持久 revision |
@@ -110,10 +110,10 @@ take 与任务责任
 Mission 最终提交
 - Task done、save、merge、Material publish 和 Mission 通过是不同事实。
 - 使用 mission submit --materials M1,M2 显式选择不可变 Material 输入。服务原子固定当前 main、材料版本、checker/environment 并冻结新的 main merge；未绑定 Bot 也可凭 Mission 协调身份发起这项固定验收，不创建提交占位 Task。
-- 查询原 submission，不并发建立第二个有效提交。PASS 后由 Runtime 正常收尾；失败、错误、超时则解冻 main 并保留真实结果。冻结期间 save/publish 不改变被验收的快照。
+- 查询原 submission，不并发建立第二个有效提交。有效 PASS 后由 Runtime 正常收尾；失败、错误、超时保留真实结果并只释放本 submission 的冻结。是否恢复 main merge 取决于当前 Mission 状态和冻结归属，旧结果不能解开较新提交的冻结。冻结期间 save/publish 不改变被验收的快照。
 
 软收尾、结束与交接
-- 收到软收尾通知时停止扩展责任，在剩余额度内 save 有用文件、publish 有用 Material，确认可读并调用 finish。没有值得保留的新成果也可以如实 incomplete 退出，不编造空产物。
+- 收到软收尾通知时停止扩展责任，在剩余额度内尝试 save 有用文件、publish 有用 Material，确认实际结果并调用 finish。没有值得保留的新成果也按真实责任结束：必要前置用 blocked，责任撤回用 cancelled，其余未完成才用 incomplete，不编造空产物。
 - done 表示合同完成；incomplete 表示尚未完成；blocked 必须说明等待项；cancelled 说明撤回原因和替代项（若有）。服务只做结构与指定证据检查，不自动认证任意研究结论。
 - finish 被接受后 E 进入 closing，不能再 save、publish 或补交；硬停止同样没有追加发布机会。Runtime 撤权、停止全部进程，确认停止后才解除 Task owner 和释放 Core。
 - 后继只读公开 Task、Material 和 Workspace revision，不继承私有目录、会话、缓存或工具历史。交接引用确切 revision/path 和 Material ID，保留尚未完成的服务操作 ID。
@@ -252,7 +252,7 @@ take 通过同一 sandbox 中的 Bash CLI 返回给同一 Pi。顺序统一为�
 | merge 检查失败 | `固定 main {main_revision} 与来源 {source_revision} 的最终合成树未通过 {checker_version}：{reason_code}。main、源版本和当前 E 保持不变。先核对当前目录是否包含来源版本；若没有，先 save 自己的进度、apply 来源并处理/保存，再 apply 固定或最新 main，依据诊断修复/save 后重试。` | 固定 M/R 与检查诊断 |
 | merge 并发冲突 | `检查后 main 已从 {observed_revision} 前进到 {actual_revision}；本请求未覆盖 main。可在剩余额度内重新合成并检查；若转到当前目录修复，先确认来源 {source_revision} 已通过 apply 接入并保存，再跟进 main，不能丢掉待合入来源。` | Workspace 条件更新 |
 | Mission 验证中 | `submission {submission_id} 已固定 main {revision} 和材料 {materials}。新的 main merge 暂停；查询同一 submission，不创建第二个有效提交。` | Mission 验收记录 |
-| 验证失败/错误/超时 | `submission {submission_id} 结果为 {status}：{reason}。main 合入已解冻；检查对象仍固定为 {revision}，未通过不能记为成功。` | Mission 验收记录 |
+| 验证失败/错误/超时 | `submission {submission_id} 结果为 {status}：{reason}，检查对象仍固定为 {revision}。本提交冻结的处理结果为 {freeze_release_result}；当前 Mission 为 {mission_state}，当前冻结归属为 {active_submission_id}，main 合入可用性为 {merge_allowed}。未通过不能记为成功，旧结果不能解除较新提交或停止状态的限制。` | 本次验收记录与带观察时刻的当前 Mission/冻结状态 |
 | Mission 通过 | `submission {submission_id} 已通过，接受的成果为 {revision} 和材料 {materials}。进入正常收尾；现有 E 仅在剩余收尾额度内 save/publish/finish，不再扩展工作。` | Mission 停止流程 |
 | 软收尾 | `E {execution_id} 接近 {limit_kind}，收尾额度为 {remaining_allowance}。停止扩展，保存已有文件和研究内容，再按真实结果 finish。` | Runtime 可观测信号 |
 | finish 已受理 | `结束请求 {request_id} 已持久受理，E {execution_id} 正在 closing。不得再 save/publish；Runtime 停止全部进程，连接可能断开。` | 持久终止记录 |
@@ -284,7 +284,7 @@ take 通过同一 sandbox 中的 Bash CLI 返回给同一 Pi。顺序统一为�
 
 Mission submit 只运行已配置的最终验收，不授权未绑定 Bot 任意执行 Judge/研究计算。服务从 Context 解析并固定显式材料列表；不需要材料的 Mission 可以显式提交空集合，不为提交编造 Material。新增 Material 不会自动进入已提交输入。相同请求幂等，另一个请求遇到现有有效 submission 时返回其引用，不开启第二轮并发验收。冻结覆盖新的 merge 提交；已开始但尚未提交的 merge 也必须在条件更新前重新检查冻结状态。
 
-PASS 后按正常停止流程进入软收尾，禁止新提案/take 和 main merge，现有 E 在有限收尾权限内保存成果并 finish；硬上限最终终止。失败、错误或超时持久记录结果并解冻 main。Runtime/服务重启需对账 submission 和冻结状态，不能永久遗留冻结或重复接受。
+有效 PASS 后按正常停止流程进入软收尾，禁止新提案/take 和 main merge，现有 E 在有限收尾权限内保存成果并 finish；硬上限最终终止。失败、错误或超时持久记录结果，只释放属于本 submission 的冻结；Mission 仍运行且没有其他有效冻结时才恢复 main merge。迟到结果只补充审计，不能覆盖终结结果、恢复已停止 Mission 或解除较新 submission 的冻结。Runtime/服务重启需对账 submission 和冻结状态，不能永久遗留冻结或重复接受。
 
 无工作 Bot 退出后，Runtime 按新工作/状态事件或有界退避再发现，不因空槽立即无休止重建同样的 Bot。
 
@@ -388,12 +388,12 @@ Core 调度、sandbox/provider 管理、Pi 启停、凭据注入、权限切换�
 | 4. 第一次合入 | B1 merge --from R1 | Runtime 固定合成树并检查，main 指向新结果 R3 |
 | 5. 旧基线合入 | B2 merge --from R2 | Runtime 以共同祖先做三方整合；无冲突且最终组合检查通过则 main 到 R4，B2 无需换 Bot |
 | 6. 真实冲突 | 另一 Bot 的公开 R5 与 main R4 有冲突，当前 E 未必含 R5 | 先 save 当前进度，若尚未包含 R5 则 apply --from R5、处理冲突并保存，再 apply 固定 R4 或明确读取的最新 main；最终处理冲突后 save --resolved 再 merge。原 revision 不变，复杂责任才另提 Task |
-| 7. 动态阻塞 | 统计 Task 发现需 T-null-policy，保存已有文件/说明后 finish --outcome blocked --wait-for T-null-policy | Task 安全解绑后 blocked；前置完成再 ready，不反复领取未具备条件的责任 |
+| 7. 动态阻塞 | 统计 Task 发现需 T-null-policy，尝试保存已有文件/说明后 finish --outcome blocked --wait-for T-null-policy | 保存失败也保留真实等待关系；安全解绑时重算全部依赖，尚未满足则 blocked，已经满足则 ready，不遗漏 closing 期间的前置完成 |
 | 8. 干净接续 | 新 Bot take 统计 Task，通过 history --all 找到旧公开版本并 apply | 不读取前任私有目录；初始输入与后续 apply 来源分别记录 |
 | 9. 撤回与修复 | 当前责任取消并指向替代 Task；无 owner 的下游按窄 dependency replace 修复 | 取消不当作完成，依赖变化可审计且不成环 |
-| 10. 最终验收 | 有或无 E 的 Bot submit --materials M1,M2,M3 | 原子固定当前 main、材料与 checker/environment；merge 冻结、单一有效 submission；失败解冻、PASS 正常收尾 |
+| 10. 最终验收 | 有或无 E 的 Bot submit --materials M1,M2,M3 | 原子固定当前 main、材料与 checker/environment；merge 冻结、单一有效 submission；失败仅释放自己的冻结，有效 PASS 正常收尾，迟到结果不影响较新提交 |
 
-若没有可做责任，未绑定 Bot 可以退出；若完全没有有用成果，当前 E 可以诚实 incomplete。两者都不意味着 Mission 成功，也不要求伪造 Material。
+若没有可做责任，未绑定 Bot 可以退出；当前 E 即使没有有用新成果，也按真实责任 finish：必要前置用 blocked，责任撤回用 cancelled，其余未完成才用 incomplete。这些结束都不意味着 Mission 成功，也不要求伪造 Material。
 
 ## 四份默认 skill 草案
 
@@ -494,7 +494,7 @@ description: 软收尾、正常完成、动态阻塞、责任撤回或未完成�
 2. 有文件成果时先 workspace save，取得 revision 与 changed paths，再通过公开读取确认可用。多文件成果保留同一 revision；只在本地跑过测试不等于已交付代码。
 3. 有研究说明或交接内容时 publish Material，引用确切 revision/path、已完成部分、失败路线、未决问题、正在运行的服务操作 ID 和建议下一步。核对正文/附件可读，来源自动绑定。
 4. 选择真实 outcome：done 需合同满足；incomplete 表示还未完成；blocked --wait-for T2 表示明确动态前置；cancelled 表示责任撤回，存在替代项时附 --replacement T3。不能放宽完成条件制造 done。
-5. 发布/保存失败可在有效 E 和有限重试额度内处理；仍失败就如实 incomplete，不能把私有文件说成共享交付，也不编造空材料。
+5. 发布/保存失败可在有效 E 和有限重试额度内处理；仍失败时如实记录哪些内容未持久化，不能声明共享交付或编造空材料。失败不改变已经确认的责任状态：有必要前置仍用 blocked --wait-for；责任已撤回用 cancelled；未完成且没有新前置才用 incomplete。不能因上传失败丢掉等待关系，让尚不具备条件的 Task 再次 ready。
 6. 用稳定 request ID 调用 task finish。受理后 E closing，不再 save/publish。Runtime 撤权并停止全部进程，确认停止后才解除 owner/释放 Core。
 
 后继在新 sandbox/Pi 读取公开 Task、Material 和 Workspace revision，可通过 apply 接续文件；不继承私有会话、目录或审计存档。

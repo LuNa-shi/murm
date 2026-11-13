@@ -15,7 +15,7 @@ const revision = { type: 'integer', minimum: 1 };
 
 export const RUNTIME_CAPABILITIES = Object.freeze([
   {
-    id: 'runtime.task_complete', name: 'task_complete', operation: 'accept_task', service_id: 'runtime',
+    id: 'runtime.task_complete', name: 'task_complete', operation: 'task_complete', service_id: 'runtime',
     service_title: 'SwarmEnv Runtime', service_purpose: 'Task-scoped completion and dependency actions',
     description: 'Complete the current Task after its own contract and result references are satisfied.',
     audience: ['bound', 'recovery'], side_effect: 'write', idempotent: true, runtime_owned: true,
@@ -82,7 +82,7 @@ export const RUNTIME_CAPABILITIES = Object.freeze([
   {
     id: 'runtime.sandbox_exec', name: 'sandbox_exec', operation: 'sandbox_exec', service_id: 'runtime',
     service_title: 'Task Sandbox', service_purpose: 'Bounded command execution inside the Execution Sandbox',
-    description: 'Run a bounded shell command inside the current Execution Sandbox. The private Workspace is mounted at /workspace; shell edits become durable only after execution_progress saves them.',
+    description: 'Run a bounded shell command inside the current Execution Sandbox at /workspace. With an external provider, /workspace is provider-owned and must not be assumed to be the host Runtime Workspace until the provider worker integration is enabled; shell edits become durable only after the configured continuity path saves them.',
     audience: ['bound', 'recovery'], side_effect: 'write', idempotent: false, runtime_owned: true,
     context: ['task', 'execution', 'fencing'],
     help: { when: 'Use for compilation, tests, rg, or other code execution inside the bound Workspace.', ref: 'sandbox://exec' },
