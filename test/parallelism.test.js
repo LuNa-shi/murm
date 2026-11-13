@@ -101,12 +101,12 @@ test('turn occupancy is reported separately from RUNNING Agent Time', () => {
   assert.equal(summary.turn_occupancy_ratio_v0, 7_000 / 16_000);
 });
 
-test('claim conflicts deduplicate repeated event delivery by provenance key', () => {
+test('take conflicts deduplicate repeated event delivery by provenance key', () => {
   const tracker = new CoreParallelismTracker({ coreCount: 1, startedAt: 0 });
 
-  assert.equal(tracker.recordClaimConflict('daemon:core-1:task-1:initial:0:10'), true);
-  assert.equal(tracker.recordClaimConflict('daemon:core-1:task-1:initial:0:10'), false);
-  assert.equal(tracker.recordClaimConflict(), true);
+  assert.equal(tracker.recordTakeConflict('daemon:core-1:task-1:initial:0:10'), true);
+  assert.equal(tracker.recordTakeConflict('daemon:core-1:task-1:initial:0:10'), false);
+  assert.equal(tracker.recordTakeConflict(), true);
   assert.equal(tracker.snapshot({ endedAt: 1 }).claim_conflict_count, 2);
 });
 

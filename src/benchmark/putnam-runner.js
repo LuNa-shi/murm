@@ -858,7 +858,7 @@ async function releaseTerminalExecution(core) {
     reason: `terminal:${execution.state.toLowerCase()}`,
   });
   await core.runtime.releaseExecution(core.executionId).catch(() => undefined);
-  await core.bridge.releaseClaim({ result: { execution } });
+  await core.bridge.releaseTake({ result: { execution } });
 }
 
 function sanitizedCheck(result, material) {
@@ -2532,7 +2532,7 @@ async function createProjectState(problem, config, options) {
           protocol: false,
         });
         if (error.code === 'CONFLICT' && operation === 'claim') {
-          core.parallelism.recordClaimConflict(operationId ? `bridge:${operationId}` : null);
+          core.parallelism.recordTakeConflict(operationId ? `bridge:${operationId}` : null);
         }
       },
       logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),
@@ -2773,7 +2773,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           return { execution: state.taskService.getExecution(claim.execution.execution_id) };
         }
         try {
-          await core.bridge.bindClaim(claim);
+          await core.bridge.bindTake(claim);
           return { execution: state.taskService.getExecution(claim.execution.execution_id) };
         } catch (error) {
           // ServicesBridge invokes its release hook for a failed bind, but the
@@ -2795,7 +2795,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
             ? 'handoff_timeout'
             : 'runtime_handoff_failed',
         });
-        if (core.executionId === execution.execution_id) await core.bridge.releaseClaim({ result });
+        if (core.executionId === execution.execution_id) await core.bridge.releaseTake({ result });
         return result;
       },
       onEvent: (event) => {
@@ -2822,7 +2822,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
             sanitized.rescan,
             sanitized.timestamp,
           ].join(':');
-          state.parallelism.recordClaimConflict(`identity:${conflictKey}`);
+          state.parallelism.recordTakeConflict(`identity:${conflictKey}`);
         }
         state.observationStore.append({
           experimentId: state.runId,

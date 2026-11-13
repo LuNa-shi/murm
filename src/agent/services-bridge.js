@@ -200,9 +200,9 @@ export class ServicesBridge {
 
 
   /** Bind the durable task_take result before Runtime activates the Execution. */
-  async bindClaim(result) {
+  async bindTake(result) {
     if (!result?.task?.task_id || !result?.execution?.execution_id) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bindClaim requires a Task and Execution result');
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bindTake requires a Task and Execution result');
     }
     if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'bridge already has a claimed binding');
     this.taskId = result.task.task_id;
@@ -358,7 +358,7 @@ export class ServicesBridge {
     });
   }
 
-  async releaseClaim({ result = null } = {}) {
+  async releaseTake({ result = null } = {}) {
     const released = { taskId: this.taskId, executionId: this.executionId, result };
     this.taskId = null;
     this.executionId = null;
@@ -375,7 +375,7 @@ export class ServicesBridge {
     this.deferredLifecycle = null;
     const settled = await this.runtime.blockExecution(deferred.executionId, deferred.block);
     if (this.taskId === deferred.taskId && this.executionId === deferred.executionId) {
-      await this.releaseClaim({
+      await this.releaseTake({
         result: {
           ...deferred.result,
           applied: {
@@ -489,7 +489,7 @@ export class ServicesBridge {
         }
         const result = await this.runtime.executionProgress(this.executionId, { ...payload, actorRef: this.actorRef });
         await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
-        if (payload.kind === 'handoff') await this.releaseClaim({ result });
+        if (payload.kind === 'handoff') await this.releaseTake({ result });
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
@@ -620,7 +620,7 @@ export class ServicesBridge {
           ? await this.taskCreateMutex.run(invoke)
           : await invoke();
         if (operation === 'task_take') {
-          await this.bindClaim(result);
+          await this.bindTake(result);
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
         }
         if (operation === 'task_finish') {
@@ -628,7 +628,7 @@ export class ServicesBridge {
           // The Task Service commits the semantic completion; Runtime owns the
           // physical Session/Core/Workspace release that follows it.
           await this.runtime.releaseExecution?.(this.executionId);
-          await this.releaseClaim({ result });
+          await this.releaseTake({ result });
           this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
           return result;
         }
@@ -697,7 +697,7 @@ export class ServicesBridge {
               : payload;
             result = sdk.taskTake(takePayload, options);
           }
-          await this.bindClaim(result);
+          await this.bindTake(result);
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
           break;
         case 'task_link_material': result = sdk.linkMaterial(payload, options); break;
@@ -711,7 +711,7 @@ export class ServicesBridge {
           if (typeof this.runtime.releaseExecution === 'function') {
             await this.runtime.releaseExecution(boundExecutionId);
           }
-          await this.releaseClaim({ result });
+          await this.releaseTake({ result });
           break;
         case 'context_search_materials': result = sdk.searchMaterials(payload); break;
         case 'context_get_material': result = sdk.getMaterial(payload.material_id ?? payload.materialId); break;

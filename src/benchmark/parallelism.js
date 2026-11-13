@@ -235,7 +235,7 @@ export class CoreParallelismTracker {
     this.schedulerPollMs += durationMs;
   }
 
-  recordClaimConflict(key = null) {
+  recordTakeConflict(key = null) {
     if (key !== null) {
       if (this.claimConflictKeys.has(key)) return false;
       this.claimConflictKeys.add(key);

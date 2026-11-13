@@ -38,10 +38,10 @@ test('Bridge keeps the reusable identity profile across binding and release', as
     role: AGENT_ROLES.BOUND,
   });
   assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.BOUND);
-  await bridge.bindClaim({ task: { task_id: 'task-1' }, execution: { execution_id: 'execution-1' } });
+  await bridge.bindTake({ task: { task_id: 'task-1' }, execution: { execution_id: 'execution-1' } });
   assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.BOUND);
   assert.ok(!bridge.getCapabilityProfile().capabilities.some((capability) => capability.operation === 'claim'));
-  await bridge.releaseClaim();
+  await bridge.releaseTake();
   assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.BOUND);
 });
 
