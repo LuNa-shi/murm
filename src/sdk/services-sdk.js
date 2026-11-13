@@ -67,28 +67,8 @@ export class ServicesSDK {
     return this.#read('list_task_materials', { ...filters, task_id: taskId });
   }
 
-  completeTask(payload = {}, options = {}) {
-    return this.#write('task_complete', payload, options);
-  }
-
   finishTask(payload = {}, options = {}) {
     return this.#write('task_finish', payload, options);
-  }
-
-  closeTask(payload = {}, options = {}) {
-    return this.#write('task_close', payload, options);
-  }
-
-  handoffTask(payload = {}, options = {}) {
-    return this.#write('task_handoff', payload, options);
-  }
-
-  blockTask(payload = {}, options = {}) {
-    return this.#write('task_block', payload, options);
-  }
-
-  listClaimableTasks(filters = {}) {
-    return this.#read('list_claimable_tasks', filters);
   }
 
   listExecutions(taskId = this.context.taskId, { includeTerminal = true } = {}) {
@@ -141,11 +121,6 @@ export class ServicesSDK {
     return this.#write('task_register', task, options);
   }
 
-  /** @deprecated Legacy transport alias. New callers must use taskTake. */
-  claim(payload = {}, options = {}) {
-    return this.#write('claim', payload, options);
-  }
-
   /** Take an existing Mission/ordinary Task through the canonical Agent seam. */
   taskTake(payload = {}, options = {}) {
     const contextCoreId = this.context.coreId ?? this.context.core_id ?? null;
@@ -177,40 +152,8 @@ export class ServicesSDK {
     return this.#write('request_wait', payload, options);
   }
 
-  submitCandidate(payload, options = {}) {
-    return this.#write('submit_candidate', payload, options);
-  }
-
-  applyCheckResult(payload, options = {}) {
-    return this.#write('apply_check_result', payload, options);
-  }
-
-  wakeExecution(payload = {}, options = {}) {
-    return this.#write('wake_execution', payload, options);
-  }
-
   publishMaterial(material, options = {}) {
     return this.#write('publish_material', material, options);
-  }
-
-  abort(payload = {}, options = {}) {
-    return this.#write('abort', payload, options);
-  }
-
-  startExecution(payload = {}, options = {}) {
-    return this.#write('start_execution', payload, options);
-  }
-
-  resumeExecution(payload = {}, options = {}) {
-    return this.#write('resume_execution', payload, options);
-  }
-
-  stopExecution(payload = {}, options = {}) {
-    return this.#write('stop_execution', payload, options);
-  }
-
-  fenceExecution(payload = {}, options = {}) {
-    return this.#write('fence_execution', payload, options);
   }
 
   #read(operation, payload) {

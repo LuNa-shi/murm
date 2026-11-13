@@ -705,22 +705,6 @@ export class TaskService {
     return this.dispatch('list_task_materials', { task_id: taskId }, envelope);
   }
 
-  completeTask(payload = {}, envelope) {
-    return this.dispatch('complete_task', payload, envelope);
-  }
-
-  closeTask(payload = {}, envelope) {
-    return this.dispatch('close_task', payload, envelope);
-  }
-
-  handoffTask(payload = {}, envelope) {
-    return this.dispatch('handoff_task', payload, envelope);
-  }
-
-  blockTaskSemantic(payload = {}, envelope) {
-    return this.dispatch('block_task_semantic', payload, envelope);
-  }
-
   taskRegister(input, envelope = makeEnvelope({ actorRef: input?.owner_ref ?? 'unknown' })) {
     return this.dispatch('task_register', input, envelope);
   }
@@ -881,27 +865,7 @@ export class TaskService {
     return this.dispatch('reopen_task', { task_id: requireString(taskId, 'task_id') }, envelope);
   }
 
-  blockTask(payload, envelope) {
-    return this.dispatch('block_task', payload, envelope);
-  }
-
-  /** Claim the selected Task without making callers hand-build an envelope. */
-  claimTask(taskId, payload = {}, envelope = null) {
-    const id = requireString(taskId, 'task_id');
-    const task = this.getTask(id);
-    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${id}`);
-    const claimEnvelope = envelope ?? makeEnvelope({
-      actorRef: payload.owner_ref ?? 'daemon',
-      taskId: id,
-      specVersion: task.spec_version,
-      stateVersion: task.state_version,
-    });
-    return this.dispatch('claim', payload, { ...claimEnvelope, task_id: id, execution_id: null,
-      spec_version: claimEnvelope.spec_version ?? task.spec_version,
-      state_version: claimEnvelope.state_version ?? task.state_version });
-  }
-
-  /** Canonical Agent-facing task take; legacy claim remains the internal adapter. */
+  /** Canonical Agent-facing Task take. */
   taskTake(taskId, payload = {}, envelope = null) {
     const id = requireString(taskId, 'task_id');
     const task = this.getTask(id);

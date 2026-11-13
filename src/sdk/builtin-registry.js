@@ -15,13 +15,13 @@ const SHARED_READ_OPERATIONS = new Set(['get_task', 'task_status']);
 const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
     'list_tasks', 'get_task', 'list_executions',
-    'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_finish', 'task_block', 'task_close',
+    'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
     'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
     'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_apply',
     'workspace_save', 'workspace_merge', 'mission_submit', 'mission_submission_get',
   ]),
   context: new Set(['publish_material', 'read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material']),
-  judge: new Set(['submit_candidate', 'get_check_result']),
+  judge: new Set(['get_check_result']),
   catalog: new Set(['list_services', 'get_service_metadata', 'list_tools']),
 });
 

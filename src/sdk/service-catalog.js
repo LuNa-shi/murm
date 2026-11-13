@@ -196,12 +196,6 @@ const publicTaskTools = [
     parameters: { type: 'object', required: ['task_id', 'material_id', 'role'], properties: { task_id: { type: 'string' }, material_id: { type: 'string' }, role: { type: 'string', enum: ['input', 'response', 'handoff', 'experience'] }, receiving_task_id: { type: 'string' } }, additionalProperties: false },
   },
   {
-    name: 'task_complete', service: 'task', operation: 'task_complete', version: '1.0',
-    description: 'Complete the current Task when its own contract and required Material or Judge evidence are satisfied.',
-    scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', properties: { material_ids: { type: 'array', items: { type: 'string' } }, check_result_id: { type: 'string' } }, additionalProperties: false },
-  },
-  {
     name: 'task_finish', service: 'task', operation: 'task_finish', version: '1.0',
     description: 'Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.',
     scope: 'task-write', side_effect: true,
@@ -211,39 +205,7 @@ const publicTaskTools = [
       handoff_material_id: { type: 'string' }, blocker: { type: 'object' }, dependency: { type: 'object' }, wait_for: { type: 'object' }, replacement_task_id: { type: 'string' }, reason: { type: 'string' },
     }, additionalProperties: false },
   },
-  {
-    name: 'task_handoff', service: 'task', operation: 'task_handoff', version: '1.0',
-    description: 'Publish and link Handoff Material, then return unfinished work to the Mission queue.',
-    scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['handoff_material_id'], properties: { handoff_material_id: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'task_block', service: 'task', operation: 'task_block', version: '1.0',
-    description: 'Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.',
-    scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['blocker', 'dependency', 'handoff_material_id'], properties: {
-      blocker: { type: 'object' },
-      dependency: {
-        type: 'object', minProperties: 1,
-        description: 'Use dependency_kind TASK with prerequisite_task_id for a Task prerequisite, or CAPABILITY with capability_id for a missing runtime/external capability. On an ordinary Task, capability blockers remain durably BLOCKED until an explicit reopen after the recovery condition is met. A capability listed among this Session tools is callable and is rejected as a blocker.',
-        properties: {
-          dependency_kind: { type: 'string', enum: ['TASK', 'CAPABILITY'] },
-          prerequisite_task_id: { type: 'string' },
-          capability_id: { type: 'string' },
-          scope: { type: 'string' },
-          retryable: { type: 'boolean' },
-          recovery_condition: { type: 'string' },
-        },
-      },
-      handoff_material_id: { type: 'string' },
-    }, additionalProperties: false },
-  },
-  {
-    name: 'task_close', service: 'task', operation: 'task_close', version: '1.0',
-    description: 'Accept a linked Response Material from another Task and close its producer.',
-    scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['producer_task_id', 'material_id'], properties: { producer_task_id: { type: 'string' }, material_id: { type: 'string' } }, additionalProperties: false },
-  },
+
 ];
 
 const publicContextTools = [
@@ -340,25 +302,12 @@ const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'c
 // but they are not part of the Agent-facing fallback projection. Runtime owns
 // the Execution lease/liveness controls; modern Mission Tasks use the semantic
 // entries above and the Registry-backed profile.
-const LEGACY_AGENT_OPERATIONS = new Set([
-  'abort', 'apply_check_result', 'block_execution',
-  'claim', 'list_claimable_tasks', 'select_task',
-  'fence_execution', 'heartbeat',
-  'request_wait', 'resume_execution', 'start_execution', 'stop_execution',
-  'wake', 'wake_execution',
-]);
-
-const LEGACY_AGENT_TOOL_NAMES = new Set([
-  'execution_wait',
-  'service_call', 'swarmenv_call',
-]);
-
 const SERVICE_DEFINITIONS = Object.freeze([
   {
     name: 'task',
     version: '1.0',
     description: 'Task goals, Mission-scoped Material links, semantic completion, explicit dependencies, and canonical task_take.',
-    tools: [...TOOL_DEFINITIONS.filter((tool) => tool.service === 'task'), ...publicTaskTools, ...publicWorkspaceTools, ...publicMissionWorkspaceTools],
+    tools: [...publicTaskTools, ...publicWorkspaceTools, ...publicMissionWorkspaceTools],
   },
   { name: 'execution', version: '1.0', description: 'Internal Execution lease, heartbeat, wait, and lifecycle metadata.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'execution') },
   { name: 'workspace', version: '1.0', description: 'Runtime-owned Workspace materialization, revisions, and checkpoint lineage.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace') },
@@ -368,7 +317,7 @@ const SERVICE_DEFINITIONS = Object.freeze([
     description: 'Shared immutable Materials with producer provenance and semantic collaboration roles.',
     tools: [...TOOL_DEFINITIONS.filter((tool) => tool.service === 'context'), ...publicContextTools],
   },
-  { name: 'judge', version: '1.0', description: 'Workspace file checks and independent completion results.', tools: publicJudgeTools },
+  { name: 'judge', version: '1.0', description: 'Workspace file checks and independent completion results.', tools: publicJudgeTools.filter((tool) => tool.operation !== 'submit_candidate') },
   { name: 'catalog', version: '1.0', description: 'Service and named tool discovery metadata.', tools: publicCatalogTools },
 ]);
 
@@ -377,10 +326,7 @@ function clone(value) {
 }
 
 export function isLegacyAgentSurface(tool, { runtimeOwned = false } = {}) {
-  if (!tool || typeof tool !== 'object') return false;
-  const operation = tool.operation ?? null;
-  const name = tool.name ?? tool.tool_name ?? tool.toolName ?? null;
-  return LEGACY_AGENT_OPERATIONS.has(operation) || LEGACY_AGENT_TOOL_NAMES.has(name);
+  return false;
 }
 
 function normalizeCatalogOptions(options) {
