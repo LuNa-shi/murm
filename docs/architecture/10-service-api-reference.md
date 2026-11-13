@@ -30,12 +30,12 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `49f55e965be43550f31389d77e4387790900a48fc49aaab1f1fdce65fc5c3fc8` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `a1b52d37d8091e06077bf5d6038562926569287e34e691c68d6fb78edf2142be` |
 | [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `b7b63709a329a57b08dbef10a125d32e044c42e38fbd0b527ebf3a938f6793d7` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `6d4a734115262062fec13d613e0493c26575d2a8efba7d1217e0e45bd8390d91` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `eed7e96feaf17682bc9de9996a1d79ad8bdc849cd1e2973b6d29dfcac73012ec` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `cd03ead01dd82c637641190552e8168d0374d10af7a3287a515fefd433507b2d` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `3a2a070706712b51844fe74919590d4fb5236ed82b974d44cbb62e7e4a837977` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `d8171d42dfd29aab47b412558ca174afa876bc104b4f2d2aea3a9b2fc95dd3fc` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
@@ -281,7 +281,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "0f15281c4ba73dc7084b35437a475ebcba00ad6c49b0796849a438981546b0b4"
+  "manifest_hash": "cf6e019f8d0f375047a7ade973e5143f73c6b361eb2191267a9c8057f1ac7d1e"
 }
 ```
 
@@ -369,22 +369,6 @@ Take an existing Mission or ordinary Task using the caller identity and Core lan
         "type": "string"
       },
       "take_key": {
-        "type": "string"
-      },
-      "workspace_mode": {
-        "type": "string",
-        "enum": [
-          "clean"
-        ]
-      },
-      "workspace_revision": {
-        "type": "integer",
-        "minimum": 1
-      },
-      "workspace_source_execution_id": {
-        "type": "string"
-      },
-      "workspace_source_ref": {
         "type": "string"
       },
       "input_material_refs": {

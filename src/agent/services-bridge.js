@@ -555,10 +555,12 @@ export class ServicesBridge {
             // request.
             ...Object.fromEntries(Object.entries(payload).filter(([key]) => !['owner_ref', 'agent_prompt', 'initial_prompt'].includes(key))),
             ...(this.taskService.isModernTask?.(payload.task_id)
-              && !payload.workspace_source_execution_id
-              && !payload.workspace_source_ref
-              && payload.workspace_revision === undefined
-              ? { workspace_mode: 'clean' }
+              ? {
+                workspace_mode: 'clean',
+                workspace_revision: undefined,
+                workspace_source_execution_id: undefined,
+                workspace_source_ref: undefined,
+              }
               : {}),
             owner_ref: this.actorRef,
             agent_prompt: this.agentPrompt,

@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `10de5ef68f73bdac5171ccad92d9f314ae964ff8c25394ac1a4c01f404aea5f1`
+Body SHA-256: `6687bd44daaddd70d373e89d074cfda9eec16c4786cd4c1dded1587dab5b96e0`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -89,7 +89,7 @@ Body SHA-256: `10de5ef68f73bdac5171ccad92d9f314ae964ff8c25394ac1a4c01f404aea5f1`
   - swarmenv_task_link_material: Link an immutable Material to a Task with an input, response, handoff, or experience role. (logical operation task.task_link_material; writes state; inputs required=[task_id,material_id,role] fields=[material_id,receiving_task_id,role,task_id]; Link an immutable Material to a Task with an input, response, handoff, or experience role.)
   - swarmenv_task_list: List Mission Tasks and search their short summaries before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[limit,mission_id,query,state]; List Mission Tasks and search their short summaries before proposing new work.)
   - swarmenv_task_status: Read the authoritative Mission, Task counts, eligible work, and observation timestamp. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read the authoritative Mission, Task counts, eligible work, and observation timestamp.)
-  - swarmenv_task_take: Take an existing Mission or ordinary Task using the caller identity and Core lane. (logical operation task.task_take; writes state; inputs required=[task_id] fields=[input_material_refs,take_key,task_id,workspace_mode,workspace_revision,workspace_source_execution_id,workspace_source_ref]; Take an existing Mission or ordinary Task using the caller identity and Core lane.)
+  - swarmenv_task_take: Take an existing Mission or ordinary Task using the caller identity and Core lane. (logical operation task.task_take; writes state; inputs required=[task_id] fields=[input_material_refs,take_key,task_id]; Take an existing Mission or ordinary Task using the caller identity and Core lane.)
   - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
   - swarmenv_workspace_merge: Conditionally merge one complete public Workspace revision into main after conflict and check validation. (logical operation task.workspace_merge; writes state; inputs required=[workspace_id,from_revision,expected_main_revision] fields=[expected_main_revision,from_revision,workspace_id]; Conditionally merge one complete public Workspace revision into main after conflict and check validation.)
   - swarmenv_workspace_public_apply: Materialize a selected public Mission Workspace revision into the current Execution directory. (logical operation task.workspace_public_apply; writes state; inputs required=[workspace_id,target_dir] fields=[revision,target_dir,workspace_id]; Materialize a selected public Mission Workspace revision into the current Execution directory.)

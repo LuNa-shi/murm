@@ -17,7 +17,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "eed7e96feaf17682bc9de9996a1d79ad8bdc849cd1e2973b6d29dfcac73012ec"
+      "sha256": "cd03ead01dd82c637641190552e8168d0374d10af7a3287a515fefd433507b2d"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -53,7 +53,7 @@
     },
     {
       "path": "src/sdk/service-catalog.js",
-      "sha256": "49f55e965be43550f31389d77e4387790900a48fc49aaab1f1fdce65fc5c3fc8"
+      "sha256": "a1b52d37d8091e06077bf5d6038562926569287e34e691c68d6fb78edf2142be"
     },
     {
       "path": "src/sdk/builtin-registry.js",
@@ -351,7 +351,7 @@
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "ddee2f89f726bc8110fd8bdeba901fce51eacecf868a594c8b06325ee63b3190"
+      "sha256": "a2eed67a3be549e80878ad892fb8b92ce74b22ff71e1abac49c811d7641db367"
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
@@ -363,7 +363,7 @@
     },
     {
       "path": "docs/architecture/prompts/05-composed-context-examples.md",
-      "sha256": "96161dca54bb3a8e1294b38622139fabb2f212da77fc55eedd0ffe20eafc55ca"
+      "sha256": "89bb7f82cb9907d2aa91410f954d9464c4f30ac2e26f099562609ed2b00f3167"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",

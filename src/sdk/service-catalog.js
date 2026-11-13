@@ -122,7 +122,7 @@ const publicTaskTools = [
     name: 'task_take', service: 'task', operation: 'task_take', version: '1.0',
     description: 'Take an existing Mission or ordinary Task using the caller identity and Core lane.',
     scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' }, take_key: { type: 'string' }, workspace_mode: { type: 'string', enum: ['clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' }, input_material_refs: { type: 'array', items: { type: 'string' } } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' }, take_key: { type: 'string' }, input_material_refs: { type: 'array', items: { type: 'string' } } }, additionalProperties: false },
   },
   {
     name: 'task_feedback', service: 'task', operation: 'task_feedback', version: '1.0',
