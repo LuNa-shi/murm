@@ -422,7 +422,7 @@ export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
       'swarmenv_context_consume', 'swarmenv_context_publish', 'swarmenv_context_read',
       'swarmenv_context_search_materials', 'swarmenv_context_get_material',
       'swarmenv_judge_get_check_result', 'swarmenv_judge_workspace_check',
-      'swarmenv_execution_get', 'swarmenv_task_status', 'swarmenv_task_register', 'swarmenv_task_take',
+      'swarmenv_execution_get', 'swarmenv_task_status', 'swarmenv_task_take',
       'swarmenv_task_feedback', 'swarmenv_execution_progress', 'swarmenv_task_list', 'swarmenv_task_view',
       'swarmenv_task_create', 'swarmenv_task_link_material', 'swarmenv_task_finish',
       'swarmenv_workspace_diff', 'swarmenv_workspace_get', 'swarmenv_workspace_list_files',
@@ -535,21 +535,21 @@ async function runTurn(core, prompt, timeoutMs) {
       core.parallelism.endAgentTurn(core.index, Date.now());
       core.agentTurnSession = null;
     }
-    // A discovery turn can synchronously claim a Task and hand off to a new
+    // A discovery turn can synchronously take a Task and hand off to a new
     // bound session. Do not let the discovery transport's finally block clear
     // the bound session's in-flight flag or start an overlapping follow-up.
     const handedOff = core.session !== session && Boolean(
       core.taskId && core.executionId && core.runtime.hasActiveExecution(core.executionId),
     );
     if (!handedOff) {
-      // A retired claim may enter onTake before Runtime rejects the permanent
+      // A retired take may enter onTake before Runtime rejects the permanent
       // Core binding (for example, two selectors race for a resumable wait).
       // Clear that provisional local ownership or the selection transport
       // would keep this Core permanently marked turn-in-flight.
       if (core.session !== session && !core.runtime.hasActiveExecution(core.executionId ?? '')) {
         core.taskId = null;
         core.executionId = null;
-        core.claim = null;
+        core.take = null;
       }
       core.turnInFlight = false;
       core.nextTurnAt = core.taskId ? Date.now() + core.turnIntervalMs : Date.now();
@@ -669,7 +669,7 @@ async function ensureAgentSession(core) {
     core.releasedSession = null;
   }
   if (core.session?.closed) core.session = null;
-  // A failed retired claim can clear the bridge binding after the transport
+  // A failed retired take can clear the bridge binding after the transport
   // Session has already been replaced. Repair the stale local occupancy when
   // no Session, Task, Execution, recovery, or handoff promise remains.
   if (core.turnInFlight && !core.session && !core.taskId && !core.executionId && !core.boundTurnPromise && !core.recoveryInFlight) {
@@ -720,7 +720,7 @@ function selectionView(candidates) {
  * identity itself chooses a Task and calls the canonical `task_take` seam;
  * there is deliberately no separate old selection transport/session in production.
  * IdentityTaskLoop still owns the durable handoff bookkeeping, but it receives the
- * already-created claim from this same identity and never asks another
+ * already-created take from this same identity and never asks another
  * process to choose on its behalf.
  */
 async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false } = {}) {
@@ -823,7 +823,7 @@ async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false }
     core.turnDurationsMs.push(duration);
     core.parallelism.recordTurnTime(duration);
     const handedOff = core.session !== session && Boolean(core.taskId && core.executionId);
-    // Keep the Core reserved across the claim and Runtime handoff. Invalid or
+    // Keep the Core reserved across the take and Runtime handoff. Invalid or
     // empty selections do not reserve the Core.
     const selectedTaskId = core.takeResult?.task?.task_id ?? null;
     const handoffPending = !handedOff && typeof selectedTaskId === 'string' &&
@@ -840,7 +840,7 @@ async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false }
     }
     // An empty or failed take turn does not retire the identity. Keep the
     // Session for the next wake; only explicit recovery/rotation replaces it.
-    // A valid claim stays reserved until Runtime finishes the handoff.
+    // A valid take stays reserved until Runtime finishes the handoff.
     core.stateRef?.requestIdentityWake?.();
   }
 }
@@ -1142,8 +1142,8 @@ function projectReport(state, startedAt, deadline) {
   const materialConsumptions = state.contextService.listMaterialConsumptions({});
   const taskTree = projectTasks(state, { limit: 100, availableOnly: false });
   const takeHistory = state.cores.flatMap((core) => core.takeHistory);
-  const allowedTaskIds = new Set((state.rootTaskId ? [state.rootTaskId] : []).concat(takeHistory.map((claim) => claim.task_id)));
-  const allowedExecutionIds = new Set(takeHistory.map((claim) => claim.execution_id));
+  const allowedTaskIds = new Set((state.rootTaskId ? [state.rootTaskId] : []).concat(takeHistory.map((take) => take.task_id)));
+  const allowedExecutionIds = new Set(takeHistory.map((take) => take.execution_id));
   const materialBoundaryViolation = materials.some((material) =>
     !allowedTaskIds.has(material.source_task) || !allowedExecutionIds.has(material.source_execution));
   const rootTask = state.taskService.getTask(state.rootTaskId);
@@ -1151,9 +1151,9 @@ function projectReport(state, startedAt, deadline) {
   const allowedInputMaterialIds = new Set(materials
     .filter((material) => allowedTaskIds.has(material.source_task) && allowedExecutionIds.has(material.source_execution))
     .map((material) => material.material_id));
-  const workspaceViolation = takeHistory.some((claim) => {
-    const execution = state.taskService.getExecution(claim.execution_id);
-    const task = state.taskService.getTask(claim.task_id);
+  const workspaceViolation = takeHistory.some((take) => {
+    const execution = state.taskService.getExecution(take.execution_id);
+    const task = state.taskService.getTask(take.task_id);
     const inputMaterialRefs = execution?.input_material_refs ?? [];
     return !execution || !task?.workspace || inputMaterialRefs.some((materialId) => !allowedInputMaterialIds.has(materialId)) ||
       execution.input_snapshot_hash !== inputSnapshotHash(task, execution.input_material_refs);
@@ -1176,9 +1176,9 @@ function projectReport(state, startedAt, deadline) {
       checks: core.checks,
       errors: core.errors,
       cheating_flags: core.cheatingFlags,
-      claims: core.takeHistory.map((claim) => ({
-        ...claim,
-        workspace_revision_end: state.taskService.getExecution(claim.execution_id)?.workspace_revision ?? null,
+      takes: core.takeHistory.map((take) => ({
+        ...take,
+        workspace_revision_end: state.taskService.getExecution(take.execution_id)?.workspace_revision ?? null,
       })),
       latency_samples: core.latencySamples,
       tool_events: [...new Set(core.toolEvents)],
@@ -1204,21 +1204,21 @@ function projectReport(state, startedAt, deadline) {
   // payload. The bridge returns that error to the Agent as tool feedback. It
   // is not a protocol violation and must not invalidate the whole project.
   const toolProtocolErrorCount = cores.reduce((count, core) => count + core.tool_errors.filter((error) => error.protocol === true).length, 0);
-  const takenExecutionIds = [...new Set(takeHistory.map((claim) => claim.execution_id))];
-  const claimedExecutions = takenExecutionIds.map((executionId) => state.taskService.getExecution(executionId));
-  const workspaceRefs = claimedExecutions.map((execution) => execution?.workspace_ref).filter(Boolean);
+  const takenExecutionIds = [...new Set(takeHistory.map((take) => take.execution_id))];
+  const takenExecutions = takenExecutionIds.map((executionId) => state.taskService.getExecution(executionId));
+  const workspaceRefs = takenExecutions.map((execution) => execution?.workspace_ref).filter(Boolean);
   // A preparation/bind failure is allowed to end before a Workspace exists
   // (B09). It is not a boundary violation; every Execution that actually
   // materialized a Workspace must still have a unique one.
   const preparationFailure = isPreparationFailure;
-  const workspaceBoundaryViolation = claimedExecutions.some((execution) => !execution
+  const workspaceBoundaryViolation = takenExecutions.some((execution) => !execution
     || (!execution.workspace_ref && !preparationFailure(execution)))
     || new Set(workspaceRefs).size !== workspaceRefs.length;
-  const candidateBoundaryViolation = takeHistory.some((claim) => {
-    const execution = state.taskService.getExecution(claim.execution_id);
+  const candidateBoundaryViolation = takeHistory.some((take) => {
+    const execution = state.taskService.getExecution(take.execution_id);
     if (!execution?.candidate_material_id) return false;
     const material = state.contextService.getMaterial(execution.candidate_material_id);
-    return !material || material.source_task !== claim.task_id || material.source_execution !== claim.execution_id;
+    return !material || material.source_task !== take.task_id || material.source_execution !== take.execution_id;
   });
   const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     candidateBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
@@ -1230,10 +1230,10 @@ function projectReport(state, startedAt, deadline) {
   const narratives = executionNarratives(state, taskTree, materials);
   const invalidWaitAttemptCount = cores.reduce((count, core) => count + (core.toolErrors ?? []).filter((error) =>
     error.operation === 'request_wait' && ['INVALID_CONTRACT', 'NOT_ALLOWED', 'FENCED'].includes(error.code)).length, 0);
-  const childTakeCount = takeHistory.filter((claim) => claim.task_id !== state.rootTaskId).length;
-  const rootTakeCount = takeHistory.filter((claim) => claim.task_id === state.rootTaskId).length;
+  const childTakeCount = takeHistory.filter((take) => take.task_id !== state.rootTaskId).length;
+  const rootTakeCount = takeHistory.filter((take) => take.task_id === state.rootTaskId).length;
   const executionTakeCounts = new Map();
-  for (const claim of takeHistory) executionTakeCounts.set(claim.execution_id, (executionTakeCounts.get(claim.execution_id) ?? 0) + 1);
+  for (const take of takeHistory) executionTakeCounts.set(take.execution_id, (executionTakeCounts.get(take.execution_id) ?? 0) + 1);
   const resumedExecutionCount = [...executionTakeCounts.values()].filter((count) => count > 1).length;
   const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
   const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
@@ -1431,10 +1431,10 @@ function projectReport(state, startedAt, deadline) {
         ready_to_session_start_ms: state.schedulerEvents
           .filter((event) => event.kind === 'scheduler_dispatch_started' && Number.isFinite(event.ready_to_dispatch_ms))
           .map((event) => event.ready_to_dispatch_ms),
-        ready_to_claim_ms: cores.flatMap((core) => core.latency_samples ?? [])
-          .map((sample) => sample.ready_to_claim_ms).filter(Number.isFinite),
-        claim_to_first_turn_ms: cores.flatMap((core) => core.latency_samples ?? [])
-          .map((sample) => sample.claim_to_first_turn_ms).filter(Number.isFinite),
+        ready_to_take_ms: cores.flatMap((core) => core.latency_samples ?? [])
+          .map((sample) => sample.ready_to_take_ms).filter(Number.isFinite),
+        take_to_first_turn_ms: cores.flatMap((core) => core.latency_samples ?? [])
+          .map((sample) => sample.take_to_first_turn_ms).filter(Number.isFinite),
         wait_to_core_release_ms: cores.flatMap((core) => core.latency_samples ?? [])
           .map((sample) => sample.wait_to_core_release_ms).filter(Number.isFinite),
         condition_to_resumed_turn_ms: cores.flatMap((core) => core.latency_samples ?? [])
@@ -1823,7 +1823,7 @@ async function createProjectState(problem, config, options) {
   });
   // Deterministic queue scenarios may seed durable Tasks before reusable Core
   // sessions start. The hook uses the same Task Service boundary as Agent
-  // operations; it does not replace queue claim, Runtime, or dispatch logic.
+  // operations; it does not replace queue take, Runtime, or dispatch logic.
   await options.prepareProject?.({ owner, root, initialTasks, taskService, contextService, router, fixture, problem });
   const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt });
   const cores = [];
@@ -1945,7 +1945,7 @@ async function createProjectState(problem, config, options) {
       taskId: null,
       executionId: null,
       prompt: GENERIC_AGENT_PROMPT,
-      claim: null,
+      take: null,
       takeHistory: [],
       latencySamples: [],
       latencyByExecution: new Map(),
@@ -2030,49 +2030,49 @@ async function createProjectState(problem, config, options) {
       // Mission Task creation is governed by the Task Service contract and
       // responsibility-key idempotency. The benchmark must not add a hidden
       // count quota or reject independent work after a fixed number of Tasks.
-      onTake: async (claim) => {
+      onTake: async (take) => {
         // task_take is invoked by this Core's reusable identity. Keep the
         // durable result available to IdentityTaskLoop so it does not issue a
-        // second claim or manufacture a separate selection handoff.
-        core.takeResult = claim;
+        // second take or manufacture a separate selection handoff.
+        core.takeResult = take;
         core.dispatchReserved = false;
-        const claimedAt = Date.now();
+        const takenAt = Date.now();
         const priorWaitingExecutionId = core.waitingExecutionId;
         core.waitingExecutionId = null;
         core.parallelism.transition(core.index, 'ASSIGNED', {
-          task_id: claim.task.task_id,
-          execution_id: claim.execution.execution_id,
-          reason: 'claim_succeeded',
+          task_id: take.task.task_id,
+          execution_id: take.execution.execution_id,
+          reason: 'take_succeeded',
         });
-        core.taskId = claim.task.task_id;
-        core.executionId = claim.execution.execution_id;
-        core.claim = claim;
+        core.taskId = take.task.task_id;
+        core.executionId = take.execution.execution_id;
+        core.take = take;
         const workerSession = core.session;
-        if (!workerSession) throw new Error('Agent claimed a Task before its session was registered');
+        if (!workerSession) throw new Error('Agent took a Task before its session was registered');
         // Deterministic compatibility adapters expose a `bound` marker to
         // choose their scripted prompt path.  The real Pi Session has no such
         // field; updating it here preserves the same-identity transition
         // without creating a second Session.
         if ('bound' in workerSession) workerSession.bound = true;
         const takeRecord = {
-          task_id: claim.task.task_id,
-          execution_id: claim.execution.execution_id,
+          task_id: take.task.task_id,
+          execution_id: take.execution.execution_id,
           workspace_revision_start: null,
         workspace_git_commit_start: null,
-          claimed_at: new Date(claimedAt).toISOString(),
-          ready_observed_at: core.stateRef?.readyObservedAt.get(claim.task.task_id)
-            ? new Date(core.stateRef.readyObservedAt.get(claim.task.task_id)).toISOString()
+          taken_at: new Date(takenAt).toISOString(),
+          ready_observed_at: core.stateRef?.readyObservedAt.get(take.task.task_id)
+            ? new Date(core.stateRef.readyObservedAt.get(take.task.task_id)).toISOString()
             : null,
-          ready_to_claim_ms: core.stateRef?.readyObservedAt.has(claim.task.task_id)
-            ? Math.max(0, claimedAt - core.stateRef.readyObservedAt.get(claim.task.task_id))
+          ready_to_take_ms: core.stateRef?.readyObservedAt.has(take.task.task_id)
+            ? Math.max(0, takenAt - core.stateRef.readyObservedAt.get(take.task.task_id))
             : null,
-          resumed_from_wait: priorWaitingExecutionId === claim.execution.execution_id || claim.execution.attempt_no > 1,
+          resumed_from_wait: priorWaitingExecutionId === take.execution.execution_id || take.execution.attempt_no > 1,
         };
         core.latencySamples.push(takeRecord);
-        core.latencyByExecution.set(claim.execution.execution_id, takeRecord);
+        core.latencyByExecution.set(take.execution.execution_id, takeRecord);
         core.takeHistory.push(takeRecord);
-        const bound = await runtime.bindAgentExecution(claim.execution.execution_id, workerSession, {
-          workspaceRef: join(workspaceRoot, claim.execution.execution_id),
+        const bound = await runtime.bindAgentExecution(take.execution.execution_id, workerSession, {
+          workspaceRef: join(workspaceRoot, take.execution.execution_id),
           // The current Agent turn is already the first bound turn.  Sending
           // another initial prompt from inside task_take would race the
           // in-flight RPC and violate the single-turn ordering contract.
@@ -2080,9 +2080,9 @@ async function createProjectState(problem, config, options) {
           agentPrompt: BOUND_AGENT_PROMPT,
         });
         const boundSession = core.session;
-        const boundExecutionId = claim.execution.execution_id;
+        const boundExecutionId = take.execution.execution_id;
         core.parallelism.transition(core.index, 'RUNNING', {
-          task_id: claim.task.task_id,
+          task_id: take.task.task_id,
           execution_id: boundExecutionId,
           reason: 'execution_started_same_identity',
         });
@@ -2090,7 +2090,7 @@ async function createProjectState(problem, config, options) {
         if (latency && !latency.first_turn_started_at) {
           const firstTurnAt = Date.now();
           latency.first_turn_started_at = new Date(firstTurnAt).toISOString();
-          latency.claim_to_first_turn_ms = Math.max(0, firstTurnAt - Date.parse(latency.claimed_at));
+          latency.take_to_first_turn_ms = Math.max(0, firstTurnAt - Date.parse(latency.taken_at));
           const eligibilityAt = core.stateRef?.waitEligibilityAt.get(boundExecutionId);
           if (eligibilityAt !== undefined) {
             latency.condition_satisfied_observed_at = new Date(eligibilityAt).toISOString();
@@ -2098,7 +2098,7 @@ async function createProjectState(problem, config, options) {
             latency.condition_to_resumed_turn_ms = Math.max(0, firstTurnAt - eligibilityAt);
           }
         }
-        if (boundSession && core.runtime.hasActiveExecution(claim.execution.execution_id)) {
+        if (boundSession && core.runtime.hasActiveExecution(take.execution.execution_id)) {
           core.turnInFlight = true;
           let boundTurnPromise;
           boundTurnPromise = (async () => {
@@ -2154,28 +2154,28 @@ async function createProjectState(problem, config, options) {
         takeRecord.workspace_git_commit_start = bound.workspace.git_commit ?? null;
         core.observe({
           source: 'runtime', kind: 'execution_assigned', visibility: 'operator',
-          taskId: claim.task.task_id, executionId: claim.execution.execution_id,
+          taskId: take.task.task_id, executionId: take.execution.execution_id,
           sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
           payload: {
             workspace_ref: bound.workspace.workspace_ref,
             workspace_revision: bound.workspace.workspace_revision,
             workspace_content_hash: bound.workspace.content_hash,
-            state: claim.execution.state,
+            state: take.execution.state,
           },
         });
         core.observe({
           source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
-          taskId: claim.task.task_id, executionId: claim.execution.execution_id,
+          taskId: take.task.task_id, executionId: take.execution.execution_id,
           sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
           payload: { state: 'RUNNING', reason: 'execution_bound' },
         });
-        // The worker session is only the claim transport. The handoff result
+        // The worker session is only the take transport. The handoff result
         // tells the current turn to stop; once that turn settles, the
         // existing cleanup path stops this transport session.
         // Runtime replaces core.session with the newly started bound session,
-        // so checking core.session for equality here is too late. The claim
+        // so checking core.session for equality here is too late. The take
         // transport must always stop after a successful handoff before the
-        // model can issue another claim or a claimed-only call.
+        // model can issue another take or a take-only call.
         if (workerSession !== core.session) await Promise.resolve(workerSession.stop?.()).catch(() => undefined);
       },
       onTakeAccepted: async () => {
@@ -2233,7 +2233,7 @@ async function createProjectState(problem, config, options) {
         const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
         const releasedState = releasedExecution?.state ?? 'RELEASED';
         const coreProjection = 'IDLE';
-        // A claim record is created before Runtime binds its Workspace. If a
+        // A take record is created before Runtime binds its Workspace. If a
         // very short bound turn fails before the handoff callback records the
         // starting revision, retain the attempted ownership with the durable
         // revision that Runtime prepared instead of emitting a null lineage.
@@ -2258,13 +2258,13 @@ async function createProjectState(problem, config, options) {
         core.parallelism.transition(core.index, coreProjection, {
           task_id: taskId,
           execution_id: executionId,
-          reason: releasedExecution?.state?.toLowerCase() ?? 'claim_released',
+          reason: releasedExecution?.state?.toLowerCase() ?? 'take_released',
         });
         if (core.taskId === taskId && core.executionId === executionId) {
           core.waitingExecutionId = null;
           core.taskId = null;
           core.executionId = null;
-          core.claim = null;
+          core.take = null;
           // Keep the identity Session alive. Runtime detached it from the
           // released Execution; the next take re-binds this same Session.
           // Deterministic adapters use `bound` to choose their scripted path.
@@ -2527,11 +2527,11 @@ async function createProjectState(problem, config, options) {
           // A Service contract error is feedback for the Agent to correct and
           // retry. It is not a protocol violation by itself. Multiple
           // unbound slots may also observe the same OPEN Task before one
-          // claim commits; that scheduling contention is recoverable too.
-          recoverable: ['INVALID_CONTRACT', 'INVALID_TASK_CONTRACT'].includes(error.code) || (error.code === 'CONFLICT' && operation === 'claim'),
+          // take commits; that scheduling contention is recoverable too.
+          recoverable: ['INVALID_CONTRACT', 'INVALID_TASK_CONTRACT'].includes(error.code) || (error.code === 'CONFLICT' && operation === 'task_take'),
           protocol: false,
         });
-        if (error.code === 'CONFLICT' && operation === 'claim') {
+        if (error.code === 'CONFLICT' && operation === 'task_take') {
           core.parallelism.recordTakeConflict(operationId ? `bridge:${operationId}` : null);
         }
       },
@@ -2709,7 +2709,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   for (const core of state.cores) core.runtime?.setRunDeadline?.(deadline);
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
   // IdentityTaskLoop waits for the whole Runtime Execution to release after a
-  // successful claim. Keep that ownership deadline at least as long as the
+  // successful take. Keep that ownership deadline at least as long as the
   // durable Runtime deadline; a turn timeout is only the per-prompt bound.
   const executionTimeoutMs = state.executionTimeoutMs;
   const basePrompt = (core) => core.taskId
@@ -2721,7 +2721,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       coreId: `core-${core.index}`,
       // This is a bounded discovery prompt for the reusable identity, not a
       // old selection transport SOP.  The identity must call task_take itself.
-      takePrompt: `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nUse the Task view in this turn and task_take on this same Core identity; do not call task.claim or delegate selection to another Session.`,
+      takePrompt: `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nUse the Task view in this turn and task_take on this same Core identity; do not call task_take or delegate selection to another Session.`,
       shortlistLimit: options.controllerShortlistLimit ?? 16,
       maxTakeAttempts: options.maxStartupAttempts ?? 3,
       maxTakeRescans: options.maxTakeRescans ?? 1,
@@ -2755,7 +2755,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
             agent_prompt: selectedTask.task_instructions ?? BOUND_AGENT_PROMPT,
             // Modern Mission Tasks start from the public Mission Workspace and
             // receive a fresh Execution materialization. Resume is reserved
-            // for explicit recovery claims carrying a source revision.
+            // for explicit recovery takes carrying a source revision.
             workspace_mode: 'clean',
           });
         } catch (error) {
@@ -2768,13 +2768,13 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         }
       },
       runtime: core.runtime,
-      runExecution: async (claim) => {
-        if (core.takeResult?.execution?.execution_id === claim.execution.execution_id) {
-          return { execution: state.taskService.getExecution(claim.execution.execution_id) };
+      runExecution: async (take) => {
+        if (core.takeResult?.execution?.execution_id === take.execution.execution_id) {
+          return { execution: state.taskService.getExecution(take.execution.execution_id) };
         }
         try {
-          await core.bridge.bindTake(claim);
-          return { execution: state.taskService.getExecution(claim.execution.execution_id) };
+          await core.bridge.bindTake(take);
+          return { execution: state.taskService.getExecution(take.execution.execution_id) };
         } catch (error) {
           // ServicesBridge invokes its release hook for a failed bind, but the
           // Core's provisional selection reservation still belongs to this
@@ -2814,7 +2814,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           timestamp: event.timestamp ?? Date.now(),
         };
         state.identityLoopEvents.push(sanitized);
-        if (sanitized.kind === 'identity_loop_claim_conflict') {
+        if (sanitized.kind === 'identity_loop_take_conflict') {
           const conflictKey = [
             sanitized.core_id,
             sanitized.task_id,
@@ -2835,7 +2835,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           payload: sanitized,
         });
         if (sanitized.kind === 'identity_loop_state_changed' && sanitized.changed === true && sanitized.state === 'IDLE' &&
-          ['execution_released', 'runtime_failed', 'take_failed', 'take_invalid', 'claim_conflict', 'claim_failed', 'claim_invalid'].includes(sanitized.reason)) {
+          ['execution_released', 'runtime_failed', 'take_failed', 'take_invalid', 'take_conflict', 'take_failed', 'take_invalid'].includes(sanitized.reason)) {
           // The release event can arrive while IdentityTaskLoop is still inside its
           // handoff. Wake this identity loop once it has actually returned to IDLE,
           // then reconcile for durable projections. The direct wake avoids a
@@ -2883,7 +2883,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     await state.controller.reconcile({ reason: 'initial' });
     // Each physical Core owns one long-lived identity loop supervisor. The
     // Controller only reconciles durable readiness and wakes these loops; it
-    // never performs a selection or claim itself.
+    // never performs a selection or take itself.
     state.identityLoopAbortController = new AbortController();
     state.identityLoopRuns = state.identityLoops.map((loop) => {
       const run = loop.run({ signal: state.identityLoopAbortController.signal });
@@ -2997,7 +2997,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           if (state.solvedAt === null) await releaseTerminalExecution(core);
         }
         // The Controller owns reconciliation and signals each idle identity loop;
-        // each long-lived identity loop owns its bounded take/claim loop. The
+        // each long-lived identity loop owns its bounded take/take loop. The
         // main loop is only the periodic repair and observability sweep.
         await state.controller.reconcile({ reason: reconcileReason });
         for (const core of state.cores) {
