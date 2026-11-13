@@ -801,7 +801,20 @@ export class ServicesBridge {
         case 'task_register': result = sdk.taskRegister(payload, options); break;
         case 'task_take':
           this.lastTakeOutcome = { attempted: true, ok: false, task_id: payload.task_id ?? null };
-          result = sdk.taskTake(payload, options);
+          {
+            // Modern Mission Tasks always materialize a fresh Execution
+            // Workspace. A reusable Bot may still send the legacy default
+            // `resume`; normalize that transport spelling at the authenticated
+            // boundary unless it carries explicit lineage for recovery.
+            const modernTask = this.taskService.isModernTask?.(payload.task_id);
+            const hasLineage = payload.workspace_source_execution_id
+              || payload.workspace_source_ref
+              || payload.workspace_revision !== undefined;
+            const takePayload = modernTask && !hasLineage
+              ? { ...payload, workspace_mode: 'clean' }
+              : payload;
+            result = sdk.taskTake(takePayload, options);
+          }
           await this.bindClaim(result);
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
           break;

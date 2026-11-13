@@ -17,7 +17,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "dd6f627ecc4912eb4ab4975bfa07787004cd0bcb660c9aca1da3b1eb4d3079e4"
+      "sha256": "de199beb3dd5d99bf44023a978744e9e815842ee50806a27a4aaf71d0ac89b63"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -85,7 +85,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "9e3fb2c4b1f697be7f6e594045a57abbda5a1f86f563fc2be5156c3aa12d168b"
+      "sha256": "0f9d3121e92703de9a995e02b4477baaec23cbb1f99f72c458816c98e522d6c1"
     },
     {
       "path": "src/task/task-types.js",
@@ -337,13 +337,13 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1382,
+      "line": 1387,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1620,
+      "line": 1625,
       "field": "action",
       "sha256": "ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8"
     }
@@ -371,7 +371,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "a4c26ded17503077e2c096ef46e6d78d54e0789dea83bcbcdca87cdc64baf842"
+      "sha256": "9288eb63d4e0b314239aa5729df74c6e475c089d2f17b355354eab69e0b6cab8"
     }
   ]
 }

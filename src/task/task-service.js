@@ -985,6 +985,11 @@ export class TaskService {
     return this.db.prepare('SELECT * FROM modern_task_records WHERE task_id = ?').get(taskId);
   }
 
+  isModernTask(taskId) {
+    requireString(taskId, 'task_id');
+    return Boolean(this.#modernTaskRecord(taskId));
+  }
+
   #taskMaterialLinks(taskId, { role = null, materialId = null } = {}) {
     const rows = this.db.prepare(`SELECT * FROM task_material_links
       WHERE task_id = ?
