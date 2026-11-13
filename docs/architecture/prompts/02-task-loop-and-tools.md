@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `768f1d4d511668287be529045a101e900e930a1ab2b814e3db476b45483680bc`
+Body SHA-256: `3cd7e1b9cd3e1e4fa71b8f852cf8a54c16f35af1138bfb2a77c1fd65e678df54`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -84,7 +84,7 @@ Body SHA-256: `768f1d4d511668287be529045a101e900e930a1ab2b814e3db476b45483680bc`
   - swarmenv_task_block: Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable. (logical operation task.task_block; writes state; inputs required=[blocker,dependency,handoff_material_id] fields=[blocker,dependency,handoff_material_id]; Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.)
   - swarmenv_task_close: Accept a linked Response Material from another Task and close its producer. (logical operation task.task_close; writes state; inputs required=[producer_task_id,material_id] fields=[material_id,producer_task_id]; Accept a linked Response Material from another Task and close its producer.)
   - swarmenv_task_complete: Complete the current Task when its own contract and required Material or Judge evidence are satisfied. (logical operation task.task_complete; writes state; inputs required=[none] fields=[check_result_id,material_ids]; Complete the current Task when its own contract and required Material or Judge evidence are satisfied.)
-  - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,spawned_from,summary,task_instructions,task_type,timebox_ms]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.)
+  - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,spawned_from,summary,task_instructions,task_type,timebox_ms,workspace]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.)
   - swarmenv_task_feedback: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state. (logical operation task.task_feedback; writes state; inputs required=[notification_id,decision,action] fields=[action,decision,details,notification_id]; Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.)
   - swarmenv_task_link_material: Link an immutable Material to a Task with an input, response, handoff, or experience role. (logical operation task.task_link_material; writes state; inputs required=[task_id,material_id,role] fields=[material_id,receiving_task_id,role,task_id]; Link an immutable Material to a Task with an input, response, handoff, or experience role.)
   - swarmenv_task_list: List Mission Tasks and search their short summaries before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[limit,mission_id,query,state]; List Mission Tasks and search their short summaries before proposing new work.)
@@ -92,6 +92,9 @@ Body SHA-256: `768f1d4d511668287be529045a101e900e930a1ab2b814e3db476b45483680bc`
   - swarmenv_task_status: Read the authoritative Mission, Task counts, claimable work, and observation timestamp. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read the authoritative Mission, Task counts, claimable work, and observation timestamp.)
   - swarmenv_task_take: Take an existing Mission or ordinary Task using the caller identity and Core lane. (logical operation task.task_take; writes state; inputs required=[task_id] fields=[claim_key,input_material_refs,task_id,workspace_mode,workspace_revision,workspace_source_execution_id,workspace_source_ref]; Take an existing Mission or ordinary Task using the caller identity and Core lane.)
   - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
+  - swarmenv_workspace_public_files: List files in the immutable Mission Workspace revision before a Task is claimed. (logical operation task.workspace_public_files; read-only; inputs required=[workspace_id] fields=[path,revision,workspace_id]; List files in the immutable Mission Workspace revision before a Task is claimed.)
+  - swarmenv_workspace_public_read: Read one file from an immutable Mission Workspace revision before a Task is claimed. (logical operation task.workspace_public_read; read-only; inputs required=[workspace_id,path] fields=[max_bytes,path,revision,workspace_id]; Read one file from an immutable Mission Workspace revision before a Task is claimed.)
+  - swarmenv_workspace_public_search: Search text in an immutable Mission Workspace revision before a Task is claimed. (logical operation task.workspace_public_search; read-only; inputs required=[workspace_id,query] fields=[max_results,path,query,revision,workspace_id]; Search text in an immutable Mission Workspace revision before a Task is claimed.)
 ````
 
 ## Pi tool registrations: all instruction fields
@@ -542,6 +545,48 @@ Body SHA-256: `fffae822ee01243ff0d4f1f9c5e0014f0c1610b58ef6bce8756b3658e78a0a7b`
   "promptGuidelines": [
     "Read one Task, its two relations, state, current Execution, and linked Materials.",
     "Help: service://task/task_view"
+  ]
+}
+````
+## swarmenv_workspace_public_files
+
+Body SHA-256: `ac1f9e1847169d3d3acaceecf3149de762bb3ccfdd70c51a79af9e80ae2c52ff`
+
+````text
+{
+  "description": "List files in the immutable Mission Workspace revision before a Task is claimed.",
+  "promptSnippet": "Task Service: List files in the immutable Mission Workspace revision before a Task is claimed.",
+  "promptGuidelines": [
+    "List files in the immutable Mission Workspace revision before a Task is claimed.",
+    "Help: service://task/workspace_public_files"
+  ]
+}
+````
+## swarmenv_workspace_public_read
+
+Body SHA-256: `8dce9aaee954d995630dee76f819550c8a6d63a26a882e2d5eeb13997dab2e5c`
+
+````text
+{
+  "description": "Read one file from an immutable Mission Workspace revision before a Task is claimed.",
+  "promptSnippet": "Task Service: Read one file from an immutable Mission Workspace revision before a Task is claimed.",
+  "promptGuidelines": [
+    "Read one file from an immutable Mission Workspace revision before a Task is claimed.",
+    "Help: service://task/workspace_public_read"
+  ]
+}
+````
+## swarmenv_workspace_public_search
+
+Body SHA-256: `aa6fbfe65b75ccb20020aea5d352810de39615e5508374440694c61979bdb2f5`
+
+````text
+{
+  "description": "Search text in an immutable Mission Workspace revision before a Task is claimed.",
+  "promptSnippet": "Task Service: Search text in an immutable Mission Workspace revision before a Task is claimed.",
+  "promptGuidelines": [
+    "Search text in an immutable Mission Workspace revision before a Task is claimed.",
+    "Help: service://task/workspace_public_search"
   ]
 }
 ````

@@ -117,7 +117,12 @@ const syntheticTask = {
 const takeExpression = between(runnerPath, '      takePrompt: ', ',\n      shortlistLimit:');
 const takePrompt = evaluate(takeExpression, { BOUND_AGENT_PROMPT, state: { agentTaskLoopGuide: taskLoopGuide(profile) } });
 const discoveryExpression = between(runnerPath, '  const message = ', ';\n  try {', 'async function takeTaskWithAgent');
-const discoveryPrompt = evaluate(discoveryExpression, { prompt: takePrompt, candidates: [syntheticTask], selectionView: (candidates) => evaluate(selectionExpression, { candidates }) });
+const discoveryPrompt = evaluate(discoveryExpression, {
+  prompt: takePrompt,
+  candidates: [syntheticTask],
+  bootstrap: false,
+  selectionView: (candidates) => evaluate(selectionExpression, { candidates }),
+});
 // The flat-only benchmark no longer has the old modePrompt helper. Keep the
 // generated continuation example anchored to the literal underlying body
 // supplied by the current runner rather than resurrecting a retired wrapper.

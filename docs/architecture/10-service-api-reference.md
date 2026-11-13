@@ -30,16 +30,16 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `bfc08322365f16b70e344fd05c481145ad41f9bad1256933c18a206b2be2b178` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `c0aa628a1ae62af6d0bddd6d5ba5199289dbda971c8053cd25642a353615df23` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `2849cfb1c381fd2528ee9a66dd2b85df651af8eadf0d59a8884f4b2c2830cfaf` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `76b22fe7980770b09417fda779faa9680dc68caf682700ff7cdfdc86c9f4e849` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `aa199f6121dda2abde87c42e60f49e899cffabebf10872a75a353714d0daa2b4` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `b60bfef9eecb032a6cb103ea7972d31f34ab39d8a91fedd9a1833624e5fc747f` |
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `87e3bf0fdd260247c399f3076b5a53a75a88fc64d919ff824b5f2edf2f70f480` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `0f20975ecf7ebf4b2725ed3545ef303fba8a47f6f6c28679cb5f61bc5bb5ae33` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `5d75d35a8ded73e3810109ab710289882abc1e0a45d5b872b4c826b012a14a3b` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `50052879854f331bee91cae3fbd159ceffb3c0eb2a9fc65816bca7b710d09f82` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `309d6f50f497a9e3d16a2b75d24d732303e517ed06ded9243142781e1d01d15b` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `a684f8321df63faf087c3758347da103097d8172c7859c3dd9ae7762f2aec169` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `2016ebbd5b8e5aaa5925e43acb663184ddb64e4a6c2304f7f303a4dfdd38e779` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `eedbc3e6869e525c16369ca1aca042d12bdc0877a3f4447be4319f23e54e3ddc` |
 
@@ -80,6 +80,9 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `task.task_status` | `swarmenv_task_status` | `swarmenv_task_status` |
 | `task.task_take` | `swarmenv_task_take` | `swarmenv_task_take` |
 | `task.task_view` | `swarmenv_task_view` | `swarmenv_task_view` |
+| `task.workspace_public_files` | `swarmenv_workspace_public_files` | `swarmenv_workspace_public_files` |
+| `task.workspace_public_read` | `swarmenv_workspace_public_read` | `swarmenv_workspace_public_read` |
+| `task.workspace_public_search` | `swarmenv_workspace_public_search` | `swarmenv_workspace_public_search` |
 
 The flat Mission Task profile is the only Agent-facing Task model. Retired structural and lease operations may remain in internal catalog definitions for storage/analysis compatibility, but are filtered from the built-in Registry and cannot be called by a bound Agent. The normal handoff tool is `execution_progress` with `kind: "handoff"`.
 
@@ -253,7 +256,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 12 registered capabilities
+### Task Service: 15 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -276,7 +279,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "d9e0a497363162951591d2aaef55710a687d87c14d43f15c7dd687f8455dcfa4"
+  "manifest_hash": "7fd09e96e6e9ffe4e2995bea0ef8ff20ed4095e1b1dc17053600b979a71f844a"
 }
 ```
 
@@ -856,6 +859,9 @@ Create one substantial ordinary Task with a summary, expected output, acceptance
       "completion_contract": {
         "type": "object"
       },
+      "workspace": {
+        "type": "object"
+      },
       "input_material_refs": {
         "type": "array",
         "items": {
@@ -1190,6 +1196,192 @@ Accept a linked Response Material from another Task and close its producer.
   },
   "method": "POST",
   "path": "/v1/task_close",
+  "errors": []
+}
+```
+
+#### task.workspace_public_files
+
+List files in the immutable Mission Workspace revision before a Task is claimed.
+
+```json
+{
+  "name": "workspace_public_files",
+  "operation": "workspace_public_files",
+  "description": "List files in the immutable Mission Workspace revision before a Task is claimed.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "workspace_id"
+    ],
+    "properties": {
+      "workspace_id": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "read",
+  "idempotent": true,
+  "context": [],
+  "requires_binding": false,
+  "scope": "mission-read",
+  "help": {
+    "when": "List files in the immutable Mission Workspace revision before a Task is claimed.",
+    "ref": "service://task/workspace_public_files",
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: List files in the immutable Mission Workspace revision before a Task is claimed.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_public_files",
+  "errors": []
+}
+```
+
+#### task.workspace_public_read
+
+Read one file from an immutable Mission Workspace revision before a Task is claimed.
+
+```json
+{
+  "name": "workspace_public_read",
+  "operation": "workspace_public_read",
+  "description": "Read one file from an immutable Mission Workspace revision before a Task is claimed.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "workspace_id",
+      "path"
+    ],
+    "properties": {
+      "workspace_id": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "max_bytes": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000000
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "read",
+  "idempotent": true,
+  "context": [],
+  "requires_binding": false,
+  "scope": "mission-read",
+  "help": {
+    "when": "Read one file from an immutable Mission Workspace revision before a Task is claimed.",
+    "ref": "service://task/workspace_public_read",
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Read one file from an immutable Mission Workspace revision before a Task is claimed.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_public_read",
+  "errors": []
+}
+```
+
+#### task.workspace_public_search
+
+Search text in an immutable Mission Workspace revision before a Task is claimed.
+
+```json
+{
+  "name": "workspace_public_search",
+  "operation": "workspace_public_search",
+  "description": "Search text in an immutable Mission Workspace revision before a Task is claimed.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "workspace_id",
+      "query"
+    ],
+    "properties": {
+      "workspace_id": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "query": {
+        "type": "string"
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 500
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "read",
+  "idempotent": true,
+  "context": [],
+  "requires_binding": false,
+  "scope": "mission-read",
+  "help": {
+    "when": "Search text in an immutable Mission Workspace revision before a Task is claimed.",
+    "ref": "service://task/workspace_public_search",
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Search text in an immutable Mission Workspace revision before a Task is claimed.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_public_search",
   "errors": []
 }
 ```
