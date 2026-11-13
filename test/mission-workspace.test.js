@@ -51,6 +51,21 @@ test('MissionWorkspace rejects stale main updates and protects metadata paths', 
   await assert.rejects(() => store.save({ workspaceId: created.workspace_id, baseRevision: '0.2', files: { '.swarm-workspace.json': 'bad' } }), { code: 'NOT_ALLOWED' });
 });
 
+test('MissionWorkspace apply materializes a public revision and freezes main during submission', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+  const store = new MissionWorkspace({ rootDir: root });
+  const created = await store.create({ missionId: 'mission:freeze', workspaceId: 'workspace-freeze', initialFiles: { 'notes.md': 'base' } });
+  const saved = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'notes.md': 'candidate' } });
+  const target = await mkdtemp(join(tmpdir(), 'swarmenv-apply-'));
+  const applied = await store.apply({ workspaceId: created.workspace_id, revision: saved.revision, targetDir: target });
+  assert.equal(applied.revision, saved.revision);
+  assert.equal((await store.read({ workspaceId: created.workspace_id, revision: saved.revision, path: 'notes.md' })).content, 'candidate');
+  await store.freeze({ workspaceId: created.workspace_id, submissionId: 'sub-1', expectedMainRevision: '0.1' });
+  await assert.rejects(() => store.merge({ workspaceId: created.workspace_id, fromRevision: saved.revision, expectedMainRevision: '0.1' }), { code: 'NOT_ALLOWED' });
+  await store.unfreeze({ workspaceId: created.workspace_id, submissionId: 'sub-1' });
+  await store.merge({ workspaceId: created.workspace_id, fromRevision: saved.revision, expectedMainRevision: '0.1' });
+});
+
 test('ServicesRouter exposes public Workspace reads and Mission submission as async operations', async () => {
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
   const workspace = new MissionWorkspace({ rootDir: root });

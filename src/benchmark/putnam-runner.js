@@ -1475,7 +1475,7 @@ async function createProjectState(problem, config, options) {
   const missionWorkspaceRoot = join(projectDir, 'mission-workspace');
   const missionSubmissionPath = join(projectDir, 'mission-submissions.json');
   const missionWorkspace = new MissionWorkspace({ rootDir: missionWorkspaceRoot });
-  const missionSubmissionStore = new MissionSubmissionStore({ file: missionSubmissionPath });
+  const missionSubmissionStore = new MissionSubmissionStore({ file: missionSubmissionPath, workspace: missionWorkspace });
   let sandboxObservationStore = null;
   const sandboxConfig = options.sandbox ?? {};
   const sandboxProvider = String(sandboxConfig.provider ?? process.env.SWARMENV_SANDBOX_PROVIDER ?? 'docker').toLowerCase();

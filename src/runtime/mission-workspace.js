@@ -98,7 +98,7 @@ export class MissionWorkspace {
     const commit = await git(root, ['rev-parse', 'HEAD']);
     const revision = { revision: '0.1', git_commit: commit, parents: [], files: fileEntries(files), content_hash: textHash(JSON.stringify(fileEntries(files))), created_at: now(), source: 'initial' };
     await writeFile(join(root, REVISION_DIR, '0.1.json'), JSON.stringify(revision, null, 2));
-    const record = { workspace_id: workspaceId, mission_id: missionId, repository: root, main_revision: '0.1', main_commit: commit, next_revision: '0.2', revisions: ['0.1'], metadata, created_at: now(), updated_at: now() };
+    const record = { workspace_id: workspaceId, mission_id: missionId, repository: root, main_revision: '0.1', main_commit: commit, next_revision: '0.2', revisions: ['0.1'], frozen_submission_id: null, metadata, created_at: now(), updated_at: now() };
     await this.#write(root, record);
     return this.#public(record);
   }
@@ -146,6 +146,39 @@ export class MissionWorkspace {
     return { ...listing, query, matches, truncated: matches.length >= maxResults };
   }
 
+  async apply({ workspaceId, revision = undefined, targetDir }) {
+    return this.materialize({ workspaceId, revision, targetDir });
+  }
+
+  async freeze({ workspaceId, submissionId, expectedMainRevision = undefined }) {
+    required(submissionId, 'submission_id');
+    const root = this.workspacePath(workspaceId);
+    const record = await this.#read(root);
+    if (expectedMainRevision !== undefined && revisionNumber(expectedMainRevision) !== record.main_revision) {
+      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'main revision changed before Mission submission', { expected: record.main_revision, received: expectedMainRevision });
+    }
+    if (record.frozen_submission_id && record.frozen_submission_id !== submissionId) {
+      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace main is frozen by another Mission submission', { submission_id: record.frozen_submission_id });
+    }
+    record.frozen_submission_id = submissionId;
+    record.updated_at = now();
+    await this.#write(root, record);
+    return this.#public(record);
+  }
+
+  async unfreeze({ workspaceId, submissionId }) {
+    required(submissionId, 'submission_id');
+    const root = this.workspacePath(workspaceId);
+    const record = await this.#read(root);
+    if (record.frozen_submission_id && record.frozen_submission_id !== submissionId) {
+      throw new SwarmEnvError(ERROR_CODES.FENCED, 'Workspace freeze belongs to another Mission submission', { submission_id: record.frozen_submission_id });
+    }
+    record.frozen_submission_id = null;
+    record.updated_at = now();
+    await this.#write(root, record);
+    return this.#public(record);
+  }
+
   async save({ workspaceId, baseRevision, files, source = 'execution' }) {
     const root = this.workspacePath(workspaceId);
     const record = await this.#read(root);
@@ -165,6 +198,7 @@ export class MissionWorkspace {
   async merge({ workspaceId, fromRevision, expectedMainRevision, checker = null }) {
     const root = this.workspacePath(workspaceId);
     const record = await this.#read(root);
+    if (record.frozen_submission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace main is frozen for Mission submission', { submission_id: record.frozen_submission_id });
     const expected = revisionNumber(expectedMainRevision ?? record.main_revision);
     if (expected !== record.main_revision) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'main revision changed', { expected: record.main_revision, received: expected });
     const sourceRevision = revisionNumber(fromRevision);
@@ -187,7 +221,7 @@ export class MissionWorkspace {
 
   async materialize({ workspaceId, revision = undefined, targetDir }) {
     required(targetDir, 'target_dir');
-    const root = this.workspacePath(workspaceId); const record = await this.#read(root); const selected = revision ?? record.main_revision; const tree = await this.#snapshot(root, selected);
+    const root = this.workspacePath(workspaceId); const record = await this.#read(root); const selected = revision ?? record.main_revision; const tree = await this.#tree(root, selected);
     const target = resolve(targetDir); if (target === root || relative(root, target) === '') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'execution directory must be separate from repository');
     await mkdir(target, { recursive: true }); await this.#materialize(target, tree); return { workspace_id: record.workspace_id, revision: selected, target_dir: target, files: fileEntries(tree) };
   }
