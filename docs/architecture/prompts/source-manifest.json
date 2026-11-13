@@ -77,7 +77,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "fb13d2474ff3c9f4efa0753a4917caa43423f2c38e99b78634781f9689bc31fc"
+      "sha256": "29f127be7e45225bc4b78ca25b10972936672533bd721a6529951b86924b89c2"
     },
     {
       "path": "src/task/task-types.js",
