@@ -45,6 +45,7 @@ class RemoteAgentChild extends EventEmitter {
     this.records = new Set();
     this.lastSequence = 0;
     this.eventStreamFailures = 0;
+    this.lastEventStreamLogAt = 0;
     this.#listen();
   }
 
@@ -66,20 +67,37 @@ class RemoteAgentChild extends EventEmitter {
         // binding or contract error still reaches Runtime through the error
         // event.
         if (!this.closed) {
-          this.logger?.append({
-            event: 'agent_event_stream_error',
-            execution_id: this.executionId,
-            retryable: error?.retryable === true,
-            error_code: error?.code ?? error?.name ?? 'event_stream_error',
-            error_message: String(error?.message ?? error).slice(0, 256),
-          });
           const retryable = error?.retryable === true
             || ![ERROR_CODES.NOT_ALLOWED, ERROR_CODES.INVALID_CONTRACT].includes(error?.code);
           if (!retryable) this.emit('error', error);
-          else this.eventStreamFailures += 1;
+          else {
+            this.eventStreamFailures += 1;
+            // A provider gateway can return a burst of 502s while the worker
+            // remains healthy. Log the first failure, powers of two, and a
+            // ten-second heartbeat instead of turning the diagnostic stream
+            // into a second source of load.
+            const now = Date.now();
+            const failures = this.eventStreamFailures;
+            if (failures === 1 || (failures & (failures - 1)) === 0 || now - this.lastEventStreamLogAt >= 10_000) {
+              this.logger?.append({
+                event: 'agent_event_stream_error',
+                execution_id: this.executionId,
+                retryable: true,
+                failure_count: failures,
+                error_code: error?.code ?? error?.name ?? 'event_stream_error',
+                error_message: String(error?.message ?? error).slice(0, 256),
+              });
+              this.lastEventStreamLogAt = now;
+            }
+          }
         }
       }
-      if (!this.closed) await new Promise((resolve) => setTimeout(resolve, 100));
+      if (!this.closed) {
+        const delay = this.eventStreamFailures > 0
+          ? Math.min(5_000, 100 * (2 ** Math.min(this.eventStreamFailures - 1, 6)))
+          : 100;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
     }
   }
 
