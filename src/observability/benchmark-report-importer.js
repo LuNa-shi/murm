@@ -38,7 +38,7 @@ function coreSummary(report, core) {
     task_state: core.task_state,
     execution_state: core.execution_state,
     workspace_ref: core.workspace_ref,
-    workspace_revision: core.claims?.at(-1)?.workspace_revision_end ?? null,
+    workspace_revision: core.takes?.at(-1)?.workspace_revision_end ?? null,
     workspace_writes: core.workspace_writes?.length ?? 0,
     task_type: task?.task_type ?? null,
   };
@@ -149,11 +149,11 @@ export async function importBenchmarkReport({ observationStore, reportPath, expe
   for (const core of report.cores ?? []) {
     const coreId = `core-${core.core}`;
     const summary = coreSummary(report, core);
-    for (const claim of core.claims ?? []) {
+    for (const take of core.takes ?? []) {
       appendStatic(observationStore, base, {
-        source: 'runtime', kind: 'execution_assigned', coreId, taskId: claim.task_id, executionId: claim.execution_id,
+        source: 'runtime', kind: 'execution_assigned', coreId, taskId: take.task_id, executionId: take.execution_id,
         occurredAt: report.run?.started_at, visibility: 'operator',
-        payload: { workspace_ref: core.workspace_ref, workspace_revision: claim.workspace_revision_start, state: 'RUNNING' },
+        payload: { workspace_ref: core.workspace_ref, workspace_revision: take.workspace_revision_start, state: 'RUNNING' },
       });
     }
     appendStatic(observationStore, base, {

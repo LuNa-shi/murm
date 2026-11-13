@@ -542,7 +542,7 @@ async function runTurn(core, prompt, timeoutMs) {
       core.taskId && core.executionId && core.runtime.hasActiveExecution(core.executionId),
     );
     if (!handedOff) {
-      // A retired claim may enter onClaim before Runtime rejects the permanent
+      // A retired claim may enter onTake before Runtime rejects the permanent
       // Core binding (for example, two selectors race for a resumable wait).
       // Clear that provisional local ownership or the selection transport
       // would keep this Core permanently marked turn-in-flight.
@@ -850,8 +850,8 @@ async function releaseTerminalExecution(core) {
   const execution = core.runtime.taskService.getExecution(core.executionId);
   if (!execution || !['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(execution.state)) return;
   const activeWorkspace = core.runtime.activeProcesses?.get?.(core.executionId)?.workspace;
-  const latestClaim = core.latencyByExecution?.get?.(core.executionId);
-  if (latestClaim && activeWorkspace?.git_commit) latestClaim.workspace_git_commit_end = activeWorkspace.git_commit;
+  const latestTake = core.latencyByExecution?.get?.(core.executionId);
+  if (latestTake && activeWorkspace?.git_commit) latestTake.workspace_git_commit_end = activeWorkspace.git_commit;
   core.parallelism.transition(core.index, 'IDLE', {
     task_id: execution.task_id,
     execution_id: execution.execution_id,
@@ -1141,9 +1141,9 @@ function projectReport(state, startedAt, deadline) {
   const materials = state.contextService.readMaterials({});
   const materialConsumptions = state.contextService.listMaterialConsumptions({});
   const taskTree = projectTasks(state, { limit: 100, availableOnly: false });
-  const claimHistory = state.cores.flatMap((core) => core.claimHistory);
-  const allowedTaskIds = new Set((state.rootTaskId ? [state.rootTaskId] : []).concat(claimHistory.map((claim) => claim.task_id)));
-  const allowedExecutionIds = new Set(claimHistory.map((claim) => claim.execution_id));
+  const takeHistory = state.cores.flatMap((core) => core.takeHistory);
+  const allowedTaskIds = new Set((state.rootTaskId ? [state.rootTaskId] : []).concat(takeHistory.map((claim) => claim.task_id)));
+  const allowedExecutionIds = new Set(takeHistory.map((claim) => claim.execution_id));
   const materialBoundaryViolation = materials.some((material) =>
     !allowedTaskIds.has(material.source_task) || !allowedExecutionIds.has(material.source_execution));
   const rootTask = state.taskService.getTask(state.rootTaskId);
@@ -1151,7 +1151,7 @@ function projectReport(state, startedAt, deadline) {
   const allowedInputMaterialIds = new Set(materials
     .filter((material) => allowedTaskIds.has(material.source_task) && allowedExecutionIds.has(material.source_execution))
     .map((material) => material.material_id));
-  const workspaceViolation = claimHistory.some((claim) => {
+  const workspaceViolation = takeHistory.some((claim) => {
     const execution = state.taskService.getExecution(claim.execution_id);
     const task = state.taskService.getTask(claim.task_id);
     const inputMaterialRefs = execution?.input_material_refs ?? [];
@@ -1159,9 +1159,9 @@ function projectReport(state, startedAt, deadline) {
       execution.input_snapshot_hash !== inputSnapshotHash(task, execution.input_material_refs);
   });
   const cores = state.cores.map((core) => {
-    const lastClaim = core.claimHistory.at(-1);
-    const taskId = core.taskId ?? lastClaim?.task_id ?? null;
-    const executionId = core.executionId ?? lastClaim?.execution_id ?? null;
+    const lastTake = core.takeHistory.at(-1);
+    const taskId = core.taskId ?? lastTake?.task_id ?? null;
+    const executionId = core.executionId ?? lastTake?.execution_id ?? null;
     const task = taskId ? state.taskService.getTask(taskId) : null;
     const execution = executionId ? state.taskService.getExecution(executionId) : null;
     return {
@@ -1176,7 +1176,7 @@ function projectReport(state, startedAt, deadline) {
       checks: core.checks,
       errors: core.errors,
       cheating_flags: core.cheatingFlags,
-      claims: core.claimHistory.map((claim) => ({
+      claims: core.takeHistory.map((claim) => ({
         ...claim,
         workspace_revision_end: state.taskService.getExecution(claim.execution_id)?.workspace_revision ?? null,
       })),
@@ -1204,8 +1204,8 @@ function projectReport(state, startedAt, deadline) {
   // payload. The bridge returns that error to the Agent as tool feedback. It
   // is not a protocol violation and must not invalidate the whole project.
   const toolProtocolErrorCount = cores.reduce((count, core) => count + core.tool_errors.filter((error) => error.protocol === true).length, 0);
-  const claimedExecutionIds = [...new Set(claimHistory.map((claim) => claim.execution_id))];
-  const claimedExecutions = claimedExecutionIds.map((executionId) => state.taskService.getExecution(executionId));
+  const takenExecutionIds = [...new Set(takeHistory.map((claim) => claim.execution_id))];
+  const claimedExecutions = takenExecutionIds.map((executionId) => state.taskService.getExecution(executionId));
   const workspaceRefs = claimedExecutions.map((execution) => execution?.workspace_ref).filter(Boolean);
   // A preparation/bind failure is allowed to end before a Workspace exists
   // (B09). It is not a boundary violation; every Execution that actually
@@ -1214,7 +1214,7 @@ function projectReport(state, startedAt, deadline) {
   const workspaceBoundaryViolation = claimedExecutions.some((execution) => !execution
     || (!execution.workspace_ref && !preparationFailure(execution)))
     || new Set(workspaceRefs).size !== workspaceRefs.length;
-  const candidateBoundaryViolation = claimHistory.some((claim) => {
+  const candidateBoundaryViolation = takeHistory.some((claim) => {
     const execution = state.taskService.getExecution(claim.execution_id);
     if (!execution?.candidate_material_id) return false;
     const material = state.contextService.getMaterial(execution.candidate_material_id);
@@ -1230,11 +1230,11 @@ function projectReport(state, startedAt, deadline) {
   const narratives = executionNarratives(state, taskTree, materials);
   const invalidWaitAttemptCount = cores.reduce((count, core) => count + (core.toolErrors ?? []).filter((error) =>
     error.operation === 'request_wait' && ['INVALID_CONTRACT', 'NOT_ALLOWED', 'FENCED'].includes(error.code)).length, 0);
-  const childClaimCount = claimHistory.filter((claim) => claim.task_id !== state.rootTaskId).length;
-  const rootClaimCount = claimHistory.filter((claim) => claim.task_id === state.rootTaskId).length;
-  const executionClaimCounts = new Map();
-  for (const claim of claimHistory) executionClaimCounts.set(claim.execution_id, (executionClaimCounts.get(claim.execution_id) ?? 0) + 1);
-  const resumedExecutionCount = [...executionClaimCounts.values()].filter((count) => count > 1).length;
+  const childTakeCount = takeHistory.filter((claim) => claim.task_id !== state.rootTaskId).length;
+  const rootTakeCount = takeHistory.filter((claim) => claim.task_id === state.rootTaskId).length;
+  const executionTakeCounts = new Map();
+  for (const claim of takeHistory) executionTakeCounts.set(claim.execution_id, (executionTakeCounts.get(claim.execution_id) ?? 0) + 1);
+  const resumedExecutionCount = [...executionTakeCounts.values()].filter((count) => count > 1).length;
   const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
   const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
   const candidateCount = cores.reduce((count, core) => count + core.checks.length, 0);
@@ -1456,10 +1456,10 @@ function projectReport(state, startedAt, deadline) {
       task_lifecycle_events: taskLifecycle,
       admission_events: [],
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
-      claimed_core_count: new Set(state.cores.filter((core) => core.claimHistory.length > 0).map((core) => core.index)).size,
-      claim_count: claimHistory.length,
-      child_claim_count: childClaimCount,
-      root_claim_count: rootClaimCount,
+      taken_core_count: new Set(state.cores.filter((core) => core.takeHistory.length > 0).map((core) => core.index)).size,
+      take_count: takeHistory.length,
+      child_take_count: childTakeCount,
+      root_take_count: rootTakeCount,
       resumed_execution_count: resumedExecutionCount,
       wait_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_wait'").get().count,
       wake_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'wake_execution'").get().count,
@@ -1946,7 +1946,7 @@ async function createProjectState(problem, config, options) {
       executionId: null,
       prompt: GENERIC_AGENT_PROMPT,
       claim: null,
-      claimHistory: [],
+      takeHistory: [],
       latencySamples: [],
       latencyByExecution: new Map(),
       runtime,
@@ -2030,7 +2030,7 @@ async function createProjectState(problem, config, options) {
       // Mission Task creation is governed by the Task Service contract and
       // responsibility-key idempotency. The benchmark must not add a hidden
       // count quota or reject independent work after a fixed number of Tasks.
-      onClaim: async (claim) => {
+      onTake: async (claim) => {
         // task_take is invoked by this Core's reusable identity. Keep the
         // durable result available to IdentityTaskLoop so it does not issue a
         // second claim or manufacture a separate selection handoff.
@@ -2054,7 +2054,7 @@ async function createProjectState(problem, config, options) {
         // field; updating it here preserves the same-identity transition
         // without creating a second Session.
         if ('bound' in workerSession) workerSession.bound = true;
-        const claimRecord = {
+        const takeRecord = {
           task_id: claim.task.task_id,
           execution_id: claim.execution.execution_id,
           workspace_revision_start: null,
@@ -2068,9 +2068,9 @@ async function createProjectState(problem, config, options) {
             : null,
           resumed_from_wait: priorWaitingExecutionId === claim.execution.execution_id || claim.execution.attempt_no > 1,
         };
-        core.latencySamples.push(claimRecord);
-        core.latencyByExecution.set(claim.execution.execution_id, claimRecord);
-        core.claimHistory.push(claimRecord);
+        core.latencySamples.push(takeRecord);
+        core.latencyByExecution.set(claim.execution.execution_id, takeRecord);
+        core.takeHistory.push(takeRecord);
         const bound = await runtime.bindAgentExecution(claim.execution.execution_id, workerSession, {
           workspaceRef: join(workspaceRoot, claim.execution.execution_id),
           // The current Agent turn is already the first bound turn.  Sending
@@ -2150,8 +2150,8 @@ async function createProjectState(problem, config, options) {
           core.boundTurnPromise = boundTurnPromise;
           void boundTurnPromise.catch(() => undefined);
         }
-        claimRecord.workspace_revision_start = bound.workspace.workspace_revision;
-        claimRecord.workspace_git_commit_start = bound.workspace.git_commit ?? null;
+        takeRecord.workspace_revision_start = bound.workspace.workspace_revision;
+        takeRecord.workspace_git_commit_start = bound.workspace.git_commit ?? null;
         core.observe({
           source: 'runtime', kind: 'execution_assigned', visibility: 'operator',
           taskId: claim.task.task_id, executionId: claim.execution.execution_id,
@@ -2178,7 +2178,7 @@ async function createProjectState(problem, config, options) {
         // model can issue another claim or a claimed-only call.
         if (workerSession !== core.session) await Promise.resolve(workerSession.stop?.()).catch(() => undefined);
       },
-      onClaimAccepted: async () => {
+      onTakeAccepted: async () => {
       },
       onSchedulerStatus: async (payload) => {
         if (core.stateRef) core.stateRef.schedulerStatusCount += 1;
@@ -2237,10 +2237,10 @@ async function createProjectState(problem, config, options) {
         // very short bound turn fails before the handoff callback records the
         // starting revision, retain the attempted ownership with the durable
         // revision that Runtime prepared instead of emitting a null lineage.
-        const latestClaim = core.claimHistory.at(-1);
-        if (latestClaim?.task_id === taskId && latestClaim.execution_id === executionId &&
-          latestClaim.workspace_revision_start === null && Number.isInteger(releasedExecution?.workspace_revision)) {
-          latestClaim.workspace_revision_start = releasedExecution.workspace_revision;
+        const latestTake = core.takeHistory.at(-1);
+        if (latestTake?.task_id === taskId && latestTake.execution_id === executionId &&
+          latestTake.workspace_revision_start === null && Number.isInteger(releasedExecution?.workspace_revision)) {
+          latestTake.workspace_revision_start = releasedExecution.workspace_revision;
         }
         core.observe({
           source: 'runtime', kind: 'execution_released', visibility: 'operator',
@@ -2690,7 +2690,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         signaled_identity_loop_count: event.signaled_loop_count ?? event.signaled_identity_loop_count ?? null,
         recovery_requested_count: event.recovery_requested_count ?? null,
         repaired_task_count: event.repaired_task_count ?? null,
-        claim_count: event.claim_count ?? null,
+        take_count: event.take_count ?? null,
         timestamp: event.timestamp ?? Date.now(),
       };
       state.controllerEvents.push(sanitized);
@@ -2867,7 +2867,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   // maker. Every value is derived from IdentityTaskLoop lifecycle counters.
   state.scheduler = { snapshot: () => ({
     ready_count: projectEligibleTasks(state, { limit: 100 }).length,
-    dispatch_count: state.identityLoops.reduce((count, loop) => count + loop.snapshot().claim_count, 0),
+    dispatch_count: state.identityLoops.reduce((count, loop) => count + loop.snapshot().take_count, 0),
     startup_attempt_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartAttempts ?? 0), 0),
     startup_failure_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartFailures ?? 0), 0),
     bounded_startup_exhausted_count: state.identityLoops.filter((loop) => loop.snapshot().take_exhausted).length,

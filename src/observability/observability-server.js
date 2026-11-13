@@ -100,7 +100,7 @@ const OVERVIEW_TOOL_NAMES = new Set([
   'swarmenv_task_list',
   'swarmenv_task_list_executions',
   'swarmenv_task_create_child',
-  'swarmenv_task_claim',
+  'swarmenv_task_take',
   'swarmenv_task_accept',
   'swarmenv_task_request_rework',
   'swarmenv_execution_get',
@@ -308,7 +308,7 @@ function compactExecution(value) {
     core_id: value.core_id,
     session_id: value.session_id,
     wait_condition: value.wait_condition,
-    candidate_material_id: value.candidate_material_id,
+    artifact_material_id: value.artifact_material_id,
     material_ids: value.material_ids,
   });
 }
@@ -349,7 +349,7 @@ function compactOverviewResult(value) {
     });
   }
   const result = {};
-  for (const key of ['state', 'status', 'operation', 'wait_condition', 'block_reason', 'candidate_material_id']) {
+  for (const key of ['state', 'status', 'operation', 'wait_condition', 'block_reason', 'artifact_material_id']) {
     if (value[key] !== undefined && value[key] !== null) result[key] = dashboardValue(value[key], key);
   }
   if (value.task) result.task = compactTask(value.task);
@@ -470,8 +470,8 @@ function reportSummary(report) {
     material_count: run.material_count ?? null,
     candidate_count: run.candidate_count ?? null,
     tool_error_count: run.tool_error_count ?? null,
-    claim_count: run.claim_count ?? null,
-    child_claim_count: run.child_claim_count ?? null,
+    take_count: run.take_count ?? null,
+    child_take_count: run.child_take_count ?? null,
     wait_count: run.wait_count ?? null,
     wake_count: run.wake_count ?? null,
     accept_count: run.accept_count ?? null,

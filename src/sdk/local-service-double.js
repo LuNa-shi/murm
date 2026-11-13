@@ -139,7 +139,7 @@ export class LocalServiceDouble {
     }
     if (envelope.state_version !== null && envelope.state_version !== undefined &&
       envelope.state_version !== execution.state_version &&
-      ['heartbeat', 'workspace_check', 'abort'].includes(operation)) {
+      ['heartbeat', 'workspace_check'].includes(operation)) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'execution state_version is stale', {
         expected: execution.state_version,
         received: envelope.state_version,

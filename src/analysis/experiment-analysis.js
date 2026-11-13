@@ -21,7 +21,7 @@ const SAFE_RESULT_KEYS = new Set([
   'task_id', 'root_id', 'parent_id', 'execution_id', 'owner_ref', 'task_type',
   'state', 'task_state', 'execution_state', 'state_version', 'attempt_no',
   'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision',
-  'workspace_content_hash', 'candidate_material_id', 'material_id', 'kind',
+  'workspace_content_hash', 'artifact_material_id', 'material_id', 'kind',
   'scope', 'evidence_state', 'source_task', 'source_execution', 'check_result_id',
   'request_key', 'target_task_id', 'target_spec_version', 'status', 'verdict',
   'checker_ref', 'checker_version', 'environment_ref', 'operation_id',
@@ -31,7 +31,7 @@ const SAFE_RESULT_KEYS = new Set([
   'tool', 'operation', 'outcome', 'phase', 'service', 'error', 'stream', 'type',
   'event', 'decision', 'diagnostic', 'session_transport_id', 'file_count',
   'content_hash', 'assignment_basis', 'target_task_id', 'target_execution_id', 'authority_execution_id', 'parent_execution_id', 'parent_task_id', 'result', 'task', 'execution', 'material', 'check_result',
-  'material_ids', 'count', 'candidate_material_id', 'diagnostic_class', 'judge_operation_status',
+  'material_ids', 'count', 'artifact_material_id', 'diagnostic_class', 'judge_operation_status',
   'checker_process_status', 'process_status', 'result_class', 'mathematical_outcome', 'retryable', 'checker_started',
   'checker_ref', 'checker_version', 'environment_ref', 'checker_result_available',
   'diagnostic_code', 'preflight_key', 'preflight_status', 'retry_exhausted', 'infrastructure_attempt_count',
@@ -52,7 +52,7 @@ const INTENT_BY_OPERATION = new Map([
   ['list_workspace_files', 'inspect Workspace files'],
   ['read_workspace_file', 'inspect a Workspace file'],
   ['workspace_diff', 'inspect Workspace changes'],
-  ['claim', 'claim a Task'],
+  ['task_take', 'take a Task'],
   ['create_child_task', 'decompose the Task'],
   ['save_workspace_revision', 'save a Workspace revision'],
   ['write_workspace_file', 'edit the Workspace'],
@@ -62,7 +62,7 @@ const INTENT_BY_OPERATION = new Map([
   ['workspace_check', 'submit a Candidate'],
   ['get_check_result', 'inspect Judge feedback'],
   ['apply_check_result', 'process Judge feedback'],
-  ['request_wait', 'wait for a concrete condition'],
+  ['wait_for', 'wait for a concrete condition'],
   ['wake_execution', 'wake an Execution'],
   ['resume_execution', 'resume an Execution'],
   ['accept_task', 'review and accept a Task'],
@@ -72,10 +72,10 @@ const INTENT_BY_OPERATION = new Map([
 ]);
 
 const BOUNDARY_KINDS = new Set([
-  'task_created', 'task_claimed', 'task_state_changed', 'execution_assigned',
+  'task_created', 'task_taken', 'task_state_changed', 'execution_assigned',
   'execution_state_changed', 'workspace_revision', 'material_published',
-  'material_read', 'material_consumed', 'candidate_submitted', 'judge_result', 'judge_check',
-  'wait_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
+  'material_read', 'material_consumed', 'workspace_checked', 'judge_result', 'judge_check',
+  'wait_for_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
 ]);
 
 function hash(value) {
@@ -206,11 +206,11 @@ function safeEntity(value, type) {
   const keys = type === 'task'
     ? ['task_id', 'root_id', 'parent_id', 'owner_ref', 'task_type', 'state', 'state_version', 'goal', 'created_at', 'updated_at', 'block_reason']
     : type === 'execution'
-      ? ['execution_id', 'task_id', 'owner_ref', 'state', 'state_version', 'attempt_no', 'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision', 'candidate_material_id', 'wait_condition', 'wait_deadline', 'created_at', 'updated_at']
+      ? ['execution_id', 'task_id', 'owner_ref', 'state', 'state_version', 'attempt_no', 'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision', 'artifact_material_id', 'wait_condition', 'wait_deadline', 'created_at', 'updated_at']
       : type === 'material'
         ? ['material_id', 'kind', 'scope', 'evidence_state', 'source_task', 'source_execution', 'version', 'created_at']
         : type === 'check_result'
-          ? ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_process_status', 'result_class', 'retryable', 'diagnostic_code', 'checker_ref', 'checker_version', 'environment_ref', 'diagnostic_class', 'created_at', 'updated_at']
+          ? ['check_result_id', 'request_key', 'artifact_material_id', 'target_task_id', 'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_process_status', 'result_class', 'retryable', 'diagnostic_code', 'checker_ref', 'checker_version', 'environment_ref', 'diagnostic_class', 'created_at', 'updated_at']
           : [...SAFE_RESULT_KEYS];
   for (const key of keys) {
     if (!(key in value) || SENSITIVE_KEYS.test(key)) continue;
@@ -251,7 +251,7 @@ function errorInfo(fact) {
 
 function errorCategory(info, fact) {
   const message = info?.message ?? '';
-  if (info?.code === 'CONFLICT' && /active Execution quota/i.test(message)) return 'claim_active_execution_quota';
+  if (info?.code === 'CONFLICT' && /active Execution quota/i.test(message)) return 'take_active_execution_quota';
   if (info?.code === 'NOT_ALLOWED' && /does not require a CheckResult/i.test(message)) return 'check_result_contract_mismatch';
   if (fact.kind === 'tool_call' && info?.code === 'TOOL_ERROR') return 'agent_tool_error';
   return `${String(info?.code ?? 'UNKNOWN').toLowerCase()}_${fact.operation ?? fact.kind}`;
@@ -269,7 +269,7 @@ function idsFromEntity(entity) {
   return {
     taskId: entity.task_id ?? entity.target_task_id ?? null,
     executionId: entity.execution_id ?? null,
-    materialId: entity.material_id ?? entity.candidate_material_id ?? null,
+    materialId: entity.material_id ?? entity.artifact_material_id ?? null,
     checkResultId: entity.check_result_id ?? null,
   };
 }
@@ -299,8 +299,8 @@ function intentFor(operation, kind = null) {
   if (kind === 'material_published') return 'publish a Material';
   if (kind === 'material_read') return 'read Materials';
   if (kind === 'material_consumed') return 'record Material use';
-  if (kind === 'execution_assigned') return 'claim or resume a Task';
-  if (kind === 'wait_requested') return 'wait for a concrete condition';
+  if (kind === 'execution_assigned') return 'take or resume a Task';
+  if (kind === 'wait_for_requested') return 'wait for a concrete condition';
   if (kind === 'review' || kind === 'rework') return 'review a child result';
   return 'unknown';
 }
@@ -430,8 +430,8 @@ function domainFactsForService(root, row, source, payload, result = null) {
   if (['propose_task', 'create_child_task'].includes(operation) && task) {
     facts.push(base('task_created', { task: safeEntity(task, 'task'), parent_task_id: owner.taskId, parent_execution_id: owner.executionId }, { taskId: owner.taskId, executionId: owner.executionId }));
   }
-  if (operation === 'claim' && execution) {
-    facts.push(base('task_claimed', { task_id: task?.task_id ?? execution.task_id, execution_id: execution.execution_id, owner_ref: execution.owner_ref, state: execution.state }, { taskId: task?.task_id ?? execution.task_id, executionId: execution.execution_id }));
+  if (operation === 'task_take' && execution) {
+    facts.push(base('task_taken', { task_id: task?.task_id ?? execution.task_id, execution_id: execution.execution_id, owner_ref: execution.owner_ref, state: execution.state }, { taskId: task?.task_id ?? execution.task_id, executionId: execution.execution_id }));
   }
   if (operation === 'save_workspace_revision') {
     facts.push(base('workspace_revision', {
@@ -458,9 +458,9 @@ function domainFactsForService(root, row, source, payload, result = null) {
     }, {}));
   }
   if (operation === 'workspace_check') {
-    const candidateId = execution?.candidate_material_id ?? result?.candidate_material_id ?? null;
-    facts.push(base('candidate_submitted', {
-      candidate_material_id: candidateId,
+    const candidateId = execution?.artifact_material_id ?? result?.artifact_material_id ?? null;
+    facts.push(base('workspace_checked', {
+      artifact_material_id: candidateId,
       workspace_revision: execution?.workspace_revision ?? null,
       execution_id: execution?.execution_id ?? ids.executionId,
     }, { executionId: execution?.execution_id ?? ids.executionId }));
@@ -468,9 +468,9 @@ function domainFactsForService(root, row, source, payload, result = null) {
   if (operation === 'apply_check_result' && check) {
     facts.push(base('judge_result', { check_result: safeEntity(check, 'check_result') }, { executionId: check.execution_id ?? ids.executionId }));
   }
-  if (operation === 'request_wait') {
+  if (operation === 'wait_for') {
     const condition = execution?.wait_condition ?? result?.wait_condition ?? null;
-    facts.push(base('wait_requested', {
+    facts.push(base('wait_for_requested', {
       execution_id: execution?.execution_id ?? ids.executionId,
       wait_condition: safeEntity({ wait_condition: condition }, 'execution')?.wait_condition ?? null,
       deadline: execution?.wait_deadline ?? null,
@@ -567,9 +567,9 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     }, { operation: 'save_workspace_revision' }));
     return facts;
   }
-  if (row.kind === 'candidate_submitted') {
-    facts.push(base('candidate_submitted', {
-      candidate_material_id: typeof payload?.candidate_material_id === 'string' ? payload.candidate_material_id : null,
+  if (row.kind === 'workspace_checked') {
+    facts.push(base('workspace_checked', {
+      artifact_material_id: typeof payload?.artifact_material_id === 'string' ? payload.artifact_material_id : null,
       check_result_id: typeof payload?.check_result_id === 'string' ? payload.check_result_id : null,
       verdict: typeof payload?.verdict === 'string' ? payload.verdict : null,
     }, { operation: 'workspace_check' }));
@@ -617,7 +617,7 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     else if (runtimeEvent === 'core_state_changed') kind = 'execution_state_changed';
     else if (runtimeEvent === 'execution_released') kind = 'execution_released';
     else if (runtimeEvent === 'experiment_finished') kind = 'experiment_finished';
-    if (runtimeEvent === 'runtime.request_wait' || runtimeEvent === 'request_wait') kind = 'wait_requested';
+    if (runtimeEvent === 'runtime.wait_for' || runtimeEvent === 'wait_for') kind = 'wait_for_requested';
     if (runtimeEvent === 'runtime.stop_execution' || runtimeEvent === 'stop_execution') kind = 'execution_terminal';
     facts.push(base(kind, runtimeSummary));
     return facts;
@@ -626,7 +626,7 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     const summary = safeResult({
       operation_id: payload?.operation_id,
       target_task_id: payload?.target_task_id,
-      candidate_material_id: payload?.candidate_material_id,
+      artifact_material_id: payload?.artifact_material_id,
       verdict: payload?.verdict,
       check_result_id: payload?.check_result_id,
       ok: payload?.ok,
@@ -645,7 +645,7 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     const summary = safeResult({
       event: payload?.event,
       target_task_id: payload?.target_task_id ?? payload?.evidence?.target_task_id,
-      candidate_material_id: payload?.candidate_hash ? null : payload?.candidate_material_id,
+      artifact_material_id: payload?.candidate_hash ? null : payload?.artifact_material_id,
       verdict: payload?.verdict,
       checker_process_status: payload?.checker_process_status ?? payload?.evidence?.checker_process_status,
       result_class: payload?.result_class ?? payload?.evidence?.result_class,
@@ -709,7 +709,7 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
   if (sourceClass === 'runtime') {
     const event = record.event ?? record.type;
     const kind = event === 'runtime.bind_execution' ? 'execution_assigned'
-      : event === 'runtime.request_wait' ? 'wait_requested'
+      : event === 'runtime.wait_for' ? 'wait_for_requested'
         : event === 'runtime.stop_execution' ? 'execution_terminal'
           : event === 'runtime.heartbeat' ? 'heartbeat' : 'runtime_event';
     facts.push(makeFact(root, {
@@ -751,7 +751,7 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
     facts.push(makeFact(root, {
       kind: event === 'judge.complete' ? 'judge_result' : 'judge_request', at, source,
       taskId: record.target_task_id ?? null, correlationId: record.operation_id ?? null,
-      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, candidate_material_id: record.candidate_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok, judge_operation_status: record.operation_status ?? record.judge_operation_status, checker_process_status: record.checker_process_status, result_class: record.result_class, mathematical_outcome: record.mathematical_outcome, checker_result_available: record.checker_result_available, retryable: record.retryable, diagnostic_code: record.diagnostic_code }), priority: 2,
+      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, artifact_material_id: record.artifact_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok, judge_operation_status: record.operation_status ?? record.judge_operation_status, checker_process_status: record.checker_process_status, result_class: record.result_class, mathematical_outcome: record.mathematical_outcome, checker_result_available: record.checker_result_available, retryable: record.retryable, diagnostic_code: record.diagnostic_code }), priority: 2,
     }));
     return facts;
   }
@@ -760,7 +760,7 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
     facts.push(makeFact(root, {
       kind: event === 'judge.complete' ? 'judge_result' : 'judge_request', at, source,
       taskId: record.target_task_id ?? null, correlationId: record.operation_id ?? null,
-      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, candidate_material_id: record.candidate_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok, judge_operation_status: record.operation_status ?? record.judge_operation_status, checker_process_status: record.checker_process_status, result_class: record.result_class, mathematical_outcome: record.mathematical_outcome, checker_result_available: record.checker_result_available, retryable: record.retryable, diagnostic_code: record.diagnostic_code }), priority: 2,
+      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, artifact_material_id: record.artifact_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok, judge_operation_status: record.operation_status ?? record.judge_operation_status, checker_process_status: record.checker_process_status, result_class: record.result_class, mathematical_outcome: record.mathematical_outcome, checker_result_available: record.checker_result_available, retryable: record.retryable, diagnostic_code: record.diagnostic_code }), priority: 2,
     }));
     return facts;
   }
@@ -794,7 +794,7 @@ function buildExecutionIntervals(runtimeRecords) {
       if (record.event === 'runtime.bind_execution' && record.execution_id) {
         if (active) entries.push({ ...active, end: record.at });
         active = { coreId, executionId: record.execution_id, taskId: null, start: record.at, end: null };
-      } else if (active && record.execution_id === active.executionId && ['runtime.request_wait', 'runtime.stop_execution'].includes(record.event)) {
+      } else if (active && record.execution_id === active.executionId && ['runtime.wait_for', 'runtime.stop_execution'].includes(record.event)) {
         entries.push({ ...active, end: record.at });
         active = null;
       }
@@ -814,9 +814,9 @@ function dedupeFacts(facts) {
   const map = new Map();
   const semantic = (fact) => [
     fact.kind, fact.at, fact.taskId, fact.executionId, fact.coreId, fact.operation,
-    fact.summary?.material_id, fact.summary?.candidate_material_id, fact.summary?.check_result_id,
+    fact.summary?.material_id, fact.summary?.artifact_material_id, fact.summary?.check_result_id,
     fact.correlationId, fact.summary?.tool, fact.summary?.phase, fact.summary?.outcome, fact.summary?.event,
-    fact.summary?.check_result?.check_result_id, fact.summary?.candidate_material_id,
+    fact.summary?.check_result?.check_result_id, fact.summary?.artifact_material_id,
   ].map((value) => value ?? '').join('|');
   for (const fact of facts) {
     const key = semantic(fact);
@@ -883,7 +883,7 @@ async function readDomainDatabases(root, dbPaths, errors, mode = 'full') {
         }
       }
       if (tables.has('executions')) {
-        for (const row of selectRows(db, 'executions', ['execution_id', 'task_id', 'owner_ref', 'state', 'state_version', 'attempt_no', 'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision', 'candidate_material_id', 'wait_condition_json', 'wait_deadline', 'created_at', 'updated_at'])) {
+        for (const row of selectRows(db, 'executions', ['execution_id', 'task_id', 'owner_ref', 'state', 'state_version', 'attempt_no', 'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision', 'artifact_material_id', 'wait_condition_json', 'wait_deadline', 'created_at', 'updated_at'])) {
           model.executions.push({ ...row, wait_condition: jsonParse(row.wait_condition_json), project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'executions', `execution_id=${row.execution_id}`) });
         }
       }
@@ -893,7 +893,7 @@ async function readDomainDatabases(root, dbPaths, errors, mode = 'full') {
         }
       }
       if (tables.has('check_results')) {
-        const checkColumns = ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'target_spec_version', 'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_process_status', 'result_class', 'retryable', 'diagnostic_code', 'checker_ref', 'checker_version', 'environment_ref', ...(mode === 'full' ? ['evidence_json'] : []), 'created_at', 'updated_at'];
+        const checkColumns = ['check_result_id', 'request_key', 'artifact_material_id', 'target_task_id', 'target_spec_version', 'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_process_status', 'result_class', 'retryable', 'diagnostic_code', 'checker_ref', 'checker_version', 'environment_ref', ...(mode === 'full' ? ['evidence_json'] : []), 'created_at', 'updated_at'];
         for (const row of selectRows(db, 'check_results', checkColumns)) {
           const evidence = mode === 'full' ? jsonParse(row.evidence_json) : null;
           const diagnostic = isObject(evidence) ? (evidence.diagnostic ?? evidence.stderr ?? evidence.stdout) : null;
@@ -1040,7 +1040,7 @@ async function readObservationFacts(root, observationPath, experimentIds, mode, 
       if (mode === 'full') {
         try { payload = JSON.parse(row.payload_json ?? '{}'); }
         catch (error) { errors.push({ path: sourcePath(root, observationPath), sequence: row.sequence, error: text(error.message, 180) }); continue; }
-      } else if (['material_read', 'material_consumed', 'material_published', 'task_review', 'workspace_revision_saved', 'candidate_submitted'].includes(row.kind)) {
+      } else if (['material_read', 'material_consumed', 'material_published', 'task_review', 'workspace_revision_saved', 'workspace_checked'].includes(row.kind)) {
         // Read only the runner's bounded operator events in sanitized mode.
         // Other observation payloads may contain Agent or checker material and
         // remain intentionally opaque.
@@ -1078,7 +1078,7 @@ async function readObservationFacts(root, observationPath, experimentIds, mode, 
             payload = { workspace_revision: Number.isInteger(decoded.workspace_revision) ? decoded.workspace_revision : null };
           } else {
             payload = {
-              candidate_material_id: typeof decoded.candidate_material_id === 'string' ? decoded.candidate_material_id : null,
+              artifact_material_id: typeof decoded.artifact_material_id === 'string' ? decoded.artifact_material_id : null,
               check_result_id: typeof decoded.check_result_id === 'string' ? decoded.check_result_id : null,
               verdict: typeof decoded.verdict === 'string' ? decoded.verdict : null,
             };
@@ -1299,7 +1299,7 @@ function attachFactReferences(facts, model, intervals) {
   const executionIds = new Set(model.executions.map((row) => row.execution_id));
   const taskIds = new Set(model.tasks.map((row) => row.task_id));
   const materialById = new Map(model.materials.map((row) => [row.material_id, row]));
-  const candidateToExecution = new Map(model.checks.map((row) => [row.candidate_material_id, row.execution_id]).filter(([, value]) => value));
+  const candidateToExecution = new Map(model.checks.map((row) => [row.artifact_material_id, row.execution_id]).filter(([, value]) => value));
   const taskExecutions = new Map();
   for (const execution of model.executions) {
     if (!taskExecutions.has(execution.task_id)) taskExecutions.set(execution.task_id, []);
@@ -1318,7 +1318,7 @@ function attachFactReferences(facts, model, intervals) {
   };
   for (const fact of facts) {
     const summary = fact.summary ?? {};
-    const candidateId = summary.candidate_material_id ?? summary.material_id ?? summary.material?.material_id ?? null;
+    const candidateId = summary.artifact_material_id ?? summary.material_id ?? summary.material?.material_id ?? null;
     if (!fact.executionId && candidateId && candidateToExecution.has(candidateId)) fact.executionId = candidateToExecution.get(candidateId);
     if (!fact.executionId && summary.material_id && materialById.has(summary.material_id)) fact.executionId = materialById.get(summary.material_id).source_execution ?? null;
     if (!fact.executionId && fact.taskId && taskExecutions.has(fact.taskId)) {
@@ -1352,15 +1352,15 @@ function factOperation(fact) {
 function isBoundary(fact) {
   if (BOUNDARY_KINDS.has(fact.kind)) return true;
   const operation = factOperation(fact);
-  return ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
+  return ['task_take', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
 }
 
 function isSemanticBoundary(fact) {
   return new Set([
-    'task_created', 'task_claimed',
-    'candidate_submitted', 'judge_result', 'judge_check', 'judge_check_record',
-    'wait_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
-  ]).has(fact.kind) || (!['service_call_started', 'service_call_finished', 'database_operation', 'tool_call'].includes(fact.kind) && ['create_child_task', 'workspace_check', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(factOperation(fact)));
+    'task_created', 'task_taken',
+    'workspace_checked', 'judge_result', 'judge_check', 'judge_check_record',
+    'wait_for_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
+  ]).has(fact.kind) || (!['service_call_started', 'service_call_finished', 'database_operation', 'tool_call'].includes(fact.kind) && ['create_child_task', 'workspace_check', 'wait_for', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(factOperation(fact)));
 }
 
 function sourceLabels(facts) {
@@ -1375,11 +1375,11 @@ function compactFact(fact) {
   if (fact.kind === 'material_published') return `publish Material ${summary.material?.material_id ?? summary.material_id ?? 'unknown'} [${fact.id}]`;
   if (fact.kind === 'material_read') return `read ${array(summary.material_ids).length} Material(s) [${fact.id}]`;
   if (fact.kind === 'material_consumed') return `consume ${array(summary.material_ids).length} Material(s)${summary.action ? ` for ${summary.action}` : ''} [${fact.id}]`;
-  if (fact.kind === 'candidate_submitted') return `submit Candidate ${summary.candidate_material_id ?? 'unknown'} [${fact.id}]`;
+  if (fact.kind === 'workspace_checked') return `workspace check ${summary.artifact_material_id ?? 'unknown'} [${fact.id}]`;
   if (fact.kind === 'checker_preflight') return `Checker preflight ${summary.status ?? 'unknown'}${summary.diagnostic_code ? `/${summary.diagnostic_code}` : ''} [${fact.id}]`;
   if (fact.kind === 'judge_result' || fact.kind === 'judge_check' || fact.kind === 'judge_check_record') return `Judge ${summary.verdict ?? summary.check_result?.verdict ?? 'result'}${summary.result_class ? `/${summary.result_class}` : ''}${summary.checker_process_status ? ` (${summary.checker_process_status})` : ''} [${fact.id}]`;
   if (fact.kind === 'workspace_revision' || fact.kind === 'workspace_manifest') return `Workspace revision ${summary.workspace_revision ?? 'unknown'} [${fact.id}]`;
-  if (fact.kind === 'wait_requested') return `wait (${summary.wait_condition?.type ?? 'condition unknown'}) [${fact.id}]`;
+  if (fact.kind === 'wait_for_requested') return `wait (${summary.wait_condition?.type ?? 'condition unknown'}) [${fact.id}]`;
   if (fact.kind === 'execution_assigned') return `Execution assigned [${fact.id}]`;
   if (fact.kind === 'execution_terminal') return `Execution terminal: ${summary.terminal_state ?? summary.execution?.state ?? 'unknown'} [${fact.id}]`;
   if (fact.kind === 'review' || fact.kind === 'rework') return `${summary.decision ?? fact.kind} [${fact.id}]`;
@@ -1396,9 +1396,9 @@ function latestState(facts, execution) {
 }
 
 function resultForWindow(facts) {
-  const meaningful = [...facts].reverse().find((fact) => ['judge_result', 'judge_check', 'judge_check_record', 'candidate_submitted', 'wait_requested', 'review', 'rework', 'material_read', 'material_consumed', 'material_published', 'workspace_revision', 'execution_terminal', 'task_state_changed', 'execution_state_changed'].includes(fact.kind));
+  const meaningful = [...facts].reverse().find((fact) => ['judge_result', 'judge_check', 'judge_check_record', 'workspace_checked', 'wait_for_requested', 'review', 'rework', 'material_read', 'material_consumed', 'material_published', 'workspace_revision', 'execution_terminal', 'task_state_changed', 'execution_state_changed'].includes(fact.kind));
   const impactful = meaningful ?? [...facts].reverse().find((fact) => {
-    const durableOperations = ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'];
+    const durableOperations = ['task_take', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'];
     if (['heartbeat', 'agent_turn', 'agent_settled', 'process_event', 'agent_event', 'agent_rpc_request'].includes(fact.kind)) return false;
     if (durableOperations.includes(fact.operation)) return true;
     if (fact.kind === 'service_call_started' || fact.kind === 'service_call_finished') return Boolean(fact.summary?.ok === false || fact.summary?.error);
@@ -1407,11 +1407,11 @@ function resultForWindow(facts) {
   if (!impactful) return 'No state-changing operation observed in this window.';
   const summary = impactful.summary ?? {};
   if (impactful.kind === 'judge_result' || impactful.kind === 'judge_check' || impactful.kind === 'judge_check_record') return `Judge returned ${summary.verdict ?? summary.check_result?.verdict ?? 'an observed result'}.`;
-  if (impactful.kind === 'wait_requested') return `A concrete wait condition was recorded: ${summary.wait_condition?.type ?? 'condition not visible'}.`;
+  if (impactful.kind === 'wait_for_requested') return `A concrete wait condition was recorded: ${summary.wait_condition?.type ?? 'condition not visible'}.`;
   if (impactful.kind === 'material_published') return `Material publication was recorded; semantic usefulness is not inferred.`;
   if (impactful.kind === 'material_read') return `Material read was recorded; durable consumption is checked separately.`;
   if (impactful.kind === 'material_consumed') return `Durable Material consumption was recorded for ${summary.action ?? 'an action'}; downstream effect is checked separately.`;
-  if (impactful.kind === 'candidate_submitted') return 'Candidate submission was recorded.';
+  if (impactful.kind === 'workspace_checked') return 'Workspace check was recorded.';
   if (impactful.kind === 'workspace_revision' || impactful.kind === 'workspace_manifest') return `Workspace revision ${summary.workspace_revision ?? 'unknown'} was recorded.`;
   if (summary.ok === false || summary.error) return `An error was returned by ${summary.service ?? 'a service'}; later activity is checked separately.`;
   return `Observed ${factOperation(impactful) ?? impactful.kind}.`;
@@ -1420,9 +1420,9 @@ function resultForWindow(facts) {
 function handoffForWindow(facts) {
   const material = facts.find((fact) => fact.kind === 'material_published');
   if (material) return `Material published; consumer/effect must be established by later records (${material.id}).`;
-  const wait = facts.find((fact) => fact.kind === 'wait_requested');
+  const wait = facts.find((fact) => fact.kind === 'wait_for_requested');
   if (wait) return `Execution responsibility persisted with wait condition ${wait.summary?.wait_condition?.type ?? 'unknown'} (${wait.id}).`;
-  const candidate = facts.find((fact) => fact.kind === 'candidate_submitted');
+  const candidate = facts.find((fact) => fact.kind === 'workspace_checked');
   if (candidate) return `Candidate handed to Judge path (${candidate.id}).`;
   const review = facts.find((fact) => fact.kind === 'review' || fact.kind === 'rework');
   if (review) return `Parent review decision recorded (${review.id}).`;
@@ -1430,7 +1430,7 @@ function handoffForWindow(facts) {
 }
 
 function windowIntent(facts) {
-  const explicit = facts.find((fact) => fact.operation || ['material_published', 'material_read', 'material_consumed', 'candidate_submitted', 'judge_result', 'wait_requested', 'review', 'rework', 'workspace_revision'].includes(fact.kind));
+  const explicit = facts.find((fact) => fact.operation || ['material_published', 'material_read', 'material_consumed', 'workspace_checked', 'judge_result', 'wait_for_requested', 'review', 'rework', 'workspace_revision'].includes(fact.kind));
   if (!explicit) return { label: 'unknown', confidence: 'unknown', basis: [] };
   return { label: intentFor(factOperation(explicit), explicit.kind), confidence: explicit.operation ? 'high' : 'medium', basis: [explicit.id] };
 }
@@ -1439,12 +1439,12 @@ function semanticPhase(facts) {
   const kinds = new Set(facts.map((fact) => fact.kind));
   const operations = new Set(facts.map(factOperation));
   if (kinds.has('judge_result') || kinds.has('judge_check') || kinds.has('judge_check_record')) return 'candidate checking and feedback';
-  if (kinds.has('candidate_submitted') || operations.has('workspace_check')) return 'candidate construction and submission';
+  if (kinds.has('workspace_checked') || operations.has('workspace_check')) return 'Workspace editing and checking';
   if (kinds.has('review') || kinds.has('rework')) return 'parent review and rework';
-  if (kinds.has('wait_requested')) return 'coordination and waiting';
+  if (kinds.has('wait_for_requested')) return 'coordination and waiting';
   if (kinds.has('material_published') || kinds.has('material_read') || kinds.has('material_consumed') || operations.has('create_child_task')) return 'research and collaboration handoff';
   if (kinds.has('workspace_revision') || operations.has('write_workspace_file') || operations.has('save_workspace_revision')) return 'Workspace editing';
-  if (operations.has('claim') || kinds.has('execution_assigned')) return 'Task discovery and claim';
+  if (operations.has('task_take') || kinds.has('execution_assigned')) return 'Task discovery and take';
   if (facts.some((fact) => ['agent_turn', 'agent_event', 'agent_rpc_request'].includes(fact.kind))) return 'Agent reasoning activity';
   return 'runtime or lifecycle activity';
 }
@@ -1461,8 +1461,8 @@ function semanticSummary(facts, previousWindow = null) {
   const counts = {};
   for (const fact of facts) counts[fact.kind] = (counts[fact.kind] ?? 0) + 1;
   const phase = semanticPhase(facts);
-  const durable = [...new Set(facts.filter((fact) => ['task_created', 'task_claimed', 'task_state_changed', 'execution_assigned', 'workspace_revision', 'material_published', 'material_read', 'material_consumed', 'candidate_submitted', 'judge_result', 'judge_check', 'judge_check_record', 'review', 'rework', 'wait_requested', 'wake', 'resume', 'execution_terminal'].includes(fact.kind)).map((fact) => compactFact(fact).replace(/ \[F-[A-Za-z0-9_-]+\]$/, '')))].slice(0, 8);
-  const candidate = facts.find((fact) => fact.kind === 'candidate_submitted');
+  const durable = [...new Set(facts.filter((fact) => ['task_created', 'task_taken', 'task_state_changed', 'execution_assigned', 'workspace_revision', 'material_published', 'material_read', 'material_consumed', 'workspace_checked', 'judge_result', 'judge_check', 'judge_check_record', 'review', 'rework', 'wait_for_requested', 'wake', 'resume', 'execution_terminal'].includes(fact.kind)).map((fact) => compactFact(fact).replace(/ \[F-[A-Za-z0-9_-]+\]$/, '')))].slice(0, 8);
+  const candidate = facts.find((fact) => fact.kind === 'workspace_checked');
   const judge = facts.find((fact) => ['judge_result', 'judge_check', 'judge_check_record'].includes(fact.kind));
   const material = facts.find((fact) => ['material_published', 'material_read', 'material_consumed'].includes(fact.kind));
   let summary = `The Agent was primarily engaged in ${phase.toLowerCase()}.`;
@@ -1541,7 +1541,7 @@ function buildWindows(execution, facts, experimentEnd, maxWindowMs = DEFAULT_MAX
 function materialCollaboration(model, facts) {
   const published = facts.filter((fact) => fact.kind === 'material_published');
   const consumed = facts.filter((fact) => fact.kind === 'material_consumed');
-  const downstreamKinds = new Set(['workspace_revision', 'candidate_submitted', 'judge_result', 'judge_check', 'review', 'rework']);
+  const downstreamKinds = new Set(['workspace_revision', 'workspace_checked', 'judge_result', 'judge_check', 'review', 'rework']);
   const rows = [];
   for (const material of model.materials) {
     const materialId = material.material_id;
@@ -1601,7 +1601,7 @@ function executionInventory(model, facts, experimentEnd, maxWindowMs = DEFAULT_M
       coreIds,
       sessionIds,
       workspaceRefs,
-      waitCondition: execution.wait_condition ?? executionFacts.findLast((fact) => fact.kind === 'wait_requested')?.summary?.wait_condition ?? null,
+      waitCondition: execution.wait_condition ?? executionFacts.findLast((fact) => fact.kind === 'wait_for_requested')?.summary?.wait_condition ?? null,
     };
   });
 }
@@ -1630,9 +1630,9 @@ function markEvidenceStatuses(evidence, errors) {
 
 function aggregateSummary(summaries, model, facts, inventory) {
   const run = (summaries.find((summary) => summary.data?.run?.protocol_valid !== null || summary.data?.run?.solved !== null) ?? summaries[0])?.data?.run ?? {};
-  const candidates = model.checks.length ? model.checks : facts.filter((fact) => fact.kind === 'candidate_submitted');
+  const candidates = model.checks.length ? model.checks : facts.filter((fact) => fact.kind === 'workspace_checked');
   const judges = model.checks.length ? model.checks : facts.filter((fact) => ['judge_result', 'judge_check', 'judge_check_record'].includes(fact.kind));
-  const waits = model.operations.filter((operation) => operation.operation === 'request_wait');
+  const waits = model.operations.filter((operation) => operation.operation === 'wait_for');
   const heartbeats = facts.filter((fact) => fact.kind === 'heartbeat');
   return {
     experiment_id: inventory.experimentId,
@@ -1698,10 +1698,10 @@ function buildErrorAnalysis(facts) {
       evidence: [...group.sources],
       confidence: 'high',
     };
-    if (group.category === 'claim_active_execution_quota') return {
+    if (group.category === 'take_active_execution_quota') return {
       ...common,
       severity: 'medium',
-      interpretation: 'Several Agents attempted to claim a Task while its active Execution quota was full. This is contention and retry waste, not evidence of state corruption by itself.',
+      interpretation: 'Several Agents attempted to take a Task while its active Execution quota was full. This is contention and retry waste, not evidence of state corruption by itself.',
       next_optimization: 'Make claimability quota-aware before dispatch, and add bounded per-Core backoff after this conflict.',
     };
     if (group.category === 'check_result_contract_mismatch') return {
@@ -1751,8 +1751,8 @@ function buildSystemFindings(analysis) {
   }
   if (configuredCores > 1 && executionIntervals.length && maxOverlap <= 1) findings.push({
     severity: 'medium', category: 'serial-or-supply-limited', title: 'Configured Core capacity was not reflected in overlapping Executions',
-    interpretation: `The authoritative Execution intervals overlap at most ${maxOverlap} at a time while ${configuredCores} Cores were configured. This is a system-level serialization signal; the trace does not by itself identify whether the cause was insufficient ready work, claim policy, or Agent behavior.`,
-    validation: 'Run with the same workload and record ready-work, claim, and Core assignment intervals; require at least two independent Tasks to overlap before labeling scheduling defective.',
+    interpretation: `The authoritative Execution intervals overlap at most ${maxOverlap} at a time while ${configuredCores} Cores were configured. This is a system-level serialization signal; the trace does not by itself identify whether the cause was insufficient ready work, take policy, or Agent behavior.`,
+    validation: 'Run with the same workload and record ready-work, take, and Core assignment intervals; require at least two independent Tasks to overlap before labeling scheduling defective.',
     ...scopeForExecutions(executionIntervals.map((item) => item.execution.execution_id)),
     evidence: executionIntervals.map((item) => evidenceRef(item.execution.source)).filter(Boolean), confidence: 'medium',
   });
@@ -1861,8 +1861,8 @@ function buildToolAnalysis(analysis) {
 
 function buildCandidateAnalysis(model, facts) {
   const submissions = new Map();
-  for (const fact of facts.filter((candidate) => candidate.kind === 'candidate_submitted')) {
-    const candidateId = fact.summary?.candidate_material_id;
+  for (const fact of facts.filter((candidate) => candidate.kind === 'workspace_checked')) {
+    const candidateId = fact.summary?.artifact_material_id;
     if (!candidateId || !fact.executionId) continue;
     const existing = submissions.get(candidateId);
     if (!existing || (fact.at && (!existing.at || fact.at < existing.at))) submissions.set(candidateId, fact);
@@ -1872,11 +1872,11 @@ function buildCandidateAnalysis(model, facts) {
     const resultClass = check.result_class ?? (check.verdict === 'PASS' ? 'PASS' : check.verdict === 'FAIL' ? 'source_failure' : 'unassessed');
     const checkerProcessStatus = check.checker_process_status ?? (resultClass === 'source_failure' || resultClass === 'PASS' ? 'completed' : 'unknown');
     const mathematicalOutcome = resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed';
-    const submission = submissions.get(check.candidate_material_id);
+    const submission = submissions.get(check.artifact_material_id);
     const start = timeMs(parseTime(check.created_at));
     const end = timeMs(parseTime(check.updated_at));
     const feedbackReads = facts.filter((fact) => fact.executionId === check.execution_id && ['get_check_result', 'apply_check_result'].includes(fact.operation) && timeMs(fact.at) !== null && end !== null && timeMs(fact.at) >= end).length;
-    const laterActions = facts.filter((fact) => fact.executionId === check.execution_id && ['workspace_revision', 'candidate_submitted', 'material_published', 'material_consumed', 'review', 'rework'].includes(fact.kind) && timeMs(fact.at) !== null && end !== null && timeMs(fact.at) >= end).map((fact) => fact.kind);
+    const laterActions = facts.filter((fact) => fact.executionId === check.execution_id && ['workspace_revision', 'workspace_checked', 'material_published', 'material_consumed', 'review', 'rework'].includes(fact.kind) && timeMs(fact.at) !== null && end !== null && timeMs(fact.at) >= end).map((fact) => fact.kind);
     const visibleRevisions = facts.filter((fact) => fact.executionId === check.execution_id && fact.kind === 'workspace_revision' && timeMs(fact.at) !== null && start !== null && timeMs(fact.at) <= start).slice(-3);
     const changedFiles = [...new Set(visibleRevisions.flatMap((fact) => array(fact.summary?.changed_files)))].slice(0, 8);
     const strategySummary = changedFiles.length
@@ -1893,7 +1893,7 @@ function buildCandidateAnalysis(model, facts) {
         ? 'same diagnostic class and same visible Workspace change pattern'
         : 'visible diagnostic or Workspace change pattern differs from the previous Candidate';
     return {
-      candidate_material_id: check.candidate_material_id,
+      artifact_material_id: check.artifact_material_id,
       check_result_id: check.check_result_id,
       task_id: check.target_task_id,
       execution_id: check.execution_id,
@@ -1921,11 +1921,11 @@ function buildCandidateAnalysis(model, facts) {
       evidence: [...new Set([check.source.ref, ...(submission?.sources ?? [])])],
     };
   });
-  const checkedIds = new Set(rows.map((row) => row.candidate_material_id));
+  const checkedIds = new Set(rows.map((row) => row.artifact_material_id));
   for (const submission of submissions.values()) {
-    const candidateId = submission.summary?.candidate_material_id;
+    const candidateId = submission.summary?.artifact_material_id;
     if (candidateId && !checkedIds.has(candidateId)) rows.push({
-      candidate_material_id: candidateId,
+      artifact_material_id: candidateId,
       check_result_id: null,
       task_id: submission.taskId,
       execution_id: submission.executionId,
@@ -1990,9 +1990,9 @@ function buildOptimizationRecommendations(analysis) {
   const recommendations = [];
   const add = (priority, category, action, rationale, validation, evidence) => recommendations.push({ priority, category, action, rationale, validation, evidence: [...new Set(evidence)].slice(0, 12) });
   const categories = new Set(analysis.errors.map((error) => error.category));
-  if (categories.has('claim_active_execution_quota')) {
-    const count = analysis.errors.filter((error) => error.category === 'claim_active_execution_quota').reduce((total, error) => total + error.occurrence_count, 0);
-    add('P1', 'claim contention', 'Make the eligible queue quota-aware; after a conflict, back off and refresh the queue.', `This run produced ${count} unique quota conflict occurrence(s) while active Executions already owned the work.`, 'Count unique quota conflicts per run and require the next retry to occur only after claimability changes.', analysis.errors.filter((error) => error.category === 'claim_active_execution_quota').flatMap((error) => error.evidence));
+  if (categories.has('take_active_execution_quota')) {
+    const count = analysis.errors.filter((error) => error.category === 'take_active_execution_quota').reduce((total, error) => total + error.occurrence_count, 0);
+    add('P1', 'take contention', 'Make the eligible queue quota-aware; after a conflict, back off and refresh the queue.', `This run produced ${count} unique quota conflict occurrence(s) while active Executions already owned the work.`, 'Count unique quota conflicts per run and require the next retry to occur only after claimability changes.', analysis.errors.filter((error) => error.category === 'take_active_execution_quota').flatMap((error) => error.evidence));
   }
   if (categories.has('check_result_contract_mismatch')) {
     const count = analysis.errors.filter((error) => error.category === 'check_result_contract_mismatch').reduce((total, error) => total + error.occurrence_count, 0);
@@ -2194,7 +2194,7 @@ function renderMarkdown(analysis) {
   const conclusionLines = analysis.conclusions.map((item) => `- **${item.type}:** ${item.text} _(evidence: ${item.evidence.join(', ') || 'none recorded'})_`).join('\n');
   const executionSections = analysis.executions.map((item) => {
     const counts = Object.entries(item.counts).map(([key, value]) => `${key}=${value}`).join(', ') || 'no normalized facts';
-    const artifacts = item.facts.filter((fact) => ['material_published', 'material_read', 'material_consumed', 'candidate_submitted', 'workspace_revision', 'judge_result', 'judge_check'].includes(fact.kind)).slice(0, 40).map((fact) => `- ${compactFact(fact)} — ${fact.sources.join(', ')}`).join('\n') || '- No artifact/check fact was observed for this Execution.';
+    const artifacts = item.facts.filter((fact) => ['material_published', 'material_read', 'material_consumed', 'workspace_checked', 'workspace_revision', 'judge_result', 'judge_check'].includes(fact.kind)).slice(0, 40).map((fact) => `- ${compactFact(fact)} — ${fact.sources.join(', ')}`).join('\n') || '- No artifact/check fact was observed for this Execution.';
     return `### Execution \`${md(item.execution.execution_id)}\` — ${md(item.lifecycle_role)}\n\n- Task: \`${md(item.execution.task_id)}\`\n- Lifecycle role: **${md(item.lifecycle_role)}**\n- Predecessor/rework source: ${md(item.predecessor_execution_id ?? 'none recorded')}\n- Successor/rework target: ${md(item.successor_execution_id ?? 'none recorded')}\n- Owner: ${md(item.execution.owner_ref)}\n- Core(s): ${md(item.coreIds.join(', ') || 'unknown')}\n- Session(s): ${md(item.sessionIds.join(', ') || 'unknown')}\n- Current/terminal state: **${md(item.execution.state)}**\n- Attempt: ${md(item.execution.attempt_no ?? 'unknown')}\n- Workspace lineage: ${md(item.workspaceRefs.map(safeWorkspaceRef).join(', ') || 'unknown')}\n- Wait condition: ${md(item.waitCondition?.type ?? 'none recorded')}\n- Normalized evidence counts: ${counts}\n- Evidence mode: ${analysis.inventory.evidenceMode}\n\n#### ${analysis.windowSizeMinutes}-minute semantic work windows\n\nThe table summarizes observable Agent objectives, Workspace/Material/Judge changes, and lifecycle state. Supporting event counts are included for audit; low-level calls are not the narrative.\n\n${windowTable(item)}\n\n#### Artifacts, Service effects, and errors\n\n${artifacts}\n`;
   }).join('\n');
   const collaborationRows = analysis.collaboration.map((row) => {
@@ -2208,10 +2208,10 @@ function renderMarkdown(analysis) {
   const serviceRows = analysis.serviceAnalysis.map((row) => `| ${md(row.service)} | ${row.started} | ${row.finished} | ${row.failed} | ${row.observed_failure_rate === null ? 'unknown' : `${(row.observed_failure_rate * 100).toFixed(1)}%`} | ${md(row.operations.join(', ') || 'unknown')} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
   const tool = analysis.toolAnalysis;
   const optimizationRows = analysis.optimizations.map((item) => `| ${md(item.priority)} | ${md(item.category)} | ${md(item.action)} | ${md(item.rationale)} | ${md(item.validation)} | ${item.evidence.slice(0, 6).join('<br>')} |`).join('\n');
-  const candidateRows = analysis.candidates.rows.map((row) => `| ${md(row.candidate_material_id)} | ${md(row.task_id)} | ${md(row.execution_id)} | ${md(row.strategy_summary)} | ${md(row.change_from_previous)} | ${md(row.feedback_response)} | ${md(row.check_result_id ?? 'none')} | ${md(row.verdict)} / ${md(row.mathematical_outcome)} / ${md(row.status)} | ${md(row.result_class)} | ${md(row.checker_process_status)} | ${md(row.diagnostic_class)} | ${md(row.submitted_at)} | ${row.feedback_reads} | ${row.later_actions.join(', ') || 'none recorded'} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
+  const candidateRows = analysis.candidates.rows.map((row) => `| ${md(row.artifact_material_id)} | ${md(row.task_id)} | ${md(row.execution_id)} | ${md(row.strategy_summary)} | ${md(row.change_from_previous)} | ${md(row.feedback_response)} | ${md(row.check_result_id ?? 'none')} | ${md(row.verdict)} / ${md(row.mathematical_outcome)} / ${md(row.status)} | ${md(row.result_class)} | ${md(row.checker_process_status)} | ${md(row.diagnostic_class)} | ${md(row.submitted_at)} | ${row.feedback_reads} | ${row.later_actions.join(', ') || 'none recorded'} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
   const repeatedDiagnosticRows = analysis.candidates.repeated_diagnostics.map((row) => `| ${md(row.task_id)} | ${md(row.diagnostic_class)} | ${row.count} | ${row.evidence.slice(0, 6).join('<br>')} |`).join('\n');
   const healthByCore = {};
-  for (const fact of analysis.facts.filter((candidate) => ['heartbeat', 'execution_assigned', 'wait_requested', 'execution_terminal', 'session_started', 'session_closed'].includes(candidate.kind))) {
+  for (const fact of analysis.facts.filter((candidate) => ['heartbeat', 'execution_assigned', 'wait_for_requested', 'execution_terminal', 'session_started', 'session_closed'].includes(candidate.kind))) {
     const key = fact.coreId ?? 'unknown';
     if (!healthByCore[key]) healthByCore[key] = {};
     healthByCore[key][fact.kind] = (healthByCore[key][fact.kind] ?? 0) + 1;
@@ -2299,7 +2299,7 @@ ${executionSections || '_No Execution section can be rendered from the available
 
 ### Collaboration review
 
-This section follows the collaboration loop: decompose → claim → independent work → deliver → consumer reads → review/rework → resume. A Material is treated as a delivery artifact; it is not treated as useful merely because it exists.
+This section follows the collaboration loop: decompose → take → independent work → deliver → consumer reads → review/rework → resume. A Material is treated as a delivery artifact; it is not treated as useful merely because it exists.
 
 | Material | Kind/state | Producer | Explicit consumers | Recorded downstream effects | Semantic handoff reading | Assessment |
 |---|---|---|---|---|---|---|
@@ -2315,7 +2315,7 @@ ${healthRows || '| unknown | No Core/session facts available |'}
 
 Heartbeats are lease activity only. Agent turns, process health, Judge time, IDLE, WAITING, scheduler polling, and effective Agent work are not collapsed into one metric. An unexplained interval is reported as an evidence gap, not a scheduler defect.
 
-The efficiency view must distinguish configured capacity from effective work: Core occupancy, concurrency, ready-but-unassigned work, claim contention, capacity release on WAITING, wake/resume, Judge time, scheduler polling, and cleanup are separate measures. When the trace lacks Runtime RUNNING or ready-queue intervals, occupancy is a proxy and the report says so.
+The efficiency view must distinguish configured capacity from effective work: Core occupancy, concurrency, ready-but-unassigned work, take contention, capacity release on WAITING, wake/resume, Judge time, scheduler polling, and cleanup are separate measures. When the trace lacks Runtime RUNNING or ready-queue intervals, occupancy is a proxy and the report says so.
 
 ## Tool layer
 
@@ -2336,7 +2336,7 @@ This layer evaluates provider/transport failures, tool contract use, response sc
 
 ## Error analysis
 
-Error Analysis prioritizes failures in the Swarm collaboration loop. Low-level Agent, Bridge, and Service errors are supporting evidence; they are not the main conclusion unless they block claim, handoff, feedback, recovery, or cleanup. 'occurrence_count' is the estimated number of independent failures; source references show supporting records and are not additional failures.
+Error Analysis prioritizes failures in the Swarm collaboration loop. Low-level Agent, Bridge, and Service errors are supporting evidence; they are not the main conclusion unless they block take, handoff, feedback, recovery, or cleanup. 'occurrence_count' is the estimated number of independent failures; source references show supporting records and are not additional failures.
 
 ### System-level findings
 
