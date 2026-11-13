@@ -22,7 +22,7 @@ const CONTEXT_OPERATIONS = new Set([
 const JUDGE_OPERATIONS = new Set(['get_check_result']);
 const PUBLIC_WORKSPACE_OPERATIONS = new Set([
   'workspace_public_files', 'workspace_public_read', 'workspace_public_search',
-  'workspace_save', 'workspace_merge', 'mission_submit', 'mission_submission_finish', 'mission_submission_get',
+  'workspace_public_apply', 'workspace_save', 'workspace_merge', 'mission_submit', 'mission_submission_finish', 'mission_submission_get',
 ]);
 
 export class ServicesRouter {
@@ -32,7 +32,7 @@ export class ServicesRouter {
     this.judgeService = judgeService;
     this.missionWorkspace = missionWorkspace;
     this.missionSubmissionStore = missionSubmissionStore;
-    this.registry = registry ?? createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace, serviceEndpoints, customServices });
+    this.registry = registry ?? createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore, serviceEndpoints, customServices });
     this.logger = logger;
   }
 
@@ -132,6 +132,7 @@ export class ServicesRouter {
     if (operation === 'workspace_public_files') return this.missionWorkspace.files({ workspaceId: payload.workspace_id, revision: payload.revision, prefix: payload.path ?? '' });
     if (operation === 'workspace_public_read') return this.missionWorkspace.read({ workspaceId: payload.workspace_id, revision: payload.revision, path: payload.path, maxBytes: payload.max_bytes });
     if (operation === 'workspace_public_search') return this.missionWorkspace.search({ workspaceId: payload.workspace_id, revision: payload.revision, prefix: payload.path ?? '', query: payload.query, maxResults: payload.max_results });
+    if (operation === 'workspace_public_apply') return this.missionWorkspace.apply({ workspaceId: payload.workspace_id, revision: payload.revision, targetDir: payload.target_dir });
     if (operation === 'workspace_save') return this.missionWorkspace.save(payload);
     if (operation === 'workspace_merge') return this.missionWorkspace.merge(payload);
     if (operation === 'mission_submit') return this.missionSubmissionStore.submit({ ...payload, actorRef: payload.actor_ref ?? envelope.actor_ref });

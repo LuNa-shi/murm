@@ -1664,7 +1664,7 @@ async function createProjectState(problem, config, options) {
   // Owner/controller SDK calls are synchronous local transactions. Keep that
   // control-plane registry local even when Agent-facing providers are remote;
   // ServicesBridge uses capabilityRegistry for the named HTTP calls.
-  const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace });
+  const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore });
   const router = new ServicesRouter({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore, registry: routerRegistry, logger: routerLogger });
   // Flat Mission Tasks complete and block through the registered Task
   // capabilities. The Runtime lifecycle aliases serve retired Tasks only;

@@ -30,16 +30,16 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `2849cfb1c381fd2528ee9a66dd2b85df651af8eadf0d59a8884f4b2c2830cfaf` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `76b22fe7980770b09417fda779faa9680dc68caf682700ff7cdfdc86c9f4e849` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `04cdd229ffd02e5251fc9a906248765fa4bd7c26d8b691d65d948d53023baa0a` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `25e93b255c713a0b434814fcd0238ecee200942ca2a540fdd07f07c89ffd1090` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `b60bfef9eecb032a6cb103ea7972d31f34ab39d8a91fedd9a1833624e5fc747f` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `87e3bf0fdd260247c399f3076b5a53a75a88fc64d919ff824b5f2edf2f70f480` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `3425008f3d96ce37d58a343f2936ed01a761e86d33aeae1553b5303ae5bdbf74` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `13567858001a1c63ab79e55b0628ca8535da95db63b17ba4da4e38821579e83a` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `0f20975ecf7ebf4b2725ed3545ef303fba8a47f6f6c28679cb5f61bc5bb5ae33` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `50052879854f331bee91cae3fbd159ceffb3c0eb2a9fc65816bca7b710d09f82` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `d467bd8a7d9f5b0ecfc3a195992617ceb5c902c77a3977c969ba465d546b34bc` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `309d6f50f497a9e3d16a2b75d24d732303e517ed06ded9243142781e1d01d15b` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `a79c8dfaa2737823e146e8d2a148cc010b30ddc9d1cfa69458a14627aad4f971` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `2bd8d503ccdcdec481bd72478531df6d870f5ad9d5072fd4674bbe4cb510ea8f` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `eedbc3e6869e525c16369ca1aca042d12bdc0877a3f4447be4319f23e54e3ddc` |
 
@@ -69,6 +69,8 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `runtime.workspace_read_file` | `swarmenv_workspace_read_file` | `swarmenv_workspace_read_file` |
 | `runtime.workspace_write_file` | `swarmenv_workspace_write_file` | `swarmenv_workspace_write_file` |
 | `task.execution_progress` | `swarmenv_execution_progress` | `swarmenv_execution_progress` |
+| `task.mission_submission_get` | `swarmenv_mission_submission_get` | `swarmenv_mission_submission_get` |
+| `task.mission_submit` | `swarmenv_mission_submit` | `swarmenv_mission_submit` |
 | `task.task_block` | `swarmenv_task_block` | `swarmenv_task_block` |
 | `task.task_close` | `swarmenv_task_close` | `swarmenv_task_close` |
 | `task.task_complete` | `swarmenv_task_complete` | `swarmenv_task_complete` |
@@ -80,9 +82,12 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `task.task_status` | `swarmenv_task_status` | `swarmenv_task_status` |
 | `task.task_take` | `swarmenv_task_take` | `swarmenv_task_take` |
 | `task.task_view` | `swarmenv_task_view` | `swarmenv_task_view` |
+| `task.workspace_merge` | `swarmenv_workspace_merge` | `swarmenv_workspace_merge` |
+| `task.workspace_public_apply` | `swarmenv_workspace_public_apply` | `swarmenv_workspace_public_apply` |
 | `task.workspace_public_files` | `swarmenv_workspace_public_files` | `swarmenv_workspace_public_files` |
 | `task.workspace_public_read` | `swarmenv_workspace_public_read` | `swarmenv_workspace_public_read` |
 | `task.workspace_public_search` | `swarmenv_workspace_public_search` | `swarmenv_workspace_public_search` |
+| `task.workspace_save` | `swarmenv_workspace_save` | `swarmenv_workspace_save` |
 
 The flat Mission Task profile is the only Agent-facing Task model. Retired structural and lease operations may remain in internal catalog definitions for storage/analysis compatibility, but are filtered from the built-in Registry and cannot be called by a bound Agent. The normal handoff tool is `execution_progress` with `kind: "handoff"`.
 
@@ -256,7 +261,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 15 registered capabilities
+### Task Service: 20 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -279,7 +284,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "7fd09e96e6e9ffe4e2995bea0ef8ff20ed4095e1b1dc17053600b979a71f844a"
+  "manifest_hash": "766732054a04bfb8b9a40e2040c7260d8b83104bc0b2b11ccd6fa58aa57188d4"
 }
 ```
 
@@ -1382,6 +1387,335 @@ Search text in an immutable Mission Workspace revision before a Task is claimed.
   },
   "method": "POST",
   "path": "/v1/workspace_public_search",
+  "errors": []
+}
+```
+
+#### task.workspace_public_apply
+
+Materialize a selected public Mission Workspace revision into the current Execution directory.
+
+```json
+{
+  "name": "workspace_public_apply",
+  "operation": "workspace_public_apply",
+  "description": "Materialize a selected public Mission Workspace revision into the current Execution directory.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "workspace_id",
+      "target_dir"
+    ],
+    "properties": {
+      "workspace_id": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "target_dir": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "execution-write",
+  "help": {
+    "when": "Materialize a selected public Mission Workspace revision into the current Execution directory.",
+    "ref": "service://task/workspace_public_apply",
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Materialize a selected public Mission Workspace revision into the current Execution directory.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_public_apply",
+  "errors": []
+}
+```
+
+#### task.workspace_save
+
+Save a complete public Mission Workspace file tree as an immutable revision without advancing main.
+
+```json
+{
+  "name": "workspace_save",
+  "operation": "workspace_save",
+  "description": "Save a complete public Mission Workspace file tree as an immutable revision without advancing main.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "workspace_id",
+      "base_revision",
+      "files"
+    ],
+    "properties": {
+      "workspace_id": {
+        "type": "string"
+      },
+      "base_revision": {
+        "type": "string"
+      },
+      "files": {
+        "type": "object"
+      },
+      "source": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "execution-write",
+  "help": {
+    "when": "Save a complete public Mission Workspace file tree as an immutable revision without advancing main.",
+    "ref": "service://task/workspace_save",
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Save a complete public Mission Workspace file tree as an immutable revision without advancing main.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_save",
+  "errors": []
+}
+```
+
+#### task.workspace_merge
+
+Conditionally merge one complete public Workspace revision into main after conflict and check validation.
+
+```json
+{
+  "name": "workspace_merge",
+  "operation": "workspace_merge",
+  "description": "Conditionally merge one complete public Workspace revision into main after conflict and check validation.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "workspace_id",
+      "from_revision",
+      "expected_main_revision"
+    ],
+    "properties": {
+      "workspace_id": {
+        "type": "string"
+      },
+      "from_revision": {
+        "type": "string"
+      },
+      "expected_main_revision": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "execution-write",
+  "help": {
+    "when": "Conditionally merge one complete public Workspace revision into main after conflict and check validation.",
+    "ref": "service://task/workspace_merge",
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Conditionally merge one complete public Workspace revision into main after conflict and check validation.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_merge",
+  "errors": []
+}
+```
+
+#### task.mission_submit
+
+Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.
+
+```json
+{
+  "name": "mission_submit",
+  "operation": "mission_submit",
+  "description": "Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "mission_id",
+      "workspace_id",
+      "main_revision",
+      "actor_ref"
+    ],
+    "properties": {
+      "mission_id": {
+        "type": "string"
+      },
+      "workspace_id": {
+        "type": "string"
+      },
+      "main_revision": {
+        "type": "string"
+      },
+      "material_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "checker": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "environment": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "acceptance": {
+        "type": "object"
+      },
+      "actor_ref": {
+        "type": "string"
+      },
+      "request_id": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [],
+  "requires_binding": false,
+  "scope": "mission-write",
+  "help": {
+    "when": "Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.",
+    "ref": "service://task/mission_submit",
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/mission_submit",
+  "errors": []
+}
+```
+
+#### task.mission_submission_get
+
+Read the durable Mission submission state and its immutable acceptance snapshot.
+
+```json
+{
+  "name": "mission_submission_get",
+  "operation": "mission_submission_get",
+  "description": "Read the durable Mission submission state and its immutable acceptance snapshot.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "mission_id"
+    ],
+    "properties": {
+      "mission_id": {
+        "type": "string"
+      },
+      "submission_id": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "read",
+  "idempotent": true,
+  "context": [],
+  "requires_binding": false,
+  "scope": "mission-read",
+  "help": {
+    "when": "Read the durable Mission submission state and its immutable acceptance snapshot.",
+    "ref": "service://task/mission_submission_get",
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Read the durable Mission submission state and its immutable acceptance snapshot.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/mission_submission_get",
   "errors": []
 }
 ```

@@ -25,7 +25,8 @@ const CURRENT_AGENT_OPERATIONS = new Set([
   'submit_candidate', 'get_check_result', 'get_execution',
   'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
   'read_workspace_file', 'write_workspace_file', 'workspace_diff',
-  'workspace_public_files', 'workspace_public_read', 'workspace_public_search',
+  'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_apply',
+  'workspace_save', 'workspace_merge', 'mission_submit', 'mission_submission_get',
 ]);
 
 function clone(value) {

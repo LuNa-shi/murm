@@ -22,6 +22,7 @@ const UNBOUND_OPERATIONS = new Set([
   'read_materials', 'context_search_materials', 'context_get_material',
   'material_read', 'material_search', 'material_get',
   'workspace_public_files', 'workspace_public_read', 'workspace_public_search',
+  'mission_submit', 'mission_submission_get',
 ]);
 
 function usesWorkspace(task) {

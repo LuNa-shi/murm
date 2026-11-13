@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `3cd7e1b9cd3e1e4fa71b8f852cf8a54c16f35af1138bfb2a77c1fd65e678df54`
+Body SHA-256: `2be09dc3b374bd67dde8d1a5fd45f4e7aa2854e50a3993da10b9ad8be354dea1`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -81,6 +81,8 @@ Body SHA-256: `3cd7e1b9cd3e1e4fa71b8f852cf8a54c16f35af1138bfb2a77c1fd65e678df54`
   - swarmenv_workspace_write_file: Write one declared output file in the current task-scoped Workspace and save a revision. (logical operation runtime.write_workspace_file; writes state; inputs required=[path,content] fields=[content,expected_revision,path]; Write only declared outputs with the current Workspace revision.)
 - Task Service — Durable Task goals, claims, structure, and completion evidence.
   - swarmenv_execution_progress: Save a bounded Progress Material and either continue the current Execution or hand it off. (logical operation task.execution_progress; writes state; inputs required=[kind,progress] fields=[checkpoint,files,kind,progress,reason,summary]; Save a bounded Progress Material and either continue the current Execution or hand it off.)
+  - swarmenv_mission_submission_get: Read the durable Mission submission state and its immutable acceptance snapshot. (logical operation task.mission_submission_get; read-only; inputs required=[mission_id] fields=[mission_id,submission_id]; Read the durable Mission submission state and its immutable acceptance snapshot.)
+  - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[mission_id,workspace_id,main_revision,actor_ref] fields=[acceptance,actor_ref,checker,environment,main_revision,material_ids,mission_id,request_id,workspace_id]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
   - swarmenv_task_block: Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable. (logical operation task.task_block; writes state; inputs required=[blocker,dependency,handoff_material_id] fields=[blocker,dependency,handoff_material_id]; Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.)
   - swarmenv_task_close: Accept a linked Response Material from another Task and close its producer. (logical operation task.task_close; writes state; inputs required=[producer_task_id,material_id] fields=[material_id,producer_task_id]; Accept a linked Response Material from another Task and close its producer.)
   - swarmenv_task_complete: Complete the current Task when its own contract and required Material or Judge evidence are satisfied. (logical operation task.task_complete; writes state; inputs required=[none] fields=[check_result_id,material_ids]; Complete the current Task when its own contract and required Material or Judge evidence are satisfied.)
@@ -92,9 +94,12 @@ Body SHA-256: `3cd7e1b9cd3e1e4fa71b8f852cf8a54c16f35af1138bfb2a77c1fd65e678df54`
   - swarmenv_task_status: Read the authoritative Mission, Task counts, claimable work, and observation timestamp. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read the authoritative Mission, Task counts, claimable work, and observation timestamp.)
   - swarmenv_task_take: Take an existing Mission or ordinary Task using the caller identity and Core lane. (logical operation task.task_take; writes state; inputs required=[task_id] fields=[claim_key,input_material_refs,task_id,workspace_mode,workspace_revision,workspace_source_execution_id,workspace_source_ref]; Take an existing Mission or ordinary Task using the caller identity and Core lane.)
   - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
+  - swarmenv_workspace_merge: Conditionally merge one complete public Workspace revision into main after conflict and check validation. (logical operation task.workspace_merge; writes state; inputs required=[workspace_id,from_revision,expected_main_revision] fields=[expected_main_revision,from_revision,workspace_id]; Conditionally merge one complete public Workspace revision into main after conflict and check validation.)
+  - swarmenv_workspace_public_apply: Materialize a selected public Mission Workspace revision into the current Execution directory. (logical operation task.workspace_public_apply; writes state; inputs required=[workspace_id,target_dir] fields=[revision,target_dir,workspace_id]; Materialize a selected public Mission Workspace revision into the current Execution directory.)
   - swarmenv_workspace_public_files: List files in the immutable Mission Workspace revision before a Task is claimed. (logical operation task.workspace_public_files; read-only; inputs required=[workspace_id] fields=[path,revision,workspace_id]; List files in the immutable Mission Workspace revision before a Task is claimed.)
   - swarmenv_workspace_public_read: Read one file from an immutable Mission Workspace revision before a Task is claimed. (logical operation task.workspace_public_read; read-only; inputs required=[workspace_id,path] fields=[max_bytes,path,revision,workspace_id]; Read one file from an immutable Mission Workspace revision before a Task is claimed.)
   - swarmenv_workspace_public_search: Search text in an immutable Mission Workspace revision before a Task is claimed. (logical operation task.workspace_public_search; read-only; inputs required=[workspace_id,query] fields=[max_results,path,query,revision,workspace_id]; Search text in an immutable Mission Workspace revision before a Task is claimed.)
+  - swarmenv_workspace_save: Save a complete public Mission Workspace file tree as an immutable revision without advancing main. (logical operation task.workspace_save; writes state; inputs required=[workspace_id,base_revision,files] fields=[base_revision,files,source,workspace_id]; Save a complete public Mission Workspace file tree as an immutable revision without advancing main.)
 ````
 
 ## Pi tool registrations: all instruction fields
@@ -394,6 +399,34 @@ Body SHA-256: `46e3ac3fe1ab773301e2a18ba82104fc52b279be6ba895f12379128dd93cb1dd`
   ]
 }
 ````
+## swarmenv_mission_submission_get
+
+Body SHA-256: `7eb3bad90e65b2f60b95f0d3a99f121b3da8176df98c05e0f74123f77d92a580`
+
+````text
+{
+  "description": "Read the durable Mission submission state and its immutable acceptance snapshot.",
+  "promptSnippet": "Task Service: Read the durable Mission submission state and its immutable acceptance snapshot.",
+  "promptGuidelines": [
+    "Read the durable Mission submission state and its immutable acceptance snapshot.",
+    "Help: service://task/mission_submission_get"
+  ]
+}
+````
+## swarmenv_mission_submit
+
+Body SHA-256: `a6567ffa44babeb019a266d40a3e2d40a44bce65133544959abd08bb2f979b74`
+
+````text
+{
+  "description": "Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.",
+  "promptSnippet": "Task Service: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.",
+  "promptGuidelines": [
+    "Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.",
+    "Help: service://task/mission_submit"
+  ]
+}
+````
 ## swarmenv_task_block
 
 Body SHA-256: `2782b1687f704cde5844903858b5a03cca53f5f3a27feebe1a76c0002659afcf`
@@ -548,6 +581,34 @@ Body SHA-256: `fffae822ee01243ff0d4f1f9c5e0014f0c1610b58ef6bce8756b3658e78a0a7b`
   ]
 }
 ````
+## swarmenv_workspace_merge
+
+Body SHA-256: `50c35db47cdc008653485c598bc1fed6ec8cd9fbc691206f282054920bd0015d`
+
+````text
+{
+  "description": "Conditionally merge one complete public Workspace revision into main after conflict and check validation.",
+  "promptSnippet": "Task Service: Conditionally merge one complete public Workspace revision into main after conflict and check validation.",
+  "promptGuidelines": [
+    "Conditionally merge one complete public Workspace revision into main after conflict and check validation.",
+    "Help: service://task/workspace_merge"
+  ]
+}
+````
+## swarmenv_workspace_public_apply
+
+Body SHA-256: `b3e2bebf27118544c2780a6b6177bb02eb262f532f6b1d2c90a18d555c1d28c6`
+
+````text
+{
+  "description": "Materialize a selected public Mission Workspace revision into the current Execution directory.",
+  "promptSnippet": "Task Service: Materialize a selected public Mission Workspace revision into the current Execution directory.",
+  "promptGuidelines": [
+    "Materialize a selected public Mission Workspace revision into the current Execution directory.",
+    "Help: service://task/workspace_public_apply"
+  ]
+}
+````
 ## swarmenv_workspace_public_files
 
 Body SHA-256: `ac1f9e1847169d3d3acaceecf3149de762bb3ccfdd70c51a79af9e80ae2c52ff`
@@ -587,6 +648,20 @@ Body SHA-256: `aa6fbfe65b75ccb20020aea5d352810de39615e5508374440694c61979bdb2f5`
   "promptGuidelines": [
     "Search text in an immutable Mission Workspace revision before a Task is claimed.",
     "Help: service://task/workspace_public_search"
+  ]
+}
+````
+## swarmenv_workspace_save
+
+Body SHA-256: `2fc01b69a90a6f4baa7f85fadbbc2fe214d0657c3ba9c45f70a0df2706a5d477`
+
+````text
+{
+  "description": "Save a complete public Mission Workspace file tree as an immutable revision without advancing main.",
+  "promptSnippet": "Task Service: Save a complete public Mission Workspace file tree as an immutable revision without advancing main.",
+  "promptGuidelines": [
+    "Save a complete public Mission Workspace file tree as an immutable revision without advancing main.",
+    "Help: service://task/workspace_save"
   ]
 }
 ````

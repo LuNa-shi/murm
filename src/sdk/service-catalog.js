@@ -292,6 +292,36 @@ const publicMissionWorkspaceTools = [
     scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
     parameters: { type: 'object', required: ['workspace_id', 'query'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, path: { type: 'string' }, query: { type: 'string' }, max_results: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false },
   },
+  {
+    name: 'workspace_public_apply', service: 'task', operation: 'workspace_public_apply', version: '1.0',
+    description: 'Materialize a selected public Mission Workspace revision into the current Execution directory.',
+    scope: 'execution-write', side_effect: true, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id', 'target_dir'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, target_dir: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_save', service: 'task', operation: 'workspace_save', version: '1.0',
+    description: 'Save a complete public Mission Workspace file tree as an immutable revision without advancing main.',
+    scope: 'execution-write', side_effect: true, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id', 'base_revision', 'files'], properties: { workspace_id: { type: 'string' }, base_revision: { type: 'string' }, files: { type: 'object' }, source: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_merge', service: 'task', operation: 'workspace_merge', version: '1.0',
+    description: 'Conditionally merge one complete public Workspace revision into main after conflict and check validation.',
+    scope: 'execution-write', side_effect: true, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id', 'from_revision', 'expected_main_revision'], properties: { workspace_id: { type: 'string' }, from_revision: { type: 'string' }, expected_main_revision: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'mission_submit', service: 'task', operation: 'mission_submit', version: '1.0',
+    description: 'Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.',
+    scope: 'mission-write', side_effect: true, capability: 'mission-coordination',
+    parameters: { type: 'object', required: ['mission_id', 'workspace_id', 'main_revision', 'actor_ref'], properties: { mission_id: { type: 'string' }, workspace_id: { type: 'string' }, main_revision: { type: 'string' }, material_ids: { type: 'array', items: { type: 'string' } }, checker: { type: ['string', 'null'] }, environment: { type: ['string', 'null'] }, acceptance: { type: 'object' }, actor_ref: { type: 'string' }, request_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'mission_submission_get', service: 'task', operation: 'mission_submission_get', version: '1.0',
+    description: 'Read the durable Mission submission state and its immutable acceptance snapshot.',
+    scope: 'mission-read', side_effect: false, capability: 'mission-coordination',
+    parameters: { type: 'object', required: ['mission_id'], properties: { mission_id: { type: 'string' }, submission_id: { type: 'string' } }, additionalProperties: false },
+  },
 ];
 const publicJudgeTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge');
 const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'catalog');
