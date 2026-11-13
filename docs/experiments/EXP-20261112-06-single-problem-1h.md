@@ -1,6 +1,6 @@
 # EXP-20261112-06: Single-problem Issue #122 acceptance run
 
-Status: REGISTERED
+Status: BLOCKED
 Approved GitHub Issue: [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)
 Experiment ID: `EXP-20261112-06`
 Repeat of / comparison to: `EXP-20261112-05` (stopped after clean-workspace inspection)
@@ -46,14 +46,19 @@ echo $! > experiments/EXP-20261112-06.pid
 
 ## Results
 
-Pending execution. Record actual start/end, protocol validity, public Workspace ID and
-revision, Mission submission state, Task/Execution/Material/Judge evidence, cleanup,
-and exact observed timebox after the run.
+A short 90-second bounded run reached the provider and recorded a `task_take` request
+with `workspace_mode: clean` and a clean Execution selection. The model did not return
+a valid `task_id` in its bounded selection, so no claim or Agent work was recorded;
+the run ended at its deadline with protocol_valid true, invalid_count 0, and an
+identity-loop stop-timeout cleanup error. It was not run for one hour and is not
+acceptance evidence.
 
 ## Analysis
 
-Pending execution. Protocol validity and engineering contract evidence remain
-separate from proof quality or research benefit.
+The clean Workspace normalization is now evidenced at the Task Service boundary. The
+remaining failure is Agent selection behavior: the provider session repeatedly chose
+no Task despite a non-empty shortlist. This is distinct from the earlier provider URL
+and workspace-mode failures.
 
 ## Next steps
 
