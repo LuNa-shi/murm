@@ -37,7 +37,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "deac891cc2a08a1c68e1ba63ccf7bb133b5f09946ef3bc2fbe145a8e9deffe73"
+      "sha256": "351f749c9eff01a1a7ab9145b20b3441f103e7a8553c4213564059e82472908b"
     },
     {
       "path": "src/runtime/identity-task-loop.js",
