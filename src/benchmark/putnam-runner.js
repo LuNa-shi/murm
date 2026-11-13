@@ -774,6 +774,26 @@ async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false }
       if (typeof session.waitForSettled === 'function') {
         await session.waitForSettled({ timeoutMs: 30_000, afterSequence: followUpSequence }).catch(() => undefined);
       }
+      if (!core.takeResult?.task?.task_id && !core.stopping) {
+        // Some provider streams accept the follow-up but never emit a second
+        // settled boundary. Rotate that unproductive unbound session once so
+        // bootstrap cannot consume the whole experiment deadline.
+        await Promise.race([
+          Promise.resolve(session.stop?.()),
+          sleep(5_000),
+        ]).catch(() => undefined);
+        if (core.session === session) core.session = null;
+        core.turnInFlight = false;
+        core.dispatchReserved = false;
+        const retrySession = await ensureAgentSession(core);
+        if (retrySession) {
+          const retrySequence = retrySession.rpcRecords?.length ?? 0;
+          await retrySession.prompt(`${prompt}\n\nThe previous proposal stream did not complete. On this fresh bounded turn call swarmenv_task_create immediately with the exact Mission, proof Task contract, completion contract, and workspace object above; then call swarmenv_task_take exactly once for the returned task_id.`, {
+            timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000),
+          });
+          await retrySession.waitForSettled?.({ timeoutMs: 30_000, afterSequence: retrySequence }).catch(() => undefined);
+        }
+      }
     }
     if (core.takeResult?.task?.task_id) return core.takeResult;
     if (core.bridge.lastTakeOutcome?.attempted && !core.bridge.lastTakeOutcome.ok) {
