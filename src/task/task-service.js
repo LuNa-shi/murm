@@ -11,7 +11,7 @@ import {
   validateTaskProposal,
 } from './task-types.js';
 
-const EXECUTION_WRITE_OPERATIONS = new Set(['execution_progress', 'expire_execution', 'fence_execution', 'finish_task', 'heartbeat', 'handoff_execution', 'link_material', 'record_handoff_reminder', 'recover_execution', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'task_feedback', 'wake_execution']);
+const EXECUTION_WRITE_OPERATIONS = new Set(['execution_progress', 'expire_execution', 'fence_execution', 'finish_task', 'heartbeat', 'handoff_execution', 'link_material', 'record_handoff_reminder', 'recover_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'task_feedback']);
 const MODERN_OPERATION_ALIASES = Object.freeze({
   'mission.create': 'create_mission',
   'mission.get': 'get_mission',
@@ -40,14 +40,14 @@ const MODERN_OPERATION_ALIASES = Object.freeze({
 const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'finish_task', 'task_feedback']);
 const MODERN_READ_OPERATIONS = new Set(['get_mission', 'list_task', 'view_task', 'list_task_materials']);
 const TASK_MUTATING_OPERATIONS = new Set([
-  'reconcile_task', 'reopen_task', 'start_execution', 'stop_execution', 'fence_execution', 'recover_execution', 'request_wait', 'wake_execution', 'save_checkpoint', 'save_workspace_revision', 'handoff_execution',
+  'reconcile_task', 'reopen_task', 'start_execution', 'stop_execution', 'fence_execution', 'recover_execution', 'save_checkpoint', 'save_workspace_revision', 'handoff_execution',
   'link_material', 'finish_task',
   ...MODERN_MUTATING_OPERATIONS,
   'task_take',
   'execution_progress',
 ]);
 const TASK_EVENT_OPERATIONS = new Set([
-  'reconcile_task', 'recover_execution', 'reopen_task', 'start_execution', 'stop_execution', 'fence_execution', 'request_wait', 'wake_execution', 'save_checkpoint', 'save_workspace_revision', 'handoff_execution',
+  'reconcile_task', 'recover_execution', 'reopen_task', 'start_execution', 'stop_execution', 'fence_execution', 'save_checkpoint', 'save_workspace_revision', 'handoff_execution',
   'create_task', 'expire_execution',
   'link_material', 'finish_task',
   'task_feedback',
@@ -1808,14 +1808,11 @@ export class TaskService {
       case 'record_handoff_reminder': return this.#recordHandoffReminder(payload, envelope);
       case 'handoff_execution': return this.#handoffExecution(payload, envelope);
       case 'start_execution': return this.#startExecution(payload, envelope);
-      case 'resume_execution': return this.#resumeExecution(payload, envelope);
-      case 'request_wait': return this.#requestWait(payload, envelope);
       case 'save_workspace_revision': return this.#saveWorkspaceRevision(payload, envelope);
       case 'save_checkpoint': return this.#saveCheckpoint(payload, envelope);
       case 'expire_execution': return this.#expireExecution(payload, envelope);
       case 'fence_execution': return this.#fenceExecution(payload, envelope);
       case 'recover_execution': return this.#recoverExecution(payload, envelope);
-      case 'wake_execution': return this.#wakeExecution(payload, envelope);
       default: throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service operation: ${operation}`);
     }
   }
