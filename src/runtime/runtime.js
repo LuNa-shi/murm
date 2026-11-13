@@ -133,10 +133,16 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionSubmissionStore = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
+    // Public Mission Workspace and final submission stores are optional so
+    // existing execution-local deployments remain readable during migration.
+    // When configured, these methods are the only Runtime seam that exposes
+    // repository revisions to a Bot; Git itself remains Runtime-owned.
+    this.missionWorkspace = missionWorkspace;
+    this.missionSubmissionStore = missionSubmissionStore;
     this.agentAdapter = agentAdapter;
     this.sandboxManager = sandboxManager;
     this.cleanExecutionWorkspaces = cleanExecutionWorkspaces === true;
@@ -366,6 +372,41 @@ export class Runtime {
       fencingVersion: execution.fencing_version,
     });
     return { workspace, revisions };
+  }
+
+  async listPublicWorkspaceFiles({ workspaceId, revision = undefined, path = '' } = {}) {
+    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
+    return this.missionWorkspace.files({ workspaceId: requireString(workspaceId, 'workspace_id'), revision, prefix: path });
+  }
+
+  async readPublicWorkspaceFile({ workspaceId, revision = undefined, path, maxBytes = 1_000_000 } = {}) {
+    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
+    return this.missionWorkspace.read({ workspaceId: requireString(workspaceId, 'workspace_id'), revision, path, maxBytes });
+  }
+
+  async searchPublicWorkspace({ workspaceId, revision = undefined, query, path = '', maxResults = 100 } = {}) {
+    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
+    return this.missionWorkspace.search({ workspaceId: requireString(workspaceId, 'workspace_id'), revision, query, prefix: path, maxResults });
+  }
+
+  async savePublicWorkspaceRevision(input = {}) {
+    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
+    return this.missionWorkspace.save(input);
+  }
+
+  async mergePublicWorkspaceRevision(input = {}) {
+    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
+    return this.missionWorkspace.merge(input);
+  }
+
+  async submitMission(input = {}) {
+    if (!this.missionSubmissionStore) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not enabled');
+    return this.missionSubmissionStore.submit(input);
+  }
+
+  async finishMissionSubmission(input = {}) {
+    if (!this.missionSubmissionStore) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not enabled');
+    return this.missionSubmissionStore.finish(input);
   }
 
   async listWorkspaceFiles(executionId, { path = '' } = {}) {
