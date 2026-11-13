@@ -146,7 +146,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.taskService = taskService;
     this.contextService = contextService;
@@ -167,8 +167,8 @@ export class ServicesBridge {
     this.runtimeCapabilities = runtimeCapabilities ?? runtimeCapabilityList()
       .filter((capability) => runtime?.sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
     this.taskCreateMutex = taskCreateMutex;
-    this.onClaim = onClaim;
-    this.onClaimAccepted = onClaimAccepted;
+    this.onTake = onTake;
+    this.onTakeAccepted = onTakeAccepted;
     this.onRelease = onRelease;
     this.onWorkspaceWrite = onWorkspaceWrite;
     this.onWorkUnit = onWorkUnit;
@@ -189,7 +189,7 @@ export class ServicesBridge {
     this.deferredLifecycle = null;
     this.deferredLifecyclePromise = null;
     // The most recent task_take attempt made through this identity, used by
-    // the Core loop to distinguish "invalid choice" from "lost a claim race".
+    // the Core loop to distinguish "invalid choice" from "lost a take race".
     // It is reset by the Runner at the start of each discovery turn.
     this.lastTakeOutcome = null;
   }
@@ -212,8 +212,8 @@ export class ServicesBridge {
     this.capabilityProfile = null;
     this.capabilityProfileRegistryRevision = null;
     try {
-      await this.onClaimAccepted?.(result);
-      await this.onClaim?.(result);
+      await this.onTakeAccepted?.(result);
+      await this.onTake?.(result);
     } catch (error) {
       const released = { taskId: this.taskId, executionId: this.executionId, result: null };
       // task_take activation is a prepare/commit boundary. If the Runtime
@@ -252,7 +252,7 @@ export class ServicesBridge {
       this.role = AGENT_ROLES.BOUND;
       this.capabilityProfile = null;
       this.capabilityProfileRegistryRevision = null;
-      // A failed handoff still owns a durable claim until the caller fences it.
+      // A failed handoff still owns a durable take until the caller fences it.
       // Deliver the original binding to the release hook before surfacing the
       // handoff error, so a Core cannot retain a stale Execution identity.
       try { await this.onRelease?.(released); } catch { /* preserve handoff failure */ }
