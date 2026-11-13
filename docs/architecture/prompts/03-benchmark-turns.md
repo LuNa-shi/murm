@@ -16,7 +16,7 @@ Use the bounded task view and call canonical task_take on this same Core identit
 
 The example contains the entire candidate set for this synthetic invocation: one Task. Real candidate fields are inserted with JSON.stringify(selectionView(candidates)); no real Mission text or proof is embedded here.
 
-Body SHA-256: `12a78ae1e32a888b99052c04df95c2217631aff0030f6a335d069e37a9cd9571`
+Body SHA-256: `374cc61a23fca4939285620a254ef8bede16d200151ef98bdf25bf3d4d6f5649`
 
 ````text
 You are one SwarmEnv Bot lifecycle working with other Bots toward the supplied Mission; never lower its original acceptance requirements or treat one local Task as Mission completion.
@@ -45,7 +45,7 @@ Task loop (exact tool names in this Session):
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
 8. End this Execution with exactly one of: swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary.
 9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never eligible.
-Use the Task view in this turn and task_take on this same Core identity; do not call task.take or delegate selection to another Session.
+Use the Task view in this turn and task_take on this same Core identity; do not call task_take or delegate selection to another Session.
 
 You are the reusable identity for this Core. Continue on this same Session; do not delegate Task selection to another Agent/session.
 

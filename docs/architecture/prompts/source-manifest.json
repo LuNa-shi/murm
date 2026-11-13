@@ -33,7 +33,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "dd1ae7bbecb4eb2fe8a7ee808ad9cafc74fd76d1ed2f81ffb1b9caf0e17db5c9"
+      "sha256": "b92021e5d05f653ab1c608a72d1ec824b48759bb144414f5eba3cd64f3d19cd5"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -131,7 +131,7 @@
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "      takePrompt: ",
       "line": 2724,
-      "sha256": "9fb7b3e9fd34b2741a88af5f83d1b87cf922fc53d4623850d226a188a75b2f03"
+      "sha256": "7ed09af4862880a2d8821fd60ab5cfaf84ea3de83bb960b321ad36768da54731"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
@@ -355,7 +355,7 @@
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "e451d75ed6249575e4f19328c36d807b85156707d787959c06a436a8f2cf3a13"
+      "sha256": "e0879ff18365ba16bb47a14cf9278a7fa4e005a86cc3d51f8daaa97c4add0562"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
