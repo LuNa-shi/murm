@@ -500,7 +500,7 @@ CREATE INDEX IF NOT EXISTS material_consumptions_material
 
 ### Judge database
 
-Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `32d4c2c1e0a646de4eea5b46cfe1ae78d9714d0ccc19556c35a375429686f44d`.
+Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `e55141cfdcf3dfdd86e9080a212269277b171c7c7389a4267e0a0e47d7f7cc1b`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -515,8 +515,8 @@ CREATE TABLE IF NOT EXISTS check_results (
   check_result_id TEXT PRIMARY KEY,
   request_key TEXT NOT NULL UNIQUE,
   request_hash TEXT NOT NULL,
-  candidate_material_id TEXT NOT NULL,
-  candidate_content_hash TEXT,
+  workspace_source_id TEXT NOT NULL,
+  workspace_content_hash TEXT,
   target_task_id TEXT NOT NULL,
   target_spec_version INTEGER NOT NULL,
   execution_id TEXT,
@@ -615,7 +615,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `29f127be7e45225bc4b78ca25b10972936672533bd721a6529951b86924b89c2`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `41c288042f1ad8dc1204c2d4afed8afec93a3e1b1b41e838bd3919a24d7c99a5`.
 
 #### executions_active_core
 

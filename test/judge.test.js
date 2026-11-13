@@ -298,6 +298,7 @@ test('Lean checker preflight binds the locked input, project cwd, and toolchain 
 test('Judge refuses a checker adapter without a preflight health gate', async () => {
   let checks = 0;
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    fixtureManifest,
     checker: { check: async () => { checks += 1; return { verdict: 'PASS', evidence: { exit_code: 0 } }; } },
   });
   const result = await judge.checkWorkspaceSource({
@@ -313,7 +314,7 @@ test('Judge refuses a checker adapter without a preflight health gate', async ()
     target_task: targetTask,
     workspace,
     fixture_manifest: fixtureManifest,
-  }, { operationId: 'unsupported-preflight-operation' });
+  }, makeEnvelope({ operationId: 'unsupported-preflight-operation', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
   assert.equal(checks, 0);
   assert.equal(result.result_class, 'infrastructure_failure');
   assert.equal(result.checker_process_status, 'not_started');
@@ -326,6 +327,7 @@ test('Judge refuses a checker adapter without a preflight health gate', async ()
 test('Judge persists checker preflight health and bounds identical infrastructure retries', async () => {
   let checks = 0;
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    fixtureManifest,
     maxInfrastructureRetries: 2,
     checker: {
       preflight: async () => ({
@@ -366,6 +368,7 @@ test('Judge persists checker preflight health and bounds identical infrastructur
 test('Judge also bounds a checker launch failure discovered after a healthy preflight', async () => {
   let checks = 0;
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    fixtureManifest,
     maxInfrastructureRetries: 2,
     checker: {
       preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: { exit_code: 0 } }),
@@ -399,6 +402,7 @@ test('A changed Checker health result allows a later source-level check', async 
   let healthy = false;
   let checks = 0;
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    fixtureManifest,
     maxInfrastructureRetries: 0,
     checker: {
       preflight: async () => healthy
@@ -413,14 +417,14 @@ test('A changed Checker health result allows a later source-level check', async 
     environment_ref: fixtureManifest.environment_ref, workspace_source: workspace_source('theorem before : True := by trivial', 'health-change-material-1'), target_task: targetTask,
     workspace, fixture_manifest: fixtureManifest,
   };
-  const unavailable = await judge.checkWorkspaceSource(input, { operationId: 'health-change-op-1' });
+  const unavailable = await judge.checkWorkspaceSource(input, makeEnvelope({ operationId: 'health-change-op-1', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
   assert.equal(unavailable.retryable, false);
   healthy = true;
   const available = await judge.checkWorkspaceSource({
     ...input,
     request_key: 'health-change-2', workspace_source_id: 'health-change-material-2',
     workspace_source: workspace_source('theorem after : True := by trivial', 'health-change-material-2'),
-  }, { operationId: 'health-change-op-2' });
+  }, makeEnvelope({ operationId: 'health-change-op-2', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
   assert.equal(available.result_class, 'PASS');
   assert.equal(available.mathematical_outcome, 'PASS');
   assert.equal(checks, 1);
@@ -431,6 +435,7 @@ test('A changed Checker health result allows a later source-level check', async 
 test('A changed unavailable diagnostic opens a fresh bounded retry window', async () => {
   let diagnostic = 'spawn lake ENOENT: binary-a';
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    fixtureManifest,
     maxInfrastructureRetries: 1,
     checker: {
       preflight: async () => ({ status: 'unavailable', checker_process_status: 'not_started', evidence: { diagnostic, error_code: 'ENOENT' } }),
@@ -442,10 +447,10 @@ test('A changed unavailable diagnostic opens a fresh bounded retry window', asyn
     checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version, environment_ref: fixtureManifest.environment_ref,
     target_task: targetTask, workspace, fixture_manifest: fixtureManifest,
   };
-  const first = await judge.checkWorkspaceSource({ ...input, request_key: 'changed-health-1', workspace_source_id: 'changed-health-1', workspace_source: workspace_source('theorem changed1 : True := by trivial', 'changed-health-1') }, { operationId: 'changed-health-op-1' });
-  const second = await judge.checkWorkspaceSource({ ...input, request_key: 'changed-health-2', workspace_source_id: 'changed-health-2', workspace_source: workspace_source('theorem changed2 : True := by trivial', 'changed-health-2') }, { operationId: 'changed-health-op-2' });
+  const first = await judge.checkWorkspaceSource({ ...input, request_key: 'changed-health-1', workspace_source_id: 'changed-health-1', workspace_source: workspace_source('theorem changed1 : True := by trivial', 'changed-health-1') }, makeEnvelope({ operationId: 'changed-health-op-1', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
+  const second = await judge.checkWorkspaceSource({ ...input, request_key: 'changed-health-2', workspace_source_id: 'changed-health-2', workspace_source: workspace_source('theorem changed2 : True := by trivial', 'changed-health-2') }, makeEnvelope({ operationId: 'changed-health-op-2', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
   diagnostic = 'spawn lake ENOENT: binary-b';
-  const third = await judge.checkWorkspaceSource({ ...input, request_key: 'changed-health-3', workspace_source_id: 'changed-health-3', workspace_source: workspace_source('theorem changed3 : True := by trivial', 'changed-health-3') }, { operationId: 'changed-health-op-3' });
+  const third = await judge.checkWorkspaceSource({ ...input, request_key: 'changed-health-3', workspace_source_id: 'changed-health-3', workspace_source: workspace_source('theorem changed3 : True := by trivial', 'changed-health-3') }, makeEnvelope({ operationId: 'changed-health-op-3', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
   assert.deepEqual([first.evidence.infrastructure_attempt_count, second.evidence.infrastructure_attempt_count, third.evidence.infrastructure_attempt_count], [1, 2, 1]);
   assert.deepEqual([first.retryable, second.retryable, third.retryable], [true, false, true]);
   judge.close();
@@ -453,6 +458,7 @@ test('A changed unavailable diagnostic opens a fresh bounded retry window', asyn
 
 test('Judge ok persistence is separate from source-level checker success', async () => {
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    fixtureManifest,
     checker: {
       preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: { exit_code: 0 } }),
       check: async () => ({ verdict: 'PASS', evidence: { exit_code: 0, stdout: 'compiled' } }),
@@ -463,7 +469,7 @@ test('Judge ok persistence is separate from source-level checker success', async
     input_snapshot_hash: workspace.input_snapshot_hash, checker_ref: fixtureManifest.checker_ref, checker_version: fixtureManifest.checker_version,
     environment_ref: fixtureManifest.environment_ref, workspace_source: workspace_source('theorem healthy : True := by trivial', 'healthy-material'), target_task: targetTask,
     workspace, fixture_manifest: fixtureManifest,
-  }, { operationId: 'healthy-operation' });
+  }, makeEnvelope({ operationId: 'healthy-operation', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
   assert.equal(result.judge_operation_status, 'persisted');
   assert.equal(result.checker_process_status, 'completed');
   assert.equal(result.result_class, 'PASS');
@@ -475,6 +481,7 @@ test('Judge ok persistence is separate from source-level checker success', async
 test('JudgeService stores CheckResult truth, keeps Task untouched, and deduplicates request keys', async () => {
   let checks = 0;
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    fixtureManifest,
     checker: checkerWithPreflight({ check: async () => { checks += 1; return { verdict: 'PASS', evidence: { exit_code: 0, stdout: 'ok', stderr: '', workspace_source_hash: 'workspace_source-hash', input_snapshot_hash: 'input-snapshot' } }; } }),
   });
   const input = {
@@ -483,18 +490,18 @@ test('JudgeService stores CheckResult truth, keeps Task untouched, and deduplica
     environment_ref: fixtureManifest.environment_ref, workspace_source: workspace_source('import Mathlib\ntheorem ok : True := by trivial'), target_task: targetTask,
     workspace: workspace, fixture_manifest: fixtureManifest,
   };
-  const first = await judge.checkWorkspaceSource(input, { operationId: 'judge-op-1' });
+  const first = await judge.checkWorkspaceSource(input, makeEnvelope({ operationId: 'judge-op-1', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
   assert.equal(first.status, 'RECEIVED');
   assert.equal(first.verdict, 'PASS');
   assert.equal(checks, 1);
-  const replay = await judge.checkWorkspaceSource(input, { operationId: 'judge-op-2' });
+  const replay = await judge.checkWorkspaceSource(input, makeEnvelope({ operationId: 'judge-op-2', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
   assert.equal(replay.check_result_id, first.check_result_id);
   assert.equal(checks, 1, 'same request_key must not run Lean twice');
   const queried = judge.dispatch('get_check_result', { request_key: input.request_key }, makeEnvelope({ operationId: 'judge-query-by-request', actorRef: 'test:judge-query', taskId: targetTask.task_id, executionId: 'execution-proof' }));
   assert.equal(queried.check_result_id, first.check_result_id, 'a lost submit response must be recoverable by request_key');
   assert.equal(judge.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get(), undefined);
   await assert.rejects(
-    () => judge.checkWorkspaceSource({ ...input, workspace_source_id: 'material-2', workspace_source: workspace_source('changed', 'material-2') }, { operationId: 'judge-op-3' }),
+    () => judge.checkWorkspaceSource({ ...input, workspace_source_id: 'material-2', workspace_source: workspace_source('changed', 'material-2') }, makeEnvelope({ operationId: 'judge-op-3', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 })),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.CONFLICT,
   );
   judge.close();
@@ -503,6 +510,7 @@ test('JudgeService stores CheckResult truth, keeps Task untouched, and deduplica
 test('JudgeService deduplicates an unchanged workspace_source across request keys', async () => {
   let checks = 0;
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    fixtureManifest,
     checker: checkerWithPreflight({ check: async () => { checks += 1; return { verdict: 'FAIL', result_class: 'source_failure', evidence: { exit_code: 1 } }; } }),
   });
   const input = {
@@ -511,8 +519,8 @@ test('JudgeService deduplicates an unchanged workspace_source across request key
     environment_ref: fixtureManifest.environment_ref, workspace_source: workspace_source('theorem duplicate : True := by trivial', 'same-material'), target_task: targetTask,
     workspace, fixture_manifest: fixtureManifest,
   };
-  const first = await judge.checkWorkspaceSource(input, { operationId: 'workspace_source-duplicate-op-1' });
-  const duplicate = await judge.checkWorkspaceSource({ ...input, request_key: 'workspace_source-duplicate-2', workspace_source_id: 'different-material', workspace_source: workspace_source('theorem duplicate : True := by trivial', 'different-material') }, { operationId: 'workspace_source-duplicate-op-2' });
+  const first = await judge.checkWorkspaceSource(input, makeEnvelope({ operationId: 'workspace_source-duplicate-op-1', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
+  const duplicate = await judge.checkWorkspaceSource({ ...input, request_key: 'workspace_source-duplicate-2', workspace_source_id: 'different-material', workspace_source: workspace_source('theorem duplicate : True := by trivial', 'different-material') }, makeEnvelope({ operationId: 'workspace_source-duplicate-op-2', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
   assert.equal(checks, 1);
   assert.equal(duplicate.check_result_id, first.check_result_id);
   assert.equal(duplicate.deduplicated, true);
@@ -525,6 +533,7 @@ test('concurrent checks for one request_key elect one checker invocation', async
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    fixtureManifest,
     checker: checkerWithPreflight({ check: async () => { checks += 1; await gate; return { verdict: 'PASS', evidence: { exit_code: 0 } }; } }),
   });
   const input = {
@@ -533,9 +542,9 @@ test('concurrent checks for one request_key elect one checker invocation', async
     environment_ref: fixtureManifest.environment_ref, workspace_source: workspace_source('theorem concurrent : True := by trivial'), target_task: targetTask,
     workspace: workspace, fixture_manifest: fixtureManifest,
   };
-  const firstPromise = judge.checkWorkspaceSource(input, { operationId: 'concurrent-1' });
+  const firstPromise = judge.checkWorkspaceSource(input, makeEnvelope({ operationId: 'concurrent-1', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
   await new Promise((resolve) => setImmediate(resolve));
-  const second = await judge.checkWorkspaceSource(input, { operationId: 'concurrent-2' });
+  const second = await judge.checkWorkspaceSource(input, makeEnvelope({ operationId: 'concurrent-2', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 }));
   assert.equal(second.status, 'RUNNING');
   assert.equal(checks, 1);
   release();
@@ -547,6 +556,7 @@ test('concurrent checks for one request_key elect one checker invocation', async
 
 test('Judge rejects results whose Task or Workspace binding has drifted', async () => {
   const judge = new JudgeService(new DatabaseSync(':memory:'), {
+    fixtureManifest,
     checker: checkerWithPreflight({ check: async () => ({ verdict: 'PASS', evidence: {} }) }),
   });
   const input = {
@@ -556,18 +566,18 @@ test('Judge rejects results whose Task or Workspace binding has drifted', async 
     workspace: workspace, fixture_manifest: fixtureManifest,
   };
   await assert.rejects(
-    () => judge.checkWorkspaceSource({ ...input, target_task: { ...targetTask, spec_version: 2 } }, { operationId: 'drifted-task' }),
+    () => judge.checkWorkspaceSource({ ...input, target_task: { ...targetTask, spec_version: 2 } }, makeEnvelope({ operationId: 'drifted-task', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 })),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   await assert.rejects(
-    () => judge.checkWorkspaceSource({ ...input, workspace: { input_snapshot_hash: 'different-input' } }, { operationId: 'drifted-input' }),
+    () => judge.checkWorkspaceSource({ ...input, workspace: { input_snapshot_hash: 'different-input' } }, makeEnvelope({ operationId: 'drifted-input', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 })),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   judge.close();
 });
 
 test('Judge operation replay and mismatched fixture bindings are explicit', async () => {
-  const judge = new JudgeService(new DatabaseSync(':memory:'));
+  const judge = new JudgeService(new DatabaseSync(':memory:'), { fixtureManifest });
   const payload = {
     request_key: 'submitted-1', workspace_source_id: 'material-1', target_task_id: 'task-proof', target_spec_version: 1,
     input_snapshot_hash: 'input-snapshot', checker_ref: 'lean', checker_version: 'mvp-1', environment_ref: fixtureManifest.environment_ref,

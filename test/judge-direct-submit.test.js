@@ -52,9 +52,9 @@ function setup() {
         checker_process_status: 'completed',
         evidence: { input_binding_verified: true, toolchain_version_verified: true, checker_version_verified: true },
       }),
-      check: async ({ candidate }) => {
+      check: async ({ workspace_source }) => {
         checks += 1;
-        return candidate.content.includes('valid-proof')
+        return workspace_source.content.includes('valid-proof')
           ? { verdict: 'PASS', evidence: { checker_started: true, exit_code: 0 } }
           : { verdict: 'FAIL', evidence: { checker_started: true, exit_code: 1, diagnostic: 'type mismatch' } };
       },

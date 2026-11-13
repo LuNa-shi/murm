@@ -35,11 +35,11 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `6d4a734115262062fec13d613e0493c26575d2a8efba7d1217e0e45bd8390d91` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `cd03ead01dd82c637641190552e8168d0374d10af7a3287a515fefd433507b2d` |
-| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `3a2a070706712b51844fe74919590d4fb5236ed82b974d44cbb62e7e4a837977` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `2ca72213d11d8c03742a68c95a8fd9db183f69e91490d2add8ea3dbaa94cfffc` |
+| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `600cf1a59e14123db69b13e75094ca6abe9c68960f372d3a358448e0d8b87e73` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `d8171d42dfd29aab47b412558ca174afa876bc104b4f2d2aea3a9b2fc95dd3fc` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `3abf22829ef51980cc20e6c70ad3bb282b3c3f1f6d37b654ea2d059e7f57a42d` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `dd1ae7bbecb4eb2fe8a7ee808ad9cafc74fd76d1ed2f81ffb1b9caf0e17db5c9` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `eedbc3e6869e525c16369ca1aca042d12bdc0877a3f4447be4319f23e54e3ddc` |
 
@@ -2957,7 +2957,6 @@ The SDK constructor requires `dispatch` and `actorRef`. `withContext` creates an
 | `taskFeedback` | `task_feedback` | write |
 | `executionProgress` | `execution_progress` | write |
 | `heartbeat` | `heartbeat` | write |
-| `requestWait` | `request_wait` | write |
 | `publishMaterial` | `publish_material` | write |
 
 ### Complete local router fallback sets

@@ -170,7 +170,7 @@ Body SHA-256: `510f8ad7edbb8964875921dfd292cd680e99a32f1d473f35364b43b29c984b4a`
 ````text
 Use workspace_list_files as the authoritative existing-file index; write only declared allowed_outputs.
 ````
-## action — src/task/task-service.js:1354
+## action — src/task/task-service.js:1331
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -179,7 +179,7 @@ Body SHA-256: `70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f`
 ````text
 inspect_material_and_record_task_feedback
 ````
-## action — src/task/task-service.js:1592
+## action — src/task/task-service.js:1550
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 

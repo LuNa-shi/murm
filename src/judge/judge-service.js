@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
-import { operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
+import { makeEnvelope, operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
 import { ensureJudgeSchema } from '../storage/judge-schema.js';
 import { validateFixtureManifest } from './fixture.js';
 import { LeanChecker } from './lean-adapter.js';
@@ -103,7 +103,24 @@ export class JudgeService {
    * Execution envelope and an internal source descriptor after reading the
    * private Workspace. No Task Service submission relay is involved.
    */
-  async checkWorkspaceSource(payload = {}, envelope) {
+  async checkWorkspaceSource(payload = {}, envelope = makeEnvelope({
+    operationId: randomUUID(),
+    actorRef: 'judge:lean',
+    taskId: payload.target_task_id ?? null,
+    executionId: payload.execution_id ?? `direct:${payload.target_task_id ?? 'workspace-check'}`,
+    specVersion: payload.target_spec_version ?? 0,
+    stateVersion: payload.state_version ?? 0,
+  })) {
+    if (envelope && typeof envelope === 'object' && !envelope.actor_ref) {
+      envelope = makeEnvelope({
+        operationId: envelope.operation_id ?? randomUUID(),
+        actorRef: 'judge:lean',
+        taskId: envelope.task_id ?? payload.target_task_id ?? null,
+        executionId: envelope.execution_id ?? payload.execution_id ?? `direct:${payload.target_task_id ?? 'workspace-check'}`,
+        specVersion: envelope.spec_version ?? payload.target_spec_version ?? 0,
+        stateVersion: envelope.state_version ?? payload.state_version ?? 0,
+      });
+    }
     validateEnvelope(envelope);
     if (!envelope.task_id || !envelope.execution_id) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace_check requires a bound Task and Execution');
@@ -141,6 +158,15 @@ export class JudgeService {
     if (!fixtureManifest) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge checker binding is not configured');
     }
+    if (payload.target_task && (payload.target_task.task_id !== envelope.task_id || payload.target_task.spec_version !== (envelope.spec_version ?? payload.target_spec_version))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'target_task does not match the bound Task envelope');
+    }
+    if (payload.workspace?.input_snapshot_hash !== undefined && payload.workspace.input_snapshot_hash !== (payload.input_snapshot_hash ?? fixtureManifest.input_snapshot_hash)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace does not match input_snapshot_hash');
+    }
+    for (const [field, expected] of [['checker_ref', fixtureManifest.checker_ref], ['checker_version', fixtureManifest.checker_version], ['environment_ref', fixtureManifest.environment_ref]]) {
+      if (payload[field] !== undefined && payload[field] !== expected) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `check request does not match locked ${field}`);
+    }
     const targetSpecVersion = Number.isInteger(envelope.spec_version) ? envelope.spec_version : 0;
     const inputSnapshotHash = fixtureManifest.input_snapshot_hash ?? hash({
       fixture_id: fixtureManifest.fixture_id,
@@ -165,8 +191,9 @@ export class JudgeService {
     const sourceId = workspaceSourceRef
       ? `workspace:${workspaceSourceRef.workspace_id}:${workspaceSourceRef.revision}:${workspaceSourceRef.path}`
       : `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${sourceHash}`;
-    const result = await this.checkWorkspaceSource({
-      request_key: payload.request_key ?? envelope.operation_id ?? hash({
+    const result = await this.#checkWorkspaceSourceRequest({
+      fixture_manifest: fixtureManifest,
+      request_key: payload.request_key ?? hash({
         source_id: sourceId,
         source_hash: sourceHash,
         task_id: envelope.task_id,
@@ -199,10 +226,10 @@ export class JudgeService {
       },
       fixture_manifest: fixtureManifest,
     }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref });
-    return agentCheckResult(result);
+    return envelope.actor_ref?.startsWith('agent:') ? agentCheckResult(result) : result;
   }
 
-  async checkWorkspaceSource(input, { operationId = randomUUID(), actorRef = 'judge:lean' } = {}) {
+  async #checkWorkspaceSourceRequest(input, { operationId = randomUUID(), actorRef = 'judge:lean' } = {}) {
     this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: operationId, target_task_id: input?.target_task_id, workspace_source_id: input?.workspace_source_id });
     const normalized = this.#validateRequest(input);
     const requestHash = hash(normalized);

@@ -60,13 +60,15 @@ class RemoteAgentChild extends EventEmitter {
       } catch (error) {
         // The provider event stream is a reconnectable transport. OpenSandbox
         // may close an idle SSE connection while the Agent process continues
-        // running. Retry boundedly instead of fencing the durable Execution on
-        // the first transport error. A permanent binding or repeated transport
-        // error still reaches the Runtime through the error event.
+        // running. Retry from the last worker sequence instead of fencing the
+        // durable Execution on a transient transport error. A non-retryable
+        // binding or contract error still reaches Runtime through the error
+        // event.
         if (!this.closed) {
           const retryable = error?.retryable === true
             || ![ERROR_CODES.NOT_ALLOWED, ERROR_CODES.INVALID_CONTRACT].includes(error?.code);
-          if (!retryable || ++this.eventStreamFailures > 5) this.emit('error', error);
+          if (!retryable) this.emit('error', error);
+          else this.eventStreamFailures += 1;
         }
       }
       if (!this.closed) await new Promise((resolve) => setTimeout(resolve, 100));
