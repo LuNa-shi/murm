@@ -46,11 +46,31 @@ class RemoteAgentChild extends EventEmitter {
     this.lastSequence = 0;
     this.eventStreamFailures = 0;
     this.lastEventStreamLogAt = 0;
+    this.eventStreamUnavailable = false;
     this.#listen();
   }
 
   async #listen() {
     while (!this.closed) {
+      if (this.eventStreamUnavailable) {
+        try {
+          const result = await this.manager.agentRpc(this.executionId, {
+            type: 'get_state',
+            id: `event-poll-${randomUUID()}`,
+          }, { timeoutMs: 15_000 });
+          for (const record of result?.records ?? []) this.#emitRecord(record);
+          this.eventStreamFailures = 0;
+        } catch (error) {
+          this.logger?.append({
+            event: 'agent_event_poll_error',
+            execution_id: this.executionId,
+            error_code: error?.code ?? error?.name ?? 'event_poll_error',
+            error_message: String(error?.message ?? error).slice(0, 256),
+          });
+        }
+        if (!this.closed) await new Promise((resolve) => setTimeout(resolve, 1_000));
+        continue;
+      }
       try {
         for await (const event of this.manager.agentEvents(this.executionId, { since: this.lastSequence })) {
           if (event?.kind === 'stderr') { this.stderr.write(event.text ?? ''); continue; }
@@ -71,6 +91,13 @@ class RemoteAgentChild extends EventEmitter {
             || ![ERROR_CODES.NOT_ALLOWED, ERROR_CODES.INVALID_CONTRACT].includes(error?.code);
           if (!retryable) this.emit('error', error);
           else {
+            // OpenSandbox release-1.2.0 can return 502 for the long-lived
+            // SSE endpoint while its authenticated RPC endpoint remains
+            // usable. Switch to bounded get_state polling so worker records
+            // are still recovered by sequence without fencing the Execution.
+            const providerStreamFailure = error?.code === ERROR_CODES.SERVICE_UNAVAILABLE
+              || Number(error?.details?.status) >= 500;
+            if (providerStreamFailure) this.eventStreamUnavailable = true;
             this.eventStreamFailures += 1;
             // A provider gateway can return a burst of 502s while the worker
             // remains healthy. Log the first failure, powers of two, and a
