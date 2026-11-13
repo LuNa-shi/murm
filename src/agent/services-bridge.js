@@ -14,6 +14,15 @@ const WORKSPACE_OPERATIONS = new Set([
   'read_workspace_file', 'write_workspace_file', 'workspace_diff',
   'sandbox_exec', 'sandbox_job',
 ]);
+// A Bot may inspect Mission-scoped public state and propose work before it
+// owns an Execution. Requiring an Execution for these operations makes a
+// zero-Task Mission impossible to bootstrap.
+const UNBOUND_OPERATIONS = new Set([
+  'task_list', 'task_view', 'task_status', 'task_create', 'task_register',
+  'read_materials', 'context_search_materials', 'context_get_material',
+  'material_read', 'material_search', 'material_get',
+  'workspace_public_files', 'workspace_public_read', 'workspace_public_search',
+]);
 
 function usesWorkspace(task) {
   const workspace = task?.workspace;
@@ -656,7 +665,7 @@ export class ServicesBridge {
         if (operation === 'task_take' && (this.taskId || this.executionId)) {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_take requires the current Execution binding to be released', { task_id: this.taskId, execution_id: this.executionId });
         }
-        const requiresBinding = operation !== 'task_take' && Array.isArray(capability.context) && capability.context.length > 0;
+        const requiresBinding = operation !== 'task_take' && !UNBOUND_OPERATIONS.has(operation) && Array.isArray(capability.context) && capability.context.length > 0;
         if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
         const currentExecution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
         const invocationPayload = operation === 'submit_candidate'
