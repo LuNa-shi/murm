@@ -5,7 +5,7 @@
   "sources": [
     {
       "path": "src/agent/agent-prompt.js",
-      "sha256": "8243ffd1442f6bbde6f90a7390f7dc3e55e387677466ca282f8dc6132b882e91"
+      "sha256": "620ff3500692079da01aed50afed59d0eb848d219330d4ba29f7209c8bd842d9"
     },
     {
       "path": "src/agent/capability-profile.js",
@@ -347,7 +347,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "08ac324a3f2333982be0859d809c9f3b33e12489ec8b98c4816436c23afce975"
+      "sha256": "2a669cc90dd82b3363305a071634063030e6c2a8d676df4536c53ed998bfe84a"
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
@@ -355,7 +355,7 @@
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "e0879ff18365ba16bb47a14cf9278a7fa4e005a86cc3d51f8daaa97c4add0562"
+      "sha256": "05f27f7c0d9a9c7a6145ac0ee0336b7f1d1013c117f5cc2e246dbdc37e4cbb5a"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
@@ -363,7 +363,7 @@
     },
     {
       "path": "docs/architecture/prompts/05-composed-context-examples.md",
-      "sha256": "89bb7f82cb9907d2aa91410f954d9464c4f30ac2e26f099562609ed2b00f3167"
+      "sha256": "ed074b7519813beeeb7530ed4b906d797905abe5192c973cca4e610ad810ffeb"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",

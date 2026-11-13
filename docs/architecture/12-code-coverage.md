@@ -25,7 +25,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/agent/agent-prompt.js](../../src/agent/agent-prompt.js) | Stable identity SOP, prompt compositions, task-loop guide and hashes | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `8243ffd1442f6bbde6f90a7390f7dc3e55e387677466ca282f8dc6132b882e91` |
+| [src/agent/agent-prompt.js](../../src/agent/agent-prompt.js) | Stable identity SOP, prompt compositions, task-loop guide and hashes | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `620ff3500692079da01aed50afed59d0eb848d219330d4ba29f7209c8bd842d9` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | Role-specific capability profile, binding requirements and tool directory | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `6d4a734115262062fec13d613e0493c26575d2a8efba7d1217e0e45bd8390d91` |
 | [src/agent/pi-adapter.js](../../src/agent/pi-adapter.js) | Provider routing, Pi process arguments, RPC, streaming and Session lifecycle | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `9420959859488a842a0a9989bcb103c3f1d7f428b4db25fc2f5a69418392e734` |
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `2ca72213d11d8c03742a68c95a8fd9db183f69e91490d2add8ea3dbaa94cfffc` |
@@ -100,7 +100,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `60a718baf79b4ee81d16aed9813cef6f1b7c31d66810ea41e1c087cffc4fd2a8` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `8988c0ded31be6c2894535209881195c5288169ab329c8d4f6d2ed425416c57f` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `da488b85f9a94d2bb79586ba3d694db47ae9f4c684c01a2cd96b65b4f264d158` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `f12538fa3db491763d6fdbdce209523d4d3848313daa3980e33e6aab2d004f50` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `2af47d6fd87a8e0f01b98c3d07927524470d08ad834612e202efa0cc9aa008c6` |
 
 ### durable storage (3)
 
