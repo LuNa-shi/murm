@@ -10,7 +10,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 |---|---|---|---|---|
 | `EXP-20261111-01` | Historical R16; no newly approved Issue | **Retrospective example, not preregistered** | `93176b7` | [R16 example](EXP-20261111-01-r16-example.md) |
 | `EXP-20261112-01` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **Aborted compatibility-path preflight · BLOCKED** | `f43a722` | [Issue #122 partial report](EXP-20261112-01-issue122-1h.md) |
-| `EXP-20261112-02` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **1h Issue #122 public Workspace/Mission acceptance run · REGISTERED** | `148e37f` | [Issue #122 1h report](EXP-20261112-02-issue122-1h.md) |
+| `EXP-20261112-02` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **Aborted multi-project setup diagnostic · BLOCKED** | `148e37f` | [Issue #122 batch diagnostic](EXP-20261112-02-issue122-1h.md) |
+| `EXP-20261112-03` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **1h single-problem public Workspace/Mission acceptance run · REGISTERED** | `8bfc101` | [Issue #122 single-problem report](EXP-20261112-03-single-problem-1h.md) |
 
 Use [TEMPLATE.md](TEMPLATE.md) for each new formal study. An approved Issue may delegate a bounded matrix and repeated runs, so a separate human approval is not needed for every execution. The human decides the value/importance of research hypotheses and any material scope change.
 
