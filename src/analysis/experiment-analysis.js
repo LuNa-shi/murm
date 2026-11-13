@@ -289,7 +289,8 @@ function coreFromScope(scope) {
 }
 
 function operationFromTool(toolName) {
-  return text(String(toolName ?? '').replace(/^swarmenv_(?:task|execution|workspace|context|judge|catalog)_/, ''), 100);
+  const operation = text(String(toolName ?? '').replace(/^swarmenv_(?:task|execution|workspace|context|judge|catalog)_/, ''), 100);
+  return operation === 'take' ? 'task_take' : operation;
 }
 
 function intentFor(operation, kind = null) {

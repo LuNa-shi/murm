@@ -36,7 +36,7 @@ async function createProjectDatabase(path) {
     create table executions (
       execution_id text primary key, task_id text, owner_ref text, state text, state_version integer,
       attempt_no integer, fencing_version integer, runtime_generation integer, workspace_ref text,
-      workspace_revision integer, candidate_material_id text, wait_condition_json text,
+      workspace_revision integer, artifact_material_id text, wait_condition_json text,
       wait_deadline text, created_at text, updated_at text
     );
     create table materials (
@@ -44,7 +44,7 @@ async function createProjectDatabase(path) {
       source_task text, source_execution text, version integer, created_at text
     );
     create table check_results (
-      check_result_id text primary key, request_key text, candidate_material_id text,
+      check_result_id text primary key, request_key text, artifact_material_id text,
       target_task_id text, target_spec_version integer, execution_id text, status text,
       verdict text, checker_ref text, checker_version text, environment_ref text,
       created_at text, updated_at text
@@ -67,7 +67,7 @@ async function createProjectDatabase(path) {
     CHECK, 'request-1', MATERIAL, TASK, 1, EXECUTION, 'APPLIED', 'FAIL', 'fixture', '1', 'fixture-env', T3, T4,
   );
   db.prepare('insert into operations values (?, ?, ?, ?)').run(
-    'wait-1', 'request_wait', JSON.stringify({ execution: { execution_id: EXECUTION, task_id: TASK, state: 'WAITING' } }), T4,
+    'wait-1', 'wait_for', JSON.stringify({ execution: { execution_id: EXECUTION, task_id: TASK, state: 'WAITING' } }), T4,
   );
   db.close();
 }
@@ -86,22 +86,22 @@ async function createFixture({ agent = true, service = true, workspace = true, m
   await createProjectDatabase(join(root, 'state', 'projects', project, 'project.sqlite'));
 
   if (agent) await writeNdjson(join(root, 'logs', 'projects', project, 'agents', 'core-1.ndjson'), [
-    { timestamp: T1, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_call', toolName: 'swarmenv_task_claim', args: { task_id: TASK } } },
-    { timestamp: T2, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_result', toolName: 'swarmenv_task_claim', result: { secret: 'must-not-be-copied' }, isError: false } },
+    { timestamp: T1, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_call', toolName: 'swarmenv_task_take', args: { task_id: TASK } } },
+    { timestamp: T2, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_result', toolName: 'swarmenv_task_take', result: { secret: 'must-not-be-copied' }, isError: false } },
   ]);
   await writeNdjson(join(root, 'logs', 'projects', project, 'runtime', 'core-1.ndjson'), [
     { timestamp: T1, scope: 'runtime:core-1', event: 'runtime.bind_execution', execution_id: EXECUTION },
     { timestamp: T2, scope: 'runtime:core-1', event: 'runtime.heartbeat', execution_id: EXECUTION },
-    { timestamp: T4, scope: 'runtime:core-1', event: 'runtime.request_wait', execution_id: EXECUTION, wait_condition: { type: 'check_result_arrived' }, deadline: END },
+    { timestamp: T4, scope: 'runtime:core-1', event: 'runtime.wait_for', execution_id: EXECUTION, wait_condition: { type: 'check_result_arrived' }, deadline: END },
   ]);
   if (service) {
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'task-service.ndjson'), [
-      { timestamp: T1, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'claim', envelope: { operation_id: 'op-claim', task_id: TASK, execution_id: EXECUTION } },
-      { timestamp: T1, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'claim', ok: true, result: { task: { task_id: TASK, state: 'RUNNING' }, execution: { execution_id: EXECUTION, task_id: TASK, state: 'RUNNING' } } },
-      ...(errors ? [{ timestamp: T2, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'claim', ok: false, error: { code: 'CONFLICT', message: 'Task has reached its active Execution quota' } }] : []),
+      { timestamp: T1, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'task_take', envelope: { operation_id: 'op-claim', task_id: TASK, execution_id: EXECUTION } },
+      { timestamp: T1, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'task_take', ok: true, result: { task: { task_id: TASK, state: 'RUNNING' }, execution: { execution_id: EXECUTION, task_id: TASK, state: 'RUNNING' } } },
+      ...(errors ? [{ timestamp: T2, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'task_take', ok: false, error: { code: 'CONFLICT', message: 'Task has reached its active Execution quota' } }] : []),
       ...(malformed ? ['{"broken":'] : []),
-      { timestamp: T3, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'submit_candidate', envelope: { operation_id: 'op-submit', task_id: TASK, execution_id: EXECUTION } },
-      { timestamp: T3, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'submit_candidate', ok: true, result: { execution: { execution_id: EXECUTION, task_id: TASK, state: 'WAITING', candidate_material_id: MATERIAL } } },
+      { timestamp: T3, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'workspace_check', envelope: { operation_id: 'op-submit', task_id: TASK, execution_id: EXECUTION } },
+      { timestamp: T3, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'workspace_check', ok: true, result: { execution: { execution_id: EXECUTION, task_id: TASK, state: 'WAITING', artifact_material_id: MATERIAL } } },
     ]);
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'context-service.ndjson'), [
       { timestamp: T2, scope: 'context-service', event: 'dispatch.start', service: 'context', operation: 'publish_material', envelope: { operation_id: 'op-publish', task_id: TASK, execution_id: EXECUTION } },
@@ -111,17 +111,17 @@ async function createFixture({ agent = true, service = true, workspace = true, m
     ]);
     if (errors) {
       await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'service-router.ndjson'), [
-        { timestamp: T2, scope: 'service-router', event: 'dispatch.start', service: 'task', operation: 'claim', envelope: { operation_id: 'op-conflict', task_id: TASK, execution_id: EXECUTION } },
-        { timestamp: T2, scope: 'service-router', event: 'dispatch.complete', service: 'task', operation: 'claim', ok: false, error: { code: 'CONFLICT', message: 'Task has reached its active Execution quota' } },
+        { timestamp: T2, scope: 'service-router', event: 'dispatch.start', service: 'task', operation: 'task_take', envelope: { operation_id: 'op-conflict', task_id: TASK, execution_id: EXECUTION } },
+        { timestamp: T2, scope: 'service-router', event: 'dispatch.complete', service: 'task', operation: 'task_take', ok: false, error: { code: 'CONFLICT', message: 'Task has reached its active Execution quota' } },
       ]);
     }
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'judge-service.ndjson'), [
-      { timestamp: T3, scope: 'judge-service', event: 'judge.start', service: 'judge', operation_id: 'op-judge', target_task_id: TASK, candidate_material_id: MATERIAL },
-      { timestamp: T4, scope: 'judge-service', event: 'judge.complete', service: 'judge', operation_id: 'op-judge', ok: true, verdict: 'FAIL', check_result_id: CHECK, candidate_material_id: MATERIAL },
+      { timestamp: T3, scope: 'judge-service', event: 'judge.start', service: 'judge', operation_id: 'op-judge', target_task_id: TASK, artifact_material_id: MATERIAL },
+      { timestamp: T4, scope: 'judge-service', event: 'judge.complete', service: 'judge', operation_id: 'op-judge', ok: true, verdict: 'FAIL', check_result_id: CHECK, artifact_material_id: MATERIAL },
     ]);
     await writeNdjson(join(root, 'logs', 'projects', project, 'bridge', 'core-1.ndjson'), [
-      { timestamp: T1, scope: 'bridge:core-1', event: 'bridge.start', operation: 'claim', task_id: TASK, execution_id: EXECUTION, payload: {} },
-      { timestamp: T1, scope: 'bridge:core-1', event: 'bridge.complete', operation: 'claim', ok: true, result: {} },
+      { timestamp: T1, scope: 'bridge:core-1', event: 'bridge.start', operation: 'task_take', task_id: TASK, execution_id: EXECUTION, payload: {} },
+      { timestamp: T1, scope: 'bridge:core-1', event: 'bridge.complete', operation: 'task_take', ok: true, result: {} },
     ]);
     await writeNdjson(join(root, 'logs', 'projects', project, 'judge', 'lean-checker.ndjson'), [
       { timestamp: T4, scope: 'judge:lean-checker', event: 'checker.complete', verdict: 'FAIL', evidence: { target_task_id: TASK, diagnostic: 'proof error' } },
@@ -152,7 +152,7 @@ test('analyzes a complete fixture into stable per-Execution windows without copy
     assert.equal(first.inventory.evidence.find((entry) => entry.class === 'workspace').status, 'present');
     assert.equal(first.executions.length, 1);
     assert.ok(first.executions[0].windows.length >= 1);
-    assert.ok(first.executions[0].windows.some((window) => window.observed_intent === 'claim a Task'));
+    assert.ok(first.executions[0].windows.some((window) => window.observed_intent === 'take a Task'));
     assert.ok(first.report.includes('### Execution `execution-1`'));
     assert.ok(first.report.includes('Judge FAIL'));
     assert.ok(first.report.includes('## Error analysis'));
@@ -175,11 +175,11 @@ test('deduplicates cross-service error echoes and preserves supporting evidence 
   const root = await createFixture({ errors: true });
   try {
     const analysis = await analyzeExperiment(root);
-    const conflict = analysis.errors.find((error) => error.category === 'claim_active_execution_quota');
+    const conflict = analysis.errors.find((error) => error.category === 'take_active_execution_quota');
     assert.ok(conflict);
     assert.equal(conflict.occurrence_count, 1);
     assert.ok(conflict.supporting_record_count >= 2);
-    assert.match(analysis.report, /claim_active_execution_quota/);
+    assert.match(analysis.report, /take_active_execution_quota/);
     assert.match(analysis.report, /Supporting records/);
   } finally { await cleanup(root); }
 });
@@ -340,7 +340,7 @@ test('classifies repeated pre-checker failures as one infrastructure cause with 
   ]) db.exec(`alter table check_results add column ${name} ${definition}`);
   db.exec("update check_results set judge_operation_status = 'persisted', checker_process_status = 'not_started', result_class = 'infrastructure_failure', retryable = 0, diagnostic_code = 'checker_unavailable'");
   const insert = db.prepare(`insert into check_results (
-    check_result_id, request_key, candidate_material_id, target_task_id, target_spec_version, execution_id, status, verdict,
+    check_result_id, request_key, artifact_material_id, target_task_id, target_spec_version, execution_id, status, verdict,
     checker_ref, checker_version, environment_ref, judge_operation_status, checker_process_status, result_class, retryable, diagnostic_code, created_at, updated_at
   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   for (let index = 2; index <= 8; index += 1) {
