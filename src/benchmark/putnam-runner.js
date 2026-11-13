@@ -1863,6 +1863,10 @@ async function createProjectState(problem, config, options) {
       coreIds: [`core-${index}`],
       actorRef: `runtime:core-${index}`,
       watchdogTimeoutMs: options.watchdogTimeoutMs,
+      // Keep transient provider/session failures on the same durable
+      // Execution. Fencing after one retry lets a recovered identity start a
+      // second Task and invalidates a bounded formal run.
+      maxRecoveryAttempts: options.maxRecoveryAttempts ?? 5,
       // Contract §5 (r15 revision): in the flat model an Execution may last
       // the whole run. Its deadline is the run deadline (set at run start)
       // and the handoff reminder fires a lead time before it; compaction
