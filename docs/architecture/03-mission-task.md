@@ -15,12 +15,7 @@ Mission to its terminal accepted state.
 
 The persisted Mission record contains its `goal`, `acceptance_conditions`, `created_by` and timestamps (`src/storage/schema.js` and `TaskService.#createMission`). Initial Materials are separate Context/Task facts; model, timebox, checker and budget parameters are supplied by the benchmark/runtime configuration and/or Task contracts, not persisted as `missions.initial_material` or `missions.resource_scope` columns. Mission is not a permanent manager Agent.
 
-The current flat implementation still identifies a shared Mission Task as the
-first Task registered in a Mission. That is a compatibility path and does not
-meet the Issue #122 target: Mission itself is never taken, and a Mission may
-start with zero Tasks while Bots read public state, propose independent Tasks,
-or exit normally. The target implementation must remove the first-Task
-special case and keep Task ownership exclusive.
+The current flat implementation has no shared Mission Task special case. A Mission may start with zero Tasks while Bots read public state and propose independent Tasks. Mission itself is never taken; each ordinary Task is exclusively owned through `task_take` and ends through `task_finish`.
 
 ## Ordinary Task
 

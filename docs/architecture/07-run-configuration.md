@@ -9,14 +9,13 @@ This chapter describes how the repository actually composes a run. It covers the
 | `scripts/run-putnambench-benchmark.mjs` | Real benchmark launcher: validates locked input, creates run metadata/observer, invokes one project or a bounded batch, writes aggregate output |
 | `runBenchmarkProject(problem, config, options)` | Four Core lanes for one problem; the caller can inject adapters/checkers for deterministic tests |
 | `runBenchmarkBatch(problems, config, options)` | Worker pool across isolated projects; each project still has four lanes; a project error becomes a sanitized fallback report |
-| `scripts/run-mvp-fixture.mjs` | Deterministic controlled fixture by default; `--real-agent` selects a real one-Core repair probe; `--keep` retains temporary evidence |
 | `scripts/service-host.mjs` | Separately hosted built-in Task, Context, Judge or Catalog provider |
 | `scripts/mathlib-search-service.mjs` | Optional HTTP Mathlib Search provider |
 | `scripts/serve-observability.mjs` | Persistent observation/dashboard server, including report import and multi-root discovery |
 | `scripts/analyze-experiment.mjs` | Offline reconstruction of an existing run; does not execute a new research experiment |
 | `src/index.js` | Public JavaScript exports, including generic Runtime/SDK and compatibility fixture APIs |
 
-These entry points have different contracts. The fixture's supplied invalid and repaired Candidates test an integration flow; they do not implement the benchmark's no-solution-input protocol or establish autonomous research ability.
+These entry points have different contracts. Deterministic in-process tests use injected adapters and checkers; they do not implement the benchmark's no-solution-input protocol or establish autonomous research ability.
 
 A programmatic project call must supply at least one of `experimentDir` or `reportDir`: the implementation resolves `experimentDir ?? reportDir` as its experiment root, then uses `reportDir ?? <experiment root>/reports` for reports. Unlike the CLI, a bare library call does not invent a timestamped output directory. The caller must also pass the prepared problem/configuration expected by the runner; input validation by the CLI is not automatically repeated as a separate checkout-verification step inside `runBenchmarkProject`.
 
@@ -176,7 +175,7 @@ The top-level ignored `experiments/` raw evidence directory and committed `docs/
 
 ## 9. Fixture, service and frontend boundaries
 
-The deterministic `ScriptExecutor` uses scripted Sessions and a supplied checker, with an explicit healthy deterministic preflight shim. It creates a Mission and Mission-scoped Task without `normal_flow: true`, claims that Task, publishes an invalid Workspace artifact, checks it, resumes through the low-level compatibility wait/wake path, publishes a repaired Workspace artifact and applies PASS. This retained fixture path does not select a legacy Task model in the benchmark runner. The fixture launcher uses a temporary directory and deletes it unless `--keep` is set.
+Deterministic library tests use in-process adapters and explicit bounded fixtures; they are separate from the production benchmark CLI and do not represent a live provider run.
 
 `--real-agent` probes local Node/NuRouter/Pi/Lean/Lake commands and provider/model routing before launch. It returns `BLOCKED` for missing prerequisites and `FAILED_TO_LAUNCH` for missing root/input. The real-probe environment metadata fields are `SWARMENV_IMPLEMENTATION_COMMIT`, `SWARMENV_WORKTREE_DIRTY`, `SWARMENV_WORKTREE_STATUS`, `SWARMENV_TIMEBOX_MS`, `SWARMENV_PUTNAMBENCH_ROOT`; they record caller context and do not themselves prove it.
 
