@@ -7,7 +7,7 @@ const TASK_OPERATIONS = new Set([
   'apply_check_result', 'wake_execution',
   'create_mission', 'get_mission', 'create_task', 'list_task', 'view_task', 'task_list', 'task_view', 'task_create',
   'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
-  'link_material', 'task_link_material', 'list_task_materials', 'task_materials', 'complete_task', 'task_complete', 'close_task', 'task_close', 'handoff_task', 'task_handoff', 'block_task_semantic', 'task_block',
+  'link_material', 'task_link_material', 'list_task_materials', 'task_materials', 'complete_task', 'task_complete', 'finish_task', 'task_finish', 'close_task', 'task_close', 'handoff_task', 'task_handoff', 'block_task_semantic', 'task_block',
 ]);
 const CONTEXT_OPERATIONS = new Set([
   'publish_material', 'context.publish_material', 'context_publish_material',

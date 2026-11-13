@@ -11,7 +11,7 @@ import {
   validateTaskProposal,
 } from './task-types.js';
 
-const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'block_task', 'block_task_semantic', 'close_task', 'complete_task', 'execution_progress', 'expire_execution', 'fence_execution', 'handoff_execution', 'handoff_task', 'heartbeat', 'link_material', 'record_handoff_reminder', 'recover_execution', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'task_feedback', 'wake_execution']);
+const EXECUTION_WRITE_OPERATIONS = new Set(['abort', 'block_task', 'block_task_semantic', 'close_task', 'complete_task', 'execution_progress', 'expire_execution', 'fence_execution', 'finish_task', 'handoff_execution', 'handoff_task', 'heartbeat', 'link_material', 'record_handoff_reminder', 'recover_execution', 'request_wait', 'resume_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'submit_candidate', 'task_feedback', 'wake_execution']);
 const CLAIM_OPERATION = 'claim';
 const MODERN_OPERATION_ALIASES = Object.freeze({
   'mission.create': 'create_mission',
@@ -30,6 +30,8 @@ const MODERN_OPERATION_ALIASES = Object.freeze({
   task_materials: 'list_task_materials',
   'task.complete': 'complete_task',
   task_complete: 'complete_task',
+  'task.finish': 'finish_task',
+  task_finish: 'finish_task',
   'task.close': 'close_task',
   task_close: 'close_task',
   'task.handoff': 'handoff_task',
@@ -46,11 +48,11 @@ const MODERN_OPERATION_ALIASES = Object.freeze({
   task_feedback: 'task_feedback',
   'execution.progress': 'execution_progress',
 });
-const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic', 'task_feedback']);
+const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'complete_task', 'finish_task', 'close_task', 'handoff_task', 'block_task_semantic', 'task_feedback']);
 const MODERN_READ_OPERATIONS = new Set(['get_mission', 'list_task', 'view_task', 'list_task_materials']);
 const TASK_MUTATING_OPERATIONS = new Set([
   'apply_check_result', 'reconcile_task', 'reopen_task', 'submit_candidate',
-  'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic',
+  'link_material', 'complete_task', 'finish_task', 'close_task', 'handoff_task', 'block_task_semantic',
   ...MODERN_MUTATING_OPERATIONS,
   'task_register', 'task_take',
   'execution_progress',
@@ -60,7 +62,7 @@ const TASK_EVENT_OPERATIONS = new Set([
   'handoff_execution', 'reconcile_task', 'recover_execution', 'reopen_task',
   'request_wait', 'resume_execution', 'stop_execution', 'submit_candidate', 'wake_execution',
   'create_task', 'expire_execution',
-  'link_material', 'complete_task', 'close_task', 'handoff_task', 'block_task_semantic',
+  'link_material', 'complete_task', 'finish_task', 'close_task', 'handoff_task', 'block_task_semantic',
   'task_feedback',
   'execution_progress',
 ]);
@@ -1941,6 +1943,7 @@ export class TaskService {
       case 'create_task': return this.#createModernTask(payload, envelope);
       case 'link_material': return this.#linkMaterial(payload, envelope);
       case 'complete_task': return this.#completeTask(payload, envelope);
+      case 'finish_task': return this.#finishTask(payload, envelope);
       case 'close_task': return this.#closeTask(payload, envelope);
       case 'handoff_task': return this.#handoffTask(payload, envelope);
       case 'block_task_semantic': return this.#blockTaskSemantic(payload, envelope);
@@ -1970,6 +1973,17 @@ export class TaskService {
       case 'wake_execution': return this.#wakeExecution(payload, envelope);
       default: throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service operation: ${operation}`);
     }
+  }
+
+  #finishTask(payload, envelope) {
+    const outcome = String(payload.outcome ?? '').toLowerCase();
+    if (!['done', 'incomplete', 'blocked', 'cancelled'].includes(outcome)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.finish outcome must be done, incomplete, blocked, or cancelled');
+    }
+    if (outcome === 'done') return this.#completeTask(payload, envelope);
+    if (outcome === 'incomplete') return this.#handoffTask(payload, envelope);
+    if (outcome === 'blocked') return this.#blockTaskSemantic(payload, envelope);
+    return this.#stopExecution({ ...payload, terminal_state: 'CANCELLED', terminal_reason: payload.reason ?? 'cancelled' }, envelope);
   }
 
   #backfillStructureRecords() {

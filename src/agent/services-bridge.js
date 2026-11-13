@@ -731,7 +731,7 @@ export class ServicesBridge {
           await this.bindClaim(result);
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
         }
-        if (operation === 'task_complete') {
+        if (operation === 'task_complete' || operation === 'task_finish') {
           await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
           // The Task Service commits the semantic completion; Runtime owns the
           // physical Session/Core/Workspace release that follows it.
@@ -740,7 +740,7 @@ export class ServicesBridge {
           this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
           return result;
         }
-        if (this.onWorkUnit && (operation !== 'submit_candidate' || capability.service_id === 'judge') && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_register', 'task_take', 'task_link_material', 'task_handoff', 'task_block', 'submit_candidate'].includes(operation)) {
+        if (this.onWorkUnit && (operation !== 'submit_candidate' || capability.service_id === 'judge') && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_register', 'task_take', 'task_link_material', 'task_handoff', 'task_block', 'task_finish', 'submit_candidate'].includes(operation)) {
           await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
         }
         this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
@@ -827,7 +827,8 @@ export class ServicesBridge {
           break;
         case 'task_link_material': result = sdk.linkMaterial(payload, options); break;
         case 'task_complete':
-          result = sdk.completeTask(payload, options);
+        case 'task_finish':
+          result = operation === 'task_finish' ? sdk.finishTask(payload, options) : sdk.completeTask(payload, options);
           await this.onWorkUnit?.({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
           // Task Service records the semantic DONE/SUCCEEDED transition first.
           // Runtime then releases the live Session/Core/Workspace without

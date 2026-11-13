@@ -71,6 +71,10 @@ export class ServicesSDK {
     return this.#write('task_complete', payload, options);
   }
 
+  finishTask(payload = {}, options = {}) {
+    return this.#write('task_finish', payload, options);
+  }
+
   closeTask(payload = {}, options = {}) {
     return this.#write('task_close', payload, options);
   }

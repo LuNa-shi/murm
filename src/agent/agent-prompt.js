@@ -185,6 +185,7 @@ export function taskLoopGuide(profile, { toolPrefix = 'swarmenv_' } = {}) {
   const feedback = tool('task_feedback');
   const progress = tool('execution_progress');
   const complete = tool('task_complete');
+  const finish = tool('task_finish');
   const block = tool('task_block');
   const aids = capabilities
     .filter((capability) => !CORE_SERVICES.has(capability.service_id))
@@ -197,7 +198,7 @@ export function taskLoopGuide(profile, { toolPrefix = 'swarmenv_' } = {}) {
     line('5. Share:', `publish a distinct finding with ${publish}, attach it with ${link}, record an explicit integration of another Task's Material with ${tool('consume_materials') ?? 'the consume tool'}, and answer a delivered notification with ${feedback}. Register a separable responsibility for others with ${register}; this does not end your Execution.`, publish, link, register),
     line('6. Propose a direction:', `when research reveals a separable responsibility, call ${register} without take so a fresh Bot can inspect and claim it.`, register),
     line('7. Save:', `call ${progress} with kind "checkpoint" to save progress and keep working.`, progress),
-    line('8. End this Execution with exactly one of:', `${complete} when the current Task contract is satisfied (pass linked material_ids and the check_result_id); ${block} with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or ${progress} with kind "handoff" only when Runtime asks for handoff.`, complete, progress, block),
+    line('8. End this Execution with exactly one of:', `${finish ? `${finish} with outcome done, incomplete, blocked, or cancelled` : complete} when the Task reaches its boundary; otherwise ${complete} when the current Task contract is satisfied (pass linked material_ids and the check_result_id); ${block} with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or ${progress} with kind "handoff" only when Runtime asks for handoff.`, finish ?? complete, progress, block),
     line('9. Next:', `after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling ${take} for one Task. Mission itself is never claimable.`, take),
   ].filter(Boolean);
   if (steps.length === 0) return '';

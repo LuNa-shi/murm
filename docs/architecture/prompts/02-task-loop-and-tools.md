@@ -7,7 +7,7 @@ The first profile below is the benchmark flat Task model with built-in Services 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Flat built-ins, no Sandbox: exact task-loop guide
 
-Body SHA-256: `0a52d7545268b3e838f621b0f1d37531c8b0426c0dd8a1fb977ee77fb8641765`
+Body SHA-256: `b72af2d5d8419f4cc3d10a1ed79c88e32596151abdc52bdbb086874e77cc6fb4`
 
 ````text
 Task loop (exact tool names in this Session):
@@ -18,12 +18,12 @@ Task loop (exact tool names in this Session):
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback. Register a separable responsibility for others with swarmenv_task_register; this does not end your Execution.
 6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_register without take so a fresh Bot can inspect and claim it.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
-8. End this Execution with exactly one of: swarmenv_task_complete when the current Task contract is satisfied (pass linked material_ids and the check_result_id); swarmenv_task_block with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or swarmenv_execution_progress with kind "handoff" only when Runtime asks for handoff.
+8. End this Execution with exactly one of: swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary; otherwise swarmenv_task_complete when the current Task contract is satisfied (pass linked material_ids and the check_result_id); swarmenv_task_block with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or swarmenv_execution_progress with kind "handoff" only when Runtime asks for handoff.
 9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never claimable.
 ````
 ## Flat built-ins with Sandbox: exact task-loop guide
 
-Body SHA-256: `0a52d7545268b3e838f621b0f1d37531c8b0426c0dd8a1fb977ee77fb8641765`
+Body SHA-256: `b72af2d5d8419f4cc3d10a1ed79c88e32596151abdc52bdbb086874e77cc6fb4`
 
 ````text
 Task loop (exact tool names in this Session):
@@ -34,12 +34,12 @@ Task loop (exact tool names in this Session):
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback. Register a separable responsibility for others with swarmenv_task_register; this does not end your Execution.
 6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_register without take so a fresh Bot can inspect and claim it.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
-8. End this Execution with exactly one of: swarmenv_task_complete when the current Task contract is satisfied (pass linked material_ids and the check_result_id); swarmenv_task_block with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or swarmenv_execution_progress with kind "handoff" only when Runtime asks for handoff.
+8. End this Execution with exactly one of: swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary; otherwise swarmenv_task_complete when the current Task contract is satisfied (pass linked material_ids and the check_result_id); swarmenv_task_block with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or swarmenv_execution_progress with kind "handoff" only when Runtime asks for handoff.
 9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never claimable.
 ````
 ## Flat built-ins with Sandbox and Mathlib Search: exact task-loop guide
 
-Body SHA-256: `810ff55377ed8f18ee82ddbb068e0bc7a91da4889df1c3fccf627b43ee11a847`
+Body SHA-256: `92853322a22799e891125a4acd1a47baeb5db417eccea9b17cda3a986db5d028`
 
 ````text
 Task loop (exact tool names in this Session):
@@ -50,12 +50,12 @@ Task loop (exact tool names in this Session):
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback. Register a separable responsibility for others with swarmenv_task_register; this does not end your Execution.
 6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_register without take so a fresh Bot can inspect and claim it.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
-8. End this Execution with exactly one of: swarmenv_task_complete when the current Task contract is satisfied (pass linked material_ids and the check_result_id); swarmenv_task_block with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or swarmenv_execution_progress with kind "handoff" only when Runtime asks for handoff.
+8. End this Execution with exactly one of: swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary; otherwise swarmenv_task_complete when the current Task contract is satisfied (pass linked material_ids and the check_result_id); swarmenv_task_block with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or swarmenv_execution_progress with kind "handoff" only when Runtime asks for handoff.
 9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never claimable.
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `2be09dc3b374bd67dde8d1a5fd45f4e7aa2854e50a3993da10b9ad8be354dea1`
+Body SHA-256: `d6bc38a324b63bd9a63e7a45935e30ea246aac8222b44b2bc3f2b304122b71ae`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -88,6 +88,7 @@ Body SHA-256: `2be09dc3b374bd67dde8d1a5fd45f4e7aa2854e50a3993da10b9ad8be354dea1`
   - swarmenv_task_complete: Complete the current Task when its own contract and required Material or Judge evidence are satisfied. (logical operation task.task_complete; writes state; inputs required=[none] fields=[check_result_id,material_ids]; Complete the current Task when its own contract and required Material or Judge evidence are satisfied.)
   - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,spawned_from,summary,task_instructions,task_type,timebox_ms,workspace]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.)
   - swarmenv_task_feedback: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state. (logical operation task.task_feedback; writes state; inputs required=[notification_id,decision,action] fields=[action,decision,details,notification_id]; Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.)
+  - swarmenv_task_finish: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason]; Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.)
   - swarmenv_task_link_material: Link an immutable Material to a Task with an input, response, handoff, or experience role. (logical operation task.task_link_material; writes state; inputs required=[task_id,material_id,role] fields=[material_id,receiving_task_id,role,task_id]; Link an immutable Material to a Task with an input, response, handoff, or experience role.)
   - swarmenv_task_list: List Mission Tasks and search their short summaries before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[limit,mission_id,query,state]; List Mission Tasks and search their short summaries before proposing new work.)
   - swarmenv_task_register: Register one independent Task with a goal, output, acceptance condition, and collaboration reason. With take: true the current Execution is checkpointed and ended and the new Task is taken on the same Core lane in one operation, so no other Agent can take it first; without take the Task is left open for others. (logical operation task.task_register; writes state; inputs required=[mission_id,goal,expected_output,acceptance_conditions] fields=[acceptance_conditions,collaboration_reason,depends_on,expected_output,goal,mission_id,progress,required_capabilities,responsibility_key,spawned_from,summary,take,task_id,task_instructions,task_type,timebox_ms]; Register one independent Task with a goal, output, acceptance condition, and collaboration reason. With take: true the current Execution is checkpointed and ended and the new Task is taken on the same Core lane in one operation, so no other Agent can take it first; without take the Task is left open for others.)
@@ -494,6 +495,20 @@ Body SHA-256: `bb0c294b36bdff3b59a9b08eea93b48b33c2bc0777c9dbbe6cb13c01cb4af43e`
   "promptGuidelines": [
     "Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.",
     "Help: service://task/task_feedback"
+  ]
+}
+````
+## swarmenv_task_finish
+
+Body SHA-256: `70190a399f8e259f5ba883db0733a4f1e4c62c551542c87b1d8d402aa44a2d86`
+
+````text
+{
+  "description": "Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.",
+  "promptSnippet": "Task Service: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.",
+  "promptGuidelines": [
+    "Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.",
+    "Help: service://task/task_finish"
   ]
 }
 ````

@@ -202,6 +202,16 @@ const publicTaskTools = [
     parameters: { type: 'object', properties: { material_ids: { type: 'array', items: { type: 'string' } }, check_result_id: { type: 'string' } }, additionalProperties: false },
   },
   {
+    name: 'task_finish', service: 'task', operation: 'task_finish', version: '1.0',
+    description: 'Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['outcome'], properties: {
+      outcome: { type: 'string', enum: ['done', 'incomplete', 'blocked', 'cancelled'] },
+      material_ids: { type: 'array', items: { type: 'string' } }, check_result_id: { type: 'string' },
+      handoff_material_id: { type: 'string' }, blocker: { type: 'object' }, dependency: { type: 'object' }, reason: { type: 'string' },
+    }, additionalProperties: false },
+  },
+  {
     name: 'task_handoff', service: 'task', operation: 'task_handoff', version: '1.0',
     description: 'Publish and link Handoff Material, then return unfinished work to the Mission queue.',
     scope: 'task-write', side_effect: true,

@@ -30,14 +30,14 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `9039f91fb153003381c129290e3d9ab2312e1783c85fdc25df8a50edd507fedd` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `25e93b255c713a0b434814fcd0238ecee200942ca2a540fdd07f07c89ffd1090` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `21cedf6221f8f162a948af08b8a1820e5dcf21947a7f5122422d41b343036f33` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `ab30041ffaa7c008b2d04ff10023d245423a86c2aaa262442ab6fb4d91526f48` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `3425008f3d96ce37d58a343f2936ed01a761e86d33aeae1553b5303ae5bdbf74` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `13567858001a1c63ab79e55b0628ca8535da95db63b17ba4da4e38821579e83a` |
-| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `0f20975ecf7ebf4b2725ed3545ef303fba8a47f6f6c28679cb5f61bc5bb5ae33` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `d467bd8a7d9f5b0ecfc3a195992617ceb5c902c77a3977c969ba465d546b34bc` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `2b2abc336e8ca75adcaa6c41aa06845e3eac9be928231f3d099368e4e1cddc00` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `324f31a3cfe5bbcca23e9e6b6952840e88c6afa76f95efae05be13634ea6d8c9` |
+| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `3bdc0719af3ac78409fc7e9a5fc2ca75dd561c75c11f528b3ba770d401ae0421` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `b08aca19310ecfc6b5072632d65570eeec1091b456fa456668862aff5899ebc3` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `309d6f50f497a9e3d16a2b75d24d732303e517ed06ded9243142781e1d01d15b` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `7825f66f3ae997cdd2ce16197000c1e0a69030de257696e1c75e9818b7fdcfe9` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
@@ -76,6 +76,7 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `task.task_complete` | `swarmenv_task_complete` | `swarmenv_task_complete` |
 | `task.task_create` | `swarmenv_task_create` | `swarmenv_task_create` |
 | `task.task_feedback` | `swarmenv_task_feedback` | `swarmenv_task_feedback` |
+| `task.task_finish` | `swarmenv_task_finish` | `swarmenv_task_finish` |
 | `task.task_link_material` | `swarmenv_task_link_material` | `swarmenv_task_link_material` |
 | `task.task_list` | `swarmenv_task_list` | `swarmenv_task_list` |
 | `task.task_register` | `swarmenv_task_register` | `swarmenv_task_register` |
@@ -261,7 +262,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 20 registered capabilities
+### Task Service: 21 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -284,7 +285,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "380cedcc487c5ca6c7bf8784f9337ba5dae2e478fb22b3db0e597e0130891e4d"
+  "manifest_hash": "1189008ed993ba21ab3d374af3561fc9041bd2de149dcf12e179adc5bb628fe6"
 }
 ```
 
@@ -1054,6 +1055,87 @@ Complete the current Task when its own contract and required Material or Judge e
   },
   "method": "POST",
   "path": "/v1/task_complete",
+  "errors": []
+}
+```
+
+#### task.task_finish
+
+Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.
+
+```json
+{
+  "name": "task_finish",
+  "operation": "task_finish",
+  "description": "Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "outcome"
+    ],
+    "properties": {
+      "outcome": {
+        "type": "string",
+        "enum": [
+          "done",
+          "incomplete",
+          "blocked",
+          "cancelled"
+        ]
+      },
+      "material_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "check_result_id": {
+        "type": "string"
+      },
+      "handoff_material_id": {
+        "type": "string"
+      },
+      "blocker": {
+        "type": "object"
+      },
+      "dependency": {
+        "type": "object"
+      },
+      "reason": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "task-write",
+  "help": {
+    "when": "Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.",
+    "ref": "service://task/task_finish",
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/task_finish",
   "errors": []
 }
 ```
@@ -3374,6 +3456,7 @@ The SDK constructor requires `dispatch` and `actorRef`. `withContext` creates an
 | `linkMaterial` | `task_link_material` | write |
 | `listTaskMaterials` | `list_task_materials` | read |
 | `completeTask` | `task_complete` | write |
+| `finishTask` | `task_finish` | write |
 | `closeTask` | `task_close` | write |
 | `handoffTask` | `task_handoff` | write |
 | `blockTask` | `task_block` | write |
@@ -3449,6 +3532,8 @@ Registry matches are resolved first by capability name or operation and must be 
   "task_materials",
   "complete_task",
   "task_complete",
+  "finish_task",
+  "task_finish",
   "close_task",
   "task_close",
   "handoff_task",
