@@ -1302,9 +1302,10 @@ export class TaskService {
     if (!['input', 'response', 'handoff', 'experience'].includes(role)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'role must be input, response, handoff, or experience');
     }
-    if (material.role && material.role !== role) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Material role does not match the Task link role');
-    }
+    // Material.role describes the producer's declared publication context.
+    // A receiving Task's link role describes how that immutable Material is
+    // used here; reuse and correction must not rewrite or be blocked by the
+    // producer-wide label.
     const producerTaskId = requireString(material.source_task, 'material source_task');
     const producerExecutionId = requireString(material.source_execution, 'material source_execution');
     const currentTaskId = envelope.task_id;

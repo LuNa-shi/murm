@@ -33,7 +33,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "d7ee77d36bb187313861ee02001792b8abdcbb46f5dd426e1ede120bb8248e2e"
+      "sha256": "87bfb7c48f4ad1dd2920389f68a24684a3c4eb7dfe66c7d463a958277b9ee8c1"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -85,7 +85,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "7987be8c980aa6eec5a89223f5472a4ec1e76e780e982946874967ee18b99e99"
+      "sha256": "de2c81a84bb4282f4cda06ca4a0a1461b6b59f5382bb0827863442addab81ea1"
     },
     {
       "path": "src/task/task-types.js",
@@ -108,25 +108,25 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const modeInstructions = ",
-      "line": 1694,
+      "line": 1701,
       "sha256": "dc33ea53f8ff3c60b8089bbd1df164b41ddae305ae29a9c02ff52cf74f4a7122"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const dependencyInstruction = ",
-      "line": 1697,
+      "line": 1704,
       "sha256": "22e61b66167cb982d3f0b2562aa3cec5b8cb03be6d63f69900f0db212ec79ead"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const taskSpecificInstruction = ",
-      "line": 1698,
+      "line": 1705,
       "sha256": "a5c864d39b6125b61f29029465c2355a561501a2ae0406d9af5fdf09712f67fc"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "    task_instructions: ",
-      "line": 1708,
+      "line": 1715,
       "sha256": "6b92a2c310f719e6beeb2b8e1ec486d1c569f4db969a58e5ed2d7b2c3ccfff08"
     },
     {
@@ -138,7 +138,7 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "      takePrompt: ",
-      "line": 2689,
+      "line": 2696,
       "sha256": "5f88452ecabb10d03f484569a3af6758c6388dd71ad156c14c1320dcb6cae9be"
     },
     {
@@ -150,7 +150,7 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const basePrompt = ",
-      "line": 2680,
+      "line": 2687,
       "sha256": "6be42e0ba4e7c5c99afffc42d9d0a74f4ef9c76f92d2179ae27b94c195b043f4"
     },
     {
@@ -210,6 +210,11 @@
       "path": "src/benchmark/putnam-runner.js",
       "line": 757,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
+    },
+    {
+      "path": "src/benchmark/putnam-runner.js",
+      "line": 763,
+      "expression": "await session.prompt('The public Workspace inspection is complete. Call swarmenv_task_create now with the exact Mission, proof Task contract, completion contract, and workspace object supplied above. Do not call another read tool and do not call task_take until task_create returns.', { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -337,13 +342,13 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1387,
+      "line": 1388,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1625,
+      "line": 1626,
       "field": "action",
       "sha256": "ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8"
     }
@@ -371,7 +376,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "e59564018a4629a52c13b3b69184cda030694c45db05399d148e5a8cb13b45db"
+      "sha256": "555aed24962fb67a3d31ed17af0fdf5fdfe2050d592228d16b22986eb44fc081"
     }
   ]
 }
