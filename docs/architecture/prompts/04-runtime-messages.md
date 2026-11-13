@@ -53,10 +53,10 @@ Compaction completed. Before continuing research, call execution_progress with k
 ````
 ## Session failure recovery instructions
 
-Body SHA-256: `f533cd2b22f5888777f868d237f1462310142a492347b4135d834753c6ae2b49`
+Body SHA-256: `de1f4771678722a811390e4187dc50d2b327e5b314fe94d7a4546e3a53056a35`
 
 ````text
-Resume the claimed Task from its durable Workspace and checkpoint.
+Resume the taken Task from its durable Workspace and checkpoint.
 Failure class: <FAILURE_CLASS>. Recovery attempt: <RECOVERY_ATTEMPT>.
 Task goal: <TASK_GOAL>
 Expected output: <EXPECTED_OUTPUT>
@@ -66,10 +66,10 @@ Do not assume the interrupted turn completed. Inspect the current Task, Executio
 ````
 ## Session failure recovery without saved revision/checkpoint
 
-Body SHA-256: `ae80e4bb10f49fa206cc605f132da31a97ebda5cede305ab7764350b42f81e3b`
+Body SHA-256: `b4592356e918758d3321eba0a4b5fb6fe7db83401fd51861ac7e916ba8df2f8f`
 
 ````text
-Resume the claimed Task from its durable Workspace and checkpoint.
+Resume the taken Task from its durable Workspace and checkpoint.
 Failure class: <FAILURE_CLASS>. Recovery attempt: <RECOVERY_ATTEMPT>.
 Task goal: <TASK_GOAL>
 Expected output: <EXPECTED_OUTPUT>

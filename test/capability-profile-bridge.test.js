@@ -23,7 +23,6 @@ test('Bridge exposes one authenticated reusable-identity profile endpoint', asyn
     assert.equal(body.profile.role, AGENT_ROLES.BOUND);
     assert.equal(typeof body.profile.profile_hash, 'string');
     assert.ok(body.profile.capabilities.some((capability) => capability.operation === 'task_take'));
-    assert.ok(!body.profile.capabilities.some((capability) => capability.operation === 'claim'));
     assert.ok(body.profile.capabilities.some((capability) => capability.service_id === 'workspace'));
   } finally {
     await bridge.stop();
@@ -40,7 +39,6 @@ test('Bridge keeps the reusable identity profile across binding and release', as
   assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.BOUND);
   await bridge.bindTake({ task: { task_id: 'task-1' }, execution: { execution_id: 'execution-1' } });
   assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.BOUND);
-  assert.ok(!bridge.getCapabilityProfile().capabilities.some((capability) => capability.operation === 'claim'));
   await bridge.releaseTake();
   assert.equal(bridge.getCapabilityProfile().role, AGENT_ROLES.BOUND);
 });

@@ -206,7 +206,7 @@ export class Runtime {
   /**
    * Register a reusable Core with the execution substrate. Core Daemons own
    * discovery and selection; Runtime only records the execution occupancy
-   * that follows a successful claim.
+   * that follows a successful take.
    */
   registerCore(coreId) {
     const id = requireString(coreId, 'core_id');
@@ -594,19 +594,19 @@ export class Runtime {
   }
 
   /**
-   * Start an Execution that has already been selected and claimed by a Core
+   * Start an Execution that has already been selected and taken by a Core
    * Daemon. The method intentionally accepts no Task filters or ranking
-   * inputs: Task choice belongs to the Daemon and the claim is the handoff
+   * inputs: Task choice belongs to the Daemon and the take is the handoff
    * boundary.
    */
-  startClaimedExecution(executionOrId, { coreId = null, sessionReason = 'claimed' } = {}) {
+  startTakenExecution(executionOrId, { coreId = null, sessionReason = 'taken' } = {}) {
     const executionId = typeof executionOrId === 'string' ? executionOrId : executionOrId?.execution_id;
     requireString(executionId, 'execution_id');
     return this.startExecution(executionId, { coreId, sessionReason });
   }
 
-  runClaimedExecution(executionOrId, options = {}) {
-    return this.startClaimedExecution(executionOrId, options);
+  runTakenExecution(executionOrId, options = {}) {
+    return this.startTakenExecution(executionOrId, options);
   }
 
   async bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null, promptSnapshot = null, capabilityProfile = null, promptContext = {}, coreId = null, sessionReason = 'bound', sendInitialPrompt = true } = {}) {
@@ -855,7 +855,7 @@ export class Runtime {
     await this.#stopSandbox(id);
     // The semantic Task transition is requested on behalf of the bound Agent.
     // Runtime still owns the physical Session/Workspace release below, but it
-    // must not present its daemon actor as the Task owner.  Claims bind the
+    // must not present its daemon actor as the Task owner.  Takes bind the
     // Execution to `owner_ref` (for example `agent:core-2`); using
     // `runtime:core-2` here made every normal handoff/block fail the Task
     // Service ownership check before Runtime could release the Core.
@@ -953,7 +953,7 @@ export class Runtime {
    * attempted once, then one Progress Material records the exact handoff
    * state. A checkpoint failure leaves the Execution alive; a handoff failure
    * is recorded and still releases the old Execution so it cannot strand a
-   * Core or claim that unsaved work was persisted.
+   * Core or take that unsaved work was persisted.
    */
   async executionProgress(executionId, {
     kind = 'checkpoint', progress, checkpoint = {}, files = {}, reason = 'progress_handoff', summary = null,
@@ -1158,7 +1158,7 @@ export class Runtime {
     if (current.workspace_ref && !skipWorkspaceSave) {
       // A handoff save is one bounded attempt. If Git/checkpoint persistence
       // fails, end the Execution from the last valid snapshot and report the
-      // loss; never leave the old owner RUNNING or claim the save succeeded.
+      // loss; never leave the old owner RUNNING or take the save as succeeded.
       try {
         workspace = await this.workspaceManager.saveWorkspaceRevision({
           workspaceRef: current.workspace_ref,
@@ -1380,9 +1380,9 @@ export class Runtime {
   }
 
   /**
-   * Physical cleanup after task_register take committed a durable switch.
+   * Physical cleanup after task take committed a durable switch.
    * The Task Service already fenced the old Execution in the same
-   * transaction that claimed the new Task; Runtime only detaches the
+   * transaction that taken the new Task; Runtime only detaches the
    * process, Sandbox and Workspace writer so the identity Session can be
    * bound to the new Execution.
    */
@@ -1920,8 +1920,8 @@ export class Runtime {
   }
 
   /**
-   * Release one Execution's claim on its Bot Session. Compatibility mode may
-   * retain a reusable identity Session; freshBotPerExecution deliberately
+   * Release one Execution's take on its Bot Session. The identity session
+   * retains a reusable identity Session; freshBotPerExecution deliberately
    * stops and removes it so the next responsibility starts a new Bot.
    */
   async #releaseSessionBinding(active, executionId) {
@@ -2398,7 +2398,7 @@ export class Runtime {
 
   #recoveryPrompt(task, execution, failureClass, attempt) {
     return [
-      'Resume the claimed Task from its durable Workspace and checkpoint.',
+      'Resume the taken Task from its durable Workspace and checkpoint.',
       `Failure class: ${failureClass}. Recovery attempt: ${attempt}.`,
       `Task goal: ${task.goal}`,
       `Expected output: ${task.expected_output}`,

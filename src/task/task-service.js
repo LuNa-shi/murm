@@ -767,7 +767,7 @@ export class TaskService {
       if (this.#gatingDependencyBlockers(task).length > 0) return false;
       const executions = this.listExecutions(task.task_id, { includeTerminal: false });
       const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
-      if (active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
+      if (active.length >= task.parallel_quota && !this.#expiredReworkCanBeTaken(task, active, nowMs)) return false;
       const waiting = executions.filter((execution) => execution.state === 'WAITING');
       if (waiting.length === 0) return true;
       const resumableWaiting = waiting.some((execution) => this.#isWaitingResumable(execution, nowMs));
@@ -804,7 +804,7 @@ export class TaskService {
         const waiting = executions.filter((execution) => execution.state === 'WAITING');
         const rework = active.length === 1 && active[0].state === 'CREATED' && active[0].instruction_version > 1 && task.parallel_quota === 1;
         if (rework) return true;
-        if (active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
+        if (active.length >= task.parallel_quota && !this.#expiredReworkCanBeTaken(task, active, nowMs)) return false;
         if (waiting.length === 0) return active.length < task.parallel_quota;
         return waiting.some((execution) => this.#isWaitingResumable(execution, nowMs)) || active.length + waiting.length < task.parallel_quota;
       });
@@ -2659,7 +2659,7 @@ export class TaskService {
     return rowToExecution(this.db.prepare(`SELECT * FROM executions WHERE task_id = ? ${activeClause} ORDER BY attempt_no DESC, created_at DESC LIMIT 1`).get(taskId));
   }
 
-  #expiredReworkCanBeClaimed(task, executions, nowMs = Date.now()) {
+  #expiredReworkCanBeTaken(task, executions, nowMs = Date.now()) {
     const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
     if (active.length !== 1 || task.parallel_quota !== 1) return false;
     const execution = active[0];

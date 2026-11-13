@@ -94,7 +94,7 @@ test('a bound Task release opens a new dispatch opportunity for the same READY s
   await scheduler.reconcile({ reason: 'ready-created' });
   core = { id: 'core-1', free: false, taskId: 'task-1', executionId: 'execution-1' };
   setCores([core]);
-  await scheduler.reconcile({ reason: 'claim-succeeded' });
+  await scheduler.reconcile({ reason: 'take-succeeded' });
   core = { id: 'core-1', free: true };
   setCores([core]);
   await scheduler.reconcile({ reason: 'execution-released' });

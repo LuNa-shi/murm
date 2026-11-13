@@ -146,7 +146,7 @@ The public search schema advertises `limit` from 1 to 100, but the current `#rea
 
 ### Consumption is an explicit edge
 
-`context_consume` requires 1–100 unique existing Material IDs and action `route`, `task`, `candidate` or `integration`; optional `action_ref` must be a nonempty string or null. It requires a bound Task/Execution and validates the fence. It persists reader Task/Execution, action, action reference and timestamp keyed by `(operation_id, material_id)`, returning `consumptions`, `material_ids`, `action`, `action_ref`.
+`context_consume` requires 1–100 unique existing Material IDs and action `route`, `task`, `workspace_source` or `integration`; optional `action_ref` must be a nonempty string or null. It requires a bound Task/Execution and validates the fence. It persists reader Task/Execution, action, action reference and timestamp keyed by `(operation_id, material_id)`, returning `consumptions`, `material_ids`, `action`, `action_ref`.
 
 Publishing `scope="root_integration"` requires 1–100 unique `provenance.consumed_material_ids` already recorded as `integration` consumption by that same Task/Execution. This supplies an explicit provenance check. It still does not establish that the mathematical argument correctly integrates the cited Materials. A search/read result alone never creates a consumption edge.
 
@@ -162,7 +162,7 @@ The direct path is the same logical contract for in-process and hosted providers
 
 Task Service and Benchmark Runner are not submission handlers. A PASS does not automatically complete a Task or Mission. An Agent may explicitly call `task_finish` with the returned CheckResult when the Task completion contract is satisfied; that projection is a separate operation. Workspace artifact Material remains available for collaboration and provenance, but it is not required for a direct Workspace check. A source-level FAIL can lead to revision and resubmission within the same Task/Execution.
 
-The Bridge retains an unadvertised `candidate_material_id` compatibility branch: a Material containing a path re-enters the Workspace-read path, while a string body is forwarded as inline source. The Judge handler accepts an omitted source attestation for that retained shape; when an attestation is supplied, its Task/Execution/path/revision/hash must match. The normal advertised path supplies the attestation. Neither branch restores the old Task-to-runner submission relay.
+The Bridge exposes one canonical Workspace source route. It reads the declared relative path through the Runtime Workspace boundary, attaches the authenticated Task/Execution and revision/hash attestation, and sends that request to Judge. Inline source bodies and Material-based candidate aliases are not accepted.
 
 ### Request identity and duplicate checking
 
@@ -170,24 +170,24 @@ On the advertised Workspace path, a request binds the authenticated Task/Executi
 
 The same request key with different request hash fails. An existing matching request returns the existing result without rerunning. Judge additionally queries for equivalent Workspace source **content hash + target Task/spec + input snapshot + checker version/environment** across request keys, preventing another Core from buying another check merely by inventing a key. Retryable, unexhausted infrastructure failures permit a new request to recheck; source results and exhausted failures normally reuse existing evidence. The current query selects the earliest matching row, which is a concrete implementation choice rather than a universal deduplication service.
 
-The Bridge/Registry calls Judge's `submitCandidate` with the source descriptor, attestation and authenticated envelope. Judge derives fixture/checker settings from its own configuration and constructs the following internal `judgeCandidate` request. Its legacy-named `candidate_material_id` is a synthetic `workspace:<execution>:<path-or-source>:<hash>` identity for direct submissions; it does not require a Context Material to exist.
+The Bridge/Registry calls Judge's `submitCandidate` with the source descriptor, attestation and authenticated envelope. Judge derives fixture/checker settings from its own configuration and constructs the following internal `workspaceCheckRequest` request. Its legacy-named `workspace_source_id` is a synthetic `workspace:<execution>:<path-or-source>:<hash>` identity for direct submissions; it does not require a Context Material to exist.
 
 | Field | Handler validation/default |
 |---|---|
-| `candidate_material_id`, `target_task_id`, `input_snapshot_hash` | Required nonempty strings. Direct submissions derive them from the source, authenticated envelope and configured input binding. |
+| `workspace_source_id`, `target_task_id`, `input_snapshot_hash` | Required nonempty strings. Direct submissions derive them from the source, authenticated envelope and configured input binding. |
 | `target_spec_version` | Required nonnegative integer. |
 | `checker_ref`, `checker_version`, `environment_ref` | Required nonempty strings equal to the corresponding locked fixture values. |
 | `fixture_manifest` | Required validated fixture object; required fields and actual environment probing are described below. |
-| `candidate` | Required object with string `content`; optional `material_id` must match `candidate_material_id`, and optional `content_hash` must match the SHA-256 recomputed from that content. |
+| `workspace_source` | Required object with string `content`; optional `material_id` must match `workspace_source_id`, and optional `content_hash` must match the SHA-256 recomputed from that content. |
 | `target_task` | Optional object; when present its ID and spec version must match. Defaults to null. |
 | `workspace` | Optional object; if it supplies `input_snapshot_hash`, that value must match. Defaults to null. |
-| `request_key` | Optional nonempty string. `submitCandidate` defaults it to the transport operation ID; a direct internal `judgeCandidate` call without a key derives one from candidate/Task/checker/input identity. Reusing a key with a different normalized request is `CONFLICT`. |
+| `request_key` | Optional nonempty string. `submitCandidate` defaults it to the transport operation ID; a direct internal `workspaceCheckRequest` call without a key derives one from workspace source/Task/checker/input identity. Reusing a key with a different normalized request is `CONFLICT`. |
 | `execution_id`, `state_version` | Optional binding metadata, default null; result application performs the stronger current-Execution checks. |
 | Method options | `operationId` defaults to a UUID; `actorRef` defaults to `judge:lean`. |
 
 `preflightChecker` uses the same request validation with an empty candidate-content fallback, then persists checker health without compiling a candidate. `getCheckResult`/`getByRequestKey` return the full stored projection; `getAgentCheckResult` returns the restricted Agent projection; preflight lookup/list returns parsed evidence and boolean retryability.
 
-Internally, `judgeCandidate` finishes through `dispatch('submit_check_result', ...)`. This operation is absent from the model's Registry and the generic router fallback. It accepts the validated request plus `status:'RECEIVED'`, a verdict, normalized outcome/diagnostic/evidence fields and optional supplied CheckResult ID/request hash. It checks the envelope's Task/spec against the request and uses operation replay inside a transaction. A matching RUNNING/REQUESTED row becomes RECEIVED; an already finalized matching row is returned. A direct local caller can record a received result without launching Lean through this method, so this internal entry point assumes its caller is trusted; it is not an independent checker attestation mechanism.
+Internally, `workspaceCheckRequest` finishes through `dispatch('submit_check_result', ...)`. This operation is absent from the model's Registry and the generic router fallback. It accepts the validated request plus `status:'RECEIVED'`, a verdict, normalized outcome/diagnostic/evidence fields and optional supplied CheckResult ID/request hash. It checks the envelope's Task/spec against the request and uses operation replay inside a transaction. A matching RUNNING/REQUESTED row becomes RECEIVED; an already finalized matching row is returned. A direct local caller can record a received result without launching Lean through this method, so this internal entry point assumes its caller is trusted; it is not an independent checker attestation mechanism.
 
 ### Locked checker preflight
 
@@ -219,7 +219,7 @@ Its exact field names are:
 
 | Group | Fields |
 |---|---|
-| Identity | `check_result_id`, `request_key`, `candidate_material_id`, `target_task_id`, `execution_id` |
+| Identity | `check_result_id`, `request_key`, `workspace_source_id`, `target_task_id`, `execution_id` |
 | Lifecycle/outcome | `status`, `verdict`, `judge_operation_status`, `checker_process_status`, `checker_started`, `result_class`, `mathematical_outcome`, `retryable` |
 | Checker | `checker_ref`, `checker_version`, `environment_ref` |
 | Diagnostics | `diagnostic_code`, `diagnostic_excerpt`, `diagnostic_location` (parsed file/line/column or null), `process_evidence` (`exit_code`, `signal`, `timed_out`, `error_code`) |

@@ -3,7 +3,7 @@
  *
  * TaskController observes durable Task Service state. It may ask an injected
  * reconciliation adapter to refresh a blocked Task and may wake an idle Core
- * identity loop, but it never chooses or claims a Task. Task choice belongs to
+ * identity loop, but it never chooses or takes a Task. Task choice belongs to
  * the identity loop after it receives a bounded eligible view.
  */
 
@@ -252,7 +252,7 @@ export class TaskController {
     if (eligible.length > 0 && typeof this.signalIdleIdentity === 'function') {
       // A single eligible Task needs one selector. Waking every idle Core for
       // that same shortlist creates a thundering-herd of valid but losing
-      // claim attempts. Keep one wake slot per distinct eligible Task so
+      // take attempts. Keep one wake slot per distinct eligible Task so
       // multiple independent Tasks can still use the available Cores.
       let signalBudget = eligible.length;
       for (const { loop, view, id } of idle) {

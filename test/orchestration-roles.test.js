@@ -132,7 +132,7 @@ test('TaskController re-arms a daemon signal after a running handoff returns idl
   await controller.reconcile({ reason: 'initial' });
   await controller.reconcile({ reason: 'duplicate' });
   daemon.state = 'RUNNING';
-  await controller.reconcile({ reason: 'claimed' });
+  await controller.reconcile({ reason: 'taken' });
   daemon.state = 'IDLE';
   await controller.reconcile({ reason: 'released' });
 
@@ -196,7 +196,7 @@ test('TaskController adapts TaskService.reconcileTask to its task-id contract', 
   assert.equal(repaired[0].taskId, 'blocked-1');
 });
 
-test('TaskController never claims work and wakes after a dependency event', async () => {
+test('TaskController never takes work and wakes after a dependency event', async () => {
   const calls = [];
   let eligible = [];
   const controller = new TaskController({
@@ -215,7 +215,7 @@ test('TaskController never claims work and wakes after a dependency event', asyn
   assert.equal(controller.snapshot().take_count, 0);
 });
 
-test('IdentityTaskLoop presents a bounded shortlist, claims once, hands off to Runtime, and returns idle', async () => {
+test('IdentityTaskLoop presents a bounded shortlist, takes once, hands off to Runtime, and returns idle', async () => {
   const calls = [];
   const daemon = new IdentityTaskLoop({
     coreId: 'core-1',
@@ -232,9 +232,9 @@ test('IdentityTaskLoop presents a bounded shortlist, claims once, hands off to R
       calls.push({ type: 'take', taskId, context });
       return { task: { task_id: taskId, state: 'RUNNING' }, execution: { execution_id: 'execution-1', task_id: taskId, state: 'CREATED' } };
     },
-    runExecution: async (claim) => {
-      calls.push({ type: 'run', take: claim });
-      return { execution: { ...claim.execution, state: 'SUCCEEDED' } };
+    runExecution: async (take) => {
+      calls.push({ type: 'run', take: take });
+      return { execution: { ...take.execution, state: 'SUCCEEDED' } };
     },
   });
 
@@ -269,7 +269,7 @@ test('IdentityTaskLoop boundedly rescans after a lost take race without retrying
       return candidates[0].task_id;
     },
     takeSelectedTask: async () => {
-      const error = new Error('another daemon won the claim');
+      const error = new Error('another daemon won the take');
       error.code = 'CONFLICT';
       throw error;
     },
@@ -301,7 +301,7 @@ test('IdentityTaskLoop re-arms a selection failure after its bounded cooldown', 
       return 'task-rearm';
     },
     takeSelectedTask: async () => ({ task: { task_id: 'task-rearm' }, execution: { execution_id: 'execution-rearm', task_id: 'task-rearm', state: 'CREATED' } }),
-    runExecution: async (claim) => ({ execution: { ...claim.execution, state: 'SUCCEEDED' } }),
+    runExecution: async (take) => ({ execution: { ...take.execution, state: 'SUCCEEDED' } }),
     onEvent: (event) => events.push(event),
   });
 
@@ -318,7 +318,7 @@ test('IdentityTaskLoop re-arms a selection failure after its bounded cooldown', 
   assert.equal(selectionAttempts, 2);
 });
 
-test('IdentityTaskLoop bounds infrastructure take failures instead of treating them as claim conflicts', async () => {
+test('IdentityTaskLoop bounds infrastructure take failures instead of treating them as take conflicts', async () => {
   let now = 1_000;
   let attempts = 0;
   const daemon = new IdentityTaskLoop({
@@ -345,42 +345,42 @@ test('IdentityTaskLoop bounds infrastructure take failures instead of treating t
   assert.equal(daemon.snapshot().take_exhausted, false);
 });
 
-test('IdentityTaskLoop uses a fresh take key when the same Task is reclaimed later', async () => {
+test('IdentityTaskLoop uses a fresh take key when the same Task is retaken later', async () => {
   const takeKeys = [];
   let executionNumber = 0;
   const daemon = new IdentityTaskLoop({
-    coreId: 'core-reclaim',
-    listEligibleTasks: () => [{ task_id: 'task-reclaim' }],
+    coreId: 'core-retake',
+    listEligibleTasks: () => [{ task_id: 'task-retake' }],
     takeTask: async ({ candidates }) => candidates[0].task_id,
     takeSelectedTask: async (taskId, context) => {
       takeKeys.push(context.take_key);
       executionNumber += 1;
       return { task: { task_id: taskId }, execution: { execution_id: `execution-${executionNumber}`, task_id: taskId, state: 'CREATED' } };
     },
-    runExecution: async (claim) => ({ execution: { ...claim.execution, state: 'SUCCEEDED' } }),
+    runExecution: async (take) => ({ execution: { ...take.execution, state: 'SUCCEEDED' } }),
   });
 
   await daemon.runOnce({ reason: 'first-attempt' });
   await daemon.runOnce({ reason: 'later-retry' });
 
-  assert.deepEqual(takeKeys, ['core-reclaim:task-reclaim:0', 'core-reclaim:task-reclaim:1']);
+  assert.deepEqual(takeKeys, ['core-retake:task-retake:0', 'core-retake:task-retake:1']);
 });
 
-test('IdentityTaskLoop does not select or claim when discovery is empty', async () => {
+test('IdentityTaskLoop does not select or take when discovery is empty', async () => {
   let selections = 0;
-  let claims = 0;
+  let takes = 0;
   const daemon = new IdentityTaskLoop({
     coreId: 'core-empty',
     listEligibleTasks: () => [],
     takeTask: async () => { selections += 1; return 'unused'; },
-    takeSelectedTask: async () => { claims += 1; },
+    takeSelectedTask: async () => { takes += 1; },
   });
 
   const result = await daemon.runOnce({ reason: 'empty' });
 
   assert.equal(result.disposition, 'idle');
   assert.equal(selections, 0);
-  assert.equal(claims, 0);
+  assert.equal(takes, 0);
   assert.equal(daemon.snapshot().state, IDENTITY_LOOP_STATES.IDLE);
 });
 
@@ -463,7 +463,7 @@ test('IdentityTaskLoop default idle wait is interruptible by notify', async () =
   daemon.stop();
 });
 
-test('IdentityTaskLoop stop aborts a claimed Runtime handoff and fences the claim', async () => {
+test('IdentityTaskLoop stop aborts a taken Runtime handoff and fences the take', async () => {
   let fenced = 0;
   const events = [];
   const daemon = new IdentityTaskLoop({
@@ -472,7 +472,7 @@ test('IdentityTaskLoop stop aborts a claimed Runtime handoff and fences the clai
     takeTask: async () => 'task-abort',
     takeSelectedTask: async () => ({ task: { task_id: 'task-abort' }, execution: { execution_id: 'execution-abort', task_id: 'task-abort', state: 'CREATED' } }),
     runtime: {
-      startClaimedExecution: async (execution) => ({ execution }),
+      startTakenExecution: async (execution) => ({ execution }),
       waitForExecutionRelease: async (_executionId, { signal }) => new Promise((resolve) => signal.addEventListener('abort', () => resolve({ released: false, aborted: true }), { once: true })),
       fenceExecution: async () => { fenced += 1; return { execution: { state: 'FENCED' } }; },
     },

@@ -26,7 +26,7 @@ Scheduler and IdentityTaskLoop coexist as separate implementations at this basel
 | Exact state | Meaning and entry paths |
 |---|---|
 | `CREATED` | Take exists; process not yet durably started. Also the intermediate state after recovery and some legacy rework/wake paths. |
-| `RUNNING` | `start_execution` / `resume_execution` committed; a Runtime process normally owns the binding. |
+| `RUNNING` | `start_execution` / `fresh task_take` committed; a Runtime process normally owns the binding. |
 | `WAITING` | Legacy checkpointed wait with a typed condition; physical Session/Workspace can be released. |
 | `SUCCEEDED` | This Execution satisfied its completion path. |
 | `FAILED` | Startup, checker/infrastructure policy, explicit stop or another terminal failure. |
@@ -125,7 +125,7 @@ Task Service atomically validates the take, writes a `CREATED` Execution and tak
 
 | Start seam | Exact high-level order |
 |---|---|
-| `startExecution` / `startClaimedExecution` | Validate state/capacity/Core → prepare Workspace → persist reference → commit `start_execution` → launch adapter → save adapter runtime manifest → register binding → ensure sandbox → compose/send prompt |
+| `startExecution` / `startTakenExecution` | Validate state/capacity/Core → prepare Workspace → persist reference → commit `start_execution` → launch adapter → save adapter runtime manifest → register binding → ensure sandbox → compose/send prompt |
 | `bindAgentExecution` | Validate state/capacity/Core → prepare Workspace → compose optional snapshot → commit `start_execution` → use supplied Session or startSession callback → register binding → ensure sandbox → send prompt or queue notifications |
 
 A Workspace exists before the model process starts. Restoring an already persisted revision does not re-save the same revision as a new one. When a heartbeat races filesystem work, saving the Workspace reference retries a stale state-version error up to three times with a fresh envelope; the exact filesystem revision has already been saved.
@@ -134,7 +134,7 @@ Reusable binding with `sendInitialPrompt:false` avoids a second initial prompt i
 
 Before `start_execution` commits, a preparation error triggers a fence attempt with `startup_prepare_failed` or `bind_prepare_failed`. After the durable start, failure records `FAILED` with `startup_failed` / `bind_failed`. Runtime removes occupancy, stops sandbox/bound failed Session and preserves any already prepared Workspace evidence. These are compensating steps, not a rollback of every file.
 
-Bridge binding adds another failure boundary. After recording new IDs it invokes `onClaimAccepted` and `onClaim`. On failure it attempts Runtime stop (`FAILED/task_take_bind_failed`), or a fresh Task Service stop/fence fallback, then clears Bridge IDs/cache and invokes `onRelease` best effort. Cleanup failure is swallowed to preserve the original exception: release is attempted, not guaranteed merely because the take call returned an error.
+Bridge binding adds another failure boundary. After recording new IDs it invokes `onTakeAccepted` and `onTake`. On failure it attempts Runtime stop (`FAILED/task_take_bind_failed`), or a fresh Task Service stop/fence fallback, then clears Bridge IDs/cache and invokes `onRelease` best effort. Cleanup failure is swallowed to preserve the original exception: release is attempted, not guaranteed merely because the take call returned an error.
 
 ### 5.1 OpenSandbox provider boundary (Issue 119)
 
@@ -211,65 +211,11 @@ One listener set is attached per Session; event handlers read its current Execut
 
 For register-and-switch, the old fence and new take share a Task Service transaction, but the earlier progress save and later detach/`onWorkUnit`/`onRelease`/new binding do not. A post-transaction callback error can occur after old authorization has ended and the new take exists.
 
-## 9. Legacy waits and current implementation limits
+## 9. Current lifecycle limits
 
-Legacy `request_wait` remains executable through the low-level Runtime/Task interfaces only when the Task contract does not set `normal_flow: true`. The scripted fixture still creates a Mission-scoped Task without that flag and exercises this compatibility wait/wake path. The benchmark always sets normal flow, and its live Agent profile does not expose the retired wait surface, so the following is not an alternative production benchmark mode. A wait requires a saved checkpoint and a condition type from `child_task_terminal`, `children_all_terminal`, `parent_review`, `check_result_arrived`, `checker_health`, `timer`. Empty child sets, nonexistent/non-child dependencies and already satisfied child conditions are invalid.
+The current Mission model has one canonical Task lifecycle: an identity inspects the bounded eligible view, calls `task_take`, works in its clean Workspace, records progress, and ends with `task_finish`. Typed dependencies are represented by the current Task completion contract and reconciliation state. The public Registry and Runtime do not expose wait, wake, resume, registration-and-switch, or alternate lifecycle writers. Historical database columns may be read while importing old evidence, but they are not valid writers in the current implementation.
 
-A waiting parent can resume when its child is terminal **or waiting for parent review**, avoiding review deadlock. CheckResult wakeups bind Task/Execution and can use candidate Material ID when the Agent lacks the runner's internal request key. Checker-health waits need a changed health fingerprint; unchanged unavailability is not retry permission.
-
-A compatible same-Core resume can reuse a waiting Execution. Explicit clean/fork choice supersedes it and makes a new Execution. This differs from both same-Execution Session replacement and modern handoff.
-
-### 9.1 Wait condition and transition details
-
-| Condition | Required binding and readiness rule |
-| --- | --- |
-| `child_task_terminal` | A direct child ID; readiness when it becomes terminal or its latest active attempt waits for parent review. |
-| `children_all_terminal` | Nonempty deduplicated direct-child IDs; every child must reach one of those readiness states. |
-| `parent_review` | Only a child Task; never automatically resumable through the ordinary waiter. Parent acceptance/rework resolves it. |
-| `check_result_arrived` | Request key, or the current candidate Material ID as a bound fallback; a matching Task/Execution result in RECEIVED/APPLIED/IGNORED can wake it. PASS is not required merely to inspect feedback. |
-| `checker_health` | Preflight key and observed health fingerprint; only a newly observed different fingerprint makes the wait resumable. `retry_after` is not an independent timer that bypasses this condition. |
-| `timer` | An ISO-parseable deadline; resumable when reached. Other conditions may also store a deadline, but their predicates do not all treat deadline expiry as satisfaction. |
-
-Runtime `requestWait` requires its live RUNNING process. It marks closing,
-stops the Sandbox, validates and checks the condition, saves a Workspace
-revision and its reference, writes/saves a checkpoint, then commits the wait.
-Task Service requires the same already-saved checkpoint reference/hash,
-persists condition/deadline/resume token and updates the Task projection.
-The wait key defaults to the checkpoint reference when not supplied; identical
-key/fingerprint replay returns the current record, changed reuse conflicts.
-Runtime then detaches/stops the Session, releases the Workspace and frees the
-Core. These saves can fail before the durable wait, and the method does not
-have the bounded save-failure continuation of progress handoff.
-
-Runtime's explicit `wakeExecution` checks WAITING and capacity, commits
-`wake_execution`, reopens/restores the same owner/fence Workspace and
-launches a Session. Startup failure attempts `wake_failed` fencing.
-Wake clears condition/deadline/token and increments state version, without
-advancing the fence or recalculating the start/timebox fields as
-`start_execution` does. A repeated call while already bound returns the
-active process; a non-WAITING unbound attempt rejects.
-
-The low-level `wake_execution` and Runtime wake method do not themselves
-test that the stored condition has become true. Resumable discovery and its
-caller are responsible for that decision. A successful direct wake therefore
-proves authorization/state transition, not prerequisite satisfaction. Core
-identity and occupancy checks still apply.
-
-The older `blockExecution` path is also distinct from semantic
-`task_finish(outcome=blocked)`: it freezes the Sandbox, attempts a fresh revision/checkpoint,
-calls low-level `block_task` with a terminal state (default FENCED), then
-fences/releases the Workspace and Session. A normal-flow Task requires a
-typed dependency. Unlike semantic handoff, this method does not require a
-Handoff Material; unlike bounded progress handoff, persistence errors are
-thrown before completing the block. Details of sibling fencing and automatic
-dependency reopen are in [03](03-mission-task.md).
-
-### 9.2 Limits that must remain visible
-
-- Task transactions, Context publication, Git/filesystem saves and process management are not one atomic transaction. Partial persistence is possible.
-- Older `requestWait` and `blockExecution` set `closing=true` before validation, but do not consistently reset it on rejection as semantic release does. A test checking only durable state or Workspace writability does not prove subsequent Session event processing.
-- Strong Mission acceptance is checked in semantic `task_finish`; Judge automatic completion has a different path. See [03](03-mission-task.md).
-- Best-effort physical cleanup and terminal durable state do not prove every external process exited or every last byte was saved.
+Runtime cleanup is ordered around durable ownership: Workspace and Execution writes carry the current fence and revision, terminal Task transitions fence the Execution, and physical Session/Sandbox release follows the durable transition. A failure before the durable transition is recorded as a preparation or handoff failure and cannot be reported as successful work.
 
 ## 10. Code and existing verification map
 

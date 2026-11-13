@@ -752,10 +752,10 @@ Recovery: none.
 ````
 ## Runtime Mission recovery: exact two-stage composed body for synthetic inputs
 
-Body SHA-256: `137dc112f6e1030751ca72db81c1329d738e860711f2d3f44662445da07caaf5`
+Body SHA-256: `35ad3d783202fc717249230668e93be8a6841734ea83e8d9a11fb7d9458d10fe`
 
 ````text
-Resume the claimed Task from its durable Workspace and checkpoint.
+Resume the taken Task from its durable Workspace and checkpoint.
 Failure class: <FAILURE_CLASS>. Recovery attempt: 1.
 Task goal: <TASK_GOAL>
 Expected output: <EXPECTED_OUTPUT>

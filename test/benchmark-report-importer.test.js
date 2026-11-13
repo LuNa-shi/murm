@@ -35,7 +35,7 @@ test('benchmark report importer creates the same timeline and Workspace query sh
       started_at: '2026-10-20T00:00:00.000Z', ended_at: '2026-10-20T00:00:04.000Z', elapsed_ms: 4, solved: false, protocol_valid: true, made_progress: true,
       lifecycle_events: [],
     },
-    cores: [{ core: 1, task_id: 'root-task', execution_id: 'exec-1', task_state: 'OPEN', execution_state: 'RUNNING', workspace_ref: workspaceRef, claims: [{ task_id: 'root-task', execution_id: 'exec-1', workspace_revision_start: 1, workspace_revision_end: 1 }], workspace_writes: [], checks: [] }],
+    cores: [{ core: 1, task_id: 'root-task', execution_id: 'exec-1', task_state: 'OPEN', execution_state: 'RUNNING', workspace_ref: workspaceRef, takes: [{ task_id: 'root-task', execution_id: 'exec-1', workspace_revision_start: 1, workspace_revision_end: 1 }], workspace_writes: [], checks: [] }],
     audit: {},
   };
   await mkdir(reportRoot, { recursive: true });

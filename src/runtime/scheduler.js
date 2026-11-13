@@ -43,7 +43,7 @@ function hasTaskOwnership(core) {
  *
  * Scheduler only decides whether an unbound worker may be started. It never
  * receives or selects a Task. The worker's generic prompt is responsible for
- * discovering and claiming a READY Task through Task Service.
+ * discovering and taking a READY Task through Task Service.
  */
 export class Scheduler {
   constructor({
@@ -179,7 +179,7 @@ export class Scheduler {
       const available = this.isCoreAvailable(core, { key, scheduler: this });
       if (!available) {
         // A successful discovery turn can leave a Core physically available
-        // without ever claiming a Task. That is still the same dispatch
+        // without ever taking a Task. That is still the same dispatch
         // opportunity and must not be re-launched on every reconciliation.
         // Only a real Task/Execution ownership cycle resets that suppression.
         if (hasTaskOwnership(core)) state.taskBoundObserved = true;

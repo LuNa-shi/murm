@@ -433,7 +433,7 @@
         "docs/architecture/00-overview.md",
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Project composition, Agent claim loop, Judge orchestration, stop and reports"
+      "role": "Project composition, Agent take loop, Judge orchestration, stop and reports"
     },
     {
       "path": "src/cli/swarm-cli.js",

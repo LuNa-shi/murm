@@ -160,8 +160,8 @@ export class CoreParallelismTracker {
     this.openAgentTurns = new Map();
     this.readySamples = [];
     this.schedulerPollMs = 0;
-    this.claimConflictCount = 0;
-    this.claimConflictKeys = new Set();
+    this.takeConflictCount = 0;
+    this.takeConflictKeys = new Set();
     this.judgeTimeMs = 0;
     this.turnOccupancyMs = 0;
     this.workUnits = [];
@@ -237,10 +237,10 @@ export class CoreParallelismTracker {
 
   recordTakeConflict(key = null) {
     if (key !== null) {
-      if (this.claimConflictKeys.has(key)) return false;
-      this.claimConflictKeys.add(key);
+      if (this.takeConflictKeys.has(key)) return false;
+      this.takeConflictKeys.add(key);
     }
-    this.claimConflictCount += 1;
+    this.takeConflictCount += 1;
     return true;
   }
 
@@ -366,7 +366,7 @@ export class CoreParallelismTracker {
       waiting_ms_by_core: waitingMsByCore,
       idle_ms_by_core: idleMsByCore,
       scheduler_poll_ms: this.schedulerPollMs,
-      claim_conflict_count: this.claimConflictCount,
+      take_conflict_count: this.takeConflictCount,
       judge_time_ms: this.judgeTimeMs,
       turn_occupancy_ms: this.turnOccupancyMs,
       turn_occupancy_ratio_v0: this.coreCount * elapsedMs === 0 ? 0 : this.turnOccupancyMs / (this.coreCount * elapsedMs),

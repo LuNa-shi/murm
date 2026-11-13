@@ -107,7 +107,7 @@ test('take conflicts deduplicate repeated event delivery by provenance key', () 
   assert.equal(tracker.recordTakeConflict('daemon:core-1:task-1:initial:0:10'), true);
   assert.equal(tracker.recordTakeConflict('daemon:core-1:task-1:initial:0:10'), false);
   assert.equal(tracker.recordTakeConflict(), true);
-  assert.equal(tracker.snapshot({ endedAt: 1 }).claim_conflict_count, 2);
+  assert.equal(tracker.snapshot({ endedAt: 1 }).take_conflict_count, 2);
 });
 
 test('work units retain Task provenance without semantic deduplication fields', () => {

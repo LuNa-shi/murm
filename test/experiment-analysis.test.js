@@ -96,7 +96,7 @@ async function createFixture({ agent = true, service = true, workspace = true, m
   ]);
   if (service) {
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'task-service.ndjson'), [
-      { timestamp: T1, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'task_take', envelope: { operation_id: 'op-claim', task_id: TASK, execution_id: EXECUTION } },
+      { timestamp: T1, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'task_take', envelope: { operation_id: 'op-take', task_id: TASK, execution_id: EXECUTION } },
       { timestamp: T1, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'task_take', ok: true, result: { task: { task_id: TASK, state: 'RUNNING' }, execution: { execution_id: EXECUTION, task_id: TASK, state: 'RUNNING' } } },
       ...(errors ? [{ timestamp: T2, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'task_take', ok: false, error: { code: 'CONFLICT', message: 'Task has reached its active Execution quota' } }] : []),
       ...(malformed ? ['{"broken":'] : []),

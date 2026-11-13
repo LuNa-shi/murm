@@ -158,7 +158,7 @@ Task creation checks `required_capabilities` against exact current capability ID
 
 `bindClaim` records the durable take locally, invalidates its profile cache and invokes activation hooks. On failure it attempts Runtime `stopExecution(..., FAILED, task_take_bind_failed)`, a Task Service stop fallback, or a fencing fallback. It clears the local binding, calls the release hook with original IDs and rethrows the original error. Cleanup exceptions are suppressed; rollback is attempted, not guaranteed to succeed in every external component.
 
-For `task_register(take:true)`, Bridge first saves `execution_progress(kind=checkpoint)`, using supplied Progress or defaults that record registration as the next step. Task Service then registers the new Task, ends the old Execution and claims the new one transactionally. Afterwards Bridge asks Runtime to detach the old Execution, records work evidence, releases its old local take and binds the new take. The database transition and physical actions are separate failure boundaries; a later bind failure does not undo the earlier checkpoint/transaction. [Sources: Bridge](../../src/agent/services-bridge.js), [Task Service](../../src/task/task-service.js).
+For `task_create followed by task_take`, Bridge first saves `execution_progress(kind=checkpoint)`, using supplied Progress or defaults that record registration as the next step. Task Service then registers the new Task, ends the old Execution and takes the new one transactionally. Afterwards Bridge asks Runtime to detach the old Execution, records work evidence, releases its old local take and binds the new take. The database transition and physical actions are separate failure boundaries; a later bind failure does not undo the earlier checkpoint/transaction. [Sources: Bridge](../../src/agent/services-bridge.js), [Task Service](../../src/task/task-service.js).
 
 ### 5.4 Bridge callbacks actually installed by the benchmark
 
@@ -166,17 +166,17 @@ The Bridge is reusable infrastructure: defining an optional callback does not me
 
 | Callback | Benchmark behavior |
 |---|---|
-| `onClaimAccepted` | Supplied as an empty async callback; no additional admission rule or model message |
-| `onClaim` | Stores the take, assigns the Core, binds the existing Session with no initial prompt, starts same-Session continuation after settlement and records Workspace/take latency evidence |
+| `onTakeAccepted` | Supplied as an empty async callback; no additional admission rule or model message |
+| `onTake` | Stores the take, assigns the Core, binds the existing Session with no initial prompt, starts same-Session continuation after settlement and records Workspace/take latency evidence |
 | `onSchedulerStatus` | Returns current Core/WAITING counts, available project Task summaries and current binding; it does not select or take work |
 | `onRelease` | Records release latency/state, clears the matching Core binding while retaining the identity Session, projects the released Core as IDLE and wakes identity loops. Missing lineage is only a capacity-release observation. |
 | `onWorkspaceWrite` | Records revision/file/hash metadata and a Workspace work unit |
-| `onWorkUnit` | Records read/consumption, creation, publication/link, lifecycle and direct Judge submission evidence; selected operations wake identity loops. A residual `request_wait` accounting branch is not an exposed benchmark wait path. These observations do not establish scientific usefulness. |
+| `onWorkUnit` | Records read/consumption, creation, publication/link, lifecycle and direct Judge submission evidence; selected operations wake identity loops. A residual `wait_for` accounting branch is not an exposed benchmark wait path. These observations do not establish scientific usefulness. |
 | `onError` | Records bounded tool-error classification. Contract errors are marked recoverable; the special `CONFLICT` accounting branch checks the legacy operation name `take`, not `task_take`. |
 | `onTaskCreate` | Not supplied; Bridge still performs its own capability admission and Task Service still applies the Task contract |
 | Judge submission | No runner relay callback is installed. The Bridge performs source resolution/attestation and Judge owns checking/persistence; `onWorkUnit` records the returned check, source path and verdict. Task completion remains an explicit separate operation. |
 
-The generic Bridge calls `onWorkUnit` for `task_register` and `task_take`, but the runner callback has no specific accounting branch for either operation. Its `task_created`/dynamic-Task event branch checks only `task_create`. Durable Task state and Task-event wakeups therefore matter when reconstructing register-created work; the callback counters alone are not a complete event history. [Sources: callback installation](../../src/benchmark/putnam-runner.js), [Bridge invocation](../../src/agent/services-bridge.js); see [06](06-observability-experiments.md) for evidence and counting limits.
+The generic Bridge calls `onWorkUnit` for `task_create` and `task_take`, but the runner callback has no specific accounting branch for either operation. Its `task_created`/dynamic-Task event branch checks only `task_create`. Durable Task state and Task-event wakeups therefore matter when reconstructing newly created work; the callback counters alone are not a complete event history. [Sources: callback installation](../../src/benchmark/putnam-runner.js), [Bridge invocation](../../src/agent/services-bridge.js); see [06](06-observability-experiments.md) for evidence and counting limits.
 
 ## 6. What is observable
 

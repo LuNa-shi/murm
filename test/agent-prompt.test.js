@@ -50,7 +50,7 @@ test('all prompt aliases describe one reusable identity contract', () => {
     assert.match(prompt, /task_take/);
     assert.match(prompt, /Session/);
   assert.match(prompt, /cannot take or select/);
-    assert.doesNotMatch(prompt, /Selection Agent|Selection Session|task\.claim/i);
+    assert.doesNotMatch(prompt, /Selection Agent|Selection Session/i);
   }
 });
 

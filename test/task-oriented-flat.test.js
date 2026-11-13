@@ -107,7 +107,7 @@ test('canonical task supply seam proposes work and takes it', () => {
   service.close();
 });
 
-test('every Mission Task is exclusive and the Mission has no shared claim entry', () => {
+test('every Mission Task is exclusive and the Mission has no shared take entry', () => {
   const { service } = env();
   const mission = createMission(service, 'mission:shared-entry');
   const shared = createTask(service, mission.mission_id, 'task:shared-entry');
@@ -193,7 +193,7 @@ test('Mission Task creation carries a bounded dynamic contract and deduplicates 
 
 test('only depends_on gates the flat eligible view and cycles are rejected', () => {
   const { service } = env();
-  const mission = createMission(service, 'mission:claimability');
+  const mission = createMission(service, 'mission:takeability');
   const prerequisite = createTask(service, mission.mission_id, 'task:prerequisite');
   const dependent = createTask(service, mission.mission_id, 'task:dependent', { depends_on: [prerequisite.task_id] });
   const spawnedOnly = createTask(service, mission.mission_id, 'task:spawned-only', { spawned_from: prerequisite.task_id });

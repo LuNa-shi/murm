@@ -48,6 +48,6 @@ test('Pi extension registers only the deterministic role profile', async () => {
   assert.deepEqual(names, profile.capabilities.map((tool) => `swarmenv_${tool.tool_name ?? tool.name}`));
   assert.ok(names.length > 0);
   assert.ok(!names.includes('swarmenv_call'));
-  assert.ok(!names.includes('swarmenv_task_claim'));
+  assert.ok(names.includes('swarmenv_task_take'));
   assert.ok(names.includes('swarmenv_task_create') || names.includes('swarmenv_task_create_task'));
 });

@@ -134,11 +134,11 @@ Sandbox preflight and provider reconciliation run before the experiment row is r
 
 ## 6. The active outer loop
 
-Each identity loop owns discovery, Agent choice, take/bind and waiting for its Execution to release. The runner's `onClaim` callback binds the existing Pi Session with no additional initial prompt. A continuation promise waits for settling, then keeps sending bound turns while that Execution is `RUNNING`. `turnInFlight`, `boundTurnPromise`, current Session identity and release checks prevent an ordinary repair tick from opening a second overlapping turn.
+Each identity loop owns discovery, Agent choice, take/bind and waiting for its Execution to release. The runner's `onTake` callback binds the existing Pi Session with no additional initial prompt. A continuation promise waits for settling, then keeps sending bound turns while that Execution is `RUNNING`. `turnInFlight`, `boundTurnPromise`, current Session identity and release checks prevent an ordinary repair tick from opening a second overlapping turn.
 
 Task mutations notify subscribers after commit. The Controller reconciles readiness and signals idle identities; the outer loop wakes on that event or its five-second fallback. It samples available Tasks and physical idle lanes, releases terminal Executions, reconciles Controller state and starts an eligible bound follow-up. It does not choose a proof route. After `solvedAt` is recorded, the loop stops scheduling new ordinary bound work; without `stopOnSolved`, the enclosing timebox can still continue.
 
-That solved-time guard belongs to the outer repair loop. Already-running `onClaim` continuations and identity-loop supervisors are not cancelled merely by assigning `solvedAt`; their own Execution-release/stop conditions still apply until finalization. Setting `stopOnSolved:true` causes the outer loop to leave and run cleanup rather than serving as a separate instantaneous cancellation broadcast.
+That solved-time guard belongs to the outer repair loop. Already-running `onTake` continuations and identity-loop supervisors are not cancelled merely by assigning `solvedAt`; their own Execution-release/stop conditions still apply until finalization. Setting `stopOnSolved:true` causes the outer loop to leave and run cleanup rather than serving as a separate instantaneous cancellation broadcast.
 
 Heartbeat runs only for a durable `RUNNING` Execution with an active Runtime process. It avoids changing versions during `CREATED`→`RUNNING` preparation. Watchdog and Execution-timeout sweeps are separately serialized so a slow sweep cannot overlap itself. Their errors are recorded, and recovery/timeouts can wake identities. [02](02-execution.md) describes which conditions trigger fencing, restart and continuation.
 

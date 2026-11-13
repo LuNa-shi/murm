@@ -28,14 +28,14 @@ management authority.
 The current Agent-facing operations are principally:
 
 - `task_list`, `task_view`, `task_status` for authoritative work state;
-- `task_register` / `task_create` for a genuinely independent responsibility;
+- `task_create` for a genuinely independent responsibility, followed by `task_take` in a fresh Execution;
 - `task_take` for active identity/Core acquisition;
 - `task_feedback` for one Execution's decision on a notification;
 - `execution_progress` for checkpoint or handoff;
 - `task_finish`, `task_finish(outcome=blocked)`, `task_finish(outcome=cancelled)` at the appropriate contract
   boundary.
 
-`task_register` with `take: true` **attempts** a Runtime checkpoint of the current Execution before a same-lane switch. The old Execution is fenced and the new Task claimed atomically within a **Task Service database transaction**; the preceding Workspace/Progress save is separate and may return `save_failed`, which does not by itself abort the switch. Do not take an all-or-nothing disk + database save. Registration without `take` leaves the Task for others; a direct `task_take` acquires an existing eligible Task. See `src/agent/services-bridge.js` and `src/task/task-service.js`.
+A Task proposal does not switch the current Execution. The proposing Bot remains on its current Task boundary, and a fresh Bot later calls `task_take` for the new eligible Task. See `src/agent/services-bridge.js` and `src/task/task-service.js`.
 
 In the **flat Mission Task registration path** no fixed numerical Task-count admission quota is enforced; distinct responsibility and key/idempotency checks still apply. Task counts, claims, handoffs and readiness intervals are observation metrics, not proof of useful work. Core/model capacity, total budget, tool timeouts and the single Execution timebox remain runtime limits.
 

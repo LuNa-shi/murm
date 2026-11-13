@@ -120,40 +120,12 @@ function waitDependencyIds(condition) {
     return condition.parent_task_id ? [condition.parent_task_id] : [];
   }
   if (condition.type === 'check_result_arrived') {
-    return [condition.check_request_key ?? condition.request_key ?? condition.candidate_material_id].filter(Boolean);
+    return [condition.check_request_key ?? condition.request_key ?? condition.workspace_source_id].filter(Boolean);
   }
   return [];
 }
 
-function lifecycleEvents(taskService) {
-  const rows = taskService.db.prepare("SELECT operation_id, operation, result_json, created_at FROM operations WHERE operation IN ('request_wait', 'wake_execution', 'resume_execution', 'block_task', 'block_task_semantic') ORDER BY created_at, operation_id").all();
-  return rows.map((row) => {
-    let result = null;
-    try { result = JSON.parse(row.result_json); } catch { /* sanitized event remains available without result details */ }
-    const execution = result?.execution ?? null;
-    const condition = execution?.wait_condition ?? null;
-    let dependencyRequirement = result?.dependency?.requirement ?? null;
-    if (!dependencyRequirement && typeof result?.dependency?.requirement_json === 'string') {
-      try { dependencyRequirement = JSON.parse(result.dependency.requirement_json); } catch { dependencyRequirement = null; }
-    }
-    const dependencyCondition = dependencyRequirement?.checker_health ? { type: 'checker_health' } : null;
-    const dependencyIds = waitDependencyIds(condition).concat(result?.dependency?.dependency_id ?? []);
-    const prerequisiteTaskId = result?.dependency?.prerequisite_task_id ?? result?.dependency?.task_id ?? null;
-    if (prerequisiteTaskId && !dependencyIds.includes(prerequisiteTaskId)) dependencyIds.push(prerequisiteTaskId);
-    return {
-      operation_id: row.operation_id,
-      // Keep the report's lifecycle vocabulary stable across the retired
-      // execution_block path and the modern semantic Task block alias.
-      operation: row.operation === 'block_task_semantic' ? 'block_task' : row.operation,
-      created_at: row.created_at,
-      task_id: execution?.task_id ?? null,
-      execution_id: execution?.execution_id ?? null,
-      dependency_kind: result?.dependency?.dependency_kind ?? null,
-      wait_condition_type: condition?.type ?? dependencyCondition?.type ?? null,
-      dependency_ids: dependencyIds,
-    };
-  });
-}
+function lifecycleEvents() { return []; }
 
 function taskLifecycleEvents(taskService) {
   const rows = taskService.db.prepare('SELECT operation_id, operation, result_json, created_at FROM operations ORDER BY created_at, operation_id').all();
@@ -224,7 +196,7 @@ function executionNarratives(state, taskTree, materials) {
         core_id: execution.core_id,
         workspace_ref: execution.workspace_ref,
         workspace_revision: execution.workspace_revision,
-        candidate_material_id: execution.candidate_material_id,
+        workspace_source_id: execution.workspace_source_id,
         terminal_reason: safeLifecycleReason(execution.terminal_reason),
         block_reason: task.state === 'BLOCKED' ? safeLifecycleReason(task.block_reason) : null,
         wait_condition_type: execution.wait_condition?.type ?? null,
@@ -749,7 +721,7 @@ async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false }
     bootstrap
       ? 'The Mission has no Task yet. Read the public Mission Workspace and Mission status, propose one valuable Task with task_create, then call task_take exactly once for the returned task_id. Continue the Task in this Session after it succeeds.'
       : 'Inspect the bounded Task view below and call task_take exactly once for one listed task_id. The task_take result binds this same Core lane to the Task; after it succeeds, continue the Task in this Session.',
-    ...(bootstrap ? [] : ['If the list is empty, end this turn without claiming work.']),
+    ...(bootstrap ? [] : ['If the list is empty, end this turn without taking work.']),
     `Bounded Task view (complete candidate set):\n${JSON.stringify(selectionView(candidates))}`,
   ].join('\n\n');
   try {
@@ -868,7 +840,7 @@ function sanitizedCheck(result, material) {
   const resultClass = result.result_class ?? evidence.result_class ?? 'unassessed';
   const mathematicalOutcome = evidence.mathematical_outcome ?? (resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed');
   return {
-    candidate_material_id: material.material_id,
+    workspace_source_id: material.material_id,
     material_hash: material.content_hash,
     verdict: result.verdict,
     mathematical_outcome: mathematicalOutcome,
@@ -1214,22 +1186,21 @@ function projectReport(state, startedAt, deadline) {
   const workspaceBoundaryViolation = takenExecutions.some((execution) => !execution
     || (!execution.workspace_ref && !preparationFailure(execution)))
     || new Set(workspaceRefs).size !== workspaceRefs.length;
-  const candidateBoundaryViolation = takeHistory.some((take) => {
+  const workspaceSourceBoundaryViolation = takeHistory.some((take) => {
     const execution = state.taskService.getExecution(take.execution_id);
-    if (!execution?.candidate_material_id) return false;
-    const material = state.contextService.getMaterial(execution.candidate_material_id);
+    if (!execution?.workspace_source_id) return false;
+    const material = state.contextService.getMaterial(execution.workspace_source_id);
     return !material || material.source_task !== take.task_id || material.source_execution !== take.execution_id;
   });
   const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
-    candidateBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
+    workspaceSourceBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
   const childTaskCount = taskTree.filter((task) => task.task_id !== state.rootTaskId).length;
   const decompositionAvailable = childTaskCount > 0;
   const lifecycle = lifecycleEvents(state.taskService);
   const taskLifecycle = taskLifecycleEvents(state.taskService);
   const notifications = state.taskService.listNotifications?.({ missionId: state.missionId }) ?? [];
   const narratives = executionNarratives(state, taskTree, materials);
-  const invalidWaitAttemptCount = cores.reduce((count, core) => count + (core.toolErrors ?? []).filter((error) =>
-    error.operation === 'request_wait' && ['INVALID_CONTRACT', 'NOT_ALLOWED', 'FENCED'].includes(error.code)).length, 0);
+  const invalidWaitAttemptCount = 0;
   const childTakeCount = takeHistory.filter((take) => take.task_id !== state.rootTaskId).length;
   const rootTakeCount = takeHistory.filter((take) => take.task_id === state.rootTaskId).length;
   const executionTakeCounts = new Map();
@@ -1237,9 +1208,9 @@ function projectReport(state, startedAt, deadline) {
   const resumedExecutionCount = [...executionTakeCounts.values()].filter((count) => count > 1).length;
   const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
   const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
-  const candidateCount = cores.reduce((count, core) => count + core.checks.length, 0);
+  const checkCount = cores.reduce((count, core) => count + core.checks.length, 0);
   const structure = structureEvidence(state.taskService, taskTree, state.cores, state.parallelMode);
-  const madeProgress = childTaskCount > 0 || workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || candidateCount > 0;
+  const madeProgress = childTaskCount > 0 || workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || checkCount > 0;
   const parallelism = state.parallelism.snapshot({ endedAt });
   const checkerPreflights = state.judgeService.listCheckerPreflights().map((row) => ({
     preflight_key: row.preflight_key,
@@ -1363,7 +1334,7 @@ function projectReport(state, startedAt, deadline) {
         child_task_count: childTaskCount,
         workspace_write_count: workspaceWriteCount,
         meaningful_material_count: meaningfulMaterialCount,
-        candidate_check_count: candidateCount,
+        candidate_check_count: checkCount,
       },
       solved: state.solvedAt !== null && !invalid && madeProgress,
       solved_by_core: invalid || !madeProgress ? null : state.solvedBy,
@@ -1397,7 +1368,7 @@ function projectReport(state, startedAt, deadline) {
       })),
       notification_count: notifications.length,
       project_material_count: materials.filter((material) => material.source_task === state.rootTaskId).length,
-      candidate_count: cores.reduce((count, core) => count + core.checks.length, 0),
+      check_count: cores.reduce((count, core) => count + core.checks.length, 0),
       ended_early: state.stopOnSolved && state.solvedAt !== null,
       deadline_reached: Date.now() >= deadline,
       cleanup_elapsed_ms: state.cleanupElapsedMs,
@@ -1461,11 +1432,11 @@ function projectReport(state, startedAt, deadline) {
       child_take_count: childTakeCount,
       root_take_count: rootTakeCount,
       resumed_execution_count: resumedExecutionCount,
-      wait_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_wait'").get().count,
-      wake_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'wake_execution'").get().count,
+      wait_count: 0,
+      wake_count: 0,
       accept_count: 0,
       rework_count: 0,
-      resume_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'resume_execution'").get().count,
+      resume_count: 0,
       checker_preflights: checkerPreflights,
       checker_infrastructure_failure_count: cores.reduce((count, core) => count + core.checks.filter((check) => check.result_class === 'infrastructure_failure').length, 0),
       checker_source_failure_count: cores.reduce((count, core) => count + core.checks.filter((check) => check.result_class === 'source_failure').length, 0),
@@ -1484,7 +1455,7 @@ function projectReport(state, startedAt, deadline) {
         ...(inputMaterialViolation ? ['input_material_violation'] : []),
       ...(workspaceViolation ? ['workspace_violation'] : []),
         ...(workspaceBoundaryViolation ? ['workspace_boundary_violation'] : []),
-        ...(candidateBoundaryViolation ? ['candidate_provenance_violation'] : []),
+        ...(workspaceSourceBoundaryViolation ? ['candidate_provenance_violation'] : []),
         ...(cores.some((core) => core.cheating_flags.length > 0) ? ['forbidden_placeholder'] : []),
       ],
       candidate_materials: cores.flatMap((core) => core.checks),
@@ -2480,7 +2451,7 @@ async function createProjectState(problem, config, options) {
         } else if (operation === 'workspace_check') {
           const check = result?.check_result ?? result?.checkResult ?? result ?? {};
           const candidateMaterial = {
-            material_id: payload?.candidate_material_id ?? check.candidate_material_id ?? null,
+            material_id: payload?.workspace_source_id ?? check.workspace_source_id ?? null,
             content_hash: check.content_hash ?? null,
           };
           core.checks.push({
@@ -2491,11 +2462,11 @@ async function createProjectState(problem, config, options) {
             core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: check.material_hash ?? null });
           }
           core.observe({
-            source: 'judge-service', kind: 'candidate_submitted', visibility: 'operator',
+            source: 'judge-service', kind: 'workspace_checked', visibility: 'operator',
             taskId, executionId, coreId: `core-${core.index}`,
             payload: {
               candidate_path: payload?.path ?? result?.path ?? null,
-              candidate_material_id: payload?.candidate_material_id ?? result?.candidate_material_id ?? null,
+              workspace_source_id: payload?.workspace_source_id ?? result?.workspace_source_id ?? null,
               check_result_id: check.check_result_id ?? result?.check_result_id ?? null,
               verdict: check.verdict ?? result?.verdict ?? null,
             },
@@ -2504,18 +2475,7 @@ async function createProjectState(problem, config, options) {
             task_id: taskId,
             execution_id: executionId,
             core: core.index,
-            progress_kind: 'candidate_submission',
-          });
-        } else if (operation === 'request_wait') {
-          const waitLatency = core.latencyByExecution.get(executionId);
-          if (waitLatency && !waitLatency.wait_requested_at) {
-            waitLatency.wait_requested_at = new Date(Date.now()).toISOString();
-          }
-          core.parallelism.recordWorkUnit({
-            task_id: taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'coordination',
+            progress_kind: 'workspace_check',
           });
         }
       },
@@ -2735,7 +2695,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       allowEmptyDiscovery: core.index === 1,
       bootstrapPrompt: `Mission ${state.mission.mission_id} starts with zero Tasks. Public Workspace is ${state.publicWorkspace.workspace_id} at revision 0.1. Read the public Workspace and task_status once. Your next tool call after those reads must be swarmenv_task_create. Do not call swarmenv_task_take until task_create has returned the new task_id. Then call swarmenv_task_take exactly once for that returned task_id. Create one independent proof Task for ${state.problem.id}. The proposal must use mission_id ${state.mission.mission_id}, summary "Prove ${state.problem.id} with an independently checked candidate and a clear boundary from other Mission work.", goal "Prove ${state.problem.id}", expected_output "A verified Lean proof for the locked PutnamBench problem", acceptance_conditions {"project":"${state.problem.id}","source_hash":"${state.problem.source_hash}"}, completion_contract {"normal_flow":true,"required_materials":[{"kinds":["fact","experience","conjecture","artifact","failure"],"scope":"proof_relevant","min_count":1,"requires_consumption":true,"cross_task":true,"action":"integration"}],"final_candidate":true,"required_candidate":{"kind":"artifact","scope":"proof_relevant"},"required_check":{"checker_ref":"lean","checker_version":"${state.fixtureManifest.checker_version}","environment_ref":"${state.fixtureManifest.environment_ref}"}}, and workspace {"project":"${state.problem.id}","problem_file":"${state.problem.problem_file}","source_hash":"${state.problem.source_hash}","workspace_id":"${state.publicWorkspace.workspace_id}"}.`,
       takeSelectedTask: async (selectedTaskId, context) => {
-        // The old selection transport may already have claimed the Task. Reuse that
+        // The old selection transport may already have taken the Task. Reuse that
         // durable result rather than creating a second Execution.
         if (core.takeResult?.task?.task_id === selectedTaskId) {
           return core.takeResult;
@@ -2809,7 +2769,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           execution_state: event.execution_state ?? null,
           changed: event.changed ?? null,
           reason: event.reason ?? null,
-          candidate_count: event.candidate_count ?? null,
+          check_count: event.check_count ?? null,
           task_ids: event.task_ids ?? null,
           timestamp: event.timestamp ?? Date.now(),
         };

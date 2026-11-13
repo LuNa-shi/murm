@@ -20,27 +20,27 @@ test('ObservabilityServer exposes the selected Execution Workspace files and rev
     mission_id: mission.mission_id, summary: 'Inspect the selected Workspace and record one bounded observation', task_type: 'research', goal: 'Inspect Workspace', expected_output: 'notes',
     acceptance_conditions: { workspace: 'test' }, owner_ref: 'owner:test', workspace: { project: 'test' },
   }, makeEnvelope({ operationId: 'task:observability-workspace', actorRef: 'owner:test' })).task;
-  const claimed = taskService.taskTake(task.task_id, { request_key: 'take-workspace', owner_ref: 'agent:test', workspace_mode: 'clean' }, makeEnvelope({ operationId: 'take-workspace', actorRef: 'agent:test', taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }));
+  const taken = taskService.taskTake(task.task_id, { request_key: 'take-workspace', owner_ref: 'agent:test', workspace_mode: 'clean' }, makeEnvelope({ operationId: 'take-workspace', actorRef: 'agent:test', taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }));
   const workspaceManager = new WorkspaceManager({ rootDir: join(root, 'workspaces') });
   const workspace = await workspaceManager.createWorkspace({
-    executionId: claimed.execution.execution_id,
-    fencingVersion: claimed.execution.fencing_version,
+    executionId: taken.execution.execution_id,
+    fencingVersion: taken.execution.fencing_version,
     task,
     workspaceManifest: {},
     inputSnapshotManifest: {},
   });
   await workspaceManager.saveWorkspaceRevision({
     workspaceRef: workspace.workspace_ref,
-    executionId: claimed.execution.execution_id,
-    fencingVersion: claimed.execution.fencing_version,
+    executionId: taken.execution.execution_id,
+    fencingVersion: taken.execution.fencing_version,
     files: { 'notes.md': 'observable' },
   });
   const observations = new ObservationStore(database);
   observations.registerExperiment({ experimentId: 'run-workspace', rootTaskId: task.task_id });
-  observations.append({ experimentId: 'run-workspace', source: 'runtime', kind: 'execution_assigned', coreId: 'core-1', taskId: task.task_id, executionId: claimed.execution.execution_id, payload: {} });
+  observations.append({ experimentId: 'run-workspace', source: 'runtime', kind: 'execution_assigned', coreId: 'core-1', taskId: task.task_id, executionId: taken.execution.execution_id, payload: {} });
   const server = new ObservabilityServer({ observationStore: observations, taskService, workspaceManager });
   const { url } = await server.start();
-  const result = await fetch(`${url}/api/executions/${claimed.execution.execution_id}/workspace?experiment_id=run-workspace`).then((response) => response.json());
+  const result = await fetch(`${url}/api/executions/${taken.execution.execution_id}/workspace?experiment_id=run-workspace`).then((response) => response.json());
   assert.equal(result.workspace.workspace_revision, 2);
   assert.ok(result.files.some((file) => file.path === 'notes.md'));
   assert.equal(result.revisions.length, 2);
