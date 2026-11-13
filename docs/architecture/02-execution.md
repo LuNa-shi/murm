@@ -12,7 +12,7 @@ Read [07 Run configuration](07-run-configuration.md) for deployment/runner compo
 |---|---|---|
 | Task Service | Durable admission, take, transition validation, dependency facts, version checks and replay | Research-value ranking |
 | IdentityTaskLoop | One Core's bounded discover/select/take/Runtime-handoff loop | It cannot bypass service-side admission |
-| TaskController | Reconcile dependency state and signal eligible idle loops | It never chooses or claims a Task; its snapshot records `claim_count: 0` |
+| TaskController | Reconcile dependency state and signal eligible idle loops | It never chooses or takes a Task; its snapshot records no take operation |
 | Scheduler | Start unbound Sessions when ready supply and free capacity justify it | The start request has a generic prompt/ready count, not a selected Task |
 | Runtime | Process binding, Workspace preparation, Session events, deadlines, recovery and release/fencing | Research decomposition and value ranking |
 | Benchmark Runner | Compose these objects, supply callbacks, run sweeps and finalize the run | It does not replace Task Service ownership checks |
@@ -70,8 +70,8 @@ One `runOnce` is serialized; concurrent calls share its promise.
 4. Give `takeTask` the frozen bounded view, Core ID, take prompt, reason and rescan count. The callback may return a Task ID or a complete `{task, execution}` take produced through the Bridge.
 5. `take_deferred` denotes an in-flight binding/handoff race and returns idle without a failed selection attempt. `take_failed` denotes a lost take race and follows bounded rescan.
 6. Reject a selected ID outside the view. A thrown selector error or invalid choice consumes its attempt budget; take conflicts do not.
-7. If not already claimed, call Task Service with this Core, owner `identity:<coreId>`, and a fresh key `<coreId>:<taskId>:<sequence>`. The sequence is initialized from persisted take keys so a later reclaim does not replay an old Execution.
-8. Hand the claimed Execution to Runtime. If Runtime supplies `waitForExecutionRelease`, wait for both live process ownership and durable `CREATED`/`RUNNING` state to end.
+7. If not already taken, call Task Service with this Core, owner `identity:<coreId>`, and a fresh key `<coreId>:<taskId>:<sequence>`. The sequence is initialized from persisted take keys so a later take does not replay an old Execution.
+8. Hand the taken Execution to Runtime. If Runtime supplies `waitForExecutionRelease`, wait for both live process ownership and durable `CREATED`/`RUNNING` state to end.
 9. Clear local pointers and return idle. A Runtime handoff error triggers an injected release or fence attempt (`runtime_handoff_failed` / `handoff_timeout`), records its result, then returns idle.
 
 Defaults are one conflict rescan, three selector failures before a 30-second cooldown, a 5-second idle backoff, 25-ms release polling and an infinite handoff wait deadline. Callers can override these or inject a custom waiter.
@@ -100,7 +100,7 @@ for imported old records and is not used to create a Mission Task.
 
 Scheduler observes ready-set signature/count and free Cores, orders Cores by fewer startup attempts, earlier dispatch and Core key, then starts at most the ready Task count. Each start request carries a generic prompt and count, not an assignment.
 
-Defaults are three startup attempts, 1-second retry backoff and 1-second dispatch backoff. A ready-signature change resets attempts/backoff/exhaustion; a real observed Task ownership cycle clears successful-signature suppression. A closed generic Session without ownership can receive a bounded replacement. A successful unbound turn that never claims cannot cause infinite relaunches on an unchanged signature. Startup failures are classified as timeout, provider failure or other startup failure.
+Defaults are three startup attempts, 1-second retry backoff and 1-second dispatch backoff. A ready-signature change resets attempts/backoff/exhaustion; a real observed Task ownership cycle clears successful-signature suppression. A closed generic Session without ownership can receive a bounded replacement. A successful unbound turn that never takes a Task cannot cause infinite relaunches on an unchanged signature. Startup failures are classified as timeout, provider failure or other startup failure.
 
 ## 4. Durable Execution record
 
@@ -112,7 +112,7 @@ Defaults are three startup attempts, 1-second retry backoff and 1-second dispatc
 | Lease | `lease_expires_at`, `heartbeat_at`; default take/heartbeat lease is 30 seconds without caller override |
 | Input/prompt | `agent_prompt`, `workspace_manifest_ref`, `input_material_refs`, `input_snapshot_hash`; returned `workspace_snapshot_hash` aliases the last field |
 | Workspace selection | `mode` (`resume` default or `clean`), selected revision, source Execution and source Workspace |
-| Saved output | Workspace path/revision/content hash, checkpoint path/hash, current candidate Material ID; initially null |
+| Saved output | Workspace path/revision/content hash, checkpoint path/hash, current Material ID; initially null |
 | Timebox | Start time, reminder deadline, execution deadline, reminder-sent time; set on start, not take |
 | Continuation | Steer Material references, wait condition/deadline/token, handoff metadata, terminal reason |
 | Audit | Creation/update timestamps |

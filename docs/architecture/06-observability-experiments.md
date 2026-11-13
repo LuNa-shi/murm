@@ -169,7 +169,7 @@ Sources: [analysis entry](../../scripts/analyze-experiment.mjs), [analysis engin
 | Question | Evidence needed |
 |---|---|
 | What did this Agent actually receive? | Exact source/version/profile plus private prompt-send/RPC records for that Session. The dashboard's initial-prompt card and report hash are insufficient on their own. |
-| Was a Task really claimed/completed? | Task/Execution rows, versions/fences and the successful domain result; UI event text is secondary. |
+| Was a Task really taken/completed? | Task/Execution rows, versions/fences and the successful domain result; UI event text is secondary. |
 | Did a successor reuse prior work? | Material producer/link/consumer identity, saved Workspace/Git lineage, subsequent concrete action and a semantic assessment. |
 | Did Judge check the right candidate/environment? | Workspace artifact source/hash/revision, target Task/spec, input snapshot and locked fixture/preflight identity, result/application facts. |
 | Was a failure mathematical or operational? | Checker process/result class, diagnostic, retry/health state and whether a source-level result exists. |

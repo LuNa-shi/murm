@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS material_consumptions (
   material_id TEXT NOT NULL REFERENCES materials(material_id),
   reader_task TEXT NOT NULL,
   reader_execution TEXT NOT NULL,
-  action TEXT NOT NULL CHECK (action IN ('route', 'task', 'candidate', 'integration')),
+  action TEXT NOT NULL CHECK (action IN ('route', 'task', 'workspace', 'integration')),
   action_ref TEXT,
   created_at TEXT NOT NULL,
   PRIMARY KEY (operation_id, material_id)

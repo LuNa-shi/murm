@@ -53,7 +53,7 @@ const COMMAND_HELP = Object.freeze({
     finish: 'Record the result of a durable Mission submission.',
   },
   judge: {
-    check: 'Submit a Candidate for checking. Use --input or --stdin for the candidate contract.',
+    check: 'Check a Workspace source file. Use --input or --stdin for the Workspace source contract.',
     result: 'Read one CheckResult. Use --check-result-id or --request-key; request-key lookup survives a lost submit response.',
   },
 });
@@ -237,7 +237,7 @@ export async function runSwarmCli(argv = process.argv.slice(2), { stdout = proce
 }
 
 // A checker can complete its request successfully while deciding that the
-// submitted candidate is invalid.  Keep that business verdict distinct from
+// submitted Workspace source is invalid. Keep that business verdict distinct from
 // transport/service failure (1) and CLI/contract failure (2).
 function resultExitCode(result) {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return 0;

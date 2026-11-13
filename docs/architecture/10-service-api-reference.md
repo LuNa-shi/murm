@@ -30,12 +30,12 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `a1b52d37d8091e06077bf5d6038562926569287e34e691c68d6fb78edf2142be` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `b7b63709a329a57b08dbef10a125d32e044c42e38fbd0b527ebf3a938f6793d7` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `837947ecc352474da371716668ab641a939bc672a6d504b5c29ebabb7d00feb1` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `e5701be9c26d3171cacf77ccdafe7d861923cd7f30d4b71b194328ebd3bafb5d` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `6d4a734115262062fec13d613e0493c26575d2a8efba7d1217e0e45bd8390d91` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `90327a20cc8f5b13f05cf2e7bf419ce0020757228c14f8181a32e2f98e381c5d` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `bf739b19dcf6ceacc501873e036b28fc7d78ce87f949281a8d9ecf5319c0368c` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `ea277bf55bc662bd147ac92baa61548127aa20107783a0de2738b79a74e1ffc0` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `d8171d42dfd29aab47b412558ca174afa876bc104b4f2d2aea3a9b2fc95dd3fc` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
@@ -268,7 +268,7 @@ Exact normalized built-in manifest metadata:
   "service_id": "task",
   "id": "task",
   "title": "Task Service",
-  "purpose": "Durable Task goals, claims, structure, and completion evidence.",
+  "purpose": "Durable Task goals, takes, structure, and completion evidence.",
   "provider_version": "builtin-1",
   "contract_version": "1",
   "endpoint": {
@@ -281,7 +281,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "cf6e019f8d0f375047a7ade973e5143f73c6b361eb2191267a9c8057f1ac7d1e"
+  "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37"
 }
 ```
 
@@ -342,7 +342,7 @@ Read the authoritative Mission, Task counts, eligible work, and observation time
   "help": {
     "when": "Read the authoritative Mission, Task counts, eligible work, and observation timestamp.",
     "ref": "service://task/task_status",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Read the authoritative Mission, Task counts, eligible work, and observation timestamp.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the authoritative Mission, Task counts, eligible work, and observation timestamp.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_status",
@@ -405,7 +405,7 @@ Take an existing Mission or ordinary Task using the caller identity and Core lan
   "help": {
     "when": "Take an existing Mission or ordinary Task using the caller identity and Core lane.",
     "ref": "service://task/task_take",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Take an existing Mission or ordinary Task using the caller identity and Core lane.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Take an existing Mission or ordinary Task using the caller identity and Core lane.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_take",
@@ -470,7 +470,7 @@ Record this Execution's durable decision and action for delivered feedback; anot
   "help": {
     "when": "Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.",
     "ref": "service://task/task_feedback",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_feedback",
@@ -550,7 +550,7 @@ Save a bounded Progress Material and either continue the current Execution or ha
   "help": {
     "when": "Save a bounded Progress Material and either continue the current Execution or hand it off.",
     "ref": "service://task/execution_progress",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Save a bounded Progress Material and either continue the current Execution or hand it off.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Save a bounded Progress Material and either continue the current Execution or hand it off.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/execution_progress",
@@ -612,7 +612,7 @@ List Mission Tasks and search their short summaries before proposing new work.
   "help": {
     "when": "List Mission Tasks and search their short summaries before proposing new work.",
     "ref": "service://task/task_list",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: List Mission Tasks and search their short summaries before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: List Mission Tasks and search their short summaries before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_list",
@@ -663,7 +663,7 @@ Read one Task, its two relations, state, current Execution, and linked Materials
   "help": {
     "when": "Read one Task, its two relations, state, current Execution, and linked Materials.",
     "ref": "service://task/task_view",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Read one Task, its two relations, state, current Execution, and linked Materials.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read one Task, its two relations, state, current Execution, and linked Materials.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_view",
@@ -786,7 +786,7 @@ Create one substantial ordinary Task with a summary, expected output, acceptance
   "help": {
     "when": "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.",
     "ref": "service://task/task_create",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_create",
@@ -857,7 +857,7 @@ Link an immutable Material to a Task with an input, response, handoff, or experi
   "help": {
     "when": "Link an immutable Material to a Task with an input, response, handoff, or experience role.",
     "ref": "service://task/task_link_material",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Link an immutable Material to a Task with an input, response, handoff, or experience role.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Link an immutable Material to a Task with an input, response, handoff, or experience role.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_link_material",
@@ -944,7 +944,7 @@ Finish the current Task with one explicit outcome: done, incomplete, blocked, or
   "help": {
     "when": "Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.",
     "ref": "service://task/task_finish",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_finish",
@@ -1001,7 +1001,7 @@ List files in the immutable Mission Workspace revision before a Task is taken.
   "help": {
     "when": "List files in the immutable Mission Workspace revision before a Task is taken.",
     "ref": "service://task/workspace_public_files",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: List files in the immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: List files in the immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_public_files",
@@ -1064,7 +1064,7 @@ Read one file from an immutable Mission Workspace revision before a Task is take
   "help": {
     "when": "Read one file from an immutable Mission Workspace revision before a Task is taken.",
     "ref": "service://task/workspace_public_read",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Read one file from an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read one file from an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_public_read",
@@ -1130,7 +1130,7 @@ Search text in an immutable Mission Workspace revision before a Task is taken.
   "help": {
     "when": "Search text in an immutable Mission Workspace revision before a Task is taken.",
     "ref": "service://task/workspace_public_search",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Search text in an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Search text in an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_public_search",
@@ -1191,7 +1191,7 @@ Materialize a selected public Mission Workspace revision into the current Execut
   "help": {
     "when": "Materialize a selected public Mission Workspace revision into the current Execution directory.",
     "ref": "service://task/workspace_public_apply",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Materialize a selected public Mission Workspace revision into the current Execution directory.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Materialize a selected public Mission Workspace revision into the current Execution directory.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_public_apply",
@@ -1256,7 +1256,7 @@ Save a complete public Mission Workspace file tree as an immutable revision with
   "help": {
     "when": "Save a complete public Mission Workspace file tree as an immutable revision without advancing main.",
     "ref": "service://task/workspace_save",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Save a complete public Mission Workspace file tree as an immutable revision without advancing main.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Save a complete public Mission Workspace file tree as an immutable revision without advancing main.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_save",
@@ -1318,7 +1318,7 @@ Conditionally merge one complete public Workspace revision into main after confl
   "help": {
     "when": "Conditionally merge one complete public Workspace revision into main after conflict and check validation.",
     "ref": "service://task/workspace_merge",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Conditionally merge one complete public Workspace revision into main after conflict and check validation.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Conditionally merge one complete public Workspace revision into main after conflict and check validation.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_merge",
@@ -1405,7 +1405,7 @@ Freeze the selected Workspace main revision and immutable Material/checker input
   "help": {
     "when": "Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.",
     "ref": "service://task/mission_submit",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/mission_submit",
@@ -1459,7 +1459,7 @@ Read the durable Mission submission state and its immutable acceptance snapshot.
   "help": {
     "when": "Read the durable Mission submission state and its immutable acceptance snapshot.",
     "ref": "service://task/mission_submission_get",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Read the durable Mission submission state and its immutable acceptance snapshot.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the durable Mission submission state and its immutable acceptance snapshot.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/mission_submission_get",
@@ -1490,7 +1490,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "ba3d09a5fb7c784fae88a886b2a0c59df05a89f61c5185223255c2ef03fca729"
+  "manifest_hash": "f773f88432bfed97efcae390c55a002e54a33596857cf525047d76dd47d349e5"
 }
 ```
 
@@ -1543,13 +1543,13 @@ Read immutable shared Materials published by other Executions.
 
 #### context.context_consume
 
-Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.
+Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.
 
 ```json
 {
   "name": "context_consume",
   "operation": "consume_materials",
-  "description": "Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.",
+  "description": "Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -1571,7 +1571,7 @@ Record which bounded shared Material IDs this Execution used for a route, task, 
         "enum": [
           "route",
           "task",
-          "candidate",
+          "workspace",
           "integration"
         ]
       },
@@ -1607,9 +1607,9 @@ Record which bounded shared Material IDs this Execution used for a route, task, 
   "requires_binding": false,
   "scope": "execution-write",
   "help": {
-    "when": "Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.",
+    "when": "Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.",
     "ref": "service://context/consume_materials",
-    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/consume_materials",
@@ -1916,7 +1916,7 @@ Exact normalized built-in manifest metadata:
   "service_id": "judge",
   "id": "judge",
   "title": "Judge Service",
-  "purpose": "Candidate checking and structured CheckResults.",
+  "purpose": "Workspace source checking and structured CheckResults.",
   "provider_version": "builtin-1",
   "contract_version": "1",
   "endpoint": {
@@ -1929,7 +1929,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "fec332072a6192a5fa8b98a42a052aa2dc435d40c6d9d2e1b8e118d1a1f48213"
+  "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe"
 }
 ```
 
@@ -2000,7 +2000,7 @@ Check a Workspace file reference against the configured checker and return a dur
   "help": {
     "when": "Check a Workspace file reference against the configured checker and return a durable CheckResult.",
     "ref": "service://judge/workspace_check",
-    "text": "Purpose: Candidate checking and structured CheckResults.\nUse when: Check a Workspace file reference against the configured checker and return a durable CheckResult.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Check a Workspace file reference against the configured checker and return a durable CheckResult.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_check",
@@ -2054,7 +2054,7 @@ Read a Judge CheckResult, checker process status, result class, retryability, an
   "help": {
     "when": "Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.",
     "ref": "service://judge/get_check_result",
-    "text": "Purpose: Candidate checking and structured CheckResults.\nUse when: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/get_check_result",

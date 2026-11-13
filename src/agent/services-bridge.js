@@ -183,7 +183,7 @@ export class ServicesBridge {
     this.token = randomUUID();
     this.server = null;
     this.address = null;
-    // Candidate feedback is returned synchronously. A normal-flow checker
+    // Workspace source feedback is returned synchronously. A normal-flow checker
     // failure may then stage a typed Task block, which is applied only after
     // the HTTP response has been handed to the Agent.
     this.deferredLifecycle = null;
@@ -204,7 +204,7 @@ export class ServicesBridge {
     if (!result?.task?.task_id || !result?.execution?.execution_id) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bindTake requires a Task and Execution result');
     }
-    if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'bridge already has a claimed binding');
+    if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'bridge already has a taken binding');
     this.taskId = result.task.task_id;
     this.executionId = result.execution.execution_id;
     this.coreId = this.coreId ?? result.execution.core_id ?? null;
@@ -545,7 +545,7 @@ export class ServicesBridge {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_take requires the current Execution binding to be released', { task_id: this.taskId, execution_id: this.executionId });
         }
         const requiresBinding = operation !== 'task_take' && !UNBOUND_OPERATIONS.has(operation) && Array.isArray(capability.context) && capability.context.length > 0;
-        if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
+        if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a taken Task and Execution`, { operation });
         const currentExecution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
         const invocationPayload = operation === 'task_take'
           ? {
@@ -640,7 +640,7 @@ export class ServicesBridge {
       }
 
       const unboundCanonicalTake = operation === 'task_take' && !this.taskId && !this.executionId;
-      if ((!this.taskId || !this.executionId) && !unboundCanonicalTake) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
+      if ((!this.taskId || !this.executionId) && !unboundCanonicalTake) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a taken Task and Execution`, { operation });
       const execution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
       if (!unboundCanonicalTake && !execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${this.executionId}`, { execution_id: this.executionId });
       if (!unboundCanonicalTake && execution.task_id !== this.taskId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'bridge execution does not match task', { task_id: this.taskId, execution_id: this.executionId });

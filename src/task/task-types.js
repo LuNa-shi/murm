@@ -17,7 +17,7 @@ const CONTRACT_KEYS = new Set([
 ]);
 const CHECK_KEYS = new Set(['checker_ref', 'checker_version', 'environment_ref', 'input_snapshot_hash']);
 const MATERIAL_KEYS = new Set(['kind', 'kinds', 'scope', 'role', 'min_count', 'requires_consumption', 'action', 'consumption_action', 'cross_task']);
-const MATERIAL_CONSUMPTION_ACTIONS = new Set(['route', 'task', 'candidate', 'integration']);
+const MATERIAL_CONSUMPTION_ACTIONS = new Set(['route', 'task', 'workspace', 'integration']);
 const CANDIDATE_KEYS = new Set(['kind', 'scope']);
 const RESPONSE_KEYS = new Set(['receiving_task_id', 'task_id', 'min_count']);
 
@@ -56,10 +56,10 @@ function normalizeMaterials(value) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].role must be a non-empty string`);
     }
     if (item.action !== undefined && !MATERIAL_CONSUMPTION_ACTIONS.has(item.action)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].action must be route, task, candidate, or integration`);
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].action must be route, task, workspace, or integration`);
     }
     if (item.consumption_action !== undefined && !MATERIAL_CONSUMPTION_ACTIONS.has(item.consumption_action)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].consumption_action must be route, task, candidate, or integration`);
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].consumption_action must be route, task, workspace, or integration`);
     }
     if (item.action !== undefined && item.consumption_action !== undefined && item.action !== item.consumption_action) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `required_materials[${index}].action and consumption_action must match`);

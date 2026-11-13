@@ -4,9 +4,9 @@ import { ServiceRegistry } from './service-registry.js';
 import { listTools } from './service-catalog.js';
 
 const SERVICE_INFO = Object.freeze({
-  task: { title: 'Task Service', purpose: 'Durable Task goals, claims, structure, and completion evidence.' },
+  task: { title: 'Task Service', purpose: 'Durable Task goals, takes, structure, and completion evidence.' },
   context: { title: 'Context Service', purpose: 'Versioned shared Materials and provenance.' },
-  judge: { title: 'Judge Service', purpose: 'Candidate checking and structured CheckResults.' },
+  judge: { title: 'Judge Service', purpose: 'Workspace source checking and structured CheckResults.' },
   catalog: { title: 'Service Catalog', purpose: 'Role-scoped Service and capability discovery.' },
 });
 

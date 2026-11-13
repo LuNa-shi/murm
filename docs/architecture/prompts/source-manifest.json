@@ -17,7 +17,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "90327a20cc8f5b13f05cf2e7bf419ce0020757228c14f8181a32e2f98e381c5d"
+      "sha256": "bf739b19dcf6ceacc501873e036b28fc7d78ce87f949281a8d9ecf5319c0368c"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -29,7 +29,7 @@
     },
     {
       "path": "src/agent/opensandbox-agent-adapter.js",
-      "sha256": "1b3d0e3ff20fdc2f892639819d82e00f41f86e264adc34cbd07f64f86058e40d"
+      "sha256": "7401d66a7ce35a30fa9909b6607a5ae3df2fa935c1a19f5b770772cb4de23453"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
@@ -53,11 +53,11 @@
     },
     {
       "path": "src/sdk/service-catalog.js",
-      "sha256": "a1b52d37d8091e06077bf5d6038562926569287e34e691c68d6fb78edf2142be"
+      "sha256": "837947ecc352474da371716668ab641a939bc672a6d504b5c29ebabb7d00feb1"
     },
     {
       "path": "src/sdk/builtin-registry.js",
-      "sha256": "b7b63709a329a57b08dbef10a125d32e044c42e38fbd0b527ebf3a938f6793d7"
+      "sha256": "e5701be9c26d3171cacf77ccdafe7d861923cd7f30d4b71b194328ebd3bafb5d"
     },
     {
       "path": "src/sdk/service-bundle.js",
@@ -81,7 +81,7 @@
     },
     {
       "path": "src/task/task-types.js",
-      "sha256": "5099a077e564351110bd34668ae1b2fb640230ea552bb828dfb4eaa7aeec171b"
+      "sha256": "993ef085a150a12879eaff46eb588530d883c05fc1d389d9f196f2ecb6bd69d9"
     },
     {
       "path": "services/mathlib-search/service.json",
@@ -179,7 +179,7 @@
   "prompt_send_sites": [
     {
       "path": "src/agent/opensandbox-agent-adapter.js",
-      "line": 269,
+      "line": 271,
       "expression": "await session.prompt(agentPrompt, { timeoutMs: 30_000 });"
     },
     {
@@ -351,7 +351,7 @@
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "a2eed67a3be549e80878ad892fb8b92ce74b22ff71e1abac49c811d7641db367"
+      "sha256": "b87c195739b535463c754c2f3249636a92daf51950b20d8f10fc1930f56bfddc"
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
@@ -363,7 +363,7 @@
     },
     {
       "path": "docs/architecture/prompts/05-composed-context-examples.md",
-      "sha256": "8e9e85fa8e47205cd3ec5c26b8b6f97a04e581ec36fe9f6bd76b332c408c7261"
+      "sha256": "e73ae85284a4fe8bfe80ef42f1e4e334f111c2026339e192f2502c2bf573c50f"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",

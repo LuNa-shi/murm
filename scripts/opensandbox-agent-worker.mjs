@@ -119,9 +119,17 @@ async function startAgent(input) {
 }
 
 async function rpc(input) {
-  if (!child?.stdin?.writable) throw new Error('worker Agent is not running');
   const message = input?.message ?? input;
   if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('worker RPC message must be an object');
+  // Transport recovery asks for the bounded record history that accumulated
+  // while the SSE endpoint was unavailable.  Keep this read local to the
+  // worker so the caller can replay from an explicit sequence without
+  // sending a synthetic command to Pi.
+  if (message.type === 'get_state' && Number.isFinite(Number(message.since))) {
+    const since = Math.max(0, Number(message.since));
+    return { records: records.filter((record) => record.worker_sequence > since) };
+  }
+  if (!child?.stdin?.writable) throw new Error('worker Agent is not running');
   const id = message.id ?? null;
   if (id && rpcResults.has(id)) return rpcResults.get(id);
   const beforeSequence = sequence;

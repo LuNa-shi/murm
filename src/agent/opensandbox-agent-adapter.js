@@ -57,6 +57,7 @@ class RemoteAgentChild extends EventEmitter {
           const result = await this.manager.agentRpc(this.executionId, {
             type: 'get_state',
             id: `event-poll-${randomUUID()}`,
+            since: this.lastSequence,
           }, { timeoutMs: 15_000 });
           for (const record of result?.records ?? []) this.#emitRecord(record);
           this.eventStreamFailures = 0;
@@ -157,6 +158,7 @@ class RemoteAgentChild extends EventEmitter {
     const key = record?.worker_sequence ?? `${record?.type}:${record?.id ?? randomUUID()}`;
     if (this.records.has(key)) return;
     this.records.add(key);
+    if (record?.worker_sequence) this.lastSequence = Math.max(this.lastSequence, record.worker_sequence);
     this.stdout.write(`${JSON.stringify(record)}\n`);
   }
 

@@ -5,7 +5,7 @@ import { operationPayload, stableStringify, validateEnvelope } from '../protocol
 import { CONTEXT_SCHEMA_SQL } from '../storage/context-schema.js';
 
 const EVIDENCE_STATES = new Set(['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale']);
-const CONSUMPTION_ACTIONS = new Set(['route', 'task', 'candidate', 'integration']);
+const CONSUMPTION_ACTIONS = new Set(['route', 'task', 'workspace', 'integration']);
 const MATERIAL_ROLES = new Set(['input', 'response', 'handoff', 'experience']);
 const TRUSTED_ACTOR_PREFIXES = ['judge:', 'system:'];
 const SECRET_KEY = /(secret|password|token|api[_-]?key|credential|private[_-]?key)/i;
@@ -290,7 +290,7 @@ export class ContextService {
     }
     const action = payload.action;
     if (!CONSUMPTION_ACTIONS.has(action)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action must be route, task, candidate, or integration');
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action must be route, task, workspace, or integration');
     }
     if (payload.action_ref !== undefined && payload.action_ref !== null && (typeof payload.action_ref !== 'string' || payload.action_ref.length === 0)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action_ref must be a non-empty string or null');

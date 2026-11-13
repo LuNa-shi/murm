@@ -73,14 +73,14 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'context_consume', service: 'context', operation: 'consume_materials', version: '1.0',
-    description: 'Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.',
+    description: 'Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.',
     scope: 'execution-write', side_effect: true,
     parameters: {
       type: 'object',
       required: ['material_ids', 'action'],
       properties: {
         material_ids: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', minLength: 1 } },
-        action: { type: 'string', enum: ['route', 'task', 'candidate', 'integration'] },
+        action: { type: 'string', enum: ['route', 'task', 'workspace', 'integration'] },
         action_ref: { type: ['string', 'null'] },
       },
       additionalProperties: false,
@@ -225,7 +225,7 @@ const publicContextTools = [
       scope: { type: 'string', description: 'The bounded collaboration or proof scope for the Material.' },
       evidence_state: { type: 'string', enum: ['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale'] },
       content: {}, summary: { type: 'string' }, receiving_task_id: { type: 'string' },
-      // A revised artifact must be able to identify the failed candidate it
+      // A revised Workspace artifact must be able to identify the failed source it
       // replaces; without this field the Agent cannot record repair lineage.
       supersedes: { type: 'string' },
     }, additionalProperties: false },

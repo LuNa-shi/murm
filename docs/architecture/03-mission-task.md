@@ -37,7 +37,7 @@ The current Agent-facing operations are principally:
 
 A Task proposal does not switch the current Execution. The proposing Bot remains on its current Task boundary, and a fresh Bot later calls `task_take` for the new eligible Task. See `src/agent/services-bridge.js` and `src/task/task-service.js`.
 
-In the **flat Mission Task registration path** no fixed numerical Task-count admission quota is enforced; distinct responsibility and key/idempotency checks still apply. Task counts, claims, handoffs and readiness intervals are observation metrics, not proof of useful work. Core/model capacity, total budget, tool timeouts and the single Execution timebox remain runtime limits.
+In the **flat Mission Task registration path** no fixed numerical Task-count admission quota is enforced; distinct responsibility and key/idempotency checks still apply. Task counts, takes, handoffs and readiness intervals are observation metrics, not proof of useful work. Core/model capacity, total budget, tool timeouts and the single Execution timebox remain runtime limits.
 
 ## Material and completion
 

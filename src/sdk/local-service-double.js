@@ -181,8 +181,8 @@ export class LocalServiceDouble {
     if (uniqueMaterialIds.length !== materialIds.length) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must not contain duplicates');
     }
-    if (!['route', 'task', 'candidate', 'integration'].includes(payload.action)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action must be route, task, candidate, or integration');
+    if (!['route', 'task', 'workspace', 'integration'].includes(payload.action)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action must be route, task, workspace, or integration');
     }
     if (payload.action_ref !== undefined && payload.action_ref !== null && (typeof payload.action_ref !== 'string' || payload.action_ref.length === 0)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action_ref must be a non-empty string or null');

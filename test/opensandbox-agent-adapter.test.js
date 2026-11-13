@@ -97,3 +97,30 @@ test('OpenSandbox Agent adapter reconnects after a transient event-stream interr
   assert.ok(eventCalls >= 2);
   await session.stop();
 });
+
+test('OpenSandbox Agent adapter replays worker history after provider SSE becomes unavailable', async () => {
+  const manager = new FakeSandboxManager();
+  let eventCalls = 0;
+  const polls = [];
+  manager.agentEvents = async function* () {
+    eventCalls += 1;
+    const error = new Error('OpenSandbox request failed with HTTP 502');
+    error.code = 'SERVICE_UNAVAILABLE';
+    error.retryable = true;
+    throw error;
+  };
+  manager.agentRpc = async function (executionId, message) {
+    if (message.type === 'get_state' && Object.hasOwn(message, 'since')) {
+      polls.push(message.since);
+      return { records: message.since === 0 ? [{ worker_sequence: 1, type: 'response', id: 'history-1', data: { ok: true } }] : [] };
+    }
+    return { records: [{ type: 'response', id: message.id, success: true, data: {} }] };
+  };
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
+  const session = await adapter.start({ executionId: 'execution-poll-history', sessionId: 'session-poll-history' });
+  await new Promise((resolve) => setTimeout(resolve, 1_150));
+  assert.ok(eventCalls >= 1);
+  assert.deepEqual(polls.slice(0, 2), [0, 1]);
+  assert.match(session.stdout, /"worker_sequence":1/);
+  await session.stop();
+});

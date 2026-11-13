@@ -21,17 +21,17 @@ The benchmark normally supplies one project SQLite connection to Task, Context a
 | Table(s) | Meaning and important fields |
 |---|---|
 | `missions` | Mission columns are `mission_id`, `goal`, `acceptance_conditions_json`, `created_by`, `created_at`, `updated_at`. Initial Materials/resource budgets are not Mission columns. |
-| `tasks` + `modern_task_records` | Durable legacy-compatible Task row plus `modern_task_records` Mission ID, short summary, timebox and registration hash. Responsibility keys live on `tasks`; feedback lives in notifications/receipts. Modern record projection combines these facts. The earliest modern Task in a Mission is treated as the shared Mission Task; there is no explicit shared-Mission boolean. |
-| `executions` | One authorization interval: Task/spec/state/fence, owner/Core, lease/deadline, Workspace/checkpoint, candidate/result references, input snapshot/Materials, and terminal reason. A Session restart can retain this Execution. |
+| `tasks` + `modern_task_records` | Durable Task row plus `modern_task_records` Mission ID, short summary, timebox and registration hash. Responsibility keys live on `tasks`; feedback lives in notifications/receipts. Modern record projection combines these facts. A Mission may begin with zero Tasks; each Task is explicitly created and taken, with no implicit shared-Mission Task. |
+| `executions` | One authorization interval: Task/spec/state/fence, owner/Core, lease/deadline, Workspace/checkpoint, Workspace source/check references, input snapshot/Materials, and terminal reason. A Session restart can retain this Execution. |
 | `task_relations` | Modern `spawned_from` provenance and `depends_on` prerequisite edges. Provenance does not imply a scheduler dependency. |
 | `task_material_links` | A Material's input/response/handoff/experience role for a Task and receiving Task, separate from immutable producer provenance. |
 | `task_notifications` | Durable typed feedback queue with Mission/Task/Execution targeting and fallback delivery/handling metadata. |
 | `task_notification_receipts` | Per-Execution receipt: two concurrent Executions can handle the same notification independently. Delivery is not handling. |
 | `materials` | Immutable content and producer IDs, role/kind/evidence state, Mission ID, content hash/ref, version, supersedes pointer and provenance. Public reads also add `producer_task_id`/`producer_execution_id` aliases. |
 | `material_consumptions` | Explicit `(operation_id, material_id)` consumption with reader Task/Execution, action and optional action reference. Reading/searching alone does not create this row. |
-| `check_results` | Request key/hash and candidate binding; status/verdict; separate process status/result class/retryability/diagnostic; applied Task state/version/time. A result is evidence, not universally Mission acceptance. |
+| `check_results` | Request key/hash and Workspace source binding; status/verdict; separate process status/result class/retryability/diagnostic; applied Task state/version/time. A result is evidence, not universally Mission acceptance. |
 | `checker_preflights` | Checker/environment/project identity, health fingerprint, repeated-failure count and evidence. |
-| `operations`, `claim_keys`, `task_creation_keys`, `wait_keys`, `wake_keys` | Replay and conflict protection. Operation replay compares the full stable operation/payload/envelope fingerprint. |
+| `operations`, `take_keys`, `task_creation_keys`, `wait_keys`, `wake_keys` | Replay and conflict protection. Operation replay compares the full stable operation/payload/envelope fingerprint. |
 | `task_creation_provenance`, `task_structure_*`, `task_rework_links` | Retained structural/legacy support: versioned alternative/required groups, explicit dependencies, audit history and rework lineage. These tables still exist at this baseline. |
 | `task_admission_policies`, `execution_admission_counters`, `turn_admission_counters` | Creation/fairness limits and usage accounting; not the authoritative plan for a GitHub development Issue. |
 | `experiments`, `observation_events` | Monitoring registry and ordered projections. `visibility` is a label; Agent reads use the redacted payload column rather than filtering out all private-labeled rows. |
@@ -40,7 +40,7 @@ The benchmark normally supplies one project SQLite connection to Task, Context a
 
 Task and Observation schema setup enables foreign keys, a 5-second SQLite busy timeout and WAL mode. Context and Judge create their tables on the supplied connection. Task/Context dispatch mutation replay and Judge's `submit_check_result` replay use `BEGIN IMMEDIATE` transactions with rollback on failure. Judge commits its RUNNING request before awaiting the external checker; checker health and final result are later writes, so a whole compiler run is not one database transaction. A readonly query is not thereby a distributed snapshot across independently hosted providers.
 
-Constructors inspect existing columns and apply compatibility migrations. Context adds missing `role` (default `experience`) and `mission_id`. Judge adds candidate-content binding, Execution/applied-result metadata and explicit checker outcome fields. Task Service contains further migrations for Task/Execution fields, constraints and notification receipts; the source inventory links that constructor. The SQL below is the complete create-schema definition, not a promise that every historical database already has identical rows or a lossless automatic migration for every possible old schema.
+Constructors inspect existing columns and apply the current schema migrations. Context adds missing `role` (default `experience`) and `mission_id`. Judge adds Workspace source binding, Execution/applied-result metadata and explicit checker outcome fields. Task Service contains migrations for Task/Execution fields, constraints and notification receipts; the source inventory links that constructor. The SQL below is the complete create-schema definition for the reviewed tree.
 
 Durable state can outlive a Session, but runtime recovery still has to validate the current fence, reconstruct/restore a Workspace, reacquire a Core and start a Session. Observation events do not authorize that recovery. See [02 Execution](02-execution.md) and [05 Workspace](05-workspace-continuity.md).
 
@@ -428,7 +428,7 @@ CREATE TABLE IF NOT EXISTS wake_keys (
 
 ### Context database
 
-Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `a44a47931acc2c9f0ec2973a92cb56413d50821c683a916143b5e10832add7e4`.
+Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `9d62453ff43ade0decb6aff14ee6eb71a4038d747023b25296362f77874be360`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -486,7 +486,7 @@ CREATE TABLE IF NOT EXISTS material_consumptions (
   material_id TEXT NOT NULL REFERENCES materials(material_id),
   reader_task TEXT NOT NULL,
   reader_execution TEXT NOT NULL,
-  action TEXT NOT NULL CHECK (action IN ('route', 'task', 'candidate', 'integration')),
+  action TEXT NOT NULL CHECK (action IN ('route', 'task', 'workspace', 'integration')),
   action_ref TEXT,
   created_at TEXT NOT NULL,
   PRIMARY KEY (operation_id, material_id)

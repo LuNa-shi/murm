@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `6687bd44daaddd70d373e89d074cfda9eec16c4786cd4c1dded1587dab5b96e0`
+Body SHA-256: `57a2c83a83c4a7b0bf2130368fb06942616338606b87e62435f50987a4e216b7`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -63,13 +63,13 @@ Body SHA-256: `6687bd44daaddd70d373e89d074cfda9eec16c4786cd4c1dded1587dab5b96e0`
   - swarmenv_catalog_list_services: List every available SwarmEnv Service and its tool count. (logical operation catalog.list_services; read-only; inputs required=[none] fields=[none]; List every available SwarmEnv Service and its tool count.)
   - swarmenv_catalog_list_tools: List all named Service tools or only the tools owned by one Service. (logical operation catalog.list_tools; read-only; inputs required=[none] fields=[service]; List all named Service tools or only the tools owned by one Service.)
 - Context Service — Versioned shared Materials and provenance.
-  - swarmenv_context_consume: Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action. (logical operation context.consume_materials; writes state; inputs required=[material_ids,action] fields=[action,action_ref,material_ids]; Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.)
+  - swarmenv_context_consume: Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action. (logical operation context.consume_materials; writes state; inputs required=[material_ids,action] fields=[action,action_ref,material_ids]; Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.)
   - swarmenv_context_get_material: Read one immutable Material and its producer Task/Execution provenance. (logical operation context.context_get_material; read-only; inputs required=[material_id] fields=[material_id]; Read one immutable Material and its producer Task/Execution provenance.)
   - swarmenv_context_publish: Publish a versioned shared Material for other Executions. (logical operation context.publish_material; writes state; inputs required=[kind,scope,content] fields=[content,evidence_state,kind,scope]; Publish a versioned shared Material for other Executions.)
   - swarmenv_context_publish_material: Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance. (logical operation context.context_publish_material; writes state; inputs required=[role,content] fields=[content,evidence_state,kind,receiving_task_id,role,scope,summary,supersedes]; Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.)
   - swarmenv_context_read: Read immutable shared Materials published by other Executions. (logical operation context.read_materials; read-only; inputs required=[none] fields=[none]; Read immutable shared Materials published by other Executions.)
   - swarmenv_context_search_materials: Search shared immutable Materials by summary, role, Task, producer, or Mission. (logical operation context.context_search_materials; read-only; inputs required=[none] fields=[limit,mission_id,query,role,task_id]; Search shared immutable Materials by summary, role, Task, producer, or Mission.)
-- Judge Service — Candidate checking and structured CheckResults.
+- Judge Service — Workspace source checking and structured CheckResults.
   - swarmenv_judge_get_check_result: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback. (logical operation judge.get_check_result; read-only; inputs required=[none] fields=[check_result_id,request_key]; Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.)
   - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[path] fields=[content_hash,path,request_key,revision,workspace_id,workspace_revision]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
 - SwarmEnv Runtime — Task-scoped Execution projection
@@ -79,7 +79,7 @@ Body SHA-256: `6687bd44daaddd70d373e89d074cfda9eec16c4786cd4c1dded1587dab5b96e0`
   - swarmenv_workspace_list_files: List files inside the current task-scoped Workspace. (logical operation runtime.list_workspace_files; read-only; inputs required=[none] fields=[path]; List files before reading or writing a declared path.)
   - swarmenv_workspace_read_file: Read a text file from the current task-scoped Workspace. (logical operation runtime.read_workspace_file; read-only; inputs required=[path] fields=[max_bytes,path]; Read only a path allowed by the Workspace contract.)
   - swarmenv_workspace_write_file: Write one declared output file in the current task-scoped Workspace and save a revision. (logical operation runtime.write_workspace_file; writes state; inputs required=[path,content] fields=[content,expected_revision,path]; Write only declared outputs with the current Workspace revision.)
-- Task Service — Durable Task goals, claims, structure, and completion evidence.
+- Task Service — Durable Task goals, takes, structure, and completion evidence.
   - swarmenv_execution_progress: Save a bounded Progress Material and either continue the current Execution or hand it off. (logical operation task.execution_progress; writes state; inputs required=[kind,progress] fields=[checkpoint,files,kind,progress,reason,summary]; Save a bounded Progress Material and either continue the current Execution or hand it off.)
   - swarmenv_mission_submission_get: Read the durable Mission submission state and its immutable acceptance snapshot. (logical operation task.mission_submission_get; read-only; inputs required=[mission_id] fields=[mission_id,submission_id]; Read the durable Mission submission state and its immutable acceptance snapshot.)
   - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[mission_id,workspace_id,main_revision,actor_ref] fields=[acceptance,actor_ref,checker,environment,main_revision,material_ids,mission_id,request_id,workspace_id]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
@@ -146,14 +146,14 @@ Body SHA-256: `c72b8bbd3d9c1f7f3ac5e9a5dce222d4f93f4e14cb9352f958ec5c1013ab4dde`
 ````
 ## swarmenv_context_consume
 
-Body SHA-256: `00c5d05c165d45faab333dd713a8b5a0d6d5c74f1ed7f686d6ed7d2432e9da2e`
+Body SHA-256: `d96b4af1bf38b7830b864827a392b201ca59f193882fe40d8924606f251538a4`
 
 ````text
 {
-  "description": "Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.",
-  "promptSnippet": "Context Service: Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.",
+  "description": "Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.",
+  "promptSnippet": "Context Service: Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.",
   "promptGuidelines": [
-    "Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.",
+    "Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.",
     "Help: service://context/consume_materials"
   ]
 }
