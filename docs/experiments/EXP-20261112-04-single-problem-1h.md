@@ -10,7 +10,7 @@ Repeat of / comparison to: `EXP-20261112-03` (aborted provider-path run)
 | Item | Fixed value or reference |
 |---|---|
 | Scope | One locked problem, `putnam_2025_b1`, four Core lanes, one complete 3,600,000 ms timebox. |
-| Implementation commit | `d3e2a9e`; unbound Mission bootstrap operations, public Workspace/Mission seams, file-reference Judge path and detached-run state handling are present. |
+| Implementation commit | `0240371`; unbound Mission bootstrap operations, public Workspace/Mission seams, file-reference Judge path and detached-run state handling are present. |
 | Problem/config | `config/putnambench-12.json`, PutnamBench commit `a635813f5edf297d928f9bd5ef8324a26bdde09c`. |
 | Provider/model | `gpt_proxy` / `gpt-6.1-sol`; OpenSandbox `release-1.2.0`, image `swarmenv/agent:issue122` built from this worktree. |
 | Protocol | 4 Cores, `--problem putnam_2025_b1`, `--timebox-ms 3600000`, `--parallel-mode semantic`, `--project-parallelism 1`. |
