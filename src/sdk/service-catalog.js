@@ -208,7 +208,7 @@ const publicTaskTools = [
   },
   {
     name: 'task_block', service: 'task', operation: 'task_block', version: '1.0',
-    description: 'Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends.',
+    description: 'Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.',
     scope: 'task-write', side_effect: true,
     parameters: { type: 'object', required: ['blocker', 'dependency', 'handoff_material_id'], properties: {
       blocker: { type: 'object' },
@@ -307,7 +307,7 @@ const SERVICE_DEFINITIONS = Object.freeze([
     description: 'Shared immutable Materials with producer provenance and semantic collaboration roles.',
     tools: [...TOOL_DEFINITIONS.filter((tool) => tool.service === 'context'), ...publicContextTools],
   },
-  { name: 'judge', version: '1.0', description: 'Candidate submission and independent completion checks.', tools: publicJudgeTools },
+  { name: 'judge', version: '1.0', description: 'Workspace file checks and independent completion results.', tools: publicJudgeTools },
   { name: 'catalog', version: '1.0', description: 'Service and named tool discovery metadata.', tools: publicCatalogTools },
 ]);
 

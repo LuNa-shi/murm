@@ -34,10 +34,10 @@ test('static prompts describe bounded decomposition without fixed fanout', () =>
   assert.doesNotMatch(prompt, /four reusable|two child|three child|select_task|swarmenv_call|request_wait|execution_wait/i);
 });
 
-test('prompt states shared Mission block, Judge iteration, and capability semantics without quantity targets (r12)', () => {
+test('prompt states Mission-is-not-taken, Bot boundaries, Judge iteration, and capability semantics', () => {
   const prompt = BOUND_AGENT_PROMPT;
-  assert.match(prompt, /task\.block ends only your own branch/);
-  assert.match(prompt, /Mission stays claimable/);
+  assert.match(prompt, /Mission itself is never taken/);
+  assert.match(prompt, /fresh Bot/);
   assert.match(prompt, /Registering a Task does not end your Execution/);
   assert.match(prompt, /Judge FAIL is not a reason to hand off/);
   assert.match(prompt, /Callable capability directory is never an external blocker/);
@@ -48,7 +48,7 @@ test('prompt states shared Mission block, Judge iteration, and capability semant
 test('all prompt aliases describe one reusable identity contract', () => {
   for (const prompt of [GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT]) {
     assert.match(prompt, /task_take/);
-    assert.match(prompt, /same Session/i);
+    assert.match(prompt, /Session/);
     assert.match(prompt, /cannot claim or select/);
     assert.doesNotMatch(prompt, /Selection Agent|Selection Session|task\.claim/i);
   }
@@ -68,7 +68,7 @@ test('initial bundle separates the system identity contract from dynamic context
     task: { task_id: 'task-system-1', goal: 'prove the locked theorem' },
   });
   assert.equal(snapshot.system_prompt, SYSTEM_IDENTITY_PROMPT);
-  assert.match(snapshot.system_prompt, /continuous SwarmEnv research identity/);
+  assert.match(snapshot.system_prompt, /SwarmEnv Bot lifecycle/);
   assert.match(snapshot.system_prompt, /task_take/);
   assert.ok(snapshot.system_prompt_hash.length === 64);
   assert.ok(snapshot.prompt_hash.length === 64);
@@ -180,6 +180,7 @@ test('task loop guide names one exact registered tool per identity step (r12)', 
     assert.match(guide, /swarmenv_task_take/);
     assert.match(guide, /swarmenv_judge_submit_candidate with its relative path/);
     assert.match(guide, /swarmenv_task_block with a published and linked handoff_material_id/);
+    assert.match(guide, /fresh Bot reads public/);
     assert.doesNotMatch(guide, /at least \d|minimum of \d|\d+ (Tasks|checks|Judge calls)/i);
     // The guide is part of the profile-bound prompt.
     assert.match(composeAgentPrompt({ role: AGENT_ROLES.BOUND, profile: bound }), /Task loop \(exact tool names in this Session\)/);
@@ -188,11 +189,12 @@ test('task loop guide names one exact registered tool per identity step (r12)', 
   }
 });
 
-test('prompt keeps an Execution until a lifecycle boundary and offers register-and-take (r15)', () => {
+test('prompt keeps one Bot Execution until a lifecycle boundary', () => {
   const prompt = BOUND_AGENT_PROMPT;
   assert.match(prompt, /read-only research phase .* is normal work/);
   assert.match(prompt, /Do not hand off on your own initiative/);
-  assert.match(prompt, /task_register with take: true/);
+  assert.match(prompt, /task_register with take is not a second-work escape path/);
+  assert.match(prompt, /fresh Bot may continue/);
   assert.doesNotMatch(prompt, /voluntary handoff|bounded attempt|substantive increment/i);
   assert.doesNotMatch(prompt, /at least \d|minimum of \d|\d+ (Tasks|checks|Judge calls)/i);
 });

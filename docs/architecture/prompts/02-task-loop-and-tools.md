@@ -7,7 +7,7 @@ The first profile below is the benchmark flat Task model with built-in Services 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Flat built-ins, no Sandbox: exact task-loop guide
 
-Body SHA-256: `e3f61a2e3195c5ed819cdad41954a0c29339a3f41d76db5c81ae0d312bd94a4e`
+Body SHA-256: `9d0b72f1b701f368278157da51279f8c4bef352759f10d89ce69186cc3ee3c4c`
 
 ````text
 Task loop (exact tool names in this Session):
@@ -16,14 +16,14 @@ Task loop (exact tool names in this Session):
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_submit_candidate with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_submit_candidate again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback. Register a separable responsibility for others with swarmenv_task_register; this does not end your Execution.
-6. Own a direction: when research has settled on a direction you will execute, call swarmenv_task_register with take: true; your current Execution is saved and the new Task is bound to this lane in the same call, then continue at step 3 on it.
+6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_register without take so a fresh Bot can inspect and claim it.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
 8. End this Execution with exactly one of: swarmenv_task_complete when the current Task contract is satisfied (pass linked material_ids and the check_result_id); swarmenv_task_block with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or swarmenv_execution_progress with kind "handoff" only when Runtime asks for handoff.
-9. Next: after the Execution ends, the next turn supplies a fresh Task view; return to step 1 and call swarmenv_task_take again. The shared Mission stays claimable.
+9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never claimable.
 ````
 ## Flat built-ins with Sandbox: exact task-loop guide
 
-Body SHA-256: `e3f61a2e3195c5ed819cdad41954a0c29339a3f41d76db5c81ae0d312bd94a4e`
+Body SHA-256: `9d0b72f1b701f368278157da51279f8c4bef352759f10d89ce69186cc3ee3c4c`
 
 ````text
 Task loop (exact tool names in this Session):
@@ -32,14 +32,14 @@ Task loop (exact tool names in this Session):
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_submit_candidate with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_submit_candidate again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback. Register a separable responsibility for others with swarmenv_task_register; this does not end your Execution.
-6. Own a direction: when research has settled on a direction you will execute, call swarmenv_task_register with take: true; your current Execution is saved and the new Task is bound to this lane in the same call, then continue at step 3 on it.
+6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_register without take so a fresh Bot can inspect and claim it.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
 8. End this Execution with exactly one of: swarmenv_task_complete when the current Task contract is satisfied (pass linked material_ids and the check_result_id); swarmenv_task_block with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or swarmenv_execution_progress with kind "handoff" only when Runtime asks for handoff.
-9. Next: after the Execution ends, the next turn supplies a fresh Task view; return to step 1 and call swarmenv_task_take again. The shared Mission stays claimable.
+9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never claimable.
 ````
 ## Flat built-ins with Sandbox and Mathlib Search: exact task-loop guide
 
-Body SHA-256: `d6cfb400849bb9f8a7bb0a7ecc545428d888c93adbd9ea91ec75733ec1211b02`
+Body SHA-256: `f7685175cc384c4b28078f4abad5419ee493bbbd7d23d2102c982b54372b0a73`
 
 ````text
 Task loop (exact tool names in this Session):
@@ -48,14 +48,14 @@ Task loop (exact tool names in this Session):
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff; use swarmenv_mathlib_search as service aids.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_submit_candidate with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_submit_candidate again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback. Register a separable responsibility for others with swarmenv_task_register; this does not end your Execution.
-6. Own a direction: when research has settled on a direction you will execute, call swarmenv_task_register with take: true; your current Execution is saved and the new Task is bound to this lane in the same call, then continue at step 3 on it.
+6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_register without take so a fresh Bot can inspect and claim it.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
 8. End this Execution with exactly one of: swarmenv_task_complete when the current Task contract is satisfied (pass linked material_ids and the check_result_id); swarmenv_task_block with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or swarmenv_execution_progress with kind "handoff" only when Runtime asks for handoff.
-9. Next: after the Execution ends, the next turn supplies a fresh Task view; return to step 1 and call swarmenv_task_take again. The shared Mission stays claimable.
+9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never claimable.
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `578cc4375f725052b17d820eaf0c6993790d3bc08939557a17d5a438f9a05b4b`
+Body SHA-256: `768f1d4d511668287be529045a101e900e930a1ab2b814e3db476b45483680bc`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -71,7 +71,7 @@ Body SHA-256: `578cc4375f725052b17d820eaf0c6993790d3bc08939557a17d5a438f9a05b4b`
   - swarmenv_context_search_materials: Search shared immutable Materials by summary, role, Task, producer, or Mission. (logical operation context.context_search_materials; read-only; inputs required=[none] fields=[limit,mission_id,query,role,task_id]; Search shared immutable Materials by summary, role, Task, producer, or Mission.)
 - Judge Service — Candidate checking and structured CheckResults.
   - swarmenv_judge_get_check_result: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback. (logical operation judge.get_check_result; read-only; inputs required=[none] fields=[check_result_id,request_key]; Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.)
-  - swarmenv_judge_submit_candidate: Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes. (logical operation judge.submit_candidate; writes state; inputs required=[path] fields=[content_hash,path,request_key,workspace_revision]; Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.)
+  - swarmenv_judge_submit_candidate: Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created. (logical operation judge.submit_candidate; writes state; inputs required=[path] fields=[content_hash,path,request_key,revision,workspace_id,workspace_revision]; Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.)
 - SwarmEnv Runtime — Task-scoped Execution projection
   - swarmenv_execution_get: Read the current Execution identity and Workspace revision. (logical operation runtime.get_execution; read-only; inputs required=[execution_id] fields=[execution_id]; Read the current Execution before acting on its Task.)
   - swarmenv_workspace_diff: Compare two revisions in the current task-scoped Workspace. (logical operation runtime.workspace_diff; read-only; inputs required=[none] fields=[from_revision,to_revision]; Inspect the auditable file changes between revisions.)
@@ -81,7 +81,7 @@ Body SHA-256: `578cc4375f725052b17d820eaf0c6993790d3bc08939557a17d5a438f9a05b4b`
   - swarmenv_workspace_write_file: Write one declared output file in the current task-scoped Workspace and save a revision. (logical operation runtime.write_workspace_file; writes state; inputs required=[path,content] fields=[content,expected_revision,path]; Write only declared outputs with the current Workspace revision.)
 - Task Service — Durable Task goals, claims, structure, and completion evidence.
   - swarmenv_execution_progress: Save a bounded Progress Material and either continue the current Execution or hand it off. (logical operation task.execution_progress; writes state; inputs required=[kind,progress] fields=[checkpoint,files,kind,progress,reason,summary]; Save a bounded Progress Material and either continue the current Execution or hand it off.)
-  - swarmenv_task_block: Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends. (logical operation task.task_block; writes state; inputs required=[blocker,dependency,handoff_material_id] fields=[blocker,dependency,handoff_material_id]; Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends.)
+  - swarmenv_task_block: Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable. (logical operation task.task_block; writes state; inputs required=[blocker,dependency,handoff_material_id] fields=[blocker,dependency,handoff_material_id]; Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.)
   - swarmenv_task_close: Accept a linked Response Material from another Task and close its producer. (logical operation task.task_close; writes state; inputs required=[producer_task_id,material_id] fields=[material_id,producer_task_id]; Accept a linked Response Material from another Task and close its producer.)
   - swarmenv_task_complete: Complete the current Task when its own contract and required Material or Judge evidence are satisfied. (logical operation task.task_complete; writes state; inputs required=[none] fields=[check_result_id,material_ids]; Complete the current Task when its own contract and required Material or Judge evidence are satisfied.)
   - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,spawned_from,summary,task_instructions,task_type,timebox_ms]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.)
@@ -239,14 +239,14 @@ Body SHA-256: `682306dd8de9790b320a95e8f963511ea5e7c53f8a50d678284262c0173154dc`
 ````
 ## swarmenv_judge_submit_candidate
 
-Body SHA-256: `75d089c955aaf139e20cadcbeb1081300319585aa15d9c4dd8a9e2697780dc04`
+Body SHA-256: `62e1a31eef755f59110603c4ddc0b58a32a5ee215c30a1d9fa97749c5237e9dd`
 
 ````text
 {
-  "description": "Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.",
-  "promptSnippet": "Judge Service: Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.",
+  "description": "Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.",
+  "promptSnippet": "Judge Service: Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.",
   "promptGuidelines": [
-    "Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.",
+    "Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.",
     "Help: service://judge/submit_candidate"
   ]
 }
@@ -393,14 +393,14 @@ Body SHA-256: `46e3ac3fe1ab773301e2a18ba82104fc52b279be6ba895f12379128dd93cb1dd`
 ````
 ## swarmenv_task_block
 
-Body SHA-256: `f83067f506ec134bd4f717a4ed8bd5d75a26a6b17292e4e4b4867145054aa1cb`
+Body SHA-256: `2782b1687f704cde5844903858b5a03cca53f5f3a27feebe1a76c0002659afcf`
 
 ````text
 {
-  "description": "Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends.",
-  "promptSnippet": "Task Service: Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends.",
+  "description": "Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.",
+  "promptSnippet": "Task Service: Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.",
   "promptGuidelines": [
-    "Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends.",
+    "Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.",
     "Help: service://task/task_block"
   ]
 }

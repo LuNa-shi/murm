@@ -30,15 +30,15 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `a252c92ded38707c130f98266cb67ef44dca78e0a45a5dde2ea66683112e823b` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `bfc08322365f16b70e344fd05c481145ad41f9bad1256933c18a206b2be2b178` |
 | [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `c0aa628a1ae62af6d0bddd6d5ba5199289dbda971c8053cd25642a353615df23` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `aa199f6121dda2abde87c42e60f49e899cffabebf10872a75a353714d0daa2b4` |
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `d88e8112cd40b79c2e7520bc1ce6f3f6bb5d0422a34b5c562b11f56f7a7dcad1` |
-| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `98af8ed5bd2d1066032513c865dc44e26b674105861d749e560cd6fe680baaf0` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `974e6e4147166b1de629dba073c48300ea9f2b654ebb729df7f20112fc11b380` |
-| [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `c84da0cad1ede4d1e0b97b30eb844af4e3182fd8297c6d386018c7554ae21b8f` |
+| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `0f20975ecf7ebf4b2725ed3545ef303fba8a47f6f6c28679cb5f61bc5bb5ae33` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `d4aa8faf92e515fea70a83f95b43a50d905e2da11ebd794bf0d6d578ddc4bb32` |
+| [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `309d6f50f497a9e3d16a2b75d24d732303e517ed06ded9243142781e1d01d15b` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `171432f46555c9698b9a130ebfb35bc0343a677e850415ee358ffa66571c943d` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `eedbc3e6869e525c16369ca1aca042d12bdc0877a3f4447be4319f23e54e3ddc` |
@@ -276,7 +276,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "4076af4c1291d012096a930682552786bbc3a3787103446cdc5aa7a858b48db1"
+  "manifest_hash": "d9e0a497363162951591d2aaef55710a687d87c14d43f15c7dd687f8455dcfa4"
 }
 ```
 
@@ -1050,13 +1050,13 @@ Complete the current Task when its own contract and required Material or Judge e
 
 #### task.task_block
 
-Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends.
+Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.
 
 ```json
 {
   "name": "task_block",
   "operation": "task_block",
-  "description": "Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends.",
+  "description": "Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -1126,9 +1126,9 @@ Publish and link Handoff Material, record a typed Task or capability dependency,
   "requires_binding": false,
   "scope": "task-write",
   "help": {
-    "when": "Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends.",
+    "when": "Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.",
     "ref": "service://task/task_block",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_block",
@@ -1656,25 +1656,33 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "e88808e0d986b3a75dcebd21bea4a3bacbc7ba9e461c581803f5c6827393b9a1"
+  "manifest_hash": "1e6d76f241cb6af43b8dc2d38d1ffd542fac7658f5e5c739375eba824cb20dde"
 }
 ```
 
 #### judge.judge_submit_candidate
 
-Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.
+Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.
 
 ```json
 {
   "name": "judge_submit_candidate",
   "operation": "submit_candidate",
-  "description": "Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.",
+  "description": "Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.",
   "input_schema": {
     "type": "object",
     "required": [
       "path"
     ],
     "properties": {
+      "workspace_id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "revision": {
+        "type": "string",
+        "pattern": "^\\d+\\.\\d+$"
+      },
       "path": {
         "type": "string",
         "minLength": 1
@@ -1717,9 +1725,9 @@ Submit a Workspace answer file to Judge for compilation and checking. The return
   "requires_binding": false,
   "scope": "execution-write",
   "help": {
-    "when": "Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.",
+    "when": "Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.",
     "ref": "service://judge/submit_candidate",
-    "text": "Purpose: Candidate checking and structured CheckResults.\nUse when: Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Candidate checking and structured CheckResults.\nUse when: Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/submit_candidate",
@@ -1847,7 +1855,7 @@ These declarations are merged into a Session profile after deployment filtering.
   "service_id": "runtime",
   "service_title": "SwarmEnv Runtime",
   "service_purpose": "Task-scoped completion and dependency actions",
-  "description": "Save a useful checkpoint, declare a typed dependency, and release this Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable.",
+  "description": "Save a useful checkpoint, declare a typed dependency, and release this Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.",
   "audience": [
     "bound",
     "recovery"
@@ -2942,7 +2950,21 @@ Registry matches are resolved first by capability name or operation and must be 
   "context.get_material",
   "context_get_material",
   "consume_materials",
-  "list_material_consumptions"
+  "list_material_consumptions",
+  "material.publish",
+  "material_publish",
+  "material.read",
+  "material_read",
+  "material.search",
+  "material_search",
+  "material.get",
+  "material_get",
+  "material_dispute",
+  "material.dispute",
+  "material_supersede",
+  "material.supersede",
+  "material_unsupersede",
+  "material.unsupersede"
 ]
 ```
 

@@ -104,6 +104,8 @@ export class ContextService {
       material_read: 'read_materials',
       'material.search': 'search_materials',
       material_search: 'search_materials',
+      'material.get': 'get_material',
+      material_get: 'get_material',
       material_dispute: 'dispute_material',
       'material.dispute': 'dispute_material',
       material_supersede: 'supersede_material',

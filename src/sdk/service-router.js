@@ -15,6 +15,9 @@ const CONTEXT_OPERATIONS = new Set([
   'search_materials', 'context.search_materials', 'context_search_materials',
   'get_material', 'context.get_material', 'context_get_material',
   'consume_materials', 'list_material_consumptions',
+  'material.publish', 'material_publish', 'material.read', 'material_read',
+  'material.search', 'material_search', 'material.get', 'material_get', 'material_dispute', 'material.dispute',
+  'material_supersede', 'material.supersede', 'material_unsupersede', 'material.unsupersede',
 ]);
 const JUDGE_OPERATIONS = new Set(['get_check_result']);
 

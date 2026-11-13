@@ -5,7 +5,7 @@
   "sources": [
     {
       "path": "src/agent/agent-prompt.js",
-      "sha256": "ba04a3b7ae7f6763d823f73a906184fa62b30dd93432b32f1c70d22bf4f0f1aa"
+      "sha256": "3b03640038f85c1525b8a7111edcb645a239d099fa5998f7d643c79945a543ef"
     },
     {
       "path": "src/agent/capability-profile.js",
@@ -37,7 +37,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "4d336c34b0daccd9db845b9827d78bedef4aa01a6b5dd39eefbe5fe9ae90f1c4"
+      "sha256": "a3effdee1697a182c808fd0217df91cd2ffe110140a36a17327d063217b988b9"
     },
     {
       "path": "src/runtime/identity-task-loop.js",
@@ -45,7 +45,7 @@
     },
     {
       "path": "src/runtime/runtime-capabilities.js",
-      "sha256": "c84da0cad1ede4d1e0b97b30eb844af4e3182fd8297c6d386018c7554ae21b8f"
+      "sha256": "309d6f50f497a9e3d16a2b75d24d732303e517ed06ded9243142781e1d01d15b"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -61,7 +61,7 @@
     },
     {
       "path": "src/sdk/service-catalog.js",
-      "sha256": "a252c92ded38707c130f98266cb67ef44dca78e0a45a5dde2ea66683112e823b"
+      "sha256": "bfc08322365f16b70e344fd05c481145ad41f9bad1256933c18a206b2be2b178"
     },
     {
       "path": "src/sdk/builtin-registry.js",
@@ -156,25 +156,25 @@
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #notificationText",
-      "line": 1867,
+      "line": 1908,
       "sha256": "c0dd540f32de9d2739324abd21c3f553c779d5eaf2e544262a84451044ccb90d"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #recoveryPrompt",
-      "line": 2432,
+      "line": 2473,
       "sha256": "0f833f9285ec0df0ea62684463b7bd91feb59532bd6e3168539353b311f5996d"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "        const prompt = ",
-      "line": 1324,
+      "line": 1365,
       "sha256": "7324112e1ed5f71238d9bf5ac227047ab65eb0e32c8e609355b9959928503c2f"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "              await active.session.prompt(\n                ",
-      "line": 2279,
+      "line": 2320,
       "sha256": "aa531fc52ff79a137d3465b431a874606d420f627f5d4723998fb1ab0bc8dec6"
     },
     {
@@ -213,22 +213,22 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1329,
+      "line": 1370,
       "expression": "active.promptChain = active.promptChain.catch(() => undefined).then(() => active.session.prompt?.(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' }));"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1853,
+      "line": 1894,
       "expression": "await session.prompt(dynamic.prompt, { timeoutMs: 30_000 });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1915,
+      "line": 1956,
       "expression": "await active.session.prompt?.(this.#notificationText(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2279,
+      "line": 2320,
       "expression": "await active.session.prompt("
     }
   ],
@@ -351,15 +351,15 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "07ab58382151697af509697fa80fb0436029edfc33b333bf3215068946b88004"
+      "sha256": "9049bec8589bf26e4db35bb78a0dfd89163107499ffdff3735c27f3cc911bf35"
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "6bd12a85316a37c39a347443aa5ae4d9a24dee3e1f8b5b86e6e3412c26ebcbb2"
+      "sha256": "ffbb96b17e19eb0b7837f56f8f978b52888e0da2bfea7a4d0f3045a066b7b8ca"
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "d2bab97cfd4e62f5420118903a26659b3ab42f556e69278c478b61e2568430e9"
+      "sha256": "96f7b38cbee4fd1d609e9b570e93cb472ea45443f6c30f2fc82db13e304ee853"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
@@ -367,7 +367,7 @@
     },
     {
       "path": "docs/architecture/prompts/05-composed-context-examples.md",
-      "sha256": "fa36d3db7daf08c58250872295e9aac8bfdb454fb6ee805d242e4452dc862a91"
+      "sha256": "1662bed68fd75b37f69595e39d4b799587be30eec77a7071f8692e31e2c44f34"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
