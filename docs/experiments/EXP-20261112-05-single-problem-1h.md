@@ -1,6 +1,6 @@
 # EXP-20261112-05: Single-problem Issue #122 acceptance run
 
-Status: REGISTERED
+Status: BLOCKED
 Approved GitHub Issue: [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)
 Experiment ID: `EXP-20261112-05`
 Repeat of / comparison to: `EXP-20261112-04` (stopped after clean-workspace fix)
@@ -46,14 +46,18 @@ echo $! > experiments/EXP-20261112-05.pid
 
 ## Results
 
-Pending execution. Record actual start/end, protocol validity, public Workspace ID and
-revision, Mission submission state, Task/Execution/Material/Judge evidence, cleanup,
-and exact observed timebox after the run.
+The detached process started and reached a live Task/Execution with four OpenSandbox
+sandboxes, but the run was stopped during the first minute after inspection found that
+Agent `task_take` still sent `workspace_mode: resume`. The process and four sandboxes
+were then stopped and removed. No final project report was produced. This run is
+therefore blocked and is not acceptance evidence.
 
 ## Analysis
 
-Pending execution. Protocol validity and engineering contract evidence remain
-separate from proof quality or research benefit.
+The provider path remained healthy, but the modern Workspace contract was not yet
+observable at the claim boundary. The run cannot support conclusions about proof
+quality, Mission submission, or one-hour behavior. The follow-up fix normalizes modern
+claims to `clean` unless explicit recovery lineage is supplied.
 
 ## Next steps
 
