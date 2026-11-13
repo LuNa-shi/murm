@@ -3,11 +3,8 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { ContextService, ERROR_CODES, SwarmEnvError, TaskService, makeEnvelope } from '../src/index.js';
 
-// Regression for r12 (issue-113-2h-20261104-r12-finalization): the last
-// Execution of the shared Mission Task blocked on a branch prerequisite, the
-// aggregate Mission Task became BLOCKED, and all four Cores idled for the
-// remaining 84 minutes. Contract §1/§3: with no executor the shared Mission
-// Task is OPEN and claimable for as long as the Mission has not ended.
+// Issue #122 removes the legacy shared Mission Task. A Mission can have zero
+// Tasks, and every concrete Task has the ordinary exclusive lifecycle.
 
 function env(operationId, actorRef, fields = {}) {
   return makeEnvelope({ operationId, actorRef, ...fields });
@@ -69,7 +66,7 @@ function blockWith(taskService, contextService, taskId, executionId, actorRef, d
     handoff_material_id: material.material.material_id,
   }, bound(taskService, taskId, executionId, actorRef, `block:${executionId}`));
 }
-test('last shared Mission Execution blocking on a Task prerequisite keeps the Mission OPEN and claimable', () => {
+test('a blocked Task remains blocked while the Mission itself has no claim entry', () => {
   const { contextService, taskService } = setup();
   try {
     const mission = makeTask(taskService, 'task:0-mission');
@@ -79,33 +76,29 @@ test('last shared Mission Execution blocking on a Task prerequisite keeps the Mi
       dependency_kind: 'TASK', prerequisite_task_id: lemma.task_id,
     });
     assert.equal(blocked.execution.state, 'HANDED_OFF');
-    assert.equal(blocked.task.state, 'OPEN');
-    assert.equal(blocked.task.block_reason, null);
-    // The branch prerequisite stays recorded as observable structure.
+    assert.equal(blocked.task.state, 'BLOCKED');
+    assert.match(blocked.task.block_reason, /^dependency:/);
     assert.ok(taskService.getTask(mission.task_id).blockers.length > 0);
 
     const claimable = taskService.listClaimableTasks({ missionId: 'mission:r12', limit: 10 }).map((task) => task.task_id);
-    assert.ok(claimable.includes(mission.task_id), 'shared Mission must stay claimable');
+    assert.equal(claimable.includes(mission.task_id), false);
     const listed = taskService.listTasks({ states: ['OPEN', 'RUNNING'], availableOnly: true }).map((task) => task.task_id);
-    assert.ok(listed.includes(mission.task_id));
+    assert.equal(listed.includes(mission.task_id), false);
 
-    // Periodic reconciliation must not re-block the shared Mission.
     const reconciled = taskService.dispatch('reconcile_task', { task_id: mission.task_id }, env('reconcile:mission', 'controller:test'));
-    assert.equal(reconciled.task.state, 'OPEN');
+    assert.equal(reconciled.task.state, 'BLOCKED');
 
     // task_status counts must agree with the claimable view (B06).
     const status = taskService.dispatch('task_status', { mission_id: 'mission:r12' }, env('status:mission', 'agent:b'));
-    assert.ok(status.claimable_tasks.some((task) => task.task_id === mission.task_id));
+    assert.equal(status.claimable_tasks.some((task) => task.task_id === mission.task_id), false);
     assert.equal(status.counts.claimable, status.claimable_tasks.length);
-
-    const next = claim(taskService, mission.task_id, 'execution:b', 'agent:b');
-    assert.equal(next.state, 'CREATED');
+    assert.throws(() => claim(taskService, mission.task_id, 'execution:b', 'agent:b'), /blocked|claimable/i);
   } finally {
     taskService.close();
   }
 });
 
-test('shared Mission capability block keeps the Mission OPEN', () => {
+test('a capability block applies to the concrete Task, not the Mission', () => {
   const { contextService, taskService } = setup();
   try {
     const mission = makeTask(taskService, 'task:0-mission');
@@ -114,8 +107,8 @@ test('shared Mission capability block keeps the Mission OPEN', () => {
       dependency_kind: 'CAPABILITY', capability_id: 'external.unregistered_prover',
     });
     assert.equal(blocked.execution.state, 'HANDED_OFF');
-    assert.equal(blocked.task.state, 'OPEN');
-    assert.equal(claim(taskService, mission.task_id, 'execution:b', 'agent:b').state, 'CREATED');
+    assert.equal(blocked.task.state, 'BLOCKED');
+    assert.throws(() => claim(taskService, mission.task_id, 'execution:b', 'agent:b'), /blocked|claimable/i);
   } finally {
     taskService.close();
   }
@@ -139,7 +132,7 @@ test('ordinary Task block keeps exclusive BLOCKED semantics', () => {
   }
 });
 
-test('a shared Mission left BLOCKED by an older build is reopened by reconciliation', () => {
+test('a legacy BLOCKED Task is not reopened as a shared Mission Task', () => {
   const { contextService, taskService } = setup();
   try {
     const mission = makeTask(taskService, 'task:0-mission');
@@ -150,8 +143,8 @@ test('a shared Mission left BLOCKED by an older build is reopened by reconciliat
     // Simulate the r12 durable state written by the previous implementation.
     taskService.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = 'external:swarmenv_workspace_get' WHERE task_id = ?").run(mission.task_id);
     const reconciled = taskService.dispatch('reconcile_task', { task_id: mission.task_id }, env('reconcile:legacy', 'controller:test'));
-    assert.equal(reconciled.task.state, 'OPEN');
-    assert.equal(reconciled.changed, true);
+    assert.equal(reconciled.task.state, 'BLOCKED');
+    assert.equal(reconciled.changed, false);
   } finally {
     taskService.close();
   }
