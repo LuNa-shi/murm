@@ -17,7 +17,7 @@ const INTERNAL_AUDIENCES = new Set(['runtime', 'daemon', 'internal']);
 // contract while callers migrate to a Registry.
 const CURRENT_AGENT_OPERATIONS = new Set([
   'list_services', 'get_service_metadata', 'list_tools',
-  'list_tasks', 'get_task', 'list_executions',
+  'list_tasks', 'list_executions',
   'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
   'task_status', 'task_take', 'task_feedback', 'execution_progress',
   'publish_material', 'read_materials', 'consume_materials',
@@ -79,7 +79,7 @@ function inferredAudience(capability) {
   if (service === 'workspace' || service === 'execution' || service === 'context' || service === 'judge' || capability.runtime_owned === true || operation === 'scheduler_status') {
     return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
-  if (operation === 'list_tasks' || operation === 'task_list' || operation === 'task_view' || operation === 'get_task' || operation === 'task_status') {
+  if (operation === 'list_tasks' || operation === 'task_list' || operation === 'task_view' || operation === 'task_status') {
     return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
   if (scope === 'public-read' && sideEffect === false) {

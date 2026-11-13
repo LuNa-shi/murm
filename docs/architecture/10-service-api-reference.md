@@ -31,13 +31,13 @@ This section is generated from executable exports and checked against the source
 | Source | SHA-256 |
 |---|---|
 | [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `837947ecc352474da371716668ab641a939bc672a6d504b5c29ebabb7d00feb1` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `e5701be9c26d3171cacf77ccdafe7d861923cd7f30d4b71b194328ebd3bafb5d` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `f32535685b3f964092ae65c62c2a58d8a2cd1721abe7775fc7a6599bf13c17f6` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `6d4a734115262062fec13d613e0493c26575d2a8efba7d1217e0e45bd8390d91` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fb811cb2c59cc4390357dbb072cff0f842fdb537e0bd020f9cc5e56ff74094af` |
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `c5664127e5a77ceba74bc9ad80c467f735d12823b56fe1febe1fd4b7805925e7` |
-| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `ea277bf55bc662bd147ac92baa61548127aa20107783a0de2738b79a74e1ffc0` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `d8171d42dfd29aab47b412558ca174afa876bc104b4f2d2aea3a9b2fc95dd3fc` |
+| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `1b75bcdc0833c4690709f0120d01c3e71cf0c4f4d61ffe6125f5202110055bbd` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `828aa10596f79df623328775b37ebe985358b7169ab3b47f2a785a25c85ddcdb` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
@@ -2930,7 +2930,6 @@ The SDK constructor requires `dispatch` and `actorRef`. `withContext` creates an
 
 | SDK method | Dispatched operation | Wrapper |
 |---|---|---|
-| `getTask` | `get_task` | read |
 | `getExecution` | `get_execution` | read |
 | `listTasks` | `list_tasks` | read |
 | `createMission` | `create_mission` | write |
@@ -2968,7 +2967,6 @@ Registry matches are resolved first by capability name or operation and must be 
 ```json
 [
   "get_execution",
-  "get_task",
   "list_tasks",
   "list_executions",
   "create_mission",

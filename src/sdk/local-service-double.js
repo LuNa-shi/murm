@@ -59,9 +59,6 @@ export class LocalServiceDouble {
     this.#checkVersions(envelope, operation);
     let result;
     switch (operation) {
-      case 'get_task':
-        result = this.#getTask(payload.task_id ?? envelope.task_id);
-        break;
       case 'get_execution':
         result = this.#getExecution(payload.execution_id ?? envelope.execution_id);
         break;

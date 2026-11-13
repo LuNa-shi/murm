@@ -11,10 +11,10 @@ const SERVICE_INFO = Object.freeze({
 });
 
 const ALL_ROLES = Object.freeze(['bound', 'recovery']);
-const SHARED_READ_OPERATIONS = new Set(['get_task', 'task_status']);
+const SHARED_READ_OPERATIONS = new Set(['task_status']);
 const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
-    'list_tasks', 'get_task', 'list_executions',
+    'list_tasks', 'list_executions',
     'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
     'task_status', 'task_take', 'task_feedback', 'execution_progress',
     'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_apply',
@@ -27,7 +27,6 @@ const EXPOSED_OPERATIONS = Object.freeze({
 
 const TOOL_OVERRIDES = Object.freeze({
   list_tasks: { name: 'task_discover', description: 'Discover the bounded Mission Task view and relevant shared work.' },
-  get_task: { name: 'task_view', description: 'Read one Task contract, current state, provenance, and result references.' },
 });
 
 function publicTools(serviceId) {

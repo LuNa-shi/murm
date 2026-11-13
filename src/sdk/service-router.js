@@ -2,7 +2,7 @@ import { createBuiltinServiceRegistry } from './builtin-registry.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 const TASK_OPERATIONS = new Set([
-  'get_execution', 'get_task', 'list_tasks', 'list_executions',
+  'get_execution', 'list_tasks', 'list_executions',
   'create_mission', 'get_mission', 'create_task', 'list_task', 'view_task', 'task_list', 'task_view', 'task_create',
   'task_status', 'task_take', 'task_feedback', 'execution_progress',
   'link_material', 'task_link_material', 'list_task_materials', 'task_materials', 'finish_task', 'task_finish',

@@ -11,7 +11,7 @@ checkpoints, process state and feedback survive that transition.
 
 `MissionWorkspace` (`src/runtime/mission-workspace.js`) is the runtime-owned
 repository seam for the Issue #122 Workspace contract. It is distinct from the
-legacy execution-local `WorkspaceManager` described below. `create` creates a
+the Execution-local `WorkspaceManager` used for each Bot's materialized worktree. `create` creates a
 Mission/Workspace pair with different IDs, an external revision `0.1`, and a
 Git `main` branch outside any Sandbox. `files`, `read`, and `search` resolve a
 fixed immutable revision and require no Execution lease, so an unbound Bot or a
@@ -372,104 +372,9 @@ therefore an identity/Session replacement, not a Task handoff.
 
 ## 8. Sandbox provisioning and execution
 
-The optional `ContainerSandboxManager` owns one Docker container per bound
-Execution. Runtime requires an active, nonclosing `CREATED/RUNNING`
-Execution with a materialized Workspace before `sandbox_exec` or job
-operations. Absence of the manager is `SERVICE_UNAVAILABLE`.
-The manager is not a general host-shell tool.
-[SandboxManager](../../src/runtime/sandbox-manager.js),
-[Runtime Sandbox binding](../../src/runtime/runtime.js).
+The benchmark uses `OpenSandboxManager` for every Agent Execution. Runtime creates one provider sandbox with the fixed worker entrypoint, authenticates the worker with a per-Execution token, copies bounded Workspace files into guest `/workspace`, and deletes the sandbox at release. `sandbox_exec` and `sandbox_job` are bound Runtime capabilities; they cannot address host paths or an unbound Execution. The worker event stream is sequence-based; retryable SSE failures switch to bounded history polling and replay deduplication. Controller restart reconciliation never revives an old Pi or shell: a sandbox whose worker token cannot be recovered is recorded as unrecoverable, quarantined/deleted, and replaced by a fresh Bot/Execution that resumes from public Workspace and Material state.
 
-| Setting | Manager default / requirement |
-| --- | --- |
-| Docker command | `docker` |
-| Image | Required; optional expected image digest |
-| Workspace root | Required |
-| Extra read-only roots | Empty list |
-| Network | `none`; accepts `bridge`, `host` or a named network when configured |
-| User | `1000:1000` |
-| Memory / CPUs / process limit | `2g` / `2` / `256` |
-| Temporary filesystem | `/tmp`, size `256m`, `rw,noexec,nosuid,nodev` |
-| Command timeout | 120,000 ms; per-call positive finite value up to 3,600,000 ms |
-| Output limit | `maxOutputBytes = 1,048,576` (implementation qualification below) |
-| Command size | At most 32 Ki characters |
-| Image preflight | Local `docker image inspect`, default 20 seconds; no image pull |
-
-Preflight records image ID/time and optionally compares the configured digest.
-Provisioning checks the Workspace is a directory within the configured root,
-removes a previous deterministic container name best effort, then runs a
-detached idle shell. It labels Execution/fence, mounts the whole Workspace
-read/write at `/workspace`, uses the configured user/resources/network,
-drops all capabilities, enables `no-new-privileges` and makes the container
-root filesystem read-only. Optional read-only mounts must originate within an
-approved root and target `/inputs/`; the normal Runtime ensure call does
-not supply extra mounts. Docker startup has a 60-second bound.
-
-An already cached container record is returned without comparing a newly
-requested binding version. Correct lifecycle therefore depends on Runtime
-stopping the old container on release/recovery before rebinding; the cache is
-not itself a fence-version validator. Container/job records are in memory,
-not durable rows.
-
-### Command and job results
-
-A command is either a nonempty bounded shell string or a nonempty array of
-strings. String commands run through `sh -lc`; argv elements are shell-quoted.
-Default working directory is `/workspace`. The current check is a lexical
-`startsWith('/workspace')` plus rejection of `..` segments; it does not
-canonicalize the path or require a slash boundary, so a path such as
-`/workspace-other` passes this specific validation if it exists.
-
-The environment contains `HOME=/tmp`, the host process's PATH (or a fallback
-PATH), plus explicit validated entries. It does not copy the entire host
-environment. Keys must be uppercase environment identifiers; values must be
-strings at most 4096 characters. Names matching token/secret/password/API-key/
-credential/private-key patterns are rejected, except the safe names
-`PATH`, `HOME`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR`. This is a key-name
-filter, not inspection of every value for secret content.
-
-Each command receives a UUID job ID. A `setsid` wrapper writes a process
-group ID under `/tmp/swarmenv-jobs` and writes the child's exit status into a
-job-specific `.exit` file.
-
-| Operation | Result / timing |
-| --- | --- |
-| Foreground exec | Execution/job/binding IDs, exit code, `timed_out`, `truncated`, duration, stdout and stderr. On timeout the Docker client is killed, then process-group cancellation is attempted. |
-| Background exec | Starts `docker exec --detach`; bounds the launch call by the lesser of requested timeout and 30 seconds, then returns a running job view. |
-| Job status | For running/cancelled jobs reads the `.exit` file, marks completed when an integer appears and returns IDs, state, exit code, times, cancellation reason and command. |
-| Cancel | Attempts TERM on the recorded process group, marks cancelled and records reason/time; does not wait for a proven process exit. |
-| Release/stop | Cancels recorded running jobs, attempts `docker rm -f`, removes the in-memory container entry and logs stop. |
-
-There are three material limits to the current command implementation:
-
-1. The wrapper writes the child's exit status to `.exit` but does not end
-   with `exit $code`. Foreground `exit_code` comes from the Docker wrapper
-   process and can be zero even when the child failed. Background status reads
-   the stored child code. A completed foreground job is returned from memory,
-   so querying it does not automatically correct that wrapper status.
-2. A background call's timeout bounds launch, not the detached job's lifetime.
-   There is no per-job timer after launch; the job runs until it exits, is
-   cancelled or its Execution/container is stopped. Background stdout/stderr
-   are not returned by the job-status view.
-3. Although named `maxOutputBytes`, output collection compares JavaScript
-   string lengths and applies the limit separately to stdout and stderr.
-   It is not one exact byte budget shared by both streams.
-
-### What the Sandbox does and does not enforce
-
-The Docker options restrict the container environment and mounted host scope.
-They do not apply Workspace file contracts to shell filesystem operations.
-Because the entire Workspace is mounted writable, shell code can modify a
-required input, Git metadata or Runtime's `.swarm` files within that mount;
-the file API's read-only-input and metadata-path checks do not intercept those
-writes. Git ignore rules likewise do not prevent access. Deployment must
-provide a compatible image/user and writable mount permissions; this code does
-not repair ownership automatically.
-
-Runtime logs Sandbox-stop errors and continues durable release. The manager
-also suppresses several Docker removal/cancel errors. Consequently, “Execution
-fenced” is durable authority evidence, whereas “container physically gone”
-requires its own observed cleanup evidence.
+[OpenSandbox manager](../../src/runtime/opensandbox-manager.js), [OpenSandbox Agent adapter](../../src/agent/opensandbox-agent-adapter.js), and [Runtime Sandbox binding](../../src/runtime/runtime.js) define the provider boundary. The shipped image is the only trusted worker entrypoint; ordinary callers cannot provide a custom entrypoint.
 
 ## 9. Evidence needed to assess continuity
 

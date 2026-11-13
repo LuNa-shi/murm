@@ -20,10 +20,6 @@ export class ServicesSDK {
     return new ServicesSDK(this.service, { ...this.context, ...overrides });
   }
 
-  getTask(taskId = this.context.taskId) {
-    return this.#read('get_task', { task_id: taskId });
-  }
-
   getExecution(executionId = this.context.executionId) {
     return this.#read('get_execution', { execution_id: executionId });
   }

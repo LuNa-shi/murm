@@ -54,7 +54,7 @@ const TASK_EVENT_OPERATIONS = new Set([
   'execution_progress',
 ]);
 const TASK_READ_OPERATIONS = new Set([
-  'get_task', 'get_execution', 'list_tasks', 'list_eligible_tasks', 'list_executions',
+  'get_execution', 'list_tasks', 'list_eligible_tasks', 'list_executions',
   ...MODERN_READ_OPERATIONS,
   'task_status',
 ]);
@@ -1730,10 +1730,6 @@ export class TaskService {
       const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
       if (!this.getTask(taskId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
       return { links: this.#taskMaterialLinks(taskId, { role: payload.role ?? null, materialId: payload.material_id ?? payload.materialId ?? null }) };
-    }
-    if (operation === 'get_task') {
-      const taskId = payload.task_id ?? envelope.task_id;
-      return this.getTask(requireString(taskId, 'task_id'));
     }
     if (operation === 'get_execution') {
       const executionId = payload.execution_id ?? envelope.execution_id;

@@ -55,7 +55,6 @@ export class HttpDomainProxy {
     return payload.result ?? payload;
   }
 
-  getTask(taskId) { const result = this.dispatch('get_task', { task_id: taskId }); return result.task ?? result; }
   getExecution(executionId) { const result = this.dispatch('get_execution', { execution_id: executionId }); return result.execution ?? result; }
   listTaskMaterialIds(taskId) {
     const result = this.dispatch('list_task_materials', { task_id: taskId });

@@ -137,7 +137,7 @@ The extension converts successful results to a text content block using `JSON.st
 
 ### 5.2 Call validation and dispatch
 
-For every call, the Bridge obtains the current profile, resolves the capability, checks object-shaped payload and applies the bound Task's rules. Unknown/ambiguous capabilities are errors. The compatibility `get_task` alias resolves to current Task view where appropriate; overlapping `task_finish(outcome=blocked)` capabilities are disambiguated by Mission presence.
+For every call, the Bridge obtains the current profile, resolves the capability, checks object-shaped payload and applies the bound Task's rules. Unknown/ambiguous capabilities are errors. Task inspection uses the canonical `task_view` and `task_status` operations; overlapping `task_finish(outcome=blocked)` capabilities are disambiguated by Mission presence.
 
 | Call category | Required behavior |
 |---|---|
@@ -152,7 +152,7 @@ For every call, the Bridge obtains the current profile, resolves the capability,
 | `task_finish` | Task Service commits completion, then Runtime releases Execution and Bridge clears binding |
 | `judge.workspace_check` | Bridge reads the relative Workspace path (or resolves a referenced Material), attaches the current revision/hash attestation and invokes Judge directly. The returned CheckResult is diagnostic feedback; Task completion remains a separate explicit operation. See [04](04-services.md). |
 
-Do not generalize unbound discovery to every similarly named API: the explicit discovery list includes `list_tasks`, `get_task`, `list_executions`, `task_view` and `task_status`; registered `task_list` is not in that branch and normally requires provider binding. The supplied candidate view is therefore important when unbound.
+Do not generalize unbound discovery to every similarly named API: the explicit discovery list includes `list_tasks`, `list_executions`, `task_view` and `task_status`; registered `task_list` is not in that branch and normally requires provider binding. The supplied Task view is therefore important when unbound.
 
 Task creation checks `required_capabilities` against exact current capability IDs, names, operations or tool names. Acceptance requirements for exact declarations/verified usage imply `mathlib_search`. Failure returns missing/available capabilities and an action/hint before a eligible Task is created. This checks availability, not scientific value. [Source: Bridge](../../src/agent/services-bridge.js).
 
