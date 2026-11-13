@@ -63,7 +63,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/agent/opensandbox-agent-adapter.js](../../src/agent/opensandbox-agent-adapter.js) | Pi/NuRouter RPC adapter over an OpenSandbox worker endpoint | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `d82c8de5670228373d8d7720472195da1b0abe92764b5b8a67be63751e6d9a07` |
+| [src/agent/opensandbox-agent-adapter.js](../../src/agent/opensandbox-agent-adapter.js) | Pi/NuRouter RPC adapter over an OpenSandbox worker endpoint | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `7f44489641aa71c5ebcd0beb76275825bc8d160d06c6cc45dfd55d8b28eedd04` |
 
 ### controlled verification data (4)
 
@@ -171,7 +171,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/opensandbox-agent-worker.mjs](../../scripts/opensandbox-agent-worker.mjs) | Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `edf20a76c9a626a3415b6743235cdc37e40e553d2e969fc1a92857f0018ab590` |
-| [src/runtime/opensandbox-manager.js](../../src/runtime/opensandbox-manager.js) | OpenSandbox lifecycle and Execd provider boundary for one Execution | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `3f07a7db349ff568ce0bbc2d5258577edf250f73d2cd888678b6bfd53042cea3` |
+| [src/runtime/opensandbox-manager.js](../../src/runtime/opensandbox-manager.js) | OpenSandbox lifecycle and Execd provider boundary for one Execution | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `0c5d8dc51ed0acb6422efcf260327c2163f272d1bbe388ca44b226c90e55ddcd` |
 
 ### service and Agent integration (3)
 
