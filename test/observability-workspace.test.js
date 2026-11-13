@@ -20,7 +20,7 @@ test('ObservabilityServer exposes the selected Execution Workspace files and rev
     mission_id: mission.mission_id, summary: 'Inspect the selected Workspace and record one bounded observation', task_type: 'research', goal: 'Inspect Workspace', expected_output: 'notes',
     acceptance_conditions: { workspace: 'test' }, owner_ref: 'owner:test', workspace: { project: 'test' },
   }, makeEnvelope({ operationId: 'task:observability-workspace', actorRef: 'owner:test' })).task;
-  const claimed = taskService.dispatch('claim', { task_id: task.task_id, claim_key: 'claim-workspace', owner_ref: 'agent:test', workspace_mode: 'clean' }, makeEnvelope({ operationId: 'claim-workspace', actorRef: 'agent:test', taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }));
+  const claimed = taskService.taskTake(task.task_id, { request_key: 'take-workspace', owner_ref: 'agent:test', workspace_mode: 'clean' }, makeEnvelope({ operationId: 'take-workspace', actorRef: 'agent:test', taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }));
   const workspaceManager = new WorkspaceManager({ rootDir: join(root, 'workspaces') });
   const workspace = await workspaceManager.createWorkspace({
     executionId: claimed.execution.execution_id,

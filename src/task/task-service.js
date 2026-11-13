@@ -56,7 +56,7 @@ const TASK_EVENT_OPERATIONS = new Set([
   'execution_progress',
 ]);
 const TASK_READ_OPERATIONS = new Set([
-  'get_task', 'get_execution', 'list_tasks', 'list_claimable_tasks', 'list_executions',
+  'get_task', 'get_execution', 'list_tasks', 'list_eligible_tasks', 'list_executions',
   ...MODERN_READ_OPERATIONS,
   'task_status',
 ]);
@@ -65,7 +65,7 @@ const TASK_TABLE_COLUMNS = Object.freeze([
   'task_id', 'root_id', 'parent_id', 'owner_ref', 'task_type', 'task_type_version', 'goal', 'expected_output',
   'priority', 'task_instructions', 'workspace_json', 'acceptance_conditions_json', 'input_material_refs_json',
   'spec_version', 'spec_hash', 'completion_contract_json', 'parallel_quota', 'state_version', 'state', 'block_reason',
-  'max_depth', 'max_children', 'max_attempts', 'retry_policy_json', 'root_deadline', 'cancelled_at', 'claimable_at',
+  'max_depth', 'max_children', 'max_attempts', 'retry_policy_json', 'root_deadline', 'cancelled_at', 'eligible_at',
   'responsibility_key', 'created_by', 'created_at', 'updated_at',
 ]);
 
@@ -107,7 +107,7 @@ function rowToTask(row) {
     workspace: parse(row.workspace_json),
     retry_policy: parse(row.retry_policy_json),
     task_instructions: row.task_instructions ?? '',
-    claimable_at: row.claimable_at ?? row.created_at ?? null,
+    eligible_at: row.eligible_at ?? row.created_at ?? null,
   };
 }
 
@@ -209,27 +209,27 @@ export class TaskService {
     if (!modernTaskColumns.has('registration_hash')) this.db.exec('ALTER TABLE modern_task_records ADD COLUMN registration_hash TEXT');
     const taskTableSql = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get()?.sql ?? '';
     const needsTaskStateMigration = !taskTableSql.includes("'DONE'") || !taskTableSql.includes("'CLOSED'") || !taskTableSql.includes("'CANCELED'");
-    // Older MVP databases made execution_id unique in claim_keys. A waiting
-    // Execution can now be claimed again by a later Agent, so idempotency is
-    // keyed by claim request rather than by the reusable Execution identity.
-    const claimIndexes = this.db.prepare("PRAGMA index_list('claim_keys')").all();
-    const hasExecutionUnique = claimIndexes.some((index) => {
+    // Older MVP databases made execution_id unique in take_keys. A waiting
+    // Execution can now be taken again by a later Agent, so idempotency is
+    // keyed by take request rather than by the reusable Execution identity.
+    const takeIndexes = this.db.prepare("PRAGMA index_list('take_keys')").all();
+    const hasExecutionUnique = takeIndexes.some((index) => {
       if (index.unique !== 1) return false;
       const safeName = String(index.name).replaceAll('"', '""');
       return this.db.prepare(`PRAGMA index_info("${safeName}")`).all().some((column) => column.name === 'execution_id');
     });
     if (hasExecutionUnique) {
       this.db.exec(`
-        CREATE TABLE claim_keys_migrated (
+        CREATE TABLE take_keys_migrated (
           request_key TEXT PRIMARY KEY,
           task_id TEXT NOT NULL REFERENCES tasks(task_id),
           fingerprint TEXT NOT NULL,
           execution_id TEXT NOT NULL REFERENCES executions(execution_id),
           created_at TEXT NOT NULL
         );
-        INSERT INTO claim_keys_migrated SELECT request_key, task_id, fingerprint, execution_id, created_at FROM claim_keys;
-        DROP TABLE claim_keys;
-        ALTER TABLE claim_keys_migrated RENAME TO claim_keys;
+        INSERT INTO take_keys_migrated SELECT request_key, task_id, fingerprint, execution_id, created_at FROM take_keys;
+        DROP TABLE take_keys;
+        ALTER TABLE take_keys_migrated RENAME TO take_keys;
       `);
     }
     const taskColumns = new Set(this.db.prepare('PRAGMA table_info(tasks)').all().map((column) => column.name));
@@ -239,9 +239,9 @@ export class TaskService {
       else this.db.exec("ALTER TABLE tasks ADD COLUMN task_instructions TEXT NOT NULL DEFAULT ''");
     }
     if (!taskColumns.has('workspace_json')) this.db.exec("ALTER TABLE tasks ADD COLUMN workspace_json TEXT NOT NULL DEFAULT '{}'");
-    if (!taskColumns.has('claimable_at')) {
-      this.db.exec('ALTER TABLE tasks ADD COLUMN claimable_at TEXT');
-      this.db.exec('UPDATE tasks SET claimable_at = created_at WHERE claimable_at IS NULL AND state = \'OPEN\'');
+    if (!taskColumns.has('eligible_at')) {
+      this.db.exec('ALTER TABLE tasks ADD COLUMN eligible_at TEXT');
+      this.db.exec('UPDATE tasks SET eligible_at = created_at WHERE eligible_at IS NULL AND state = \'OPEN\'');
     }
     if (!taskColumns.has('responsibility_key')) this.db.exec('ALTER TABLE tasks ADD COLUMN responsibility_key TEXT');
     if (needsTaskStateMigration) this.#migrateTaskStateConstraint();
@@ -740,7 +740,7 @@ export class TaskService {
     }
     // Claimability needs to inspect the complete OPEN set before applying the
     // fairness floor.  The public list remains bounded; scanAll is an
-    // internal read used only by listClaimableTasks.
+    // internal read used only by listEligibleTasks.
     params.push(scanAll ? -1 : (availableOnly ? 100 : limit));
     const tasks = this.db.prepare(`SELECT t.* FROM tasks t WHERE ${conditions.join(' AND ')}
       ORDER BY t.priority DESC, t.created_at ASC, t.task_id ASC LIMIT ?`).all(...params).map((row) => ({
@@ -758,7 +758,7 @@ export class TaskService {
       const executions = this.listExecutions(task.task_id, { includeTerminal: false });
       const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
       // The shared Mission entry is a collaboration surface: a RUNNING
-      // Execution does not make it disappear from the claimable view.  Every
+      // Execution does not make it disappear from the eligible view.  Every
       // independent Task still honours its explicit single-owner quota.
       const sharedMission = this.#isSharedMissionTask(task);
       if (!sharedMission && active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
@@ -772,12 +772,12 @@ export class TaskService {
 
   /**
    * Return the bounded value-selection view used by a Core Daemon.  This is a
-   * read-only projection: it never ranks with an LLM and never claims a Task.
+   * read-only projection: it never ranks with an LLM and never takes a Task.
    * Protected older work is placed ahead of younger work once it crosses the
    * configured aging threshold, while priority remains the tie-breaker inside
    * each fairness band.
    */
-  listClaimableTasks({ rootId = null, missionId = null, limit = 10, agingThresholdMs = null, nowMs = Date.now() } = {}) {
+  listEligibleTasks({ rootId = null, missionId = null, limit = 10, agingThresholdMs = null, nowMs = Date.now() } = {}) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'limit must be an integer between 1 and 100');
     }
@@ -785,7 +785,7 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'aging_threshold_ms must be non-negative');
     }
     if (!Number.isFinite(nowMs)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'now_ms must be finite');
-    // A resumable WAITING execution is claimable again once its typed
+    // A resumable WAITING execution is eligible again once its typed
     // dependency is satisfied. A parent review also turns the existing
     // Execution back into CREATED; that rework responsibility is represented
     // by a RUNNING Task, so admission must include that one bounded case.
@@ -811,20 +811,20 @@ export class TaskService {
         if (!Number.isFinite(configuredThreshold) || configuredThreshold < 0) {
           throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'aging_threshold_ms must be non-negative');
         }
-        const claimableSince = task.claimable_at ?? task.created_at;
-        const claimableMs = Date.parse(claimableSince ?? '');
-        const ageMs = Number.isNaN(claimableMs) ? 0 : Math.max(0, nowMs - claimableMs);
+        const eligibleSince = task.eligible_at ?? task.created_at;
+        const eligibleMs = Date.parse(eligibleSince ?? '');
+        const ageMs = Number.isNaN(eligibleMs) ? 0 : Math.max(0, nowMs - eligibleMs);
         return {
           ...task,
-          claimable_since: claimableSince,
+          eligible_since: eligibleSince,
           age_ms: ageMs,
           fairness_protected: ageMs >= configuredThreshold,
         };
       })
       .sort((left, right) => {
         if (left.fairness_protected !== right.fairness_protected) return left.fairness_protected ? -1 : 1;
-        const leftSince = Date.parse(left.claimable_since ?? '') || Number.MAX_SAFE_INTEGER;
-        const rightSince = Date.parse(right.claimable_since ?? '') || Number.MAX_SAFE_INTEGER;
+        const leftSince = Date.parse(left.eligible_since ?? '') || Number.MAX_SAFE_INTEGER;
+        const rightSince = Date.parse(right.eligible_since ?? '') || Number.MAX_SAFE_INTEGER;
         // Once the fairness floor is active, age is the protected ordering;
         // priority may decide only among equally old eligible work.
         if (left.fairness_protected && right.fairness_protected && leftSince !== rightSince) return leftSince - rightSince;
@@ -973,10 +973,10 @@ export class TaskService {
    * responsibility.  Later Tasks are independent responsibilities even when
    * the caller does not provide a spawned_from relation.  Keeping this
    * distinction in the Service makes the admission rule authoritative for
-   * every adapter (legacy claim, canonical task_take, and Runtime recovery).
+   * every adapter (legacy take, canonical task_take, and Runtime recovery).
    */
   #isSharedMissionTask(taskOrId) {
-    // Mission is a shared objective, never a claimable responsibility. Every
+    // Mission is a shared objective, never a eligible responsibility. Every
     // Task is independently owned and uses the ordinary exclusive Execution
     // contract. The previous first-Task special case allowed multiple
     // concurrent Executions and made an empty Task list impossible to model.
@@ -1180,7 +1180,7 @@ export class TaskService {
       priority, task_instructions, workspace_json, acceptance_conditions_json, input_material_refs_json,
       spec_version, spec_hash, completion_contract_json, parallel_quota, state_version, state,
       block_reason, max_depth, max_children, max_attempts, retry_policy_json, root_deadline,
-      cancelled_at, claimable_at, created_by, created_at, updated_at
+      cancelled_at, eligible_at, created_by, created_at, updated_at
     ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 'OPEN', NULL, 0, 0, 1, '{}', NULL, NULL, ?, ?, ?, ?)`)
       .run(taskId, taskId, ownerRef, taskType, taskTypeVersion, payload.goal ?? payload.summary, payload.expected_output,
       priority, payload.task_instructions ?? '', json(payload.workspace ?? {}), json(payload.acceptance_conditions),
@@ -1227,7 +1227,7 @@ export class TaskService {
     if (missionId !== null) { where.push('m.mission_id = ?'); params.push(missionId); }
     if (search !== null) { where.push('(m.summary LIKE ? OR t.goal LIKE ? OR t.expected_output LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
     // Apply the page after availability filtering. Limiting the SQL rows
-    // first can hide later claimable Tasks behind blocked or occupied rows and
+    // first can hide later eligible Tasks behind blocked or occupied rows and
     // make a bounded page look like an empty/complete queue.
     const availableOnly = payload.available_only ?? payload.availableOnly ?? false;
     const queryLimit = availableOnly ? -1 : limit;
@@ -1407,7 +1407,7 @@ export class TaskService {
       WHERE execution_id = ?`).run(updatedAt, execution.execution_id);
     this.db.prepare(`UPDATE tasks
       SET state = 'DONE', state_version = state_version + 1, block_reason = NULL,
-          claimable_at = NULL, updated_at = ? WHERE task_id = ?`).run(updatedAt, task.task_id);
+          eligible_at = NULL, updated_at = ? WHERE task_id = ?`).run(updatedAt, task.task_id);
     return { task: this.getTask(task.task_id), execution: this.getExecution(execution.execution_id), materials: completionLinks };
   }
 
@@ -1441,7 +1441,7 @@ export class TaskService {
       WHERE link_id = ?`).run(acceptedAt, receivingTaskId, acceptingExecution.execution_id, link.link_id);
     this.db.prepare(`UPDATE tasks
       SET state = 'CLOSED', state_version = state_version + 1, block_reason = NULL,
-          claimable_at = NULL, updated_at = ? WHERE task_id = ?`).run(acceptedAt, producerTaskId);
+          eligible_at = NULL, updated_at = ? WHERE task_id = ?`).run(acceptedAt, producerTaskId);
     const acceptedLink = this.db.prepare('SELECT * FROM task_material_links WHERE link_id = ?').get(link.link_id);
     return {
       task: this.getTask(producerTaskId),
@@ -1524,7 +1524,7 @@ export class TaskService {
       this.#refreshTaskState(execution.task_id, { updatedAt });
     } else {
       this.db.prepare(`UPDATE tasks SET state = 'OPEN', block_reason = NULL,
-        claimable_at = ?, state_version = state_version + 1, updated_at = ?
+        eligible_at = ?, state_version = state_version + 1, updated_at = ?
         WHERE task_id = ? AND state NOT IN ('DONE', 'CLOSED', 'CANCELED')`).run(updatedAt, updatedAt, execution.task_id);
     }
     return {
@@ -1619,7 +1619,7 @@ export class TaskService {
     const states = payload.states ?? ['OPEN', 'BLOCKED', 'RUNNING', 'WAITING', 'DONE', 'CLOSED', 'CANCELED'];
     const limit = payload.limit ?? 100;
     const tasks = this.#listModernTasks({ mission_id: missionId, states, limit, available_only: false });
-    const claimable = this.#listModernTasks({
+    const eligible = this.#listModernTasks({
       mission_id: missionId,
       states: ['OPEN', 'RUNNING'],
       limit,
@@ -1635,7 +1635,7 @@ export class TaskService {
       SUM(CASE WHEN t.state = 'RUNNING' THEN 1 ELSE 0 END) AS running,
       SUM(CASE WHEN t.state = 'WAITING' THEN 1 ELSE 0 END) AS waiting,
       SUM(CASE WHEN t.state IN ('DONE', 'CLOSED', 'CANCELED', 'SATISFIED') THEN 1 ELSE 0 END) AS terminal,
-      0 AS claimable
+      0 AS eligible
       FROM tasks t JOIN modern_task_records m ON m.task_id = t.task_id WHERE m.mission_id = ?`).get(missionId);
     const lanes = this.db.prepare(`SELECT core_id, task_id, execution_id, state, owner_ref, updated_at
       FROM executions WHERE core_id IS NOT NULL AND state IN ('CREATED', 'RUNNING', 'WAITING')
@@ -1654,7 +1654,7 @@ export class TaskService {
     return {
       mission,
       tasks,
-      claimable_tasks: claimable,
+      eligible_tasks: eligible,
       lanes: [...lanes.values()],
       counts: {
         total: Number(counts.total ?? 0),
@@ -1662,7 +1662,7 @@ export class TaskService {
         running: Number(counts.running ?? 0),
         waiting: Number(counts.waiting ?? 0),
         terminal: Number(counts.terminal ?? 0),
-        claimable: claimable.length,
+        eligible: eligible.length,
       },
       page: { limit, returned: tasks.length, total: pageTotal, complete: tasks.length >= pageTotal },
       observed_at: now(),
@@ -1672,7 +1672,7 @@ export class TaskService {
   #taskRegister(input, envelope) {
     // `take: true` is the contract §1 register-and-switch operation: in one
     // transaction the caller's current Execution ends (FENCED, task_switch)
-    // and the new Task is claimed on the same Core lane. No other actor can
+    // and the new Task is taken on the same Core lane. No other actor can
     // observe the new Task unowned, so there is no reservation state.
     const { take = false, ...payload } = input;
     if (take !== false && take !== true) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'take must be a boolean');
@@ -1689,8 +1689,8 @@ export class TaskService {
     const previousTask = this.getTask(switchFrom.task_id);
     if (!TERMINAL_TASK_STATES.includes(previousTask.state)) this.#refreshTaskState(switchFrom.task_id, { updatedAt });
     const created = this.getTask(registered.task.task_id);
-    const claimed = this.#claimTask(created, {
-      claim_key: `task_switch:${envelope.operation_id}`,
+    const taken = this.#takeTask(created, {
+      take_key: `task_switch:${envelope.operation_id}`,
       owner_ref: envelope.actor_ref,
       core_id: switchFrom.core_id ?? null,
       agent_prompt: created.task_instructions ?? '',
@@ -1699,8 +1699,8 @@ export class TaskService {
     }, { ...envelope, task_id: created.task_id, execution_id: null, spec_version: created.spec_version, state_version: created.state_version });
     return {
       ...registered,
-      task: claimed.task,
-      execution: claimed.execution,
+      task: taken.task,
+      execution: taken.execution,
       switched_from: { task: this.getTask(switchFrom.task_id), execution: this.getExecution(switchFrom.execution_id) },
     };
   }
@@ -1740,20 +1740,20 @@ export class TaskService {
     const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
     const task = this.getTask(taskId);
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`);
-    const claimEnvelope = {
+    const takeEnvelope = {
       ...envelope,
       task_id: taskId,
       execution_id: null,
       spec_version: envelope.spec_version ?? task.spec_version,
       state_version: envelope.state_version ?? task.state_version,
     };
-    // Fairness bypass is reserved for the internal register-and-switch claim.
+    // Fairness bypass is reserved for the internal register-and-switch take.
     const { skip_fairness: _skipFairness, ...takePayload } = payload;
-    return this.#claimTask(task, {
+    return this.#takeTask(task, {
       ...takePayload,
-      claim_key: payload.claim_key ?? payload.request_key ?? envelope.operation_id,
+      take_key: payload.take_key ?? payload.request_key ?? envelope.operation_id,
       owner_ref: envelope.actor_ref,
-    }, claimEnvelope);
+    }, takeEnvelope);
   }
 
   #taskFeedback(payload, envelope) {
@@ -1875,8 +1875,8 @@ export class TaskService {
         availableOnly: payload.available_only ?? true,
       });
     }
-    if (operation === 'list_claimable_tasks') {
-      return this.listClaimableTasks({
+    if (operation === 'list_eligible_tasks') {
+      return this.listEligibleTasks({
         rootId: payload.root_id ?? null,
         missionId: payload.mission_id ?? payload.missionId ?? null,
         limit: payload.limit ?? 10,
@@ -2105,7 +2105,7 @@ export class TaskService {
 
   #enforceFairness(task) {
     const policy = this.#admissionPolicy(task.root_id);
-    const protectedTasks = this.listClaimableTasks({
+    const protectedTasks = this.listEligibleTasks({
       rootId: task.root_id,
       limit: 100,
       agingThresholdMs: policy.aging_threshold_ms,
@@ -2114,7 +2114,7 @@ export class TaskService {
     if (protectedTasks.length === 0) return;
     const oldest = protectedTasks[0];
     if (oldest.task_id !== task.task_id) {
-      throw new SwarmEnvError(ERROR_CODES.FAIRNESS_REQUIRED, 'an older eligible Task must receive a claim opportunity first', {
+      throw new SwarmEnvError(ERROR_CODES.FAIRNESS_REQUIRED, 'an older eligible Task must receive a take opportunity first', {
         protected_task_id: oldest.task_id,
         selected_task_id: task.task_id,
         root_task_id: task.root_id,
@@ -2161,9 +2161,9 @@ export class TaskService {
   }
 
   /**
-   * Dependencies that gate claim/readiness. A shared Mission Task records a
+   * Dependencies that gate take/readiness. A shared Mission Task records a
    * branch's prerequisites as observable structure, but per the runtime
-   * contract (§1, §3) it remains OPEN and claimable whenever it has no
+   * contract (§1, §3) it remains OPEN and eligible whenever it has no
    * executor until the Mission itself ends; one branch's prerequisite never
    * removes the shared responsibility from the other identities.
    */
@@ -2247,12 +2247,12 @@ export class TaskService {
     return [...new Set(value)];
   }
 
-  #claim(payload, envelope) {
+  #take(payload, envelope) {
     requireString(envelope.task_id, 'task_id');
-    if (envelope.execution_id !== null) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'claim cannot target an execution');
+    if (envelope.execution_id !== null) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'take cannot target an execution');
     const task = this.getTask(envelope.task_id);
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${envelope.task_id}`);
-    return this.#claimTask(task, payload, envelope);
+    return this.#takeTask(task, payload, envelope);
   }
 
   #reconcileTask(payload, envelope) {
@@ -2274,7 +2274,7 @@ export class TaskService {
     }
     if (blockers.length > 0 && task.state !== 'BLOCKED') {
       const reason = blockers.map((blocker) => `dependency:${blocker.dependency_id ?? 'unknown'}`).join(',');
-      this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+      this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, eligible_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
         .run(reason, updatedAt, taskId);
       return { task: this.getTask(taskId), changed: true, blockers };
     }
@@ -2283,7 +2283,7 @@ export class TaskService {
     // admission, or an operator decision) require an explicit reopen so a
     // periodic sweep cannot silently erase that decision.
     if (blockers.length === 0 && task.state === 'BLOCKED' && String(task.block_reason ?? '').startsWith('dependency:')) {
-      this.db.prepare("UPDATE tasks SET state = 'OPEN', block_reason = NULL, claimable_at = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+      this.db.prepare("UPDATE tasks SET state = 'OPEN', block_reason = NULL, eligible_at = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
         .run(updatedAt, updatedAt, taskId);
       const reopened = this.getTask(taskId);
       const missionId = this.#taskMissionId(taskId);
@@ -2315,7 +2315,7 @@ export class TaskService {
     if (active > 0) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Task already has an active Execution');
     if (task.state === 'OPEN') return { task, changed: false, blockers: [] };
     const updatedAt = now();
-    this.db.prepare("UPDATE tasks SET state = 'OPEN', block_reason = NULL, claimable_at = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+    this.db.prepare("UPDATE tasks SET state = 'OPEN', block_reason = NULL, eligible_at = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
       .run(updatedAt, updatedAt, taskId);
     const reopened = this.getTask(taskId);
     const missionId = this.#taskMissionId(taskId);
@@ -2415,13 +2415,13 @@ export class TaskService {
     if (sharedMission) {
       // The block ends only this branch. Per the runtime contract (§1, §3)
       // the shared Mission Task is RUNNING while others execute and OPEN with
-      // no executor, and stays claimable until the Mission ends. The typed
+      // no executor, and stays eligible until the Mission ends. The typed
       // prerequisite remains recorded on the Execution handoff metadata and
       // as Task structure; it does not become an aggregate BLOCKED state
       // (r12: that state idled every Core for the remaining 84 minutes).
       this.#refreshTaskState(execution.task_id, { updatedAt });
     } else {
-      this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, claimable_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+      this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, eligible_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
         .run(blockReason, updatedAt, execution.task_id);
     }
     this.#emitExecutionState({
@@ -2441,24 +2441,24 @@ export class TaskService {
     };
   }
 
-  #claimTask(task, payload, envelope) {
-    if (TERMINAL_TASK_STATES.includes(task.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be claimed');
+  #takeTask(task, payload, envelope) {
+    if (TERMINAL_TASK_STATES.includes(task.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be taken');
     const sharedMission = this.#isSharedMissionTask(task);
     const dependencyBlockers = this.#gatingDependencyBlockers(task);
     if (dependencyBlockers.length > 0) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task is blocked by an explicit execution dependency', { blockers: dependencyBlockers });
     }
-    const claimKey = requireString(payload.claim_key ?? payload.request_key, 'claim_key');
-    const keyFingerprint = operationPayload('claim', payload, envelope);
-    const existingKey = this.db.prepare('SELECT * FROM claim_keys WHERE request_key = ?').get(claimKey);
+    const takeKey = requireString(payload.take_key ?? payload.request_key, 'take_key');
+    const keyFingerprint = operationPayload('take', payload, envelope);
+    const existingKey = this.db.prepare('SELECT * FROM take_keys WHERE request_key = ?').get(takeKey);
     if (existingKey) {
       if (existingKey.task_id !== task.task_id || existingKey.fingerprint !== keyFingerprint) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'claim_key was reused with another payload');
+        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'take_key was reused with another payload');
       }
       return { task: this.getTask(task.task_id), execution: this.getExecution(existingKey.execution_id) };
     }
     if (envelope.spec_version !== task.spec_version || envelope.state_version !== task.state_version) {
-      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Task claim version is stale', { expected_state_version: task.state_version, expected_spec_version: task.spec_version });
+      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Task take version is stale', { expected_state_version: task.state_version, expected_spec_version: task.spec_version });
     }
     if (payload.skip_fairness !== true) this.#enforceFairness(task);
     const ownerRef = payload.owner_ref ?? envelope.actor_ref;
@@ -2522,7 +2522,7 @@ export class TaskService {
     let waitingExecution = this.db.prepare("SELECT * FROM executions WHERE task_id = ? AND state = 'WAITING' ORDER BY updated_at DESC, execution_id DESC LIMIT 1").get(task.task_id);
     const queuedRework = this.db.prepare("SELECT 1 FROM executions WHERE task_id = ? AND state = 'CREATED' LIMIT 1").get(task.task_id);
     if (workspaceMode === 'resume' && !sourceExecutionId && sourceWorkspaceRef === null && !waitingExecution && !queuedRework) {
-      // A successor claim after a fenced/handed-off Execution should carry
+      // A successor take after a fenced/handed-off Execution should carry
       // explicit Workspace lineage even when the Agent only asks for the
       // default resume mode. This makes the source Execution/revision
       // auditable and prevents a successor from silently starting from an
@@ -2547,7 +2547,7 @@ export class TaskService {
     const activeCount = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING')").get(task.task_id).count;
     // A released Execution may remain CREATED so a later Worker can resume its
     // Workspace. Its incremented instruction version marks it as queueable;
-    // an ordinary claim-created Execution remains protected by the active
+    // an ordinary take-created Execution remains protected by the active
     // quota until Runtime binds it.
     const createdRow = this.db.prepare("SELECT * FROM executions WHERE task_id = ? AND state = 'CREATED' ORDER BY updated_at DESC, execution_id DESC LIMIT 1").get(task.task_id);
     const reworkExecution = createdRow ? rowToExecution(createdRow) : null;
@@ -2566,8 +2566,8 @@ export class TaskService {
         WHERE execution_id = ?`).run(ownerRef, coreId, nextLease, updatedAt, agentPrompt, updatedAt, reworkExecution.execution_id);
       this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
         .run('RUNNING', updatedAt, task.task_id);
-      this.db.prepare('INSERT INTO claim_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
-        .run(claimKey, task.task_id, keyFingerprint, reworkExecution.execution_id, updatedAt);
+      this.db.prepare('INSERT INTO take_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(takeKey, task.task_id, keyFingerprint, reworkExecution.execution_id, updatedAt);
       return { task: this.getTask(task.task_id), execution: this.getExecution(reworkExecution.execution_id) };
     }
     const resumableWaiting = waitingExecution && this.#isWaitingResumable(rowToExecution(waitingExecution));
@@ -2596,8 +2596,8 @@ export class TaskService {
         WHERE execution_id = ?`).run(ownerRef, coreId, nextLease, updatedAt, agentPrompt, updatedAt, waitingExecution.execution_id);
       this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
         .run('RUNNING', updatedAt, task.task_id);
-      this.db.prepare('INSERT INTO claim_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
-        .run(claimKey, task.task_id, keyFingerprint, waitingExecution.execution_id, updatedAt);
+      this.db.prepare('INSERT INTO take_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(takeKey, task.task_id, keyFingerprint, waitingExecution.execution_id, updatedAt);
       return { task: this.getTask(task.task_id), execution: this.getExecution(waitingExecution.execution_id) };
       }
     }
@@ -2672,10 +2672,10 @@ export class TaskService {
     if (coreId !== null) {
       this.db.prepare('UPDATE executions SET core_id = ? WHERE execution_id = ?').run(coreId, executionId);
     }
-    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, claimable_at = CASE WHEN ? = \'OPEN\' THEN claimable_at ELSE NULL END, updated_at = ? WHERE task_id = ?')
+    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, eligible_at = CASE WHEN ? = \'OPEN\' THEN eligible_at ELSE NULL END, updated_at = ? WHERE task_id = ?')
       .run('RUNNING', 'RUNNING', createdAt, task.task_id);
-    this.db.prepare('INSERT INTO claim_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(claimKey, task.task_id, keyFingerprint, executionId, createdAt);
+    this.db.prepare('INSERT INTO take_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(takeKey, task.task_id, keyFingerprint, executionId, createdAt);
     return { task: this.getTask(task.task_id), execution: this.getExecution(executionId) };
   }
 
@@ -2972,7 +2972,7 @@ export class TaskService {
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
   }
 
-  #submitCandidate(payload, envelope) {
+  #checkWorkspace(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     const candidateMaterialId = requireString(payload.candidate_material_id, 'candidate_material_id');
     if (this.contextService) {
@@ -3101,7 +3101,7 @@ export class TaskService {
     } else if (execution.state === 'WAITING') {
       // A failed check wakes the responsibility for another Agent. Keep the
       // durable Workspace and wait lineage visible as a resumable WAITING
-      // Execution; the next explicit claim will hand it over and bind it.
+      // Execution; the next explicit take will hand it over and bind it.
       this.db.prepare("UPDATE executions SET state = 'WAITING', wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
         .run(updatedAt, execution.execution_id);
       this.#refreshTaskState(task.task_id, { updatedAt });
@@ -3163,7 +3163,7 @@ export class TaskService {
         ? 'RUNNING'
         : (active.some((execution) => execution.state === 'WAITING') ? 'WAITING' : 'OPEN'));
     if (task.state === nextState) return task;
-    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, claimable_at = CASE WHEN ? = \'OPEN\' THEN COALESCE(claimable_at, ?) ELSE NULL END, cancelled_at = CASE WHEN ? IN (\'CANCELLED\', \'CANCELED\') THEN ? ELSE cancelled_at END, updated_at = ? WHERE task_id = ?')
+    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, eligible_at = CASE WHEN ? = \'OPEN\' THEN COALESCE(eligible_at, ?) ELSE NULL END, cancelled_at = CASE WHEN ? IN (\'CANCELLED\', \'CANCELED\') THEN ? ELSE cancelled_at END, updated_at = ? WHERE task_id = ?')
       .run(nextState, nextState, updatedAt, nextState, ['CANCELLED', 'CANCELED'].includes(nextState) ? updatedAt : null, updatedAt, taskId);
     return this.getTask(taskId);
   }
@@ -3243,7 +3243,7 @@ export class TaskService {
       // A checker-health wait is a health gate, not a timer.  The same
       // unavailable fingerprint must not wake the Execution and submit the
       // same candidate again.  Only a newly observed health fingerprint may
-      // make this responsibility claimable again.
+      // make this responsibility eligible again.
       return health.health_fingerprint !== condition.health_fingerprint;
     }
     return false;

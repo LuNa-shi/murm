@@ -7,49 +7,55 @@ The first profile below is the benchmark flat Task model with built-in Services 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Flat built-ins, no Sandbox: exact task-loop guide
 
-Body SHA-256: `6c400519ca87c164de7043a3054d7f6c9cc15e438b113fa776ad740c45f6d7bd`
+Body SHA-256: `a1732db5f69b8f4313021e09de33bfdd3e96cec5c9977ae354b48d3b98eaec47`
 
 ````text
 Task loop (exact tool names in this Session):
 1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
 2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
+4. Check: write the answer file in the Workspace, then call swarmenv_judge_workspace_check with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_workspace_check again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback. Register a separable responsibility for others with swarmenv_task_register; this does not end your Execution.
 6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_register without take so a fresh Bot can inspect and claim it.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
-9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never claimable.
+8. End this Execution with exactly one of: swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary.
+9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never eligible.
 ````
 ## Flat built-ins with Sandbox: exact task-loop guide
 
-Body SHA-256: `6c400519ca87c164de7043a3054d7f6c9cc15e438b113fa776ad740c45f6d7bd`
+Body SHA-256: `a1732db5f69b8f4313021e09de33bfdd3e96cec5c9977ae354b48d3b98eaec47`
 
 ````text
 Task loop (exact tool names in this Session):
 1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
 2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
+4. Check: write the answer file in the Workspace, then call swarmenv_judge_workspace_check with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_workspace_check again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback. Register a separable responsibility for others with swarmenv_task_register; this does not end your Execution.
 6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_register without take so a fresh Bot can inspect and claim it.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
-9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never claimable.
+8. End this Execution with exactly one of: swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary.
+9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never eligible.
 ````
 ## Flat built-ins with Sandbox and Mathlib Search: exact task-loop guide
 
-Body SHA-256: `dd14979bb3d313b6c5a6cb6b2bd696801363cdba2b6ca1450e755e268d26aab0`
+Body SHA-256: `010e794055c8500ac202a35368cf824d15144e1d764bae935b42506efb125ed1`
 
 ````text
 Task loop (exact tool names in this Session):
 1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
 2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff; use swarmenv_mathlib_search as service aids.
+4. Check: write the answer file in the Workspace, then call swarmenv_judge_workspace_check with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_workspace_check again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback. Register a separable responsibility for others with swarmenv_task_register; this does not end your Execution.
 6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_register without take so a fresh Bot can inspect and claim it.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
-9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never claimable.
+8. End this Execution with exactly one of: swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary.
+9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never eligible.
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `4ec1f989cd3b1b28d20e7773830ecbc98a931ae25a551632e8558384711ccbb9`
+Body SHA-256: `9050636f729abccafc82b583e814d8d13cf32d68531b04b5aafce50347424cdb`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -65,6 +71,7 @@ Body SHA-256: `4ec1f989cd3b1b28d20e7773830ecbc98a931ae25a551632e8558384711ccbb9`
   - swarmenv_context_search_materials: Search shared immutable Materials by summary, role, Task, producer, or Mission. (logical operation context.context_search_materials; read-only; inputs required=[none] fields=[limit,mission_id,query,role,task_id]; Search shared immutable Materials by summary, role, Task, producer, or Mission.)
 - Judge Service — Candidate checking and structured CheckResults.
   - swarmenv_judge_get_check_result: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback. (logical operation judge.get_check_result; read-only; inputs required=[none] fields=[check_result_id,request_key]; Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.)
+  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[path] fields=[content_hash,path,request_key,revision,workspace_id,workspace_revision]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
 - SwarmEnv Runtime — Task-scoped Execution projection
   - swarmenv_execution_get: Read the current Execution identity and Workspace revision. (logical operation runtime.get_execution; read-only; inputs required=[execution_id] fields=[execution_id]; Read the current Execution before acting on its Task.)
   - swarmenv_workspace_diff: Compare two revisions in the current task-scoped Workspace. (logical operation runtime.workspace_diff; read-only; inputs required=[none] fields=[from_revision,to_revision]; Inspect the auditable file changes between revisions.)
@@ -87,9 +94,9 @@ Body SHA-256: `4ec1f989cd3b1b28d20e7773830ecbc98a931ae25a551632e8558384711ccbb9`
   - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
   - swarmenv_workspace_merge: Conditionally merge one complete public Workspace revision into main after conflict and check validation. (logical operation task.workspace_merge; writes state; inputs required=[workspace_id,from_revision,expected_main_revision] fields=[expected_main_revision,from_revision,workspace_id]; Conditionally merge one complete public Workspace revision into main after conflict and check validation.)
   - swarmenv_workspace_public_apply: Materialize a selected public Mission Workspace revision into the current Execution directory. (logical operation task.workspace_public_apply; writes state; inputs required=[workspace_id,target_dir] fields=[revision,target_dir,workspace_id]; Materialize a selected public Mission Workspace revision into the current Execution directory.)
-  - swarmenv_workspace_public_files: List files in the immutable Mission Workspace revision before a Task is claimed. (logical operation task.workspace_public_files; read-only; inputs required=[workspace_id] fields=[path,revision,workspace_id]; List files in the immutable Mission Workspace revision before a Task is claimed.)
-  - swarmenv_workspace_public_read: Read one file from an immutable Mission Workspace revision before a Task is claimed. (logical operation task.workspace_public_read; read-only; inputs required=[workspace_id,path] fields=[max_bytes,path,revision,workspace_id]; Read one file from an immutable Mission Workspace revision before a Task is claimed.)
-  - swarmenv_workspace_public_search: Search text in an immutable Mission Workspace revision before a Task is claimed. (logical operation task.workspace_public_search; read-only; inputs required=[workspace_id,query] fields=[max_results,path,query,revision,workspace_id]; Search text in an immutable Mission Workspace revision before a Task is claimed.)
+  - swarmenv_workspace_public_files: List files in the immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_files; read-only; inputs required=[workspace_id] fields=[path,revision,workspace_id]; List files in the immutable Mission Workspace revision before a Task is taken.)
+  - swarmenv_workspace_public_read: Read one file from an immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_read; read-only; inputs required=[workspace_id,path] fields=[max_bytes,path,revision,workspace_id]; Read one file from an immutable Mission Workspace revision before a Task is taken.)
+  - swarmenv_workspace_public_search: Search text in an immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_search; read-only; inputs required=[workspace_id,query] fields=[max_results,path,query,revision,workspace_id]; Search text in an immutable Mission Workspace revision before a Task is taken.)
   - swarmenv_workspace_save: Save a complete public Mission Workspace file tree as an immutable revision without advancing main. (logical operation task.workspace_save; writes state; inputs required=[workspace_id,base_revision,files] fields=[base_revision,files,source,workspace_id]; Save a complete public Mission Workspace file tree as an immutable revision without advancing main.)
 ````
 
@@ -233,6 +240,20 @@ Body SHA-256: `682306dd8de9790b320a95e8f963511ea5e7c53f8a50d678284262c0173154dc`
   "promptGuidelines": [
     "Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.",
     "Help: service://judge/get_check_result"
+  ]
+}
+````
+## swarmenv_judge_workspace_check
+
+Body SHA-256: `921124b418fd1533ddd48a2b4f6fb8cbe8a1c2e7628d27f3b965db9e2c4d8144`
+
+````text
+{
+  "description": "Check a Workspace file reference against the configured checker and return a durable CheckResult.",
+  "promptSnippet": "Judge Service: Check a Workspace file reference against the configured checker and return a durable CheckResult.",
+  "promptGuidelines": [
+    "Check a Workspace file reference against the configured checker and return a durable CheckResult.",
+    "Help: service://judge/workspace_check"
   ]
 }
 ````
@@ -560,42 +581,42 @@ Body SHA-256: `b3e2bebf27118544c2780a6b6177bb02eb262f532f6b1d2c90a18d555c1d28c6`
 ````
 ## swarmenv_workspace_public_files
 
-Body SHA-256: `ac1f9e1847169d3d3acaceecf3149de762bb3ccfdd70c51a79af9e80ae2c52ff`
+Body SHA-256: `b634097cdbb5b34d1e33bc2325ce833d2ad1fdaa53ad90cb581ed93911453d08`
 
 ````text
 {
-  "description": "List files in the immutable Mission Workspace revision before a Task is claimed.",
-  "promptSnippet": "Task Service: List files in the immutable Mission Workspace revision before a Task is claimed.",
+  "description": "List files in the immutable Mission Workspace revision before a Task is taken.",
+  "promptSnippet": "Task Service: List files in the immutable Mission Workspace revision before a Task is taken.",
   "promptGuidelines": [
-    "List files in the immutable Mission Workspace revision before a Task is claimed.",
+    "List files in the immutable Mission Workspace revision before a Task is taken.",
     "Help: service://task/workspace_public_files"
   ]
 }
 ````
 ## swarmenv_workspace_public_read
 
-Body SHA-256: `8dce9aaee954d995630dee76f819550c8a6d63a26a882e2d5eeb13997dab2e5c`
+Body SHA-256: `04adab3d6dc0c3e4464ed56561125a6ea757af62923fd18c9783f9957b539645`
 
 ````text
 {
-  "description": "Read one file from an immutable Mission Workspace revision before a Task is claimed.",
-  "promptSnippet": "Task Service: Read one file from an immutable Mission Workspace revision before a Task is claimed.",
+  "description": "Read one file from an immutable Mission Workspace revision before a Task is taken.",
+  "promptSnippet": "Task Service: Read one file from an immutable Mission Workspace revision before a Task is taken.",
   "promptGuidelines": [
-    "Read one file from an immutable Mission Workspace revision before a Task is claimed.",
+    "Read one file from an immutable Mission Workspace revision before a Task is taken.",
     "Help: service://task/workspace_public_read"
   ]
 }
 ````
 ## swarmenv_workspace_public_search
 
-Body SHA-256: `aa6fbfe65b75ccb20020aea5d352810de39615e5508374440694c61979bdb2f5`
+Body SHA-256: `5c184f3c270a8ee1e679a31c6cb215d5b1accccee0fc947baa2acc408bef9fba`
 
 ````text
 {
-  "description": "Search text in an immutable Mission Workspace revision before a Task is claimed.",
-  "promptSnippet": "Task Service: Search text in an immutable Mission Workspace revision before a Task is claimed.",
+  "description": "Search text in an immutable Mission Workspace revision before a Task is taken.",
+  "promptSnippet": "Task Service: Search text in an immutable Mission Workspace revision before a Task is taken.",
   "promptGuidelines": [
-    "Search text in an immutable Mission Workspace revision before a Task is claimed.",
+    "Search text in an immutable Mission Workspace revision before a Task is taken.",
     "Help: service://task/workspace_public_search"
   ]
 }

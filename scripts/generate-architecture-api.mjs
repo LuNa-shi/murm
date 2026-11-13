@@ -36,7 +36,7 @@ const profiles = [];
 for (const model of ['flat']) for (const sandbox of [false, true]) {
   const runtimeCapabilities = runtimeCapabilityList()
     .filter((capability) => sandbox || !['sandbox_exec', 'sandbox_job'].includes(capability.operation))
-    .filter((capability) => model !== 'flat' || !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
+    ;
   profiles.push({ label: `${model}; Sandbox ${sandbox ? 'on' : 'off'}`, profile: buildCapabilityProfile({ role: 'bound', registry, runtimeCapabilities }) });
 }
 const ids = [...new Set(profiles.flatMap(({profile}) => profile.capabilities.map((capability) => capability.id)))].sort();

@@ -1160,7 +1160,7 @@ export class Runtime {
 
   /**
    * End one unfinished Execution attempt and return its Task to the OPEN
-   * (claimable/READY) projection. Checkpoint and Workspace writes happen
+   * (eligible/READY) projection. Checkpoint and Workspace writes happen
    * before the fence; the fence is durable before the old session is stopped.
    */
   async handoffExecution(executionId, {
@@ -1914,7 +1914,7 @@ export class Runtime {
     if (notification.notification_type === 'material_available') {
       return `Response Material ${notification.material_id ?? payload.material_id ?? '<unknown>'} from Task ${notification.source_task_id ?? payload.producer_task_id ?? '<unknown>'} / Execution ${notification.source_execution_id ?? payload.producer_execution_id ?? '<unknown>'} is linked to this Task. Read it through Context Service and adapt your own work, then record your decision with task_feedback using notification_id ${notification.notification_id}. This notice is delivered once; it does not end your Execution or require a handoff. Call task.close only when your contract accepts the Response.`;
     }
-    return `Task ${notification.recipient_task_id} is OPEN again because its typed dependency is satisfied; it is claimable when a Core is idle.`;
+    return `Task ${notification.recipient_task_id} is OPEN again because its typed dependency is satisfied; it is eligible when a Core is idle.`;
   }
 
   #onNotification(notification) {

@@ -93,8 +93,8 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', required: ['kind', 'scope', 'content'], properties: { kind: { type: 'string', enum: ['assumption', 'fact', 'conjecture', 'experience', 'failure', 'artifact', 'steer', 'check_result'] }, scope: { type: 'string' }, content: {}, evidence_state: { type: 'string', enum: ['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale'] } }, additionalProperties: true },
   },
   {
-    name: 'judge_submit_candidate', service: 'judge', operation: 'submit_candidate', version: '1.0',
-    description: 'Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.',
+    name: 'judge_workspace_check', service: 'judge', operation: 'workspace_check', version: '1.0',
+    description: 'Check a Workspace file reference against the configured checker and return a durable CheckResult.',
     scope: 'execution-write', side_effect: true,
     parameters: { type: 'object', required: ['path'], properties: { workspace_id: { type: 'string', minLength: 1 }, revision: { type: 'string', pattern: '^\\d+\\.\\d+$' }, path: { type: 'string', minLength: 1 }, workspace_revision: { type: 'integer', minimum: 1 }, content_hash: { type: 'string', minLength: 1 }, request_key: { type: 'string', minLength: 1 } }, additionalProperties: false },
   },
@@ -248,19 +248,19 @@ const publicWorkspaceTools = TOOL_DEFINITIONS
 const publicMissionWorkspaceTools = [
   {
     name: 'workspace_public_files', service: 'task', operation: 'workspace_public_files', version: '1.0',
-    description: 'List files in the immutable Mission Workspace revision before a Task is claimed.',
+    description: 'List files in the immutable Mission Workspace revision before a Task is taken.',
     scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
     parameters: { type: 'object', required: ['workspace_id'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, path: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'workspace_public_read', service: 'task', operation: 'workspace_public_read', version: '1.0',
-    description: 'Read one file from an immutable Mission Workspace revision before a Task is claimed.',
+    description: 'Read one file from an immutable Mission Workspace revision before a Task is taken.',
     scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
     parameters: { type: 'object', required: ['workspace_id', 'path'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, path: { type: 'string' }, max_bytes: { type: 'integer', minimum: 1, maximum: 10000000 } }, additionalProperties: false },
   },
   {
     name: 'workspace_public_search', service: 'task', operation: 'workspace_public_search', version: '1.0',
-    description: 'Search text in an immutable Mission Workspace revision before a Task is claimed.',
+    description: 'Search text in an immutable Mission Workspace revision before a Task is taken.',
     scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
     parameters: { type: 'object', required: ['workspace_id', 'query'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, path: { type: 'string' }, query: { type: 'string' }, max_results: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false },
   },
@@ -317,7 +317,7 @@ const SERVICE_DEFINITIONS = Object.freeze([
     description: 'Shared immutable Materials with producer provenance and semantic collaboration roles.',
     tools: [...TOOL_DEFINITIONS.filter((tool) => tool.service === 'context'), ...publicContextTools],
   },
-  { name: 'judge', version: '1.0', description: 'Workspace file checks and independent completion results.', tools: publicJudgeTools.filter((tool) => tool.operation !== 'submit_candidate') },
+  { name: 'judge', version: '1.0', description: 'Workspace file checks and independent completion results.', tools: publicJudgeTools },
   { name: 'catalog', version: '1.0', description: 'Service and named tool discovery metadata.', tools: publicCatalogTools },
 ]);
 

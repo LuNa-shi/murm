@@ -257,7 +257,7 @@ test('built-in Task, Context, Judge, and Catalog providers can all be replaced b
     const registry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, serviceEndpoints: endpoints });
     assert.deepEqual(registry.listServices().map((service) => service.service_id), ['catalog', 'context', 'judge', 'task']);
     const boundProfile = registry.getCapabilityProfile('bound');
-    assert.ok(boundProfile.capabilities.some((capability) => capability.service_id === 'task' && capability.operation === 'task_block'));
+    assert.ok(boundProfile.capabilities.some((capability) => capability.service_id === 'task' && capability.operation === 'task_finish'));
     for (const id of ['task', 'context', 'judge', 'catalog']) {
       assert.equal(registry.getService(id).adapter.kind, 'http-json');
       assert.equal((await registry.checkHealth(id)).ok, true);
@@ -314,7 +314,7 @@ test('hosted Judge accepts the same direct Workspace source contract as in-proce
   try {
     const result = await registry.invoke({
       serviceId: 'judge',
-      capability: 'judge_submit_candidate',
+      capability: 'judge_workspace_check',
       input: { source: { path: 'Candidate.lean', workspace_revision: 1, content: 'theorem direct : True := by trivial' } },
       envelope: makeEnvelope({ operationId: 'direct-judge-http-submit', actorRef: 'agent:bound', taskId: 'task:http', executionId: 'execution:http', specVersion: 1, stateVersion: 1, fencingVersion: 1 }),
       role: 'bound',

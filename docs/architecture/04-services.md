@@ -150,7 +150,7 @@ The public search schema advertises `limit` from 1 to 100, but the current `#rea
 
 Publishing `scope="root_integration"` requires 1–100 unique `provenance.consumed_material_ids` already recorded as `integration` consumption by that same Task/Execution. This supplies an explicit provenance check. It still does not establish that the mathematical argument correctly integrates the cited Materials. A search/read result alone never creates a consumption edge.
 
-Sources: [Context](../../src/context/context-service.js), [Context schema](../../src/storage/context-schema.js), [Context tests](../../test/context-service.test.js), [material-completion tests](../../test/task-material-completion.test.js).
+Sources: [Context](../../src/context/context-service.js), [Context schema](../../src/storage/context-schema.js), [Context tests](../../test/context-service.test.js).
 
 ## 5. Judge: current submission, preflight, checks and application
 

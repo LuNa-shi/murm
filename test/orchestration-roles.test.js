@@ -28,17 +28,17 @@ test('TaskController reconciles claimability and signals each idle daemon once p
   const first = await controller.reconcile({ reason: 'dependency-complete' });
   const second = await controller.reconcile({ reason: 'duplicate-event' });
 
-  assert.equal(first.claimable_count, 1);
+  assert.equal(first.eligible_count, 1);
   assert.equal(first.blocked_count, 1);
   assert.equal(second.signaled_loop_count, 0);
   assert.equal(signals.length, 1);
   assert.equal(signals[0].target, daemon);
   assert.equal(signals[0].payload.reason, 'dependency-complete');
   assert.equal(events.filter((event) => event.kind === 'controller_reconcile').length, 2);
-  assert.equal(events.some((event) => event.kind === 'controller_task_claimable'), true);
+  assert.equal(events.some((event) => event.kind === 'controller_task_eligible'), true);
 });
 
-test('TaskController reserves one idle daemon per claimable Task', async () => {
+test('TaskController reserves one idle daemon per eligible Task', async () => {
   const signals = [];
   const daemons = [1, 2, 3].map((index) => ({ core_id: `core-${index}`, state: 'IDLE', healthy: true }));
   const controller = new TaskController({
@@ -198,17 +198,17 @@ test('TaskController adapts TaskService.reconcileTask to its task-id contract', 
 
 test('TaskController never claims work and wakes after a dependency event', async () => {
   const calls = [];
-  let claimable = [];
+  let eligible = [];
   const controller = new TaskController({
     taskService: {
-      listTasks: ({ availableOnly }) => availableOnly ? claimable : [],
+      listTasks: ({ availableOnly }) => availableOnly ? eligible : [],
     },
     listIdentityLoops: () => [],
     signalIdleIdentity: () => calls.push('signal'),
   });
 
   const pending = controller.notify({ type: 'dependency_changed', task_id: 'task-1' });
-  claimable = [{ task_id: 'task-1' }];
+  eligible = [{ task_id: 'task-1' }];
   const result = await pending;
   assert.equal(result.reason, 'dependency_changed');
   assert.equal(calls.length, 0);
@@ -219,7 +219,7 @@ test('IdentityTaskLoop presents a bounded shortlist, claims once, hands off to R
   const calls = [];
   const daemon = new IdentityTaskLoop({
     coreId: 'core-1',
-    listClaimableTasks: () => [
+    listEligibleTasks: () => [
       { task_id: 'task-1', priority: 10 },
       { task_id: 'task-2', priority: 1 },
     ],
@@ -260,7 +260,7 @@ test('IdentityTaskLoop boundedly rescans after a lost claim race without retryin
   const daemon = new IdentityTaskLoop({
     coreId: 'core-2',
     maxClaimRescans: 1,
-    listClaimableTasks: () => {
+    listEligibleTasks: () => {
       discoveries += 1;
       return [{ task_id: discoveries === 1 ? 'task-stale' : 'task-next' }];
     },
@@ -294,7 +294,7 @@ test('IdentityTaskLoop re-arms a selection failure after its bounded cooldown', 
     maxTakeAttempts: 1,
     takeRetryCooldownMs: 100,
     now: () => now,
-    listClaimableTasks: () => [{ task_id: 'task-rearm' }],
+    listEligibleTasks: () => [{ task_id: 'task-rearm' }],
     takeTask: async () => {
       selectionAttempts += 1;
       if (selectionAttempts === 1) throw new Error('transient take provider failure');
@@ -326,7 +326,7 @@ test('IdentityTaskLoop bounds infrastructure take failures instead of treating t
     maxTakeAttempts: 2,
     takeRetryCooldownMs: 100,
     now: () => now,
-    listClaimableTasks: () => [{ task_id: 'task-provider-failure' }],
+    listEligibleTasks: () => [{ task_id: 'task-provider-failure' }],
     takeTask: async () => {
       attempts += 1;
       return { take_failed: true, error: { code: 'SERVICE_UNAVAILABLE', message: 'provider unavailable' } };
@@ -350,7 +350,7 @@ test('IdentityTaskLoop uses a fresh claim key when the same Task is reclaimed la
   let executionNumber = 0;
   const daemon = new IdentityTaskLoop({
     coreId: 'core-reclaim',
-    listClaimableTasks: () => [{ task_id: 'task-reclaim' }],
+    listEligibleTasks: () => [{ task_id: 'task-reclaim' }],
     takeTask: async ({ candidates }) => candidates[0].task_id,
     claimTask: async (taskId, context) => {
       claimKeys.push(context.claim_key);
@@ -371,7 +371,7 @@ test('IdentityTaskLoop does not select or claim when discovery is empty', async 
   let claims = 0;
   const daemon = new IdentityTaskLoop({
     coreId: 'core-empty',
-    listClaimableTasks: () => [],
+    listEligibleTasks: () => [],
     takeTask: async () => { selections += 1; return 'unused'; },
     claimTask: async () => { claims += 1; },
   });
@@ -389,7 +389,7 @@ test('IdentityTaskLoop run loop waits for wake signals and stops cleanly', async
   let discoveries = 0;
   const daemon = new IdentityTaskLoop({
     coreId: 'core-loop',
-    listClaimableTasks: () => {
+    listEligibleTasks: () => {
       discoveries += 1;
       return discoveries === 1 ? [] : [{ task_id: 'task-loop' }];
     },
@@ -414,7 +414,7 @@ test('IdentityTaskLoop notify wakes a custom waitForSignal path', async () => {
   let discoveries = 0;
   const daemon = new IdentityTaskLoop({
     coreId: 'core-custom-wake',
-    listClaimableTasks: () => {
+    listEligibleTasks: () => {
       discoveries += 1;
       return discoveries === 1 ? [] : [{ task_id: 'task-custom-wake' }];
     },
@@ -440,7 +440,7 @@ test('IdentityTaskLoop default idle wait is interruptible by notify', async () =
   const daemon = new IdentityTaskLoop({
     coreId: 'core-default-wake',
     idleBackoffMs: 10_000,
-    listClaimableTasks: () => {
+    listEligibleTasks: () => {
       discoveries += 1;
       return discoveries === 1 ? [] : [{ task_id: 'task-woken' }];
     },
@@ -468,7 +468,7 @@ test('IdentityTaskLoop stop aborts a claimed Runtime handoff and fences the clai
   const events = [];
   const daemon = new IdentityTaskLoop({
     coreId: 'core-abort',
-    listClaimableTasks: () => [{ task_id: 'task-abort' }],
+    listEligibleTasks: () => [{ task_id: 'task-abort' }],
     takeTask: async () => 'task-abort',
     claimTask: async () => ({ task: { task_id: 'task-abort' }, execution: { execution_id: 'execution-abort', task_id: 'task-abort', state: 'CREATED' } }),
     runtime: {

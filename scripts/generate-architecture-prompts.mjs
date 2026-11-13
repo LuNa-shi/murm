@@ -24,7 +24,7 @@ const sourcePaths = [
   'src/agent/agent-prompt.js', 'src/agent/capability-profile.js', 'src/agent/pi-adapter.js',
   'src/agent/services-bridge.js', 'src/agent/swarmenv-extension.mjs', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
-  'src/runtime/runtime-capabilities.js', 'src/runtime/workspace-contract.js', 'src/e2e/real-agent-path.js', 'src/e2e/script-executor.js',
+  'src/runtime/runtime-capabilities.js', 'src/runtime/workspace-contract.js', 'src/e2e/script-executor.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
   'src/sdk/service-registry.js', 'src/sdk/service-manifest.js', 'src/protocol/envelope.js',
   'src/task/task-service.js', 'src/task/task-types.js',
@@ -62,7 +62,7 @@ const outputs = new Map();
 function output(file, text) { outputs.set(`${outputDir}/${file}`, `${text.trimEnd()}\n`); }
 
 const registry = createBuiltinServiceRegistry();
-const runtimeCaps = runtimeCapabilityList().filter((c) => !['runtime.task_block', 'runtime.task_complete'].includes(c.id));
+const runtimeCaps = runtimeCapabilityList();
 const flatCaps = runtimeCaps.filter((c) => !['sandbox_exec', 'sandbox_job'].includes(c.operation));
 const profile = buildCapabilityProfile({ registry, role: AGENT_ROLES.BOUND, runtimeCapabilities: flatCaps });
 const recoveryProfile = buildCapabilityProfile({ registry, role: AGENT_ROLES.RECOVERY, runtimeCapabilities: flatCaps });
@@ -145,9 +145,7 @@ const recoveryFunction = between(runtimePath, '  #recoveryPrompt', '\n\n  #execu
 const recoveryText = evaluate(`function recoveryPrompt${recoveryFunction}`);
 const legacyReminder = evaluate(between(runtimePath, '        const prompt = ', ';\n        active.promptChain', "} else if (active) {\n        const prompt ="));
 const compactionReminder = evaluate(between(runtimePath, '              await active.session.prompt(\n                ', ',\n                { timeoutMs:', 'if (this.compactionCheckpointReminder'));
-const repairFunction = between('src/e2e/real-agent-path.js', 'function promptForCandidates', '\n\n// A real-Agent report');
-const repairPrompt = evaluate(`function promptForCandidates${repairFunction}`);
-let runtimeDoc = header('Complete notification, recovery and probe messages', 'Sources: [runtime.js](../../../src/runtime/runtime.js) and [real-agent-path.js](../../../src/e2e/real-agent-path.js). Runtime-generated values below are synthetic placeholders. These messages do not include Pi’s own compaction summary or provider retry messages, whose implementation is outside this repository.');
+let runtimeDoc = header('Complete notification and recovery messages', 'Sources: [runtime.js](../../../src/runtime/runtime.js). Runtime-generated values below are synthetic placeholders. These messages do not include Pi’s own compaction summary or provider retry messages, whose implementation is outside this repository.');
 for (const [label, type] of [['Execution deadline notification', 'handoff_warning'], ['Response Material notification', 'material_available'], ['Typed dependency satisfied notification', 'dependency_satisfied']]) {
   runtimeDoc += block(label, notificationText({ notification_type: type, notification_id: '<NOTIFICATION_ID>', material_id: '<MATERIAL_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', recipient_task_id: '<RECIPIENT_TASK_ID>', payload: {} }));
 }
@@ -156,7 +154,6 @@ runtimeDoc += block('Legacy/non-Mission deadline reminder', legacyReminder);
 runtimeDoc += block('After-compaction substantive checkpoint reminder', compactionReminder);
 runtimeDoc += block('Session failure recovery instructions', recoveryText({ goal: '<TASK_GOAL>', expected_output: '<EXPECTED_OUTPUT>' }, { workspace_revision: '<WORKSPACE_REVISION>', checkpoint_ref: '<CHECKPOINT_REF>' }, '<FAILURE_CLASS>', '<RECOVERY_ATTEMPT>'));
 runtimeDoc += block('Session failure recovery without saved revision/checkpoint', recoveryText({ goal: '<TASK_GOAL>', expected_output: '<EXPECTED_OUTPUT>' }, {}, '<FAILURE_CLASS>', '<RECOVERY_ATTEMPT>'));
-runtimeDoc += block('Controlled real-Agent repair probe Task instructions', repairPrompt({ firstCandidate: '<COMPLETE_CONTROLLED_FIRST_CANDIDATE_SOURCE>' }), 'This is an E2E probe with an intentionally invalid first candidate. It is not the production benchmark’s research instruction. The complete candidate source is a runtime input and is not a static prompt constant.');
 output('04-runtime-messages.md', runtimeDoc);
 
 const sampleExecution = { execution_id: '<EXECUTION_ID>', task_id: '<TASK_ID>', workspace_revision: 1, started_at: '<STARTED_AT>', handoff_deadline: '<HANDOFF_DEADLINE>', execution_deadline: '<EXECUTION_DEADLINE>' };

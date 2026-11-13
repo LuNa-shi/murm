@@ -4,7 +4,7 @@
  * TaskController observes durable Task Service state. It may ask an injected
  * reconciliation adapter to refresh a blocked Task and may wake an idle Core
  * identity loop, but it never chooses or claims a Task. Task choice belongs to
- * the identity loop after it receives a bounded claimable view.
+ * the identity loop after it receives a bounded eligible view.
  */
 
 const DEFAULT_SHORTLIST_LIMIT = 16;
@@ -73,7 +73,7 @@ function taskSignature(tasks) {
 export class TaskController {
   constructor({
     taskService = null,
-    listClaimableTasks = null,
+    listEligibleTasks = null,
     listBlockedTasks = null,
     reconcileTask = null,
     listIdentityLoops = () => [],
@@ -85,10 +85,10 @@ export class TaskController {
     onEvent = null,
   } = {}) {
     const serviceList = taskService?.listTasks?.bind(taskService);
-    const serviceListClaimable = taskService?.listClaimableTasks?.bind(taskService);
+    const serviceListEligible = taskService?.listEligibleTasks?.bind(taskService);
     const serviceListBlocked = taskService?.listBlockedTasks?.bind(taskService);
-    if (typeof listClaimableTasks !== 'function' && typeof serviceListClaimable !== 'function' && typeof serviceList !== 'function') {
-      throw new TypeError('TaskController requires listClaimableTasks or taskService.listTasks');
+    if (typeof listEligibleTasks !== 'function' && typeof serviceListEligible !== 'function' && typeof serviceList !== 'function') {
+      throw new TypeError('TaskController requires listEligibleTasks or taskService.listTasks');
     }
     if (typeof listIdentityLoops !== 'function') throw new TypeError('TaskController requires listIdentityLoops');
     if (typeof now !== 'function') throw new TypeError('TaskController requires now');
@@ -97,16 +97,16 @@ export class TaskController {
     }
     if (!Number.isFinite(sweepIntervalMs) || sweepIntervalMs < 0) throw new TypeError('TaskController sweepIntervalMs must be non-negative');
     this.taskService = taskService;
-    this.listClaimableTasks = listClaimableTasks
-      ?? (serviceListClaimable
-        ? (() => serviceListClaimable({ limit: shortlistLimit }))
+    this.listEligibleTasks = listEligibleTasks
+      ?? (serviceListEligible
+        ? (() => serviceListEligible({ limit: shortlistLimit }))
         : (() => serviceList({ states: ['OPEN'], limit: shortlistLimit, availableOnly: true })));
     this.listBlockedTasks = listBlockedTasks ?? (serviceListBlocked
       ? (() => serviceListBlocked({ limit: 100, includeOpen: true }))
       : serviceList
         ? (() => serviceList({
           // Include OPEN Tasks here so reconciliation can persist an explicit
-          // dependency blocker instead of leaving a hidden OPEN-but-unclaimable
+          // dependency blocker instead of leaving a hidden OPEN-but-uneligible
           // row in the queue.
           states: ['OPEN', 'BLOCKED'], limit: 100, availableOnly: false,
         }))
@@ -130,8 +130,8 @@ export class TaskController {
     this.blockedSignals = new Map();
     this.lastSnapshot = {
       reason: null,
-      claimable_count: 0,
-      claimable_task_ids: [],
+      eligible_count: 0,
+      eligible_task_ids: [],
       blocked_count: 0,
       blocked_task_ids: [],
       healthy_loop_count: 0,
@@ -166,7 +166,7 @@ export class TaskController {
   snapshot() {
     return {
       ...this.lastSnapshot,
-      claimable_task_ids: [...this.lastSnapshot.claimable_task_ids],
+      eligible_task_ids: [...this.lastSnapshot.eligible_task_ids],
       blocked_task_ids: [...this.lastSnapshot.blocked_task_ids],
       stopped: this.stopped,
     };
@@ -224,7 +224,7 @@ export class TaskController {
     }
     const blocked = asArray(await this.listBlockedTasks(), ['blocked_tasks', 'tasks'])
       .filter((task) => task?.state === undefined || task.state === 'BLOCKED');
-    const claimable = asArray(await this.listClaimableTasks(), ['claimable_tasks', 'ready_tasks', 'tasks']).slice(0, this.shortlistLimit);
+    const eligible = asArray(await this.listEligibleTasks(), ['eligible_tasks', 'ready_tasks', 'tasks']).slice(0, this.shortlistLimit);
     const identityLoops = asArray(await this.listIdentityLoops(), ['identity_loops', 'cores']);
     const idle = [];
     const healthy = [];
@@ -247,14 +247,14 @@ export class TaskController {
       if (isIdle(view) && !takeRetryDeferred(view, reconciledAt)) idle.push({ loop, view, id });
       else this.loopSignals.delete(id);
     }
-    const signature = taskSignature(claimable);
+    const signature = taskSignature(eligible);
     let signaled = 0;
-    if (claimable.length > 0 && typeof this.signalIdleIdentity === 'function') {
-      // A single claimable Task needs one selector. Waking every idle Core for
+    if (eligible.length > 0 && typeof this.signalIdleIdentity === 'function') {
+      // A single eligible Task needs one selector. Waking every idle Core for
       // that same shortlist creates a thundering-herd of valid but losing
-      // claim attempts. Keep one wake slot per distinct claimable Task so
+      // claim attempts. Keep one wake slot per distinct eligible Task so
       // multiple independent Tasks can still use the available Cores.
-      let signalBudget = claimable.length;
+      let signalBudget = eligible.length;
       for (const { loop, view, id } of idle) {
         if (signalBudget <= 0) break;
         signalBudget -= 1;
@@ -264,17 +264,17 @@ export class TaskController {
         // still suppress duplicate signals for an untouched idle view.
         const signalKey = `${signature}:${String(view.state ?? 'IDLE')}:${String(idleGeneration(view))}`;
         if (this.loopSignals.get(id) === signalKey) continue;
-        await this.signalIdleIdentity(loop, { core_id: id, reason, claimable_tasks: claimable, at: reconciledAt });
+        await this.signalIdleIdentity(loop, { core_id: id, reason, eligible_tasks: eligible, at: reconciledAt });
         this.loopSignals.set(id, signalKey);
         signaled += 1;
-        this.#emit({ kind: 'controller_loop_signaled', core_id: id, reason, claimable_count: claimable.length, timestamp: this.now() });
+        this.#emit({ kind: 'controller_loop_signaled', core_id: id, reason, eligible_count: eligible.length, timestamp: this.now() });
       }
     }
-    for (const { id } of idle) if (claimable.length === 0) this.loopSignals.delete(id);
+    for (const { id } of idle) if (eligible.length === 0) this.loopSignals.delete(id);
     const snapshot = {
       reason,
-      claimable_count: claimable.length,
-      claimable_task_ids: claimable.map(taskId).filter(Boolean),
+      eligible_count: eligible.length,
+      eligible_task_ids: eligible.map(taskId).filter(Boolean),
       blocked_count: blocked.length,
       blocked_task_ids: blocked.map(taskId).filter(Boolean),
       healthy_loop_count: healthy.length,
@@ -287,7 +287,7 @@ export class TaskController {
     };
     this.lastSnapshot = snapshot;
     this.#emit({ kind: 'controller_reconcile', ...snapshot, timestamp: this.now() });
-    for (const task of claimable) this.#emit({ kind: 'controller_task_claimable', task_id: taskId(task), timestamp: this.now() });
+    for (const task of eligible) this.#emit({ kind: 'controller_task_eligible', task_id: taskId(task), timestamp: this.now() });
     const blockedIds = new Set();
     for (const task of blocked) {
       const id = taskId(task);

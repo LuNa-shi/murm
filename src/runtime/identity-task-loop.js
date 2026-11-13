@@ -61,7 +61,7 @@ export class IdentityTaskLoop {
   constructor({
     coreId,
     taskService = null,
-    listClaimableTasks = null,
+    listEligibleTasks = null,
     shortlistLimit = 8,
     takeTask,
     takePrompt = IDENTITY_TAKE_PROMPT,
@@ -82,10 +82,10 @@ export class IdentityTaskLoop {
     onEvent = null,
   } = {}) {
     if (typeof coreId !== 'string' || coreId.length === 0) throw new TypeError('IdentityTaskLoop requires coreId');
-    const serviceList = taskService?.listClaimableTasks?.bind(taskService)
+    const serviceList = taskService?.listEligibleTasks?.bind(taskService)
       ?? taskService?.listTasks?.bind(taskService);
-    if (typeof listClaimableTasks !== 'function' && typeof serviceList !== 'function') {
-      throw new TypeError('IdentityTaskLoop requires listClaimableTasks or taskService queue API');
+    if (typeof listEligibleTasks !== 'function' && typeof serviceList !== 'function') {
+      throw new TypeError('IdentityTaskLoop requires listEligibleTasks or taskService queue API');
     }
     if (typeof takeTask !== 'function') throw new TypeError('IdentityTaskLoop requires takeTask');
     const serviceClaim = taskService?.claimTask?.bind(taskService);
@@ -102,9 +102,9 @@ export class IdentityTaskLoop {
     if (typeof now !== 'function') throw new TypeError('IdentityTaskLoop requires now');
     this.coreId = coreId;
     this.taskService = taskService;
-    this.listClaimableTasks = listClaimableTasks ?? (async () => {
+    this.listEligibleTasks = listEligibleTasks ?? (async () => {
       const result = await serviceList({ states: ['OPEN'], limit: shortlistLimit, availableOnly: true });
-      return asArray(result, ['claimable_tasks', 'ready_tasks', 'tasks']);
+      return asArray(result, ['eligible_tasks', 'ready_tasks', 'tasks']);
     });
     this.shortlistLimit = shortlistLimit;
     this.takeTask = takeTask;
@@ -180,7 +180,7 @@ export class IdentityTaskLoop {
     };
   }
 
-  /** Wake an idle identity loop after Task Controller observes new claimable work. */
+  /** Wake an idle identity loop after Task Controller observes new eligible work. */
   notify(reason = 'event') {
     this.#rearmTakeIfDue(reason);
     // A bounded take retry cooldown is an intentional backoff.  A wake
@@ -290,13 +290,13 @@ export class IdentityTaskLoop {
     while (!this.stopped) {
       this.#setState(IDENTITY_LOOP_STATES.DISCOVERING, { reason });
       this.discoveryCount += 1;
-      const discovered = asArray(await this.listClaimableTasks({ core_id: this.coreId, limit: this.shortlistLimit, reason }), ['claimable_tasks', 'ready_tasks', 'tasks']);
+      const discovered = asArray(await this.listEligibleTasks({ core_id: this.coreId, limit: this.shortlistLimit, reason }), ['eligible_tasks', 'ready_tasks', 'tasks']);
       const candidates = discovered.slice(0, this.shortlistLimit);
       this.#emit({ kind: 'identity_loop_discovery', core_id: this.coreId, reason, candidate_count: candidates.length, task_ids: candidates.map(taskId).filter(Boolean), timestamp: this.now() });
       const bootstrap = candidates.length === 0 && this.allowEmptyDiscovery && !this.bootstrapUsed;
       if (bootstrap) this.bootstrapUsed = true;
       if (candidates.length === 0 && !bootstrap) {
-        this.#setIdle({ reason: 'no_claimable_task' });
+        this.#setIdle({ reason: 'no_eligible_task' });
         return { disposition: 'idle', reason, candidates: [], snapshot: this.snapshot() };
       }
       this.#setState(IDENTITY_LOOP_STATES.TAKING, { reason });
@@ -584,7 +584,7 @@ export class IdentityTaskLoop {
     this.taskId = null;
     this.executionId = null;
     if (!this.stopped) {
-      if (!['take_deferred', 'take_attempts_exhausted', 'no_claimable_task', 'stopped'].includes(reason)) this.idleGeneration += 1;
+      if (!['take_deferred', 'take_attempts_exhausted', 'no_eligible_task', 'stopped'].includes(reason)) this.idleGeneration += 1;
       this.#setState(IDENTITY_LOOP_STATES.IDLE, { reason });
     }
   }

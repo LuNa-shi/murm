@@ -80,8 +80,8 @@ function projectTasks(state, {
   });
 }
 
-function projectClaimableTasks(state, { limit = 100 } = {}) {
-  return state.taskService.listClaimableTasks({ missionId: state.missionId, limit });
+function projectEligibleTasks(state, { limit = 100 } = {}) {
+  return state.taskService.listEligibleTasks({ missionId: state.missionId, limit });
 }
 
 // Flat model: one Execution may run for the whole run; the reminder lead is
@@ -421,11 +421,10 @@ export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
       'swarmenv_catalog_get_service_metadata', 'swarmenv_catalog_list_services', 'swarmenv_catalog_list_tools',
       'swarmenv_context_consume', 'swarmenv_context_publish', 'swarmenv_context_read',
       'swarmenv_context_search_materials', 'swarmenv_context_get_material',
-      'swarmenv_judge_get_check_result', 'swarmenv_judge_submit_candidate',
+      'swarmenv_judge_get_check_result', 'swarmenv_judge_workspace_check',
       'swarmenv_execution_get', 'swarmenv_task_status', 'swarmenv_task_register', 'swarmenv_task_take',
       'swarmenv_task_feedback', 'swarmenv_execution_progress', 'swarmenv_task_list', 'swarmenv_task_view',
-      'swarmenv_task_create', 'swarmenv_task_link_material', 'swarmenv_task_complete', 'swarmenv_task_finish',
-      'swarmenv_task_handoff', 'swarmenv_task_block', 'swarmenv_task_close',
+      'swarmenv_task_create', 'swarmenv_task_link_material', 'swarmenv_task_finish',
       'swarmenv_workspace_diff', 'swarmenv_workspace_get', 'swarmenv_workspace_list_files',
       'swarmenv_workspace_read_file', 'swarmenv_workspace_write_file',
       'swarmenv_sandbox_exec', 'swarmenv_sandbox_job',
@@ -1706,13 +1705,9 @@ async function createProjectState(problem, config, options) {
   // ServicesBridge uses capabilityRegistry for the named HTTP calls.
   const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore });
   const router = new ServicesRouter({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore, registry: routerRegistry, logger: routerLogger });
-  // Flat Mission Tasks complete and block through the registered Task
-  // capabilities. The Runtime lifecycle aliases serve retired Tasks only;
-  // exposing both gave r12 Agents two tools per action with different
-  // schemas (the Runtime task_block omits the required handoff_material_id).
+  // Flat Mission Tasks finish through the single registered Task capability.
   const runtimeCapabilities = runtimeCapabilityList()
-    .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation))
-    .filter((capability) => !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
+    .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
   const allowedAgentToolNames = [...new Set([
     AGENT_ROLES.BOUND,
     AGENT_ROLES.RECOVERY,
@@ -1734,14 +1729,14 @@ async function createProjectState(problem, config, options) {
   const modeInstructions = selectedParallelMode === 'root-only'
     ? 'Root-only benchmark treatment: do not register additional Tasks after the initial responsibility. This is a controlled treatment, not a shared Mission Task; Mission itself is never taken.'
     : 'Search Task summaries, Materials, and public Workspace revisions before proposing substantial new work. The current Task may call the Judge directly whenever a Workspace file is ready. A source-level Judge FAIL is diagnostic feedback: read the returned CheckResult, revise the file in this Execution, and submit the same Workspace file reference again. Create a separate Task only for genuinely independent work. Publish bounded Materials for distinct findings or checkpoints when useful, link them to their producer, and do not publish duplicate copies. Complete the current Task when its own contract is satisfied.';
-  const dependencyInstruction = 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends the current Bot Execution and releases the Core. Mission itself is never claimable and is not changed into a Task by this block. Do not call request_wait in the normal-flow treatment.';
+  const dependencyInstruction = 'When a real prerequisite blocks progress, call task_finish with outcome blocked and wait_for the prerequisite Task; this ends the current Bot Execution and releases the Core.';
   const taskSpecificInstruction = 'The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition. Publish and link durable evidence when the Task has a result; consume useful linked research Material with an explicit integration action when it informs the proof.';
   const taskPayload = {
     task_type: 'proof',
     summary: `Prove ${problem.id} with an independently checked candidate and a clear boundary from other Mission work.`,
     goal: `Prove ${problem.id}`,
     expected_output: 'A verified Lean proof for the locked PutnamBench problem',
-    // Keep the final proof lane claimable alongside the bounded research pool
+  // Keep the final proof lane eligible alongside the bounded research pool
     // when the pool is larger than the Core count; research routes remain
     // independently available instead of starving the integration lane.
     priority: 110,
@@ -2312,7 +2307,7 @@ async function createProjectState(problem, config, options) {
       },
       onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
         const materialPublishOperation = operation === 'publish_material' || operation === 'context_publish_material';
-        if (materialPublishOperation || ['task_link_material', 'submit_candidate'].includes(operation)) {
+        if (materialPublishOperation || ['task_link_material', 'workspace_check'].includes(operation)) {
           core.stateRef?.requestIdentityWake?.();
         }
         if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
@@ -2459,13 +2454,13 @@ async function createProjectState(problem, config, options) {
             core: core.index,
             progress_kind: 'material_link',
           });
-        } else if (operation === 'task_handoff' || operation === 'task_block') {
+        } else if (operation === 'task_finish') {
           const lifecycleResult = result && typeof result === 'object' ? result : {};
           const lifecycleEvidence = {
             operation,
             task_id: taskId,
             execution_id: executionId,
-            disposition: lifecycleResult.disposition ?? (operation === 'task_block' ? 'blocked' : 'handed_off'),
+            disposition: lifecycleResult.disposition ?? payload?.outcome ?? null,
             task_state: lifecycleResult.task?.state ?? null,
             execution_state: lifecycleResult.execution?.state ?? null,
             dependency_kind: lifecycleResult.dependency?.dependency_kind ?? payload?.dependency?.dependency_kind ?? null,
@@ -2482,7 +2477,7 @@ async function createProjectState(problem, config, options) {
             progress_kind: 'coordination',
           });
           core.stateRef?.requestIdentityWake?.();
-        } else if (operation === 'submit_candidate') {
+        } else if (operation === 'workspace_check') {
           const check = result?.check_result ?? result?.checkResult ?? result ?? {};
           const candidateMaterial = {
             material_id: payload?.candidate_material_id ?? check.candidate_material_id ?? null,
@@ -2653,7 +2648,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   for (const core of state.cores) core.stateRef = state;
   state.controller = new TaskController({
     taskService: state.taskService,
-    listClaimableTasks: () => projectClaimableTasks(state, { limit: options.controllerShortlistLimit ?? 16 }),
+    listEligibleTasks: () => projectEligibleTasks(state, { limit: options.controllerShortlistLimit ?? 16 }),
     shortlistLimit: options.controllerShortlistLimit ?? 16,
     // The benchmark loop is already the bounded repair sweep. Keeping a
     // second five-second Controller timer would duplicate reconciliations and
@@ -2688,7 +2683,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
         task_id: event.task_id ?? null,
         reason: event.reason ?? null,
         block_reason: event.block_reason ?? null,
-        claimable_count: event.claimable_count ?? null,
+        eligible_count: event.eligible_count ?? null,
         blocked_count: event.blocked_count ?? null,
         healthy_identity_loop_count: event.healthy_loop_count ?? event.healthy_identity_loop_count ?? null,
         idle_identity_loop_count: event.idle_loop_count ?? event.idle_identity_loop_count ?? null,
@@ -2735,7 +2730,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       // queue poll when an event source is quiet or unavailable.
       idleBackoffMs: options.identityLoopIdleBackoffMs ?? 5_000,
       taskService: state.taskService,
-      listClaimableTasks: () => projectClaimableTasks(state, { limit: options.controllerShortlistLimit ?? 16 }),
+      listEligibleTasks: () => projectEligibleTasks(state, { limit: options.controllerShortlistLimit ?? 16 }),
       takeTask: ({ candidates, prompt, bootstrap = false }) => takeTaskWithAgent(core, candidates, prompt, { bootstrap }),
       allowEmptyDiscovery: core.index === 1,
       bootstrapPrompt: `Mission ${state.mission.mission_id} starts with zero Tasks. Public Workspace is ${state.publicWorkspace.workspace_id} at revision 0.1. Read the public Workspace and task_status once. Your next tool call after those reads must be swarmenv_task_create. Do not call swarmenv_task_take until task_create has returned the new task_id. Then call swarmenv_task_take exactly once for that returned task_id. Create one independent proof Task for ${state.problem.id}. The proposal must use mission_id ${state.mission.mission_id}, summary "Prove ${state.problem.id} with an independently checked candidate and a clear boundary from other Mission work.", goal "Prove ${state.problem.id}", expected_output "A verified Lean proof for the locked PutnamBench problem", acceptance_conditions {"project":"${state.problem.id}","source_hash":"${state.problem.source_hash}"}, completion_contract {"normal_flow":true,"required_materials":[{"kinds":["fact","experience","conjecture","artifact","failure"],"scope":"proof_relevant","min_count":1,"requires_consumption":true,"cross_task":true,"action":"integration"}],"final_candidate":true,"required_candidate":{"kind":"artifact","scope":"proof_relevant"},"required_check":{"checker_ref":"lean","checker_version":"${state.fixtureManifest.checker_version}","environment_ref":"${state.fixtureManifest.environment_ref}"}}, and workspace {"project":"${state.problem.id}","problem_file":"${state.problem.problem_file}","source_hash":"${state.problem.source_hash}","workspace_id":"${state.publicWorkspace.workspace_id}"}.`,
@@ -2871,7 +2866,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   // production composition has no Scheduler instance or Scheduler decision
   // maker. Every value is derived from IdentityTaskLoop lifecycle counters.
   state.scheduler = { snapshot: () => ({
-    ready_count: projectClaimableTasks(state, { limit: 100 }).length,
+    ready_count: projectEligibleTasks(state, { limit: 100 }).length,
     dispatch_count: state.identityLoops.reduce((count, loop) => count + loop.snapshot().claim_count, 0),
     startup_attempt_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartAttempts ?? 0), 0),
     startup_failure_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartFailures ?? 0), 0),

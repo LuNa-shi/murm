@@ -415,7 +415,7 @@ test('Built-in Registry exposes the current Task contract without legacy lifecyc
   const registry = createBuiltinServiceRegistry({ taskService: fake, contextService: fake, judgeService: fake });
   const profile = buildCapabilityProfile({ role: AGENT_ROLES.BOUND, registry, runtimeCapabilities: runtimeCapabilityList() });
   const names = profile.capabilities.map((capability) => capability.name);
-  assert.ok(names.includes('task_complete'));
+  assert.ok(names.includes('task_finish'));
   assert.equal(new Set(names).size, names.length);
   assert.ok(names.includes('task_view'));
   assert.ok(!names.some((name) => /wait|wake|rework|select_task/i.test(name)));

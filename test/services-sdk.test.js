@@ -50,7 +50,7 @@ test('SDK maps stale state and fencing errors to stable protocol codes', () => {
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.STALE_VERSION,
   );
   assert.throws(
-    () => sdk.withContext({ fencingVersion: 1 }).abort({}, { operationId: 'abort-fenced' }),
+    () => sdk.withContext({ fencingVersion: 1 }).finishTask({ outcome: 'cancelled' }, { operationId: 'finish-fenced' }),
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.FENCED,
   );
 });

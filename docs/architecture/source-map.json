@@ -464,15 +464,6 @@
       "role": "Material publication, lineage, read/search and consumption persistence"
     },
     {
-      "path": "src/e2e/real-agent-path.js",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/00-overview.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Controlled one-Core real-provider repair probe and sanitized acceptance report"
-    },
-    {
       "path": "src/e2e/script-executor.js",
       "category": "launch and composition",
       "chapters": [

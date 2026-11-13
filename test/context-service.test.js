@@ -96,7 +96,7 @@ test('secret-bearing data is rejected and Context Service has no Task or Workspa
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   assert.equal('createWorkspace' in sdk, false);
-  assert.throws(() => context.dispatch('claim', {}, sdk.context), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
+  assert.throws(() => context.dispatch('task_take', {}, sdk.context), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
   assert.throws(() => context.dispatch('apply_check_result', {}, sdk.context), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
   context.close();
 });

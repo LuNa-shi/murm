@@ -69,7 +69,7 @@ function sampleDurations(samples, startedAt, endedAt) {
 }
 
 /**
- * Intervals in which every Core was idle and no claimable work existed. This
+ * Intervals in which every Core was idle and no eligible work existed. This
  * is a stalled Mission, not a quiet scheduler: r12 spent 84 of 120 minutes
  * here while only per-Core idle totals were reported.
  */
@@ -359,7 +359,7 @@ export class CoreParallelismTracker {
       eligible_concurrency_histogram_ms: eligibleConcurrencyHistogram,
       ready_work_ms: samples.readyWorkMs,
       ready_unassigned_ms: samples.readyUnassignedMs,
-      // All Cores idle with zero claimable work (sampled at scheduler polls).
+      // All Cores idle with zero eligible work (sampled at scheduler polls).
       mission_stall_ms: stallMs,
       mission_stall_ratio: elapsedMs === 0 ? 0 : stallMs / elapsedMs,
       mission_stall_intervals: stallIntervals.map((interval) => ({ start: toIso(interval.start_ms), end: toIso(interval.end_ms), duration_ms: interval.end_ms - interval.start_ms })),

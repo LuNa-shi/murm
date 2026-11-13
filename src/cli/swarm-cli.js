@@ -1,19 +1,17 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
-const SERVICE_NAMES = ['task', 'material', 'context', 'workspace', 'mission', 'judge', 'catalog'];
+const SERVICE_NAMES = ['task', 'material', 'workspace', 'mission', 'judge', 'catalog'];
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const ALIASES = Object.freeze({
   // complete/block/close remain transport aliases for old clients; finish is
   // the single public Task lifecycle command.
-  task: { list: 'list_task', discover: 'task_list', view: 'task_view', create: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', complete: 'task_complete', block: 'task_block', close: 'task_close', link: 'task_link_material', status: 'task_status' },
-  context: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials' },
-  // Public vocabulary. `context` remains a compatibility alias.
+  task: { list: 'list_task', discover: 'task_list', view: 'task_view', create: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status' },
   material: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials' },
   workspace: { files: 'workspace_public_files', list: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
   mission: { submit: 'mission_submit', status: 'mission_submission_get', finish: 'mission_submission_finish' },
-  judge: { check: 'submit_candidate', submit: 'submit_candidate', result: 'get_check_result', get: 'get_check_result' },
+  judge: { check: 'workspace_check', submit: 'workspace_check', result: 'get_check_result', get: 'get_check_result' },
 });
 const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'operation-id', 'timeout-ms']);
 const COMMAND_HELP = Object.freeze({

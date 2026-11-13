@@ -147,7 +147,7 @@ export class ScriptExecutor {
       task: taskService.getTask(task.task_id), execution: firstWait.execution, workspace, material: firstMaterial,
       content: this.firstCandidate, requestKey: 'script:check:fail',
     }));
-    taskService.dispatch('submit_candidate', { candidate_material_id: firstMaterial.material_id }, makeEnvelope({
+    taskService.dispatch('workspace_check', { candidate_material_id: firstMaterial.material_id }, makeEnvelope({
       operationId: 'script:record-candidate:fail', actorRef: 'system:completion', taskId: task.task_id,
       executionId: this.executionId, specVersion: firstWait.execution.spec_version,
       stateVersion: firstWait.execution.state_version, fencingVersion: firstWait.execution.fencing_version,
@@ -171,7 +171,7 @@ export class ScriptExecutor {
       task: taskService.getTask(task.task_id), execution: secondWait.execution, workspace, material: secondMaterial,
       content: this.fixedCandidate, requestKey: 'script:check:pass',
     }));
-    taskService.dispatch('submit_candidate', { candidate_material_id: secondMaterial.material_id }, makeEnvelope({
+    taskService.dispatch('workspace_check', { candidate_material_id: secondMaterial.material_id }, makeEnvelope({
       operationId: 'script:record-candidate:pass', actorRef: 'system:completion', taskId: task.task_id,
       executionId: this.executionId, specVersion: secondWait.execution.spec_version,
       stateVersion: secondWait.execution.state_version, fencingVersion: secondWait.execution.fencing_version,

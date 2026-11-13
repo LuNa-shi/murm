@@ -21,7 +21,7 @@ const EXPOSED_OPERATIONS = Object.freeze({
     'workspace_save', 'workspace_merge', 'mission_submit', 'mission_submission_get',
   ]),
   context: new Set(['publish_material', 'read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material']),
-  judge: new Set(['get_check_result']),
+  judge: new Set(['workspace_check', 'get_check_result']),
   catalog: new Set(['list_services', 'get_service_metadata', 'list_tools']),
 });
 

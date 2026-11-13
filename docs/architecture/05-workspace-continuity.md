@@ -550,8 +550,6 @@ presence of the word “resume”, “checkpoint” or “handoff” in a log:
 Relevant focused tests are
 [Workspace contracts](../../test/workspace-contract.test.js),
 [Workspace contract](../../test/workspace-contract.test.js),
-[progress and bounded save failure](../../test/phase1-progress.test.js),
-[feedback, compaction and rotation](../../test/task-handoff-notifications.test.js), and
 [SandboxManager](../../test/sandbox-manager.test.js). They cover public seams
 and use controlled/mock collaborators in several paths; their existence is
 not a claim that this documentation change reran a live Docker/provider run.

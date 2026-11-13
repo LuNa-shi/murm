@@ -22,7 +22,7 @@ const CURRENT_AGENT_OPERATIONS = new Set([
   'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
   'publish_material', 'read_materials', 'consume_materials',
   'context_search_materials', 'context_get_material', 'context_publish_material',
-  'get_check_result', 'get_execution',
+  'workspace_check', 'get_check_result', 'get_execution',
   'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
   'read_workspace_file', 'write_workspace_file', 'workspace_diff',
   'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_apply',

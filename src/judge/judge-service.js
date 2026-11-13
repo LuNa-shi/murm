@@ -86,7 +86,7 @@ export class JudgeService {
       if (payload.request_key) return agentCheckResult(this.getByRequestKey(required(payload.request_key, 'request_key')));
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'get_check_result requires check_result_id or request_key');
     }
-    if (operation === 'submit_candidate') return this.submitCandidate(payload, envelope);
+    if (operation === 'workspace_check') return this.checkWorkspace(payload, envelope);
     if (operation !== 'submit_check_result') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Judge operation: ${operation}`);
     return this.#transaction(() => {
       const fingerprint = operationPayload(operation, payload, envelope);
@@ -103,14 +103,14 @@ export class JudgeService {
    * Execution envelope and an internal source descriptor after reading the
    * private Workspace. No Task Service submission relay is involved.
    */
-  async submitCandidate(payload = {}, envelope) {
+  async checkWorkspace(payload = {}, envelope) {
     validateEnvelope(envelope);
     if (!envelope.task_id || !envelope.execution_id) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'submit_candidate requires a bound Task and Execution');
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace_check requires a bound Task and Execution');
     }
     const source = payload.source ?? payload.candidate_source ?? null;
     if (!source || typeof source.content !== 'string') {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate requires a Workspace source');
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_check requires a Workspace source');
     }
     const candidateRef = source.workspace_id !== undefined
       ? {

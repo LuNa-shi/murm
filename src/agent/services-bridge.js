@@ -42,7 +42,7 @@ function requiredTaskCapabilities(payload = {}) {
   // These acceptance keys are intentionally narrow, stable Task contract
   // vocabulary. They describe a result that cannot be verified by the
   // generic Task/Workspace surface; admission must fail before creating a
-  // claimable Task when the corresponding registered capability is absent.
+  // eligible Task when the corresponding registered capability is absent.
   if (conditions && typeof conditions === 'object' && !Array.isArray(conditions) &&
     (conditions.requires_exact_declarations === true || conditions.requires_verified_usage === true)) {
     required.push('mathlib_search');
@@ -240,13 +240,13 @@ export class ServicesBridge {
       // task_take activation is a prepare/commit boundary. If the Runtime
       // cannot bind the already-created Execution, fence the provisional
       // owner before clearing the in-memory identity so it cannot remain
-      // claimable through a stale bridge.
+      // eligible through a stale bridge.
       try {
         let rolledBack = false;
         // releaseExecution only removes a process/Workspace for an Execution
         // that is already terminal. A provisional task_take binding is still
         // CREATED/RUNNING, so it must be stopped durably; otherwise the Task
-        // stays RUNNING with no valid owner and becomes unclaimable.
+        // stays RUNNING with no valid owner and becomes uneligible.
         if (typeof this.runtime?.stopExecution === 'function') {
           await this.runtime.stopExecution(this.executionId, 'FAILED', 'task_take_bind_failed');
           rolledBack = true;
@@ -607,9 +607,45 @@ export class ServicesBridge {
             assertTaskCapabilityAdmission(payload, profile);
           }
           if (operation === 'task_take') this.lastTakeOutcome = { attempted: true, ok: false, task_id: invocationPayload.task_id ?? null };
-          const registeredPayload = operation === 'task_create' || operation === 'task_register'
+          let registeredPayload = operation === 'task_create' || operation === 'task_register'
             ? (({ progress: _progress, ...rest }) => ({ ...rest, required_capabilities: requiredTaskCapabilities(payload) }))(invocationPayload)
             : invocationPayload;
+          if (operation === 'workspace_check') {
+            const source = await this.runtime.readWorkspaceFile(this.executionId, { path: payload.path, maxBytes: payload.max_bytes });
+            if (typeof payload.path !== 'string' || payload.path.length === 0 || payload.path.startsWith('/') || payload.path.split('/').includes('..')) {
+              throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_check.path must stay within the Execution Workspace');
+            }
+            if (payload.workspace_revision !== undefined && Number(payload.workspace_revision) !== Number(source.workspace_revision ?? source.revision)) {
+              throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'workspace_check revision is stale', {
+                expected: source.workspace_revision ?? source.revision,
+                actual: payload.workspace_revision,
+              });
+            }
+            if (payload.content_hash !== undefined && payload.content_hash !== source.content_hash) {
+              throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'workspace_check content_hash does not match the Workspace file');
+            }
+            registeredPayload = {
+              ...payload,
+              source: {
+                revision: source.revision ?? source.workspace_revision,
+                path: payload.path,
+                content: source.content,
+                content_hash: source.content_hash,
+                workspace_revision: source.workspace_revision ?? source.revision,
+                input_snapshot_hash: source.input_snapshot_hash ?? null,
+                ...((source.workspace_id ?? source.workspace_ref) ? { workspace_id: source.workspace_id ?? source.workspace_ref } : {}),
+              },
+              source_attestation: {
+                task_id: this.taskId,
+                execution_id: this.executionId,
+                path: payload.path,
+                workspace_revision: source.workspace_revision ?? source.revision,
+                revision: source.revision ?? source.workspace_revision,
+                content_hash: source.content_hash,
+                ...((source.workspace_id ?? source.workspace_ref) ? { workspace_id: source.workspace_id ?? source.workspace_ref } : {}),
+              },
+            };
+          }
           return this.#invokeRegistered(capability, registeredPayload, bridgeOperationId);
         };
         let result = operation === 'task_create' && this.taskCreateMutex
@@ -752,6 +788,34 @@ export class ServicesBridge {
           job_id: payload.job_id,
         }); break;
         case 'get_check_result': result = sdk.getCheckResult(payload.check_result_id); break;
+        case 'workspace_check': {
+          const source = await this.runtime.readWorkspaceFile(this.executionId, {
+            path: payload.path,
+            maxBytes: payload.max_bytes,
+          });
+          result = await this.#invokeRegistered(capability, {
+            ...payload,
+            source: {
+              revision: source.revision ?? source.workspace_revision,
+              path: payload.path,
+              content: source.content,
+              content_hash: source.content_hash,
+              workspace_revision: source.workspace_revision ?? source.revision,
+              input_snapshot_hash: source.input_snapshot_hash ?? null,
+              ...((source.workspace_id ?? source.workspace_ref) ? { workspace_id: source.workspace_id ?? source.workspace_ref } : {}),
+            },
+            source_attestation: {
+              task_id: boundTaskId,
+              execution_id: boundExecutionId,
+              path: payload.path,
+              workspace_revision: source.workspace_revision ?? source.revision,
+              revision: source.revision ?? source.workspace_revision,
+              content_hash: source.content_hash,
+              ...((source.workspace_id ?? source.workspace_ref) ? { workspace_id: source.workspace_id ?? source.workspace_ref } : {}),
+            },
+          }, bridgeOperationId);
+          break;
+        }
         default: throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `unsupported Agent operation: ${operation}`, { operation });
       }
       if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {

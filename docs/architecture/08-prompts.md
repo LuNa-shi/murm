@@ -40,7 +40,7 @@ This table is the key to interpreting the catalog. A function that can compose a
 | Non-Mission deadline reminder | Unchanged | Three-line compatibility reminder | Mission Tasks instead receive the durable `handoff_warning` notification |
 | Controlled real-Agent repair probe | Stable addendum configured by E2E harness | Candidate repair instructions, then Runtime's applicable composition | Intentionally invalid first candidate is a probe input, not production research policy |
 
-Sources: [benchmark runner](../../src/benchmark/putnam-runner.js), [Runtime](../../src/runtime/runtime.js), [Pi adapter](../../src/agent/pi-adapter.js), [real-Agent harness](../../src/e2e/real-agent-path.js). The [generated send-site list](prompts/source-manifest.json) covers two runner sends, four Runtime sends, and the adapter's optional startup send. All use the adapter's common RPC forwarding method.
+Sources: [benchmark runner](../../src/benchmark/putnam-runner.js), [Runtime](../../src/runtime/runtime.js), [Pi adapter](../../src/agent/pi-adapter.js). The [generated send-site list](prompts/source-manifest.json) covers two runner sends, four Runtime sends, and the adapter's optional startup send. All use the adapter's common RPC forwarding method.
 
 ### What the normal take path does not automatically include
 

@@ -20,11 +20,11 @@ const BOUND_SOP = [
   'When you identify separable work, propose an independent Task with a distinct responsibility_key, required capability/workspace boundary, expected output, acceptance condition, and result delivery path. When block_task_semantic reports a missing capability or prerequisite that represents separable work, propose that Task rather than repeatedly claiming the blocked responsibility. Never create a Task merely to repeat the same diagnostic.',
   'Task required_capabilities must use an exact ID, operation, or tool name from the current Callable capability directory. Inspect that directory before task_register/task_create; never invent conceptual names such as lean or mathlib-euclidean-geometry. Lean compilation is Workspace/Runtime feedback unless the directory explicitly exposes it as a capability. If admission reports an unavailable capability, use the listed available_capabilities to revise the contract or omit the requirement; do not retry the same rejected contract.',
   'When Mathlib Search is present, use it as a service aid and verify returned declarations in the locked project. Local compilation or tests are feedback, not final Mission acceptance. A Judge FAIL is diagnostic feedback: revise the candidate in this same Task/Execution and check again; do not create a repair Task merely because the check failed. A Judge FAIL is not a reason to hand off: the check is an iterable tool call within this Execution, so submit again whenever the candidate has materially changed.',
-  'Registering a Task does not end your Execution and does not make your current work depend on it. A concrete Task becomes BLOCKED when a real prerequisite stops it; the Mission remains a shared objective and is never made claimable by that state. A capability that appears in the Callable capability directory is never an external blocker; call it, and treat its structured error as feedback.',
+  'Registering a Task does not end your Execution and does not make your current work depend on it. A concrete Task becomes BLOCKED when a real prerequisite stops it; the Mission remains a shared objective and is never made eligible by that state. A capability that appears in the Callable capability directory is never an external blocker; call it, and treat its structured error as feedback.',
   'Publish reusable findings with evidence, scope, and limitations. Treat feedback as evidence to inspect and act on, not as proof that a message was delivered. Keep hypotheses, observations, checked conclusions, and unknowns distinct. When a targeted Material notification arrives, inspect the referenced Material and call task_feedback with the decision and next action before changing course.',
   'Use the unified execution_progress operation for checkpoint and handoff. Record completed work, findings, open questions, and next step. Runtime records the actual file commit and source identity; never invent a commit or claim a failed save succeeded. End the Task with task_finish and one outcome: done requires the current contract, incomplete preserves unfinished responsibility, blocked requires a typed wait_for dependency, and cancelled may name a replacement Task.',
   'An Execution lasts until its Task is complete, a real prerequisite stops it, or Runtime asks for handoff (the execution deadline reminder, identity rotation after compaction, or a notification that says handoff is required). A read-only research phase that produces research Materials is normal work, not a reason to end. Do not hand off on your own initiative; when Runtime asks, save progress and hand off promptly.',
-  'A checkpoint continues this Execution. After task_complete, handoff, or timeout Runtime stops this Bot and releases its permissions. A fresh Bot may continue from public Task, Material, and Workspace revision state. Stop new research when Runtime requests termination.',
+  'A checkpoint continues this Execution. After task_finish or timeout Runtime stops this Bot and releases its permissions. A fresh Bot may continue from public Task, Material, and Workspace revision state. Stop new research when Runtime requests termination.',
   'Treat structured tool errors, missing context, and save failures as observable outcomes. Do not infer completion from prose, an unverified file, a tool delivery receipt, or a green local check alone.',
 ].join('\n');
 
@@ -156,8 +156,8 @@ const CORE_SERVICES = new Set(['task', 'context', 'judge', 'catalog', 'runtime',
 
 /**
  * Describe the identity's Task loop using the exact tool names registered in
- * this profile. The static SOP names operations (task.block, submit_candidate)
- * while the model sees Pi tools such as swarmenv_task_block; r12 Agents saw
+ * this profile. The static SOP names operations (task_finish, workspace_check)
+ * while the model sees Pi tools such as swarmenv_task_finish; current Agents see
  * two block tools and never a mapping from loop step to tool. This guide is an
  * interface description only: it names no counts or research strategy.
  */
@@ -176,7 +176,7 @@ export function taskLoopGuide(profile, { toolPrefix = 'swarmenv_' } = {}) {
   const take = tool('task_take');
   const view = list(tool('task_view'), tool('task_list'), tool('task_status'));
   const files = list(tool('list_workspace_files'), tool('read_workspace_file'), tool('write_workspace_file'), tool('workspace_diff'));
-  const submit = tool('submit_candidate');
+  const submit = tool('workspace_check');
   const checkResult = tool('get_check_result');
   const materials = list(tool('context_search_materials'), tool('context_get_material'));
   const publish = tool('context_publish_material', 'publish_material');
@@ -184,9 +184,8 @@ export function taskLoopGuide(profile, { toolPrefix = 'swarmenv_' } = {}) {
   const register = tool('task_register', 'task_create');
   const feedback = tool('task_feedback');
   const progress = tool('execution_progress');
-  const complete = tool('task_complete');
+  const complete = tool('task_finish');
   const finish = tool('task_finish');
-  const block = tool('task_block');
   const aids = capabilities
     .filter((capability) => !CORE_SERVICES.has(capability.service_id))
     .map((capability) => `${toolPrefix}${capability.tool_name ?? capability.name}`);
@@ -198,8 +197,8 @@ export function taskLoopGuide(profile, { toolPrefix = 'swarmenv_' } = {}) {
     line('5. Share:', `publish a distinct finding with ${publish}, attach it with ${link}, record an explicit integration of another Task's Material with ${tool('consume_materials') ?? 'the consume tool'}, and answer a delivered notification with ${feedback}. Register a separable responsibility for others with ${register}; this does not end your Execution.`, publish, link, register),
     line('6. Propose a direction:', `when research reveals a separable responsibility, call ${register} without take so a fresh Bot can inspect and claim it.`, register),
     line('7. Save:', `call ${progress} with kind "checkpoint" to save progress and keep working.`, progress),
-    line('8. End this Execution with exactly one of:', `${finish ? `${finish} with outcome done, incomplete, blocked, or cancelled` : complete} when the Task reaches its boundary; otherwise ${complete} when the current Task contract is satisfied (pass linked material_ids and the check_result_id); ${block} with a published and linked handoff_material_id plus a typed dependency when a real prerequisite stops you; or ${progress} with kind "handoff" only when Runtime asks for handoff.`, finish ?? complete, progress, block),
-    line('9. Next:', `after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling ${take} for one Task. Mission itself is never claimable.`, take),
+    line('8. End this Execution with exactly one of:', `${finish ?? complete} with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary.`, finish ?? complete),
+    line('9. Next:', `after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling ${take} for one Task. Mission itself is never eligible.`, take),
   ].filter(Boolean);
   if (steps.length === 0) return '';
   return ['Task loop (exact tool names in this Session):', ...steps].join('\n');

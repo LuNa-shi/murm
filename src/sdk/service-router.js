@@ -17,7 +17,7 @@ const CONTEXT_OPERATIONS = new Set([
   'material.search', 'material_search', 'material.get', 'material_get', 'material_dispute', 'material.dispute',
   'material_supersede', 'material.supersede', 'material_unsupersede', 'material.unsupersede',
 ]);
-const JUDGE_OPERATIONS = new Set(['get_check_result']);
+const JUDGE_OPERATIONS = new Set(['workspace_check', 'get_check_result']);
 const PUBLIC_WORKSPACE_OPERATIONS = new Set([
   'workspace_public_files', 'workspace_public_read', 'workspace_public_search',
   'workspace_public_apply', 'workspace_save', 'workspace_merge', 'mission_submit', 'mission_submission_finish', 'mission_submission_get',

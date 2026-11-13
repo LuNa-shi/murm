@@ -32,7 +32,7 @@ export class ServicesSDK {
     return this.#read('list_tasks', filters);
   }
 
-  /** Create a Mission objective; the Mission itself is never claimable. */
+  /** Create a Mission objective; the Mission itself is never eligible. */
   createMission(mission, options = {}) {
     return this.#write('create_mission', mission, { ...options, taskId: null, executionId: null, fencingVersion: null });
   }

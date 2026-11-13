@@ -38,7 +38,7 @@ function controlledRealAgentFailure(source) {
   // acceptance run tests diagnostic consumption and repair, rather than
   // asking the model to reconstruct the entire fixture from a placeholder.
   // Replacing the first `ring` with `rfl` is a genuine Lean source failure
-  // whose location and message are returned by submit_candidate.
+  // whose location and message are returned by workspace_check.
   const marker = '    ring';
   const offset = source.indexOf(marker);
   if (offset < 0) throw new Error('valid fixture has no controlled ring failure marker');

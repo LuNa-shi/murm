@@ -30,16 +30,16 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `b1f6176c35cb0659852eab724579551a4e00e2d8d244b13b7edfceddb93090be` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `55b2ab15f62f83331956c1bad43f9f5c724e912b1cc7aaa5a1cd7e120f9ed2a8` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `d04737a186b7efe761e5ec2e8649c089e20dc6b0ddb227dbd3010e16e154c1b2` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `e4dfe834aa217ee5f89ccc8eb48b505fcaae739ae8caaa595095057d5b7723d4` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `a61e544d8a908c4b470cda05b75c09a4ee7266cbf34ce4d0e6d728321a065bc3` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `8f9c817ef1e2f2a1b2eca20e4de7395aa7959cc19b8cc4714c04f802d419e462` |
-| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `dfa607d6cc3f9e16e13170438f7fdcc0e747a48c5b55e0a3b3f3ce614e3dcd1d` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `56775833d1710d177449da52ded47a27ba452d6e5bb48606317b9bee382da85e` |
-| [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `309d6f50f497a9e3d16a2b75d24d732303e517ed06ded9243142781e1d01d15b` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `98ffc06196f8b60bc1c4a3240eb15b721c24ffec81a66871f6663aa56a06accc` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `e579f88e48817ac474f41e639b473a07928e7507fea8b458b91be58a20b99915` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `e7a9083466da48de82935833a6c37995834ea6e0c5a7631b93a587ec0cd8a52e` |
+| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `99147423ad76ad121a0fa5adbc9498dd32556268e67cbfc6df81c71c564fce0a` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `953455e4d476523155eaa270324992c992ad725dd8add2fa37d040fd6aa0cfb1` |
+| [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `083ed371c9f9c9adfafffa43ecb97f6f22a4cdc64d7a1932187d1829fddca14f` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `eedbc3e6869e525c16369ca1aca042d12bdc0877a3f4447be4319f23e54e3ddc` |
 
@@ -59,6 +59,7 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `context.context_read` | `swarmenv_context_read` | `swarmenv_context_read` |
 | `context.context_search_materials` | `swarmenv_context_search_materials` | `swarmenv_context_search_materials` |
 | `judge.judge_get_check_result` | `swarmenv_judge_get_check_result` | `swarmenv_judge_get_check_result` |
+| `judge.judge_workspace_check` | `swarmenv_judge_workspace_check` | `swarmenv_judge_workspace_check` |
 | `runtime.execution_get` | `swarmenv_execution_get` | `swarmenv_execution_get` |
 | `runtime.sandbox_exec` | Absent | `swarmenv_sandbox_exec` |
 | `runtime.sandbox_job` | Absent | `swarmenv_sandbox_job` |
@@ -281,7 +282,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "9713fedf8b86ec0dcc454872e71e67f68afeef8e619609c16b4a31a2b522f8f6"
+  "manifest_hash": "04f0aa7587ffd8423d1911537f060ac49a144cfd4ada61ffde1c9b7645b3c76f"
 }
 ```
 
@@ -1087,13 +1088,13 @@ Finish the current Task with one explicit outcome: done, incomplete, blocked, or
 
 #### task.workspace_public_files
 
-List files in the immutable Mission Workspace revision before a Task is claimed.
+List files in the immutable Mission Workspace revision before a Task is taken.
 
 ```json
 {
   "name": "workspace_public_files",
   "operation": "workspace_public_files",
-  "description": "List files in the immutable Mission Workspace revision before a Task is claimed.",
+  "description": "List files in the immutable Mission Workspace revision before a Task is taken.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -1132,9 +1133,9 @@ List files in the immutable Mission Workspace revision before a Task is claimed.
   "requires_binding": false,
   "scope": "mission-read",
   "help": {
-    "when": "List files in the immutable Mission Workspace revision before a Task is claimed.",
+    "when": "List files in the immutable Mission Workspace revision before a Task is taken.",
     "ref": "service://task/workspace_public_files",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: List files in the immutable Mission Workspace revision before a Task is claimed.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: List files in the immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_public_files",
@@ -1144,13 +1145,13 @@ List files in the immutable Mission Workspace revision before a Task is claimed.
 
 #### task.workspace_public_read
 
-Read one file from an immutable Mission Workspace revision before a Task is claimed.
+Read one file from an immutable Mission Workspace revision before a Task is taken.
 
 ```json
 {
   "name": "workspace_public_read",
   "operation": "workspace_public_read",
-  "description": "Read one file from an immutable Mission Workspace revision before a Task is claimed.",
+  "description": "Read one file from an immutable Mission Workspace revision before a Task is taken.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -1195,9 +1196,9 @@ Read one file from an immutable Mission Workspace revision before a Task is clai
   "requires_binding": false,
   "scope": "mission-read",
   "help": {
-    "when": "Read one file from an immutable Mission Workspace revision before a Task is claimed.",
+    "when": "Read one file from an immutable Mission Workspace revision before a Task is taken.",
     "ref": "service://task/workspace_public_read",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Read one file from an immutable Mission Workspace revision before a Task is claimed.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Read one file from an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_public_read",
@@ -1207,13 +1208,13 @@ Read one file from an immutable Mission Workspace revision before a Task is clai
 
 #### task.workspace_public_search
 
-Search text in an immutable Mission Workspace revision before a Task is claimed.
+Search text in an immutable Mission Workspace revision before a Task is taken.
 
 ```json
 {
   "name": "workspace_public_search",
   "operation": "workspace_public_search",
-  "description": "Search text in an immutable Mission Workspace revision before a Task is claimed.",
+  "description": "Search text in an immutable Mission Workspace revision before a Task is taken.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -1261,9 +1262,9 @@ Search text in an immutable Mission Workspace revision before a Task is claimed.
   "requires_binding": false,
   "scope": "mission-read",
   "help": {
-    "when": "Search text in an immutable Mission Workspace revision before a Task is claimed.",
+    "when": "Search text in an immutable Mission Workspace revision before a Task is taken.",
     "ref": "service://task/workspace_public_search",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Search text in an immutable Mission Workspace revision before a Task is claimed.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Search text in an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_public_search",
@@ -2039,7 +2040,7 @@ Publish durable Response, Handoff, or Experience Material with current Task/Exec
 }
 ```
 
-### Judge Service: 1 registered capabilities
+### Judge Service: 2 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -2062,7 +2063,82 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "38c9a6e4f67b0ec852cc6e0c1cf249a6a0d547d434bbb99151a24f62929abb3e"
+  "manifest_hash": "fec332072a6192a5fa8b98a42a052aa2dc435d40c6d9d2e1b8e118d1a1f48213"
+}
+```
+
+#### judge.judge_workspace_check
+
+Check a Workspace file reference against the configured checker and return a durable CheckResult.
+
+```json
+{
+  "name": "judge_workspace_check",
+  "operation": "workspace_check",
+  "description": "Check a Workspace file reference against the configured checker and return a durable CheckResult.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "path"
+    ],
+    "properties": {
+      "workspace_id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "revision": {
+        "type": "string",
+        "pattern": "^\\d+\\.\\d+$"
+      },
+      "path": {
+        "type": "string",
+        "minLength": 1
+      },
+      "workspace_revision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "content_hash": {
+        "type": "string",
+        "minLength": 1
+      },
+      "request_key": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "execution-write",
+  "help": {
+    "when": "Check a Workspace file reference against the configured checker and return a durable CheckResult.",
+    "ref": "service://judge/workspace_check",
+    "text": "Purpose: Candidate checking and structured CheckResults.\nUse when: Check a Workspace file reference against the configured checker and return a durable CheckResult.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_check",
+  "errors": []
 }
 ```
 
@@ -2123,120 +2199,6 @@ Read a Judge CheckResult, checker process status, result class, retryability, an
 ### Runtime-owned capabilities
 
 These declarations are merged into a Session profile after deployment filtering. They are not registered HTTP providers. Most Runtime output schemas are empty strict-object placeholders; they do not enumerate the actual return fields described in the narrative chapters.
-
-#### runtime.task_complete
-
-```json
-{
-  "id": "runtime.task_complete",
-  "name": "task_complete",
-  "operation": "task_complete",
-  "service_id": "runtime",
-  "service_title": "SwarmEnv Runtime",
-  "service_purpose": "Task-scoped completion and dependency actions",
-  "description": "Complete the current Task after its own contract and result references are satisfied.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Use after the current Task completion contract is satisfied and evidence is persisted.",
-    "ref": "runtime://task_complete"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "target_task_id": {
-        "type": "string",
-        "minLength": 1
-      },
-      "target_state_version": {
-        "type": "integer",
-        "minimum": 0
-      }
-    },
-    "required": [
-      "target_task_id"
-    ],
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.task_block
-
-```json
-{
-  "id": "runtime.task_block",
-  "name": "task_block",
-  "operation": "task_block",
-  "service_id": "runtime",
-  "service_title": "SwarmEnv Runtime",
-  "service_purpose": "Task-scoped completion and dependency actions",
-  "description": "Save a useful checkpoint, declare a typed dependency, and release this Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Use only when the current Task cannot progress without a concrete typed dependency.",
-    "ref": "runtime://task_block"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "reason": {
-        "type": "string",
-        "minLength": 1
-      },
-      "dependency": {
-        "type": "object",
-        "minProperties": 1
-      },
-      "checkpoint": {
-        "type": "object"
-      },
-      "files": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "string"
-        }
-      }
-    },
-    "required": [
-      "reason",
-      "dependency"
-    ],
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
 
 #### runtime.execution_get
 
@@ -3206,6 +3168,7 @@ Registry matches are resolved first by capability name or operation and must be 
 
 ```json
 [
+  "workspace_check",
   "get_check_result"
 ]
 ```

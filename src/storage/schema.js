@@ -28,7 +28,7 @@ export const TASKS_TABLE_DEFINITION = `(
   retry_policy_json TEXT NOT NULL,
   root_deadline TEXT,
   cancelled_at TEXT,
-  claimable_at TEXT,
+  eligible_at TEXT,
   responsibility_key TEXT,
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -322,7 +322,7 @@ CREATE TABLE IF NOT EXISTS task_rework_links (
   created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS claim_keys (
+CREATE TABLE IF NOT EXISTS take_keys (
   request_key TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   fingerprint TEXT NOT NULL,

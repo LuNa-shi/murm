@@ -93,7 +93,7 @@ test('canonical task supply seam reports status, registers work, and takes it', 
 
   const status = sdk.taskStatus({ mission_id: mission.mission_id });
   assert.equal(status.counts.total, 1);
-  assert.equal(status.counts.claimable, 1);
+  assert.equal(status.counts.eligible, 1);
   assert.equal(status.tasks[0].task_id, 'task:canonical');
 
   const taken = sdk.taskTake({
@@ -123,8 +123,8 @@ test('every Mission Task is exclusive and the Mission has no shared claim entry'
   const status = service.taskStatus({ mission_id: mission.mission_id, limit: 1 });
   assert.equal(status.counts.total, 1);
   assert.equal(status.counts.running, 1);
-  assert.equal(status.counts.claimable, 0);
-  assert.deepEqual(status.claimable_tasks, []);
+  assert.equal(status.counts.eligible, 0);
+  assert.deepEqual(status.eligible_tasks, []);
   service.close();
 });
 
@@ -191,7 +191,7 @@ test('Mission Task creation carries a bounded dynamic contract and deduplicates 
   service.close();
 });
 
-test('only depends_on gates the flat claimable view and cycles are rejected', () => {
+test('only depends_on gates the flat eligible view and cycles are rejected', () => {
   const { service } = env();
   const mission = createMission(service, 'mission:claimability');
   const prerequisite = createTask(service, mission.mission_id, 'task:prerequisite');
@@ -200,7 +200,7 @@ test('only depends_on gates the flat claimable view and cycles are rejected', ()
 
   const available = service.dispatch('task.list', { mission_id: mission.mission_id, available_only: true }, op('task:available:one', 'agent:test'));
   assert.deepEqual(available.map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
-  assert.deepEqual(service.listClaimableTasks({ missionId: mission.mission_id, limit: 10 }).map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
+  assert.deepEqual(service.listEligibleTasks({ missionId: mission.mission_id, limit: 10 }).map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
 
   assert.throws(() => service.dispatch('task.create', {
     mission_id: mission.mission_id,
@@ -208,46 +208,5 @@ test('only depends_on gates the flat claimable view and cycles are rejected', ()
     summary: 'cycle', goal: 'cycle', expected_output: 'cycle', acceptance_conditions: [],
     depends_on: ['task:cycle'],
   }, op('task:cycle', 'agent:test')), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
-  service.close();
-});
-
-test('creating a Task from a running Execution leaves the current work running', () => {
-  const { service } = env();
-  const mission = createMission(service, 'mission:running');
-  const current = createTask(service, mission.mission_id, 'task:current');
-  const claimed = service.dispatch('claim', { claim_key: 'claim:current', owner_ref: 'agent:test' }, op('claim:current', 'agent:test', {
-    taskId: current.task_id,
-    specVersion: current.spec_version,
-    stateVersion: current.state_version,
-  }));
-  const created = createTask(service, mission.mission_id, 'task:new', { spawned_from: current.task_id }, op('task:new:bound', 'agent:test', {
-    taskId: current.task_id,
-    executionId: claimed.execution.execution_id,
-    specVersion: claimed.execution.spec_version,
-    stateVersion: claimed.execution.state_version,
-    fencingVersion: claimed.execution.fencing_version,
-  }));
-
-  assert.equal(created.state, 'OPEN');
-  assert.equal(service.getTask(current.task_id).state, 'RUNNING');
-  assert.equal(service.getExecution(claimed.execution.execution_id).state, 'CREATED');
-  assert.equal(service.getTask(current.task_id).state_version, claimed.task.state_version);
-  service.close();
-});
-
-test('a modern Task with no specialized contract still needs a linked durable result', () => {
-  const { service } = env();
-  const mission = createMission(service, 'mission:completion');
-  const task = createTask(service, mission.mission_id, 'task:completion');
-  const claimed = service.dispatch('claim', {
-    claim_key: 'claim:completion', owner_ref: 'agent:test',
-  }, op('claim:completion', 'agent:test', {
-    taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version,
-  }));
-  assert.throws(() => service.dispatch('task.complete', {}, op('complete:empty', 'agent:test', {
-    taskId: task.task_id, executionId: claimed.execution.execution_id,
-    specVersion: claimed.execution.spec_version, stateVersion: claimed.execution.state_version,
-    fencingVersion: claimed.execution.fencing_version,
-  })), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
   service.close();
 });

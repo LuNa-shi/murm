@@ -59,7 +59,7 @@ const INTENT_BY_OPERATION = new Map([
   ['publish_material', 'publish a Material'],
   ['read_materials', 'read Materials'],
   ['consume_materials', 'record Material use'],
-  ['submit_candidate', 'submit a Candidate'],
+  ['workspace_check', 'submit a Candidate'],
   ['get_check_result', 'inspect Judge feedback'],
   ['apply_check_result', 'process Judge feedback'],
   ['request_wait', 'wait for a concrete condition'],
@@ -457,7 +457,7 @@ function domainFactsForService(root, row, source, payload, result = null) {
       count: materialIds.length,
     }, {}));
   }
-  if (operation === 'submit_candidate') {
+  if (operation === 'workspace_check') {
     const candidateId = execution?.candidate_material_id ?? result?.candidate_material_id ?? null;
     facts.push(base('candidate_submitted', {
       candidate_material_id: candidateId,
@@ -572,7 +572,7 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
       candidate_material_id: typeof payload?.candidate_material_id === 'string' ? payload.candidate_material_id : null,
       check_result_id: typeof payload?.check_result_id === 'string' ? payload.check_result_id : null,
       verdict: typeof payload?.verdict === 'string' ? payload.verdict : null,
-    }, { operation: 'submit_candidate' }));
+    }, { operation: 'workspace_check' }));
     return facts;
   }
   if (row.source === 'agent') {
@@ -1352,7 +1352,7 @@ function factOperation(fact) {
 function isBoundary(fact) {
   if (BOUNDARY_KINDS.has(fact.kind)) return true;
   const operation = factOperation(fact);
-  return ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'submit_candidate', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
+  return ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
 }
 
 function isSemanticBoundary(fact) {
@@ -1360,7 +1360,7 @@ function isSemanticBoundary(fact) {
     'task_created', 'task_claimed',
     'candidate_submitted', 'judge_result', 'judge_check', 'judge_check_record',
     'wait_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
-  ]).has(fact.kind) || (!['service_call_started', 'service_call_finished', 'database_operation', 'tool_call'].includes(fact.kind) && ['create_child_task', 'submit_candidate', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(factOperation(fact)));
+  ]).has(fact.kind) || (!['service_call_started', 'service_call_finished', 'database_operation', 'tool_call'].includes(fact.kind) && ['create_child_task', 'workspace_check', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(factOperation(fact)));
 }
 
 function sourceLabels(facts) {
@@ -1398,7 +1398,7 @@ function latestState(facts, execution) {
 function resultForWindow(facts) {
   const meaningful = [...facts].reverse().find((fact) => ['judge_result', 'judge_check', 'judge_check_record', 'candidate_submitted', 'wait_requested', 'review', 'rework', 'material_read', 'material_consumed', 'material_published', 'workspace_revision', 'execution_terminal', 'task_state_changed', 'execution_state_changed'].includes(fact.kind));
   const impactful = meaningful ?? [...facts].reverse().find((fact) => {
-    const durableOperations = ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'submit_candidate', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'];
+    const durableOperations = ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'];
     if (['heartbeat', 'agent_turn', 'agent_settled', 'process_event', 'agent_event', 'agent_rpc_request'].includes(fact.kind)) return false;
     if (durableOperations.includes(fact.operation)) return true;
     if (fact.kind === 'service_call_started' || fact.kind === 'service_call_finished') return Boolean(fact.summary?.ok === false || fact.summary?.error);
@@ -1439,7 +1439,7 @@ function semanticPhase(facts) {
   const kinds = new Set(facts.map((fact) => fact.kind));
   const operations = new Set(facts.map(factOperation));
   if (kinds.has('judge_result') || kinds.has('judge_check') || kinds.has('judge_check_record')) return 'candidate checking and feedback';
-  if (kinds.has('candidate_submitted') || operations.has('submit_candidate')) return 'candidate construction and submission';
+  if (kinds.has('candidate_submitted') || operations.has('workspace_check')) return 'candidate construction and submission';
   if (kinds.has('review') || kinds.has('rework')) return 'parent review and rework';
   if (kinds.has('wait_requested')) return 'coordination and waiting';
   if (kinds.has('material_published') || kinds.has('material_read') || kinds.has('material_consumed') || operations.has('create_child_task')) return 'research and collaboration handoff';
@@ -1992,7 +1992,7 @@ function buildOptimizationRecommendations(analysis) {
   const categories = new Set(analysis.errors.map((error) => error.category));
   if (categories.has('claim_active_execution_quota')) {
     const count = analysis.errors.filter((error) => error.category === 'claim_active_execution_quota').reduce((total, error) => total + error.occurrence_count, 0);
-    add('P1', 'claim contention', 'Make the claimable queue quota-aware; after a conflict, back off and refresh the queue.', `This run produced ${count} unique quota conflict occurrence(s) while active Executions already owned the work.`, 'Count unique quota conflicts per run and require the next retry to occur only after claimability changes.', analysis.errors.filter((error) => error.category === 'claim_active_execution_quota').flatMap((error) => error.evidence));
+    add('P1', 'claim contention', 'Make the eligible queue quota-aware; after a conflict, back off and refresh the queue.', `This run produced ${count} unique quota conflict occurrence(s) while active Executions already owned the work.`, 'Count unique quota conflicts per run and require the next retry to occur only after claimability changes.', analysis.errors.filter((error) => error.category === 'claim_active_execution_quota').flatMap((error) => error.evidence));
   }
   if (categories.has('check_result_contract_mismatch')) {
     const count = analysis.errors.filter((error) => error.category === 'check_result_contract_mismatch').reduce((total, error) => total + error.occurrence_count, 0);

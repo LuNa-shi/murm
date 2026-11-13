@@ -107,7 +107,7 @@ const OVERVIEW_TOOL_NAMES = new Set([
   'swarmenv_context_publish',
   'swarmenv_context_read',
   'swarmenv_context_consume',
-  'swarmenv_judge_submit_candidate',
+  'swarmenv_judge_workspace_check',
   'swarmenv_judge_get_check_result',
   // Older Agent sessions used this transport wrapper. The projection resolves
   // its operation to the corresponding named Service tool below.

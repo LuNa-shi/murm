@@ -145,7 +145,7 @@ test('isolated Task, Context, Judge and Catalog hosts are independently reachabl
 
     const inputPath = join(root, 'material.json');
     await writeFile(inputPath, JSON.stringify({ kind: 'fact', scope: 'mission', role: 'experience', content: { marker: 'persisted-material' }, evidence_state: 'observed' }));
-    const published = await runCli(['context', 'publish', '--input', inputPath, '--json'], cliEnv);
+    const published = await runCli(['material', 'publish', '--input', inputPath, '--json'], cliEnv);
     assert.equal(published.code, 0);
     const materialId = JSON.parse(published.stdout).material.material_id;
 
@@ -153,7 +153,7 @@ test('isolated Task, Context, Judge and Catalog hosts are independently reachabl
     await stopServiceProcess(context.child);
     const restarted = await startService('context', ports.context, root);
     services.push(restarted);
-    const read = await runCli(['context', 'get', '--material-id', materialId, '--json'], cliEnv);
+    const read = await runCli(['material', 'get', '--material-id', materialId, '--json'], cliEnv);
     assert.equal(read.code, 0);
     assert.equal(JSON.parse(read.stdout).material.content.marker, 'persisted-material');
   } finally {
