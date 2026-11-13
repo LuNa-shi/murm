@@ -86,7 +86,7 @@ export class JudgeService {
       if (payload.request_key) return agentCheckResult(this.getByRequestKey(required(payload.request_key, 'request_key')));
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'get_check_result requires check_result_id or request_key');
     }
-    if (operation === 'workspace_check') return this.checkWorkspace(payload, envelope);
+    if (operation === 'workspace_check') return this.checkWorkspaceSource(payload, envelope);
     if (operation !== 'submit_check_result') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Judge operation: ${operation}`);
     return this.#transaction(() => {
       const fingerprint = operationPayload(operation, payload, envelope);
@@ -103,16 +103,16 @@ export class JudgeService {
    * Execution envelope and an internal source descriptor after reading the
    * private Workspace. No Task Service submission relay is involved.
    */
-  async checkWorkspace(payload = {}, envelope) {
+  async checkWorkspaceSource(payload = {}, envelope) {
     validateEnvelope(envelope);
     if (!envelope.task_id || !envelope.execution_id) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace_check requires a bound Task and Execution');
     }
-    const source = payload.source ?? payload.candidate_source ?? null;
+    const source = payload.source ?? payload.workspace_source ?? null;
     if (!source || typeof source.content !== 'string') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_check requires a Workspace source');
     }
-    const candidateRef = source.workspace_id !== undefined
+    const workspaceSourceRef = source.workspace_id !== undefined
       ? {
         workspace_id: required(source.workspace_id, 'source.workspace_id'),
         revision: required(String(source.revision), 'source.revision'),
@@ -162,10 +162,10 @@ export class JudgeService {
       workspace_ref: null,
       workspace_revision: source.workspace_revision ?? source.revision ?? null,
     };
-    const sourceId = candidateRef
-      ? `workspace:${candidateRef.workspace_id}:${candidateRef.revision}:${candidateRef.path}`
+    const sourceId = workspaceSourceRef
+      ? `workspace:${workspaceSourceRef.workspace_id}:${workspaceSourceRef.revision}:${workspaceSourceRef.path}`
       : `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${sourceHash}`;
-    const result = await this.judgeCandidate({
+    const result = await this.checkWorkspaceSource({
       request_key: payload.request_key ?? envelope.operation_id ?? hash({
         source_id: sourceId,
         source_hash: sourceHash,
@@ -173,7 +173,7 @@ export class JudgeService {
         execution_id: envelope.execution_id,
         revision: source.workspace_revision ?? null,
       }),
-      candidate_material_id: sourceId,
+      workspace_source_id: sourceId,
       target_task_id: envelope.task_id,
       target_spec_version: task.spec_version,
       input_snapshot_hash: execution.input_snapshot_hash,
@@ -182,11 +182,11 @@ export class JudgeService {
       environment_ref: fixtureManifest.environment_ref,
       execution_id: envelope.execution_id,
       state_version: execution.state_version ?? envelope.state_version,
-      candidate: {
+      workspace_source: {
         material_id: sourceId,
         content: source.content,
         content_hash: sourceHash,
-        ...(candidateRef ? { file_ref: candidateRef } : {}),
+        ...(workspaceSourceRef ? { file_ref: workspaceSourceRef } : {}),
       },
       target_task: task,
       workspace: {
@@ -195,15 +195,15 @@ export class JudgeService {
         task_id: envelope.task_id,
         workspace_ref: execution.workspace_ref ?? null,
         workspace_revision: source.workspace_revision ?? source.revision ?? execution.workspace_revision ?? null,
-        ...(candidateRef ? { workspace_id: candidateRef.workspace_id, path: candidateRef.path, revision: candidateRef.revision } : {}),
+        ...(workspaceSourceRef ? { workspace_id: workspaceSourceRef.workspace_id, path: workspaceSourceRef.path, revision: workspaceSourceRef.revision } : {}),
       },
       fixture_manifest: fixtureManifest,
     }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref });
     return agentCheckResult(result);
   }
 
-  async judgeCandidate(input, { operationId = randomUUID(), actorRef = 'judge:lean' } = {}) {
-    this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: operationId, target_task_id: input?.target_task_id, candidate_material_id: input?.candidate_material_id });
+  async checkWorkspaceSource(input, { operationId = randomUUID(), actorRef = 'judge:lean' } = {}) {
+    this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: operationId, target_task_id: input?.target_task_id, workspace_source_id: input?.workspace_source_id });
     const normalized = this.#validateRequest(input);
     const requestHash = hash(normalized);
     const request = this.#beginRequest(normalized, requestHash);
@@ -229,16 +229,16 @@ export class JudgeService {
       };
     } else {
       try {
-        checked = await this.checker.check({ candidate: normalized.candidate, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest });
+        checked = await this.checker.check({ workspace_source: normalized.workspace_source, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest });
       } catch (error) {
         checked = { verdict: 'ERROR', evidence: { diagnostic: error.message, error: error.name, checker_started: false } };
       }
-      if (typeof normalized.candidate.content === 'string' && /\b(?:sorry|admit|axiom)\b/i.test(normalized.candidate.content)) {
+      if (typeof normalized.workspace_source.content === 'string' && /\b(?:sorry|admit|axiom)\b/i.test(normalized.workspace_source.content)) {
         checked = {
           ...(checked ?? {}),
           verdict: 'ERROR',
           result_class: 'request_failure',
-          evidence: { ...(checked?.evidence ?? {}), forbidden_placeholder: true, checker_started: false, diagnostic: 'candidate contains a forbidden placeholder' },
+          evidence: { ...(checked?.evidence ?? {}), forbidden_placeholder: true, checker_started: false, diagnostic: 'workspace_source contains a forbidden placeholder' },
         };
       }
       if (!checked || !['PASS', 'FAIL', 'INCONCLUSIVE', 'ERROR'].includes(checked.verdict)) {
@@ -298,20 +298,20 @@ export class JudgeService {
       retryable: result.retryable,
       diagnostic_code: result.diagnostic_code,
       check_result_id: result.check_result_id,
-      candidate_material_id: result.candidate_material_id,
+      workspace_source_id: result.workspace_source_id,
     });
     return result;
   }
 
   async preflightChecker(input = {}) {
-    const normalized = this.#validateRequest({ ...input, candidate: input.candidate ?? { content: '' } });
+    const normalized = this.#validateRequest({ ...input, workspace_source: input.workspace_source ?? { content: '' } });
     return this.#runPreflight(normalized);
   }
 
   #validateRequest(input) {
     if (!input || typeof input !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'check request is required');
     validateFixtureManifest(input.fixture_manifest);
-    required(input.candidate_material_id, 'candidate_material_id');
+    required(input.workspace_source_id, 'workspace_source_id');
     required(input.target_task_id, 'target_task_id');
     required(input.input_snapshot_hash, 'input_snapshot_hash');
     required(input.checker_ref, 'checker_ref');
@@ -325,19 +325,19 @@ export class JudgeService {
       (input.target_task.task_id !== input.target_task_id || input.target_task.spec_version !== input.target_spec_version)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'target_task does not match target_task_id or target_spec_version');
     }
-    if (!input.candidate || typeof input.candidate.content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate content is required');
-    if (input.candidate.material_id !== undefined && input.candidate.material_id !== input.candidate_material_id) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate material_id does not match candidate_material_id');
+    if (!input.workspace_source || typeof input.workspace_source.content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content is required');
+    if (input.workspace_source.material_id !== undefined && input.workspace_source.material_id !== input.workspace_source_id) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source material_id does not match workspace_source_id');
     }
-    if (input.candidate.content_hash !== undefined && input.candidate.content_hash !== contentHash(input.candidate.content)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate content_hash does not match content');
+    if (input.workspace_source.content_hash !== undefined && input.workspace_source.content_hash !== contentHash(input.workspace_source.content)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content_hash does not match content');
     }
     const workspace = input.workspace ?? null;
     if (workspace?.input_snapshot_hash !== undefined && workspace.input_snapshot_hash !== input.input_snapshot_hash) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace does not match input_snapshot_hash');
     }
     const requestKey = required(input.request_key ?? hash({
-      candidate_material_id: input.candidate_material_id,
+      workspace_source_id: input.workspace_source_id,
       target_task_id: input.target_task_id,
       target_spec_version: input.target_spec_version,
       checker_ref: input.checker_ref,
@@ -347,15 +347,15 @@ export class JudgeService {
     }), 'request_key');
     return {
       request_key: requestKey,
-      candidate_material_id: input.candidate_material_id,
-      candidate_content_hash: contentHash(input.candidate.content),
+      workspace_source_id: input.workspace_source_id,
+      workspace_content_hash: contentHash(input.workspace_source.content),
       target_task_id: input.target_task_id,
       target_spec_version: input.target_spec_version,
       input_snapshot_hash: input.input_snapshot_hash,
       checker_ref: input.checker_ref,
       checker_version: input.checker_version,
       environment_ref: input.environment_ref,
-      candidate: input.candidate,
+      workspace_source: input.workspace_source,
       target_task: input.target_task ?? null,
       workspace,
       fixture_manifest: input.fixture_manifest,
@@ -386,12 +386,12 @@ export class JudgeService {
     const checkResultId = payload.check_result_id ?? randomUUID();
     const createdAt = now();
     this.db.prepare(`INSERT INTO check_results (
-      check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
+      check_result_id, request_key, request_hash, workspace_source_id, target_task_id, target_spec_version,
       execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict,
       judge_operation_status, checker_process_status, result_class, retryable, diagnostic_code, evidence_json,
       applied_task_state_version, applied_at, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RECEIVED', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`)
-      .run(checkResultId, normalized.request_key, requestHash, normalized.candidate_material_id, normalized.target_task_id, normalized.target_spec_version,
+      .run(checkResultId, normalized.request_key, requestHash, normalized.workspace_source_id, normalized.target_task_id, normalized.target_spec_version,
         normalized.execution_id, normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref,
         checked.verdict, 'persisted', checked.checker_process_status, checked.result_class, checked.retryable ? 1 : 0, checked.diagnostic_code,
         json(checked.evidence), createdAt, createdAt);
@@ -406,16 +406,16 @@ export class JudgeService {
         return { result: existing, shouldCheck: false };
       }
       // request_key is the transport idempotency key, but it is not a license
-      // to rerun an unchanged candidate under a fresh key.  A candidate and
+      // to rerun an unchanged workspace_source under a fresh key.  A workspace_source and
       // its locked checker/input binding define the durable check identity;
       // only retryable infrastructure failures may be checked again after a
       // new request.  This also closes the cross-Core duplicate path where
       // each Agent invents a different request key for the same Material.
       const equivalent = this.db.prepare(`SELECT * FROM check_results
-        WHERE candidate_content_hash = ? AND target_task_id = ? AND target_spec_version = ?
+        WHERE workspace_content_hash = ? AND target_task_id = ? AND target_spec_version = ?
           AND input_snapshot_hash = ? AND checker_ref = ? AND checker_version = ? AND environment_ref = ?
         ORDER BY created_at, check_result_id LIMIT 1`).get(
-        normalized.candidate_content_hash,
+        normalized.workspace_content_hash,
         normalized.target_task_id,
         normalized.target_spec_version,
         normalized.input_snapshot_hash,
@@ -441,12 +441,12 @@ export class JudgeService {
       const checkResultId = randomUUID();
       const createdAt = now();
       this.db.prepare(`INSERT INTO check_results (
-        check_result_id, request_key, request_hash, candidate_material_id, candidate_content_hash, target_task_id, target_spec_version,
+        check_result_id, request_key, request_hash, workspace_source_id, workspace_content_hash, target_task_id, target_spec_version,
         execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict,
         judge_operation_status, checker_process_status, result_class, retryable, diagnostic_code, evidence_json,
         applied_task_state_version, applied_at, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', NULL, 'accepted', 'not_started', 'unassessed', 0, NULL, ?, NULL, NULL, ?, ?)`).run(
-        checkResultId, normalized.request_key, requestHash, normalized.candidate_material_id, normalized.candidate_content_hash, normalized.target_task_id, normalized.target_spec_version,
+        checkResultId, normalized.request_key, requestHash, normalized.workspace_source_id, normalized.workspace_content_hash, normalized.target_task_id, normalized.target_spec_version,
           normalized.execution_id, normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref,
           json({}), createdAt, createdAt);
       return { result: this.getCheckResult(checkResultId), shouldCheck: true };
@@ -459,7 +459,7 @@ export class JudgeService {
     if (typeof this.checker.preflight !== 'function') {
       // A checker that cannot prove its executable, toolchain, working
       // directory, and locked input binding is unavailable. Treating an
-      // adapter without this gate as healthy would let a Candidate reach the
+      // adapter without this gate as healthy would let a WorkspaceSource reach the
       // Judge with no evidence that the checker can produce a mathematical
       // result.
       result = normalizePreflight({

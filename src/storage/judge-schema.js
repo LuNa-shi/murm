@@ -11,8 +11,8 @@ CREATE TABLE IF NOT EXISTS check_results (
   check_result_id TEXT PRIMARY KEY,
   request_key TEXT NOT NULL UNIQUE,
   request_hash TEXT NOT NULL,
-  candidate_material_id TEXT NOT NULL,
-  candidate_content_hash TEXT,
+  workspace_source_id TEXT NOT NULL,
+  workspace_content_hash TEXT,
   target_task_id TEXT NOT NULL,
   target_spec_version INTEGER NOT NULL,
   execution_id TEXT,
@@ -57,7 +57,7 @@ export function ensureJudgeSchema(database) {
   database.exec(JUDGE_SCHEMA_SQL);
   const columns = new Set(database.prepare('PRAGMA table_info(check_results)').all().map((column) => column.name));
   for (const [name, definition] of [
-    ['candidate_content_hash', 'TEXT'],
+    ['workspace_content_hash', 'TEXT'],
     ['execution_id', 'TEXT'],
     ['applied_task_state_version', 'INTEGER'],
     ['applied_at', 'TEXT'],

@@ -124,8 +124,8 @@ function diagnosticLocation(evidence = {}, diagnostic = '') {
  * Project the canonical persisted CheckResult onto the Agent tool boundary.
  *
  * The Judge keeps the full evidence object for local diagnosis and reports,
- * but an Agent only needs bounded feedback that can guide the next candidate.
- * In particular, candidate hashes, raw process streams, and arbitrary evidence
+ * but an Agent only needs bounded feedback that can guide the next workspace_source.
+ * In particular, workspace_source hashes, raw process streams, and arbitrary evidence
  * keys must not cross this boundary. The diagnostic excerpt is deliberately
  * bounded and is the only selected process text exposed to the Agent.
  */
@@ -152,7 +152,7 @@ export function agentCheckResult(result) {
   return {
     check_result_id: result.check_result_id ?? null,
     request_key: result.request_key ?? null,
-    candidate_material_id: result.candidate_material_id ?? null,
+    workspace_source_id: result.workspace_source_id ?? null,
     target_task_id: result.target_task_id ?? null,
     execution_id: result.execution_id ?? null,
     status: result.status ?? null,
