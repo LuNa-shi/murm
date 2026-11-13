@@ -1,6 +1,6 @@
 # EXP-20261112-07: Single-problem Issue #122 acceptance run
 
-Status: REGISTERED
+Status: BLOCKED
 Approved GitHub Issue: [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)
 Experiment ID: `EXP-20261112-07`
 Repeat of / comparison to: `EXP-20261112-06` (short smoke confirmed clean claim normalization)
@@ -46,14 +46,26 @@ echo $! > experiments/EXP-20261112-07.pid
 
 ## Results
 
-Pending execution. Record actual start/end, protocol validity, public Workspace ID and
-revision, Mission submission state, Task/Execution/Material/Judge evidence, cleanup,
-and exact observed timebox after the run.
+The detached run started at `2026-11-13T05:51:32Z` and was stopped after about six
+minutes because it entered a deterministic recovery loop. One project and four Core
+lanes were used. The provider URL was valid and `task_take` was recorded with
+`workspace_selection.mode: clean`; five Execution attempts on core-4 then ended as
+`FENCED` with `terminal_reason: recovery_exhausted` after `process_error`. Runtime
+recorded repeated `sandbox_sync_error` with `NOT_ALLOWED` while stopping those
+sandboxes. No Material publication, Judge check, candidate, or Mission completion
+was recorded. The runner and all `swarmenv/agent:issue122` containers were stopped;
+raw logs and SQLite state remain under the ignored experiment directory. No final
+project report was produced.
 
 ## Analysis
 
-Pending execution. Protocol validity and engineering contract evidence remain
-separate from proof quality or research benefit.
+This run supports only bounded infrastructure observations: OpenSandbox/provider
+startup, authenticated Task claim, clean Workspace selection, and durable recovery
+records. It does not support the one-hour acceptance claim. The failure is distinct
+from the earlier Invalid URL and resume-mode defects, and exposes an unresolved
+Runtime/provider process lifecycle problem. The implementation also still does not
+show a Bot-created proposal from a genuinely zero Task Mission: the benchmark owner
+created the locked workload after recording the zero-task event.
 
 ## Next steps
 
