@@ -20,12 +20,18 @@ const CONTEXT_OPERATIONS = new Set([
   'material_supersede', 'material.supersede', 'material_unsupersede', 'material.unsupersede',
 ]);
 const JUDGE_OPERATIONS = new Set(['get_check_result']);
+const PUBLIC_WORKSPACE_OPERATIONS = new Set([
+  'workspace_public_files', 'workspace_public_read', 'workspace_public_search',
+  'workspace_save', 'workspace_merge', 'mission_submit', 'mission_submission_finish', 'mission_submission_get',
+]);
 
 export class ServicesRouter {
-  constructor({ taskService, contextService, judgeService = null, registry = null, serviceEndpoints = {}, customServices = [], logger = null } = {}) {
+  constructor({ taskService, contextService, judgeService = null, missionWorkspace = null, missionSubmissionStore = null, registry = null, serviceEndpoints = {}, customServices = [], logger = null } = {}) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.judgeService = judgeService;
+    this.missionWorkspace = missionWorkspace;
+    this.missionSubmissionStore = missionSubmissionStore;
     this.registry = registry ?? createBuiltinServiceRegistry({ taskService, contextService, judgeService, serviceEndpoints, customServices });
     this.logger = logger;
   }
@@ -71,6 +77,8 @@ export class ServicesRouter {
           }
           return localResult;
         })()
+        : PUBLIC_WORKSPACE_OPERATIONS.has(operation)
+          ? (() => { throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `${operation} is asynchronous; use dispatchAsync`, { operation }, { retryable: true }); })()
         : TASK_OPERATIONS.has(operation)
           ? this.taskService.dispatch(operation, payload, envelope)
           : CONTEXT_OPERATIONS.has(operation)
@@ -107,13 +115,29 @@ export class ServicesRouter {
         this.logger?.append({ event: 'route.complete', operation, ok: true });
         return result;
       }
-      const result = this.dispatch(operation, payload, envelope);
+      const result = PUBLIC_WORKSPACE_OPERATIONS.has(operation)
+        ? await this.#dispatchPublic(operation, payload, envelope)
+        : this.dispatch(operation, payload, envelope);
       this.logger?.append({ event: 'route.complete', operation, ok: true });
       return result;
     } catch (error) {
       this.logger?.append({ event: 'route.complete', operation, ok: false, error: { name: error.name, code: error.code, message: error.message } });
       throw error;
     }
+  }
+
+  async #dispatchPublic(operation, payload = {}, envelope = {}) {
+    if (operation.startsWith('workspace_') && !this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not configured');
+    if (operation.startsWith('mission_') && !this.missionSubmissionStore) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not configured');
+    if (operation === 'workspace_public_files') return this.missionWorkspace.files({ workspaceId: payload.workspace_id, revision: payload.revision, prefix: payload.path ?? '' });
+    if (operation === 'workspace_public_read') return this.missionWorkspace.read({ workspaceId: payload.workspace_id, revision: payload.revision, path: payload.path, maxBytes: payload.max_bytes });
+    if (operation === 'workspace_public_search') return this.missionWorkspace.search({ workspaceId: payload.workspace_id, revision: payload.revision, prefix: payload.path ?? '', query: payload.query, maxResults: payload.max_results });
+    if (operation === 'workspace_save') return this.missionWorkspace.save(payload);
+    if (operation === 'workspace_merge') return this.missionWorkspace.merge(payload);
+    if (operation === 'mission_submit') return this.missionSubmissionStore.submit({ ...payload, actorRef: payload.actor_ref ?? envelope.actor_ref });
+    if (operation === 'mission_submission_finish') return this.missionSubmissionStore.finish(payload);
+    if (operation === 'mission_submission_get') return this.missionSubmissionStore.get(payload);
+    throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `${operation} is not configured`, { operation });
   }
 }
 

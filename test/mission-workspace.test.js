@@ -4,6 +4,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MissionWorkspace, candidateFileRef } from '../src/runtime/mission-workspace.js';
+import { ServicesRouter } from '../src/sdk/service-router.js';
 
 test('MissionWorkspace keeps public immutable revisions separate from main and merges whole trees', async () => {
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
@@ -37,4 +38,14 @@ test('MissionWorkspace rejects stale main updates and protects metadata paths', 
   await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'notes.md': 'one' } });
   await assert.rejects(() => store.merge({ workspaceId: created.workspace_id, fromRevision: '0.2', expectedMainRevision: '9.9' }), { code: 'STALE_VERSION' });
   await assert.rejects(() => store.save({ workspaceId: created.workspace_id, baseRevision: '0.2', files: { '.swarm-workspace.json': 'bad' } }), { code: 'NOT_ALLOWED' });
+});
+
+test('ServicesRouter exposes public Workspace reads and Mission submission as async operations', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+  const workspace = new MissionWorkspace({ rootDir: root });
+  const created = await workspace.create({ missionId: 'mission:router', workspaceId: 'workspace-router', initialFiles: { 'notes.md': 'router' } });
+  const router = new ServicesRouter({ missionWorkspace: workspace });
+  const listing = await router.dispatchAsync('workspace_public_files', { workspace_id: created.workspace_id }, { actor_ref: 'bot:reader' });
+  assert.equal(listing.files[0].path, 'notes.md');
+  assert.throws(() => router.dispatch('workspace_public_files', { workspace_id: created.workspace_id }, { actor_ref: 'bot:reader' }), { code: 'SERVICE_UNAVAILABLE' });
 });
