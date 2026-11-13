@@ -8,7 +8,7 @@ This chapter separates persisted facts from live-process state, and provides eve
 |---|---|---|
 | Task Service | Mission, Task contract/state, Execution/fence/lease, Task relationships, admission counters, replay keys, Material links, notification and receipt state | Runtime Core occupancy, callback subscriptions and scheduling loop |
 | Context Service | Immutable Material content/provenance/hash/version and explicit consumption edges | No semantic proof of whether the Agent used or understood the text |
-| Judge Service | Candidate request/checker/input binding, CheckResult and result class, checker health/preflight attempts, applied-result bookkeeping | The currently executing checker subprocess and pending asynchronous call |
+| Judge Service | Workspace artifact request/checker/input binding, CheckResult and result class, checker health/preflight attempts, applied-result bookkeeping | The currently executing checker subprocess and pending asynchronous call |
 | Workspace Manager | File content plus `.swarm/workspace.json`, revision/checkpoint metadata; local Git commits/refs are separate filesystem history | Live process working memory and unsaved shell edits |
 | Observation Store | Experiment registry, ordered events, operator payload, redacted Agent payload and payload hash | SSE connections, event-emitter subscriptions, server caches and client projection |
 | Registry/Bridge | Manifest/profile hashes can be recorded in run metadata; source/bundle files define defaults | Registered adapters, readiness cache, Bridge token, current binding, deferred lifecycle callback |

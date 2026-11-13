@@ -1,6 +1,6 @@
 # 02. Execution, Core scheduling and failure recovery
 
-> As built: runtime code at the source baseline named in [INDEX](INDEX.md), including the flat-only benchmark and OpenSandbox provider changes. This describes implementation, including compatibility paths and limits; it does not claim a new real-Agent acceptance run.
+> As built: runtime code at the source baseline named in [INDEX](INDEX.md), including the flat-only benchmark and OpenSandbox provider changes. This describes implementation, including compatibility paths and limits; it does not take a new real-Agent acceptance run.
 
 An Execution is a durable authorization for a Bot to work on a Task. Runtime binds that authorization to a Core, a Workspace and a model Session. The compatibility default still permits a reusable Session to take successive Tasks, but the Issue #122 migration seam `Runtime({ freshBotPerExecution: true })` removes the Session from Runtime's reusable set and stops it with the Sandbox when the Execution releases. A later Execution then requires a fresh Bot/Session. Neither a model reply nor the end of a turn automatically completes an Execution or Task.
 
@@ -10,8 +10,8 @@ Read [07 Run configuration](07-run-configuration.md) for deployment/runner compo
 
 | Component | What it owns | What it does not decide |
 |---|---|---|
-| Task Service | Durable admission, claim, transition validation, dependency facts, version checks and replay | Research-value ranking |
-| IdentityTaskLoop | One Core's bounded discover/select/claim/Runtime-handoff loop | It cannot bypass service-side admission |
+| Task Service | Durable admission, take, transition validation, dependency facts, version checks and replay | Research-value ranking |
+| IdentityTaskLoop | One Core's bounded discover/select/take/Runtime-handoff loop | It cannot bypass service-side admission |
 | TaskController | Reconcile dependency state and signal eligible idle loops | It never chooses or claims a Task; its snapshot records `claim_count: 0` |
 | Scheduler | Start unbound Sessions when ready supply and free capacity justify it | The start request has a generic prompt/ready count, not a selected Task |
 | Runtime | Process binding, Workspace preparation, Session events, deadlines, recovery and release/fencing | Research decomposition and value ranking |
@@ -25,7 +25,7 @@ Scheduler and IdentityTaskLoop coexist as separate implementations at this basel
 
 | Exact state | Meaning and entry paths |
 |---|---|
-| `CREATED` | Claim exists; process not yet durably started. Also the intermediate state after recovery and some legacy rework/wake paths. |
+| `CREATED` | Take exists; process not yet durably started. Also the intermediate state after recovery and some legacy rework/wake paths. |
 | `RUNNING` | `start_execution` / `resume_execution` committed; a Runtime process normally owns the binding. |
 | `WAITING` | Legacy checkpointed wait with a typed condition; physical Session/Workspace can be released. |
 | `SUCCEEDED` | This Execution satisfied its completion path. |
@@ -50,13 +50,13 @@ records and compatibility imports.
 
 Runtime's in-memory `coreStates` map holds `core_id`, `state` (`IDLE` or `RUNNING`), `execution_id`, `task_id`, `session_id` and `updated_at`. Its `activeProcesses` map holds live Session/Workspace and health bookkeeping by Execution ID.
 
-Task Service independently persists `core_id`. A non-null binding is immutable for an Execution's lifetime. Claim/start reject another `CREATED`/`RUNNING` Execution on the Core. Legacy `WAITING` records do not occupy that database active-Core query; their resume still respects their original binding.
+Task Service independently persists `core_id`. A non-null binding is immutable for an Execution's lifetime. Take/start reject another `CREATED`/`RUNNING` Execution on the Core. Legacy `WAITING` records do not occupy that database active-Core query; their resume still respects their original binding.
 
 ### 2.3 Identity-loop state
 
 The normal loop is `IDLE → DISCOVERING → TAKING → RUNNING → IDLE`. `STOPPING` is explicit shutdown. `FAILED` is in the exported vocabulary and TaskController treats it as unhealthy. There is no semantic `BLOCKED` Core state: blocking research work releases capacity.
 
-Snapshots include discovery/take/claim counts, conflicts/rescans, selector failures/retry deadline, idle generation, last error/timestamp and state history. These counters describe coordination activity, not useful research progress.
+Snapshots include discovery/take/take counts, conflicts/rescans, selector failures/retry deadline, idle generation, last error/timestamp and state history. These counters describe coordination activity, not useful research progress.
 
 ## 3. How work reaches a Core
 
@@ -65,12 +65,12 @@ Snapshots include discovery/take/claim counts, conflicts/rescans, selector failu
 One `runOnce` is serialized; concurrent calls share its promise.
 
 1. Re-arm an exhausted selector only after cooldown. Otherwise return `take_exhausted`.
-2. Read claimable work, then bound it to `shortlistLimit` (default 8; accepted 1–100).
-3. If empty, return `idle` without invoking selection or creating a claim.
-4. Give `takeTask` the frozen bounded view, Core ID, take prompt, reason and rescan count. The callback may return a Task ID or a complete `{task, execution}` claim produced through the Bridge.
-5. `take_deferred` denotes an in-flight binding/handoff race and returns idle without a failed selection attempt. `take_failed` denotes a lost claim race and follows bounded rescan.
-6. Reject a selected ID outside the view. A thrown selector error or invalid choice consumes its attempt budget; claim conflicts do not.
-7. If not already claimed, call Task Service with this Core, owner `identity:<coreId>`, and a fresh key `<coreId>:<taskId>:<sequence>`. The sequence is initialized from persisted claim keys so a later reclaim does not replay an old Execution.
+2. Read eligible work, then bound it to `shortlistLimit` (default 8; accepted 1–100).
+3. If empty, return `idle` without invoking selection or creating a take.
+4. Give `takeTask` the frozen bounded view, Core ID, take prompt, reason and rescan count. The callback may return a Task ID or a complete `{task, execution}` take produced through the Bridge.
+5. `take_deferred` denotes an in-flight binding/handoff race and returns idle without a failed selection attempt. `take_failed` denotes a lost take race and follows bounded rescan.
+6. Reject a selected ID outside the view. A thrown selector error or invalid choice consumes its attempt budget; take conflicts do not.
+7. If not already claimed, call Task Service with this Core, owner `identity:<coreId>`, and a fresh key `<coreId>:<taskId>:<sequence>`. The sequence is initialized from persisted take keys so a later reclaim does not replay an old Execution.
 8. Hand the claimed Execution to Runtime. If Runtime supplies `waitForExecutionRelease`, wait for both live process ownership and durable `CREATED`/`RUNNING` state to end.
 9. Clear local pointers and return idle. A Runtime handoff error triggers an injected release or fence attempt (`runtime_handoff_failed` / `handoff_timeout`), records its result, then returns idle.
 
@@ -82,9 +82,9 @@ Signals interrupt idle waits. A pending-wake bit covers a signal arriving before
 
 The controller defaults to a 5-second sweep and 16-Task shortlist. Event/timer reconciliations are serialized; an event during reconciliation requests a subsequent pass.
 
-A pass reads up to 100 `OPEN`/`BLOCKED` Tasks through the default adapter, asks Task Service to reconcile them, then reads updated blocked/claimable views and identity-loop health. Healthy idle loops in selector cooldown are excluded. Unhealthy loops can invoke an optional recovery callback.
+A pass reads up to 100 `OPEN`/`BLOCKED` Tasks through the default adapter, asks Task Service to reconcile them, then reads updated blocked/eligible views and identity-loop health. Healthy idle loops in selector cooldown are excluded. Unhealthy loops can invoke an optional recovery callback.
 
-The controller signals at most one idle loop per distinct claimable Task in its
+The controller signals at most one idle loop per distinct eligible Task in its
 view. The sorted Task IDs, loop state and idle generation form a
 duplicate-suppression key. Mission is not inserted into this view and no
 shared-Mission parallel slot exists in the current implementation.
@@ -109,19 +109,19 @@ Defaults are three startup attempts, 1-second retry backoff and 1-second dispatc
 | Identity | `execution_id`, `task_id`, `owner_ref`, nullable immutable `core_id`, unique `launch_token` |
 | State/specification | `state`, `state_version`, `spec_version`, `spec_hash`, `attempt_no`, `instruction_version` |
 | Incarnation | `session_generation` starts at 1; `fencing_version` starts at 1; `runtime_generation` defaults to 1 |
-| Lease | `lease_expires_at`, `heartbeat_at`; default claim/heartbeat lease is 30 seconds without caller override |
+| Lease | `lease_expires_at`, `heartbeat_at`; default take/heartbeat lease is 30 seconds without caller override |
 | Input/prompt | `agent_prompt`, `workspace_manifest_ref`, `input_material_refs`, `input_snapshot_hash`; returned `workspace_snapshot_hash` aliases the last field |
 | Workspace selection | `mode` (`resume` default or `clean`), selected revision, source Execution and source Workspace |
 | Saved output | Workspace path/revision/content hash, checkpoint path/hash, current candidate Material ID; initially null |
-| Timebox | Start time, reminder deadline, execution deadline, reminder-sent time; set on start, not claim |
+| Timebox | Start time, reminder deadline, execution deadline, reminder-sent time; set on start, not take |
 | Continuation | Steer Material references, wait condition/deadline/token, handoff metadata, terminal reason |
 | Audit | Creation/update timestamps |
 
 The persisted `agent_prompt` is not a transcript or necessarily the final model input. Runtime adds context, capability/service documents, notifications and later prompts. See [01](01-agent-core.md) for the precise composition and recording boundary; [11 Storage](11-storage-reference.md) contains the complete DDL.
 
-## 5. Claim → Workspace → Session
+## 5. Take → Workspace → Session
 
-Task Service atomically validates the claim, writes a `CREATED` Execution and claim key, and moves the Task to `RUNNING`. Workspace/process preparation occurs later and outside that transaction.
+Task Service atomically validates the take, writes a `CREATED` Execution and take key, and moves the Task to `RUNNING`. Workspace/process preparation occurs later and outside that transaction.
 
 | Start seam | Exact high-level order |
 |---|---|
@@ -144,11 +144,11 @@ The provider deliberately ignores the host `workspaceRef` as a mount source. It 
 
 This provider boundary is usable by Runtime anywhere a `sandboxManager` is accepted and is exported from `src/index.js`. With the OpenSandbox provider enabled, `OpenSandboxAgentAdapter` starts `/opt/swarmenv/agent-worker.mjs` through Execd, resolves a provider endpoint, copies bounded initial Task files into guest `/workspace`, resolves executable versions in that guest, and starts the configured command inside that worker. The benchmark defaults to direct Pi; the shipped image contains Node, the pinned native Pi package/model catalog, extension source and worker, without NuRouter. A custom compatibility command requires a matching image. `RemoteAgentChild` maps the worker's JSON-RPC and event stream to the existing `AgentCoreSession`; before Runtime stops the provider, `syncWorkspaceBack` pulls bounded regular files into the host Workspace so the next WorkspaceManager checkpoint can commit them. On benchmark process setup, `reconcileExecutions` lists provider sandboxes by durable `execution_id` metadata and re-adopts matching Execd endpoints before new worker startup. Generic Runtime callers can invoke `reconcileProviderExecutions()` during controller startup/restart; it derives active Execution IDs from Task Service, delegates to the provider, records an operator reconciliation event and returns the adopted records. Deletions, session metadata and provider-volume restart reconciliation are not yet fully represented. Task/Context/Judge also remain benchmark-local SQLite services unless isolated service mode is configured, so this is not yet complete Issue 119 acceptance. The old `ContainerSandboxManager` remains a local compatibility provider and is not the Issue 119 target backend.
 
-When `Runtime` receives `cleanExecutionWorkspaces: true`, preparation rejects an Execution that already has a durable Workspace reference, then ignores `workspace_selection.mode=resume` for a new Execution. It creates a path derived from the new Execution ID and fence (`<execution>-fresh-<fence>`), writes the normal task/input snapshot, and starts Pi against that path. The benchmark runner enables this switch automatically for the OpenSandbox provider. Recovery of the same durable Execution does not re-run preparation, so recovery can still use its recorded durable Workspace; a later claim receives a new Execution and therefore a new clean path.
+When `Runtime` receives `cleanExecutionWorkspaces: true`, preparation rejects an Execution that already has a durable Workspace reference, then ignores `workspace_selection.mode=resume` for a new Execution. It creates a path derived from the new Execution ID and fence (`<execution>-fresh-<fence>`), writes the normal task/input snapshot, and starts Pi against that path. The benchmark runner enables this switch automatically for the OpenSandbox provider. Recovery of the same durable Execution does not re-run preparation, so recovery can still use its recorded durable Workspace; a later take receives a new Execution and therefore a new clean path.
 
 ## 6. Transactions, authority and fencing
 
-Mutating Task Service dispatches use `BEGIN IMMEDIATE … COMMIT` and persist operation fingerprint/result. Same operation ID and fingerprint replays; a changed payload conflicts. Claim, wait and wake also have dedicated request keys.
+Mutating Task Service dispatches use `BEGIN IMMEDIATE … COMMIT` and persist operation fingerprint/result. Same operation ID and fingerprint replays; a changed payload conflicts. Take, wait and wake also have dedicated request keys.
 
 Execution writes carry Task/Execution IDs plus specification, state and fence versions. Task Service rejects mismatched Task, stale specification/state version, stale fence and terminal Execution. Semantic handlers add owner checks where required. The low-level version checker is not an all-purpose actor authentication mechanism: Bridge binding and the operation-specific handler establish caller authority.
 
@@ -197,7 +197,7 @@ This remains the current Runtime recovery path, including when the OpenSandbox a
 | `releaseExecution` | None; a service already reached terminal state | Drain queued compaction saves; detach/stop binding; stop sandbox; release Workspace; Core idle |
 | `stopExecution` | Requested terminal state/reason; cancellation can cancel an idle Task projection | Same physical release |
 | `fenceExecution` | `FENCED`, fence increment, generation/reason | Stop sandbox, best-effort Workspace fence, release binding/Core |
-| `detachSwitchedExecution` | None; old fence/new claim already committed | Use previous fence to revoke old Workspace, detach old binding for same-Session rebind |
+| `detachSwitchedExecution` | None; old fence/new take already committed | Use previous fence to revoke old Workspace, detach old binding for same-Session rebind |
 | Runtime `restart` | Runtime generation +1; fence active `CREATED`/`RUNNING` attempts | Stop all owned Sessions, including released reusable Sessions; preserve legacy `WAITING` responsibilities |
 | Runtime `shutdown` | Default `FAILED/runtime_shutdown`, configurable by caller | Set stopping, unsubscribe callbacks, release live bindings, stop all owned Sessions, await recovery/release work |
 
@@ -209,7 +209,7 @@ Sessions.
 
 One listener set is attached per Session; event handlers read its current Execution binding, preventing handler multiplication on rebind. Closing/absent bindings ignore late events. Sibling fencing uses tracked pending-release promises and updates occupancy after cleanup reaches release.
 
-For register-and-switch, the old fence and new claim share a Task Service transaction, but the earlier progress save and later detach/`onWorkUnit`/`onRelease`/new binding do not. A post-transaction callback error can occur after old authorization has ended and the new claim exists.
+For register-and-switch, the old fence and new take share a Task Service transaction, but the earlier progress save and later detach/`onWorkUnit`/`onRelease`/new binding do not. A post-transaction callback error can occur after old authorization has ended and the new take exists.
 
 ## 9. Legacy waits and current implementation limits
 
@@ -256,7 +256,7 @@ proves authorization/state transition, not prerequisite satisfaction. Core
 identity and occupancy checks still apply.
 
 The older `blockExecution` path is also distinct from semantic
-`task_block`: it freezes the Sandbox, attempts a fresh revision/checkpoint,
+`task_finish(outcome=blocked)`: it freezes the Sandbox, attempts a fresh revision/checkpoint,
 calls low-level `block_task` with a terminal state (default FENCED), then
 fences/releases the Workspace and Session. A normal-flow Task requires a
 typed dependency. Unlike semantic handoff, this method does not require a
@@ -268,18 +268,18 @@ dependency reopen are in [03](03-mission-task.md).
 
 - Task transactions, Context publication, Git/filesystem saves and process management are not one atomic transaction. Partial persistence is possible.
 - Older `requestWait` and `blockExecution` set `closing=true` before validation, but do not consistently reset it on rejection as semantic release does. A test checking only durable state or Workspace writability does not prove subsequent Session event processing.
-- Strong Mission acceptance is checked in semantic `task_complete`; Judge automatic completion has a different path. See [03](03-mission-task.md).
+- Strong Mission acceptance is checked in semantic `task_finish`; Judge automatic completion has a different path. See [03](03-mission-task.md).
 - Best-effort physical cleanup and terminal durable state do not prove every external process exited or every last byte was saved.
 
 ## 10. Code and existing verification map
 
 | Source | Covered behavior | Existing tests |
 |---|---|---|
-| [identity-task-loop.js](../../src/runtime/identity-task-loop.js) | Discover/take/claim, cooldown, signal races and failed handoff | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
+| [identity-task-loop.js](../../src/runtime/identity-task-loop.js) | Discover/take/take, cooldown, signal races and failed handoff | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
 | [task-controller.js](../../src/runtime/task-controller.js) | Reconciliation, wake budget/deduplication and health callbacks | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
 | [scheduler.js](../../src/runtime/scheduler.js) | Generic startup budget and signature suppression | [scheduler.test.js](../../test/scheduler.test.js) |
 | [runtime.js](../../src/runtime/runtime.js) | Binding, events, deadlines, recovery and cleanup | [Workspace contract](../../test/workspace-contract.test.js),  |
 | [task-service.js](../../src/task/task-service.js), [task-types.js](../../src/task/task-types.js), [schema.js](../../src/storage/schema.js) | Durable state/version/Core/lease transitions and replay | [flat Task behavior](../../test/task-oriented-flat.test.js),  |
 | [services-bridge.js](../../src/agent/services-bridge.js) | Identity, same-lane bind/switch and compensation | [profile/Bridge](../../test/capability-profile-bridge.test.js), [direct Judge](../../test/judge-direct-submit.test.js) |
 
-Test links identify existing regression scenarios, not a claim that they ran in this documentation session. Mock adapter tests do not establish live-provider, Docker or long-duration scientific behavior.
+Test links identify existing regression scenarios, not a take that they ran in this documentation session. Mock adapter tests do not establish live-provider, Docker or long-duration scientific behavior.

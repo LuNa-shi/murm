@@ -60,7 +60,7 @@ Bot reads capability profile and public Mission/Task/Material/Workspace state
 
 The **flat Mission Task model** is the only runtime Task model described by this architecture. The benchmark CLI has no Task-model selector, and the Agent/SDK surface exposes Mission Tasks, relations, Materials and Execution progress without Root/Child structure operations. The normal bound profile uses named Task, Context, Judge, Workspace and Runtime capabilities.
 
-Within the flat benchmark path, `TaskController` observes claimable work and signals idle `IdentityTaskLoop`s; the Agent chooses its Task through `task_take`. Controller and Runner do not select the mathematical research route. See `src/benchmark/putnam-runner.js`, `src/runtime/task-controller.js`, and `src/runtime/identity-task-loop.js`.
+Within the flat benchmark path, `TaskController` observes eligible work and signals idle `IdentityTaskLoop`s; the Agent chooses its Task through `task_take`. Controller and Runner do not select the mathematical research route. See `src/benchmark/putnam-runner.js`, `src/runtime/task-controller.js`, and `src/runtime/identity-task-loop.js`.
 
 ## Current implementation versus acceptance
 

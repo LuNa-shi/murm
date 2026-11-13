@@ -37,10 +37,10 @@ The current Agent-facing operations are principally:
 - `task_take` for active identity/Core acquisition;
 - `task_feedback` for one Execution's decision on a notification;
 - `execution_progress` for checkpoint or handoff;
-- `task_complete`, `task_block`, `task_close` at the appropriate contract
+- `task_finish`, `task_finish(outcome=blocked)`, `task_finish(outcome=cancelled)` at the appropriate contract
   boundary.
 
-`task_register` with `take: true` **attempts** a Runtime checkpoint of the current Execution before a same-lane switch. The old Execution is fenced and the new Task claimed atomically within a **Task Service database transaction**; the preceding Workspace/Progress save is separate and may return `save_failed`, which does not by itself abort the switch. Do not claim an all-or-nothing disk + database save. Registration without `take` leaves the Task for others; a direct `task_take` acquires an existing eligible Task. See `src/agent/services-bridge.js` and `src/task/task-service.js`.
+`task_register` with `take: true` **attempts** a Runtime checkpoint of the current Execution before a same-lane switch. The old Execution is fenced and the new Task claimed atomically within a **Task Service database transaction**; the preceding Workspace/Progress save is separate and may return `save_failed`, which does not by itself abort the switch. Do not take an all-or-nothing disk + database save. Registration without `take` leaves the Task for others; a direct `task_take` acquires an existing eligible Task. See `src/agent/services-bridge.js` and `src/task/task-service.js`.
 
 In the **flat Mission Task registration path** no fixed numerical Task-count admission quota is enforced; distinct responsibility and key/idempotency checks still apply. Task counts, claims, handoffs and readiness intervals are observation metrics, not proof of useful work. Core/model capacity, total budget, tool timeouts and the single Execution timebox remain runtime limits.
 
@@ -52,7 +52,7 @@ the receiving Task may read it, consume it, link it, accept it, reject it, or
 defer a decision. Publication or consumption alone does not prove downstream
 usefulness.
 
-Task completion, consumer acceptance, Candidate PASS and Mission completion are
+Task completion, consumer acceptance, Workspace artifact PASS and Mission completion are
 four different facts. A report must state which one was observed.
 
 ## Feedback

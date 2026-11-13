@@ -63,7 +63,7 @@ The standalone server accepts `--name value` or `--name=value` for these options
 
 Healthy-daemon reuse returns the existing metadata and exits; passing a different bind address to this invocation does not reconfigure that existing process.
 
-The HTTP server accepts GET only; writes return 405. Defaults remain read-only: there is no HTTP action to claim, complete, restart or modify a Task. Static assets are served from `src/observability/public/`, the Vite build output of `client/`. The dev Vite server proxies `/api` to localhost:8787; the production observer serves the built files directly.
+The HTTP server accepts GET only; writes return 405. Defaults remain read-only: there is no HTTP action to take, complete, restart or modify a Task. Static assets are served from `src/observability/public/`, the Vite build output of `client/`. The dev Vite server proxies `/api` to localhost:8787; the production observer serves the built files directly.
 
 ### Routes
 
@@ -119,7 +119,7 @@ Sources: [server projection](../../src/observability/observability-server.js), [
 
 `FileWorkspaceProvider` follows only a `workspace_ref` already present in the selected Execution's observed assignment/Workspace events. It reads `.swarm/workspace.json` and numeric revision JSON files, returning file metadata and revision/checkpoint lineage. It does not expose an arbitrary path-reading endpoint. Its initial event lookup is one 1000-row page, so an older/sparse projection can fail to find the latest Workspace. A deleted/moved local Workspace cannot be reconstructed from a path string alone.
 
-`importBenchmarkReport` converts an existing sanitized report into synthetic observations: experiment start, Core/turn intervals, assignment/Execution summaries, Workspace writes, checks and finish. Raw Core logs are optionally imported as private events (enabled by default, disabled by `--no-raw-logs`). Import skips an already populated experiment, so rerunning the importer is not incremental reconciliation. Some assignment timestamps use report run start rather than the original claim instant. Synthetic sequence order groups reconstructed sources and must not be mistaken for the complete original interleaving of calls.
+`importBenchmarkReport` converts an existing sanitized report into synthetic observations: experiment start, Core/turn intervals, assignment/Execution summaries, Workspace writes, checks and finish. Raw Core logs are optionally imported as private events (enabled by default, disabled by `--no-raw-logs`). Import skips an already populated experiment, so rerunning the importer is not incremental reconciliation. Some assignment timestamps use report run start rather than the original take instant. Synthetic sequence order groups reconstructed sources and must not be mistaken for the complete original interleaving of calls.
 
 Sources: [Workspace provider](../../src/observability/workspace-provider.js), [report importer](../../src/observability/benchmark-report-importer.js), [Workspace observer tests](../../test/observability-workspace.test.js), [importer tests](../../test/benchmark-report-importer.test.js).
 
@@ -171,7 +171,7 @@ Sources: [analysis entry](../../scripts/analyze-experiment.mjs), [analysis engin
 | What did this Agent actually receive? | Exact source/version/profile plus private prompt-send/RPC records for that Session. The dashboard's initial-prompt card and report hash are insufficient on their own. |
 | Was a Task really claimed/completed? | Task/Execution rows, versions/fences and the successful domain result; UI event text is secondary. |
 | Did a successor reuse prior work? | Material producer/link/consumer identity, saved Workspace/Git lineage, subsequent concrete action and a semantic assessment. |
-| Did Judge check the right candidate/environment? | Candidate source/hash/revision, target Task/spec, input snapshot and locked fixture/preflight identity, result/application facts. |
+| Did Judge check the right candidate/environment? | Workspace artifact source/hash/revision, target Task/spec, input snapshot and locked fixture/preflight identity, result/application facts. |
 | Was a failure mathematical or operational? | Checker process/result class, diagnostic, retry/health state and whether a source-level result exists. |
 | Did the run stop cleanly? | Final durable Execution/Task disposition, process/Core/Workspace cleanup and the report's cleanup errors. |
 

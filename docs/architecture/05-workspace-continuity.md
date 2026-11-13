@@ -25,7 +25,7 @@ main revision, optionally runs the configured final-tree checker, commits the
 whole source revision, and advances `main` with a compare-and-swap guard. A
 stale expected revision returns `STALE_VERSION`; the source revision and all
 files remain readable. `candidateFileRef` is only the tuple
-`(workspace_id, revision, path)`; there is no Candidate object or storage
+`(workspace_id, revision, path)`; there is no Workspace artifact object or storage
 record. The older execution-local path remains executable for compatibility and
 is explicitly owner/fence bound; it must not be interpreted as the public
 Mission Workspace authority.
@@ -128,11 +128,11 @@ Preparation has three branches:
 1. **The Execution already has a Workspace.** Read its current metadata using
    Execution ID and fence. `restoreWorkspace` does not check out a saved Git
    commit or roll live files back. Ensure Pi settings if absent.
-2. **The claim selected resume with a source path.** Clone the selected source
+2. **The take selected resume with a source path.** Clone the selected source
    revision into a new writable path and return it. This branch does not call
    the Pi-settings helper; settings normally arrive through the cloned files,
    but an older source lacking them does not gain them at this step.
-3. **Clean claim.** Create support directories/files, optional formal source,
+3. **Clean take.** Create support directories/files, optional formal source,
    validate required inputs, initialize Git, record revision 1, then ensure Pi
    settings.
 
@@ -167,9 +167,9 @@ Thus “new Workspace” does not imply the first Agent turn sees revision 1.
 
 ### Resume is an independent checkout
 
-The claim records `workspace_selection`, source Execution/path/revision and
+The take records `workspace_selection`, source Execution/path/revision and
 input snapshot. The Task Service verifies a source Execution belongs to the
-same Task when that source ID is supplied. Legacy imported records may select a terminal predecessor, but the Issue #122 path materializes only a public Mission Workspace revision and never exposes another Bot's working directory. See the exact claim rules in [03](03-mission-task.md).
+same Task when that source ID is supplied. Legacy imported records may select a terminal predecessor, but the Issue #122 path materializes only a public Mission Workspace revision and never exposes another Bot's working directory. See the exact take rules in [03](03-mission-task.md).
 
 WorkspaceManager requires a source inside its root and a selected revision
 between 1 and the source's current revision. With a recorded Git commit it
@@ -250,7 +250,7 @@ are expected-value guards. Bridge reads through `Runtime.readWorkspaceFile`,
 rejects mismatched supplied values as `STALE_VERSION`, and sends the returned
 content, revision and hash with an authenticated Task/Execution/path
 attestation to Judge. This call does not save a revision, export an old Git
-commit, require a Candidate Material, or route submission through Task Service.
+commit, require a Workspace artifact Material, or route submission through Task Service.
 Judge uses its own configured fixture/checker and persists the resulting check;
 Task completion is separate. See [the direct submission contract](04-services.md#the-as-built-submission-route)
 and [ADR 0019](../adr/0019-direct-judge-workspace-submission.md).
@@ -331,7 +331,7 @@ Two boundaries matter when interpreting a saved revision:
   Sandbox stop in generic handoff does not precede this path's snapshot.
   Compaction checkpointing also does not stop shell jobs. A running background
   writer can therefore overlap those saves.
-- Semantic `task_handoff`/`task_block` validate and optionally link their
+- Semantic `execution_progress`/`task_finish(outcome=blocked)` validate and optionally link their
   referenced handoff Material, then release ownership. They do not
   automatically create a fresh disk checkpoint. The Bridge's
   `task_register(take: true)` performs a separate progress checkpoint before
@@ -359,7 +359,7 @@ the in-memory Core, advances the Workspace and durable Execution fences via
 recovery, and starts another Session on the existing Workspace. Recovery
 increments session/attempt generations and recalculates attempt timing while
 retaining any global run deadline. That path does not create a new independent
-checkout. A Task handoff followed by another claim does.
+checkout. A Task handoff followed by another take does.
 [Execution restart and recovery](02-execution.md).
 
 Feedback also survives through durable Task/notification records rather than
@@ -534,13 +534,13 @@ requires its own observed cleanup evidence.
 
 ## 9. Evidence needed to assess continuity
 
-A continuity claim should join the records below, rather than rely on the
+A continuity take should join the records below, rather than rely on the
 presence of the word “resume”, “checkpoint” or “handoff” in a log:
 
 | Question | Evidence |
 | --- | --- |
 | What did the predecessor actually save? | Save result/status/loss, durable Workspace and checkpoint pointers, Git commit, selected revision metadata and relevant file bytes. |
-| What did the successor start from? | Claim `workspace_selection`, source Execution/path/revision, target parent lineage and target commit. |
+| What did the successor start from? | Take `workspace_selection`, source Execution/path/revision, target parent lineage and target commit. |
 | Did old authority end? | Execution terminal/fencing transition, operation/CAS outcome, Core release and physical cleanup logs. |
 | Was substantive work preserved? | Linked progress/handoff Material and its provenance; a token-count checkpoint alone is insufficient. |
 | Was feedback carried forward? | Notification recipient/delivery/read/handling rows and consumption/response links, not only a prompt-delivery event. |
@@ -552,7 +552,7 @@ Relevant focused tests are
 [Workspace contract](../../test/workspace-contract.test.js),
 [SandboxManager](../../test/sandbox-manager.test.js). They cover public seams
 and use controlled/mock collaborators in several paths; their existence is
-not a claim that this documentation change reran a live Docker/provider run.
+not a take that this documentation change reran a live Docker/provider run.
 For persisted field definitions, see [storage reference](11-storage-reference.md).
 
 ## Source ownership

@@ -11,9 +11,9 @@ The complete prompt bodies, composition branches and delivery evidence are in [0
 | Core | Benchmark `core-N` record and its Runtime/identity-loop slot | It persists across ordinary Task claims and releases within the run |
 | Agent identity | Reasoning continuity attached to the reusable Session; Runtime tracks an identity ID and compaction count | Explicit identity rotation or recovery replaces the Session |
 | Session | `AgentCoreSession`, wrapping one Pi process, JSON-line RPC stream, Session ID and conversation storage | Process start/restart; it can outlive an individual Execution |
-| Task | Durable responsibility owned by Task Service | Claim, semantic completion, block or close |
+| Task | Durable responsibility owned by Task Service | Take, semantic completion, block or close |
 | Execution | Durable authority for an attempt: Task ID, owner, Core, lease, fencing version and Workspace | Ends at a lifecycle boundary; a Session restart can keep this ID |
-| Capability profile | Normalized Registry/Runtime description for `bound` or `recovery` | Built from Registry revision and the deployment capability list; it is not a Task claim |
+| Capability profile | Normalized Registry/Runtime description for `bound` or `recovery` | Built from Registry revision and the deployment capability list; it is not a Task take |
 
 An unbound reusable identity still uses role `bound`. There is no separate `idle` role in `AGENT_ROLES`; the exported idle/generic/recovery prompt aliases contain the same stable instructions. Role `bound` therefore does not prove that an Execution exists. The Bridge checks the binding separately. [Sources: capability-profile](../../src/agent/capability-profile.js), [Bridge](../../src/agent/services-bridge.js), [benchmark](../../src/benchmark/putnam-runner.js).
 
@@ -83,9 +83,9 @@ The external provider path uses `OpenSandboxAgentAdapter` and the image-resident
 
 1. **Create the lane and Bridge.** The benchmark creates four Core records, each with a Runtime limited to one worker, a Bridge, Workspace access and an adapter. Service state is shared across the project; an Execution's Workspace is not a Core-private shared working directory.
 2. **Start the Session while unbound.** The child receives the Bridge URL/token and `SWARMENV_AGENT_ROLE=bound`. `startAgentSession` waits for readiness and marks the Session as an `identitySession`. It supplies no `agentPrompt` to `adapter.start`.
-3. **Send one discovery turn.** `IdentityTaskLoop` supplies claimable candidates to `takeTaskWithAgent`. The runner sends the SOP, the profile-derived Task-loop guide, same-Session instructions and complete bounded candidate JSON. The model chooses a listed Task and calls `task_take`.
-4. **Create the durable claim.** The Bridge authenticates its own actor/Core, strips caller-provided owner and prompt claims, and invokes Task Service. A rejected claim remains a failed take.
-5. **Bind the existing Session.** The Bridge stores returned IDs; the runner hook prepares Workspace, starts Execution durably, registers the process and starts Sandbox when configured. `sendInitialPrompt:false` avoids a second prompt inside the discovery turn. The tool result returns to that same turn, but it is the original Task Service claim snapshot. The hook does not replace `claim.execution` with Runtime's activated Execution or add the prepared Workspace descriptor. For a newly created claim, the returned Execution still says `CREATED` and has null Workspace/start/deadline fields even though durable activation has succeeded. The Agent must use current Execution/Workspace tools for those values. A register-and-take switch has the same return-object boundary.
+3. **Send one discovery turn.** `IdentityTaskLoop` supplies eligible candidates to `takeTaskWithAgent`. The runner sends the SOP, the profile-derived Task-loop guide, same-Session instructions and complete bounded candidate JSON. The model chooses a listed Task and calls `task_take`.
+4. **Create the durable take.** The Bridge authenticates its own actor/Core, strips caller-provided owner and prompt claims, and invokes Task Service. A rejected take remains a failed take.
+5. **Bind the existing Session.** The Bridge stores returned IDs; the runner hook prepares Workspace, starts Execution durably, registers the process and starts Sandbox when configured. `sendInitialPrompt:false` avoids a second prompt inside the discovery turn. The tool result returns to that same turn, but it is the original Task Service take snapshot. The hook does not replace `take.execution` with Runtime's activated Execution or add the prepared Workspace descriptor. For a newly created take, the returned Execution still says `CREATED` and has null Workspace/start/deadline fields even though durable activation has succeeded. The Agent must use current Execution/Workspace tools for those values. A register-and-take switch has the same return-object boundary.
 6. **Continue research on that lane.** After a turn settles, the runner can send another bound continuation if Execution is still `RUNNING`. Reading, checking or publishing a Material does not release the lane by itself.
 7. **Release at a lifecycle boundary.** Completion, valid typed block or Runtime-requested handoff changes durable state and triggers cleanup. The Session normally remains available for another Task. Recovery/rotation replaces it; registration alone does not.
 
@@ -103,7 +103,7 @@ The normal take path can emit `runtime.initial_prompt_composed` while `sendIniti
 
 Normalization rejects unsupported roles, excludes entries not allowed for the role, filters legacy/internal surfaces, removes writable Execution-service controls and hides internal/runtime/daemon audiences. Capabilities are deduplicated by ID and sorted. Conflicting names prefer the non-Runtime semantic provider and receive deterministic Service-qualified names; remaining tool-name collisions gain an ID-derived hash suffix. Services group those names and retain bundle documentation. The final profile is hash-bound to the normalized description, or reuses a Registry hash where no altered identity is needed. The same input produces the same profile.
 
-The benchmark removes Runtime `task_complete`/`task_block` aliases and removes Sandbox tools when no Sandbox manager exists. Other callers can supply different lists. Historical catalog entries remain for bounded compatibility/observation uses, but legacy lease, wait and tree/rework surfaces are filtered out of live Agent profiles; the no-Registry fallback also uses an explicit current-operation allowlist. A historical declaration is not an advertised production tool. Registration does not replace current Task/Execution authorization. [Sources: capability-profile](../../src/agent/capability-profile.js), [runtime-capabilities](../../src/runtime/runtime-capabilities.js), [benchmark](../../src/benchmark/putnam-runner.js).
+The benchmark removes Runtime `task_finish`/`task_finish(outcome=blocked)` aliases and removes Sandbox tools when no Sandbox manager exists. Other callers can supply different lists. Historical catalog entries remain for bounded compatibility/observation uses, but legacy lease, wait and tree/rework surfaces are filtered out of live Agent profiles; the no-Registry fallback also uses an explicit current-operation allowlist. A historical declaration is not an advertised production tool. Registration does not replace current Task/Execution authorization. [Sources: capability-profile](../../src/agent/capability-profile.js), [runtime-capabilities](../../src/runtime/runtime-capabilities.js), [benchmark](../../src/benchmark/putnam-runner.js).
 
 ### 4.2 Pi extension registration
 
@@ -135,7 +135,7 @@ The extension converts successful results to a text content block using `JSON.st
 
 ### 5.2 Call validation and dispatch
 
-For every call, the Bridge obtains the current profile, resolves the capability, checks object-shaped payload and applies the bound Task's rules. Unknown/ambiguous capabilities are errors. The compatibility `get_task` alias resolves to current Task view where appropriate; overlapping `task_block` capabilities are disambiguated by Mission presence.
+For every call, the Bridge obtains the current profile, resolves the capability, checks object-shaped payload and applies the bound Task's rules. Unknown/ambiguous capabilities are errors. The compatibility `get_task` alias resolves to current Task view where appropriate; overlapping `task_finish(outcome=blocked)` capabilities are disambiguated by Mission presence.
 
 | Call category | Required behavior |
 |---|---|
@@ -146,19 +146,19 @@ For every call, the Bridge obtains the current profile, resolves the capability,
 | Workspace/Sandbox call | Mission Task must use Workspace according to its contract |
 | Retired operation | Legacy lease/wait/tree/rework operations are absent from the live profile; unavailable or unsupported calls are rejected rather than forwarded through a retired runner path |
 | `execution_progress` | Runtime coordinates files, Progress and handoff |
-| Semantic `task_block` | Runtime boundary; currently callable capability rejected as an alleged external blocker |
-| `task_complete` | Task Service commits completion, then Runtime releases Execution and Bridge clears binding |
-| `judge.submit_candidate` | Bridge reads the relative Workspace path (or resolves a referenced Material), attaches the current revision/hash attestation and invokes Judge directly. The returned CheckResult is diagnostic feedback; Task completion remains a separate explicit operation. See [04](04-services.md). |
+| Semantic `task_finish(outcome=blocked)` | Runtime boundary; currently callable capability rejected as an alleged external blocker |
+| `task_finish` | Task Service commits completion, then Runtime releases Execution and Bridge clears binding |
+| `judge.workspace_check` | Bridge reads the relative Workspace path (or resolves a referenced Material), attaches the current revision/hash attestation and invokes Judge directly. The returned CheckResult is diagnostic feedback; Task completion remains a separate explicit operation. See [04](04-services.md). |
 
 Do not generalize unbound discovery to every similarly named API: the explicit discovery list includes `list_tasks`, `get_task`, `list_executions`, `task_view` and `task_status`; registered `task_list` is not in that branch and normally requires provider binding. The supplied candidate view is therefore important when unbound.
 
-Task creation checks `required_capabilities` against exact current capability IDs, names, operations or tool names. Acceptance requirements for exact declarations/verified usage imply `mathlib_search`. Failure returns missing/available capabilities and an action/hint before a claimable Task is created. This checks availability, not scientific value. [Source: Bridge](../../src/agent/services-bridge.js).
+Task creation checks `required_capabilities` against exact current capability IDs, names, operations or tool names. Acceptance requirements for exact declarations/verified usage imply `mathlib_search`. Failure returns missing/available capabilities and an action/hint before a eligible Task is created. This checks availability, not scientific value. [Source: Bridge](../../src/agent/services-bridge.js).
 
-### 5.3 Claim failure and register-and-take
+### 5.3 Take failure and register-and-take
 
-`bindClaim` records the durable claim locally, invalidates its profile cache and invokes activation hooks. On failure it attempts Runtime `stopExecution(..., FAILED, task_take_bind_failed)`, a Task Service stop fallback, or a fencing fallback. It clears the local binding, calls the release hook with original IDs and rethrows the original error. Cleanup exceptions are suppressed; rollback is attempted, not guaranteed to succeed in every external component.
+`bindClaim` records the durable take locally, invalidates its profile cache and invokes activation hooks. On failure it attempts Runtime `stopExecution(..., FAILED, task_take_bind_failed)`, a Task Service stop fallback, or a fencing fallback. It clears the local binding, calls the release hook with original IDs and rethrows the original error. Cleanup exceptions are suppressed; rollback is attempted, not guaranteed to succeed in every external component.
 
-For `task_register(take:true)`, Bridge first saves `execution_progress(kind=checkpoint)`, using supplied Progress or defaults that record registration as the next step. Task Service then registers the new Task, ends the old Execution and claims the new one transactionally. Afterwards Bridge asks Runtime to detach the old Execution, records work evidence, releases its old local claim and binds the new claim. The database transition and physical actions are separate failure boundaries; a later bind failure does not undo the earlier checkpoint/transaction. [Sources: Bridge](../../src/agent/services-bridge.js), [Task Service](../../src/task/task-service.js).
+For `task_register(take:true)`, Bridge first saves `execution_progress(kind=checkpoint)`, using supplied Progress or defaults that record registration as the next step. Task Service then registers the new Task, ends the old Execution and claims the new one transactionally. Afterwards Bridge asks Runtime to detach the old Execution, records work evidence, releases its old local take and binds the new take. The database transition and physical actions are separate failure boundaries; a later bind failure does not undo the earlier checkpoint/transaction. [Sources: Bridge](../../src/agent/services-bridge.js), [Task Service](../../src/task/task-service.js).
 
 ### 5.4 Bridge callbacks actually installed by the benchmark
 
@@ -167,12 +167,12 @@ The Bridge is reusable infrastructure: defining an optional callback does not me
 | Callback | Benchmark behavior |
 |---|---|
 | `onClaimAccepted` | Supplied as an empty async callback; no additional admission rule or model message |
-| `onClaim` | Stores the claim, assigns the Core, binds the existing Session with no initial prompt, starts same-Session continuation after settlement and records Workspace/claim latency evidence |
-| `onSchedulerStatus` | Returns current Core/WAITING counts, available project Task summaries and current binding; it does not select or claim work |
+| `onClaim` | Stores the take, assigns the Core, binds the existing Session with no initial prompt, starts same-Session continuation after settlement and records Workspace/take latency evidence |
+| `onSchedulerStatus` | Returns current Core/WAITING counts, available project Task summaries and current binding; it does not select or take work |
 | `onRelease` | Records release latency/state, clears the matching Core binding while retaining the identity Session, projects the released Core as IDLE and wakes identity loops. Missing lineage is only a capacity-release observation. |
 | `onWorkspaceWrite` | Records revision/file/hash metadata and a Workspace work unit |
 | `onWorkUnit` | Records read/consumption, creation, publication/link, lifecycle and direct Judge submission evidence; selected operations wake identity loops. A residual `request_wait` accounting branch is not an exposed benchmark wait path. These observations do not establish scientific usefulness. |
-| `onError` | Records bounded tool-error classification. Contract errors are marked recoverable; the special `CONFLICT` accounting branch checks the legacy operation name `claim`, not `task_take`. |
+| `onError` | Records bounded tool-error classification. Contract errors are marked recoverable; the special `CONFLICT` accounting branch checks the legacy operation name `take`, not `task_take`. |
 | `onTaskCreate` | Not supplied; Bridge still performs its own capability admission and Task Service still applies the Task contract |
 | Judge submission | No runner relay callback is installed. The Bridge performs source resolution/attestation and Judge owns checking/persistence; `onWorkUnit` records the returned check, source path and verdict. Task completion remains an explicit separate operation. |
 
