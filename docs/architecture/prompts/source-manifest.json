@@ -37,7 +37,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "b24bc8562bb39c8f1deb4e3ec29be9ced0867529ca598a958edc6f60f6b165b9"
+      "sha256": "10e2b5dd170ba1195b99fe3869b22e1b55bb71e3594b91cc2b4eb8b116bcacfc"
     },
     {
       "path": "src/runtime/identity-task-loop.js",
@@ -148,13 +148,13 @@
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #notificationText",
-      "line": 1909,
+      "line": 1931,
       "sha256": "dcb4b6b8cafb3d4f36b9c33aadd300c45924a65c12116ea481515599030f9768"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #recoveryPrompt",
-      "line": 2474,
+      "line": 2496,
       "sha256": "0f833f9285ec0df0ea62684463b7bd91feb59532bd6e3168539353b311f5996d"
     },
     {
@@ -166,7 +166,7 @@
     {
       "path": "src/runtime/runtime.js",
       "anchor": "              await active.session.prompt(\n                ",
-      "line": 2321,
+      "line": 2343,
       "sha256": "aa531fc52ff79a137d3465b431a874606d420f627f5d4723998fb1ab0bc8dec6"
     },
     {
@@ -214,17 +214,17 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1895,
+      "line": 1917,
       "expression": "await session.prompt(dynamic.prompt, { timeoutMs: 30_000 });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1957,
+      "line": 1979,
       "expression": "await active.session.prompt?.(this.#notificationText(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2321,
+      "line": 2343,
       "expression": "await active.session.prompt("
     }
   ],

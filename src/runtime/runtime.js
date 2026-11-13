@@ -1665,16 +1665,38 @@ export class Runtime {
     const freshWorkspaceRef = fresh
       ? this.workspaceManager.workspacePath(`${execution.execution_id}-fresh-${execution.fencing_version}`)
       : workspaceRef;
+    const workspaceTask = await this.#materializeMissionInputs(task);
     const workspace = await this.workspaceManager.createWorkspace({
       executionId: execution.execution_id,
       fencingVersion: execution.fencing_version,
-      task,
+      task: workspaceTask,
       ...(freshWorkspaceRef ? { workspaceRef: freshWorkspaceRef } : {}),
       workspaceManifest,
       inputSnapshotManifest,
       runtimeManifest: { runtime_generation: this.runtimeGeneration, actor_ref: this.actorRef },
     });
     return this.#ensurePiSettings(execution, workspace);
+  }
+
+  async #materializeMissionInputs(task) {
+    const workspace = task.workspace;
+    if (!this.missionWorkspace || !workspace || typeof workspace !== 'object' ||
+      typeof workspace.workspace_id !== 'string' || typeof workspace.problem_file !== 'string') {
+      return task;
+    }
+    const input = await this.missionWorkspace.read({
+      workspaceId: workspace.workspace_id,
+      revision: 'main',
+      path: workspace.problem_file,
+      maxBytes: 10_000_000,
+    });
+    return {
+      ...task,
+      workspace: {
+        ...workspace,
+        formal_source: input.content,
+      },
+    };
   }
 
   async #ensurePiSettings(execution, workspace) {
