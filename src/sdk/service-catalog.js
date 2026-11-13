@@ -208,7 +208,7 @@ const publicTaskTools = [
     parameters: { type: 'object', required: ['outcome'], properties: {
       outcome: { type: 'string', enum: ['done', 'incomplete', 'blocked', 'cancelled'] },
       material_ids: { type: 'array', items: { type: 'string' } }, check_result_id: { type: 'string' },
-      handoff_material_id: { type: 'string' }, blocker: { type: 'object' }, dependency: { type: 'object' }, reason: { type: 'string' },
+      handoff_material_id: { type: 'string' }, blocker: { type: 'object' }, dependency: { type: 'object' }, wait_for: { type: 'object' }, replacement_task_id: { type: 'string' }, reason: { type: 'string' },
     }, additionalProperties: false },
   },
   {

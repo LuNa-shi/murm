@@ -61,7 +61,7 @@
     },
     {
       "path": "src/sdk/service-catalog.js",
-      "sha256": "21cedf6221f8f162a948af08b8a1820e5dcf21947a7f5122422d41b343036f33"
+      "sha256": "1a1ec59846337479d38521ddd1bfc4b1fd5576cd8e4573e171ab4ca3ab391d4f"
     },
     {
       "path": "src/sdk/builtin-registry.js",
@@ -85,7 +85,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "5914dd7639b0ad286d1203b35a7cbe6ac597505637b78f34cde12a58718f1021"
+      "sha256": "cf991713b3f508bc3a070c809ad9c63b55ca1477699e68b2ac5af4302f4d91f8"
     },
     {
       "path": "src/task/task-types.js",
@@ -365,7 +365,7 @@
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "cf99a1522fc0b394c5e4c60b15e2ae04215eb07ced1193168adf94bcde60f241"
+      "sha256": "4aa771707e8fe1f4969a563975b15faea6dae5b3dfd486c8aec9b78b287972d5"
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
@@ -377,7 +377,7 @@
     },
     {
       "path": "docs/architecture/prompts/05-composed-context-examples.md",
-      "sha256": "3419f67ae92b1efadb8297559e0db8fc72c050f4b1bde39b17e31520539e06c8"
+      "sha256": "9810650bcbf26abe6b67241f8014072d76eaa56f4bb07fbe0107005f397a84ef"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",

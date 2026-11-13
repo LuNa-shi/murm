@@ -30,7 +30,7 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `21cedf6221f8f162a948af08b8a1820e5dcf21947a7f5122422d41b343036f33` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `1a1ec59846337479d38521ddd1bfc4b1fd5576cd8e4573e171ab4ca3ab391d4f` |
 | [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `ab30041ffaa7c008b2d04ff10023d245423a86c2aaa262442ab6fb4d91526f48` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
@@ -285,7 +285,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "1189008ed993ba21ab3d374af3561fc9041bd2de149dcf12e179adc5bb628fe6"
+  "manifest_hash": "5fc2c30014447727d8854b809075965fce59570774ea1504c6efe98afabe5b42"
 }
 ```
 
@@ -1100,6 +1100,12 @@ Finish the current Task with one explicit outcome: done, incomplete, blocked, or
       },
       "dependency": {
         "type": "object"
+      },
+      "wait_for": {
+        "type": "object"
+      },
+      "replacement_task_id": {
+        "type": "string"
       },
       "reason": {
         "type": "string"

@@ -1990,7 +1990,57 @@ export class TaskService {
       }
       return this.#handoffTask(payload, envelope);
     }
-    if (outcome === 'blocked') return this.#blockTaskSemantic(payload, envelope);
+    if (outcome === 'blocked') {
+      const execution = this.#executionForWrite(envelope);
+      const blocker = payload.blocker ?? payload.reason;
+      const dependency = payload.wait_for ?? payload.waitFor ?? payload.dependency;
+      if (!blocker || (typeof blocker !== 'object' && typeof blocker !== 'string')) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.finish blocked requires blocker');
+      }
+      if (!dependency || typeof dependency !== 'object' || Array.isArray(dependency)) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.finish blocked requires wait_for dependency');
+      }
+      const dependencyKind = String(dependency.dependency_kind ?? dependency.dependencyKind ?? dependency.kind ?? 'TASK').toUpperCase();
+      if (dependencyKind !== 'TASK') {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.finish blocked requires a TASK wait_for dependency');
+      }
+      const prerequisiteTaskId = dependency.prerequisite_task_id ?? dependency.prerequisiteTaskId ?? dependency.task_id ?? dependency.taskId;
+      if (typeof prerequisiteTaskId !== 'string' || prerequisiteTaskId.length === 0 || prerequisiteTaskId === execution.task_id) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.finish blocked requires a distinct prerequisite Task ID');
+      }
+      const prerequisite = this.getTask(prerequisiteTaskId);
+      if (!prerequisite || this.#taskMissionId(prerequisiteTaskId) !== this.#taskMissionId(execution.task_id)) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_for must identify a Task in the same Mission');
+      }
+      this.#assertModernDependencyCycle(execution.task_id, prerequisiteTaskId);
+      const normalizedDependency = { dependency_kind: 'TASK', prerequisite_task_id: prerequisiteTaskId };
+      const blocked = this.#blockTask({
+        block_reason: typeof blocker === 'string' ? blocker : (blocker.reason ?? blocker.kind ?? 'typed_dependency'),
+        dependency: normalizedDependency,
+        terminal_state: 'HANDED_OFF',
+        terminal_reason: typeof blocker === 'string' ? blocker : (blocker.reason ?? 'typed_dependency'),
+      }, envelope);
+      return { ...blocked, dependency: normalizedDependency, disposition: 'blocked' };
+    }
+    if (outcome === 'cancelled') {
+      const execution = this.#executionForWrite(envelope);
+      const replacementTaskId = payload.replacement_task_id ?? payload.replacementTaskId ?? null;
+      if (replacementTaskId !== null) {
+        if (typeof replacementTaskId !== 'string' || replacementTaskId.length === 0 || replacementTaskId === execution.task_id) {
+          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'replacement_task_id must identify another Task');
+        }
+        const replacement = this.getTask(replacementTaskId);
+        if (!replacement || this.#taskMissionId(replacementTaskId) !== this.#taskMissionId(execution.task_id) || ['CANCELED', 'DONE', 'CLOSED'].includes(replacement.state)) {
+          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'replacement_task_id must identify a live Task in the same Mission');
+        }
+      }
+      return this.#stopExecution({
+        ...payload,
+        terminal_state: 'CANCELLED',
+        terminal_reason: payload.reason ?? 'cancelled',
+        handoff_metadata: replacementTaskId ? { replacement_task_id: replacementTaskId } : null,
+      }, envelope);
+    }
     return this.#stopExecution({ ...payload, terminal_state: 'CANCELLED', terminal_reason: payload.reason ?? 'cancelled' }, envelope);
   }
 
@@ -2926,8 +2976,11 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_reason must be a non-empty string');
     }
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, terminal_reason = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run(terminalState, terminalReason, updatedAt, execution.execution_id);
+    const handoffMetadata = payload.handoff_metadata && typeof payload.handoff_metadata === 'object' && !Array.isArray(payload.handoff_metadata)
+      ? json(payload.handoff_metadata)
+      : null;
+    this.db.prepare('UPDATE executions SET state = ?, terminal_reason = ?, handoff_metadata_json = COALESCE(?, handoff_metadata_json), state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run(terminalState, terminalReason, handoffMetadata, updatedAt, execution.execution_id);
     const task = this.getTask(execution.task_id);
     if (!TERMINAL_TASK_STATES.includes(task.state)) this.#refreshTaskState(execution.task_id, { updatedAt, cancelIfIdle: terminalState === 'CANCELLED' });
     return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };

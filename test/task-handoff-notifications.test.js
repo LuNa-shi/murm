@@ -138,6 +138,36 @@ test('semantic block requires Handoff Material, records typed dependency, and re
   }
 });
 
+test('unified task finish supports incomplete and blocked boundaries without synthetic handoff Material', () => {
+  const { taskService } = setup();
+  try {
+    taskService.dispatch('mission.create', { mission_id: 'mission:finish', goal: 'finish' }, env('mission:finish', 'operator:test'));
+    makeTask(taskService, 'mission:finish', 'task:0-shared-mission');
+    const incomplete = makeTask(taskService, 'mission:finish', 'task:incomplete');
+    const blocked = makeTask(taskService, 'mission:finish', 'task:blocked-no-material');
+    const prerequisite = makeTask(taskService, 'mission:finish', 'task:prerequisite-no-material');
+    claim(taskService, incomplete, 'execution:incomplete', 'agent:finish');
+    const incompleteResult = taskService.dispatch('task.finish', {
+      outcome: 'incomplete',
+      reason: 'no durable result yet',
+    }, bound(taskService, incomplete.task_id, 'execution:incomplete', 'agent:finish', 'finish:incomplete'));
+    assert.equal(incompleteResult.execution.state, 'HANDED_OFF');
+    assert.equal(incompleteResult.task.state, 'OPEN');
+
+    claim(taskService, blocked, 'execution:blocked-no-material', 'agent:finish');
+    const blockedResult = taskService.dispatch('task.finish', {
+      outcome: 'blocked',
+      blocker: 'requires prerequisite Task',
+      wait_for: { prerequisite_task_id: prerequisite.task_id },
+    }, bound(taskService, blocked.task_id, 'execution:blocked-no-material', 'agent:finish', 'finish:blocked'));
+    assert.equal(blockedResult.execution.state, 'HANDED_OFF');
+    assert.equal(blockedResult.task.state, 'BLOCKED');
+    assert.equal(blockedResult.dependency.prerequisite_task_id, prerequisite.task_id);
+  } finally {
+    taskService.close();
+  }
+});
+
 test('Response Material notification is keyed, provenance-aware, and at-least-once', () => {
   const { database, contextService, taskService } = setup();
   try {
