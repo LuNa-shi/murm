@@ -889,34 +889,6 @@ export class TaskService {
     return this.db.prepare("SELECT * FROM executions WHERE state IN ('CREATED', 'RUNNING', 'WAITING') ORDER BY created_at, execution_id").all().map(rowToExecution);
   }
 
-  listResumableExecutions({ rootId = null } = {}) {
-    const executions = this.db.prepare("SELECT * FROM executions WHERE state = 'WAITING' ORDER BY updated_at, execution_id").all().map(rowToExecution);
-    const nowMs = Date.now();
-    return executions.filter((execution) => {
-      if (rootId !== null && this.getTask(execution.task_id)?.root_id !== rootId) return false;
-      return this.#isWaitingResumable(execution, nowMs);
-    });
-  }
-
-  validateWaitCondition(executionId, { waitCondition, waitDeadline = null } = {}) {
-    const execution = this.getExecution(requireString(executionId, 'execution_id'));
-    if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
-    const task = this.getTask(execution.task_id);
-    const normalized = this.#validateWaitCondition(execution, task, waitCondition, waitDeadline);
-    return { execution, task, wait_condition: normalized.waitCondition, wait_deadline: normalized.waitDeadline };
-  }
-
-  isWaitConditionSatisfied(executionId, waitCondition = undefined) {
-    const execution = this.getExecution(requireString(executionId, 'execution_id'));
-    if (!execution) return false;
-    const candidate = waitCondition === undefined ? execution : {
-      ...execution,
-      wait_condition: waitCondition,
-      wait_deadline: waitCondition?.deadline ?? execution.wait_deadline,
-    };
-    return this.#isWaitingResumable(candidate);
-  }
-
   #getMission(missionId) {
     const row = this.db.prepare('SELECT * FROM missions WHERE mission_id = ?').get(missionId);
     if (!row) return null;
@@ -2555,102 +2527,6 @@ export class TaskService {
     return { execution: this.getExecution(execution.execution_id) };
   }
 
-  #resumeExecution(payload, envelope) {
-    const execution = this.#executionForWrite(envelope);
-    if (execution.state !== 'WAITING' && execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot resume Execution from ${execution.state}`);
-    const coreId = payload.core_id ?? payload.coreId ?? null;
-    if (coreId !== null) {
-      requireString(coreId, 'core_id');
-      if (execution.core_id !== null && execution.core_id !== coreId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Execution is permanently bound to another Core');
-      const occupied = this.getActiveExecutionForCore(coreId);
-      if (occupied && occupied.execution_id !== execution.execution_id) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', { core_id: coreId, execution_id: occupied.execution_id });
-    }
-    const updatedAt = now();
-    this.db.prepare('UPDATE executions SET state = ?, core_id = COALESCE(?, core_id), wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run('RUNNING', coreId, updatedAt, execution.execution_id);
-    this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, updated_at = ? WHERE task_id = ?')
-      .run('RUNNING', updatedAt, execution.task_id);
-    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
-  }
-
-  #validateWaitCondition(execution, task, rawCondition, rawDeadline = null) {
-    if (!rawCondition || typeof rawCondition !== 'object' || Array.isArray(rawCondition)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
-    if (task?.completion_contract?.normal_flow === true) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'normal_flow Tasks use execution_block with a typed dependency instead of request_wait');
-    }
-    const waitCondition = { ...rawCondition };
-    if (waitCondition.type === 'check_result_arrived' && waitCondition.candidate_material_id !== undefined) {
-      requireString(waitCondition.candidate_material_id, 'wait_condition.candidate_material_id');
-      if (waitCondition.candidate_material_id !== execution.candidate_material_id) throw new SwarmEnvError(ERROR_CODES.FENCED, 'wait_condition candidate does not match the current Execution candidate');
-      if (!waitCondition.check_request_key && !waitCondition.request_key) waitCondition.check_request_key = waitCondition.candidate_material_id;
-    }
-    const allowed = new Set(['child_task_terminal', 'children_all_terminal', 'parent_review', 'check_result_arrived', 'checker_health', 'timer']);
-    if (!allowed.has(waitCondition.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported wait_condition type');
-    if (waitCondition.type === 'parent_review' && !task.parent_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'parent_review requires a child Task');
-    if (waitCondition.type === 'parent_review' && task.completion_contract?.normal_flow === true) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'normal_flow Tasks do not enter parent_review');
-    }
-    if (waitCondition.type === 'child_task_terminal') {
-      const childTaskId = requireString(waitCondition.child_task_id ?? waitCondition.task_id, 'wait_condition.child_task_id');
-      const child = this.getTask(childTaskId);
-      if (!child || child.parent_id !== task.task_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'child_task_terminal must reference a direct child Task');
-      if (TERMINAL_TASK_STATES.includes(child.state)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'child_task_terminal condition is already satisfied');
-    }
-    if (waitCondition.type === 'children_all_terminal') {
-      if (!Array.isArray(waitCondition.child_task_ids) || waitCondition.child_task_ids.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal requires at least one child_task_id');
-      const childIds = [...new Set(waitCondition.child_task_ids.map((id) => requireString(id, 'wait_condition.child_task_ids')))];
-      const children = childIds.map((id) => this.getTask(id));
-      if (children.some((child) => !child || child.parent_id !== task.task_id)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal must reference direct child Tasks');
-      if (children.every((child) => TERMINAL_TASK_STATES.includes(child.state))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'children_all_terminal condition is already satisfied');
-      waitCondition.child_task_ids = childIds;
-    }
-    if (waitCondition.type === 'check_result_arrived') requireString(waitCondition.check_request_key ?? waitCondition.request_key, 'wait_condition.check_request_key');
-    if (waitCondition.type === 'checker_health') {
-      requireString(waitCondition.preflight_key, 'wait_condition.preflight_key');
-      requireString(waitCondition.health_fingerprint, 'wait_condition.health_fingerprint');
-      if (waitCondition.retry_after !== undefined) requireString(waitCondition.retry_after, 'wait_condition.retry_after');
-    }
-    const waitDeadline = rawDeadline ?? waitCondition.deadline ?? null;
-    if (waitCondition.type === 'timer' && !waitDeadline) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timer wait requires a deadline');
-    if (waitDeadline !== null && (typeof waitDeadline !== 'string' || Number.isNaN(Date.parse(waitDeadline)))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_deadline must be an ISO timestamp');
-    return { waitCondition, waitDeadline };
-  }
-
-  #requestWait(payload, envelope) {
-    const executionId = requireString(envelope.execution_id, 'execution_id');
-    const waitKey = requireString(payload.wait_key ?? payload.request_key ?? payload.checkpoint_ref, 'wait_key');
-    const waitFingerprint = stableStringify({ operation: 'request_wait', payload: { ...payload, wait_key: waitKey }, execution_id: executionId });
-    const existingKey = this.db.prepare('SELECT * FROM wait_keys WHERE request_key = ?').get(waitKey);
-    if (existingKey) {
-      if (existingKey.execution_id !== executionId || existingKey.fingerprint !== waitFingerprint) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'wait_key was reused with another payload');
-      }
-      const current = this.getExecution(executionId);
-      return { execution: current, task: this.getTask(current.task_id) };
-    }
-    const execution = this.#executionForWrite(envelope);
-    requireString(payload.checkpoint_ref, 'checkpoint_ref');
-    requireString(payload.checkpoint_hash, 'checkpoint_hash');
-    if (execution.checkpoint_ref !== payload.checkpoint_ref || execution.checkpoint_hash !== payload.checkpoint_hash) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'request_wait requires a checkpoint already saved for this Execution');
-    }
-    const task = this.getTask(execution.task_id);
-    const { waitCondition, waitDeadline } = this.#validateWaitCondition(
-      execution,
-      task,
-      payload.wait_condition,
-      payload.wait_deadline ?? payload.wait_condition?.deadline ?? null,
-    );
-    const updatedAt = now();
-    this.db.prepare(`UPDATE executions SET state = 'WAITING', checkpoint_ref = ?, checkpoint_hash = ?, workspace_ref = COALESCE(?, workspace_ref), workspace_revision = COALESCE(?, workspace_revision), workspace_content_hash = COALESCE(?, workspace_content_hash), wait_condition_json = ?, wait_deadline = ?, resume_token = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
-      .run(payload.checkpoint_ref, payload.checkpoint_hash, payload.workspace_ref ?? null, payload.workspace_revision ?? null, payload.workspace_content_hash ?? null,
-      json(waitCondition), waitDeadline, payload.resume_token ?? randomUUID(), updatedAt, execution.execution_id);
-    this.#refreshTaskState(execution.task_id, { updatedAt });
-    this.db.prepare('INSERT INTO wait_keys (request_key, execution_id, fingerprint, created_at) VALUES (?, ?, ?, ?)')
-      .run(waitKey, execution.execution_id, waitFingerprint, updatedAt);
-    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
-  }
-
   #saveWorkspaceRevision(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     requireString(payload.workspace_ref, 'workspace_ref');
@@ -2884,35 +2760,6 @@ export class TaskService {
       this.#refreshTaskState(task.task_id, { updatedAt });
     }
     return { task: this.getTask(task.task_id), execution: this.getExecution(execution.execution_id), check_result: this.getCheckResult(checkResultId) };
-  }
-
-  #wakeExecution(payload, envelope) {
-    const executionId = requireString(envelope.execution_id, 'execution_id');
-    const current = this.getExecution(executionId);
-    if (!current) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
-    const wakeKey = requireString(payload.wake_key ?? payload.request_key ?? current.resume_token, 'wake_key');
-    const fingerprint = stableStringify({ operation: 'wake_execution', payload: { ...payload, wake_key: wakeKey }, execution_id: executionId });
-    const existing = this.db.prepare('SELECT * FROM wake_keys WHERE request_key = ?').get(wakeKey);
-    if (existing) {
-      if (existing.execution_id !== executionId || existing.fingerprint !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'wake_key was reused with another payload');
-      return { execution: current, task: this.getTask(current.task_id) };
-    }
-    const execution = this.#executionForWrite(envelope);
-    if (execution.state !== 'WAITING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot wake Execution from ${execution.state}`);
-    const coreId = payload.core_id ?? payload.coreId ?? null;
-    if (coreId !== null) {
-      requireString(coreId, 'core_id');
-      if (execution.core_id !== null && execution.core_id !== coreId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Execution is permanently bound to another Core');
-      const occupied = this.getActiveExecutionForCore(coreId);
-      if (occupied && occupied.execution_id !== execution.execution_id) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', { core_id: coreId, execution_id: occupied.execution_id });
-    }
-    const updatedAt = now();
-    this.db.prepare("UPDATE executions SET state = 'RUNNING', core_id = COALESCE(?, core_id), wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
-      .run(coreId, updatedAt, execution.execution_id);
-    this.#refreshTaskState(execution.task_id, { updatedAt });
-    this.db.prepare('INSERT INTO wake_keys (request_key, execution_id, fingerprint, created_at) VALUES (?, ?, ?, ?)')
-      .run(wakeKey, execution.execution_id, fingerprint, updatedAt);
-    return { execution: this.getExecution(execution.execution_id), task: this.getTask(execution.task_id) };
   }
 
   #assertAcceptanceAuthority(target, envelope) {
