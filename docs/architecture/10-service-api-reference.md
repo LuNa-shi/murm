@@ -30,14 +30,14 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `1a1ec59846337479d38521ddd1bfc4b1fd5576cd8e4573e171ab4ca3ab391d4f` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `ab30041ffaa7c008b2d04ff10023d245423a86c2aaa262442ab6fb4d91526f48` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `b1f6176c35cb0659852eab724579551a4e00e2d8d244b13b7edfceddb93090be` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `55b2ab15f62f83331956c1bad43f9f5c724e912b1cc7aaa5a1cd7e120f9ed2a8` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `2b2abc336e8ca75adcaa6c41aa06845e3eac9be928231f3d099368e4e1cddc00` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `324f31a3cfe5bbcca23e9e6b6952840e88c6afa76f95efae05be13634ea6d8c9` |
-| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `3bdc0719af3ac78409fc7e9a5fc2ca75dd561c75c11f528b3ba770d401ae0421` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `b08aca19310ecfc6b5072632d65570eeec1091b456fa456668862aff5899ebc3` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `a61e544d8a908c4b470cda05b75c09a4ee7266cbf34ce4d0e6d728321a065bc3` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `8f9c817ef1e2f2a1b2eca20e4de7395aa7959cc19b8cc4714c04f802d419e462` |
+| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `dfa607d6cc3f9e16e13170438f7fdcc0e747a48c5b55e0a3b3f3ce614e3dcd1d` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `56775833d1710d177449da52ded47a27ba452d6e5bb48606317b9bee382da85e` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `309d6f50f497a9e3d16a2b75d24d732303e517ed06ded9243142781e1d01d15b` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `98ffc06196f8b60bc1c4a3240eb15b721c24ffec81a66871f6663aa56a06accc` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
@@ -59,7 +59,6 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `context.context_read` | `swarmenv_context_read` | `swarmenv_context_read` |
 | `context.context_search_materials` | `swarmenv_context_search_materials` | `swarmenv_context_search_materials` |
 | `judge.judge_get_check_result` | `swarmenv_judge_get_check_result` | `swarmenv_judge_get_check_result` |
-| `judge.judge_submit_candidate` | `swarmenv_judge_submit_candidate` | `swarmenv_judge_submit_candidate` |
 | `runtime.execution_get` | `swarmenv_execution_get` | `swarmenv_execution_get` |
 | `runtime.sandbox_exec` | Absent | `swarmenv_sandbox_exec` |
 | `runtime.sandbox_job` | Absent | `swarmenv_sandbox_job` |
@@ -71,9 +70,6 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `task.execution_progress` | `swarmenv_execution_progress` | `swarmenv_execution_progress` |
 | `task.mission_submission_get` | `swarmenv_mission_submission_get` | `swarmenv_mission_submission_get` |
 | `task.mission_submit` | `swarmenv_mission_submit` | `swarmenv_mission_submit` |
-| `task.task_block` | `swarmenv_task_block` | `swarmenv_task_block` |
-| `task.task_close` | `swarmenv_task_close` | `swarmenv_task_close` |
-| `task.task_complete` | `swarmenv_task_complete` | `swarmenv_task_complete` |
 | `task.task_create` | `swarmenv_task_create` | `swarmenv_task_create` |
 | `task.task_feedback` | `swarmenv_task_feedback` | `swarmenv_task_feedback` |
 | `task.task_finish` | `swarmenv_task_finish` | `swarmenv_task_finish` |
@@ -262,7 +258,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 21 registered capabilities
+### Task Service: 18 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -285,81 +281,19 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "5fc2c30014447727d8854b809075965fce59570774ea1504c6efe98afabe5b42"
-}
-```
-
-#### task.task_list
-
-List Mission Tasks and search their short summaries before proposing new work.
-
-```json
-{
-  "name": "task_list",
-  "operation": "task_list",
-  "description": "List Mission Tasks and search their short summaries before proposing new work.",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "mission_id": {
-        "type": "string"
-      },
-      "query": {
-        "type": "string"
-      },
-      "state": {
-        "type": "string"
-      },
-      "limit": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 100
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "task-read",
-  "help": {
-    "when": "List Mission Tasks and search their short summaries before proposing new work.",
-    "ref": "service://task/task_list",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: List Mission Tasks and search their short summaries before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/task_list",
-  "errors": []
+  "manifest_hash": "9713fedf8b86ec0dcc454872e71e67f68afeef8e619609c16b4a31a2b522f8f6"
 }
 ```
 
 #### task.task_status
 
-Read the authoritative Mission, Task counts, claimable work, and observation timestamp.
+Read the authoritative Mission, Task counts, eligible work, and observation timestamp.
 
 ```json
 {
   "name": "task_status",
   "operation": "task_status",
-  "description": "Read the authoritative Mission, Task counts, claimable work, and observation timestamp.",
+  "description": "Read the authoritative Mission, Task counts, eligible work, and observation timestamp.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -406,9 +340,9 @@ Read the authoritative Mission, Task counts, claimable work, and observation tim
   "requires_binding": false,
   "scope": "task-read",
   "help": {
-    "when": "Read the authoritative Mission, Task counts, claimable work, and observation timestamp.",
+    "when": "Read the authoritative Mission, Task counts, eligible work, and observation timestamp.",
     "ref": "service://task/task_status",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Read the authoritative Mission, Task counts, claimable work, and observation timestamp.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Read the authoritative Mission, Task counts, eligible work, and observation timestamp.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_status",
@@ -757,6 +691,68 @@ Save a bounded Progress Material and either continue the current Execution or ha
 }
 ```
 
+#### task.task_list
+
+List Mission Tasks and search their short summaries before proposing new work.
+
+```json
+{
+  "name": "task_list",
+  "operation": "task_list",
+  "description": "List Mission Tasks and search their short summaries before proposing new work.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "mission_id": {
+        "type": "string"
+      },
+      "query": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "read",
+  "idempotent": true,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "task-read",
+  "help": {
+    "when": "List Mission Tasks and search their short summaries before proposing new work.",
+    "ref": "service://task/task_list",
+    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: List Mission Tasks and search their short summaries before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/task_list",
+  "errors": []
+}
+```
+
 #### task.task_view
 
 Read one Task, its two relations, state, current Execution, and linked Materials.
@@ -1002,63 +998,6 @@ Link an immutable Material to a Task with an input, response, handoff, or experi
 }
 ```
 
-#### task.task_complete
-
-Complete the current Task when its own contract and required Material or Judge evidence are satisfied.
-
-```json
-{
-  "name": "task_complete",
-  "operation": "task_complete",
-  "description": "Complete the current Task when its own contract and required Material or Judge evidence are satisfied.",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "material_ids": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "check_result_id": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "task-write",
-  "help": {
-    "when": "Complete the current Task when its own contract and required Material or Judge evidence are satisfied.",
-    "ref": "service://task/task_complete",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Complete the current Task when its own contract and required Material or Judge evidence are satisfied.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/task_complete",
-  "errors": []
-}
-```
-
 #### task.task_finish
 
 Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.
@@ -1142,152 +1081,6 @@ Finish the current Task with one explicit outcome: done, incomplete, blocked, or
   },
   "method": "POST",
   "path": "/v1/task_finish",
-  "errors": []
-}
-```
-
-#### task.task_block
-
-Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.
-
-```json
-{
-  "name": "task_block",
-  "operation": "task_block",
-  "description": "Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.",
-  "input_schema": {
-    "type": "object",
-    "required": [
-      "blocker",
-      "dependency",
-      "handoff_material_id"
-    ],
-    "properties": {
-      "blocker": {
-        "type": "object"
-      },
-      "dependency": {
-        "type": "object",
-        "minProperties": 1,
-        "description": "Use dependency_kind TASK with prerequisite_task_id for a Task prerequisite, or CAPABILITY with capability_id for a missing runtime/external capability. On an ordinary Task, capability blockers remain durably BLOCKED until an explicit reopen after the recovery condition is met. A capability listed among this Session tools is callable and is rejected as a blocker.",
-        "properties": {
-          "dependency_kind": {
-            "type": "string",
-            "enum": [
-              "TASK",
-              "CAPABILITY"
-            ]
-          },
-          "prerequisite_task_id": {
-            "type": "string"
-          },
-          "capability_id": {
-            "type": "string"
-          },
-          "scope": {
-            "type": "string"
-          },
-          "retryable": {
-            "type": "boolean"
-          },
-          "recovery_condition": {
-            "type": "string"
-          }
-        }
-      },
-      "handoff_material_id": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "task-write",
-  "help": {
-    "when": "Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.",
-    "ref": "service://task/task_block",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Bot Execution. The concrete Task becomes BLOCKED; Mission itself is never claimable.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/task_block",
-  "errors": []
-}
-```
-
-#### task.task_close
-
-Accept a linked Response Material from another Task and close its producer.
-
-```json
-{
-  "name": "task_close",
-  "operation": "task_close",
-  "description": "Accept a linked Response Material from another Task and close its producer.",
-  "input_schema": {
-    "type": "object",
-    "required": [
-      "producer_task_id",
-      "material_id"
-    ],
-    "properties": {
-      "producer_task_id": {
-        "type": "string"
-      },
-      "material_id": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "task-write",
-  "help": {
-    "when": "Accept a linked Response Material from another Task and close its producer.",
-    "ref": "service://task/task_close",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Accept a linked Response Material from another Task and close its producer.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/task_close",
   "errors": []
 }
 ```
@@ -2246,7 +2039,7 @@ Publish durable Response, Handoff, or Experience Material with current Task/Exec
 }
 ```
 
-### Judge Service: 2 registered capabilities
+### Judge Service: 1 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -2269,82 +2062,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "1e6d76f241cb6af43b8dc2d38d1ffd542fac7658f5e5c739375eba824cb20dde"
-}
-```
-
-#### judge.judge_submit_candidate
-
-Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.
-
-```json
-{
-  "name": "judge_submit_candidate",
-  "operation": "submit_candidate",
-  "description": "Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.",
-  "input_schema": {
-    "type": "object",
-    "required": [
-      "path"
-    ],
-    "properties": {
-      "workspace_id": {
-        "type": "string",
-        "minLength": 1
-      },
-      "revision": {
-        "type": "string",
-        "pattern": "^\\d+\\.\\d+$"
-      },
-      "path": {
-        "type": "string",
-        "minLength": 1
-      },
-      "workspace_revision": {
-        "type": "integer",
-        "minimum": 1
-      },
-      "content_hash": {
-        "type": "string",
-        "minLength": 1
-      },
-      "request_key": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "execution-write",
-  "help": {
-    "when": "Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.",
-    "ref": "service://judge/submit_candidate",
-    "text": "Purpose: Candidate checking and structured CheckResults.\nUse when: Submit a Workspace file reference (workspace_id, revision, path) to Judge for compilation and checking. The legacy operation name is retained for transport compatibility; no Candidate object is created.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/submit_candidate",
-  "errors": []
+  "manifest_hash": "38c9a6e4f67b0ec852cc6e0c1cf249a6a0d547d434bbb99151a24f62929abb3e"
 }
 ```
 
@@ -3045,72 +2763,6 @@ Exact repository bundle declaration. Loading the bundle additionally binds its d
 
 This section records every extra catalog declaration not represented by the registered built-in operation set above. It is not an authorization list for the current Agent. Internal SDK/domain methods can have additional operations that are never a model tool; see the operation routing section in [Services](04-services.md).
 
-#### Catalog task.task_list / list_tasks
-
-```json
-{
-  "name": "task_list",
-  "service": "task",
-  "operation": "list_tasks",
-  "version": "1.0",
-  "description": "List the highest-priority claimable Tasks in a root Task tree.",
-  "scope": "public-read",
-  "side_effect": false,
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "root_id": {
-        "type": "string"
-      },
-      "states": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "task_type": {
-        "type": "string"
-      },
-      "limit": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 100
-      },
-      "available_only": {
-        "type": "boolean"
-      }
-    },
-    "additionalProperties": false
-  }
-}
-```
-
-#### Catalog task.task_handoff / task_handoff
-
-```json
-{
-  "name": "task_handoff",
-  "service": "task",
-  "operation": "task_handoff",
-  "version": "1.0",
-  "description": "Publish and link Handoff Material, then return unfinished work to the Mission queue.",
-  "scope": "task-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "handoff_material_id"
-    ],
-    "properties": {
-      "handoff_material_id": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  }
-}
-```
-
 #### Catalog task.workspace_get / get_workspace
 
 ```json
@@ -3461,12 +3113,7 @@ The SDK constructor requires `dispatch` and `actorRef`. `withContext` creates an
 | `viewTask` | `view_task` | read |
 | `linkMaterial` | `task_link_material` | write |
 | `listTaskMaterials` | `list_task_materials` | read |
-| `completeTask` | `task_complete` | write |
 | `finishTask` | `task_finish` | write |
-| `closeTask` | `task_close` | write |
-| `handoffTask` | `task_handoff` | write |
-| `blockTask` | `task_block` | write |
-| `listClaimableTasks` | `list_claimable_tasks` | read |
 | `listExecutions` | `list_executions` | read |
 | `listServices` | `list_services` | read |
 | `getServiceMetadata` | `get_service_metadata` | read |
@@ -3479,21 +3126,12 @@ The SDK constructor requires `dispatch` and `actorRef`. `withContext` creates an
 | `listMaterialConsumptions` | `list_material_consumptions` | read |
 | `getCheckResult` | `get_check_result` | read |
 | `taskRegister` | `task_register` | write |
-| `claim` | `claim` | write |
 | `taskTake` | `task_take` | write |
 | `taskFeedback` | `task_feedback` | write |
 | `executionProgress` | `execution_progress` | write |
 | `heartbeat` | `heartbeat` | write |
 | `requestWait` | `request_wait` | write |
-| `submitCandidate` | `submit_candidate` | write |
-| `applyCheckResult` | `apply_check_result` | write |
-| `wakeExecution` | `wake_execution` | write |
 | `publishMaterial` | `publish_material` | write |
-| `abort` | `abort` | write |
-| `startExecution` | `start_execution` | write |
-| `resumeExecution` | `resume_execution` | write |
-| `stopExecution` | `stop_execution` | write |
-| `fenceExecution` | `fence_execution` | write |
 
 ### Complete local router fallback sets
 
@@ -3503,22 +3141,10 @@ Registry matches are resolved first by capability name or operation and must be 
 
 ```json
 [
-  "abort",
-  "claim",
-  "fence_execution",
   "get_execution",
   "get_task",
-  "heartbeat",
   "list_tasks",
-  "list_claimable_tasks",
   "list_executions",
-  "request_wait",
-  "resume_execution",
-  "start_execution",
-  "stop_execution",
-  "submit_candidate",
-  "apply_check_result",
-  "wake_execution",
   "create_mission",
   "get_mission",
   "create_task",
@@ -3536,16 +3162,8 @@ Registry matches are resolved first by capability name or operation and must be 
   "task_link_material",
   "list_task_materials",
   "task_materials",
-  "complete_task",
-  "task_complete",
   "finish_task",
-  "task_finish",
-  "close_task",
-  "task_close",
-  "handoff_task",
-  "task_handoff",
-  "block_task_semantic",
-  "task_block"
+  "task_finish"
 ]
 ```
 
