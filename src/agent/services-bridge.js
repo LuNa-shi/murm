@@ -677,6 +677,12 @@ export class ServicesBridge {
             // actor; only task choice and workspace lineage come from the
             // request.
             ...Object.fromEntries(Object.entries(payload).filter(([key]) => !['owner_ref', 'agent_prompt', 'initial_prompt'].includes(key))),
+            ...(this.taskService.isModernTask?.(payload.task_id)
+              && !payload.workspace_source_execution_id
+              && !payload.workspace_source_ref
+              && payload.workspace_revision === undefined
+              ? { workspace_mode: 'clean' }
+              : {}),
             owner_ref: this.actorRef,
             agent_prompt: this.agentPrompt,
             // The lane is authenticated runtime state, never a model choice.

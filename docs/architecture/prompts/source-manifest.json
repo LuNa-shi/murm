@@ -17,7 +17,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "de199beb3dd5d99bf44023a978744e9e815842ee50806a27a4aaf71d0ac89b63"
+      "sha256": "87e3bf0fdd260247c399f3076b5a53a75a88fc64d919ff824b5f2edf2f70f480"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
