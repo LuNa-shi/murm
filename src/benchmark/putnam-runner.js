@@ -788,7 +788,7 @@ async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false }
         const retrySession = await ensureAgentSession(core);
         if (retrySession) {
           const retrySequence = retrySession.rpcRecords?.length ?? 0;
-          await retrySession.prompt(`${prompt}\n\nThe previous proposal stream did not complete. On this fresh bounded turn call swarmenv_task_create immediately with the exact Mission, proof Task contract, completion contract, and workspace object above; then call swarmenv_task_take exactly once for the returned task_id.`, {
+          await retrySession.prompt('The previous proposal stream did not complete. Use the exact Mission, proof Task contract, completion contract, and workspace object from the preceding bootstrap turn. Call swarmenv_task_create immediately; do not call any read tool. Then call swarmenv_task_take exactly once for its returned task_id.', {
             timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000),
           });
           await retrySession.waitForSettled?.({ timeoutMs: 30_000, afterSequence: retrySequence }).catch(() => undefined);

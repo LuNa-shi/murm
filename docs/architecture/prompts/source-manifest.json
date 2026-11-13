@@ -33,7 +33,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "806bac367da0bfc8ad2b65cbd32e85db970993da0fa2725c9fc1025acc189bba"
+      "sha256": "2259ae3d053aee3ebc51e38a39344b31709f7ca9745d20063caf41dd38cd7db9"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -219,7 +219,7 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "line": 791,
-      "expression": "await retrySession.prompt(`${prompt}\\n\\nThe previous proposal stream did not complete. On this fresh bounded turn call swarmenv_task_create immediately with the exact Mission, proof Task contract, completion contract, and workspace object above; then call swarmenv_task_take exactly once for the returned task_id.`, {"
+      "expression": "await retrySession.prompt('The previous proposal stream did not complete. Use the exact Mission, proof Task contract, completion contract, and workspace object from the preceding bootstrap turn. Call swarmenv_task_create immediately; do not call any read tool. Then call swarmenv_task_take exactly once for its returned task_id.', {"
     },
     {
       "path": "src/runtime/runtime.js",
