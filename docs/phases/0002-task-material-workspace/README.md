@@ -2,7 +2,7 @@
 
 > 设计与决策入口：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · 原始讨论：[Issue #120](https://github.com/LuNa-shi/SwarmEnv/issues/120) · 前置 Sandbox 阶段：[Issue #119](https://github.com/LuNa-shi/SwarmEnv/issues/119) · 文档审阅：[PR #123](https://github.com/LuNa-shi/SwarmEnv/pull/123)。
 >
-> 状态：目标设计，已按本轮用户确认统一跨模块合同。仅 Workspace 整版 merge 粒度保留最后确认；设计审阅不代表运行实现或真实 sandbox 已验收。[Architecture](../../architecture/INDEX.md) 继续描述当前实现。
+> 状态：目标设计，已按本轮用户确认统一跨模块合同。Workspace 整版 merge 粒度也已确认；设计审阅不代表运行实现或真实 sandbox 已验收。[Architecture](../../architecture/INDEX.md) 继续描述当前实现。
 
 ## 1. 项目目的与对象关系
 
@@ -70,9 +70,9 @@ Prompt/Skills 只把模块合同转成可执行指导，不另创权限；Valida
 
 v1 的 Workspace 与 Task/Mission 位于同一协调进程和一致性域；Context、Judge 和领域服务独立持久化。普通请求直接验证身份和状态，不引入通用许可/作业系统。Git 与版本索引通过服务专属持久请求记录和恢复屏障保持一致。Workspace 长期保留、不自动 GC；Runtime 不做进程级研究恢复。
 
-## 4. 唯一待确认项与实施门槛
+## 4. 已确认的合入规则与实施门槛
 
-**待确认：文件可以分别引用，但 merge 是否默认按完整 revision 原子合入？** 本稿推荐是，以免实现、测试和配置被拆开合入；不增加逐文件选取与依赖分析。影响与示例见 [05 第 5 节](05-workspace.md#5-candidate-文件化对操作的影响)。相关 prompt、示例和验收统一按这个推荐默认展开，尚不标为最终批准。
+**已确认：文件可以分别引用，v1 的 merge 按完整 revision 的变更集合原子合入。** 实现、测试和配置等关联文件一起检查、一起推进 main；不提供逐文件选取合入。只需贡献部分成果时，先形成包含所需完整成果集合的新 revision，再请求 merge。影响与示例见 [05 第 5 节](05-workspace.md#5-candidate-文件化对操作的影响)；Prompt、skills 和验收使用同一合同。
 
 以下属于实施与验证门槛，不再重复询问设计方向：Provider 是否能可靠暂停写入、授权和停止所有进程；Git/数据库故障恢复；私有审计数据按部署政策保留；实际磁盘增长；选工、收尾与服务尾部费用配置；真实模型和实验资源授权。实现前固定版本和范围，按 07 验证，不以设计文档代替运行证据。
 

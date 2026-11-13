@@ -90,7 +90,7 @@ H1–H3 不能靠一组“全功能版对最弱基线”的结果分别成立。
 
 每个情景都应观察公开 CLI/API 返回值、实际项目内容与外部持久状态。内部日志用于解释结果，不作为结果本身。下列验收标识用于 Issue/PR 引用，不要求新增通用测试平台。
 
-Workspace 情景统一使用 revision：`save` 保存完整文件树但不改变 main；main 指向一个 revision；研究候选是 revision 中的普通文件，按 `(workspace_id, revision, path)` 定位。编号用于唯一定位，不能代替 parents 表达继承关系。[05](05-workspace.md) 当前建议 `merge --from R` 以完整 revision 为输入，整版合入粒度仍待最后确认；涉及这一粒度的情景是该建议的验收要求，不是新增独立 Candidate 对象或单文件合入接口的授权。
+Workspace 情景统一使用 revision：`save` 保存完整文件树但不改变 main；main 指向一个 revision；研究候选是 revision 中的普通文件，按 `(workspace_id, revision, path)` 定位。编号用于唯一定位，不能代替 parents 表达继承关系。[05](05-workspace.md) 已确认 `merge --from R` 以完整 revision 的变更集合为输入，检查最终合成树后原子推进 main。下列情景验证这一整版合同，不引入独立 Candidate 对象或单文件选取合入接口。
 
 | 标识与情景 | 操作及故障安排 | 必须成立的结果 | 主要证据层 |
 |---|---|---|---|

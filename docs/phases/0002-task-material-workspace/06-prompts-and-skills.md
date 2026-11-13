@@ -2,7 +2,7 @@
 
 > 审阅入口：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)。本文将已确认的模块合同转成**目标 Prompt、CLI 与 skill 草稿**，尚未安装或接入运行。生命周期以 [01](01-model-and-runtime.md) 为准，Sandbox 边界见 [02](02-sandbox-runtime.md)，Task、Material、Workspace 分别见 [03](03-task.md)、[04](04-material.md)、[05](05-workspace.md)。当前实际 prompt 的记录仍在 [architecture/08-prompts](../../architecture/08-prompts.md)。
 >
-> 唯一仍需最终确认的 Workspace 选择是 `merge --from R` 的合入粒度：[05](05-workspace.md) 推荐按整个 revision 合入。下文将它明确标为推荐默认；其余命令不因此产生 Candidate 实体、专用候选存储或另一套版本对象。
+> Workspace 合入粒度已确认：`merge --from R` 按整个 revision 的变更集合原子合入，见 [05](05-workspace.md)。文件仍按 revision + path 单独引用，不产生 Candidate 实体、专用候选存储或另一套版本对象。
 
 ## 阅读目录
 
@@ -103,7 +103,7 @@ take 与任务责任
 - 需要接续已保存版本或跟进 main 时，先 save 当前未保存修改，再 workspace apply --from R 或 main。Runtime 在同一 E 做三方整合，保留来源和 parents；不得静默覆盖未保存修改或仍在写入的进程。
 - apply 有冲突时，可在当前目录解决后 save --resolved。普通 save 可以保留尚未解决的进度，但不会清除冲突标记或取得合入资格。复杂、独立的整合工作才另提普通 Task。apply 不推进 main，结果在 save 前也不是持久 revision。
 - 保存后，你可自主请求 workspace merge --from R，不要求原 Task 合同专门包含整合。Runtime 将 R 与当前 main 三方合并，检查最终合成树，再以条件更新推进 main；旧基线本身不是拒绝理由。
-- merge 的输入粒度按最终批准的 Workspace 合同执行；本稿推荐整份 revision，尚待最终确认。在该默认下必须审阅全部 changed paths，不把单文件路径误当成本次唯一合入范围。
+- merge 以整个 revision 的变更集合为输入。必须审阅全部 changed paths，不把单文件引用误当成本次唯一合入范围；指定检查通过后整体推进 main。
 - 检查绑定不可变文件树、checker、环境和输入。最终合成树与原检查对象不同时重新检查；main 在检查期间前进则不得套用旧 PASS 或强制覆盖。
 - merge 成功不会静默改变当前工作目录；要跟进新 main，显式 apply。merge 也可处理其他 Bot 保存的 R，不能假设当前目录已有 R。失败后先核对：若尚未包含 R，先 save 自己的进度，再 apply --from R、处理冲突并保存；随后 apply 本次固定的 main 版本或重新读取的最新 main，修复/save 后重试。按配置限制次数，不无限合并重试。连续 save 保留上次保存及已应用来源的 parents；revision 编号大小不代表祖先关系。
 
@@ -352,7 +352,7 @@ candidate 若是证明、补丁、实验代码或数据文件，使用 `(workspa
 | `swarm workspace save --resolved` | 确认冲突已处理后保存 | Agent 明确说明当前冲突已处理；Runtime 保存新的固定树和状态，合入仍需指定检查，不能仅凭该参数宣称正确 |
 | `swarm workspace apply --from R` | 在当前 E 接续某公开 revision | 先 save 未保存修改，取得稳定窗口；Runtime 三方整合并保留 parents；继承源版本未解决冲突状态，冲突在当前目录处理，main 不动 |
 | `swarm workspace apply --from main` | 在当前 E 跟进主线 | 先解析并固定 main revision，再执行同一 apply 语义；不重启 Bot、不改写初始输入记录 |
-| `swarm workspace merge --from R` | 请求接纳共同成果 | Runtime 三方合成、检查最终固定树，再条件更新 main；旧基线不自动拒绝。推荐整版粒度，最终以 [05](05-workspace.md) 的批准决定为准 |
+| `swarm workspace merge --from R` | 请求接纳共同成果 | Runtime 三方合成、检查最终固定树，再条件更新 main；旧基线不自动拒绝。按 [05](05-workspace.md) 已确认的整版粒度原子合入 |
 
 `files/read/search --at main` 也可使用，但每次必须返回实际 resolved revision；要在一致文件树上多次读取，就使用该 revision。`history --all` 和按 revision/path 读取，让后继能找到、理解并通过 apply 接续未合入成果，不依赖前任私有目录。
 
@@ -362,7 +362,7 @@ merge 不修改源 revision，也不以 Bot 自报 PASS 为依据。最终提交
 
 受理 merge 与最终推进 main 时都检查当前操作权限：进入仅允许 save/publish/finish 的软收尾后，新的 merge 和已开始但未提交的 main 更新均被拒绝；保留源 revision 与已有检查记录。
 
-**待最终确认的唯一粒度选择：** 本稿推荐 `merge --from R` 合入该 revision 的整体变更。命令不接受 path 来暗示单文件选择；Agent 必须审阅全部 changed paths。若需只贡献一部分，先在工作目录形成该完整版本并 save，再 merge；不另建 Candidate/PR 或 manifest 对象。
+**已确认的合入粒度：** `merge --from R` 原子合入该 revision 的整体变更。命令不接受 path 来暗示单文件选择；Agent 必须审阅全部 changed paths。若需只贡献一部分，先在工作目录形成该完整版本并 save，再 merge；不另建 Candidate/PR 或 manifest 对象。
 
 ### 5. Judge 与领域服务
 
@@ -378,7 +378,7 @@ Core 调度、sandbox/provider 管理、Pi 启停、凭据注入、权限切换�
 
 ## 一条完整运行轨迹
 
-以下是一条合成轨迹，不代表已执行验证。merge 部分按推荐的整版粒度描述；最终粒度确认后同步验收示例。
+以下是一条合成轨迹，不代表已执行验证。merge 按已确认的整版粒度描述，与验收示例使用同一合同。
 
 | 步骤 | Agent 动作 | 必须可观察的结果 |
 |---|---|---|
@@ -469,7 +469,7 @@ Workspace 在 sandbox 外由 Runtime 管理 Git。你只修改当前 E 的 /work
 4. 接续公开 R 或跟进 main 时，先 save 未保存改动，再 apply --from R 或 main。Runtime 取得稳定窗口后才三方整合目录并记录 parents；main 不动，初始输入不改写。apply 响应未知时查询原请求，不重复安装；Runtime 对账期间暂停该工作面的新写入。
 5. apply 后未保存的目录不是持久 revision。接续带未解决冲突的 revision 会继承冲突状态，换 E 不会清除。可由当前 E 修改文件解决后 save --resolved；普通 save 可保留未解决进度但不解除 merge 限制。独立、复杂或超出预算的责任才另提整合 Task；main 前进本身不要求换 Bot。
 6. 认为成果适合共同主线时，直接 merge --from R。原 Task 不必专门包含合入；若 done 明确要求 main 包含成果，则需合入成功才能 done。
-7. 按最终批准的合入粒度审阅全部变更。本稿推荐整份 revision，仍待最终确认；在该默认下不能把一个 path 当作只合入该文件的参数。
+7. 审阅整个 revision 的全部变更，按整版粒度请求 merge。一个 path 只定位文件，不能作为仅合入该文件的参数；只需部分成果时先准备新的完整 revision。
 8. Runtime 对 R 和当前 main 三方合成，检查最终固定树并条件更新。不同合成内容必须重新检查；main 发生并发变化则按有界重试处理，不能强制覆盖或套用旧 PASS。
 9. merge 成功不改变当前 E 目录，需要新主线时显式 apply --from main。失败保留源 revision、固定 M/R 和诊断，不保证公开失败合成树。若合入的是其他 Bot 的 R，先核对当前目录是否已包含其变更；没有时先 save 自己的进度，再 apply --from R、解决冲突并保存，然后 apply 固定 M 或明确重新读取的最新 main，修复/save 后重试。不能只 apply main 而丢失待合入的 R。明确冲突后用新尝试 ID，未知响应继续原 ID；不能无限重试耗尽收尾额度。已包含的 R 可返回 no-op；曾合入但被后续撤回的成果需要新的修正 revision，重复提交旧 R 不表示恢复。
 

@@ -2,7 +2,7 @@
 
 > 设计附件：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · 状态：目标设计，尚未实现。
 > 已确认：Mission 与 Workspace 一对一；Workspace 是 sandbox 外的本地 Git Repository；Runtime 管理全部 Git；candidate 是某个 Workspace revision 中的普通文件，不另设 Candidate 对象、ID、存储或调用接口。
-> 最后一项待确认：save/apply 已按完整文件树处理；本稿推荐 **merge 也以完整 revision 为单位**，文件仍按 revision + path 单独读取和引用。理由与影响见第 5 节；这项合入粒度尚不标为已批准。
+> 已确认：save/apply 按完整文件树处理，**merge 以完整 revision 的变更集合为单位原子合入**；文件按 revision + path 单独读取和引用。v1 不提供逐文件选取合入，理由与影响见第 5 节。
 
 本文定义 Workspace 文件版本、只读访问、保存、接续、main 合入与失败恢复。Sandbox、固定路径和权限顺序以 [02](02-sandbox-runtime.md) 为准；Task 责任见 [03](03-task.md)；研究内容与纠错见 [04](04-material.md)；Mission 最终提交见 [01](01-model-and-runtime.md)。
 
@@ -89,7 +89,7 @@ save 固定内容，不保证研究正确。可以保存未完成证明、失败
 
 ## 5. Candidate 文件化对操作的影响
 
-文件引用与变更集合应分开：一个证明文件可以独立引用，代码、测试和配置却可能必须一起合入。save 固定完整文件树，apply 根据完整版本及父关系准备工作树。**推荐 v1 的 merge 也以完整 revision 为合入单位；candidate 仍只是其中的普通文件。** 只有 merge 的合入粒度留给用户最后确认。
+文件引用与变更集合应分开：一个证明文件可以独立引用，代码、测试和配置却可能必须一起合入。save 固定完整文件树，apply 根据完整版本及父关系准备工作树。**已确认 v1 的 merge 以完整 revision 的变更集合为合入单位；candidate 仍只是其中的普通文件。** 指定检查针对最终合成树，成功时整体推进 main，不逐个文件部分提交。
 
 | 旧稿操作 | 统一操作 | 影响 |
 |---|---|---|
@@ -102,7 +102,7 @@ save 固定内容，不保证研究正确。可以保存未完成证明、失败
 
 删除当前文件与删除历史不同。未入 main 的实验版本可以不合入；已入 main 的错误文件通过删除/修正、save 和 merge 形成新版本撤回。v1 不设置文件级 active/discarded 状态，不自动 GC。`history` 默认看 main 历史，`--all` 看所有保存版本，可按 Task/E 和路径筛选。
 
-若要求按文件选取合入，需另外定义删除、重命名、依赖文件、路径基线和检查范围，不能把复制文件称作 PR 式 merge。本稿推荐先准备包含所需完整成果集合的新 revision，保持 v1 合同简单。
+v1 不提供按文件选取合入。只需贡献部分成果时，先在工作目录准备包含所需完整成果集合的新 revision，再请求 merge，并审阅全部 changed paths；不能把一个文件引用当作此次合入范围。这保留删除、重命名和关联文件在同一次版本变更中的一致性。
 
 ## 6. 同一 Execution 内接续与冲突处理
 
@@ -182,7 +182,7 @@ finish、Mission freeze 和 merge 最终提交在同一协调域决定先后：f
 | `swarm workspace status` | 初始输入、保存版本、apply 输入、dirty/conflicts |
 | `swarm workspace save [--resolved]` | 有效 E 保存稳定树，不改 main |
 | `swarm workspace apply --from R` | 有效 E 三方整合到本 E 目录，允许 `main` |
-| `swarm workspace merge --from R` | 有效 E 请求检查并条件更新 main，推荐完整 revision 粒度 |
+| `swarm workspace merge --from R` | 有效 E 请求检查完整 revision 的最终合成树，并原子条件更新 main |
 
 副作用请求支持稳定 request ID 与原结果查询；普通网络重试沿用 ID，明确失败后的新尝试用新 ID。读请求固定 revision，不能用自填 Task/E 升级身份。完整提示与 skill 见 [06](06-prompts-and-skills.md)。
 
@@ -190,4 +190,4 @@ finish、Mission freeze 和 merge 最终提交在同一协调域决定先后：f
 
 必须验证：未绑定 Bot 能读确定版本的真实文件；未合入 revision 在 sandbox 销毁后仍可接续；save/apply 保留 ancestry；稳定导出不混入后台写；安装失败不留假成功；main 持续变化不强制换 Bot；检查绑定最终树；CAS、结果未知、撤权/冻结竞态和 Git/索引崩溃窗口均有确定结果。
 
-还须验证没有第二套 Candidate 身份：读写只经普通 Workspace 接口，删除当前文件不破坏历史引用；多文件成果按第 5 节最终确认的粒度处理。组合场景见 [07](07-validation-and-research.md)，迁移见 [08](08-architecture-migration.md)。本次文档不证明这些运行路径已实现或通过真实 provider 测试。
+还须验证没有第二套 Candidate 身份：读写只经普通 Workspace 接口，删除当前文件不破坏历史引用；多文件成果按第 5 节已确认的整版粒度处理。组合场景见 [07](07-validation-and-research.md)，迁移见 [08](08-architecture-migration.md)。本次文档不证明这些运行路径已实现或通过真实 provider 测试。
