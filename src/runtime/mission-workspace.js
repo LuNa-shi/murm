@@ -44,6 +44,11 @@ function revisionNumber(value) {
   return String(value);
 }
 
+function resolvedRevision(value, record) {
+  if (value === undefined || value === null || value === 'main') return record.main_revision;
+  return revisionNumber(value);
+}
+
 function nextRevision(value) {
   const [major, minor] = revisionNumber(value).split('.').map(Number);
   return `${major}.${minor + 1}`;
@@ -116,7 +121,7 @@ export class MissionWorkspace {
   async read({ workspaceId, revision = undefined, path, maxBytes = 1_000_000 }) {
     const root = this.workspacePath(workspaceId);
     const record = await this.#read(root);
-    const selected = revision ?? record.main_revision;
+    const selected = resolvedRevision(revision, record);
     const snapshot = await this.#snapshot(root, selected);
     const relativePath = safePath(path);
     if (!snapshot[relativePath]) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'file is unavailable at requested revision');
@@ -128,7 +133,7 @@ export class MissionWorkspace {
   async files({ workspaceId, revision = undefined, prefix = '' }) {
     const root = this.workspacePath(workspaceId);
     const record = await this.#read(root);
-    const selected = revision ?? record.main_revision;
+    const selected = resolvedRevision(revision, record);
     const files = await this.#snapshot(root, selected);
     const normalized = prefix ? safePath(prefix) : '';
     return { workspace_id: record.workspace_id, revision: selected, files: Object.entries(files).filter(([path]) => !normalized || path === normalized || path.startsWith(`${normalized}/`)).map(([path, entry]) => ({ path, ...entry })) };
@@ -154,7 +159,7 @@ export class MissionWorkspace {
     required(submissionId, 'submission_id');
     const root = this.workspacePath(workspaceId);
     const record = await this.#read(root);
-    if (expectedMainRevision !== undefined && revisionNumber(expectedMainRevision) !== record.main_revision) {
+    if (expectedMainRevision !== undefined && resolvedRevision(expectedMainRevision, record) !== record.main_revision) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'main revision changed before Mission submission', { expected: record.main_revision, received: expectedMainRevision });
     }
     if (record.frozen_submission_id && record.frozen_submission_id !== submissionId) {
@@ -199,7 +204,7 @@ export class MissionWorkspace {
     const root = this.workspacePath(workspaceId);
     const record = await this.#read(root);
     if (record.frozen_submission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace main is frozen for Mission submission', { submission_id: record.frozen_submission_id });
-    const expected = revisionNumber(expectedMainRevision ?? record.main_revision);
+    const expected = resolvedRevision(expectedMainRevision, record);
     if (expected !== record.main_revision) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'main revision changed', { expected: record.main_revision, received: expected });
     const sourceRevision = revisionNumber(fromRevision);
     const oldMain = record.main_revision;
@@ -221,7 +226,7 @@ export class MissionWorkspace {
 
   async materialize({ workspaceId, revision = undefined, targetDir }) {
     required(targetDir, 'target_dir');
-    const root = this.workspacePath(workspaceId); const record = await this.#read(root); const selected = revision ?? record.main_revision; const tree = await this.#tree(root, selected);
+    const root = this.workspacePath(workspaceId); const record = await this.#read(root); const selected = resolvedRevision(revision, record); const tree = await this.#tree(root, selected);
     const target = resolve(targetDir); if (target === root || relative(root, target) === '') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'execution directory must be separate from repository');
     await mkdir(target, { recursive: true }); await this.#materialize(target, tree); return { workspace_id: record.workspace_id, revision: selected, target_dir: target, files: fileEntries(tree) };
   }
