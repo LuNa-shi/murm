@@ -139,7 +139,7 @@ export class TaskController {
       signaled_loop_count: 0,
       recovery_requested_count: 0,
       reconciled_at: null,
-      claim_count: 0,
+      take_count: 0,
     };
   }
 
@@ -283,7 +283,7 @@ export class TaskController {
       recovery_requested_count: recovery.length,
       repaired_task_count: repairs.length,
       reconciled_at: new Date(reconciledAt).toISOString(),
-      claim_count: 0,
+      take_count: 0,
     };
     this.lastSnapshot = snapshot;
     this.#emit({ kind: 'controller_reconcile', ...snapshot, timestamp: this.now() });

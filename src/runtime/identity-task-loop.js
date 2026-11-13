@@ -26,7 +26,7 @@ function asArray(value, keys = []) {
 }
 
 function isConflict(error) {
-  return error?.code === CONFLICT_CODE || error?.code === 'CONFLICT' || error?.code === 'CLAIM_CONFLICT' || error?.code === 'FAIRNESS_REQUIRED';
+  return error?.code === CONFLICT_CODE || error?.code === 'CONFLICT' || error?.code === 'TAKE_CONFLICT' || error?.code === 'FAIRNESS_REQUIRED';
 }
 
 function normalizeTake(value) {
@@ -35,8 +35,8 @@ function normalizeTake(value) {
   return value.task_id ?? value.taskId ?? value.id ?? value.selected_task_id ?? null;
 }
 
-function directClaim(value) {
-  const candidate = value?.claim ?? value;
+function directTake(value) {
+  const candidate = value?.take ?? value;
   return candidate?.task?.task_id && candidate?.execution?.execution_id ? candidate : null;
 }
 
@@ -52,8 +52,8 @@ function errorView(error) {
 /**
  * Long-lived supervisor for one reusable Core slot.
  *
- * IdentityTaskLoop owns the discovery/take/claim loop. Task Service remains the
- * claim authority, while Runtime is invoked only after a successful claim.
+ * IdentityTaskLoop owns the discovery/take/take loop. Task Service remains the
+ * take authority, while Runtime is invoked only after a successful take.
  * The identity loop keeps no durable responsibility for a Task and never exposes a
  * semantic blocked Core state; typed dependencies release the Core to IDLE.
  */
@@ -69,7 +69,7 @@ export class IdentityTaskLoop {
     runtime = null,
     runExecution = null,
     releaseExecution = null,
-    maxClaimRescans = 1,
+    maxTakeRescans = 1,
     maxTakeAttempts = 3,
     takeRetryCooldownMs = 30_000,
     handoffTimeoutMs = Number.POSITIVE_INFINITY,
@@ -93,7 +93,7 @@ export class IdentityTaskLoop {
       throw new TypeError('IdentityTaskLoop requires takeSelectedTask or taskService.takeTask');
     }
     if (!Number.isInteger(shortlistLimit) || shortlistLimit < 1 || shortlistLimit > 100) throw new TypeError('shortlistLimit must be an integer between 1 and 100');
-    if (!Number.isInteger(maxClaimRescans) || maxClaimRescans < 0 || maxClaimRescans > 10) throw new TypeError('maxClaimRescans must be an integer between 0 and 10');
+    if (!Number.isInteger(maxTakeRescans) || maxTakeRescans < 0 || maxTakeRescans > 10) throw new TypeError('maxTakeRescans must be an integer between 0 and 10');
     if (!Number.isInteger(maxTakeAttempts) || maxTakeAttempts < 1 || maxTakeAttempts > 10) throw new TypeError('maxTakeAttempts must be an integer between 1 and 10');
     if (!Number.isFinite(takeRetryCooldownMs) || takeRetryCooldownMs < 0) throw new TypeError('takeRetryCooldownMs must be non-negative');
     if (!Number.isFinite(idleBackoffMs) || idleBackoffMs < 0) throw new TypeError('idleBackoffMs must be non-negative');
@@ -113,7 +113,7 @@ export class IdentityTaskLoop {
     this.runtime = runtime;
     this.runExecution = runExecution;
     this.releaseExecution = releaseExecution;
-    this.maxClaimRescans = maxClaimRescans;
+    this.maxTakeRescans = maxTakeRescans;
     this.maxTakeAttempts = maxTakeAttempts;
     this.takeRetryCooldownMs = takeRetryCooldownMs;
     this.handoffTimeoutMs = handoffTimeoutMs;
@@ -135,10 +135,10 @@ export class IdentityTaskLoop {
     this.taskId = null;
     this.takeTurnCount = 0;
     this.discoveryCount = 0;
-    this.claimAttemptCount = 0;
-    this.claimKeySequence = this.#initialClaimKeySequence();
-    this.claimCount = 0;
-    this.claimConflictCount = 0;
+    this.takeAttemptCount = 0;
+    this.takeKeySequence = this.#initialTakeKeySequence();
+    this.takeCount = 0;
+    this.takeConflictCount = 0;
     this.rescanCount = 0;
     this.takeFailureCount = 0;
     this.takeExhausted = false;
@@ -163,9 +163,9 @@ export class IdentityTaskLoop {
       execution_id: this.executionId,
       take_turn_count: this.takeTurnCount,
       discovery_count: this.discoveryCount,
-      claim_attempt_count: this.claimAttemptCount,
-      claim_count: this.claimCount,
-      claim_conflict_count: this.claimConflictCount,
+      take_attempt_count: this.takeAttemptCount,
+      take_count: this.takeCount,
+      take_conflict_count: this.takeConflictCount,
       rescan_count: this.rescanCount,
       take_failure_count: this.takeFailureCount,
       take_exhausted: this.takeExhausted,
@@ -216,7 +216,7 @@ export class IdentityTaskLoop {
     return this.notify(reason);
   }
 
-  #initialClaimKeySequence() {
+  #initialTakeKeySequence() {
     const database = this.taskService?.db;
     if (!database || typeof database.prepare !== 'function') return 0;
     try {
@@ -226,8 +226,8 @@ export class IdentityTaskLoop {
         return match ? Math.max(next, Number(match[1]) + 1) : next;
       }, 0);
     } catch {
-      // Older stores may not have the claim-key table during composition.
-      // A fresh sequence still works because the first persisted claim will
+      // Older stores may not have the take-key table during composition.
+      // A fresh sequence still works because the first persisted take will
       // be visible to a later identity loop instance.
       return 0;
     }
@@ -302,9 +302,9 @@ export class IdentityTaskLoop {
       this.#setState(IDENTITY_LOOP_STATES.TAKING, { reason });
       this.takeTurnCount += 1;
       const candidateView = candidates.map((candidate) => Object.freeze({ ...candidate }));
-      let take;
+      let selection;
       try {
-        take = await this.takeTask({
+        selection = await this.takeTask({
           core_id: this.coreId,
           candidates: Object.freeze(candidateView),
           prompt: bootstrap ? (this.bootstrapPrompt ?? this.takePrompt) : this.takePrompt,
@@ -323,21 +323,21 @@ export class IdentityTaskLoop {
         }
         return { disposition: 'take_failed', error: this.lastError, snapshot: this.snapshot() };
       }
-      const claimed = directClaim(take);
-      const selectedId = claimed?.task?.task_id ?? normalizeTake(take);
-      if (take && typeof take === 'object' && take.take_deferred === true) {
+      const taken = directTake(selection);
+      const selectedId = taken?.task?.task_id ?? normalizeTake(selection);
+      if (selection && typeof selection === 'object' && selection.take_deferred === true) {
         this.#setIdle({ reason: 'take_deferred' });
         return { disposition: 'take_deferred', snapshot: this.snapshot() };
       }
-      // A failed take is a normal claim race: the Agent chose a real Task but
+      // A failed take is a normal take race: the Agent chose a real Task but
       // another identity won it, or the Task became unavailable. It is not an
       // invalid model choice and must not consume the bounded take attempts.
-      if (take && typeof take === 'object' && take.take_failed === true) {
-        const takeError = take.error ?? {};
-        // A Task claim conflict is a bounded rescan. Provider/session and
+      if (selection && typeof selection === 'object' && selection.take_failed === true) {
+        const takeError = selection.error ?? {};
+        // A Task take conflict is a bounded rescan. Provider/session and
         // other infrastructure failures must use the same bounded retry
         // cooldown as a failed selection; treating every `take_failed` as a
-        // conflict lets an unavailable provider reclaim the same Task in a
+        // conflict lets an unavailable provider retake the same Task in a
         // tight loop and can exhaust an external sandbox's resources.
         if (!isConflict(takeError)) {
           this.takeFailureCount += 1;
@@ -350,9 +350,9 @@ export class IdentityTaskLoop {
           }
           return { disposition: 'take_failed', error: this.lastError, snapshot: this.snapshot() };
         }
-        this.claimConflictCount += 1;
+        this.takeConflictCount += 1;
         this.#emit({ kind: 'identity_loop_take_conflict', core_id: this.coreId, reason, rescan: rescans, error: errorView(take.error) });
-        if (rescans >= this.maxClaimRescans) {
+        if (rescans >= this.maxTakeRescans) {
           this.#setIdle({ reason: 'take_conflict' });
           return { disposition: 'take_conflict', rescans, snapshot: this.snapshot() };
         }
@@ -361,7 +361,7 @@ export class IdentityTaskLoop {
         continue;
       }
       const selected = candidates.find((candidate) => String(taskId(candidate)) === String(selectedId))
-        ?? (bootstrap && claimed?.task ? claimed.task : null);
+        ?? (bootstrap && taken?.task ? taken.task : null);
       if (!selected) {
         this.takeFailureCount += 1;
         const error = new SwarmEnvError('TAKE_INVALID', 'take must choose one task_id from the bounded shortlist', { task_id: selectedId, candidate_task_ids: candidates.map(taskId) });
@@ -374,21 +374,21 @@ export class IdentityTaskLoop {
         }
         return { disposition: 'take_invalid', error: this.lastError, snapshot: this.snapshot() };
       }
-      this.claimAttemptCount += 1;
-      this.#emit({ kind: 'identity_loop_claim_started', core_id: this.coreId, task_id: taskId(selected), reason, rescan: rescans, timestamp: this.now() });
-      let claim = claimed;
+      this.takeAttemptCount += 1;
+      this.#emit({ kind: 'identity_loop_take_started', core_id: this.coreId, task_id: taskId(selected), reason, rescan: rescans, timestamp: this.now() });
+      let take = taken;
       try {
-        if (!claim) {
+        if (!take) {
           const selectedTaskId = taskId(selected);
-          const claimSequence = this.claimKeySequence;
-          this.claimKeySequence += 1;
-          claim = await this.takeSelectedTask(selectedTaskId, {
+          const takeSequence = this.takeKeySequence;
+          this.takeKeySequence += 1;
+          take = await this.takeSelectedTask(selectedTaskId, {
             task_id: selectedTaskId,
             core_id: this.coreId,
             // A rescan counter only identifies attempts within one handoff.
-            // Include a identity-loop-wide sequence so a later reclaim of the same
+            // Include a identity-loop-wide sequence so a later retake of the same
             // Task gets a fresh idempotency key and can create a new Execution.
-            take_key: `${this.coreId}:${selectedTaskId}:${claimSequence}`,
+            take_key: `${this.coreId}:${selectedTaskId}:${takeSequence}`,
             owner_ref: `identity:${this.coreId}`,
             task: selected,
             candidates: candidateView,
@@ -398,44 +398,44 @@ export class IdentityTaskLoop {
         }
       } catch (error) {
         if (isConflict(error)) {
-          this.claimConflictCount += 1;
-          this.#emit({ kind: 'identity_loop_claim_conflict', core_id: this.coreId, task_id: taskId(selected), reason, rescan: rescans, error: errorView(error), timestamp: this.now() });
-          if (rescans >= this.maxClaimRescans) {
-            this.#setIdle({ reason: 'claim_conflict' });
-            return { disposition: 'claim_conflict', task_id: taskId(selected), rescans, snapshot: this.snapshot() };
+          this.takeConflictCount += 1;
+          this.#emit({ kind: 'identity_loop_take_conflict', core_id: this.coreId, task_id: taskId(selected), reason, rescan: rescans, error: errorView(error), timestamp: this.now() });
+          if (rescans >= this.maxTakeRescans) {
+            this.#setIdle({ reason: 'take_conflict' });
+            return { disposition: 'take_conflict', task_id: taskId(selected), rescans, snapshot: this.snapshot() };
           }
           rescans += 1;
           this.rescanCount += 1;
           continue;
         }
         this.lastError = errorView(error);
-        this.#emit({ kind: 'identity_loop_claim_failed', core_id: this.coreId, task_id: taskId(selected), reason, error: this.lastError, timestamp: this.now() });
-        this.#setIdle({ reason: 'claim_failed' });
-        return { disposition: 'claim_failed', task_id: taskId(selected), error: this.lastError, snapshot: this.snapshot() };
+        this.#emit({ kind: 'identity_loop_take_failed', core_id: this.coreId, task_id: taskId(selected), reason, error: this.lastError, timestamp: this.now() });
+        this.#setIdle({ reason: 'take_failed' });
+        return { disposition: 'take_failed', task_id: taskId(selected), error: this.lastError, snapshot: this.snapshot() };
       }
-      const execution = claim?.execution ?? claim?.result?.execution ?? null;
+      const execution = take?.execution ?? take?.result?.execution ?? null;
       if (!execution?.execution_id) {
-        const error = new SwarmEnvError('CLAIM_INVALID', 'claim must return an Execution identity');
+        const error = new SwarmEnvError('TAKE_INVALID', 'take must return an Execution identity');
         this.lastError = errorView(error);
-        this.#emit({ kind: 'identity_loop_claim_invalid', core_id: this.coreId, task_id: taskId(selected), error: this.lastError, timestamp: this.now() });
-        this.#setIdle({ reason: 'claim_invalid' });
-        return { disposition: 'claim_invalid', task_id: taskId(selected), error: this.lastError, snapshot: this.snapshot() };
+        this.#emit({ kind: 'identity_loop_take_invalid', core_id: this.coreId, task_id: taskId(selected), error: this.lastError, timestamp: this.now() });
+        this.#setIdle({ reason: 'take_invalid' });
+        return { disposition: 'take_invalid', task_id: taskId(selected), error: this.lastError, snapshot: this.snapshot() };
       }
-      this.claimCount += 1;
+      this.takeCount += 1;
       this.takeFailureCount = 0;
       this.takeExhausted = false;
       this.takeRetryAt = null;
       this.taskId = taskId(selected);
       this.executionId = execution.execution_id;
       this.#setState(IDENTITY_LOOP_STATES.RUNNING, { task_id: this.taskId, execution_id: this.executionId, reason });
-      this.#emit({ kind: 'identity_loop_claim_succeeded', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, reason, timestamp: this.now() });
+      this.#emit({ kind: 'identity_loop_take_succeeded', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, reason, timestamp: this.now() });
       let runtimeResult = null;
       try {
-        runtimeResult = await this.#handoff(claim, { task: selected, reason });
+        runtimeResult = await this.#handoff(take, { task: selected, reason });
       } catch (error) {
-        const release = await this.#releaseFailedClaim(claim, error);
+        const release = await this.#releaseFailedTake(take, error);
         this.lastError = errorView(error);
-        const releaseView = release instanceof Error ? errorView(release) : release?.error ? errorView(release.error) : release ? { disposition: release.disposition ?? null, execution_id: release.execution?.execution_id ?? claim.execution.execution_id } : null;
+        const releaseView = release instanceof Error ? errorView(release) : release?.error ? errorView(release.error) : release ? { disposition: release.disposition ?? null, execution_id: release.execution?.execution_id ?? take.execution.execution_id } : null;
         this.#emit({ kind: 'identity_loop_runtime_failed', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, error: this.lastError, release: releaseView, timestamp: this.now() });
         const releasedExecution = release?.execution ?? release?.result?.execution ?? release;
         this.#emit({
@@ -448,10 +448,10 @@ export class IdentityTaskLoop {
           timestamp: this.now(),
         });
         this.#setIdle({ reason: 'runtime_failed' });
-        return { disposition: 'runtime_failed', claim, error: this.lastError, release, snapshot: this.snapshot() };
+        return { disposition: 'runtime_failed', take, error: this.lastError, release, snapshot: this.snapshot() };
       }
       this.#emit({ kind: 'identity_loop_execution_released', core_id: this.coreId, task_id: this.taskId, execution_id: this.executionId, execution_state: runtimeResult?.execution?.state ?? execution.state ?? null, timestamp: this.now() });
-      const result = { disposition: 'completed', claim, runtime: runtimeResult, rescans, snapshot: null };
+      const result = { disposition: 'completed', take, runtime: runtimeResult, rescans, snapshot: null };
       this.#setIdle({ reason: 'execution_released' });
       result.snapshot = this.snapshot();
       return result;
@@ -460,33 +460,33 @@ export class IdentityTaskLoop {
     return { disposition: 'stopped', snapshot: this.snapshot() };
   }
 
-  async #handoff(claim, context) {
+  async #handoff(take, context) {
     let result;
-    if (typeof this.runExecution === 'function') result = await this.runExecution(claim, { ...context, core_id: this.coreId });
-    else if (typeof this.runtime?.runClaimedExecution === 'function') result = await this.runtime.runClaimedExecution(claim.execution, { ...context, coreId: this.coreId });
-    else if (typeof this.runtime?.startClaimedExecution === 'function') result = await this.runtime.startClaimedExecution(claim.execution, { ...context, coreId: this.coreId });
-    else if (typeof this.runtime?.startExecution === 'function') result = await this.runtime.startExecution(claim.execution.execution_id, { coreId: this.coreId, sessionReason: 'identity_loop_claim' });
-    else throw new SwarmEnvError(ERROR_CODES.RUNTIME_HANDOFF_REQUIRED, 'IdentityTaskLoop requires a Runtime handoff after claim');
-    if (typeof this.runtime?.waitForExecutionRelease === 'function' && claim.execution?.execution_id) {
+    if (typeof this.runExecution === 'function') result = await this.runExecution(take, { ...context, core_id: this.coreId });
+    else if (typeof this.runtime?.runTakenExecution === 'function') result = await this.runtime.runTakenExecution(take.execution, { ...context, coreId: this.coreId });
+    else if (typeof this.runtime?.startTakenExecution === 'function') result = await this.runtime.startTakenExecution(take.execution, { ...context, coreId: this.coreId });
+    else if (typeof this.runtime?.startExecution === 'function') result = await this.runtime.startExecution(take.execution.execution_id, { coreId: this.coreId, sessionReason: 'identity_loop_take' });
+    else throw new SwarmEnvError(ERROR_CODES.RUNTIME_HANDOFF_REQUIRED, 'IdentityTaskLoop requires a Runtime handoff after take');
+    if (typeof this.runtime?.waitForExecutionRelease === 'function' && take.execution?.execution_id) {
       this.handoffAbortController = new AbortController();
-      // stop() may land between a successful claim and this wait. Abort here
+      // stop() may land between a successful take and this wait. Abort here
       // as well so a late-arriving shutdown cannot leave the loop awaiting an
       // Execution that Runtime is already tearing down.
       if (this.stopped) this.handoffAbortController.abort();
-      const settled = await this.runtime.waitForExecutionRelease(claim.execution.execution_id, {
+      const settled = await this.runtime.waitForExecutionRelease(take.execution.execution_id, {
         timeoutMs: this.handoffTimeoutMs,
         pollMs: this.handoffPollMs,
         signal: this.handoffAbortController.signal,
       });
       this.handoffAbortController = null;
-      if (!settled.released) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime did not release the claimed Execution before the handoff deadline', { execution_id: claim.execution.execution_id });
-      result = { ...(result ?? {}), execution: settled.execution ?? result?.execution ?? claim.execution, release: settled };
+      if (!settled.released) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime did not release the taken Execution before the handoff deadline', { execution_id: take.execution.execution_id });
+      result = { ...(result ?? {}), execution: settled.execution ?? result?.execution ?? take.execution, release: settled };
     }
     return result;
   }
 
-  async #releaseFailedClaim(claim, originalError) {
-    const execution = claim?.execution;
+  async #releaseFailedTake(take, originalError) {
+    const execution = take?.execution;
     if (!execution?.execution_id) return null;
     const errorText = `${originalError?.code ?? ''} ${originalError?.message ?? ''}`;
     const terminalReason = /handoff deadline|did not release/i.test(errorText)
@@ -512,7 +512,7 @@ export class IdentityTaskLoop {
       }
       return null;
     } catch (error) {
-      this.#emit({ kind: 'identity_loop_claim_release_failed', core_id: this.coreId, execution_id: execution.execution_id, error: errorView(error), timestamp: this.now() });
+      this.#emit({ kind: 'identity_loop_take_release_failed', core_id: this.coreId, execution_id: execution.execution_id, error: errorView(error), timestamp: this.now() });
       return error;
     }
   }

@@ -63,8 +63,6 @@ const INTENT_BY_OPERATION = new Map([
   ['get_check_result', 'inspect Judge feedback'],
   ['apply_check_result', 'process Judge feedback'],
   ['wait_for', 'wait for a concrete condition'],
-  ['wake_execution', 'wake an Execution'],
-  ['resume_execution', 'resume an Execution'],
   ['accept_task', 'review and accept a Task'],
   ['request_rework', 'review and request rework'],
   ['heartbeat', 'maintain the Execution lease'],
@@ -477,8 +475,6 @@ function domainFactsForService(root, row, source, payload, result = null) {
       deadline: execution?.wait_deadline ?? null,
     }, { executionId: execution?.execution_id ?? ids.executionId }));
   }
-  if (operation === 'wake_execution') facts.push(base('wake', { execution_id: ids.executionId }, {}));
-  if (operation === 'resume_execution') facts.push(base('resume', { execution_id: ids.executionId }, {}));
   if (operation === 'accept_task') facts.push(base('review', { decision: 'accept', target_task_id: task?.task_id ?? owner.taskId, authority_execution_id: authorityIds.executionId ?? owner.executionId }, { taskId: owner.taskId ?? authorityIds.taskId, executionId: authorityIds.executionId ?? owner.executionId }));
   if (operation === 'request_rework') facts.push(base('rework', { decision: 'request_rework', target_task_id: task?.task_id ?? owner.taskId, parent_execution_id: authorityIds.executionId ?? owner.executionId }, { taskId: owner.taskId ?? authorityIds.taskId, executionId: authorityIds.executionId ?? owner.executionId }));
   if (operation === 'stop_execution') {
@@ -1353,7 +1349,7 @@ function factOperation(fact) {
 function isBoundary(fact) {
   if (BOUNDARY_KINDS.has(fact.kind)) return true;
   const operation = factOperation(fact);
-  return ['task_take', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
+  return ['task_take', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
 }
 
 function isSemanticBoundary(fact) {
@@ -1361,7 +1357,7 @@ function isSemanticBoundary(fact) {
     'task_created', 'task_taken',
     'workspace_checked', 'judge_result', 'judge_check', 'judge_check_record',
     'wait_for_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
-  ]).has(fact.kind) || (!['service_call_started', 'service_call_finished', 'database_operation', 'tool_call'].includes(fact.kind) && ['create_child_task', 'workspace_check', 'wait_for', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(factOperation(fact)));
+  ]).has(fact.kind) || (!['service_call_started', 'service_call_finished', 'database_operation', 'tool_call'].includes(fact.kind) && ['create_child_task', 'workspace_check', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'].includes(factOperation(fact)));
 }
 
 function sourceLabels(facts) {
@@ -1399,7 +1395,7 @@ function latestState(facts, execution) {
 function resultForWindow(facts) {
   const meaningful = [...facts].reverse().find((fact) => ['judge_result', 'judge_check', 'judge_check_record', 'workspace_checked', 'wait_for_requested', 'review', 'rework', 'material_read', 'material_consumed', 'material_published', 'workspace_revision', 'execution_terminal', 'task_state_changed', 'execution_state_changed'].includes(fact.kind));
   const impactful = meaningful ?? [...facts].reverse().find((fact) => {
-    const durableOperations = ['task_take', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'];
+    const durableOperations = ['task_take', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'];
     if (['heartbeat', 'agent_turn', 'agent_settled', 'process_event', 'agent_event', 'agent_rpc_request'].includes(fact.kind)) return false;
     if (durableOperations.includes(fact.operation)) return true;
     if (fact.kind === 'service_call_started' || fact.kind === 'service_call_finished') return Boolean(fact.summary?.ok === false || fact.summary?.error);

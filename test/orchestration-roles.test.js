@@ -9,7 +9,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-test('TaskController reconciles claimability and signals each idle daemon once per view', async () => {
+test('TaskController reconciles takeability and signals each idle daemon once per view', async () => {
   const signals = [];
   const events = [];
   const daemon = { core_id: 'core-1', state: 'IDLE', healthy: true };
@@ -212,7 +212,7 @@ test('TaskController never claims work and wakes after a dependency event', asyn
   const result = await pending;
   assert.equal(result.reason, 'dependency_changed');
   assert.equal(calls.length, 0);
-  assert.equal(controller.snapshot().claim_count, 0);
+  assert.equal(controller.snapshot().take_count, 0);
 });
 
 test('IdentityTaskLoop presents a bounded shortlist, claims once, hands off to Runtime, and returns idle', async () => {
@@ -229,11 +229,11 @@ test('IdentityTaskLoop presents a bounded shortlist, claims once, hands off to R
       return { task_id: 'task-1' };
     },
     takeSelectedTask: async (taskId, context) => {
-      calls.push({ type: 'claim', taskId, context });
+      calls.push({ type: 'take', taskId, context });
       return { task: { task_id: taskId, state: 'RUNNING' }, execution: { execution_id: 'execution-1', task_id: taskId, state: 'CREATED' } };
     },
     runExecution: async (claim) => {
-      calls.push({ type: 'run', claim });
+      calls.push({ type: 'run', take: claim });
       return { execution: { ...claim.execution, state: 'SUCCEEDED' } };
     },
   });
@@ -248,18 +248,18 @@ test('IdentityTaskLoop presents a bounded shortlist, claims once, hands off to R
   assert.equal(calls[1].context.core_id, 'core-1');
   assert.equal(calls[1].context.take_key, 'core-1:task-1:0');
   assert.equal(calls[1].context.owner_ref, 'identity:core-1');
-  assert.equal(calls[2].claim.execution.execution_id, 'execution-1');
+  assert.equal(calls[2].take.execution.execution_id, 'execution-1');
   assert.equal(daemon.snapshot().state, 'IDLE');
   assert.equal(daemon.snapshot().execution_id, null);
   assert.deepEqual(daemon.snapshot().state_history.map((item) => item.state), ['IDLE', 'DISCOVERING', 'TAKING', 'RUNNING', 'IDLE']);
 });
 
-test('IdentityTaskLoop boundedly rescans after a lost claim race without retrying the same claim forever', async () => {
+test('IdentityTaskLoop boundedly rescans after a lost take race without retrying the same take forever', async () => {
   const selected = [];
   let discoveries = 0;
   const daemon = new IdentityTaskLoop({
     coreId: 'core-2',
-    maxClaimRescans: 1,
+    maxTakeRescans: 1,
     listEligibleTasks: () => {
       discoveries += 1;
       return [{ task_id: discoveries === 1 ? 'task-stale' : 'task-next' }];
@@ -277,11 +277,11 @@ test('IdentityTaskLoop boundedly rescans after a lost claim race without retryin
 
   const result = await daemon.runOnce({ reason: 'contention' });
 
-  assert.equal(result.disposition, 'claim_conflict');
+  assert.equal(result.disposition, 'take_conflict');
   assert.equal(result.rescans, 1);
   assert.deepEqual(selected, ['task-stale', 'task-next']);
-  assert.equal(daemon.snapshot().claim_count, 0);
-  assert.equal(daemon.snapshot().claim_conflict_count, 2);
+  assert.equal(daemon.snapshot().take_count, 0);
+  assert.equal(daemon.snapshot().take_conflict_count, 2);
   assert.equal(daemon.snapshot().state, 'IDLE');
 });
 
@@ -331,21 +331,21 @@ test('IdentityTaskLoop bounds infrastructure take failures instead of treating t
       attempts += 1;
       return { take_failed: true, error: { code: 'SERVICE_UNAVAILABLE', message: 'provider unavailable' } };
     },
-    takeSelectedTask: async () => { throw new Error('claim should not be reached'); },
+    takeSelectedTask: async () => { throw new Error('take should not be reached'); },
   });
 
   assert.equal((await daemon.runOnce({ reason: 'provider-failure' })).disposition, 'take_failed');
   assert.equal(daemon.snapshot().take_exhausted, false);
   assert.equal((await daemon.runOnce({ reason: 'provider-failure-retry' })).disposition, 'take_failed');
   assert.equal(daemon.snapshot().take_exhausted, true);
-  assert.equal(daemon.snapshot().claim_conflict_count, 0);
+  assert.equal(daemon.snapshot().take_conflict_count, 0);
   assert.equal(attempts, 2);
   now += 100;
   daemon.notify('provider-recovered');
   assert.equal(daemon.snapshot().take_exhausted, false);
 });
 
-test('IdentityTaskLoop uses a fresh claim key when the same Task is reclaimed later', async () => {
+test('IdentityTaskLoop uses a fresh take key when the same Task is reclaimed later', async () => {
   const takeKeys = [];
   let executionNumber = 0;
   const daemon = new IdentityTaskLoop({
