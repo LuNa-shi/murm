@@ -112,7 +112,7 @@ export class JudgeService {
     if (!source || typeof source.content !== 'string') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate requires a Workspace source');
     }
-    const candidateRef = source.workspace_id !== undefined || source.revision !== undefined
+    const candidateRef = source.workspace_id !== undefined
       ? {
         workspace_id: required(source.workspace_id, 'source.workspace_id'),
         revision: required(String(source.revision), 'source.revision'),
