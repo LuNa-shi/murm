@@ -47,6 +47,7 @@ function cloneMaterial(row) {
     producer_execution_id: row.source_execution ?? null,
     content: parse(row.content_json),
     provenance: parse(row.provenance_json),
+    evidence: parse(row.evidence_json) ?? [],
   };
 }
 
@@ -75,6 +76,9 @@ export class ContextService {
     if (!materialColumns.has('mission_id')) {
       this.db.exec('ALTER TABLE materials ADD COLUMN mission_id TEXT');
     }
+    if (!materialColumns.has('evidence_json')) {
+      this.db.exec("ALTER TABLE materials ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '[]'");
+    }
     this.trustedActorPrefixes = trustedActorPrefixes;
     this.taskService = taskService;
     this.logger = logger;
@@ -94,6 +98,20 @@ export class ContextService {
       context_get_material: 'get_material',
       'context.read_materials': 'read_materials',
       context_read_materials: 'read_materials',
+      'material.publish': 'publish_material',
+      material_publish: 'publish_material',
+      'material.read': 'read_materials',
+      material_read: 'read_materials',
+      'material.search': 'search_materials',
+      material_search: 'search_materials',
+      material_dispute: 'dispute_material',
+      'material.dispute': 'dispute_material',
+      material_supersede: 'supersede_material',
+      'material.supersede': 'supersede_material',
+      material_unsupersede: 'unsupersede_material',
+      'material.unsupersede': 'unsupersede_material',
+      material_relations: 'list_material_relations',
+      'material.relations': 'list_material_relations',
     }[operation] ?? operation;
     const normalizedPayload = normalizedOperation === 'publish_material' &&
       (operation === 'context.publish_material' || operation === 'context_publish_material')
@@ -106,16 +124,18 @@ export class ContextService {
       : payload;
     this.logger?.append({ event: 'dispatch.start', service: 'context', operation: normalizedOperation, requested_operation: operation, envelope });
     try {
-      const executionWrite = ['publish_material', 'consume_materials'].includes(normalizedOperation) && envelope?.execution_id !== null;
+      const executionWrite = ['publish_material', 'consume_materials', 'dispute_material', 'supersede_material', 'unsupersede_material'].includes(normalizedOperation) && envelope?.execution_id !== null;
       validateEnvelope(envelope, { executionWrite });
       let replayed = false;
       const result = normalizedOperation === 'read_materials' || normalizedOperation === 'search_materials'
         ? this.#readMaterials(payload)
+        : normalizedOperation === 'list_material_relations'
+          ? this.listMaterialRelations(payload)
         : normalizedOperation === 'get_material'
           ? { material: this.getMaterial(requireString(payload.material_id ?? payload.materialId, 'material_id')) }
         : normalizedOperation === 'list_material_consumptions'
           ? this.listMaterialConsumptions(payload)
-          : this.#transaction(() => {
+        : this.#transaction(() => {
         const fingerprint = operationPayload(normalizedOperation, normalizedPayload, envelope);
         const replay = this.#replay(envelope.operation_id, fingerprint);
         if (replay) {
@@ -125,6 +145,9 @@ export class ContextService {
         let value;
         if (normalizedOperation === 'publish_material') value = this.#publishMaterial(normalizedPayload, envelope);
         else if (normalizedOperation === 'consume_materials') value = this.#consumeMaterials(normalizedPayload, envelope);
+        else if (normalizedOperation === 'dispute_material') value = this.#disputeMaterial(normalizedPayload, envelope);
+        else if (normalizedOperation === 'supersede_material') value = this.#supersedeMaterial(normalizedPayload, envelope);
+        else if (normalizedOperation === 'unsupersede_material') value = this.#unsupersedeMaterial(normalizedPayload, envelope);
         else throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Context Service operation: ${operation}`);
         this.#saveOperation(envelope.operation_id, normalizedOperation, fingerprint, value);
         return value;
@@ -178,6 +201,17 @@ export class ContextService {
       }));
   }
 
+  listMaterialRelations(filters = {}) {
+    const materialId = filters.material_id ?? filters.materialId ?? null;
+    const includeInactive = filters.include_inactive === true || filters.includeInactive === true;
+    return this.db.prepare(`SELECT * FROM material_relations
+      WHERE (? IS NULL OR material_id = ? OR replacement_material_id = ?)
+        AND (? = 1 OR active = 1)
+      ORDER BY created_at, relation_id`)
+      .all(materialId, materialId, materialId, includeInactive ? 1 : 0)
+      .map((row) => this.#relationView(row));
+  }
+
   // Task Flow uses this while its SQLite transaction is open so a steer
   // Material and the corresponding Execution update commit together.
   publishMaterialForTask(payload, envelope) {
@@ -211,6 +245,7 @@ export class ContextService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'query must be a non-empty string or null');
     }
     const missionId = filters.mission_id ?? filters.missionId ?? null;
+    const includeHistory = filters.include_history === true || filters.includeHistory === true;
     let rows = this.db.prepare(`SELECT * FROM materials
       WHERE (? IS NULL OR material_id = ?)
         AND (? IS NULL OR kind = ?)
@@ -223,6 +258,11 @@ export class ContextService {
       ORDER BY created_at, material_id`)
       .all(materialId, materialId, kind, kind, scope, scope, sourceTask, sourceTask, sourceExecution, sourceExecution,
         role, role, missionId, missionId, query, query, query);
+    if (!includeHistory) {
+      const hidden = new Set(this.db.prepare(`SELECT material_id FROM material_relations
+        WHERE relation_kind = 'supersede' AND active = 1`).all().map((row) => row.material_id));
+      rows = rows.filter((row) => !hidden.has(row.material_id));
+    }
     if (taskId !== null && this.taskService && explicitSourceTask === null) {
       const linkedMaterialIds = new Set(this.taskService.listTaskMaterialIds?.(taskId) ?? []);
       rows = rows.filter((row) => row.source_task === taskId || linkedMaterialIds.has(row.material_id));
@@ -285,6 +325,10 @@ export class ContextService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unsupported evidence_state');
     }
     if (payload.content === undefined) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material content is required');
+    const evidence = payload.evidence ?? [];
+    if (!Array.isArray(evidence) || evidence.some((claim) => !claim || typeof claim !== 'object' || Array.isArray(claim) || typeof claim.claim !== 'string' || claim.claim.length === 0 || (claim.explanation !== undefined && typeof claim.explanation !== 'string'))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'evidence must contain claim-scoped {claim, explanation} records');
+    }
     const provenance = payload.provenance ? { ...payload.provenance } : { actor_ref: envelope.actor_ref };
     provenance.role ??= role;
     const boundMissionId = envelope.task_id && typeof this.taskService?.getTask === 'function'
@@ -353,6 +397,7 @@ export class ContextService {
       source_task: envelope.task_id,
       source_execution: envelope.execution_id,
       provenance,
+      evidence,
       supersedes,
       created_at: now(),
     };
@@ -365,11 +410,97 @@ export class ContextService {
     }
     this.db.prepare(`INSERT INTO materials (
       material_id, kind, role, mission_id, scope, evidence_state, content_ref, content_hash, content_json, version,
-      source_task, source_execution, provenance_json, supersedes, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      source_task, source_execution, provenance_json, supersedes, evidence_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(material.material_id, material.kind, material.role, material.mission_id, material.scope, material.evidence_state, material.content_ref, material.content_hash,
-        json(material.content), material.version, material.source_task, material.source_execution, json(material.provenance), material.supersedes, material.created_at);
+        json(material.content), material.version, material.source_task, material.source_execution, json(material.provenance), material.supersedes, json(material.evidence), material.created_at);
+    if (supersedes) {
+      this.#insertRelation({ materialId: supersedes, replacementMaterialId: materialId, relationKind: 'supersede', envelope, reason: payload.supersede_reason ?? null });
+    }
     return { material: cloneMaterial(this.db.prepare('SELECT * FROM materials WHERE material_id = ?').get(materialId)) };
+  }
+
+  #insertRelation({ materialId, replacementMaterialId = null, relationKind, envelope, reason = null }) {
+    const existing = this.db.prepare(`SELECT * FROM material_relations
+      WHERE material_id = ? AND replacement_material_id IS ? AND relation_kind = ? AND active = 1
+      ORDER BY version DESC LIMIT 1`).get(materialId, replacementMaterialId, relationKind);
+    if (existing) return existing;
+    const previous = this.db.prepare(`SELECT COALESCE(MAX(version), 0) AS version FROM material_relations
+      WHERE material_id = ? AND relation_kind = ?`).get(materialId, relationKind);
+    const relation = {
+      relation_id: randomUUID(), material_id: materialId, replacement_material_id: replacementMaterialId,
+      relation_kind: relationKind, active: 1, reason, actor_ref: envelope.actor_ref,
+      source_task: envelope.task_id ?? null, source_execution: envelope.execution_id ?? null,
+      version: Number(previous?.version ?? 0) + 1, created_at: now(),
+    };
+    this.db.prepare(`INSERT INTO material_relations
+      (relation_id, material_id, replacement_material_id, relation_kind, active, reason,
+       actor_ref, source_task, source_execution, version, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      relation.relation_id, relation.material_id, relation.replacement_material_id,
+      relation.relation_kind, relation.active, relation.reason, relation.actor_ref,
+      relation.source_task, relation.source_execution, relation.version, relation.created_at,
+    );
+    return relation;
+  }
+
+  #relationView(row) {
+    return row ? {
+      relation_id: row.relation_id,
+      material_id: row.material_id,
+      replacement_material_id: row.replacement_material_id,
+      relation_kind: row.relation_kind,
+      active: Boolean(row.active),
+      reason: row.reason,
+      actor_ref: row.actor_ref,
+      source_task: row.source_task,
+      source_execution: row.source_execution,
+      version: row.version,
+      created_at: row.created_at,
+    } : null;
+  }
+
+  #disputeMaterial(payload, envelope) {
+    this.#assertExecutionFence(envelope);
+    const materialId = requireString(payload.material_id ?? payload.materialId, 'material_id');
+    const material = this.getMaterial(materialId);
+    if (!material) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Material: ${materialId}`);
+    const relation = this.#insertRelation({
+      materialId,
+      relationKind: 'dispute',
+      envelope,
+      reason: requireString(payload.reason, 'reason'),
+    });
+    return { material, relation: this.#relationView(relation) };
+  }
+
+  #supersedeMaterial(payload, envelope) {
+    this.#assertExecutionFence(envelope);
+    const materialId = requireString(payload.material_id ?? payload.materialId, 'material_id');
+    const replacementMaterialId = requireString(payload.replacement_material_id ?? payload.replacementMaterialId, 'replacement_material_id');
+    if (materialId === replacementMaterialId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'a Material cannot supersede itself');
+    if (!this.getMaterial(materialId) || !this.getMaterial(replacementMaterialId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'supersede relation requires both Materials');
+    const relation = this.#insertRelation({ materialId, replacementMaterialId, relationKind: 'supersede', envelope, reason: payload.reason ?? null });
+    return { material: this.getMaterial(materialId), replacement: this.getMaterial(replacementMaterialId), relation: this.#relationView(relation) };
+  }
+
+  #unsupersedeMaterial(payload, envelope) {
+    this.#assertExecutionFence(envelope);
+    const materialId = requireString(payload.material_id ?? payload.materialId, 'material_id');
+    const replacementMaterialId = requireString(payload.replacement_material_id ?? payload.replacementMaterialId, 'replacement_material_id');
+    const current = this.db.prepare(`SELECT * FROM material_relations
+      WHERE material_id = ? AND replacement_material_id = ? AND relation_kind = 'supersede' AND active = 1
+      ORDER BY version DESC LIMIT 1`).get(materialId, replacementMaterialId);
+    if (!current) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'matching active supersede relation was not found');
+    const trusted = this.trustedActorPrefixes.some((prefix) => envelope.actor_ref.startsWith(prefix));
+    const sourceOwned = current.source_execution && current.source_execution === envelope.execution_id;
+    if (!trusted && !sourceOwned) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'unsupersede requires the relation owner or a trusted actor');
+    const expectedVersion = payload.expected_version ?? payload.expectedVersion ?? current.version;
+    if (Number(expectedVersion) !== current.version) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'supersede relation version is stale', { expected: current.version, received: expectedVersion });
+    const result = this.db.prepare(`UPDATE material_relations SET active = 0
+      WHERE relation_id = ? AND active = 1 AND version = ?`).run(current.relation_id, current.version);
+    if (result.changes !== 1) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'supersede relation changed concurrently');
+    return { material: this.getMaterial(materialId), replacement: this.getMaterial(replacementMaterialId), relation: this.#relationView({ ...current, active: 0 }) };
   }
 
   #assertExecutionFence(envelope) {

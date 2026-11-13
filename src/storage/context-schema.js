@@ -24,11 +24,30 @@ CREATE TABLE IF NOT EXISTS materials (
   source_execution TEXT,
   provenance_json TEXT NOT NULL,
   supersedes TEXT REFERENCES materials(material_id),
+  evidence_json TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS materials_kind_scope ON materials(kind, scope);
 CREATE INDEX IF NOT EXISTS materials_source ON materials(source_task, source_execution);
+
+CREATE TABLE IF NOT EXISTS material_relations (
+  relation_id TEXT PRIMARY KEY,
+  material_id TEXT NOT NULL REFERENCES materials(material_id),
+  replacement_material_id TEXT REFERENCES materials(material_id),
+  relation_kind TEXT NOT NULL CHECK (relation_kind IN ('dispute', 'supersede')),
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  reason TEXT,
+  actor_ref TEXT NOT NULL,
+  source_task TEXT,
+  source_execution TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  UNIQUE(material_id, replacement_material_id, relation_kind, version)
+);
+
+CREATE INDEX IF NOT EXISTS material_relations_active
+  ON material_relations(material_id, relation_kind, active, created_at);
 
 CREATE TABLE IF NOT EXISTS material_consumptions (
   operation_id TEXT NOT NULL,

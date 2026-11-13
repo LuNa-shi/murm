@@ -100,3 +100,31 @@ test('secret-bearing data is rejected and Context Service has no Task or Workspa
   assert.throws(() => context.dispatch('apply_check_result', {}, sdk.context), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
   context.close();
 });
+
+test('Material supports claim-scoped evidence, public terminology aliases, and relation CAS', () => {
+  const { context, sdk } = fixture();
+  const envelope = (operationId) => ({ operation_id: operationId, actor_ref: 'agent:one', task_id: 'task-1', execution_id: 'execution-1', spec_version: 1, state_version: 0, fencing_version: 1 });
+  const first = context.dispatch('material.publish', {
+    material_id: 'material:claim-v1', kind: 'fact', scope: 'mission',
+    content: { claim: 'bounded' },
+    evidence: [{ claim: 'bounded', explanation: 'reproduced with fixture v1' }],
+  }, envelope('claim-v1')).material;
+  assert.equal(first.evidence[0].claim, 'bounded');
+  const second = context.dispatch('material.publish', {
+    material_id: 'material:claim-v2', kind: 'fact', scope: 'mission',
+    content: { claim: 'bounded and checked' },
+    evidence: [{ claim: 'bounded', explanation: 'checker passed' }],
+  }, envelope('claim-v2')).material;
+  const relation = context.dispatch('material.supersede', {
+    material_id: first.material_id, replacement_material_id: second.material_id, reason: 'additional check',
+  }, envelope('claim-supersede')).relation;
+  assert.equal(relation.active, true);
+  assert.equal(context.dispatch('material.search', { mission_id: null }, envelope('claim-search')).some((row) => row.material_id === first.material_id), false);
+  assert.equal(context.listMaterialRelations({ material_id: first.material_id })[0].relation_kind, 'supersede');
+  context.dispatch('material.unsupersede', {
+    material_id: first.material_id, replacement_material_id: second.material_id, expected_version: relation.version,
+  }, envelope('claim-unsupersede'));
+  assert.equal(context.listMaterialRelations({ material_id: first.material_id, include_inactive: true })[0].active, false);
+  assert.equal(context.dispatch('material.read', { material_id: first.material_id }, envelope('claim-read'))[0].material_id, first.material_id);
+  context.close();
+});
