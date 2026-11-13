@@ -2482,6 +2482,9 @@ export class TaskService {
     if (!['resume', 'clean'].includes(workspaceMode)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_mode must be resume or clean');
     }
+    if (modernTask && workspaceMode === 'resume') {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'private Workspace resume is retired for Mission Tasks; select a public revision or clean Workspace');
+    }
     if (payload.workspace_revision !== undefined && (!Number.isInteger(payload.workspace_revision) || payload.workspace_revision < 1)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_revision must be a positive integer');
     }

@@ -30,7 +30,7 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `04cdd229ffd02e5251fc9a906248765fa4bd7c26d8b691d65d948d53023baa0a` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `9039f91fb153003381c129290e3d9ab2312e1783c85fdc25df8a50edd507fedd` |
 | [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `25e93b255c713a0b434814fcd0238ecee200942ca2a540fdd07f07c89ffd1090` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
@@ -39,7 +39,7 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `0f20975ecf7ebf4b2725ed3545ef303fba8a47f6f6c28679cb5f61bc5bb5ae33` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `d467bd8a7d9f5b0ecfc3a195992617ceb5c902c77a3977c969ba465d546b34bc` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `309d6f50f497a9e3d16a2b75d24d732303e517ed06ded9243142781e1d01d15b` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `2bd8d503ccdcdec481bd72478531df6d870f5ad9d5072fd4674bbe4cb510ea8f` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `d7ee77d36bb187313861ee02001792b8abdcbb46f5dd426e1ede120bb8248e2e` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `eedbc3e6869e525c16369ca1aca042d12bdc0877a3f4447be4319f23e54e3ddc` |
 
@@ -284,7 +284,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "766732054a04bfb8b9a40e2040c7260d8b83104bc0b2b11ccd6fa58aa57188d4"
+  "manifest_hash": "380cedcc487c5ca6c7bf8784f9337ba5dae2e478fb22b3db0e597e0130891e4d"
 }
 ```
 
@@ -556,7 +556,6 @@ Take an existing Mission or ordinary Task using the caller identity and Core lan
       "workspace_mode": {
         "type": "string",
         "enum": [
-          "resume",
           "clean"
         ]
       },

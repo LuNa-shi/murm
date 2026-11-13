@@ -33,7 +33,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "2bd8d503ccdcdec481bd72478531df6d870f5ad9d5072fd4674bbe4cb510ea8f"
+      "sha256": "d7ee77d36bb187313861ee02001792b8abdcbb46f5dd426e1ede120bb8248e2e"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -61,7 +61,7 @@
     },
     {
       "path": "src/sdk/service-catalog.js",
-      "sha256": "04cdd229ffd02e5251fc9a906248765fa4bd7c26d8b691d65d948d53023baa0a"
+      "sha256": "9039f91fb153003381c129290e3d9ab2312e1783c85fdc25df8a50edd507fedd"
     },
     {
       "path": "src/sdk/builtin-registry.js",
@@ -85,7 +85,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "0f9d3121e92703de9a995e02b4477baaec23cbb1f99f72c458816c98e522d6c1"
+      "sha256": "7987be8c980aa6eec5a89223f5472a4ec1e76e780e982946874967ee18b99e99"
     },
     {
       "path": "src/task/task-types.js",
@@ -367,7 +367,7 @@
     },
     {
       "path": "docs/architecture/prompts/05-composed-context-examples.md",
-      "sha256": "27acab94b7fe9c92df27b8bf0dbbf27936c97498d39d5ea2f13dce887d3feecb"
+      "sha256": "2ce74f68bcf1dd7e84026db14ff9ec2fdedec6d7d01ba25b064c55b26f2dd059"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
