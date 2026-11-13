@@ -119,11 +119,11 @@ export class ServicesSDK {
   /** Take an existing Mission/ordinary Task through the canonical Agent seam. */
   taskTake(payload = {}, options = {}) {
     const contextCoreId = this.context.coreId ?? this.context.core_id ?? null;
+    if (typeof this.context.actorRef !== 'string' || this.context.actorRef.length === 0) {
+      throw new TypeError('task_take requires the authenticated actor context');
+    }
     return this.#write('task_take', {
       ...payload,
-      // Agent identity and Core lane come from the bound SDK context. Keep
-      // payload fields as a compatibility fallback only for unbound local
-      // callers that have no lane context yet.
       owner_ref: this.context.actorRef,
       ...(contextCoreId !== null ? { core_id: contextCoreId } : {}),
     }, options);
