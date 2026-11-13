@@ -261,7 +261,6 @@ export class TaskService {
       else this.db.exec("ALTER TABLE executions ADD COLUMN workspace_manifest_ref TEXT NOT NULL DEFAULT ''");
     }
     if (!executionColumns.has('workspace_selection_json')) this.db.exec("ALTER TABLE executions ADD COLUMN workspace_selection_json TEXT NOT NULL DEFAULT '{}'");
-    if (!executionColumns.has('candidate_material_id')) this.db.exec('ALTER TABLE executions ADD COLUMN candidate_material_id TEXT');
     if (!executionColumns.has('started_at')) this.db.exec('ALTER TABLE executions ADD COLUMN started_at TEXT');
     if (!executionColumns.has('handoff_deadline')) this.db.exec('ALTER TABLE executions ADD COLUMN handoff_deadline TEXT');
     if (!executionColumns.has('execution_deadline')) this.db.exec('ALTER TABLE executions ADD COLUMN execution_deadline TEXT');
@@ -2023,7 +2022,7 @@ export class TaskService {
         return Boolean(health?.status === 'healthy' || (health?.health_fingerprint && health.health_fingerprint !== checkerHealth.health_fingerprint));
       }
       if (!result || result.status !== 'APPLIED' || result.verdict !== 'PASS') return false;
-      for (const field of ['status', 'verdict', 'target_task_id', 'candidate_material_id']) {
+      for (const field of ['status', 'verdict', 'target_task_id', 'workspace_source_id']) {
         if (requirement[field] !== undefined && result[field] !== requirement[field]) return false;
       }
       return true;
@@ -2383,7 +2382,7 @@ export class TaskService {
         source_execution_id: sourceExecutionId,
         source_workspace_ref: sourceWorkspaceRef,
       },
-      candidate_material_id: null,
+      workspace_source_id: null,
       workspace_ref: null,
       workspace_revision: null,
       workspace_content_hash: null,
@@ -2406,14 +2405,14 @@ export class TaskService {
     this.db.prepare(`INSERT INTO executions (
       execution_id, task_id, owner_ref, state, state_version, attempt_no, fencing_version, runtime_generation,
       lease_expires_at, heartbeat_at, launch_token, spec_version, spec_hash, agent_prompt, workspace_manifest_ref,
-      input_material_refs_json, input_snapshot_hash, workspace_selection_json, candidate_material_id, workspace_ref, workspace_revision, workspace_content_hash, checkpoint_ref, checkpoint_hash,
+      input_material_refs_json, input_snapshot_hash, workspace_selection_json, workspace_source_id, workspace_ref, workspace_revision, workspace_content_hash, checkpoint_ref, checkpoint_hash,
       started_at, handoff_deadline, execution_deadline, handoff_reminder_sent_at, handoff_metadata_json, terminal_reason,
       instruction_version, steer_material_refs_json, wait_condition_json, wait_deadline, resume_token, created_at, updated_at
     ) VALUES (${Array.from({ length: 37 }, () => '?').join(', ')})`)
       .run(execution.execution_id, execution.task_id, execution.owner_ref, execution.state, execution.state_version,
         execution.attempt_no, execution.fencing_version, execution.runtime_generation, execution.lease_expires_at,
         execution.heartbeat_at, execution.launch_token, execution.spec_version, execution.spec_hash, execution.agent_prompt,
-        execution.workspace_manifest_ref, json(execution.input_material_refs), execution.input_snapshot_hash, json(execution.workspace_selection), execution.candidate_material_id, execution.workspace_ref,
+        execution.workspace_manifest_ref, json(execution.input_material_refs), execution.input_snapshot_hash, json(execution.workspace_selection), execution.workspace_source_id, execution.workspace_ref,
         execution.workspace_revision, execution.workspace_content_hash, execution.checkpoint_ref, execution.checkpoint_hash,
         execution.started_at, execution.handoff_deadline, execution.execution_deadline, execution.handoff_reminder_sent_at, json(execution.handoff_metadata), execution.terminal_reason,
         execution.instruction_version, json(execution.steer_material_refs), json(execution.wait_condition), execution.wait_deadline, execution.resume_token,
@@ -2703,21 +2702,21 @@ export class TaskService {
       const requestKey = condition.check_request_key ?? condition.request_key;
       if (!requestKey) return false;
       // Agent-facing candidate submission does not know the runner's internal
-      // Judge request key. In that path the agent uses its candidate Material
+      // Judge request key. In that path the agent uses its workspace source
       // ID as the wait key, while the Judge stores the generated request key
       // and the same candidate ID separately. Bind the fallback to this
       // Execution so an unrelated CheckResult cannot wake the Task.
-      const candidateMaterialId = condition.candidate_material_id ??
-        (requestKey === execution.candidate_material_id ? requestKey : null);
+      const workspaceSourceId = condition.workspace_source_id ??
+        (requestKey === execution.workspace_source_id ? requestKey : null);
       const result = this.db.prepare(`SELECT status FROM check_results
         WHERE execution_id = ? AND target_task_id = ?
-          AND (request_key = ? OR (? IS NOT NULL AND candidate_material_id = ?))
+          AND (request_key = ? OR (? IS NOT NULL AND workspace_source_id = ?))
         ORDER BY created_at DESC LIMIT 1`).get(
         execution.execution_id,
         execution.task_id,
         requestKey,
-        candidateMaterialId,
-        candidateMaterialId,
+        workspaceSourceId,
+        workspaceSourceId,
       );
       return Boolean(result && ['RECEIVED', 'APPLIED', 'IGNORED'].includes(result.status));
     }
@@ -2757,7 +2756,7 @@ export class TaskService {
       input_material_refs: previous.input_material_refs,
       input_snapshot_hash: previous.input_snapshot_hash,
       workspace_selection: previous.workspace_selection,
-      candidate_material_id: null,
+      workspace_source_id: null,
       workspace_ref: previous.workspace_ref,
       workspace_revision: previous.workspace_revision,
       workspace_content_hash: previous.workspace_content_hash,
@@ -2774,13 +2773,13 @@ export class TaskService {
     this.db.prepare(`INSERT INTO executions (
       execution_id, task_id, owner_ref, state, state_version, attempt_no, fencing_version, runtime_generation,
       lease_expires_at, heartbeat_at, launch_token, spec_version, spec_hash, agent_prompt, workspace_manifest_ref,
-      input_material_refs_json, input_snapshot_hash, workspace_selection_json, candidate_material_id, workspace_ref, workspace_revision, workspace_content_hash,
+      input_material_refs_json, input_snapshot_hash, workspace_selection_json, workspace_source_id, workspace_ref, workspace_revision, workspace_content_hash,
       checkpoint_ref, checkpoint_hash, instruction_version, steer_material_refs_json, wait_condition_json, wait_deadline, resume_token, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(execution.execution_id, execution.task_id, execution.owner_ref, execution.state, execution.state_version,
         execution.attempt_no, execution.fencing_version, execution.runtime_generation, execution.lease_expires_at,
         execution.heartbeat_at, execution.launch_token, execution.spec_version, execution.spec_hash, execution.agent_prompt,
-        execution.workspace_manifest_ref, json(execution.input_material_refs), execution.input_snapshot_hash, json(execution.workspace_selection), execution.candidate_material_id,
+        execution.workspace_manifest_ref, json(execution.input_material_refs), execution.input_snapshot_hash, json(execution.workspace_selection), execution.workspace_source_id,
         execution.workspace_ref, execution.workspace_revision, execution.workspace_content_hash, execution.checkpoint_ref, execution.checkpoint_hash,
         execution.instruction_version, json(execution.steer_material_refs), json(execution.wait_condition), execution.wait_deadline,
         execution.resume_token, execution.created_at, execution.updated_at);
@@ -2858,11 +2857,11 @@ export class TaskService {
       }
     }
     if (contract.required_candidate) {
-      const candidate = execution?.candidate_material_id && this.contextService?.getMaterial(execution.candidate_material_id);
+      const candidate = execution?.workspace_source_id && this.contextService?.getMaterial(execution.workspace_source_id);
       const appliedCheck = appliedCheckResultId ? this.getCheckResult(appliedCheckResultId) : null;
       const workspaceCandidate = appliedCheck?.status === 'APPLIED' && appliedCheck.verdict === 'PASS' &&
-        appliedCheck.execution_id === execution?.execution_id && typeof appliedCheck.candidate_material_id === 'string' &&
-        appliedCheck.candidate_material_id.startsWith('workspace:');
+        appliedCheck.execution_id === execution?.execution_id && typeof appliedCheck.workspace_source_id === 'string' &&
+        appliedCheck.workspace_source_id.startsWith('workspace:');
       if ((!candidate && !workspaceCandidate) || (candidate && (candidate.kind !== contract.required_candidate.kind ||
         (contract.required_candidate.scope && candidate.scope !== contract.required_candidate.scope)))) {
         missing.push('required_candidate');

@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS executions (
   input_material_refs_json TEXT NOT NULL,
   input_snapshot_hash TEXT NOT NULL,
   workspace_selection_json TEXT NOT NULL DEFAULT '{}',
-  candidate_material_id TEXT,
+  workspace_source_id TEXT,
   workspace_ref TEXT,
   workspace_revision INTEGER,
   workspace_content_hash TEXT,
