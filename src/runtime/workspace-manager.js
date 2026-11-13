@@ -381,6 +381,90 @@ export class WorkspaceManager {
     };
   }
 
+  /**
+   * Read a public, immutable revision without taking ownership of the
+   * execution worktree. This is the read path used during task selection and
+   * by successor executions. The revision is resolved before the filesystem
+   * scan so callers can safely paginate against a fixed version.
+   */
+  async listFilesAtRevision({ workspaceRef, revision = undefined, path = '' }) {
+    const metadata = await this.#readMetadata(workspaceRef);
+    const selected = await this.#revisionMetadata(metadata, revision ?? metadata.workspace_revision);
+    const prefix = safeDirectoryPath(path);
+    const files = Object.entries(selected.files ?? {})
+      .filter(([relativePath]) => !prefix || relativePath === prefix || relativePath.startsWith(`${prefix}/`))
+      .map(([relativePath, file]) => ({ path: relativePath, type: 'file', ...file }))
+      .sort((left, right) => left.path.localeCompare(right.path));
+    return {
+      workspace_ref: metadata.workspace_ref,
+      workspace_revision: selected.workspace_revision,
+      git_commit: selected.git_commit ?? null,
+      content_hash: selected.content_hash,
+      files,
+    };
+  }
+
+  async readWorkspaceFileAtRevision({ workspaceRef, revision = undefined, path, maxBytes = 1_000_000 }) {
+    const metadata = await this.#readMetadata(workspaceRef);
+    const selected = await this.#revisionMetadata(metadata, revision ?? metadata.workspace_revision);
+    const relativePath = safePath(path);
+    const entry = selected.files?.[relativePath];
+    if (!entry) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace file is unavailable at the requested revision');
+    if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 10_000_000) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'max_bytes must be an integer between 1 and 10000000');
+    }
+    const snapshot = join(metadata.workspace_ref, META_DIR, 'revisions', String(selected.workspace_revision), 'files', relativePath);
+    await this.#assertNoSymlinkAncestors(join(metadata.workspace_ref, META_DIR, 'revisions', String(selected.workspace_revision), 'files'), snapshot);
+    await this.#assertReadableFileTarget(snapshot);
+    const content = await readFile(snapshot);
+    return {
+      workspace_ref: metadata.workspace_ref,
+      workspace_revision: selected.workspace_revision,
+      git_commit: selected.git_commit ?? null,
+      path: relativePath,
+      content: content.subarray(0, maxBytes).toString('utf8'),
+      content_hash: entry.content_hash,
+      bytes: content.byteLength,
+      truncated: content.byteLength > maxBytes,
+    };
+  }
+
+  async searchWorkspaceAtRevision({ workspaceRef, revision = undefined, query, path = '', maxResults = 100 }) {
+    requireString(query, 'search query');
+    if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 1000) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'max_results must be an integer between 1 and 1000');
+    }
+    const listing = await this.listFilesAtRevision({ workspaceRef, revision, path });
+    const matches = [];
+    for (const file of listing.files) {
+      if (matches.length >= maxResults) break;
+      const result = await this.readWorkspaceFileAtRevision({ workspaceRef, revision: listing.workspace_revision, path: file.path, maxBytes: 10_000_000 });
+      const lines = result.content.split(/\r?\n/);
+      for (let index = 0; index < lines.length && matches.length < maxResults; index += 1) {
+        if (lines[index].includes(query)) matches.push({ path: file.path, line: index + 1, text: lines[index] });
+      }
+    }
+    return { workspace_ref: listing.workspace_ref, workspace_revision: listing.workspace_revision, query, matches, truncated: matches.length >= maxResults };
+  }
+
+  async listPublicRevisions({ workspaceRef }) {
+    const metadata = await this.#readMetadata(workspaceRef);
+    const revisionDir = join(metadata.workspace_ref, META_DIR, 'revisions');
+    const names = await readdir(revisionDir);
+    const revisions = [];
+    for (const name of names.filter((candidate) => /^\d+\.json$/.test(candidate)).sort((left, right) => Number(left.slice(0, -5)) - Number(right.slice(0, -5)))) {
+      const revision = JSON.parse(await readFile(join(revisionDir, name), 'utf8'));
+      revisions.push({
+        workspace_ref: metadata.workspace_ref,
+        workspace_revision: revision.workspace_revision,
+        content_hash: revision.content_hash,
+        git_commit: revision.git_commit ?? null,
+        changed_files: revision.changed_files ?? [],
+      });
+    }
+    return revisions;
+  }
+
   async readWorkspaceFile({ workspaceRef, executionId, fencingVersion = undefined, path, maxBytes = 1_000_000 }) {
     const metadata = await this.#readOwnedMetadata({ workspaceRef, executionId, fencingVersion });
     const relativePath = assertReadableWorkspacePath(path, metadata.workspace_contract ?? normalizeWorkspaceContract({}), new Set(Object.keys(metadata.files ?? {})));
