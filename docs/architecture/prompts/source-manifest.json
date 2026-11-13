@@ -33,7 +33,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "4cdfcbfc1ab0a5459d96ddacfc90adaa811eeb59f3dd59623c6c7b032552d22a"
+      "sha256": "da3089014fb32c92dcb4ec56eba2fab3733d1c57d3a6ad1d6912436c4f51ce61"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -130,7 +130,7 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "      takePrompt: ",
-      "line": 2684,
+      "line": 2699,
       "sha256": "7ed09af4862880a2d8821fd60ab5cfaf84ea3de83bb960b321ad36768da54731"
     },
     {
@@ -142,7 +142,7 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const basePrompt = ",
-      "line": 2675,
+      "line": 2690,
       "sha256": "6be42e0ba4e7c5c99afffc42d9d0a74f4ef9c76f92d2179ae27b94c195b043f4"
     },
     {

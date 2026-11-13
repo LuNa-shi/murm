@@ -1873,6 +1873,21 @@ async function createProjectState(problem, config, options) {
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
       onSessionStarted: ({ execution, session, recovery }) => {
         if (recovery) {
+          // Recovery reuses the durable Execution. Restore the benchmark's
+          // local binding before the recovered prompt can issue any tool call;
+          // otherwise a late runTurn cleanup can make the Bridge look unbound
+          // and the model may create a second Execution with task_take.
+          const recoveredTask = taskService.getTask(execution.task_id);
+          core.taskId = execution.task_id;
+          core.executionId = execution.execution_id;
+          core.take = recoveredTask ? { task: recoveredTask, execution } : { task: { task_id: execution.task_id }, execution };
+          if (core.bridge && (!core.bridge.taskId || core.bridge.taskId === execution.task_id)) {
+            core.bridge.taskId = execution.task_id;
+            core.bridge.executionId = execution.execution_id;
+            core.bridge.role = AGENT_ROLES.BOUND;
+            core.bridge.capabilityProfile = null;
+            core.bridge.capabilityProfileRegistryRevision = null;
+          }
           attachRecoveredSession(core, { execution, session });
           return;
         }
