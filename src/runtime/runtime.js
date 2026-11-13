@@ -745,107 +745,10 @@ export class Runtime {
     return this.restartSession(executionId, options);
   }
 
-  async wakeExecution(executionId, { wakeKey = null, beforePrompt = null } = {}) {
-    this.logger?.append({ event: 'runtime.wake_execution', execution_id: executionId, wake_key: wakeKey });
-    const waiting = this.#getExecution(executionId);
-    const key = wakeKey ?? waiting.resume_token ?? `wake:${executionId}`;
-    if (waiting.state !== 'WAITING') {
-      const active = this.activeProcesses.get(executionId);
-      if (active) return { execution: active.execution, workspace: active.workspace, session: active.session };
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only wake WAITING executions, got ${waiting.state}`);
-    }
-    if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
-    const wakeCoreId = this.#resolveCoreId(waiting, null);
-    const resumed = this.taskService.dispatch('wake_execution', {
-      wake_key: key,
-      ...(wakeCoreId ? { core_id: wakeCoreId } : {}),
-    }, this.#executionEnvelope(waiting, operationId('wake'))).execution;
-    try {
-      await this.workspaceManager.reopenWorkspace?.({
-        workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'),
-        executionId,
-        fencingVersion: resumed.fencing_version,
-      });
-      const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: requireString(resumed.workspace_ref, 'workspace_ref'), executionId, fencingVersion: resumed.fencing_version });
-      const coreId = this.#resolveCoreId(resumed, wakeCoreId);
-      this.#assertCoreAvailable(coreId, executionId);
-      return await this.#launch(resumed, workspace, { beforePrompt, sessionReason: 'wake', coreId });
-    } catch (error) {
-      const current = this.taskService.getExecution(executionId);
-      if (current && ['CREATED', 'RUNNING'].includes(current.state)) {
-        await this.fenceExecution(executionId, { reason: 'wake_failed' }).catch(() => undefined);
-      }
-      throw error;
-    }
-  }
-
-  async requestWait(executionId, { waitCondition, checkpoint = {}, files = {}, deadline = null, waitKey = null }) {
-    this.logger?.append({ event: 'runtime.request_wait', execution_id: executionId, wait_condition: waitCondition, deadline });
-    const active = this.activeProcesses.get(executionId);
-    const execution = this.#getExecution(executionId);
-    if (!active || execution.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only a running Runtime process can request wait');
-    // Freeze shell/job writes before taking the wait snapshot. Otherwise a
-    // background Sandbox job could write after the saved revision.
-    active.closing = true;
-    await this.#stopSandbox(executionId);
-    let validatedWait;
-    try {
-      validatedWait = this.taskService.validateWaitCondition?.(executionId, {
-        waitCondition,
-        waitDeadline: deadline ?? waitCondition?.deadline ?? null,
-      });
-    } catch (error) {
-      // A dependency can become satisfied between the Agent's read and its
-      // request_wait call. Keep the active Execution alive and let the
-      // Session continue on its next turn; a stale wait request must not turn
-      // into a failed claim or strand Core capacity.
-      if (error?.code === ERROR_CODES.INVALID_CONTRACT && /condition is already satisfied/.test(error.message ?? '') &&
-        this.taskService.isWaitConditionSatisfied?.(executionId, waitCondition)) {
-        this.logger?.append({ event: 'runtime.wait_already_satisfied', execution_id: executionId, wait_condition: waitCondition });
-        return { execution, task: this.taskService.getTask(execution.task_id), disposition: 'already_satisfied' };
-      }
-      throw error;
-    }
-    if (!validatedWait && (!waitCondition || typeof waitCondition !== 'object')) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_condition is required');
-    }
-    if (this.taskService.isWaitConditionSatisfied?.(executionId, validatedWait?.wait_condition ?? waitCondition)) {
-      this.logger?.append({ event: 'runtime.wait_already_satisfied', execution_id: executionId, wait_condition: waitCondition });
-      return { execution, task: this.taskService.getTask(execution.task_id), disposition: 'already_satisfied' };
-    }
-    const workspace = await this.workspaceManager.saveWorkspaceRevision({
-      workspaceRef: requireString(execution.workspace_ref, 'workspace_ref'), executionId, fencingVersion: execution.fencing_version, files: normalizeWaitFiles(files),
-    });
-    let current = this.#saveWorkspaceReference(execution, workspace);
-    const savedCheckpoint = await this.workspaceManager.saveCheckpoint({
-      workspaceRef: workspace.workspace_ref, executionId, fencingVersion: execution.fencing_version, checkpoint,
-    });
-    const checkpointResult = this.taskService.dispatch('save_checkpoint', savedCheckpoint, this.#executionEnvelope(current, operationId('checkpoint')));
-    current = checkpointResult.execution;
-    const waited = this.taskService.dispatch('request_wait', {
-      ...(waitKey ? { wait_key: waitKey } : {}),
-      checkpoint_ref: savedCheckpoint.checkpoint_ref,
-      checkpoint_hash: savedCheckpoint.checkpoint_hash,
-      workspace_ref: workspace.workspace_ref,
-      workspace_revision: workspace.workspace_revision,
-      workspace_content_hash: workspace.content_hash,
-      wait_condition: waitCondition,
-      wait_deadline: deadline ?? waitCondition?.deadline ?? null,
-    }, this.#executionEnvelope(current, operationId('wait')));
-    await this.#releaseSessionBinding(active, executionId);
-    await this.#stopSandbox(executionId);
-    await this.workspaceManager.releaseWorkspace({ workspaceRef: workspace.workspace_ref, executionId, fencingVersion: execution.fencing_version });
-    this.activeProcesses.delete(executionId);
-    this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
-    return waited;
-  }
-
   /**
    * End an Execution because it has reached a concrete external dependency.
    * Task Service performs the durable BLOCKED transition and Runtime then
-   * stops the Session and releases the physical Workspace/Core. The legacy
-   * requestWait path remains available for reading old evidence, but new
-   * orchestration code should use this boundary for dependency blocking.
+   * stops the Session and releases the physical Workspace/Core.
    */
   async blockExecution(executionId, {
     reason,
