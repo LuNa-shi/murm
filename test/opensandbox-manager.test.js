@@ -201,6 +201,18 @@ test('OpenSandbox pulls bounded guest files back before the sandbox is removed',
   }
 });
 
+test('OpenSandbox workspace pull is idempotent after provider cleanup removed the record', async () => {
+  const root = await mkdtemp('/tmp/swarmenv-provider-pull-race-');
+  try {
+    const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test' });
+    const result = await manager.syncWorkspaceBack({ executionId: 'already-stopped', workspaceRef: root });
+    assert.equal(result.skipped, true);
+    assert.equal(result.file_count, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('OpenSandbox reconciles provider sandboxes by durable Execution metadata', async () => {
   const manager = createOpenSandboxManager({
     lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',

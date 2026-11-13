@@ -81,3 +81,19 @@ test('OpenSandbox Agent adapter records versions resolved inside the provider gu
   assert.equal(session.manifest.nurouter_version, null);
   assert.equal(session.manifest.node_version, '22.19.0');
 });
+
+test('OpenSandbox Agent adapter reconnects after a transient event-stream interruption', async () => {
+  const manager = new FakeSandboxManager();
+  let eventCalls = 0;
+  manager.agentEvents = async function* () {
+    eventCalls += 1;
+    if (eventCalls === 1) throw Object.assign(new Error('SSE connection closed'), { code: 'SERVICE_UNAVAILABLE' });
+    await new Promise((resolve) => { manager.releaseEvents = resolve; });
+  };
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
+  const session = await adapter.start({ executionId: 'execution-reconnect', sessionId: 'session-reconnect' });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(session.closed, false);
+  assert.ok(eventCalls >= 2);
+  await session.stop();
+});

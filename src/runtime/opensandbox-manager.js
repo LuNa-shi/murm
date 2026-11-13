@@ -480,8 +480,13 @@ export class OpenSandboxManager {
 
   /** Pull guest files back before Runtime checkpoints or deletes the sandbox. */
   async syncWorkspaceBack({ executionId, workspaceRef, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 } = {}) {
-    this.#record(executionId);
     if (typeof workspaceRef !== 'string' || workspaceRef.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspaceRef is required to persist provider Workspace');
+    // Cleanup paths can race when Runtime handles both a provider transport
+    // failure and the corresponding Session close. Once stopExecution removed
+    // the manager record there is no guest Workspace left to pull, so make the
+    // persistence operation idempotent instead of reporting a second failure.
+    const record = this.executions.get(executionId);
+    if (!record) return { execution_id: executionId, file_count: 0, bytes: 0, workspace: resolve(workspaceRef), skipped: true };
     const listing = await this.exec({ executionId, command: ['sh', '-lc', "find /workspace -type f -not -path '/workspace/.swarm/*' -not -path '/workspace/.git/*' -not -name '.env' -not -name '.env.*' -print0"], timeoutMs: this.commandTimeoutMs });
     if (listing.exit_code !== 0) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'could not list provider Workspace files', { exit_code: listing.exit_code, diagnostic: safeDiagnostic(listing.stderr) }, { retryable: true });
     // NUL delimiters survive Execd's line-oriented JSON stream; newline-only

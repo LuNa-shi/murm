@@ -43,6 +43,7 @@ class RemoteAgentChild extends EventEmitter {
     this.closed = false;
     this.records = new Set();
     this.lastSequence = 0;
+    this.eventStreamFailures = 0;
     this.#listen();
   }
 
@@ -53,10 +54,19 @@ class RemoteAgentChild extends EventEmitter {
           if (event?.kind === 'stderr') { this.stderr.write(event.text ?? ''); continue; }
           if (event?.worker_sequence) this.lastSequence = Math.max(this.lastSequence, event.worker_sequence);
           if (event?.type === 'worker_exit') { this.#close(event.code, event.signal); break; }
+          this.eventStreamFailures = 0;
           this.#emitRecord(event);
         }
       } catch (error) {
-        if (!this.closed) this.emit('error', error);
+        // The provider event stream is a reconnectable transport. OpenSandbox
+        // may close an idle SSE connection while the Agent process continues
+        // running. Retry boundedly instead of fencing the durable Execution on
+        // the first transport error. A permanent binding or repeated transport
+        // error still reaches the Runtime through the error event.
+        if (!this.closed) {
+          const retryable = error?.retryable === true || [ERROR_CODES.SERVICE_UNAVAILABLE, ERROR_CODES.SERVICE_TIMEOUT].includes(error?.code);
+          if (!retryable || ++this.eventStreamFailures > 5) this.emit('error', error);
+        }
       }
       if (!this.closed) await new Promise((resolve) => setTimeout(resolve, 100));
     }
