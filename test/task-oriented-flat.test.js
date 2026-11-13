@@ -107,7 +107,7 @@ test('canonical task supply seam reports status, registers work, and takes it', 
   service.close();
 });
 
-test('the first Mission Task is a shared entry and may have multiple Core-bound Executions', () => {
+test('every Mission Task is exclusive and the Mission has no shared claim entry', () => {
   const { service } = env();
   const mission = createMission(service, 'mission:shared-entry');
   const shared = createTask(service, mission.mission_id, 'task:shared-entry');
@@ -115,17 +115,16 @@ test('the first Mission Task is a shared entry and may have multiple Core-bound 
     task_id: shared.task_id, claim_key: 'shared:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
   }, op('shared:one', 'agent:one', { taskId: shared.task_id, specVersion: shared.spec_version, stateVersion: shared.state_version })).execution;
   const current = service.getTask(shared.task_id);
-  const second = service.dispatch('task_take', {
+  assert.throws(() => service.dispatch('task_take', {
     task_id: shared.task_id, claim_key: 'shared:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
-  }, op('shared:two', 'agent:two', { taskId: shared.task_id, specVersion: current.spec_version, stateVersion: current.state_version })).execution;
+  }, op('shared:two', 'agent:two', { taskId: shared.task_id, specVersion: current.spec_version, stateVersion: current.state_version })), /active Execution quota/);
 
-  assert.notEqual(first.execution_id, second.execution_id);
-  assert.equal(service.listExecutions(shared.task_id, { includeTerminal: false }).length, 2);
+  assert.equal(service.listExecutions(shared.task_id, { includeTerminal: false }).length, 1);
   const status = service.taskStatus({ mission_id: mission.mission_id, limit: 1 });
   assert.equal(status.counts.total, 1);
   assert.equal(status.counts.running, 1);
-  assert.equal(status.counts.claimable, 1);
-  assert.equal(status.claimable_tasks[0].task_id, shared.task_id);
+  assert.equal(status.counts.claimable, 0);
+  assert.deepEqual(status.claimable_tasks, []);
   service.close();
 });
 
