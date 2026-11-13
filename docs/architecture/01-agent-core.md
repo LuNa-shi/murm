@@ -23,7 +23,7 @@ An unbound reusable identity still uses role `bound`. There is no separate `idle
 
 `AgentCoreAdapter` accepts command, provider, model, account/group routing, Session directory, extension path, working directory, environment, version overrides and a system-prompt string or file. `executionId`, `sessionId`, provider, model and Session directory must be nonempty strings when launch arguments are built. A reusable benchmark Session initially receives a synthetic worker process ID; its observation context has null Task/Execution IDs until binding.
 
-The generic adapter defaults to command `nurouter`. The benchmark defaults to `pi` for `openai-codex` and `nurouter` otherwise, unless explicitly configured. A command equal to `pi`, or ending in `/pi`, is treated as direct Pi.
+The generic compatibility adapter retains its historical `nurouter` default. Issue 119 OpenSandbox executions always launch direct `pi` with the native Pi provider catalog and never require NuRouter. A command equal to `pi`, or ending in `/pi`, is treated as direct Pi.
 
 | Provider | Provider/model flags are placed on | Additional constraint |
 |---|---|---|
@@ -57,7 +57,7 @@ The benchmark subclass adds a stricter tool boundary: `BenchmarkAgentCoreAdapter
 
 For a nonempty system-prompt string, the adapter writes `identity-system-prompt.md` in the Session directory with creation mode `0600` and passes its path through `--append-system-prompt`. An explicit `systemPromptPath` takes precedence for the path. This is a Pi system-role addendum, not an ordinary user RPC. Its [complete body](prompts/01-system-identity.md) is versioned separately from dynamic composition.
 
-Before spawning, `createVersionManifest` records exact installed Pi, NuRouter and Node versions and launch arguments. Explicit constructor values win; environment overrides `SWARMENV_PI_VERSION`/`SWARMENV_NUROUTER_VERSION` are next; otherwise the executable's `--version` is queried. Both Pi and NuRouter version fields are required by this helper, including on the direct-Pi path. It rejects non-exact semantic versions. Normal startup does not query npm; the exported latest-version lookup is a separate utility. `package.json` pins Pi package `1.3.0`, while the recorded executable version is the evidence for an actual run. [Source: version-manifest](../../src/agent/version-manifest.js).
+Before spawning, `createVersionManifest` records exact installed Pi and Node versions (NuRouter is optional for compatibility adapters) and launch arguments. Explicit constructor values win; environment overrides `SWARMENV_PI_VERSION`/`SWARMENV_NUROUTER_VERSION` are next; otherwise the executable's `--version` is queried. The NuRouter field is null on direct-Pi runs and only resolved for compatibility adapters. It rejects non-exact semantic versions. Normal startup does not query npm; the exported latest-version lookup is a separate utility. `package.json` pins Pi package `1.3.0`, while the recorded executable version is the evidence for an actual run. [Source: version-manifest](../../src/agent/version-manifest.js).
 
 ### 2.3 RPC protocol and process lifetime
 
@@ -68,6 +68,12 @@ Stdout is accumulated and split on newlines. Non-JSON lines are ignored by the p
 `waitForSettled` waits for `agent_settled`, optionally after a record sequence. Its adapter default timeout is 120 seconds; benchmark callers can choose a longer bound. This is a turn boundary, distinct from Execution release. `set_auto_compaction`, `set_auto_retry`, `get_session_stats` and `prompt` are separate commands. Runtime-managed initial turns enable compaction and retry before sending; reusable benchmark startup has its own sequence in [08](08-prompts.md).
 
 Closing the process rejects pending RPCs. `wait()` reports unexpected nonzero exit or signal as `PROCESS_EXITED`. `stop()` marks exit expected, sends `SIGTERM`, waits five seconds by default, then sends `SIGKILL` and waits at most a further second. Runtime decides whether an exit needs recovery. [Source: pi-adapter](../../src/agent/pi-adapter.js).
+
+### 2.4 OpenSandbox worker transport (Issue 119 slice)
+
+The external provider path uses `OpenSandboxAgentAdapter` and the image-resident `scripts/opensandbox-agent-worker.mjs`. Runtime creates the provider sandbox, resolves Pi/Node versions by executing `--version` inside the guest when explicit manifest values are absent, starts the worker as a bounded background Execd command, resolves the configured worker port, and sends a one-time `/start` request containing the Pi command, guest `/workspace` cwd, guest session directory and system-prompt file. The OpenSandbox image copies the repository extension and its source imports to `/opt/swarmenv/src`; the runner passes `/opt/swarmenv/src/agent/swarmenv-extension.mjs` so Pi registers the current named Service capabilities. The worker launches direct Pi with that command with pipes, exposes `/rpc`, `/events` and `/stop`, and requires the per-Execution bearer token generated by Runtime on every route except health. The adapter forwards only an explicit public allow-list (`SWARMENV_BRIDGE_URL`, `SWARMENV_*_SERVICE_URL`, `SWARMENV_SERVICE_ENDPOINTS`, routing/version fields) and an explicit secret allow-list (Bridge/service tokens and configured provider keys); it never copies the controller's arbitrary environment or provider lifecycle credentials. Secret values are sent as `secret_env` over the authenticated worker request and are not retained in provider snapshots.
+
+`RemoteAgentChild` presents those routes as the same stdin/stdout/stderr/close shape consumed by `AgentCoreSession`. Each RPC response and event carries a worker sequence and is de-duplicated before entering the normal newline-delimited Pi parser. The event endpoint accepts a sequence cursor; a dropped stream reconnects and replays only later records. The worker caches a bounded set of completed RPC IDs, so a retry after a lost response does not write a duplicate Pi command. A worker exit closes the remote Session; `AgentCoreSession.stop()` calls `/stop`, and Runtime cleanup also stops the worker before deleting the sandbox. This proves the process/transport seam with a fake provider test; it does not prove that a deployed image contains the pinned Pi package or that host Workspace files have been synchronized into the guest.
 
 ## 3. The normal reusable-identity path
 
@@ -138,7 +144,7 @@ For every call, the Bridge obtains the current profile, resolves the capability,
 | `execution_progress` | Runtime coordinates files, Progress and handoff |
 | Semantic `task_block` | Runtime boundary; currently callable capability rejected as an alleged external blocker |
 | `task_complete` | Task Service commits completion, then Runtime releases Execution and Bridge clears binding |
-| `judge.submit_candidate` | Optional `onBeforeSubmitCandidate` hook, registered route and optional `onSubmitCandidate` callback. The benchmark supplies only the latter; its candidate resolution/checking runs after Task Service records the submission. See [04](04-services.md). |
+| `judge.submit_candidate` | Bridge reads the relative Workspace path (or resolves a referenced Material), attaches the current revision/hash attestation and invokes Judge directly. The returned CheckResult is diagnostic feedback; Task completion remains a separate explicit operation. See [04](04-services.md). |
 
 Do not generalize unbound discovery to every similarly named API: the explicit discovery list includes `list_tasks`, `get_task`, `list_executions`, `task_view` and `task_status`; registered `task_list` is not in that branch and normally requires provider binding. The supplied candidate view is therefore important when unbound.
 
@@ -158,14 +164,13 @@ The Bridge is reusable infrastructure: defining an optional callback does not me
 |---|---|
 | `onClaimAccepted` | Supplied as an empty async callback; no additional admission rule or model message |
 | `onClaim` | Stores the claim, assigns the Core, binds the existing Session with no initial prompt, starts same-Session continuation after settlement and records Workspace/claim latency evidence |
-| `onSubmitCandidate` | Resolves Candidate source, runs/applies Judge and returns feedback; retryable checker infrastructure failure can request deferred blocking after the response boundary |
 | `onSchedulerStatus` | Returns current Core/WAITING counts, available project Task summaries and current binding; it does not select or claim work |
 | `onRelease` | Records release latency/state, clears the matching Core binding while retaining the identity Session, applies legacy WAITING projection where applicable and wakes identity loops. Missing lineage is only a capacity-release observation. |
 | `onWorkspaceWrite` | Records revision/file/hash metadata and a Workspace work unit |
 | `onWorkUnit` | Records supported structure, read/consumption, creation, publication/link, review, lifecycle, candidate and wait evidence; selected operations wake identity loops. These observations do not establish scientific usefulness. |
 | `onError` | Records bounded tool-error classification. Contract errors are marked recoverable; the special `CONFLICT` accounting branch checks the legacy operation name `claim`, not `task_take`. |
 | `onTaskCreate` | Not supplied; Bridge still performs its own capability admission and Task Service still applies the Task contract |
-| `onBeforeSubmitCandidate` | Not supplied; the benchmark's source/checker work occurs in `onSubmitCandidate`, after registered submission |
+| Judge submission | No callback is required. The Bridge performs source resolution/attestation and Judge owns checking/persistence; the runner's `onWorkUnit` records the returned projection and any explicit Task result application. |
 
 The generic Bridge calls `onWorkUnit` for `task_register` and `task_take`, but the runner callback has no specific accounting branch for either operation. Its `task_created`/dynamic-Task event branch checks only `task_create`. Durable Task state and Task-event wakeups therefore matter when reconstructing register-created work; the callback counters alone are not a complete event history. [Sources: callback installation](../../src/benchmark/putnam-runner.js), [Bridge invocation](../../src/agent/services-bridge.js); see [06](06-observability-experiments.md) for evidence and counting limits.
 
@@ -186,6 +191,6 @@ The benchmark's `core.prompt` hash is a hash of a base SOP field, not the evolvi
 
 ## 7. Validation and known limits
 
-Existing checks include [prompt tests](../../test/agent-prompt.test.js), [Pi adapter](../../test/pi-adapter.test.js), [capability profile](../../test/capability-profile.test.js), [profile/Bridge](../../test/capability-profile-bridge.test.js), [Bridge](../../test/services-bridge.test.js), [Task admission](../../test/task-admission-runtime.test.js) and [runner](../../test/putnam-runner.test.js). These identify tested seams; execution results belong in the linked GitHub Issue/PR and experiment reports.
+Existing checks include [prompt tests](../../test/agent-prompt.test.js), [Pi adapter](../../test/pi-adapter.test.js), [capability profile](../../test/capability-profile.test.js), [profile/Bridge](../../test/capability-profile-bridge.test.js), [flat Task behavior](../../test/task-oriented-flat.test.js), [Judge boundary](../../test/judge-direct-submit.test.js) and [flat benchmark CLI](../../test/flat-only-cli.test.js). These identify tested seams; execution results belong in the linked GitHub Issue/PR and experiment reports.
 
 Known baseline inconsistencies remain visible: benchmark Task instructions prohibit `shell` while a Sandbox-enabled deployment advertises bounded `sandbox_exec`; normal discovery does not automatically send the full Service-document block; Runtime can repeat composed context; and frozen Pi registrations can lag a later Bridge Registry revision. Resolve these through approved Issues. This documentation preserves the actual texts rather than silently improving their wording.

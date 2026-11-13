@@ -6,10 +6,10 @@ import { cpus, freemem, totalmem } from 'node:os';
 import { join, resolve, relative } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { AgentCoreAdapter } from '../agent/pi-adapter.js';
+import { OpenSandboxAgentAdapter } from '../agent/opensandbox-agent-adapter.js';
 import { ContextService } from '../context/context-service.js';
 import { JudgeService } from '../judge/judge-service.js';
 import { LeanChecker } from '../judge/lean-adapter.js';
-import { agentCheckResult } from '../judge/check-result.js';
 import { Runtime } from '../runtime/runtime.js';
 import { WorkspaceManager } from '../runtime/workspace-manager.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
@@ -28,6 +28,7 @@ import { createMathlibSearchManifest, createMathlibSearchService } from '../serv
 import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
 import { IdentityTaskLoop } from '../runtime/identity-task-loop.js';
 import { ContainerSandboxManager } from '../runtime/sandbox-manager.js';
+import { OpenSandboxManager } from '../runtime/opensandbox-manager.js';
 import { TaskController } from '../runtime/task-controller.js';
 import { CoreParallelismTracker } from './parallelism.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -39,13 +40,8 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
   });
 });
 
-const FORBIDDEN_PLACEHOLDER = /\b(?:sorry|admit|axiom)\b/i;
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const PARALLEL_MODES = new Set(['direct', 'legacy', 'semantic', 'root-only']);
-const TASK_MODELS = new Set(['legacy', 'flat']);
-const STRUCTURE_OPERATIONS = new Set([
-  'create_branch_group', 'add_required_subtask', 'propose_structure_change', 'create_rework_task',
-]);
+const PARALLEL_MODES = new Set(['direct', 'semantic', 'root-only']);
 
 class SerialTaskCreateAdmission {
   constructor() {
@@ -69,36 +65,21 @@ function parallelMode(options = {}) {
   return mode;
 }
 
-/**
- * Select the Task Service model independently from the historical benchmark
- * treatment.  Existing fixtures keep the legacy Root tree by default; the
- * Issue #100 profile opts into the Mission-scoped flat pool explicitly.
- */
-function taskModel(options = {}) {
-  const model = options.taskModel ?? (options.taskOriented === true ? 'flat' : 'legacy');
-  if (!TASK_MODELS.has(model)) throw new TypeError(`taskModel must be one of ${[...TASK_MODELS].join(', ')}`);
-  return model;
-}
-
 function projectTasks(state, {
   states = ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
   limit = 100,
   availableOnly = false,
 } = {}) {
-  if (state.taskModel === 'flat') {
-    return state.taskService.listMissionTasks({
-      mission_id: state.missionId,
-      states,
-      limit,
-      available_only: availableOnly,
-    });
-  }
-  return state.taskService.listTasks({ rootId: state.rootTaskId, states, limit, availableOnly });
+  return state.taskService.listMissionTasks({
+    mission_id: state.missionId,
+    states,
+    limit,
+    available_only: availableOnly,
+  });
 }
 
 function projectClaimableTasks(state, { limit = 100 } = {}) {
-  if (state.taskModel === 'flat') return state.taskService.listClaimableTasks({ missionId: state.missionId, limit });
-  return state.taskService.listClaimableTasks({ rootId: state.rootTaskId, limit });
+  return state.taskService.listClaimableTasks({ missionId: state.missionId, limit });
 }
 
 // Flat model: one Execution may run for the whole run; the reminder lead is
@@ -121,23 +102,6 @@ export function isPreparationFailure(execution) {
     && ['task_take_bind_failed', 'startup_prepare_failed', 'bind_prepare_failed', 'startup_failed'].includes(execution.terminal_reason);
 }
 
-function modePrompt(mode, prompt, selectedTaskModel = 'legacy') {
-  if (selectedTaskModel === 'flat') return prompt;
-  if (mode === 'semantic') {
-    return [
-      'This run uses the semantic-structure treatment. Create ordinary alternative or required work only when the current research reveals a genuinely separable responsibility; do not use a fixed fanout or create placeholder Tasks. Give each Task a concrete goal, expected output, acceptance condition, and real Workspace or Material result. Read task structure and readiness after each mutation. Continue useful root and branch work after the structure is created; the shared queue must keep resulting Tasks claimable by other Cores.',
-      'The semantic run also requires an observable delivery loop: after child or branch Materials exist, the Root must read them through swarmenv_context_read, call swarmenv_context_consume with the bounded Material IDs and action integration, write a bounded integration note in its own Workspace, and publish one root-owned Material with scope root_integration whose provenance names exactly those consumed Material IDs. A proof failure does not excuse skipping this integration step; preserve the integration evidence and then block on the typed proof/check dependency if needed.',
-      prompt,
-    ].join('\n');
-  }
-  if (mode === 'root-only') {
-    return [
-      'This run is the Root-only control. Work only on the currently bound root Task and do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks. Do not call the semantic structure mutation tools. Keep all proof work and checking on the root responsibility.',
-      prompt,
-    ].join('\n');
-  }
-  return prompt;
-}
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -176,7 +140,7 @@ function lifecycleEvents(taskService) {
     if (prerequisiteTaskId && !dependencyIds.includes(prerequisiteTaskId)) dependencyIds.push(prerequisiteTaskId);
     return {
       operation_id: row.operation_id,
-      // Keep the report's lifecycle vocabulary stable across the legacy
+      // Keep the report's lifecycle vocabulary stable across the retired
       // execution_block path and the modern semantic Task block alias.
       operation: row.operation === 'block_task_semantic' ? 'block_task' : row.operation,
       created_at: row.created_at,
@@ -188,11 +152,6 @@ function lifecycleEvents(taskService) {
     };
   });
 }
-
-const ADMISSION_OPERATIONS = new Set([
-  'propose_task', 'create_child_task', 'create_branch_group', 'add_required_subtask',
-  'create_rework_task', 'propose_structure_change',
-]);
 
 function taskLifecycleEvents(taskService) {
   const rows = taskService.db.prepare('SELECT operation_id, operation, result_json, created_at FROM operations ORDER BY created_at, operation_id').all();
@@ -225,7 +184,6 @@ function safeObservationEvent(event) {
 
 function executionNarratives(state, taskTree, materials) {
   return taskTree.flatMap((task) => {
-    const structure = state.taskService.getTaskStructure(task.task_id);
     const materialLinks = taskMaterialLinks(state, task);
     return state.taskService.listExecutions(task.task_id).map((execution) => {
       const events = state.observationStore.listEvents({
@@ -243,13 +201,11 @@ function executionNarratives(state, taskTree, materials) {
           content_hash: material.content_hash,
           version: material.version,
         }));
-      const dependencies = structure.dependencies.map((dependency) => ({
-        dependency_id: dependency.dependency_id,
-        dependency_kind: dependency.dependency_kind,
-        prerequisite_task_id: dependency.prerequisite_task_id,
-        material_id: dependency.material_id,
-        check_result_id: dependency.check_result_id,
-        satisfied: dependency.satisfied,
+      const dependencies = (task.relations?.depends_on ?? []).map((dependency) => ({
+        dependency_id: dependency.relation_id,
+        dependency_kind: 'TASK',
+        prerequisite_task_id: dependency.related_task_id,
+        satisfied: !(task.blockers ?? []).some((blocker) => blocker.related_task_id === dependency.related_task_id),
       }));
       return {
         execution_id: execution.execution_id,
@@ -306,8 +262,7 @@ function observedEligibleWorkCount(state, readyTasks) {
   const tasks = projectTasks(state, { states: ['OPEN', 'RUNNING'], limit: 100, availableOnly: false });
   const readyIds = new Set(readyTasks.map((task) => task.task_id));
   return tasks.filter((task) => {
-    if (state.taskModel !== 'flat' && task.parent_id === null) return false;
-    if (state.taskModel === 'flat' && task.task_id === state.rootTaskId) return false;
+    if (task.task_id === state.rootTaskId) return false;
     if (readyIds.has(task.task_id)) return true;
     if (task.state !== 'RUNNING') return false;
     const execution = task.latest_execution ?? state.taskService.listExecutions(task.task_id, { includeTerminal: false })[0];
@@ -358,43 +313,6 @@ function safeLifecycleReason(value) {
   return 'other';
 }
 
-async function resolveCandidateSource(runtime, material, execution) {
-  if (typeof material.content === 'string') {
-    return { content: material.content, contentHash: null };
-  }
-  const reference = material.content;
-  if (!reference || typeof reference !== 'object' || Array.isArray(reference) || typeof reference.path !== 'string') {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate artifact must contain a Workspace file path or direct source text', {
-      remediation: 'Publish the candidate as one artifact Material whose content is the complete source text, or a {path, workspace_revision, content_hash} reference to a Workspace file.',
-    });
-  }
-  if (reference.workspace_revision !== undefined && reference.workspace_revision !== execution.workspace_revision) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `candidate Workspace revision ${reference.workspace_revision} does not match Execution revision ${execution.workspace_revision}`, {
-      expected_revision: execution.workspace_revision,
-      supplied_revision: reference.workspace_revision,
-      remediation: 'Read the current Workspace revision and re-publish the candidate reference.',
-    });
-  }
-  const file = await runtime.readWorkspaceFile(execution.execution_id, { path: reference.path });
-  if (reference.workspace_revision !== undefined && reference.workspace_revision !== file.workspace_revision) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `candidate Workspace revision ${reference.workspace_revision} does not match readable revision ${file.workspace_revision}`, {
-      expected_revision: file.workspace_revision,
-      supplied_revision: reference.workspace_revision,
-      path: reference.path,
-      remediation: 'Re-read the Workspace file after saving and use its current revision/hash.',
-    });
-  }
-  if (reference.content_hash !== undefined && reference.content_hash !== file.content_hash) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `candidate Workspace file hash does not match ${reference.path}`, {
-      path: reference.path,
-      expected_hash: file.content_hash,
-      supplied_hash: reference.content_hash,
-      remediation: 'The Workspace file changed after the reference was created. Re-read the file and publish a fresh artifact Material with its current hash.',
-    });
-  }
-  return { content: file.content, contentHash: file.content_hash };
-}
-
 function required(value, name) {
   if (typeof value !== 'string' || value.length === 0) throw new TypeError(`${name} is required`);
   return value;
@@ -402,17 +320,6 @@ function required(value, name) {
 
 function sdk(router, context) {
   return new ServicesSDK(router, context);
-}
-
-function executionContext(router, execution, actorRef) {
-  return sdk(router, {
-    actorRef,
-    taskId: execution.task_id,
-    executionId: execution.execution_id,
-    specVersion: execution.spec_version,
-    stateVersion: execution.state_version,
-    fencingVersion: execution.fencing_version,
-  });
 }
 
 function taskContext(router, task, actorRef) {
@@ -634,7 +541,7 @@ async function runTurn(core, prompt, timeoutMs) {
       core.taskId && core.executionId && core.runtime.hasActiveExecution(core.executionId),
     );
     if (!handedOff) {
-      // A legacy claim may enter onClaim before Runtime rejects the permanent
+      // A retired claim may enter onClaim before Runtime rejects the permanent
       // Core binding (for example, two selectors race for a resumable wait).
       // Clear that provisional local ownership or the selection transport
       // would keep this Core permanently marked turn-in-flight.
@@ -689,6 +596,11 @@ async function startAgentSession(core) {
   core.sessionHistory.push(session);
   core.versionManifest = session.manifest ?? null;
   await session.waitForReady({ timeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000 });
+  // Configure retry/compaction on every reusable identity before the first
+  // discovery turn. Adapters apply these flags only for an inline startup
+  // prompt; the benchmark sends discovery as the first later turn.
+  await session.setAutoCompaction?.(true);
+  await session.setAutoRetry?.(true);
   // The identity loop supplies a bounded Task view to this reusable identity.  The
   // first prompt is sent by the identity's task_take loop, not by a separate
   // old selection transport.
@@ -756,7 +668,7 @@ async function ensureAgentSession(core) {
     core.releasedSession = null;
   }
   if (core.session?.closed) core.session = null;
-  // A failed legacy claim can clear the bridge binding after the transport
+  // A failed retired claim can clear the bridge binding after the transport
   // Session has already been replaced. Repair the stale local occupancy when
   // no Session, Task, Execution, recovery, or handoff promise remains.
   if (core.turnInFlight && !core.session && !core.taskId && !core.executionId && !core.boundTurnPromise && !core.recoveryInFlight) {
@@ -908,6 +820,7 @@ async function releaseTerminalExecution(core) {
 
 function sanitizedCheck(result, material) {
   const evidence = result.evidence ?? {};
+  const processEvidence = result.process_evidence ?? {};
   const checkerProcessStatus = result.checker_process_status ?? evidence.checker_process_status ?? 'unknown';
   const resultClass = result.result_class ?? evidence.result_class ?? 'unassessed';
   const mathematicalOutcome = evidence.mathematical_outcome ?? (resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed');
@@ -921,7 +834,7 @@ function sanitizedCheck(result, material) {
     checker_version: result.checker_version ?? null,
     environment_ref: result.environment_ref ?? null,
     checker_process_status: checkerProcessStatus,
-    checker_started: evidence.checker_started ?? (checkerProcessStatus === 'started' || checkerProcessStatus === 'completed'),
+    checker_started: evidence.checker_started ?? result.checker_started ?? (checkerProcessStatus === 'started' || checkerProcessStatus === 'completed'),
     result_class: resultClass,
     retryable: result.retryable ?? Boolean(evidence.retryable),
     diagnostic_code: result.diagnostic_code ?? evidence.diagnostic_code ?? null,
@@ -937,10 +850,10 @@ function sanitizedCheck(result, material) {
     infrastructure_attempt_count: evidence.infrastructure_attempt_count ?? null,
     retry_exhausted: Boolean(evidence.retry_exhausted),
     process_evidence: {
-      exit_code: evidence.exit_code ?? null,
-      signal: evidence.signal ?? null,
-      timed_out: Boolean(evidence.timed_out),
-      error_code: evidence.error_code ?? null,
+      exit_code: evidence.exit_code ?? processEvidence.exit_code ?? null,
+      signal: evidence.signal ?? processEvidence.signal ?? null,
+      timed_out: Boolean(evidence.timed_out ?? processEvidence.timed_out),
+      error_code: evidence.error_code ?? processEvidence.error_code ?? null,
     },
     check_result_id: result.check_result_id,
     diagnostic_class: evidence.forbidden_placeholder === true
@@ -990,260 +903,6 @@ function resourceSnapshot() {
     logical_cpus: cpus().length,
     total_memory_bytes: totalmem(),
     available_memory_bytes: freemem(),
-  };
-}
-
-async function publishFeedback(state, core, material, result, { taskId = core.taskId, executionId = core.executionId } = {}) {
-  const execution = state.taskService.getExecution(executionId);
-  if (!execution || !['CREATED', 'RUNNING', 'WAITING'].includes(execution.state)) return;
-  const published = state.contextService.dispatch('publish_material', {
-    kind: 'experience',
-    scope: 'judge_feedback',
-    evidence_state: 'checked',
-    content: {
-      project: state.problem.id,
-      target_material_hash: material.content_hash,
-      verdict: result.verdict,
-      result_class: result.result_class ?? result.evidence?.result_class ?? 'unassessed',
-      checker_process_status: result.checker_process_status ?? result.evidence?.checker_process_status ?? 'unknown',
-      mathematical_outcome: result.evidence?.mathematical_outcome ?? 'unassessed',
-      retryable: result.retryable ?? Boolean(result.evidence?.retryable),
-      diagnostic_code: result.diagnostic_code ?? result.evidence?.diagnostic_code ?? null,
-      preflight_key: result.evidence?.preflight_key ?? null,
-      preflight_status: result.evidence?.preflight_status ?? null,
-      preflight_verified: result.evidence?.preflight_verified ?? null,
-      input_binding_verified: result.evidence?.input_binding_verified ?? null,
-      toolchain_version_verified: result.evidence?.toolchain_version_verified ?? null,
-      checker_ref_verified: result.evidence?.checker_ref_verified ?? null,
-      checker_version_verified: result.evidence?.checker_version_verified ?? null,
-      checker_identity_verified: result.evidence?.checker_identity_verified ?? null,
-      health_fingerprint: result.evidence?.health_fingerprint ?? null,
-      infrastructure_attempt_count: result.evidence?.infrastructure_attempt_count ?? null,
-      retry_exhausted: Boolean(result.evidence?.retry_exhausted),
-      process_evidence: {
-        exit_code: result.evidence?.exit_code ?? null,
-        signal: result.evidence?.signal ?? null,
-        timed_out: Boolean(result.evidence?.timed_out),
-        error_code: result.evidence?.error_code ?? null,
-      },
-      check_result_id: result.check_result_id,
-      diagnostic_class: result.evidence?.forbidden_placeholder === true
-        ? 'forbidden_placeholder'
-        : safeDiagnostic(result.evidence?.diagnostic),
-    },
-    provenance: { actor_ref: 'judge:lean', project: state.problem.id, target_task_id: taskId },
-  }, makeEnvelope({
-    operationId: `benchmark:feedback:${state.runId}:${core.index}:${result.check_result_id}`,
-    actorRef: 'judge:lean',
-    taskId,
-    executionId,
-    specVersion: execution.spec_version,
-    stateVersion: execution.state_version,
-    fencingVersion: execution.fencing_version,
-  }));
-  const feedback = published?.material ?? published ?? {};
-  core.observe({
-    source: 'context-service', kind: 'material_published', visibility: 'operator',
-    taskId, executionId, coreId: `core-${core.index}`,
-    payload: {
-      material_id: feedback.material_id ?? null,
-      kind: feedback.kind ?? 'experience',
-      scope: feedback.scope ?? 'judge_feedback',
-      source_task: feedback.source_task ?? taskId,
-      source_execution: feedback.source_execution ?? executionId,
-      publish_reason: 'judge_feedback',
-    },
-  });
-  return feedback;
-}
-
-async function judgeCandidate(state, core, candidateMaterialId = null) {
-  const pending = [...core.claimHistory].reverse().map((claim) => ({
-    taskId: claim.task_id,
-    executionId: claim.execution_id,
-    execution: state.taskService.getExecution(claim.execution_id),
-  })).find(({ execution }) => execution && ['CREATED', 'RUNNING', 'WAITING'].includes(execution.state) && execution.candidate_material_id && (!candidateMaterialId || execution.candidate_material_id === candidateMaterialId) && !core.checked.has(execution.candidate_material_id));
-  if (!pending) return;
-  const task = state.taskService.getTask(pending.taskId);
-  const execution = pending.execution;
-  if (!task) return;
-  const candidateId = execution.candidate_material_id;
-  const material = state.contextService.getMaterial(candidateId);
-  if (!material) return;
-  const { content, contentHash } = await resolveCandidateSource(core.runtime, material, execution);
-  if (FORBIDDEN_PLACEHOLDER.test(content)) {
-    core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: material.content_hash });
-  }
-  const workspace = {
-    execution_id: pending.executionId,
-    task_id: task.task_id,
-    input_snapshot_hash: execution.input_snapshot_hash,
-    workspace_ref: execution.workspace_ref,
-    workspace_revision: execution.workspace_revision,
-    manifest: {
-      input_snapshot_hash: execution.input_snapshot_hash,
-      task_spec: task,
-      workspace: task.workspace,
-    },
-  };
-  const checkStartedAt = Date.now();
-  const checkAttempt = (core.checkAttempts.get(candidateId) ?? 0) + 1;
-  core.checkAttempts.set(candidateId, checkAttempt);
-  const result = await state.judgeService.judgeCandidate({
-    request_key: `benchmark:check:${state.runId}:${core.index}:${candidateId}:${checkAttempt}`,
-    candidate_material_id: candidateId,
-    target_task_id: task.task_id,
-    target_spec_version: task.spec_version,
-    input_snapshot_hash: workspace.input_snapshot_hash,
-    checker_ref: state.fixtureManifest.checker_ref,
-    checker_version: state.fixtureManifest.checker_version,
-    environment_ref: state.fixtureManifest.environment_ref,
-    execution_id: pending.executionId,
-    state_version: execution.state_version,
-    candidate: { material_id: candidateId, content, content_hash: contentHash ?? undefined },
-    target_task: task,
-    workspace,
-    fixture_manifest: state.fixtureManifest,
-  }, {
-    operationId: `benchmark:judge:${state.runId}:${core.index}:${candidateId}:${checkAttempt}`,
-    actorRef: 'judge:lean',
-  });
-  state.cores[core.index - 1].parallelism.recordJudgeTime(Date.now() - checkStartedAt);
-  const fresh = state.taskService.getExecution(pending.executionId);
-  let applied = executionContext(state.router, fresh, 'judge:controller').applyCheckResult({
-    check_result_id: result.check_result_id,
-    ...(state.normalFlow === true ? { defer_execution_block: true } : {}),
-  }, {
-    operationId: `benchmark:apply:${state.runId}:${core.index}:${candidateId}:${checkAttempt}`,
-  });
-  const persistedResult = state.taskService.getCheckResult(result.check_result_id);
-  const retryableInfrastructure = persistedResult.result_class === 'infrastructure_failure' && persistedResult.retryable && !persistedResult.evidence?.retry_exhausted;
-  const normalFlow = state.normalFlow === true;
-  // A transient checker failure must leave the candidate eligible for a later
-  // retry. Source-level results and exhausted infrastructure failures are
-  // terminal for this candidate.
-  if (!retryableInfrastructure) core.checked.add(candidateId);
-  core.checks.push({ ...sanitizedCheck(persistedResult, material), check_elapsed_ms: Date.now() - checkStartedAt });
-  core.parallelism.recordWorkUnit({
-    task_id: pending.taskId,
-    execution_id: pending.executionId,
-    core: core.index,
-    progress_kind: 'candidate_check',
-  });
-  const feedback = await publishFeedback(state, core, material, result, { taskId: pending.taskId, executionId: pending.executionId });
-  // Feedback is returned synchronously and may be retained as diagnostic
-  // Material, but a source failure never creates a controller-owned repair
-  // Task or a Response-consumption gate. The same Task/Execution can revise
-  // the candidate and call submit_candidate again.
-  let deferredWait = null;
-  let deferredBlock = null;
-  if (retryableInfrastructure) {
-    const preflightKey = result.evidence?.preflight_key;
-    const preflight = preflightKey ? state.judgeService.getCheckerPreflight(preflightKey) : null;
-    if (!preflight?.health_fingerprint) {
-      throw new Error('retryable checker failure has no durable preflight health fingerprint');
-    }
-    // The checker result is synchronous from the Agent's perspective. Stage
-    // the typed dependency block for ServicesBridge to flush after its HTTP
-    // response has been written, so
-    // Runtime cannot stop the Session before the Agent sees the result.
-    const lifecycle = {
-      waitCondition: {
-        type: 'checker_health',
-        preflight_key: preflightKey,
-        health_fingerprint: preflight.health_fingerprint,
-        diagnostic_code: persistedResult.diagnostic_code,
-        candidate_material_id: candidateId,
-      },
-      checkpoint: {
-        phase: 'checker_unavailable',
-        candidate_material_id: candidateId,
-        check_result_id: persistedResult.check_result_id,
-        preflight_key: preflightKey,
-        diagnostic_code: persistedResult.diagnostic_code,
-      },
-    };
-    if (normalFlow) {
-      deferredWait = null;
-      deferredBlock = {
-        reason: 'checker health unavailable',
-        dependency: {
-          dependency_kind: 'CHECK_RESULT',
-          check_result_id: persistedResult.check_result_id,
-          requirement: {
-            checker_health: {
-              preflight_key: preflightKey,
-              health_fingerprint: preflight.health_fingerprint,
-            },
-          },
-        },
-        checkpoint: lifecycle.checkpoint,
-        terminal_state: 'FAILED',
-      };
-    } else {
-      deferredWait = lifecycle;
-    }
-  } else if (normalFlow && persistedResult.result_class === 'infrastructure_failure') {
-    const preflightKey = persistedResult.evidence?.preflight_key;
-    const preflight = preflightKey ? state.judgeService.getCheckerPreflight(preflightKey) : null;
-    if (preflightKey && preflight?.health_fingerprint) {
-      deferredBlock = {
-        reason: 'checker health unavailable',
-        dependency: {
-          dependency_kind: 'CHECK_RESULT',
-          check_result_id: persistedResult.check_result_id,
-          requirement: {
-            checker_health: {
-              preflight_key: preflightKey,
-              health_fingerprint: preflight.health_fingerprint,
-            },
-          },
-        },
-        checkpoint: {
-          phase: 'checker_unavailable',
-          candidate_material_id: candidateId,
-          check_result_id: persistedResult.check_result_id,
-          preflight_key: preflightKey,
-          diagnostic_code: persistedResult.diagnostic_code,
-        },
-        terminal_state: 'FAILED',
-      };
-    } else {
-      // The Judge normally records a health fingerprint for every checker
-      // infrastructure result. Keep a typed CheckResult dependency even when
-      // an unusual adapter omits it; the Controller will leave the Task
-      // blocked until an operator supplies a new accepted CheckResult.
-      deferredBlock = {
-        reason: 'checker health unavailable',
-        dependency: {
-          dependency_kind: 'CHECK_RESULT',
-          check_result_id: persistedResult.check_result_id,
-        },
-        checkpoint: {
-          phase: 'checker_unavailable',
-          candidate_material_id: candidateId,
-          check_result_id: persistedResult.check_result_id,
-          diagnostic_code: persistedResult.diagnostic_code,
-        },
-        terminal_state: 'FAILED',
-      };
-    }
-  }
-  if (result.verdict === 'PASS' && completedTaskState(applied.task.state) &&
-      (pending.taskId === state.rootTaskId || task.completion_contract?.final_candidate === true)) {
-    state.solvedAt = Date.now();
-    state.solvedBy = core.index;
-  }
-  // The report keeps its redacted operational projection above, while the
-  // synchronous Agent tool receives bounded diagnostic feedback that can guide
-  // the next candidate.
-  return {
-    // Apply the durable result before returning it so the synchronous Agent
-    // view agrees with a subsequent judge_get_check_result read.
-    check_result: agentCheckResult(persistedResult),
-    applied,
-    ...(deferredWait ? { deferred_wait: deferredWait } : {}),
-    ...(deferredBlock ? { deferred_block: deferredBlock } : {}),
   };
 }
 
@@ -1345,94 +1004,36 @@ function forceFenceCoreExecutions(state, core, reason) {
 }
 
 function structureEvidence(taskService, taskTree, cores, mode) {
-  const structures = taskTree.map((task) => taskService.getTaskStructure(task.task_id));
-  const structureByTaskId = new Map(structures.map((structure) => [structure.task.task_id, structure]));
-  const safePayload = (payload) => {
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-    const keys = ['child_task_id', 'rework_task_id', 'prior_task_id', 'relationship', 'group_id', 'task_id', 'task_ids',
-      'dependency_id', 'source_material_count', 'source_material_refs'];
-    const safe = Object.fromEntries(keys.filter((key) => Object.hasOwn(payload, key)).map((key) => [key, payload[key]]));
-    if (payload.dependency && typeof payload.dependency === 'object' && !Array.isArray(payload.dependency)) {
-      const dependencyKeys = ['dependency_id', 'dependency_kind', 'prerequisite_task_id', 'material_id', 'check_result_id'];
-      const dependency = Object.fromEntries(dependencyKeys
-        .filter((key) => Object.hasOwn(payload.dependency, key))
-        .map((key) => [key, payload.dependency[key]]));
-      if (Object.keys(dependency).length > 0) safe.dependency = dependency;
-    }
-    return safe;
-  };
-  const events = structures.flatMap((structure) => structure.events.map((event) => ({
-    task_id: structure.task.task_id,
-    structural_version: event.structural_version,
-    event_type: event.event_type,
-    actor_ref: event.actor_ref,
-    execution_id: event.execution_id,
-    created_at: event.created_at,
-    payload: safePayload(event.payload),
-  }))).sort((left, right) => left.created_at.localeCompare(right.created_at) || left.task_id.localeCompare(right.task_id) || left.structural_version - right.structural_version);
-  const groups = structures.flatMap((structure) => [...structure.branch_groups, ...structure.required_subtask_groups].map((group) => ({
-    group_id: group.group_id,
-    owner_task_id: group.owner_task_id,
-    group_kind: group.group_kind,
-    structural_version: group.structural_version,
-    member_count: group.members.length,
-    member_task_ids: group.members.map((member) => member.task_id),
-    members: group.members.map((member) => ({
-      task_id: member.task_id,
-      state: member.state,
-      satisfied: member.satisfied,
-      readiness: member.readiness?.status ?? null,
-    })),
-    satisfaction: group.satisfaction,
-    satisfied: group.satisfied,
-    created_by_task_id: group.created_by_task_id,
-    created_by_execution_id: group.created_by_execution_id,
-    created_by_actor_ref: group.created_by_actor_ref,
-    created_at: group.created_at,
+  const relations = taskTree.flatMap((task) => (task.relations?.depends_on ?? []).map((relation) => ({
+    task_id: task.task_id,
+    relation_kind: relation.relation_kind,
+    related_task_id: relation.related_task_id,
+    created_at: relation.created_at,
   })));
-  const provenance = [...structures.reduce((counts, structure) => {
-    const kind = structure.provenance?.creation_kind;
-    if (kind) counts.set(kind, (counts.get(kind) ?? 0) + 1);
-    return counts;
-  }, new Map())].sort(([left], [right]) => left.localeCompare(right)).map(([creation_kind, count]) => ({ creation_kind, count }));
-  const agentOperations = cores.flatMap((core) => core.structureOperations.map((operation) => ({ core: core.index, ...operation })));
-  const operationCounts = Object.fromEntries([...new Set(agentOperations.map((operation) => operation.operation))]
-    .map((operation) => [operation, agentOperations.filter((candidate) => candidate.operation === operation).length]));
-  const root = taskTree.find((task) => task.parent_id === null) ?? null;
-  const completion = {
-    task_contracts: taskTree.map((task) => ({
-      task_id: task.task_id,
-      state: task.state,
-      satisfied: completedTaskState(task.state),
-      structure_satisfied: structureByTaskId.get(task.task_id)?.satisfaction.satisfied ?? false,
-    })),
-    branch_and_subtask_groups: groups.map((group) => ({
-      group_id: group.group_id,
-      owner_task_id: group.owner_task_id,
-      group_kind: group.group_kind,
-      satisfaction: group.satisfaction,
-      satisfied: group.satisfied,
-      member_task_ids: group.member_task_ids,
-    })),
-    root: root ? {
-      task_id: root.task_id,
-      state: root.state,
-      task_contract_satisfied: completedTaskState(root.state),
-      structure_satisfied: structureByTaskId.get(root.task_id)?.satisfaction.satisfied ?? false,
-    } : null,
-  };
+  const operationCounts = {};
+  const operations = [];
   return {
     mode,
-    agent_operation_count: agentOperations.length,
+    agent_operation_count: 0,
     agent_operation_counts: operationCounts,
-    agent_operations: agentOperations,
-    event_count: events.length,
-    events,
-    branch_group_count: groups.filter((group) => group.group_kind === 'BRANCH').length,
-    required_subtask_group_count: groups.filter((group) => group.group_kind === 'REQUIRED_SUBTASK').length,
-    groups,
-    completion,
-    creation_provenance_counts: provenance,
+    agent_operations: operations,
+    event_count: 0,
+    events: [],
+    branch_group_count: 0,
+    required_subtask_group_count: 0,
+    groups: [],
+    relations,
+    completion: {
+      task_contracts: taskTree.map((task) => ({
+        task_id: task.task_id,
+        state: task.state,
+        satisfied: completedTaskState(task.state),
+        structure_satisfied: (task.blockers ?? []).length === 0,
+      })),
+      branch_and_subtask_groups: [],
+      root: null,
+    },
+    creation_provenance_counts: [{ creation_kind: 'MISSION_TASK', count: taskTree.length }],
   };
 }
 
@@ -1479,8 +1080,12 @@ function recordReadinessSnapshot(state, at = Date.now()) {
   state.readinessSamples.push({
     at_ms: at,
     tasks: tasks.map((task) => {
-      const explanation = state.taskService.explainTaskReadiness(task.task_id);
-      return { task_id: task.task_id, readiness: explanation.readiness, missing: explanation.missing };
+      const blockers = task.blockers ?? [];
+      const readiness = blockers.length > 0 ? 'BLOCKED'
+        : task.state === 'RUNNING' ? 'RUNNING'
+          : task.state === 'DONE' || task.state === 'CLOSED' || task.state === 'CANCELED' ? task.state
+            : 'READY';
+      return { task_id: task.task_id, readiness, missing: blockers.map((blocker) => blocker.related_task_id ?? blocker.dependency_id ?? blocker.dependency_kind) };
     }),
   });
 }
@@ -1574,21 +1179,15 @@ function projectReport(state, startedAt, deadline) {
   });
   const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     candidateBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
-  const childTaskCount = state.taskModel === 'flat'
-    ? taskTree.filter((task) => task.task_id !== state.rootTaskId).length
-    : taskTree.filter((task) => task.parent_id !== null).length;
+  const childTaskCount = taskTree.filter((task) => task.task_id !== state.rootTaskId).length;
   const decompositionAvailable = childTaskCount > 0;
   const lifecycle = lifecycleEvents(state.taskService);
   const taskLifecycle = taskLifecycleEvents(state.taskService);
   const notifications = state.taskService.listNotifications?.({ missionId: state.missionId }) ?? [];
-  const admissionEvents = taskLifecycle.filter((event) => ADMISSION_OPERATIONS.has(event.operation));
   const narratives = executionNarratives(state, taskTree, materials);
   const invalidWaitAttemptCount = cores.reduce((count, core) => count + (core.toolErrors ?? []).filter((error) =>
     error.operation === 'request_wait' && ['INVALID_CONTRACT', 'NOT_ALLOWED', 'FENCED'].includes(error.code)).length, 0);
-  const taskById = new Map(taskTree.map((task) => [task.task_id, task]));
-  const childClaimCount = claimHistory.filter((claim) => state.taskModel === 'flat'
-    ? claim.task_id !== state.rootTaskId
-    : taskById.get(claim.task_id)?.parent_id !== null).length;
+  const childClaimCount = claimHistory.filter((claim) => claim.task_id !== state.rootTaskId).length;
   const rootClaimCount = claimHistory.filter((claim) => claim.task_id === state.rootTaskId).length;
   const executionClaimCounts = new Map();
   for (const claim of claimHistory) executionClaimCounts.set(claim.execution_id, (executionClaimCounts.get(claim.execution_id) ?? 0) + 1);
@@ -1629,7 +1228,7 @@ function projectReport(state, startedAt, deadline) {
       repository_worktree_dirty: state.repositoryWorktreeDirty,
       parallel_mode: state.parallelMode,
       normal_flow: state.normalFlow,
-      task_model: state.taskModel,
+      task_model: 'flat',
       provider: state.provider ?? null,
       model: state.model ?? null,
       timebox_ms: state.timeboxMs ?? null,
@@ -1807,7 +1406,7 @@ function projectReport(state, startedAt, deadline) {
       route_gates: [],
       lifecycle_events: lifecycle,
       task_lifecycle_events: taskLifecycle,
-      admission_events: admissionEvents,
+      admission_events: [],
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
       claimed_core_count: new Set(state.cores.filter((core) => core.claimHistory.length > 0).map((core) => core.index)).size,
       claim_count: claimHistory.length,
@@ -1816,8 +1415,8 @@ function projectReport(state, startedAt, deadline) {
       resumed_execution_count: resumedExecutionCount,
       wait_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_wait'").get().count,
       wake_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'wake_execution'").get().count,
-      accept_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'accept_task'").get().count,
-      rework_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'request_rework'").get().count,
+      accept_count: 0,
+      rework_count: 0,
       resume_count: state.taskService.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation = 'resume_execution'").get().count,
       checker_preflights: checkerPreflights,
       checker_infrastructure_failure_count: cores.reduce((count, core) => count + core.checks.filter((check) => check.result_class === 'infrastructure_failure').length, 0),
@@ -1850,9 +1449,13 @@ function projectReport(state, startedAt, deadline) {
 }
 
 async function createProjectState(problem, config, options) {
+  // The Mission-scoped Task lifecycle is the only supported model.
+  // Reject removed programmatic mode toggles rather than silently ignoring them.
+  if (Object.hasOwn(options, 'taskModel') || Object.hasOwn(options, 'taskOriented')) {
+    throw new TypeError('taskModel/taskOriented have been removed; Mission Task is the only runtime model');
+  }
   const selectedParallelMode = parallelMode(options);
-  const selectedTaskModel = taskModel(options);
-  const normalFlow = options.normalFlow ?? selectedParallelMode === 'semantic';
+  const normalFlow = true; // The Mission Task contract always uses typed normal-flow lifecycle.
   const runId = options.runId ?? randomUUID();
   const startedAt = options.startedAt ?? Date.now();
   const experimentRoot = resolve(options.experimentDir ?? options.reportDir);
@@ -1860,8 +1463,37 @@ async function createProjectState(problem, config, options) {
   const projectDir = join(experimentRoot, 'state', 'projects', problem.id);
   const reportProjectDir = join(reportRoot, problem.id);
   const workspaceRoot = join(experimentRoot, 'workspaces', 'projects', problem.id);
-  const sandboxManager = options.sandbox?.enabled === true
-    ? new ContainerSandboxManager({
+  let sandboxObservationStore = null;
+  const sandboxConfig = options.sandbox ?? {};
+  const sandboxProvider = String(sandboxConfig.provider ?? process.env.SWARMENV_SANDBOX_PROVIDER ?? 'docker').toLowerCase();
+  const usesOpenSandbox = sandboxProvider === 'opensandbox' || sandboxProvider === 'open-sandbox';
+  if (options.requireThirdPartySandbox === true && (sandboxConfig.enabled !== true || !usesOpenSandbox)) {
+    throw new TypeError('Issue 119 benchmark runs require sandbox.enabled=true with sandbox.provider=opensandbox');
+  }
+  const sandboxManager = sandboxConfig.enabled === true
+    ? usesOpenSandbox
+      ? new OpenSandboxManager({
+        lifecycleBaseUrl: sandboxConfig.lifecycleBaseUrl ?? process.env.SWARMENV_OPENSANDBOX_URL,
+        endpointHost: sandboxConfig.endpointHost ?? process.env.SWARMENV_OPENSANDBOX_ENDPOINT_HOST ?? null,
+        apiKey: sandboxConfig.apiKey ?? process.env.OPEN_SANDBOX_API_KEY ?? null,
+        execdToken: sandboxConfig.execdToken ?? process.env.SWARMENV_EXECD_ACCESS_TOKEN ?? null,
+        image: sandboxConfig.image,
+        entrypoint: sandboxConfig.entrypoint,
+        resourceLimits: sandboxConfig.resourceLimits,
+        environment: sandboxConfig.environment,
+        volumes: sandboxConfig.volumes,
+        execdPort: sandboxConfig.execdPort,
+        commandTimeoutMs: sandboxConfig.commandTimeoutMs,
+        maxOutputBytes: sandboxConfig.maxOutputBytes,
+        // Execd v1.1's session endpoint is not a durable stdin transport for
+        // direct Pi workers. Use the command endpoint by default; callers may
+        // opt into sessions only after verifying provider support.
+        foregroundSession: sandboxConfig.foregroundSession ?? false,
+        logger: (event) => {
+          if (sandboxObservationStore?.getExperiment?.(runId)) sandboxObservationStore.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_event', payload: event });
+        },
+      })
+      : new ContainerSandboxManager({
       image: options.sandbox.image,
       imageDigest: options.sandbox.imageDigest ?? null,
       workspaceRoot,
@@ -1873,7 +1505,9 @@ async function createProjectState(problem, config, options) {
       pidsLimit: options.sandbox.pidsLimit ?? 256,
       commandTimeoutMs: options.sandbox.commandTimeoutMs,
       maxOutputBytes: options.sandbox.maxOutputBytes,
-      logger: (event) => observationStore.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_event', payload: event }),
+        logger: (event) => {
+          if (sandboxObservationStore?.getExperiment?.(runId)) sandboxObservationStore.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_event', payload: event });
+        },
     })
     : null;
   if (sandboxManager) await sandboxManager.preflight({ timeoutMs: options.sandbox.preflightTimeoutMs ?? 20_000 });
@@ -1887,6 +1521,7 @@ async function createProjectState(problem, config, options) {
   const databasePath = join(projectDir, 'project.sqlite');
   const database = new DatabaseSync(databasePath);
   const observationStore = options.observationStore ?? new ObservationStore(database);
+  sandboxObservationStore = observationStore;
   const serviceLogger = (name) => fanoutLogger(
     new DurableEventLog(join(logRoot, 'services', `${name}.ndjson`), { scope: name }),
     observationLogger(observationStore, runId, name),
@@ -1902,6 +1537,13 @@ async function createProjectState(problem, config, options) {
   const contextService = new ContextService(database, { logger: contextLogger });
   const taskService = new TaskService(database, { contextService, logger: taskLogger });
   contextService.taskService = taskService;
+  if (typeof sandboxManager?.reconcileExecutions === 'function') {
+    await sandboxManager.reconcileExecutions({
+      executionIds: taskService.listActiveExecutions().map((execution) => execution.execution_id),
+    }).catch((error) => {
+      sandboxObservationStore?.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_reconcile_error', payload: { error_class: error?.code ?? error?.name ?? 'sandbox_reconcile_error' } });
+    });
+  }
   const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
   const inputMetadata = {
     putnambench_commit: fixture.putnambench_commit,
@@ -1914,6 +1556,7 @@ async function createProjectState(problem, config, options) {
   const judgeService = new JudgeService(database, {
     logger: judgeLogger,
     maxInfrastructureRetries: options.maxInfrastructureRetries,
+    fixtureManifest: fixture,
     checker: options.checker ?? new LeanChecker({
       workRoot: join(projectDir, 'judge-work'),
       logger: checkerLogger,
@@ -2010,12 +1653,12 @@ async function createProjectState(problem, config, options) {
   const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService });
   const router = new ServicesRouter({ taskService, contextService, judgeService, registry: routerRegistry, logger: routerLogger });
   // Flat Mission Tasks complete and block through the registered Task
-  // capabilities. The Runtime lifecycle aliases serve legacy Tasks only;
+  // capabilities. The Runtime lifecycle aliases serve retired Tasks only;
   // exposing both gave r12 Agents two tools per action with different
   // schemas (the Runtime task_block omits the required handoff_material_id).
   const runtimeCapabilities = runtimeCapabilityList()
     .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation))
-    .filter((capability) => selectedTaskModel !== 'flat' || !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
+    .filter((capability) => !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
   const allowedAgentToolNames = [...new Set([
     AGENT_ROLES.BOUND,
     AGENT_ROLES.RECOVERY,
@@ -2032,23 +1675,13 @@ async function createProjectState(problem, config, options) {
     runtimeCapabilities,
   }));
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
-  const taskCreateMutex = selectedTaskModel === 'flat' ? new SerialTaskCreateAdmission() : null;
+  const taskCreateMutex = new SerialTaskCreateAdmission();
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
-  const modeInstructions = selectedTaskModel === 'flat'
-    ? 'Search the Mission Task summaries and linked Materials before proposing substantial new work. The current Task may call the Judge directly whenever a candidate is ready. A source-level Judge FAIL is diagnostic feedback: read the returned CheckResult, revise the candidate in this same Execution, and call submit_candidate again without creating a repair Task or waiting for a Response handoff. Create a separate Task only for genuinely independent work. Publish bounded Materials for distinct findings or checkpoints when they become useful, link them to their producer, and do not publish duplicate copies or require another Task before continuing the current candidate route. Complete the current Task when its own contract is satisfied.'
-    : selectedParallelMode === 'semantic'
-      ? 'This is the semantic-structure treatment. Create branch or required-subtask structure only for genuinely separable responsibilities discovered during research, with concrete outputs and no fixed count. Read task structure and readiness after each change. These must be real claimable responsibilities; do not create placeholder Tasks. After child or branch Materials exist, the Root must read them through Context Service, durably record the bounded handoff using action integration, make a bounded Workspace integration note, and publish a root-owned Material with scope root_integration whose provenance names the consumed Material IDs before blocking or claiming the collaboration loop complete.'
-      : selectedParallelMode === 'root-only'
-        ? 'This is the Root-only control. Keep all work on this root Task and do not create child Tasks, Branch groups, required-subtask groups, dependencies, or rework Tasks. Do not call the semantic structure mutation tools. Keep all proof work and checking on the root responsibility.'
-        : 'Use direct child Tasks only when a genuinely separable route emerges.';
-  const dependencyInstruction = normalFlow
-    ? (selectedTaskModel === 'flat'
-      ? 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends only the current Execution and releases the Core. On the shared Mission Task it does not block the Mission: the Mission stays claimable, so block there only when you have no useful Mission work without the prerequisite. Do not call request_wait in the normal-flow treatment.'
-      : 'When a real external dependency blocks progress, preserve useful Workspace and Materials and call execution_block with a typed dependency; this ends the Execution and releases the Core. Do not call request_wait in the normal-flow treatment.')
-    : 'Before waiting, preserve useful Workspace and Material contributions and use a wait condition that reflects the actual dependency.';
-  const taskSpecificInstruction = selectedTaskModel === 'flat'
-    ? 'The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition. Publish and link durable evidence when the Task has a result; consume useful linked research Material with an explicit integration action when it informs the proof.'
-    : 'Child contracts may require research Materials or proof candidates according to the route. The root completion contract requires its final candidate to be checked by the configured Lean Judge.';
+  const modeInstructions = selectedParallelMode === 'root-only'
+    ? 'Root-only benchmark treatment: do not register ordinary Tasks. Work on the shared Mission Task only. This is a controlled treatment, not a different Task model.'
+    : 'Search the Mission Task summaries and linked Materials before proposing substantial new work. The current Task may call the Judge directly whenever a candidate is ready. A source-level Judge FAIL is diagnostic feedback: read the returned CheckResult, revise the candidate in this same Execution, and call submit_candidate again without creating a repair Task or waiting for a Response handoff. Create a separate Task only for genuinely independent work. Publish bounded Materials for distinct findings or checkpoints when they become useful, link them to their producer, and do not publish duplicate copies or require another Task before continuing the current candidate route. Complete the current Task when its own contract is satisfied.';
+  const dependencyInstruction = 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends only the current Execution and releases the Core. On the shared Mission Task it does not block the Mission: the Mission stays claimable, so block there only when you have no useful Mission work without the prerequisite. Do not call request_wait in the normal-flow treatment.';
+  const taskSpecificInstruction = 'The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition. Publish and link durable evidence when the Task has a result; consume useful linked research Material with an explicit integration action when it informs the proof.';
   const taskPayload = {
     task_type: 'proof',
     summary: `Prove ${problem.id} with an independently checked candidate and a clear boundary from other Mission work.`,
@@ -2057,27 +1690,15 @@ async function createProjectState(problem, config, options) {
     // Keep the final proof lane claimable alongside the bounded research pool
     // when the pool is larger than the Core count; research routes remain
     // independently available instead of starving the integration lane.
-    priority: selectedTaskModel === 'flat' ? 110 : 0,
+    priority: 110,
     task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. Until an honest candidate is ready, keep researching and publish useful evidence; never submit the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.`,
     completion_contract: {
-      ...(normalFlow ? { normal_flow: true } : {}),
-      ...(selectedParallelMode === 'semantic' && selectedTaskModel !== 'flat' ? {
-        required_materials: [{ kinds: ['artifact', 'fact', 'experience', 'failure'], scope: 'root_integration', min_count: 1, requires_consumption: true, cross_task: true, action: 'integration' }],
-      } : {}),
-      ...(selectedTaskModel === 'flat' ? {
-        required_materials: [{
-          kinds: ['fact', 'experience', 'conjecture', 'artifact', 'failure'],
-          scope: 'proof_relevant',
-          min_count: 1,
-          requires_consumption: true,
-          cross_task: true,
-          action: 'integration',
-        }],
-      } : {}),
-      // A passing child/diagnostic check must not close the Mission. Only a
-      // Task explicitly carrying the final-candidate contract can establish
-      // the project-level solved projection; authorized non-root Tasks may
-      // opt into this contract when they own the complete candidate.
+      normal_flow: true,
+      required_materials: [{
+        kinds: ['fact', 'experience', 'conjecture', 'artifact', 'failure'],
+        scope: 'proof_relevant', min_count: 1,
+        requires_consumption: true, cross_task: true, action: 'integration',
+      }],
       final_candidate: true,
       required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
       required_check: {
@@ -2095,38 +1716,31 @@ async function createProjectState(problem, config, options) {
       input_metadata: inputMetadata,
       formal_source: problem.source,
     },
-    max_children: 32,
-    max_depth: 3,
   };
-  const mission = selectedTaskModel === 'flat'
-    ? owner.createMission({
-      mission_id: `mission:${problem.id}:${runId}`,
-      goal: `Solve ${problem.id} through independent, shared Task work.`,
-      acceptance_conditions: {
-        project: problem.id,
-        source_hash: problem.source_hash,
-        final_candidate: true,
-        required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
-        required_check: {
-          checker_ref: fixture.checker_ref,
-          checker_version: fixture.checker_version,
-          environment_ref: fixture.environment_ref,
-        },
+  const mission = owner.createMission({
+    mission_id: `mission:${problem.id}:${runId}`,
+    goal: `Solve ${problem.id} through independent, shared Task work.`,
+    acceptance_conditions: {
+      project: problem.id,
+      source_hash: problem.source_hash,
+      final_candidate: true,
+      required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
+      required_check: {
+        checker_ref: fixture.checker_ref,
+        checker_version: fixture.checker_version,
+        environment_ref: fixture.environment_ref,
       },
-    }, { operationId: `benchmark:mission:create:${runId}` }).mission
-    : null;
-  const root = selectedTaskModel === 'flat'
-    ? owner.createTask({
-      ...taskPayload,
-      mission_id: mission.mission_id,
-      timebox_ms: options.taskTimeboxMs ?? flatExecutionTimeoutMs(options),
-      owner_ref: 'owner:benchmark',
-    }, { operationId: `benchmark:task:create:${runId}` }).task
-    : owner.proposeTask(taskPayload, { operationId: `benchmark:root:propose:${runId}` }).task;
+    },
+  }, { operationId: `benchmark:mission:create:${runId}` }).mission;
+  const root = owner.createTask({
+    ...taskPayload, mission_id: mission.mission_id,
+    timebox_ms: options.taskTimeboxMs ?? flatExecutionTimeoutMs(options),
+    owner_ref: 'owner:benchmark',
+  }, { operationId: `benchmark:task:create:${runId}` }).task;
   const initialTasks = [root];
   observationStore.registerExperiment({ experimentId: runId, rootTaskId: root.task_id, status: 'RUNNING', metadata: {
     problem_id: problem.id,
-    task_model: selectedTaskModel,
+    task_model: 'flat',
     mission_id: mission?.mission_id ?? null,
     initial_task_count: initialTasks.length,
   } });
@@ -2140,7 +1754,7 @@ async function createProjectState(problem, config, options) {
       core_count: 4,
       timebox_ms: options.timeboxMs ?? 60 * 60_000,
       parallel_mode: selectedParallelMode,
-      task_model: selectedTaskModel,
+      task_model: 'flat',
       mission_id: mission?.mission_id ?? null,
       normal_flow: normalFlow,
     },
@@ -2154,13 +1768,36 @@ async function createProjectState(problem, config, options) {
   try {
     for (let index = 1; index <= 4; index += 1) {
     const coreDir = join(workspaceRoot, `core-${index}`);
+    await mkdir(coreDir, { recursive: true });
     const childEnv = { ...process.env };
-    const adapter = options.agentAdapterFactory
+    const adapter = sandboxManager && (sandboxProvider === 'opensandbox' || sandboxProvider === 'open-sandbox')
+      ? new OpenSandboxAgentAdapter({
+        sandboxManager,
+        command: options.command ?? 'pi',
+        provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER,
+        model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL,
+        account: options.account ?? process.env.NUROUTER_PI_ACCOUNT,
+        group: options.group ?? process.env.NUROUTER_PI_GROUP,
+        env: childEnv,
+        agentEnvironment: sandboxConfig.agentEnvironment ?? {},
+        secretEnv: sandboxConfig.secretEnvironment ?? {},
+        // The native gpt_proxy catalog is currently incompatible with Pi's
+        // append-system-prompt request path (the gateway returns `Invalid URL`
+        // before processing the first turn). The full identity contract is
+        // still sent in the bounded discovery/follow-up user prompt; callers
+        // may opt back into a provider that supports system prompts.
+        systemPrompt: sandboxConfig.systemPrompt ?? null,
+        // The provider image carries the repository extension and all of its
+        // source imports. A guest path is required; the controller's source
+        // tree is outside the sandbox and must never be passed through.
+        extensionPath: sandboxConfig.extensionPath ?? '/opt/swarmenv/src/agent/swarmenv-extension.mjs',
+      })
+      : options.agentAdapterFactory
       ? options.agentAdapterFactory({ index, problem, executionId: null, coreDir, env: childEnv })
       : new BenchmarkAgentCoreAdapter({
-        command: options.command ?? (options.provider === 'openai-codex' ? 'pi' : 'nurouter'),
-        provider: options.provider ?? process.env.NUROUTER_PI_PROVIDER,
-        model: options.model ?? process.env.NUROUTER_PI_MODEL,
+        command: options.command ?? 'pi',
+        provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER,
+        model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL,
         account: options.account ?? process.env.NUROUTER_PI_ACCOUNT,
         group: options.group ?? process.env.NUROUTER_PI_GROUP,
         extensionPath: options.extensionPath ?? resolve(new URL('../agent/swarmenv-extension.mjs', import.meta.url).pathname),
@@ -2184,6 +1821,7 @@ async function createProjectState(problem, config, options) {
       agentAdapter: adapter,
       runtimeCapabilities,
       sandboxManager,
+      cleanExecutionWorkspaces: usesOpenSandbox,
       capabilityRegistry,
       maxWorkers: 1,
       coreIds: [`core-${index}`],
@@ -2192,9 +1830,9 @@ async function createProjectState(problem, config, options) {
       // Contract §5 (r15 revision): in the flat model an Execution may last
       // the whole run. Its deadline is the run deadline (set at run start)
       // and the handoff reminder fires a lead time before it; compaction
-      // rotation bounds identity lifetime. Legacy callers keep 60/55 minutes.
-      executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? flatExecutionTimeoutMs(options) : undefined),
-      handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? flatHandoffReminderMs(options) : undefined),
+      // rotation bounds identity lifetime. retired callers keep 60/55 minutes.
+      executionTimeoutMs: options.executionTimeoutMs ?? flatExecutionTimeoutMs(options),
+      handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
       logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
       onSessionStarted: ({ execution, session, recovery }) => {
@@ -2312,9 +1950,18 @@ async function createProjectState(problem, config, options) {
       coreId: `core-${index}`,
       // This is an active reusable identity even while it has no current
       // Execution.  BOUND is intentional: it exposes task_status/task_take
-      // and prevents the legacy Selection role from becoming a second Agent.
+      // and prevents the retired Selection role from becoming a second Agent.
       role: AGENT_ROLES.BOUND,
       taskCreateMutex,
+      // OpenSandbox workers cannot reach the controller's loopback address.
+      // Deployments that expose the bridge to a provider network must bind it
+      // explicitly and advertise a reachable host with `{port}`.
+      host: (sandboxProvider === 'opensandbox' || sandboxProvider === 'open-sandbox')
+        ? (sandboxConfig.bridgeHost ?? '127.0.0.1')
+        : '127.0.0.1',
+      publicUrl: (sandboxProvider === 'opensandbox' || sandboxProvider === 'open-sandbox')
+        ? (sandboxConfig.bridgeUrl ?? process.env.SWARMENV_BRIDGE_PUBLIC_URL ?? null)
+        : null,
       // Mission Task creation is governed by the Task Service contract and
       // responsibility-key idempotency. The benchmark must not add a hidden
       // count quota or reject independent work after a fixed number of Tasks.
@@ -2365,7 +2012,7 @@ async function createProjectState(problem, config, options) {
           // another initial prompt from inside task_take would race the
           // in-flight RPC and violate the single-turn ordering contract.
           sendInitialPrompt: false,
-          agentPrompt: modePrompt(selectedParallelMode, BOUND_AGENT_PROMPT, selectedTaskModel),
+          agentPrompt: BOUND_AGENT_PROMPT,
         });
         const boundSession = core.session;
         const boundExecutionId = claim.execution.execution_id;
@@ -2405,7 +2052,7 @@ async function createProjectState(problem, config, options) {
                 if (core.stopping || core.session !== boundSession || core.executionId !== boundExecutionId) break;
                 core.turnStartedAt = Date.now();
                 core.turnInFlight = false;
-                await runTurn(core, modePrompt(selectedParallelMode, BOUND_AGENT_PROMPT, selectedTaskModel), core.startConfig.options.turnTimeoutMs ?? 30_000);
+                await runTurn(core, BOUND_AGENT_PROMPT, core.startConfig.options.turnTimeoutMs ?? 30_000);
               }
             } catch (error) {
               const expectedHandoff = boundSession.expectedStop || core.session !== boundSession || core.stopping;
@@ -2468,13 +2115,6 @@ async function createProjectState(problem, config, options) {
       },
       onClaimAccepted: async () => {
       },
-      onSubmitCandidate: async ({ payload }) => {
-        // Candidate checking is synchronous tool work. Source-level results
-        // stay in the current Execution; retryable checker health failures
-        // are staged by judgeCandidate and checkpointed only after the bridge
-        // has flushed the tool result to the Agent.
-        return (await judgeCandidate(core.stateRef, core, payload.candidate_material_id)) ?? {};
-      },
       onSchedulerStatus: async (payload) => {
         if (core.stateRef) core.stateRef.schedulerStatusCount += 1;
         const cores = core.stateRef?.cores ?? [core];
@@ -2527,8 +2167,7 @@ async function createProjectState(problem, config, options) {
         }
         const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
         const releasedState = releasedExecution?.state ?? 'RELEASED';
-        const legacyWaiting = releasedState === 'WAITING' && core.stateRef?.normalFlow !== true;
-        const coreProjection = legacyWaiting ? 'WAITING' : 'IDLE';
+        const coreProjection = 'IDLE';
         // A claim record is created before Runtime binds its Workspace. If a
         // very short bound turn fails before the handoff callback records the
         // starting revision, retain the attempted ownership with the durable
@@ -2548,16 +2187,16 @@ async function createProjectState(problem, config, options) {
           taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
           payload: {
             state: coreProjection,
-            reason: legacyWaiting ? 'execution_waiting' : 'execution_released',
+            reason: 'execution_released',
           },
         });
         core.parallelism.transition(core.index, coreProjection, {
           task_id: taskId,
           execution_id: executionId,
-          reason: legacyWaiting ? releasedExecution.wait_condition?.type ?? 'request_wait' : releasedExecution?.state?.toLowerCase() ?? 'claim_released',
+          reason: releasedExecution?.state?.toLowerCase() ?? 'claim_released',
         });
         if (core.taskId === taskId && core.executionId === executionId) {
-          core.waitingExecutionId = legacyWaiting ? executionId : null;
+          core.waitingExecutionId = null;
           core.taskId = null;
           core.executionId = null;
           core.claim = null;
@@ -2603,37 +2242,10 @@ async function createProjectState(problem, config, options) {
       },
       onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
         const materialPublishOperation = operation === 'publish_material' || operation === 'context_publish_material';
-        if (materialPublishOperation || ['task_link_material', 'accept_task', 'request_rework', 'submit_candidate'].includes(operation)) {
+        if (materialPublishOperation || ['task_link_material', 'submit_candidate'].includes(operation)) {
           core.stateRef?.requestIdentityWake?.();
         }
-        if (STRUCTURE_OPERATIONS.has(operation)) {
-          const structureResult = result && typeof result === 'object' ? result : {};
-          const operationEvidence = {
-            operation,
-            task_id: taskId,
-            execution_id: executionId,
-            group_id: structureResult.group?.group_id ?? payload?.group_id ?? null,
-            task_ids: [
-              ...(Array.isArray(structureResult.tasks) ? structureResult.tasks.map((task) => task?.task_id) : []),
-              structureResult.task?.task_id,
-              structureResult.rework_link?.rework_task_id,
-            ].filter(Boolean),
-            dependency_id: structureResult.change?.dependency_id ?? null,
-          };
-          core.structureOperations.push(operationEvidence);
-          core.observe({
-            source: 'task-service', kind: 'semantic_structure_operation', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
-            payload: operationEvidence,
-          });
-          core.parallelism.recordWorkUnit({
-            task_id: taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'semantic_structure',
-          });
-          core.stateRef?.requestIdentityWake?.();
-        } else if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
+        if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
           const materialsRead = operation === 'context_get_material'
             ? [result?.material ?? result].filter(Boolean)
             : Array.isArray(result) ? result : Array.isArray(result?.materials) ? result.materials : [];
@@ -2696,19 +2308,10 @@ async function createProjectState(problem, config, options) {
             core: core.index,
             progress_kind: 'material_consumption',
           });
-        } else if (operation === 'create_child_task') {
-          const child = result?.task ?? result;
-          core.parallelism.recordWorkUnit({
-            task_id: child?.task_id ?? taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'child_task',
-          });
-          core.stateRef?.requestIdentityWake?.();
         } else if (operation === 'task_create') {
           const created = result?.task ?? result ?? {};
           const state = core.stateRef;
-          const dynamic = Boolean(state?.taskModel === 'flat' && created.task_id && !state.initialTaskIds.includes(created.task_id));
+          const dynamic = Boolean(created.task_id && !state.initialTaskIds.includes(created.task_id));
           if (dynamic && state) {
             state.dynamicTaskEvents.push({
               task_id: created.task_id ?? null,
@@ -2781,22 +2384,6 @@ async function createProjectState(problem, config, options) {
             core: core.index,
             progress_kind: 'material_link',
           });
-        } else if (operation === 'accept_task' || operation === 'request_rework') {
-          const reviewed = result?.task ?? result?.target_task ?? result ?? {};
-          core.observe({
-            source: 'task-service', kind: 'task_review', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
-            payload: {
-              decision: operation === 'accept_task' ? 'accept' : 'request_rework',
-              target_task_id: payload?.target_task_id ?? reviewed.task_id ?? null,
-            },
-          });
-          core.parallelism.recordWorkUnit({
-            task_id: payload?.target_task_id ?? taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'parent_review',
-          });
         } else if (operation === 'task_handoff' || operation === 'task_block') {
           const lifecycleResult = result && typeof result === 'object' ? result : {};
           const lifecycleEvidence = {
@@ -2821,11 +2408,23 @@ async function createProjectState(problem, config, options) {
           });
           core.stateRef?.requestIdentityWake?.();
         } else if (operation === 'submit_candidate') {
-          const check = result?.check_result ?? result?.checkResult ?? {};
+          const check = result?.check_result ?? result?.checkResult ?? result ?? {};
+          const candidateMaterial = {
+            material_id: payload?.candidate_material_id ?? check.candidate_material_id ?? null,
+            content_hash: check.content_hash ?? null,
+          };
+          core.checks.push({
+            ...sanitizedCheck(check, candidateMaterial),
+            source_path: payload?.path ?? null,
+          });
+          if (check.evidence?.forbidden_placeholder === true || check.diagnostic_class === 'forbidden_placeholder' || check.diagnostic_code === 'checker_request_rejected') {
+            core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: check.material_hash ?? null });
+          }
           core.observe({
             source: 'judge-service', kind: 'candidate_submitted', visibility: 'operator',
             taskId, executionId, coreId: `core-${core.index}`,
             payload: {
+              candidate_path: payload?.path ?? result?.path ?? null,
               candidate_material_id: payload?.candidate_material_id ?? result?.candidate_material_id ?? null,
               check_result_id: check.check_result_id ?? result?.check_result_id ?? null,
               verdict: check.verdict ?? result?.verdict ?? null,
@@ -2887,8 +2486,8 @@ async function createProjectState(problem, config, options) {
     runId,
     problem,
     config,
-    provider: options.provider ?? process.env.NUROUTER_PI_PROVIDER ?? null,
-    model: options.model ?? process.env.NUROUTER_PI_MODEL ?? null,
+    provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER ?? null,
+    model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL ?? null,
     timeboxMs: options.timeboxMs ?? 60 * 60_000,
     fixtureManifest: fixture,
     databasePath,
@@ -2940,12 +2539,11 @@ async function createProjectState(problem, config, options) {
     repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
     parallelism,
     parallelMode: selectedParallelMode,
-    taskModel: selectedTaskModel,
-    missionId: mission?.mission_id ?? null,
+    missionId: mission.mission_id,
     taskCreateMutex,
     dynamicTaskEvents: [],
-    executionTimeoutMs: options.executionTimeoutMs ?? (selectedTaskModel === 'flat' ? flatExecutionTimeoutMs(options) : 60 * 60_000),
-    handoffReminderMs: options.handoffReminderMs ?? (selectedTaskModel === 'flat' ? flatHandoffReminderMs(options) : 55 * 60_000),
+    executionTimeoutMs: options.executionTimeoutMs ?? flatExecutionTimeoutMs(options),
+    handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
     normalFlow,
     readinessSamples: [],
   };
@@ -3033,9 +2631,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   recordReadinessSnapshot(state, startedAt);
   const durationMs = options.timeboxMs ?? 60 * 60_000;
   const deadline = startedAt + durationMs;
-  if (state.taskModel === 'flat') {
-    for (const core of state.cores) core.runtime?.setRunDeadline?.(deadline);
-  }
+  for (const core of state.cores) core.runtime?.setRunDeadline?.(deadline);
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
   // IdentityTaskLoop waits for the whole Runtime Execution to release after a
   // successful claim. Keep that ownership deadline at least as long as the

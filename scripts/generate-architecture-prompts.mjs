@@ -22,7 +22,7 @@ const check = args[0] === '--check';
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
   'src/agent/agent-prompt.js', 'src/agent/capability-profile.js', 'src/agent/pi-adapter.js',
-  'src/agent/services-bridge.js', 'src/agent/swarmenv-extension.mjs', 'src/agent/version-manifest.js',
+  'src/agent/services-bridge.js', 'src/agent/swarmenv-extension.mjs', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
   'src/runtime/runtime-capabilities.js', 'src/runtime/workspace-contract.js', 'src/e2e/real-agent-path.js', 'src/e2e/script-executor.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
@@ -118,8 +118,10 @@ const takeExpression = between(runnerPath, '      takePrompt: ', ',\n      short
 const takePrompt = evaluate(takeExpression, { BOUND_AGENT_PROMPT, state: { agentTaskLoopGuide: taskLoopGuide(profile) } });
 const discoveryExpression = between(runnerPath, '  const message = ', ';\n  try {', 'async function takeTaskWithAgent');
 const discoveryPrompt = evaluate(discoveryExpression, { prompt: takePrompt, candidates: [syntheticTask], selectionView: (candidates) => evaluate(selectionExpression, { candidates }) });
-const modeFunction = between(runnerPath, 'function modePrompt', '\nfunction sha256');
-const modePrompt = evaluate(`function modePrompt${modeFunction}`);
+// The flat-only benchmark no longer has the old modePrompt helper. Keep the
+// generated continuation example anchored to the literal underlying body
+// supplied by the current runner rather than resurrecting a retired wrapper.
+const modePrompt = (_mode, underlyingPrompt) => underlyingPrompt;
 const baseExpression = between(runnerPath, '  const basePrompt = ', ';\n  state.identityLoopEvents');
 const basePrompt = evaluate(baseExpression, { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, state: { agentTaskLoopGuide: taskLoopGuide(profile) } });
 let benchmarkDoc = header('Complete benchmark task and turn messages', 'Sources: [putnam-runner.js](../../../src/benchmark/putnam-runner.js) and [identity-task-loop.js](../../../src/runtime/identity-task-loop.js). The main benchmark overrides IdentityTaskLoop’s short default prompt. A fresh Session also receives the stable system addendum; the texts below are the user-turn bodies or Task instructions, as labeled.');
@@ -127,15 +129,8 @@ benchmarkDoc += block('IdentityTaskLoop default, when a caller does not override
 benchmarkDoc += block('Normal flat discovery turn, one complete synthetic candidate', discoveryPrompt, 'The example contains the entire candidate set for this synthetic invocation: one Task. Real candidate fields are inserted with JSON.stringify(selectionView(candidates)); no real Mission text or proof is embedded here.');
 benchmarkDoc += block('Bound continuation from the onClaim continuation loop', modePrompt('direct', BOUND_AGENT_PROMPT, 'flat'), 'This is the shorter continuation used by onClaim after the previous turn settles. It repeats the identity SOP; it does not automatically append a fresh Mission/Material dump.');
 benchmarkDoc += block('Bound continuation from the outer benchmark loop', basePrompt({ taskId: '<TASK_ID>' }), 'This is the separate basePrompt(core) bound branch. It includes the exact tool guide and a final continuation paragraph.');
-for (const mode of ['semantic', 'root-only']) {
-  benchmarkDoc += block(`Legacy ${mode} turn wrapper`, modePrompt(mode, '<COMPLETE_UNDERLYING_TURN_BODY>', 'legacy'), 'The angle-bracket body is a substitution point for the complete underlying prompt, not omitted template wording. Flat mode ignores this wrapper; legacy direct/legacy treatments pass their body through unchanged.');
-}
-for (const model of ['flat', 'legacy']) {
-  for (const mode of (model === 'flat' ? ['direct'] : ['direct', 'semantic', 'root-only'])) {
-    for (const normal of [true, false]) {
-      benchmarkDoc += block(`Complete benchmark Task instructions: ${model}, ${mode}, normalFlow=${normal}`, benchmarkInstructions(model, mode, normal), 'This body is stored as task_instructions and appears in the discovery Task view. Flat mode selects its own instructions regardless of the parallel treatment; legacy and direct treatment names share the direct text.');
-    }
-  }
+for (const mode of ['direct', 'root-only']) {
+  benchmarkDoc += block(`Flat benchmark Task instructions: ${mode}`, benchmarkInstructions('flat', mode, true), 'This body is stored as task_instructions and appears in the discovery Task view. The treatment controls only whether the Agent may register independent work; it does not select a second Task model.');
 }
 output('03-benchmark-turns.md', benchmarkDoc);
 

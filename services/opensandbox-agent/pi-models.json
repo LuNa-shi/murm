@@ -1,0 +1,30 @@
+{
+  "$schema": "https://pi.dev/schemas/models.schema.json",
+  "providers": {
+    "gpt_proxy": {
+      "name": "GPT proxy",
+      "baseUrl": "$PI_GPT_PROXY_BASE_URL",
+      "api": "openai-responses",
+      "apiKey": "$PI_GPT_PROXY_API_KEY",
+      "authHeader": true,
+      "headers": {
+        "X-OpenAI-Actor-Authorization": "proxy-managed"
+      },
+      "compat": {
+        "supportsReasoningEffort": true,
+        "supportsDeveloperRole": true,
+        "supportsStrictMode": true,
+        "supportsMaxOutputTokens": true
+      },
+      "models": [
+        {
+          "id": "gpt-6.1-sol",
+          "name": "GPT 6.1 Sol",
+          "reasoning": true,
+          "contextWindow": 500000,
+          "maxTokens": 128000
+        }
+      ]
+    }
+  }
+}

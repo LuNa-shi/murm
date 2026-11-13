@@ -8,6 +8,7 @@ import { TaskService } from '../task/task-service.js';
 import { Runtime } from '../runtime/runtime.js';
 import { WorkspaceManager } from '../runtime/workspace-manager.js';
 import { GENERIC_AGENT_PROMPT } from '../agent/agent-prompt.js';
+import { makeEnvelope } from '../protocol/envelope.js';
 
 class ScriptSession extends EventEmitter {
   constructor(executionId) {
@@ -69,9 +70,9 @@ export function createScriptFixtureEnvironment({ database = ':memory:', rootDir,
           },
         }),
       };
-  const judgeService = new JudgeService(databaseConnection, { checker: normalizedChecker });
+  const judgeService = new JudgeService(databaseConnection, { checker: normalizedChecker, fixtureManifest });
   taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
-  const router = new ServicesRouter({ taskService, contextService });
+  const router = new ServicesRouter({ taskService, contextService, judgeService });
   const sdk = new ServicesSDK(router, { actorRef: 'owner:root' });
   const agentAdapter = new ScriptAgentAdapter();
   const runtime = new Runtime({
@@ -96,7 +97,10 @@ export class ScriptExecutor {
 
   async run() {
     const { contextService, taskService, judgeService, sdk, runtime } = this.environment;
-    const task = sdk.proposeTask({
+    const mission = sdk.createMission({ mission_id: `mission:${this.executionId}`, goal: 'Prove the locked PutnamBench fixture theorem', acceptance_conditions: { fixture_id: this.fixtureManifest.fixture_id } }, { operationId: 'script:mission' }).mission;
+    const task = sdk.createTask({
+      mission_id: mission.mission_id,
+      summary: 'Prove the locked PutnamBench fixture theorem',
       task_type: 'proof',
       goal: 'Prove the locked PutnamBench fixture theorem',
       expected_output: 'A Lean proof Artifact compiled in the locked fixture',
@@ -110,7 +114,7 @@ export class ScriptExecutor {
           environment_ref: this.fixtureManifest.environment_ref,
         },
       },
-    }, { operationId: 'script:propose' }).task;
+    }, { operationId: 'script:task' }).task;
     const claimed = sdk.withContext({ taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version }).claim({
       execution_id: this.executionId,
       claim_key: `script:claim:${this.executionId}`,
@@ -127,7 +131,6 @@ export class ScriptExecutor {
     const firstMaterial = agent.withContext({ stateVersion: current.state_version }).publishMaterial({
       kind: 'artifact', scope: 'proof_relevant', content: this.firstCandidate,
     }, { operationId: 'script:candidate:fail' }).material;
-    let submitted = agent.withContext({ stateVersion: current.state_version }).submitCandidate({ candidate_material_id: firstMaterial.material_id }, { operationId: 'script:submit:fail' });
     const firstWait = await runtime.requestWait(this.executionId, {
       waitCondition: { type: 'check_result_arrived', check_request_key: 'script:check:fail' },
       checkpoint: { phase: 'before-first-check', candidate_material_id: firstMaterial.material_id },
@@ -144,16 +147,21 @@ export class ScriptExecutor {
       task: taskService.getTask(task.task_id), execution: firstWait.execution, workspace, material: firstMaterial,
       content: this.firstCandidate, requestKey: 'script:check:fail',
     }));
+    taskService.dispatch('submit_candidate', { candidate_material_id: firstMaterial.material_id }, makeEnvelope({
+      operationId: 'script:record-candidate:fail', actorRef: 'system:completion', taskId: task.task_id,
+      executionId: this.executionId, specVersion: firstWait.execution.spec_version,
+      stateVersion: firstWait.execution.state_version, fencingVersion: firstWait.execution.fencing_version,
+    }));
+    const recordedFirst = taskService.getExecution(this.executionId);
     const failed = sdk.withContext({
       taskId: task.task_id, executionId: this.executionId, specVersion: current.spec_version,
-      stateVersion: firstWait.execution.state_version, fencingVersion: firstWait.execution.fencing_version,
+      stateVersion: recordedFirst.state_version, fencingVersion: recordedFirst.fencing_version,
     }).applyCheckResult({ check_result_id: firstResult.check_result_id }, { operationId: 'script:apply:fail' });
     const restored = await runtime.wakeExecution(this.executionId);
     current = restored.execution;
     const secondMaterial = agent.withContext({ stateVersion: current.state_version }).publishMaterial({
       kind: 'artifact', scope: 'proof_relevant', content: this.fixedCandidate, supersedes: firstMaterial.material_id,
     }, { operationId: 'script:candidate:pass' }).material;
-    submitted = agent.withContext({ stateVersion: current.state_version }).submitCandidate({ candidate_material_id: secondMaterial.material_id }, { operationId: 'script:submit:pass' });
     const secondWait = await runtime.requestWait(this.executionId, {
       waitCondition: { type: 'check_result_arrived', check_request_key: 'script:check:pass' },
       checkpoint: { phase: 'before-second-check', candidate_material_id: secondMaterial.material_id },
@@ -163,9 +171,15 @@ export class ScriptExecutor {
       task: taskService.getTask(task.task_id), execution: secondWait.execution, workspace, material: secondMaterial,
       content: this.fixedCandidate, requestKey: 'script:check:pass',
     }));
+    taskService.dispatch('submit_candidate', { candidate_material_id: secondMaterial.material_id }, makeEnvelope({
+      operationId: 'script:record-candidate:pass', actorRef: 'system:completion', taskId: task.task_id,
+      executionId: this.executionId, specVersion: secondWait.execution.spec_version,
+      stateVersion: secondWait.execution.state_version, fencingVersion: secondWait.execution.fencing_version,
+    }));
+    const recordedSecond = taskService.getExecution(this.executionId);
     const completed = sdk.withContext({
       taskId: task.task_id, executionId: this.executionId, specVersion: current.spec_version,
-      stateVersion: secondWait.execution.state_version, fencingVersion: secondWait.execution.fencing_version,
+      stateVersion: recordedSecond.state_version, fencingVersion: recordedSecond.fencing_version,
     }).applyCheckResult({ check_result_id: secondResult.check_result_id }, { operationId: 'script:apply:pass' });
     const finalTask = taskService.getTask(task.task_id);
     const finalExecution = taskService.getExecution(this.executionId);

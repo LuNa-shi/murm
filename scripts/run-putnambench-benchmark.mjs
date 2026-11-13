@@ -107,6 +107,24 @@ async function loadDotEnv(path = '.env') {
 
 await loadDotEnv();
 
+async function loadPiProviderSettings(provider) {
+  const configuredDir = process.env.PI_CODING_AGENT_DIR
+    ?? (process.env.HOME ? join(process.env.HOME, '.pi', 'agent') : null);
+  if (!configuredDir) return {};
+  try {
+    const catalog = JSON.parse(await readFile(join(configuredDir, 'models.json'), 'utf8'));
+    const settings = catalog?.providers?.[provider];
+    if (!settings || typeof settings !== 'object') return {};
+    return {
+      baseUrl: typeof settings.baseUrl === 'string' ? settings.baseUrl : null,
+      apiKey: typeof settings.apiKey === 'string' ? settings.apiKey : null,
+    };
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.name !== 'SyntaxError') throw error;
+    return {};
+  }
+}
+
 function optionsFromArgs(argv) {
   const runId = Date.now();
   const options = {
@@ -124,11 +142,20 @@ function optionsFromArgs(argv) {
     observabilityHost: '0.0.0.0',
     observabilityAdvertiseHost: null,
     observabilityMetadataPath: process.env.SWARMENV_OBSERVABILITY_METADATA ?? null,
-    model: process.env.NUROUTER_PI_MODEL,
-    provider: process.env.NUROUTER_PI_PROVIDER,
+    model: process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL ?? 'gpt-6.1-sol',
+    provider: process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER ?? 'gpt_proxy',
+    sandbox: {
+      enabled: process.env.SWARMENV_SANDBOX_ENABLED === 'true',
+      provider: process.env.SWARMENV_SANDBOX_PROVIDER ?? 'opensandbox',
+      image: process.env.SWARMENV_SANDBOX_IMAGE,
+      lifecycleBaseUrl: process.env.SWARMENV_OPENSANDBOX_URL,
+      endpointHost: process.env.SWARMENV_OPENSANDBOX_ENDPOINT_HOST ?? null,
+      bridgeHost: process.env.SWARMENV_BRIDGE_HOST ?? null,
+      bridgeUrl: process.env.SWARMENV_BRIDGE_PUBLIC_URL ?? null,
+      agentEnvironment: {},
+      secretEnvironment: {},
+    },
     parallelMode: 'semantic',
-    taskModel: 'legacy',
-    normalFlow: process.env.SWARMENV_NORMAL_FLOW === 'true',
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -155,14 +182,8 @@ function optionsFromArgs(argv) {
       '--model': 'model',
       '--provider': 'provider',
       '--parallel-mode': 'parallelMode',
-      '--task-model': 'taskModel',
-      '--normal-flow': 'normalFlow',
     };
     if (!fields[key]) throw new Error(`unknown option: ${arg}`);
-    if (fields[key] === 'normalFlow') {
-      options.normalFlow = inline === undefined ? true : inline !== 'false';
-      continue;
-    }
     const value = inline ?? argv[++index];
     options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'turnTimeoutMs', 'observabilityPort'].includes(fields[key])
       ? Number(value)
@@ -181,8 +202,6 @@ function usage() {
     '    --project-parallelism 3',
     '    --timebox-ms 3600000',
     '    --parallel-mode direct|semantic|root-only',
-    '    --task-model legacy|flat',
-    '    --normal-flow',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
     '    --report-dir reports/putnambench-runs/run-<id>',
@@ -196,6 +215,10 @@ function usage() {
 }
 
 const options = optionsFromArgs(process.argv.slice(2));
+// Issue 119's benchmark entrypoint is provider-backed by contract. Library
+// callers may still use deterministic compatibility fixtures explicitly, but
+// the production CLI must never silently fall back to the old local backend.
+options.requireThirdPartySandbox = true;
 if (options.help) {
   process.stdout.write(usage());
   process.exit(0);
@@ -205,9 +228,23 @@ if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark p
 if (!Number.isInteger(options.projectParallelism) || options.projectParallelism < 1) throw new Error('--project-parallelism must be a positive integer');
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
 if (!['direct', 'semantic', 'root-only'].includes(options.parallelMode)) throw new Error('--parallel-mode must be direct, semantic, or root-only');
-if (!['legacy', 'flat'].includes(options.taskModel)) throw new Error('--task-model must be legacy or flat');
-if (!options.provider) throw new Error('NUROUTER_PI_PROVIDER is required; set it in .env or the environment');
-if (!options.model) throw new Error('NUROUTER_PI_MODEL is required; set it in .env or the environment');
+if (!options.provider) throw new Error('PI_PROVIDER is required; set it in .env or the environment');
+if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the environment');
+
+// Native Pi keeps provider credentials in its local models catalog. Copy only
+// the selected provider's endpoint and key into the explicit sandbox
+// deployment boundary; the host environment and the rest of the catalog never
+// enter the worker.
+const piProviderSettings = await loadPiProviderSettings(options.provider);
+const piProviderEnvPrefix = `PI_${options.provider.toUpperCase().replaceAll('-', '_')}`;
+options.sandbox.agentEnvironment = {
+  [`${piProviderEnvPrefix}_BASE_URL`]: process.env[`${piProviderEnvPrefix}_BASE_URL`] ?? piProviderSettings.baseUrl,
+};
+options.sandbox.secretEnvironment = {
+  [`${piProviderEnvPrefix}_API_KEY`]: process.env[`${piProviderEnvPrefix}_API_KEY`] ?? piProviderSettings.apiKey,
+};
+for (const [key, value] of Object.entries(options.sandbox.agentEnvironment)) if (typeof value !== 'string' || value.length === 0) delete options.sandbox.agentEnvironment[key];
+for (const [key, value] of Object.entries(options.sandbox.secretEnvironment)) if (typeof value !== 'string' || value.length === 0) delete options.sandbox.secretEnvironment[key];
 
 options.experimentRoot = resolve(options.experimentRoot);
 options.experimentDir = resolve(options.experimentDir);
@@ -253,7 +290,7 @@ const metadata = {
     project_parallelism: options.projectParallelism,
     timebox_ms: options.timeboxMs,
     parallel_mode: options.parallelMode,
-    task_model: options.taskModel,
+    task_model: 'flat',
     initial_task_count: null,
     dynamic_task_budget: null,
     turn_timeout_ms: options.turnTimeoutMs,
@@ -322,7 +359,7 @@ const aggregate = {
     child_task_count: report.run?.progress_evidence?.child_task_count ?? null,
     child_claim_count: report.run?.child_claim_count ?? null,
     parallel_mode: report.protocol?.parallel_mode ?? options.parallelMode,
-    task_model: report.protocol?.task_model ?? options.taskModel,
+    task_model: 'flat',
     initial_task_count: null,
     dynamic_task_budget: null,
     dynamic_task_count: report.run?.dynamic_task_count ?? 0,

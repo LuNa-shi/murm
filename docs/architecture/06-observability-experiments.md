@@ -141,7 +141,7 @@ The runner finalizes its report from Task/Execution/Material/check data, Core ac
 
 `CoreParallelismTracker` records states/intervals, Agent turns, work units, wait and Judge time. The report transforms them into overlap and utilization quantities; a populated lane or many tool calls is not proof of productive concurrency. Reports also retain historical naming where compatibility paths remain. Reading the current report schema should not erase the distinction between shared-Mission exploration and independent Task decomposition.
 
-Sources: [runner report construction](../../src/benchmark/putnam-runner.js), [parallelism tracker](../../src/benchmark/parallelism.js), [parallelism tests](../../test/parallelism.test.js), [runner tests](../../test/putnam-runner.test.js).
+Sources: [runner report construction](../../src/benchmark/putnam-runner.js), [parallelism tracker](../../src/benchmark/parallelism.js), [parallelism tests](../../test/parallelism.test.js), [report/e2e tests](../../test/e2e.test.js).
 
 ## 7. Offline experiment-analysis pipeline
 

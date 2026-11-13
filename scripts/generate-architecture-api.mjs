@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { builtInServiceManifest, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { listLegacyTools } from '../src/sdk/service-catalog.js';
+import { listTools } from '../src/sdk/service-catalog.js';
 import { buildCapabilityProfile } from '../src/agent/capability-profile.js';
 import { runtimeCapabilityList } from '../src/runtime/runtime-capabilities.js';
 import { SCHEMA_SQL } from '../src/storage/schema.js';
@@ -33,7 +33,7 @@ const sourceRows = await Promise.all(sourcePaths.map(async (path) => `| [${path}
 let api = '## Generated API inventory\n\nThis section is generated from executable exports and checked against the source hashes below. It contains declarations; call-time behavior and known differences are explained in [Services](04-services.md), [Mission and Task](03-mission-task.md), and [Workspace](05-workspace-continuity.md).\n\n| Source | SHA-256 |\n|---|---|\n' + sourceRows.join('\n') + '\n';
 api += '\n### Exact tool exposure for the built-in benchmark\n\nThe four columns apply the benchmark\'s current Task-model and Sandbox filters. Optional registered Services add capabilities. Both built-in `bound` and `recovery` roles currently have the same named surface. Presence in this table does not bypass the Bridge\'s Task/Execution binding, modern-retired-operation or Workspace-contract checks. `swarmenv_` is the Pi extension prefix.\n\n';
 const profiles = [];
-for (const model of ['flat', 'legacy']) for (const sandbox of [false, true]) {
+for (const model of ['flat']) for (const sandbox of [false, true]) {
   const runtimeCapabilities = runtimeCapabilityList()
     .filter((capability) => sandbox || !['sandbox_exec', 'sandbox_job'].includes(capability.operation))
     .filter((capability) => model !== 'flat' || !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
@@ -42,7 +42,7 @@ for (const model of ['flat', 'legacy']) for (const sandbox of [false, true]) {
 const ids = [...new Set(profiles.flatMap(({profile}) => profile.capabilities.map((capability) => capability.id)))].sort();
 api += `| Capability identity | ${profiles.map(({label}) => label).join(' | ')} |\n|---|${profiles.map(() => '---').join('|')}|\n`;
 for (const id of ids) api += `| \`${id}\` | ${profiles.map(({profile}) => { const cap = profile.capabilities.find((capability) => capability.id === id); return cap ? `\`swarmenv_${cap.tool_name ?? cap.name}\`` : 'Absent'; }).join(' | ')} |\n`;
-api += '\n`task_create_child` remains advertised by the built-in Registry, but a bound Mission Task is explicitly forbidden from calling `create_child_task`. `task_handoff` is retained in the catalog/SDK but excluded from the normal built-in Registry; the normal handoff tool is `execution_progress` with `kind: "handoff"`. These are current implementation details, not proposed changes.\n';
+api += '\nThe flat Mission Task profile is the only Agent-facing Task model. Retired structural and lease operations may remain in internal catalog definitions for storage/analysis compatibility, but are filtered from the built-in Registry and cannot be called by a bound Agent. The normal handoff tool is `execution_progress` with `kind: "handoff"`.\n';
 for (const serviceId of ['catalog', 'task', 'context', 'judge']) {
   const manifest = builtInServiceManifest(serviceId);
   const {capabilities, ...metadata} = manifest;
@@ -54,7 +54,7 @@ for (const cap of runtimeCapabilityList()) api += `\n#### ${cap.id}\n${json(cap)
 api += '\n### Optional Mathlib Search manifest\n\nExact repository bundle declaration. Loading the bundle additionally binds its documentation hashes into the normalized manifest; deployment endpoint overrides change the manifest hash. The implementation also returns `duration_ms` and, after fallback, `fallback`/`upstream_error_code`; these are not listed in this declaration\'s closed output schema.\n';
 api += fence('json', await readFile(resolve(root, 'services/mathlib-search/service.json'), 'utf8'));
 const represented = new Set(['task', 'context', 'judge', 'catalog'].flatMap((serviceId) => builtInServiceManifest(serviceId).capabilities.map((cap) => `${serviceId}:${cap.operation}`)));
-const legacy = listLegacyTools().filter((cap) => !represented.has(`${cap.service}:${cap.operation}`));
+const legacy = listTools(null, { includeInternal: true }).filter((cap) => !represented.has(`${cap.service}:${cap.operation}`));
 const uniqueLegacy = [...new Map(legacy.map((cap) => [`${cap.service}:${cap.operation}:${cap.name}`,cap])).values()];
 api += '\n### Additional catalog entries retained for compatibility/internal callers\n\nThis section records every extra catalog declaration not represented by the registered built-in operation set above. It is not an authorization list for the current Agent. Internal SDK/domain methods can have additional operations that are never a model tool; see the operation routing section in [Services](04-services.md).\n';
 for (const cap of uniqueLegacy) api += `\n#### Catalog ${cap.service}.${cap.name} / ${cap.operation}\n${json(cap)}`;
