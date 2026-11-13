@@ -759,10 +759,20 @@ async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false }
       await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: sequence });
     }
     if (bootstrap && !core.takeResult?.task?.task_id && !core.stopping) {
-      const followUpSequence = session.rpcRecords?.length ?? 0;
-      await session.prompt('The public Workspace inspection is complete. Call swarmenv_task_create now with the exact Mission, proof Task contract, completion contract, and workspace object supplied above. Do not call another read tool and do not call task_take until task_create returns.', { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });
+      // Pi may still be finalizing the discovery turn when prompt() returns.
+      // Wait only for the short settled boundary, then enqueue the required
+      // proposal as a real follow-up. A plain prompt while streaming is an RPC
+      // protocol error and silently prevents the zero-Task bootstrap proposal.
       if (typeof session.waitForSettled === 'function') {
-        await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: followUpSequence });
+        await session.waitForSettled({ timeoutMs: 10_000, afterSequence: sequence }).catch(() => undefined);
+      }
+      const followUpSequence = session.rpcRecords?.length ?? 0;
+      await session.prompt('The public Workspace inspection is complete. Call swarmenv_task_create now with the exact Mission, proof Task contract, completion contract, and workspace object supplied above. Do not call another read tool and do not call task_take until task_create returns.', {
+        timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000),
+        streamingBehavior: 'followUp',
+      });
+      if (typeof session.waitForSettled === 'function') {
+        await session.waitForSettled({ timeoutMs: 30_000, afterSequence: followUpSequence }).catch(() => undefined);
       }
     }
     if (core.takeResult?.task?.task_id) return core.takeResult;
