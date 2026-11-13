@@ -424,7 +424,7 @@ export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
       'swarmenv_judge_get_check_result', 'swarmenv_judge_submit_candidate',
       'swarmenv_execution_get', 'swarmenv_task_status', 'swarmenv_task_register', 'swarmenv_task_take',
       'swarmenv_task_feedback', 'swarmenv_execution_progress', 'swarmenv_task_list', 'swarmenv_task_view',
-      'swarmenv_task_create', 'swarmenv_task_link_material', 'swarmenv_task_complete',
+      'swarmenv_task_create', 'swarmenv_task_link_material', 'swarmenv_task_complete', 'swarmenv_task_finish',
       'swarmenv_task_handoff', 'swarmenv_task_block', 'swarmenv_task_close',
       'swarmenv_workspace_diff', 'swarmenv_workspace_get', 'swarmenv_workspace_list_files',
       'swarmenv_workspace_read_file', 'swarmenv_workspace_write_file',

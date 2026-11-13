@@ -1981,7 +1981,15 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.finish outcome must be done, incomplete, blocked, or cancelled');
     }
     if (outcome === 'done') return this.#completeTask(payload, envelope);
-    if (outcome === 'incomplete') return this.#handoffTask(payload, envelope);
+    if (outcome === 'incomplete') {
+      // An incomplete result is a valid boundary even when no durable handoff
+      // Material exists yet. Preserve the Task as reopenable work and let a
+      // later fresh Bot inspect the public state.
+      if (!payload.handoff_material_id) {
+        return this.#stopExecution({ ...payload, terminal_state: 'HANDED_OFF', terminal_reason: payload.reason ?? 'incomplete' }, envelope);
+      }
+      return this.#handoffTask(payload, envelope);
+    }
     if (outcome === 'blocked') return this.#blockTaskSemantic(payload, envelope);
     return this.#stopExecution({ ...payload, terminal_state: 'CANCELLED', terminal_reason: payload.reason ?? 'cancelled' }, envelope);
   }

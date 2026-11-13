@@ -33,7 +33,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "7825f66f3ae997cdd2ce16197000c1e0a69030de257696e1c75e9818b7fdcfe9"
+      "sha256": "80348f42c8987f7d591a44f064ec690e460f5d6deb0e3cf8cb27a8db7631ff78"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -85,7 +85,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "10875b656a26b00d28a91590514c3487ebc776f75010f811b36a6bbef52f4a85"
+      "sha256": "5914dd7639b0ad286d1203b35a7cbe6ac597505637b78f34cde12a58718f1021"
     },
     {
       "path": "src/task/task-types.js",
