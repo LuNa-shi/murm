@@ -3,8 +3,6 @@ import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { operationPayload, validateEnvelope } from '../protocol/envelope.js';
 
 const MUTATING_OPERATIONS = new Set([
-  'abort',
-  'claim',
   'heartbeat',
   'consume_materials',
   'publish_material',
@@ -45,7 +43,7 @@ export class LocalServiceDouble {
   }
 
   dispatch(operation, payload = {}, envelope) {
-    validateEnvelope(envelope, { executionWrite: MUTATING_OPERATIONS.has(operation) && operation !== 'claim' && operation !== 'publish_material' });
+    validateEnvelope(envelope, { executionWrite: MUTATING_OPERATIONS.has(operation) && operation !== 'publish_material' });
     const call = { operation, payload: clone(payload), envelope: clone(envelope) };
     this.calls.push(call);
 
@@ -95,11 +93,8 @@ export class LocalServiceDouble {
       case 'publish_material':
         result = this.#publishMaterial(payload, envelope);
         break;
-      case 'claim':
       case 'heartbeat':
-      case 'request_wait':
       case 'workspace_check':
-      case 'abort':
         result = { accepted: true, operation, operation_id: key };
         break;
       default:
