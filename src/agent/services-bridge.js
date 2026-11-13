@@ -307,18 +307,6 @@ export class ServicesBridge {
       if (serviceId && candidate.service_id !== serviceId) return false;
       return candidate.operation === operation || candidate.name === operation || (capabilityId && (candidate.id ?? candidate.capability_id) === capabilityId);
     });
-    // Keep the old bridge operation available while the Agent-facing Registry
-    // advertises the semantic Task name.  The transport alias is resolved to
-    // the registered task_view capability, so the implementation still goes
-    // through the current Services boundary and does not reintroduce a
-    // generic service call surface.
-    if (matches.length === 0 && operation === 'get_task') {
-      matches.push(...profile.capabilities.filter((candidate) => {
-        if (capabilityId && (candidate.id ?? candidate.capability_id) !== capabilityId) return false;
-        if (serviceId && candidate.service_id !== serviceId) return false;
-        return candidate.operation === 'task_view' || candidate.name === 'task_view';
-      }));
-    }
     if (matches.length > 1) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `ambiguous Agent capability: ${operation}`, {
         operation,
@@ -476,7 +464,7 @@ export class ServicesBridge {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
       }
       const service = this.router ?? { dispatch: (name, body, envelope) => {
-        if (['get_task', 'get_execution', 'list_tasks', 'list_executions', 'task_status', 'task_take', 'task_feedback', 'execution_progress'].includes(name)) return this.taskService.dispatch(name, body, envelope);
+        if (['get_execution', 'list_tasks', 'list_executions', 'task_status', 'task_take', 'task_feedback', 'execution_progress'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
       } };
       const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
@@ -495,7 +483,7 @@ export class ServicesBridge {
       }
       const isCatalogDiscovery = capability.service_id === 'catalog' && ['list_services', 'get_service_metadata', 'list_tools'].includes(operation);
       const isTaskDiscovery = capability.service_id === 'task' && [
-        'list_tasks', 'get_task', 'list_executions',
+        'list_tasks', 'list_executions',
         'task_view', 'task_status',
       ].includes(operation);
       if (isCatalogDiscovery || isTaskDiscovery || (capability.service_id === 'task' && operation === 'scheduler_status')) {
@@ -510,21 +498,10 @@ export class ServicesBridge {
           ? { ...payload, mission_id: modernBoundTask.mission_id }
           : operation === 'list_tasks' && this.taskId === null && payload.available_only !== false
           ? { ...payload, states: ['OPEN', 'RUNNING', 'WAITING'] }
-          : ((operation === 'get_task' || operation === 'task_view') && payload.task_id === undefined && this.taskId
+          : (operation === 'task_view' && payload.task_id === undefined && this.taskId
             ? { ...payload, task_id: this.taskId }
             : payload);
-        // Legacy Task records predate Mission metadata and therefore cannot
-        // be read through the semantic task_view projection. Keep the
-        // compatibility read on the local Task Service boundary; modern
-        // task_view calls continue through the Registry above.
-        const result = operation === 'get_task' && typeof this.taskService?.dispatch === 'function'
-          ? this.taskService.dispatch('get_task', discoveryPayload, makeEnvelope({
-            operationId: bridgeOperationId,
-            actorRef: this.actorRef,
-            taskId: discoveryPayload.task_id ?? this.taskId ?? null,
-            executionId: this.executionId,
-          }))
-          : this.registry?.invoke
+        const result = this.registry?.invoke
             ? await this.#invokeRegistered(capability, discoveryPayload, bridgeOperationId)
             : service.dispatch(operation, discoveryPayload, makeEnvelope({
             operationId: bridgeOperationId,
@@ -659,11 +636,6 @@ export class ServicesBridge {
       const options = { operationId: bridgeOperationId };
       let result;
       switch (operation) {
-        case 'get_task':
-          result = modernBoundTask
-            ? sdk.viewTask(payload.task_id ?? this.taskId).task
-            : sdk.getTask(payload.task_id ?? this.taskId);
-          break;
         case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
         case 'task_list': result = sdk.listMissionTasks(payload); break;
         case 'task_status': result = sdk.taskStatus(payload); break;

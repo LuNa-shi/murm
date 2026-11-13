@@ -17,7 +17,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "bf739b19dcf6ceacc501873e036b28fc7d78ce87f949281a8d9ecf5319c0368c"
+      "sha256": "c5664127e5a77ceba74bc9ad80c467f735d12823b56fe1febe1fd4b7805925e7"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -255,13 +255,13 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 463,
+      "line": 451,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 470,
+      "line": 458,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -367,7 +367,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "25cfa92d2e887422a787eb105435172c2543fd09905d6979abc1831f99f8a00c"
+      "sha256": "ab6c3f66916ecd67b5ca19cb9c767f6ba9dd243c5d531b90f9462dbf694b6119"
     }
   ]
 }
