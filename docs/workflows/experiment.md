@@ -2,7 +2,7 @@
 
 > Type: Workflow · Status: Active · Updated: 2026-11-11
 
-**GitHub Issues organize research and engineering intent.** A human-approved Issue decides why the next work is valuable, what the system should do and which phenomena matter for acceptance. Research permission and testing scope must be explicit in that Issue or a linked human-approved decision; there is no separate local Phase approval or spec.
+**GitHub Issues organize research and engineering intent.** A human-approved Issue decides why the next work is valuable, what the system should do and which phenomena matter for acceptance. Research permission and testing scope must be explicit in that Issue or a linked human-approved decision. A numbered phase design may be a versioned attachment, but cannot independently approve research, change acceptance or authorize resources.
 
 Distinguish implementation diagnostics from formal research or acceptance experiments.
 

@@ -77,7 +77,6 @@ for (const [source, text] of contents) {
     checked++;
   }
 }
-if (await stat(resolve(root, 'docs/phases')).catch(() => null)) failures.push('Obsolete docs/phases directory still exists');
 if (failures.length) {
   console.error(failures.join('\n'));
   process.exitCode = 1;

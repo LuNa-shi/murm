@@ -22,7 +22,7 @@ A programmatic project call must supply at least one of `experimentDir` or `repo
 
 ## 2. Benchmark CLI: every flag and its actual default
 
-Arguments accept `--name value` or `--name=value`, except the boolean `--normal-flow`. The launcher first loads `.env` from the working directory, ignoring blank/comment lines and preserving existing environment values. Values are simple trimmed strings with surrounding quotes removed; this is not a general shell/dotenv interpreter.
+Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is the no-value help flag. The removed `--normal-flow` flag is rejected. The launcher first loads `.env` from the working directory, ignoring blank/comment lines and preserving existing environment values. Values are simple trimmed strings with surrounding quotes removed; this is not a general shell/dotenv interpreter.
 
 | Flag | Default / behavior |
 |---|---|
@@ -36,8 +36,8 @@ Arguments accept `--name value` or `--name=value`, except the boolean `--normal-
 | `--parallel-mode` | `semantic`; accepts `direct`, `semantic`, `root-only` |
 | `--task-model` | Rejected; the benchmark has one flat Mission Task model |
 | `--normal-flow` | Rejected; the flat Mission Task contract is always used |
-| `--provider` | `NUROUTER_PI_PROVIDER`; required |
-| `--model` | `NUROUTER_PI_MODEL`; required |
+| `--provider` | `PI_PROVIDER`, then `NUROUTER_PI_PROVIDER`, otherwise `gpt_proxy`; empty values are rejected |
+| `--model` | `PI_MODEL`, then `NUROUTER_PI_MODEL`, otherwise `gpt-6.1-sol`; empty values are rejected |
 | `--experiment-root` | `experiments` |
 | `--experiment-dir` | `experiments/putnambench-runs/run-<startup timestamp>`; resolved path must be strictly below experiment root |
 | `--report-dir` | `reports/putnambench-runs/run-<startup timestamp>` |
@@ -47,7 +47,7 @@ Arguments accept `--name value` or `--name=value`, except the boolean `--normal-
 | `--observability-metadata` | `SWARMENV_OBSERVABILITY_METADATA`, otherwise look under the experiment root |
 | `--help`, `-h` | Print usage and exit before requiring benchmark arguments |
 
-Unknown options throw. Numeric flags are converted with `Number`; only the explicit validations above and downstream constructors apply. The CLI does not have flags for Sandbox, stop-on-solve, custom adapters or all Runtime timers; those are programmatic options.
+Unknown options throw. Numeric flags are converted with `Number`; only the explicit validations above and downstream constructors apply. The CLI has no Sandbox flags: it builds its required OpenSandbox configuration from `SWARMENV_SANDBOX_ENABLED` (the literal string `true` enables it), `SWARMENV_SANDBOX_PROVIDER` (default `opensandbox`), `SWARMENV_SANDBOX_IMAGE`, `SWARMENV_OPENSANDBOX_URL`, optional endpoint/Bridge host variables and the selected provider settings. A disabled or non-OpenSandbox deployment is rejected. Stop-on-solve, custom adapters and the remaining Runtime timers are programmatic options.
 
 The exported runner and CLI both construct the flat Mission Task model. `parallelMode` remains a treatment choice (`direct`, `semantic` or `root-only`); it does not select a second Task model. Removed `taskModel` and `normalFlow` options are rejected by the CLI. Record the actual treatment and resource options rather than inferring them from historical names.
 
@@ -68,7 +68,7 @@ The checked-in [configuration](../../config/putnambench-12.json) pins:
 
 These values identify this configuration; they are not proof that the local checker has already passed preflight. Judge performs its own environment checks. The input formalization is allowed to contain an unsolved marker; a submitted Candidate is a separate file/material and is checked against the Candidate policy.
 
-Direct Pi routing uses `PI_PROVIDER` and `PI_MODEL` (with the older `NUROUTER_PI_*` names retained as compatibility fallbacks). Issue 119 defaults to the native `gpt_proxy` provider and direct `pi`; `PI_GPT_PROXY_BASE_URL` and secret `PI_GPT_PROXY_API_KEY` configure the compatible endpoint through the image models catalog. The compatibility adapter still accepts `openai`, `openai-codex` and `kimi` when explicitly selected. [Agent Core](01-agent-core.md) gives the full argv and RPC behavior.
+Direct Pi routing uses `PI_PROVIDER` and `PI_MODEL` (with the older `NUROUTER_PI_*` names retained as compatibility fallbacks). The CLI defaults to the native `gpt_proxy` provider and direct `pi`; `PI_GPT_PROXY_BASE_URL` and secret `PI_GPT_PROXY_API_KEY` configure the compatible endpoint through the image models catalog. The launcher can read only the selected provider's endpoint/key from `models.json` in `PI_CODING_AGENT_DIR` or the default Pi agent directory, with the explicit provider environment variables taking precedence. The route resolver also accepts `kimi_proxy`, `openai`, `openai-codex` and the NuRouter-specific `kimi` route when explicitly selected; the deployment must supply a compatible command/image. Direct library calls do not inherit the CLI's fallback provider/model values. [Agent Core](01-agent-core.md) gives the full argv and RPC behavior.
 
 ## 4. Startup in execution order
 
@@ -87,11 +87,12 @@ Failures while creating Core environments stop any created Sessions, shut down R
 
 ## 5. Programmatic options and timer precedence
 
-The exported runner accepts the options below in addition to CLI-equivalent `provider`, `model`, `parallelMode`, `taskModel`, `normalFlow`, `experimentDir`, `reportDir`, `projectParallelism`, `timeboxMs` and `turnTimeoutMs`. Passing an option is configuration, not authorization to spend resources.
+The exported runner accepts the options below in addition to CLI-equivalent `provider`, `model`, `parallelMode`, `experimentDir`, `reportDir`, `projectParallelism`, `timeboxMs` and `turnTimeoutMs`. Passing an option is configuration, not authorization to spend resources.
 
 | Option | Default and role |
 |---|---|
-| `taskOriented` | `true` selects flat only when `taskModel` is absent |
+| `taskModel`, `taskOriented` | Removed; supplying either property is rejected, regardless of its value |
+| `normalFlow` | No longer selects behavior; the runner fixes normal flow to `true` and does not read this option |
 | `runId`, `startedAt` | Random UUID and current time for setup identity/tracker; active-loop timing is set after setup |
 | `repositoryCommit`, `repositoryWorktreeDirty` | `null` unless caller/CLI supplies them; report provenance |
 | `stopOnSolved` | Only literal `true` enables early exit; otherwise continue toward the deadline |
@@ -111,8 +112,8 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `identityLoopStopGraceMs` | `15000`; wait before continuing finalization with a recorded supervisor-stop timeout |
 | `checker`, `leanCommand`, `checkerTimeoutMs` | Inject checker or use LeanChecker, command `lake`, timeout `120000` |
 | `maxInfrastructureRetries` | Forwarded to JudgeService; see exact Judge defaults in [04](04-services.md) |
-| `command`, `account`, `group`, `extensionPath` | Override adapter command, route identity and SwarmEnv extension location |
-| `agentAdapterFactory` | Caller-supplied adapter factory; used for controlled tests, not an extra Agent-selection process |
+| `command`, `account`, `group`, `extensionPath` | Override command and routing; runner command defaults to `pi`. Top-level `extensionPath` applies to the local compatibility adapter; OpenSandbox uses `sandbox.extensionPath` in the guest |
+| `agentAdapterFactory` | Caller-supplied compatibility adapter factory when an OpenSandbox manager is not selected; used for controlled tests, not an extra Agent-selection process |
 | `observationStore` | Inject persistent observation store; otherwise project-local storage |
 | `prepareProject` | Awaited preparation hook after initial Task creation and before Core construction |
 | `serviceRegistry` | Inject full Agent-facing registry; skips built-in bundle and Mathlib auto-registration; local owner/controller router still exists |
@@ -124,6 +125,7 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `mathlibSearchSourceRoot` | Otherwise `MATHLIB_SEARCH_SOURCE_ROOT` or `<lean project>/.lake/packages/mathlib/Mathlib` |
 | `mathlibRevision`, `leanVersion` | Otherwise the fixture's pinned revision/toolchain; provider metadata |
 | `sandbox` | Enabled only when `sandbox.enabled === true`; exact settings below |
+| `requireThirdPartySandbox` | CLI sets `true`: require enabled OpenSandbox. Direct library calls can omit it for explicitly configured compatibility fixtures |
 
 The runner does not pass every Runtime constructor option through. For example `maxRecoveryAttempts=1`, `maxCompactions=3`, `handoffWindowRatio=0.8` and compaction checkpoint reminders use Runtime defaults here; assigning similarly named fields on runner options does not configure them.
 
@@ -174,7 +176,7 @@ The top-level ignored `experiments/` raw evidence directory and committed `docs/
 
 ## 9. Fixture, service and frontend boundaries
 
-The deterministic `ScriptExecutor` uses scripted Sessions and a supplied checker, with an explicit healthy deterministic preflight shim. It proposes/claims a legacy-style Task, publishes an invalid Candidate, checks it, resumes after waiting, publishes a repaired Candidate and applies PASS. The fixture launcher uses a temporary directory and deletes it unless `--keep` is set.
+The deterministic `ScriptExecutor` uses scripted Sessions and a supplied checker, with an explicit healthy deterministic preflight shim. It creates a Mission and Mission-scoped Task without `normal_flow: true`, claims that Task, publishes an invalid Candidate, checks it, resumes through the low-level compatibility wait/wake path, publishes a repaired Candidate and applies PASS. This retained fixture path does not select a legacy Task model in the benchmark runner. The fixture launcher uses a temporary directory and deletes it unless `--keep` is set.
 
 `--real-agent` probes local Node/NuRouter/Pi/Lean/Lake commands and provider/model routing before launch. It returns `BLOCKED` for missing prerequisites and `FAILED_TO_LAUNCH` for missing root/input. Its first Candidate is intentionally derived by changing a valid fixture's `ring` to `rfl`; this probes diagnostic consumption and repair. It is not a benchmark run with only an unsolved problem as input. The real-probe environment metadata fields are `SWARMENV_IMPLEMENTATION_COMMIT`, `SWARMENV_WORKTREE_DIRTY`, `SWARMENV_WORKTREE_STATUS`, `SWARMENV_TIMEBOX_MS`, `SWARMENV_PUTNAMBENCH_ROOT`; they record caller context and do not themselves prove it.
 

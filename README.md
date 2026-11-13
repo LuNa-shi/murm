@@ -13,11 +13,12 @@ Current research experiments primarily use PutnamBench and Lean/Mathlib to exami
 | Current documentation map | [docs/INDEX.md](docs/INDEX.md) |
 | Human-reviewed development task | **Approved GitHub Issue** (Issue discussion and acceptance criteria) |
 | Implementation decisions and handoff for an Issue | The originating **GitHub Issue / PR** |
+| Complete proposed stage design and review order | [docs/phases/INDEX.md](docs/phases/INDEX.md), linked to its design Issue and PR |
 | Complete current implementation, prompts and interfaces | [docs/architecture/INDEX.md](docs/architecture/INDEX.md) |
 | Development and experiment workflows | [Development](docs/workflows/development.md) · [Experiments](docs/workflows/experiment.md) |
 | Domain vocabulary | [GLOSSARY.md](GLOSSARY.md) |
 
-The GitHub Issue is the human-facing place to approve **why** a change matters, **what** it should do, and **which observations** constitute success. The GitHub Issue and its human-approved comments are the sole requirements and acceptance source. Implementation decisions, progress, handoffs and ticket dependencies stay on the Issue/PR, with no separate local Phase or spec document. Each implementation PR updates the affected architecture; each completed stage reconciles the manual with the final code and verification evidence.
+The GitHub Issue is the human-facing place to approve **why** a change matters, **what** it should do, and **which observations** constitute success. It owns requirements, acceptance and resource authorization. Numbered phase documents are complete design attachments reviewed through the linked Issue/PR; approval names the accepted document revision. Progress, handoffs and ticket dependencies stay on GitHub. Each implementation PR updates the affected architecture; each completed stage reconciles the manual with the final code and verification evidence.
 
 ## Implementation map
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "02adbb43d39e0b23befb7f2ffc4b19ffb386a36d",
-  "reviewed_date": "2026-11-11",
+  "runtime_baseline": "e6f97bc0d56709f94374a5f824c8e2cd9c312cb2",
+  "reviewed_date": "2026-11-13",
   "scope_roots": [
     "src",
     "scripts",
