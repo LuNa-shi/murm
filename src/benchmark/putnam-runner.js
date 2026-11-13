@@ -755,7 +755,7 @@ async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false }
   ].join('\n\n');
   try {
     const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });
-    if (typeof session.waitForSettled === 'function') {
+    if (response?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
       await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: sequence });
     }
     if (bootstrap && !core.takeResult?.task?.task_id && !core.stopping) {
