@@ -33,7 +33,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "66839d2b64aa6a13671f32b9ad881c5bcb2f3eb468be352ff1d6abf8280b458d"
+      "sha256": "5e5e2a1e8ca5a4541f5998919126b1f33bdaa16e90ca729e91e33138f018fd91"
     },
     {
       "path": "src/runtime/runtime.js",

@@ -1770,7 +1770,7 @@ async function createProjectState(problem, config, options) {
   }, { operationId: `benchmark:task:create:${runId}` }).task;
   const initialTasks = [root];
   observationStore.append({ experimentId: runId, source: 'task-service', kind: 'task_proposed', taskId: root.task_id, payload: { mission_id: mission.mission_id, proposer: 'operator:benchmark', proposal_kind: 'locked_workload' } });
-  observationStore.updateExperiment?.(runId, { status: 'RUNNING', rootTaskId: root.task_id, metadata: { initial_task_count: 0, proposed_task_count: 1 } });
+  observationStore.registerExperiment({ experimentId: runId, rootTaskId: root.task_id, status: 'RUNNING', metadata: { initial_task_count: 0, proposed_task_count: 1, workspace_id: publicWorkspace.workspace_id } });
   observationStore.append({
     experimentId: runId,
     source: 'runtime',
