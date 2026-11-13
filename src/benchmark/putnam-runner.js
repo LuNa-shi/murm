@@ -2712,7 +2712,10 @@ export async function runBenchmarkProject(problem, config, options = {}) {
             owner_ref: core.actorRef,
             core_id: `core-${core.index}`,
             agent_prompt: selectedTask.task_instructions ?? BOUND_AGENT_PROMPT,
-            workspace_mode: 'resume',
+            // Modern Mission Tasks start from the public Mission Workspace and
+            // receive a fresh Execution materialization. Resume is reserved
+            // for explicit recovery claims carrying a source revision.
+            workspace_mode: 'clean',
           });
         } catch (error) {
           // A lost race or admission rejection must release the provisional
