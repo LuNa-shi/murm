@@ -87,7 +87,7 @@ test('OpenSandbox Agent adapter reconnects after a transient event-stream interr
   let eventCalls = 0;
   manager.agentEvents = async function* () {
     eventCalls += 1;
-    if (eventCalls === 1) throw Object.assign(new Error('SSE connection closed'), { code: 'SERVICE_UNAVAILABLE' });
+    if (eventCalls === 1) throw new Error('SSE connection closed');
     await new Promise((resolve) => { manager.releaseEvents = resolve; });
   };
   const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });

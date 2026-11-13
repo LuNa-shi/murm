@@ -64,7 +64,8 @@ class RemoteAgentChild extends EventEmitter {
         // the first transport error. A permanent binding or repeated transport
         // error still reaches the Runtime through the error event.
         if (!this.closed) {
-          const retryable = error?.retryable === true || [ERROR_CODES.SERVICE_UNAVAILABLE, ERROR_CODES.SERVICE_TIMEOUT].includes(error?.code);
+          const retryable = error?.retryable === true
+            || ![ERROR_CODES.NOT_ALLOWED, ERROR_CODES.INVALID_CONTRACT].includes(error?.code);
           if (!retryable || ++this.eventStreamFailures > 5) this.emit('error', error);
         }
       }
