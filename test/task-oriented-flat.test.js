@@ -70,7 +70,7 @@ test('ServicesSDK exposes the Mission-scoped Task seam without parent-specific m
   service.close();
 });
 
-test('canonical task supply seam reports status, registers work, and takes it', () => {
+test('canonical task supply seam proposes work and takes it', () => {
   const { service } = env();
   const sdk = new ServicesSDK(service, { actorRef: 'agent:canonical', coreId: 'core:canonical' });
   const mission = sdk.createMission({ mission_id: 'mission:canonical', goal: 'canonical task supply' }, { operationId: 'canonical:mission' }).mission;
@@ -80,16 +80,16 @@ test('canonical task supply seam reports status, registers work, and takes it', 
   assert.equal(initial.counts.total, 0);
   assert.deepEqual(initial.tasks, []);
 
-  const registered = sdk.taskRegister({
+  const registered = sdk.createTask({
     mission_id: mission.mission_id,
     task_id: 'task:canonical',
+    summary: 'Find one independent route',
     goal: 'find one independent route',
     expected_output: 'a route note',
     acceptance_conditions: ['note exists'],
     collaboration_reason: 'another identity can verify this route',
   }, { operationId: 'canonical:register' });
   assert.equal(registered.task.task_id, 'task:canonical');
-  assert.equal(registered.provenance.actor_ref, 'agent:canonical');
 
   const status = sdk.taskStatus({ mission_id: mission.mission_id });
   assert.equal(status.counts.total, 1);
@@ -141,14 +141,14 @@ test('ordinary Mission Tasks stay exclusive while registration has no queue-size
     task_id: second.task_id, take_key: 'ordinary:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
   }, op('ordinary:two', 'agent:two', { taskId: second.task_id, specVersion: current.spec_version, stateVersion: current.state_version })), /active Execution quota/);
   for (let index = 0; index < 12; index += 1) {
-    const registered = service.taskRegister({
+    const registered = service.createTask({
       mission_id: mission.mission_id,
       task_id: `task:unbounded-${index}`,
       summary: `Register independent responsibility ${index} without a queue quota.`,
       goal: `Explore route ${index}`,
       expected_output: 'a bounded note',
       acceptance_conditions: ['the note is durable'],
-    }, op(`register:unbounded:${index}`, 'agent:one', { taskId: second.task_id, executionId: taken.execution.execution_id, specVersion: taken.execution.spec_version, stateVersion: taken.execution.state_version, fencingVersion: taken.execution.fencing_version }));
+    }, op(`create:unbounded:${index}`, 'agent:one'));
     assert.equal(registered.task.owner_ref, 'agent:one');
   }
   assert.equal(service.taskStatus({ mission_id: mission.mission_id }).counts.total, 14);

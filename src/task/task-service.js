@@ -31,8 +31,6 @@ const MODERN_OPERATION_ALIASES = Object.freeze({
   task_finish: 'finish_task',
   'task.status': 'task_status',
   task_status: 'task_status',
-  'task.register': 'task_register',
-  task_register: 'task_register',
   'task.take': 'task_take',
   task_take: 'task_take',
   'task.feedback': 'task_feedback',
@@ -45,7 +43,7 @@ const TASK_MUTATING_OPERATIONS = new Set([
   'reconcile_task', 'reopen_task',
   'link_material', 'finish_task',
   ...MODERN_MUTATING_OPERATIONS,
-  'task_register', 'task_take',
+  'task_take',
   'execution_progress',
 ]);
 const TASK_EVENT_OPERATIONS = new Set([
@@ -692,10 +690,6 @@ export class TaskService {
 
   listTaskMaterials(taskId, envelope = makeEnvelope({ actorRef: 'unknown', taskId })) {
     return this.dispatch('list_task_materials', { task_id: taskId }, envelope);
-  }
-
-  taskRegister(input, envelope = makeEnvelope({ actorRef: input?.owner_ref ?? 'unknown' })) {
-    return this.dispatch('task_register', input, envelope);
   }
 
   /** Take one eligible Task through the canonical Agent seam. */
@@ -1686,73 +1680,6 @@ export class TaskService {
     };
   }
 
-  #taskRegister(input, envelope) {
-    // `take: true` is the contract §1 register-and-switch operation: in one
-    // transaction the caller's current Execution ends (FENCED, task_switch)
-    // and the new Task is taken on the same Core lane. No other actor can
-    // observe the new Task unowned, so there is no reservation state.
-    const { take = false, ...payload } = input;
-    if (take !== false && take !== true) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'take must be a boolean');
-    const switchFrom = take ? this.#executionForWrite(envelope) : null;
-    if (switchFrom) {
-      if (switchFrom.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `task_register take requires a RUNNING Execution, found ${switchFrom.state}`);
-      if (switchFrom.owner_ref !== envelope.actor_ref) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_register take requires the caller to own the current Execution');
-    }
-    const registered = this.#registerModernTask(payload, envelope);
-    if (!switchFrom || !registered.task) return registered;
-    const updatedAt = now();
-    this.db.prepare(`UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1, handoff_metadata_json = ?, terminal_reason = 'task_switch', wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
-      .run(json({ reason: 'task_switch', switched_to_task_id: registered.task.task_id, requested_at: updatedAt }), updatedAt, switchFrom.execution_id);
-    const previousTask = this.getTask(switchFrom.task_id);
-    if (!TERMINAL_TASK_STATES.includes(previousTask.state)) this.#refreshTaskState(switchFrom.task_id, { updatedAt });
-    const created = this.getTask(registered.task.task_id);
-    const taken = this.#takeTask(created, {
-      take_key: `task_switch:${envelope.operation_id}`,
-      owner_ref: envelope.actor_ref,
-      core_id: switchFrom.core_id ?? null,
-      agent_prompt: created.task_instructions ?? '',
-      workspace_mode: 'clean',
-      skip_fairness: true,
-    }, { ...envelope, task_id: created.task_id, execution_id: null, spec_version: created.spec_version, state_version: created.state_version });
-    return {
-      ...registered,
-      task: taken.task,
-      execution: taken.execution,
-      switched_from: { task: this.getTask(switchFrom.task_id), execution: this.getExecution(switchFrom.execution_id) },
-    };
-  }
-
-  #registerModernTask(payload, envelope) {
-    const goal = payload.goal ?? payload.summary;
-    // Older Agent callers do not send the optional explanation yet. Keep the
-    // canonical registration seam compatible while persisting an explicit
-    // provenance value for every registration.
-    const collaborationReason = payload.collaboration_reason ?? payload.collaborationReason ?? 'unspecified';
-    requireString(collaborationReason, 'collaboration_reason');
-    const result = this.#createModernTask({
-      ...payload,
-      summary: payload.summary ?? goal,
-      goal,
-      collaboration_reason: collaborationReason,
-      // The operation envelope is the identity boundary. A caller may choose
-      // a Task owner in the internal create adapter, but the canonical Agent
-      // registration records the current actor as its proposer/owner.
-      owner_ref: envelope.actor_ref,
-    }, envelope);
-    const persisted = result.task
-      ? this.db.prepare('SELECT creator_task_id, creator_execution_id, creator_actor_ref, collaboration_reason_json FROM task_creation_provenance WHERE task_id = ?').get(result.task.task_id)
-      : null;
-    return {
-      ...result,
-      provenance: {
-        actor_ref: persisted?.creator_actor_ref ?? envelope.actor_ref,
-        task_id: persisted?.creator_task_id ?? envelope.task_id ?? null,
-        execution_id: persisted?.creator_execution_id ?? envelope.execution_id ?? null,
-        collaboration_reason: parse(persisted?.collaboration_reason_json) ?? collaborationReason,
-      },
-    };
-  }
-
   #taskTake(payload, envelope) {
     const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
     const task = this.getTask(taskId);
@@ -1913,7 +1840,6 @@ export class TaskService {
       case 'create_task': return this.#createModernTask(payload, envelope);
       case 'link_material': return this.#linkMaterial(payload, envelope);
       case 'finish_task': return this.#finishTask(payload, envelope);
-      case 'task_register': return this.#taskRegister(payload, envelope);
       case 'task_take': return this.#taskTake(payload, envelope);
       case 'task_feedback': return this.#taskFeedback(payload, envelope);
       case 'execution_progress': return this.#executionProgress(payload, envelope);

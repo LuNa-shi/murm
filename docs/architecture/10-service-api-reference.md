@@ -30,14 +30,14 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `7b18e7bfe2ab46d1c1212f17db95b02856b7dd4372692396a44ba94feda5e89c` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `e4dfe834aa217ee5f89ccc8eb48b505fcaae739ae8caaa595095057d5b7723d4` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `49f55e965be43550f31389d77e4387790900a48fc49aaab1f1fdce65fc5c3fc8` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `b7b63709a329a57b08dbef10a125d32e044c42e38fbd0b527ebf3a938f6793d7` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `e579f88e48817ac474f41e639b473a07928e7507fea8b458b91be58a20b99915` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `e7a9083466da48de82935833a6c37995834ea6e0c5a7631b93a587ec0cd8a52e` |
-| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `99147423ad76ad121a0fa5adbc9498dd32556268e67cbfc6df81c71c564fce0a` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `953455e4d476523155eaa270324992c992ad725dd8add2fa37d040fd6aa0cfb1` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `6d4a734115262062fec13d613e0493c26575d2a8efba7d1217e0e45bd8390d91` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `eed7e96feaf17682bc9de9996a1d79ad8bdc849cd1e2973b6d29dfcac73012ec` |
+| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `3a2a070706712b51844fe74919590d4fb5236ed82b974d44cbb62e7e4a837977` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `d8171d42dfd29aab47b412558ca174afa876bc104b4f2d2aea3a9b2fc95dd3fc` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `3abf22829ef51980cc20e6c70ad3bb282b3c3f1f6d37b654ea2d059e7f57a42d` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
@@ -76,7 +76,6 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `task.task_finish` | `swarmenv_task_finish` | `swarmenv_task_finish` |
 | `task.task_link_material` | `swarmenv_task_link_material` | `swarmenv_task_link_material` |
 | `task.task_list` | `swarmenv_task_list` | `swarmenv_task_list` |
-| `task.task_register` | `swarmenv_task_register` | `swarmenv_task_register` |
 | `task.task_status` | `swarmenv_task_status` | `swarmenv_task_status` |
 | `task.task_take` | `swarmenv_task_take` | `swarmenv_task_take` |
 | `task.task_view` | `swarmenv_task_view` | `swarmenv_task_view` |
@@ -259,7 +258,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 18 registered capabilities
+### Task Service: 17 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -282,7 +281,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "99fa08665b9b4b09b71316e2204810666e386c9a9fc560a2d488d0f5993e70a5"
+  "manifest_hash": "0f15281c4ba73dc7084b35437a475ebcba00ad6c49b0796849a438981546b0b4"
 }
 ```
 
@@ -347,123 +346,6 @@ Read the authoritative Mission, Task counts, eligible work, and observation time
   },
   "method": "POST",
   "path": "/v1/task_status",
-  "errors": []
-}
-```
-
-#### task.task_register
-
-Register one independent Task with a goal, output, acceptance condition, and collaboration reason. With take: true the current Execution is checkpointed and ended and the new Task is taken on the same Core lane in one operation, so no other Agent can take it first; without take the Task is left open for others.
-
-```json
-{
-  "name": "task_register",
-  "operation": "task_register",
-  "description": "Register one independent Task with a goal, output, acceptance condition, and collaboration reason. With take: true the current Execution is checkpointed and ended and the new Task is taken on the same Core lane in one operation, so no other Agent can take it first; without take the Task is left open for others.",
-  "input_schema": {
-    "type": "object",
-    "required": [
-      "mission_id",
-      "goal",
-      "expected_output",
-      "acceptance_conditions"
-    ],
-    "properties": {
-      "mission_id": {
-        "type": "string"
-      },
-      "task_id": {
-        "type": "string"
-      },
-      "summary": {
-        "type": "string"
-      },
-      "goal": {
-        "type": "string"
-      },
-      "task_type": {
-        "type": "string"
-      },
-      "task_instructions": {
-        "type": "string"
-      },
-      "expected_output": {
-        "type": "string"
-      },
-      "acceptance_conditions": {
-        "oneOf": [
-          {
-            "type": "array"
-          },
-          {
-            "type": "object"
-          }
-        ]
-      },
-      "required_capabilities": {
-        "type": "array",
-        "items": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "collaboration_reason": {
-        "type": "string"
-      },
-      "responsibility_key": {
-        "type": "string"
-      },
-      "spawned_from": {
-        "type": "string"
-      },
-      "depends_on": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "timebox_ms": {
-        "type": "integer",
-        "minimum": 1
-      },
-      "take": {
-        "type": "boolean"
-      },
-      "progress": {
-        "type": "object"
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "task-write",
-  "help": {
-    "when": "Register one independent Task with a goal, output, acceptance condition, and collaboration reason. With take: true the current Execution is checkpointed and ended and the new Task is taken on the same Core lane in one operation, so no other Agent can take it first; without take the Task is left open for others.",
-    "ref": "service://task/task_register",
-    "text": "Purpose: Durable Task goals, claims, structure, and completion evidence.\nUse when: Register one independent Task with a goal, output, acceptance condition, and collaboration reason. With take: true the current Execution is checkpointed and ended and the new Task is taken on the same Core lane in one operation, so no other Agent can take it first; without take the Task is left open for others.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/task_register",
   "errors": []
 }
 ```
@@ -3087,7 +2969,6 @@ The SDK constructor requires `dispatch` and `actorRef`. `withContext` creates an
 | `consumeMaterials` | `consume_materials` | write |
 | `listMaterialConsumptions` | `list_material_consumptions` | read |
 | `getCheckResult` | `get_check_result` | read |
-| `taskRegister` | `task_register` | write |
 | `taskTake` | `task_take` | write |
 | `taskFeedback` | `task_feedback` | write |
 | `executionProgress` | `execution_progress` | write |
@@ -3116,7 +2997,6 @@ Registry matches are resolved first by capability name or operation and must be 
   "task_view",
   "task_create",
   "task_status",
-  "task_register",
   "task_take",
   "task_feedback",
   "execution_progress",

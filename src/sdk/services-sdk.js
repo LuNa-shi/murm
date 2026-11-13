@@ -116,11 +116,6 @@ export class ServicesSDK {
     return this.#read('get_check_result', requestKey ? { request_key: requestKey } : { check_result_id: checkResultId });
   }
 
-  /** Register one independent responsibility with the current identity provenance. */
-  taskRegister(task, options = {}) {
-    return this.#write('task_register', task, options);
-  }
-
   /** Take an existing Mission/ordinary Task through the canonical Agent seam. */
   taskTake(payload = {}, options = {}) {
     const contextCoreId = this.context.coreId ?? this.context.core_id ?? null;

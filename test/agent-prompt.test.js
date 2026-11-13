@@ -193,7 +193,7 @@ test('prompt keeps one Bot Execution until a lifecycle boundary', () => {
   const prompt = BOUND_AGENT_PROMPT;
   assert.match(prompt, /read-only research phase .* is normal work/);
   assert.match(prompt, /Do not hand off on your own initiative/);
-  assert.match(prompt, /task_register with take is not a second-work escape path/);
+  assert.match(prompt, /task_create proposes a separate responsibility/);
   assert.match(prompt, /fresh Bot may continue/);
   assert.doesNotMatch(prompt, /voluntary handoff|bounded attempt|substantive increment/i);
   assert.doesNotMatch(prompt, /at least \d|minimum of \d|\d+ (Tasks|checks|Judge calls)/i);

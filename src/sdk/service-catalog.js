@@ -119,12 +119,6 @@ const publicTaskTools = [
     parameters: { type: 'object', required: ['mission_id'], properties: { mission_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false },
   },
   {
-    name: 'task_register', service: 'task', operation: 'task_register', version: '1.0',
-    description: 'Register one independent Task with a goal, output, acceptance condition, and collaboration reason. With take: true the current Execution is checkpointed and ended and the new Task is taken on the same Core lane in one operation, so no other Agent can take it first; without take the Task is left open for others.',
-    scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['mission_id', 'goal', 'expected_output', 'acceptance_conditions'], properties: { mission_id: { type: 'string' }, task_id: { type: 'string' }, summary: { type: 'string' }, goal: { type: 'string' }, task_type: { type: 'string' }, task_instructions: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] }, required_capabilities: { type: 'array', items: { type: 'string', minLength: 1 } }, collaboration_reason: { type: 'string' }, responsibility_key: { type: 'string' }, spawned_from: { type: 'string' }, depends_on: { type: 'array', items: { type: 'string' } }, timebox_ms: { type: 'integer', minimum: 1 }, take: { type: 'boolean' }, progress: { type: 'object' } }, additionalProperties: false },
-  },
-  {
     name: 'task_take', service: 'task', operation: 'task_take', version: '1.0',
     description: 'Take an existing Mission or ordinary Task using the caller identity and Core lane.',
     scope: 'task-write', side_effect: true,
