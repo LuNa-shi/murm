@@ -2734,7 +2734,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       takeTask: ({ candidates, prompt, bootstrap = false }) => takeTaskWithAgent(core, candidates, prompt, { bootstrap }),
       allowEmptyDiscovery: core.index === 1,
       bootstrapPrompt: `Mission ${state.mission.mission_id} starts with zero Tasks. Public Workspace is ${state.publicWorkspace.workspace_id} at revision 0.1. Read the public Workspace and task_status once. Your next tool call after those reads must be swarmenv_task_create. Do not call swarmenv_task_take until task_create has returned the new task_id. Then call swarmenv_task_take exactly once for that returned task_id. Create one independent proof Task for ${state.problem.id}. The proposal must use mission_id ${state.mission.mission_id}, summary "Prove ${state.problem.id} with an independently checked candidate and a clear boundary from other Mission work.", goal "Prove ${state.problem.id}", expected_output "A verified Lean proof for the locked PutnamBench problem", acceptance_conditions {"project":"${state.problem.id}","source_hash":"${state.problem.source_hash}"}, completion_contract {"normal_flow":true,"required_materials":[{"kinds":["fact","experience","conjecture","artifact","failure"],"scope":"proof_relevant","min_count":1,"requires_consumption":true,"cross_task":true,"action":"integration"}],"final_candidate":true,"required_candidate":{"kind":"artifact","scope":"proof_relevant"},"required_check":{"checker_ref":"lean","checker_version":"${state.fixtureManifest.checker_version}","environment_ref":"${state.fixtureManifest.environment_ref}"}}, and workspace {"project":"${state.problem.id}","problem_file":"${state.problem.problem_file}","source_hash":"${state.problem.source_hash}","workspace_id":"${state.publicWorkspace.workspace_id}"}.`,
-      claimTask: async (selectedTaskId, context) => {
+      takeSelectedTask: async (selectedTaskId, context) => {
         // The old selection transport may already have claimed the Task. Reuse that
         // durable result rather than creating a second Execution.
         if (core.takeResult?.task?.task_id === selectedTaskId) {
@@ -2748,7 +2748,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           throw new Error(`selected Task disappeared: ${selectedTaskId}`);
         }
         try {
-          return state.taskService.claimTask(selectedTaskId, {
+          return state.taskService.takeTask(selectedTaskId, {
             ...context,
             owner_ref: core.actorRef,
             core_id: `core-${core.index}`,

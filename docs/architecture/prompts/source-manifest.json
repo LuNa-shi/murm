@@ -33,7 +33,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "083ed371c9f9c9adfafffa43ecb97f6f22a4cdc64d7a1932187d1829fddca14f"
+      "sha256": "3abf22829ef51980cc20e6c70ad3bb282b3c3f1f6d37b654ea2d059e7f57a42d"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -41,7 +41,7 @@
     },
     {
       "path": "src/runtime/identity-task-loop.js",
-      "sha256": "ba2a3b5eff02fbd8f7c0a14dda4fbb25e6e63046f60d1f01b1a6e22df09978c1"
+      "sha256": "e242ab23135491af69d0311647ca1d479e43068ece212b0341431ccb6ab63f76"
     },
     {
       "path": "src/runtime/runtime-capabilities.js",
@@ -53,7 +53,7 @@
     },
     {
       "path": "src/sdk/service-catalog.js",
-      "sha256": "d04737a186b7efe761e5ec2e8649c089e20dc6b0ddb227dbd3010e16e154c1b2"
+      "sha256": "7b18e7bfe2ab46d1c1212f17db95b02856b7dd4372692396a44ba94feda5e89c"
     },
     {
       "path": "src/sdk/builtin-registry.js",
@@ -77,7 +77,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "09c3151d1c02e646aee450695fcbbf4ecdd57fa9ca79135b580a4f6a77fe5269"
+      "sha256": "1c63723df9cfc8d895362d76247d6207d68c8007ebfc0134995a2c2eaf580dc8"
     },
     {
       "path": "src/task/task-types.js",
@@ -333,13 +333,13 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1343,
+      "line": 1360,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1581,
+      "line": 1598,
       "field": "action",
       "sha256": "ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8"
     }
@@ -351,7 +351,7 @@
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "89eac5573dfa9ab4f76792bae0ea5def0f694685720ae95e51c64105d209a234"
+      "sha256": "9fad65d10c75ae767d70adb7727d84f450ba9c7ffb29b265e03ffb5a8b8cb666"
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
@@ -363,11 +363,11 @@
     },
     {
       "path": "docs/architecture/prompts/05-composed-context-examples.md",
-      "sha256": "ed5a713593978548e12174f0a686f3b144777702f0da046b4117d69cc408b2fb"
+      "sha256": "38ff7b15361b1d8934bad664ce88ed7bf5fe61a22b1b810d8c0e3f7955d5f39a"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "aef7fac95868a4327a6205dc16085196c0de19fb6510435f071ca5d8c3f5db5a"
+      "sha256": "2f062db245939c72063d57bccec39b5b1de9bda6cb79a1e2dd605cb6c6f767d3"
     }
   ]
 }

@@ -65,7 +65,7 @@ export class IdentityTaskLoop {
     shortlistLimit = 8,
     takeTask,
     takePrompt = IDENTITY_TAKE_PROMPT,
-    claimTask = null,
+    takeSelectedTask = null,
     runtime = null,
     runExecution = null,
     releaseExecution = null,
@@ -88,9 +88,9 @@ export class IdentityTaskLoop {
       throw new TypeError('IdentityTaskLoop requires listEligibleTasks or taskService queue API');
     }
     if (typeof takeTask !== 'function') throw new TypeError('IdentityTaskLoop requires takeTask');
-    const serviceClaim = taskService?.claimTask?.bind(taskService);
-    if (typeof claimTask !== 'function' && typeof serviceClaim !== 'function') {
-      throw new TypeError('IdentityTaskLoop requires claimTask or taskService.claimTask');
+    const serviceTake = taskService?.takeTask?.bind(taskService);
+    if (typeof takeSelectedTask !== 'function' && typeof serviceTake !== 'function') {
+      throw new TypeError('IdentityTaskLoop requires takeSelectedTask or taskService.takeTask');
     }
     if (!Number.isInteger(shortlistLimit) || shortlistLimit < 1 || shortlistLimit > 100) throw new TypeError('shortlistLimit must be an integer between 1 and 100');
     if (!Number.isInteger(maxClaimRescans) || maxClaimRescans < 0 || maxClaimRescans > 10) throw new TypeError('maxClaimRescans must be an integer between 0 and 10');
@@ -109,7 +109,7 @@ export class IdentityTaskLoop {
     this.shortlistLimit = shortlistLimit;
     this.takeTask = takeTask;
     this.takePrompt = takePrompt;
-    this.claimTask = claimTask ?? ((selectedTaskId, context) => serviceClaim(selectedTaskId, context));
+    this.takeSelectedTask = takeSelectedTask ?? ((selectedTaskId, context) => serviceTake(selectedTaskId, context));
     this.runtime = runtime;
     this.runExecution = runExecution;
     this.releaseExecution = releaseExecution;
@@ -220,7 +220,7 @@ export class IdentityTaskLoop {
     const database = this.taskService?.db;
     if (!database || typeof database.prepare !== 'function') return 0;
     try {
-      const rows = database.prepare("SELECT request_key FROM claim_keys WHERE request_key LIKE ?").all(`${this.coreId}:%`);
+      const rows = database.prepare("SELECT request_key FROM take_keys WHERE request_key LIKE ?").all(`${this.coreId}:%`);
       return rows.reduce((next, row) => {
         const match = String(row.request_key ?? '').match(/:(\d+)$/);
         return match ? Math.max(next, Number(match[1]) + 1) : next;
@@ -382,13 +382,13 @@ export class IdentityTaskLoop {
           const selectedTaskId = taskId(selected);
           const claimSequence = this.claimKeySequence;
           this.claimKeySequence += 1;
-          claim = await this.claimTask(selectedTaskId, {
+          claim = await this.takeSelectedTask(selectedTaskId, {
             task_id: selectedTaskId,
             core_id: this.coreId,
             // A rescan counter only identifies attempts within one handoff.
             // Include a identity-loop-wide sequence so a later reclaim of the same
             // Task gets a fresh idempotency key and can create a new Execution.
-            claim_key: `${this.coreId}:${selectedTaskId}:${claimSequence}`,
+            take_key: `${this.coreId}:${selectedTaskId}:${claimSequence}`,
             owner_ref: `identity:${this.coreId}`,
             task: selected,
             candidates: candidateView,

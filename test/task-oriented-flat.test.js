@@ -98,7 +98,7 @@ test('canonical task supply seam reports status, registers work, and takes it', 
 
   const taken = sdk.taskTake({
     task_id: registered.task.task_id,
-    claim_key: 'canonical:take',
+    take_key: 'canonical:take',
     core_id: 'core:canonical',
   }, { operationId: 'canonical:take' });
   assert.equal(taken.task.task_id, registered.task.task_id);
@@ -112,11 +112,11 @@ test('every Mission Task is exclusive and the Mission has no shared claim entry'
   const mission = createMission(service, 'mission:shared-entry');
   const shared = createTask(service, mission.mission_id, 'task:shared-entry');
   const first = service.dispatch('task_take', {
-    task_id: shared.task_id, claim_key: 'shared:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
+    task_id: shared.task_id, take_key: 'shared:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
   }, op('shared:one', 'agent:one', { taskId: shared.task_id, specVersion: shared.spec_version, stateVersion: shared.state_version })).execution;
   const current = service.getTask(shared.task_id);
   assert.throws(() => service.dispatch('task_take', {
-    task_id: shared.task_id, claim_key: 'shared:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
+    task_id: shared.task_id, take_key: 'shared:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
   }, op('shared:two', 'agent:two', { taskId: shared.task_id, specVersion: current.spec_version, stateVersion: current.state_version })), /active Execution quota/);
 
   assert.equal(service.listExecutions(shared.task_id, { includeTerminal: false }).length, 1);
@@ -134,11 +134,11 @@ test('ordinary Mission Tasks stay exclusive while registration has no queue-size
   const first = createTask(service, mission.mission_id, 'task:first-ordinary');
   const second = createTask(service, mission.mission_id, 'task:second-ordinary');
   const taken = service.dispatch('task_take', {
-    task_id: second.task_id, claim_key: 'ordinary:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
+    task_id: second.task_id, take_key: 'ordinary:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
   }, op('ordinary:one', 'agent:one', { taskId: second.task_id, specVersion: second.spec_version, stateVersion: second.state_version }));
   const current = service.getTask(second.task_id);
   assert.throws(() => service.dispatch('task_take', {
-    task_id: second.task_id, claim_key: 'ordinary:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
+    task_id: second.task_id, take_key: 'ordinary:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
   }, op('ordinary:two', 'agent:two', { taskId: second.task_id, specVersion: current.spec_version, stateVersion: current.state_version })), /active Execution quota/);
   for (let index = 0; index < 12; index += 1) {
     const registered = service.taskRegister({

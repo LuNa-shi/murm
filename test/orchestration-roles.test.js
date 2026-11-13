@@ -228,7 +228,7 @@ test('IdentityTaskLoop presents a bounded shortlist, claims once, hands off to R
       calls.push({ type: 'take', candidates, prompt });
       return { task_id: 'task-1' };
     },
-    claimTask: async (taskId, context) => {
+    takeSelectedTask: async (taskId, context) => {
       calls.push({ type: 'claim', taskId, context });
       return { task: { task_id: taskId, state: 'RUNNING' }, execution: { execution_id: 'execution-1', task_id: taskId, state: 'CREATED' } };
     },
@@ -246,7 +246,7 @@ test('IdentityTaskLoop presents a bounded shortlist, claims once, hands off to R
   assert.match(calls[0].prompt, /task_take|same Core identity/s);
   assert.equal(calls[1].taskId, 'task-1');
   assert.equal(calls[1].context.core_id, 'core-1');
-  assert.equal(calls[1].context.claim_key, 'core-1:task-1:0');
+  assert.equal(calls[1].context.take_key, 'core-1:task-1:0');
   assert.equal(calls[1].context.owner_ref, 'identity:core-1');
   assert.equal(calls[2].claim.execution.execution_id, 'execution-1');
   assert.equal(daemon.snapshot().state, 'IDLE');
@@ -268,7 +268,7 @@ test('IdentityTaskLoop boundedly rescans after a lost claim race without retryin
       selected.push(candidates[0].task_id);
       return candidates[0].task_id;
     },
-    claimTask: async () => {
+    takeSelectedTask: async () => {
       const error = new Error('another daemon won the claim');
       error.code = 'CONFLICT';
       throw error;
@@ -300,7 +300,7 @@ test('IdentityTaskLoop re-arms a selection failure after its bounded cooldown', 
       if (selectionAttempts === 1) throw new Error('transient take provider failure');
       return 'task-rearm';
     },
-    claimTask: async () => ({ task: { task_id: 'task-rearm' }, execution: { execution_id: 'execution-rearm', task_id: 'task-rearm', state: 'CREATED' } }),
+    takeSelectedTask: async () => ({ task: { task_id: 'task-rearm' }, execution: { execution_id: 'execution-rearm', task_id: 'task-rearm', state: 'CREATED' } }),
     runExecution: async (claim) => ({ execution: { ...claim.execution, state: 'SUCCEEDED' } }),
     onEvent: (event) => events.push(event),
   });
@@ -331,7 +331,7 @@ test('IdentityTaskLoop bounds infrastructure take failures instead of treating t
       attempts += 1;
       return { take_failed: true, error: { code: 'SERVICE_UNAVAILABLE', message: 'provider unavailable' } };
     },
-    claimTask: async () => { throw new Error('claim should not be reached'); },
+    takeSelectedTask: async () => { throw new Error('claim should not be reached'); },
   });
 
   assert.equal((await daemon.runOnce({ reason: 'provider-failure' })).disposition, 'take_failed');
@@ -346,14 +346,14 @@ test('IdentityTaskLoop bounds infrastructure take failures instead of treating t
 });
 
 test('IdentityTaskLoop uses a fresh claim key when the same Task is reclaimed later', async () => {
-  const claimKeys = [];
+  const takeKeys = [];
   let executionNumber = 0;
   const daemon = new IdentityTaskLoop({
     coreId: 'core-reclaim',
     listEligibleTasks: () => [{ task_id: 'task-reclaim' }],
     takeTask: async ({ candidates }) => candidates[0].task_id,
-    claimTask: async (taskId, context) => {
-      claimKeys.push(context.claim_key);
+    takeSelectedTask: async (taskId, context) => {
+      takeKeys.push(context.take_key);
       executionNumber += 1;
       return { task: { task_id: taskId }, execution: { execution_id: `execution-${executionNumber}`, task_id: taskId, state: 'CREATED' } };
     },
@@ -363,7 +363,7 @@ test('IdentityTaskLoop uses a fresh claim key when the same Task is reclaimed la
   await daemon.runOnce({ reason: 'first-attempt' });
   await daemon.runOnce({ reason: 'later-retry' });
 
-  assert.deepEqual(claimKeys, ['core-reclaim:task-reclaim:0', 'core-reclaim:task-reclaim:1']);
+  assert.deepEqual(takeKeys, ['core-reclaim:task-reclaim:0', 'core-reclaim:task-reclaim:1']);
 });
 
 test('IdentityTaskLoop does not select or claim when discovery is empty', async () => {
@@ -373,7 +373,7 @@ test('IdentityTaskLoop does not select or claim when discovery is empty', async 
     coreId: 'core-empty',
     listEligibleTasks: () => [],
     takeTask: async () => { selections += 1; return 'unused'; },
-    claimTask: async () => { claims += 1; },
+    takeSelectedTask: async () => { claims += 1; },
   });
 
   const result = await daemon.runOnce({ reason: 'empty' });
@@ -394,7 +394,7 @@ test('IdentityTaskLoop run loop waits for wake signals and stops cleanly', async
       return discoveries === 1 ? [] : [{ task_id: 'task-loop' }];
     },
     takeTask: async () => 'task-loop',
-    claimTask: async () => ({ execution: { execution_id: 'execution-loop', task_id: 'task-loop', state: 'CREATED' } }),
+    takeSelectedTask: async () => ({ execution: { execution_id: 'execution-loop', task_id: 'task-loop', state: 'CREATED' } }),
     runExecution: async () => ({ execution: { state: 'SUCCEEDED' } }),
     waitForSignal: () => wake.promise,
   });
@@ -419,7 +419,7 @@ test('IdentityTaskLoop notify wakes a custom waitForSignal path', async () => {
       return discoveries === 1 ? [] : [{ task_id: 'task-custom-wake' }];
     },
     takeTask: async () => 'task-custom-wake',
-    claimTask: async () => ({ execution: { execution_id: 'execution-custom-wake', task_id: 'task-custom-wake', state: 'CREATED' } }),
+    takeSelectedTask: async () => ({ execution: { execution_id: 'execution-custom-wake', task_id: 'task-custom-wake', state: 'CREATED' } }),
     runExecution: async () => ({ execution: { state: 'SUCCEEDED' } }),
     waitForSignal: () => new Promise(() => {}),
   });
@@ -445,7 +445,7 @@ test('IdentityTaskLoop default idle wait is interruptible by notify', async () =
       return discoveries === 1 ? [] : [{ task_id: 'task-woken' }];
     },
     takeTask: async () => 'task-woken',
-    claimTask: async () => ({ execution: { execution_id: 'execution-woken', task_id: 'task-woken', state: 'CREATED' } }),
+    takeSelectedTask: async () => ({ execution: { execution_id: 'execution-woken', task_id: 'task-woken', state: 'CREATED' } }),
     runExecution: async () => {
       calls.push('run');
       return { execution: { state: 'SUCCEEDED' } };
@@ -470,7 +470,7 @@ test('IdentityTaskLoop stop aborts a claimed Runtime handoff and fences the clai
     coreId: 'core-abort',
     listEligibleTasks: () => [{ task_id: 'task-abort' }],
     takeTask: async () => 'task-abort',
-    claimTask: async () => ({ task: { task_id: 'task-abort' }, execution: { execution_id: 'execution-abort', task_id: 'task-abort', state: 'CREATED' } }),
+    takeSelectedTask: async () => ({ task: { task_id: 'task-abort' }, execution: { execution_id: 'execution-abort', task_id: 'task-abort', state: 'CREATED' } }),
     runtime: {
       startClaimedExecution: async (execution) => ({ execution }),
       waitForExecutionRelease: async (_executionId, { signal }) => new Promise((resolve) => signal.addEventListener('abort', () => resolve({ released: false, aborted: true }), { once: true })),

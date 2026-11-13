@@ -30,7 +30,7 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `d04737a186b7efe761e5ec2e8649c089e20dc6b0ddb227dbd3010e16e154c1b2` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `7b18e7bfe2ab46d1c1212f17db95b02856b7dd4372692396a44ba94feda5e89c` |
 | [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `e4dfe834aa217ee5f89ccc8eb48b505fcaae739ae8caaa595095057d5b7723d4` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
@@ -39,7 +39,7 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `99147423ad76ad121a0fa5adbc9498dd32556268e67cbfc6df81c71c564fce0a` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `953455e4d476523155eaa270324992c992ad725dd8add2fa37d040fd6aa0cfb1` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `083ed371c9f9c9adfafffa43ecb97f6f22a4cdc64d7a1932187d1829fddca14f` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `3abf22829ef51980cc20e6c70ad3bb282b3c3f1f6d37b654ea2d059e7f57a42d` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `eedbc3e6869e525c16369ca1aca042d12bdc0877a3f4447be4319f23e54e3ddc` |
 
@@ -282,7 +282,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "04f0aa7587ffd8423d1911537f060ac49a144cfd4ada61ffde1c9b7645b3c76f"
+  "manifest_hash": "99fa08665b9b4b09b71316e2204810666e386c9a9fc560a2d488d0f5993e70a5"
 }
 ```
 
@@ -486,7 +486,7 @@ Take an existing Mission or ordinary Task using the caller identity and Core lan
       "task_id": {
         "type": "string"
       },
-      "claim_key": {
+      "take_key": {
         "type": "string"
       },
       "workspace_mode": {

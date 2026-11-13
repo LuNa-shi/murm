@@ -698,6 +698,23 @@ export class TaskService {
     return this.dispatch('task_register', input, envelope);
   }
 
+  /** Take one eligible Task through the canonical Agent seam. */
+  takeTask(taskId, payload = {}, envelope = null) {
+    const id = requireString(taskId, 'task_id');
+    const task = this.getTask(id);
+    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${id}`);
+    const takeEnvelope = envelope ?? makeEnvelope({
+      actorRef: payload.owner_ref ?? 'daemon',
+      taskId: id,
+      specVersion: task.spec_version,
+      stateVersion: task.state_version,
+    });
+    return this.dispatch('task_take', payload, { ...takeEnvelope, task_id: id,
+      execution_id: null,
+      spec_version: takeEnvelope.spec_version ?? task.spec_version,
+      state_version: takeEnvelope.state_version ?? task.state_version });
+  }
+
   getExecution(executionId) {
     return rowToExecution(this.db.prepare('SELECT * FROM executions WHERE execution_id = ?').get(executionId));
   }
