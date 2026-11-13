@@ -21,6 +21,15 @@ test('MissionWorkspace keeps public immutable revisions separate from main and m
   assert.deepEqual(candidateFileRef({ workspaceId: created.workspace_id, revision: '0.2', path: 'proof.txt' }), { workspace_id: created.workspace_id, revision: '0.2', path: 'proof.txt' });
 });
 
+test('whole-revision merge removes files deleted from the source tree', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+  const store = new MissionWorkspace({ rootDir: root });
+  const created = await store.create({ missionId: 'mission:delete', workspaceId: 'workspace-delete', initialFiles: { 'keep.md': 'yes', 'remove.md': 'old' } });
+  const saved = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'keep.md': 'yes' } });
+  await store.merge({ workspaceId: created.workspace_id, fromRevision: saved.revision, expectedMainRevision: '0.1' });
+  await assert.rejects(() => store.read({ workspaceId: created.workspace_id, path: 'remove.md' }), { code: 'INVALID_CONTRACT' });
+});
+
 test('MissionWorkspace rejects stale main updates and protects metadata paths', async () => {
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
   const store = new MissionWorkspace({ rootDir: root });

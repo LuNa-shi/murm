@@ -201,7 +201,14 @@ export class MissionWorkspace {
   async #writeSnapshot(root, revision, tree) { const dir = join(root, REVISION_DIR, revision, 'files'); await rm(dir, { recursive: true, force: true }); await mkdir(dir, { recursive: true }); await this.#materialize(dir, tree); }
   async #writeRevision(root, revision, { parents, tree, source, git_commit = null }) { const metadata = { revision, git_commit, parents, files: fileEntries(tree), content_hash: textHash(JSON.stringify(fileEntries(tree))), source, created_at: now() }; await writeFile(join(root, REVISION_DIR, `${revision}.json`), JSON.stringify(metadata, null, 2)); return metadata; }
   async #materialize(root, tree) { for (const [path, content] of Object.entries(tree)) { const target = join(root, path); await mkdir(dirname(target), { recursive: true }); await writeFile(target, content); } }
-  async #materializeCommit(root, tree, message) { await this.#materialize(root, tree); await git(root, ['add', '-A']); const status = await git(root, ['status', '--porcelain']); if (status) await execFile('git', ['-C', root, '-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid', 'commit', '-m', message], { timeout: 30_000 }); return git(root, ['rev-parse', 'HEAD']); }
+  async #materializeCommit(root, tree, message) {
+    // A full-revision merge must also remove files deleted in the source
+    // revision. Only Git-tracked project files are eligible for removal;
+    // Runtime metadata and the repository itself stay outside the Bot tree.
+    const tracked = (await git(root, ['ls-files'])).split('\n').map((path) => path.trim()).filter(Boolean);
+    for (const path of tracked) if (!Object.hasOwn(tree, path) && path !== '.gitignore') await rm(join(root, path), { force: true });
+    await this.#materialize(root, tree); await git(root, ['add', '-A']); const status = await git(root, ['status', '--porcelain']); if (status) await execFile('git', ['-C', root, '-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid', 'commit', '-m', message], { timeout: 30_000 }); return git(root, ['rev-parse', 'HEAD']);
+  }
   #changed(before, after) { return [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((path) => before[path]?.content_hash !== after[path]?.content_hash || before[path]?.bytes !== after[path]?.bytes).sort(); }
   #public(record) { return { ...record, revisions: [...record.revisions] }; }
 }

@@ -428,7 +428,7 @@ CREATE TABLE IF NOT EXISTS wake_keys (
 
 ### Context database
 
-Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `ed2c6aa043ba0f7c9256b7c85db270b4ffd8a1acffea1cc17f25de30121ccaf5`.
+Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `a44a47931acc2c9f0ec2973a92cb56413d50821c683a916143b5e10832add7e4`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -456,11 +456,30 @@ CREATE TABLE IF NOT EXISTS materials (
   source_execution TEXT,
   provenance_json TEXT NOT NULL,
   supersedes TEXT REFERENCES materials(material_id),
+  evidence_json TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS materials_kind_scope ON materials(kind, scope);
 CREATE INDEX IF NOT EXISTS materials_source ON materials(source_task, source_execution);
+
+CREATE TABLE IF NOT EXISTS material_relations (
+  relation_id TEXT PRIMARY KEY,
+  material_id TEXT NOT NULL REFERENCES materials(material_id),
+  replacement_material_id TEXT REFERENCES materials(material_id),
+  relation_kind TEXT NOT NULL CHECK (relation_kind IN ('dispute', 'supersede')),
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  reason TEXT,
+  actor_ref TEXT NOT NULL,
+  source_task TEXT,
+  source_execution TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  UNIQUE(material_id, replacement_material_id, relation_kind, version)
+);
+
+CREATE INDEX IF NOT EXISTS material_relations_active
+  ON material_relations(material_id, relation_kind, active, created_at);
 
 CREATE TABLE IF NOT EXISTS material_consumptions (
   operation_id TEXT NOT NULL,
@@ -596,7 +615,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `4cf257a24979b5eb221ee3ab50a741d1015656d09a61b2f812c23a5e5a16a46e`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `9fbd5eea0da054a80929ddd18dfea299035e9c464833663bdda443cc1ee265ff`.
 
 #### executions_active_core
 
