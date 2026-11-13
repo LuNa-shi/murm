@@ -12,6 +12,8 @@ import { JudgeService } from '../judge/judge-service.js';
 import { LeanChecker } from '../judge/lean-adapter.js';
 import { Runtime } from '../runtime/runtime.js';
 import { WorkspaceManager } from '../runtime/workspace-manager.js';
+import { MissionWorkspace } from '../runtime/mission-workspace.js';
+import { MissionSubmissionStore } from '../runtime/mission-submission.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
 import { ServicesRouter } from '../sdk/service-router.js';
 import { ServicesSDK } from '../sdk/services-sdk.js';
@@ -1233,7 +1235,11 @@ function projectReport(state, startedAt, deadline) {
       model: state.model ?? null,
       timebox_ms: state.timeboxMs ?? null,
       mission_id: state.missionId,
-      initial_task_count: state.initialTaskIds?.length ?? 1,
+      workspace_id: state.workspaceId,
+      workspace_main_revision: '0.1',
+      candidate_model: 'workspace_file_ref',
+      initial_task_count: 0,
+      proposed_task_count: state.initialTaskIds?.length ?? 0,
       dynamic_task_budget: null,
       execution_timeout_ms: state.executionTimeoutMs,
       handoff_reminder_ms: state.handoffReminderMs,
@@ -1259,6 +1265,7 @@ function projectReport(state, startedAt, deadline) {
       mathlib_version: state.fixtureManifest.mathlib_version,
       checker_version: state.fixtureManifest.checker_version,
       run_id: state.runId,
+      workspace_id: state.workspaceId,
       database_path: state.databasePath,
       input_workspace_hash: state.inputMaterialHash,
       task_count: taskTree.length,
@@ -1463,6 +1470,10 @@ async function createProjectState(problem, config, options) {
   const projectDir = join(experimentRoot, 'state', 'projects', problem.id);
   const reportProjectDir = join(reportRoot, problem.id);
   const workspaceRoot = join(experimentRoot, 'workspaces', 'projects', problem.id);
+  const missionWorkspaceRoot = join(projectDir, 'mission-workspace');
+  const missionSubmissionPath = join(projectDir, 'mission-submissions.json');
+  const missionWorkspace = new MissionWorkspace({ rootDir: missionWorkspaceRoot });
+  const missionSubmissionStore = new MissionSubmissionStore({ file: missionSubmissionPath });
   let sandboxObservationStore = null;
   const sandboxConfig = options.sandbox ?? {};
   const sandboxProvider = String(sandboxConfig.provider ?? process.env.SWARMENV_SANDBOX_PROVIDER ?? 'docker').toLowerCase();
@@ -1651,7 +1662,7 @@ async function createProjectState(problem, config, options) {
   // control-plane registry local even when Agent-facing providers are remote;
   // ServicesBridge uses capabilityRegistry for the named HTTP calls.
   const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService });
-  const router = new ServicesRouter({ taskService, contextService, judgeService, registry: routerRegistry, logger: routerLogger });
+  const router = new ServicesRouter({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore, registry: routerRegistry, logger: routerLogger });
   // Flat Mission Tasks complete and block through the registered Task
   // capabilities. The Runtime lifecycle aliases serve retired Tasks only;
   // exposing both gave r12 Agents two tools per action with different
@@ -1678,9 +1689,9 @@ async function createProjectState(problem, config, options) {
   const taskCreateMutex = new SerialTaskCreateAdmission();
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
   const modeInstructions = selectedParallelMode === 'root-only'
-    ? 'Root-only benchmark treatment: do not register ordinary Tasks. Work on the shared Mission Task only. This is a controlled treatment, not a different Task model.'
-    : 'Search the Mission Task summaries and linked Materials before proposing substantial new work. The current Task may call the Judge directly whenever a candidate is ready. A source-level Judge FAIL is diagnostic feedback: read the returned CheckResult, revise the candidate in this same Execution, and call submit_candidate again without creating a repair Task or waiting for a Response handoff. Create a separate Task only for genuinely independent work. Publish bounded Materials for distinct findings or checkpoints when they become useful, link them to their producer, and do not publish duplicate copies or require another Task before continuing the current candidate route. Complete the current Task when its own contract is satisfied.';
-  const dependencyInstruction = 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends only the current Execution and releases the Core. On the shared Mission Task it does not block the Mission: the Mission stays claimable, so block there only when you have no useful Mission work without the prerequisite. Do not call request_wait in the normal-flow treatment.';
+    ? 'Root-only benchmark treatment: do not register additional Tasks after the initial responsibility. This is a controlled treatment, not a shared Mission Task; Mission itself is never taken.'
+    : 'Search Task summaries, Materials, and public Workspace revisions before proposing substantial new work. The current Task may call the Judge directly whenever a Workspace file is ready. A source-level Judge FAIL is diagnostic feedback: read the returned CheckResult, revise the file in this Execution, and submit the same Workspace file reference again. Create a separate Task only for genuinely independent work. Publish bounded Materials for distinct findings or checkpoints when useful, link them to their producer, and do not publish duplicate copies. Complete the current Task when its own contract is satisfied.';
+  const dependencyInstruction = 'When a real external dependency blocks progress, publish and link Handoff Material, then call task.block with a typed dependency; this ends the current Bot Execution and releases the Core. Mission itself is never claimable and is not changed into a Task by this block. Do not call request_wait in the normal-flow treatment.';
   const taskSpecificInstruction = 'The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition. Publish and link durable evidence when the Task has a result; consume useful linked research Material with an explicit integration action when it informs the proof.';
   const taskPayload = {
     task_type: 'proof',
@@ -1691,7 +1702,7 @@ async function createProjectState(problem, config, options) {
     // when the pool is larger than the Core count; research routes remain
     // independently available instead of starving the integration lane.
     priority: 110,
-    task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the real Workspace, inspect only file paths returned by list_workspace_files, inspect the formalization and toolchain, then work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a candidate. Create a separate candidate file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. Until an honest candidate is ready, keep researching and publish useful evidence; never submit the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.`,
+    task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the public Workspace revision and then the materialized Execution Workspace, inspect the formalization and toolchain, and work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a result. Create a separate proof file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. Until an honest proof is ready, keep researching and publish useful evidence; never submit the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.`,
     completion_contract: {
       normal_flow: true,
       required_materials: [{
@@ -1732,18 +1743,34 @@ async function createProjectState(problem, config, options) {
       },
     },
   }, { operationId: `benchmark:mission:create:${runId}` }).mission;
+  const workspaceId = `workspace-${problem.id}-${runId}`;
+  const publicWorkspace = await missionWorkspace.create({
+    missionId: mission.mission_id,
+    workspaceId,
+    initialFiles: { [problem.problem_file]: problem.source },
+    metadata: { input_snapshot_hash: problem.source_hash, checker: fixture.checker_ref, environment: fixture.environment_ref },
+  });
+  // The target protocol observes a real zero-Task Mission before any
+  // responsibility is proposed. The benchmark's locked proof workload then
+  // creates one explicit proposal so the deterministic run has work to
+  // execute; the observation keeps these two facts separate.
+  observationStore.registerExperiment({ experimentId: runId, rootTaskId: null, status: 'CREATED', metadata: {
+    problem_id: problem.id,
+    task_model: 'flat',
+    mission_id: mission?.mission_id ?? null,
+    initial_task_count: 0,
+    workspace_id: publicWorkspace.workspace_id,
+  } });
+  observationStore.append({ experimentId: runId, source: 'runtime', kind: 'mission_started_zero_tasks', payload: { mission_id: mission.mission_id, workspace_id: publicWorkspace.workspace_id } });
   const root = owner.createTask({
     ...taskPayload, mission_id: mission.mission_id,
+    workspace: { ...taskPayload.workspace, workspace_id: publicWorkspace.workspace_id },
     timebox_ms: options.taskTimeboxMs ?? flatExecutionTimeoutMs(options),
     owner_ref: 'owner:benchmark',
   }, { operationId: `benchmark:task:create:${runId}` }).task;
   const initialTasks = [root];
-  observationStore.registerExperiment({ experimentId: runId, rootTaskId: root.task_id, status: 'RUNNING', metadata: {
-    problem_id: problem.id,
-    task_model: 'flat',
-    mission_id: mission?.mission_id ?? null,
-    initial_task_count: initialTasks.length,
-  } });
+  observationStore.append({ experimentId: runId, source: 'task-service', kind: 'task_proposed', taskId: root.task_id, payload: { mission_id: mission.mission_id, proposer: 'operator:benchmark', proposal_kind: 'locked_workload' } });
+  observationStore.updateExperiment?.(runId, { status: 'RUNNING', rootTaskId: root.task_id, metadata: { initial_task_count: 0, proposed_task_count: 1 } });
   observationStore.append({
     experimentId: runId,
     source: 'runtime',
@@ -1756,6 +1783,9 @@ async function createProjectState(problem, config, options) {
       parallel_mode: selectedParallelMode,
       task_model: 'flat',
       mission_id: mission?.mission_id ?? null,
+      workspace_id: publicWorkspace.workspace_id,
+      initial_task_count: 0,
+      proposed_task_count: 1,
       normal_flow: normalFlow,
     },
   });
@@ -1818,10 +1848,13 @@ async function createProjectState(problem, config, options) {
       taskService,
       contextService,
       workspaceManager,
+      missionWorkspace,
+      missionSubmissionStore,
       agentAdapter: adapter,
       runtimeCapabilities,
       sandboxManager,
       cleanExecutionWorkspaces: usesOpenSandbox,
+      freshBotPerExecution: true,
       capabilityRegistry,
       maxWorkers: 1,
       coreIds: [`core-${index}`],
@@ -2540,6 +2573,9 @@ async function createProjectState(problem, config, options) {
     parallelism,
     parallelMode: selectedParallelMode,
     missionId: mission.mission_id,
+    workspaceId: publicWorkspace.workspace_id,
+    missionWorkspace,
+    missionSubmissionStore,
     taskCreateMutex,
     dynamicTaskEvents: [],
     executionTimeoutMs: options.executionTimeoutMs ?? flatExecutionTimeoutMs(options),
@@ -2976,6 +3012,31 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     process.off('unhandledRejection', unhandledRejectionHandler);
   }
   const report = projectReport(state, startedAt, deadline);
+  try {
+    const workspace = await state.missionWorkspace.get({ workspaceId: state.workspaceId });
+    const materials = state.contextService.readMaterials({ mission_id: state.missionId, include_history: true }).map((material) => material.material_id);
+    const submission = await state.missionSubmissionStore.submit({
+      missionId: state.missionId,
+      workspaceId: state.workspaceId,
+      mainRevision: workspace.main_revision,
+      materialIds: materials,
+      checker: state.fixtureManifest.checker_ref,
+      environment: state.fixtureManifest.environment_ref,
+      acceptance: state.taskService.getMission(state.missionId)?.acceptance_conditions ?? {},
+      actorRef: 'operator:benchmark',
+      requestId: `mission-submit:${state.runId}`,
+    });
+    report.mission_submission = await state.missionSubmissionStore.finish({
+      missionId: state.missionId,
+      submissionId: submission.submission_id,
+      verdict: report.run.solved ? 'PASS' : 'FAIL',
+      result: { solved: report.run.solved, protocol_valid: report.run.protocol_valid },
+    });
+  } catch (error) {
+    report.mission_submission = { state: 'error', error: { code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'mission_submission_error' } };
+    report.audit.invalid = true;
+    report.audit.invalid_reasons.push('mission_submission_error');
+  }
   state.observationStore.append({
     experimentId: state.runId,
     source: 'runtime',

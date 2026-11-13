@@ -31,6 +31,17 @@ test('whole-revision merge removes files deleted from the source tree', async ()
   await assert.rejects(() => store.read({ workspaceId: created.workspace_id, path: 'remove.md' }), { code: 'INVALID_CONTRACT' });
 });
 
+test('three-way merge reports concurrent edits instead of overwriting main', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+  const store = new MissionWorkspace({ rootDir: root });
+  const created = await store.create({ missionId: 'mission:conflict', workspaceId: 'workspace-conflict', initialFiles: { 'notes.md': 'base' } });
+  const source = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'notes.md': 'source' } });
+  const mainCandidate = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'notes.md': 'main' } });
+  await store.merge({ workspaceId: created.workspace_id, fromRevision: mainCandidate.revision, expectedMainRevision: '0.1' });
+  await assert.rejects(() => store.merge({ workspaceId: created.workspace_id, fromRevision: source.revision, expectedMainRevision: '0.1' }), { code: 'STALE_VERSION' });
+  await assert.rejects(() => store.merge({ workspaceId: created.workspace_id, fromRevision: source.revision, expectedMainRevision: '0.4' }), (error) => error.code === 'CONFLICT' && error.details.conflicts.includes('notes.md'));
+});
+
 test('MissionWorkspace rejects stale main updates and protects metadata paths', async () => {
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
   const store = new MissionWorkspace({ rootDir: root });

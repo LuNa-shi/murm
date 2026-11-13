@@ -40,7 +40,11 @@ The first three are the exported active states. Every other state is terminal an
 
 These are the exact database spellings. Semantic handoff and progress handoff do **not** record the same terminal state. Preserve `state`, `terminal_reason` and handoff metadata together in reports.
 
-Task state is a separate projection. Releasing one shared Mission Execution can leave the Task `RUNNING` because a sibling still works. A Core becoming idle is a capacity fact, not Mission completion.
+Task state is a separate projection. Every concrete Task has one effective
+Execution in the Issue #122 path; Mission itself has no owner or Execution. A
+Core becoming idle is a capacity fact, not Mission completion. The older
+shared-Mission sibling wording below is retained only to explain historical
+records and compatibility imports.
 
 ### 2.2 Runtime Core occupancy
 
@@ -80,9 +84,17 @@ The controller defaults to a 5-second sweep and 16-Task shortlist. Event/timer r
 
 A pass reads up to 100 `OPEN`/`BLOCKED` Tasks through the default adapter, asks Task Service to reconcile them, then reads updated blocked/claimable views and identity-loop health. Healthy idle loops in selector cooldown are excluded. Unhealthy loops can invoke an optional recovery callback.
 
-The controller signals at most one idle loop per distinct claimable Task in its view. The sorted Task IDs, loop state and idle generation form a duplicate-suppression key. This budget counts Task entries, not shared-Mission parallel slots; the generic wake heuristic does not by itself fan one shared Task out to every idle Core. The runner's startup and loop callbacks matter.
+The controller signals at most one idle loop per distinct claimable Task in its
+view. The sorted Task IDs, loop state and idle generation form a
+duplicate-suppression key. Mission is not inserted into this view and no
+shared-Mission parallel slot exists in the current implementation.
 
-It publishes readiness/health snapshots, suppresses stable blocked/no-op noise, and keeps observer errors from changing ownership. Normal reconciliation preserves terminal Tasks and active owners. `dependency:` blocks can reopen after prerequisites satisfy; external capability and operator blocks require explicit reopen. There is a specific repair for a shared Mission left aggregate-`BLOCKED` by an older build.
+It publishes readiness/health snapshots, suppresses stable blocked/no-op noise,
+and keeps observer errors from changing ownership. Normal reconciliation
+preserves terminal Tasks and active owners. `dependency:` blocks can reopen
+after prerequisites satisfy; external capability and operator blocks require
+explicit reopen. Historical aggregate-`BLOCKED` repair remains readable only
+for imported old records and is not used to create a Mission Task.
 
 ### 3.3 Scheduler compatibility coordinator
 
@@ -189,7 +201,11 @@ This remains the current Runtime recovery path, including when the OpenSandbox a
 | Runtime `restart` | Runtime generation +1; fence active `CREATED`/`RUNNING` attempts | Stop all owned Sessions, including released reusable Sessions; preserve legacy `WAITING` responsibilities |
 | Runtime `shutdown` | Default `FAILED/runtime_shutdown`, configurable by caller | Set stopping, unsubscribe callbacks, release live bindings, stop all owned Sessions, await recovery/release work |
 
-A Session with `identitySession=true` survives normal Task completion/handoff/block. Runtime clears its `boundExecutionId` and keeps it in `identitySessions`; a non-reusable Session is stopped. Shutdown owns both active and temporarily unbound Sessions.
+A Session with `identitySession=true` survives normal Task completion/handoff/block
+only in compatibility mode. With `freshBotPerExecution=true`, Runtime clears
+the binding, removes the Session from `identitySessions`, and stops it before
+the next Bot starts. Shutdown owns both active and temporarily unbound
+Sessions.
 
 One listener set is attached per Session; event handlers read its current Execution binding, preventing handler multiplication on rebind. Closing/absent bindings ignore late events. Sibling fencing uses tracked pending-release promises and updates occupancy after cleanup reaches release.
 
@@ -263,7 +279,7 @@ dependency reopen are in [03](03-mission-task.md).
 | [task-controller.js](../../src/runtime/task-controller.js) | Reconciliation, wake budget/deduplication and health callbacks | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
 | [scheduler.js](../../src/runtime/scheduler.js) | Generic startup budget and signature suppression | [scheduler.test.js](../../test/scheduler.test.js) |
 | [runtime.js](../../src/runtime/runtime.js) | Binding, events, deadlines, recovery and cleanup | [Workspace contract](../../test/workspace-contract.test.js), [progress](../../test/phase1-progress.test.js), [handoff notifications](../../test/task-handoff-notifications.test.js) |
-| [task-service.js](../../src/task/task-service.js), [task-types.js](../../src/task/task-types.js), [schema.js](../../src/storage/schema.js) | Durable state/version/Core/lease transitions and replay | [flat Task behavior](../../test/task-oriented-flat.test.js), [shared Mission block](../../test/shared-mission-block.test.js), [Material completion](../../test/task-material-completion.test.js) |
+| [task-service.js](../../src/task/task-service.js), [task-types.js](../../src/task/task-types.js), [schema.js](../../src/storage/schema.js) | Durable state/version/Core/lease transitions and replay | [flat Task behavior](../../test/task-oriented-flat.test.js), [retired shared-Mission compatibility regression](../../test/shared-mission-block.test.js), [Material completion](../../test/task-material-completion.test.js) |
 | [services-bridge.js](../../src/agent/services-bridge.js) | Identity, same-lane bind/switch and compensation | [profile/Bridge](../../test/capability-profile-bridge.test.js), [direct Judge](../../test/judge-direct-submit.test.js) |
 
 Test links identify existing regression scenarios, not a claim that they ran in this documentation session. Mock adapter tests do not establish live-provider, Docker or long-duration scientific behavior.

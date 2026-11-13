@@ -291,6 +291,8 @@ const metadata = {
     timebox_ms: options.timeboxMs,
     parallel_mode: options.parallelMode,
     task_model: 'flat',
+    workspace_model: 'mission_workspace_public_revisions',
+    candidate_model: 'workspace_file_ref',
     initial_task_count: null,
     dynamic_task_budget: null,
     turn_timeout_ms: options.turnTimeoutMs,

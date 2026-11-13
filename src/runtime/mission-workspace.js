@@ -173,13 +173,16 @@ export class MissionWorkspace {
     const sourceMeta = JSON.parse(await readFile(join(root, REVISION_DIR, `${sourceRevision}.json`), 'utf8'));
     if (typeof checker === 'function' && !(await checker({ workspaceId, revision: sourceRevision, files: source }))) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace revision check failed');
     const main = await this.#tree(root, oldMain);
+    const baseRevision = sourceMeta.parents?.[0] ?? oldMain;
+    const base = await this.#tree(root, baseRevision);
+    const merged = this.#threeWayMerge(base, main, source, { baseRevision, mainRevision: oldMain, sourceRevision });
     const revision = nextRevision(record.revisions.at(-1));
-    await this.#writeSnapshot(root, revision, source);
-    const commit = await this.#materializeCommit(root, source, `Merge Workspace revision ${sourceRevision}`);
-    await this.#writeRevision(root, revision, { parents: [oldMain, sourceRevision], tree: source, source: 'merge', git_commit: commit });
+    await this.#writeSnapshot(root, revision, merged);
+    const commit = await this.#materializeCommit(root, merged, `Merge Workspace revision ${sourceRevision}`);
+    await this.#writeRevision(root, revision, { parents: [oldMain, sourceRevision], tree: merged, source: 'merge', git_commit: commit });
     record.revisions.push(revision); record.main_revision = revision; record.main_commit = commit; record.next_revision = nextRevision(revision); record.updated_at = now();
     await this.#write(root, record);
-    return { ...this.#public(record), merged_from: sourceRevision, parents: [oldMain, sourceRevision], changed_files: this.#changed(main, source), source_commit: sourceMeta.git_commit ?? null };
+    return { ...this.#public(record), merged_from: sourceRevision, parents: [oldMain, sourceRevision], changed_files: this.#changed(main, merged), source_commit: sourceMeta.git_commit ?? null };
   }
 
   async materialize({ workspaceId, revision = undefined, targetDir }) {
@@ -210,6 +213,23 @@ export class MissionWorkspace {
     await this.#materialize(root, tree); await git(root, ['add', '-A']); const status = await git(root, ['status', '--porcelain']); if (status) await execFile('git', ['-C', root, '-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid', 'commit', '-m', message], { timeout: 30_000 }); return git(root, ['rev-parse', 'HEAD']);
   }
   #changed(before, after) { return [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((path) => before[path]?.content_hash !== after[path]?.content_hash || before[path]?.bytes !== after[path]?.bytes).sort(); }
+  #threeWayMerge(base, main, source, revisions) {
+    const merged = {};
+    const conflicts = [];
+    const paths = new Set([...Object.keys(base), ...Object.keys(main), ...Object.keys(source)]);
+    for (const path of paths) {
+      const baseValue = base[path] ?? null;
+      const mainValue = main[path] ?? null;
+      const sourceValue = source[path] ?? null;
+      const mainChanged = mainValue !== baseValue;
+      const sourceChanged = sourceValue !== baseValue;
+      if (mainChanged && sourceChanged && mainValue !== sourceValue) conflicts.push(path);
+      else if (sourceChanged) { if (sourceValue !== null) merged[path] = sourceValue; }
+      else if (mainValue !== null) merged[path] = mainValue;
+    }
+    if (conflicts.length > 0) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace merge has unresolved file conflicts', { ...revisions, conflicts });
+    return merged;
+  }
   #public(record) { return { ...record, revisions: [...record.revisions] }; }
 }
 

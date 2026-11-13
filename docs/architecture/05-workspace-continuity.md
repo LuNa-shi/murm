@@ -37,9 +37,10 @@ Every `Runtime.startExecution` or `bindAgentExecution` prepares a private
 Workspace before starting the durable Execution. A Task need not expose file or
 Sandbox tools to its Agent for that support directory to exist: capability
 selection and materialization are separate decisions. Independent participants
-in the shared Mission Task receive independent writable directories. Neither
-the shared Mission nor a Core has one mutable project checkout that all
-Executions write.
+in the compatibility Task path receive independent writable directories. In
+the Issue #122 path Mission has no owner and the persistent Mission Workspace
+repository is separate from each Execution directory; no Core or Bot receives
+a shared mutable checkout.
 
 The default location is `<workspaceRoot>/<execution_id>`. The generated path
 segment must match `[A-Za-z0-9][A-Za-z0-9._-]*`; an explicitly provided Workspace
@@ -168,9 +169,7 @@ Thus “new Workspace” does not imply the first Agent turn sees revision 1.
 
 The claim records `workspace_selection`, source Execution/path/revision and
 input snapshot. The Task Service verifies a source Execution belongs to the
-same Task when that source ID is supplied. For the shared Mission Task,
-default resume selects a terminal predecessor, not another live participant's
-working directory. See the exact claim rules in [03](03-mission-task.md).
+same Task when that source ID is supplied. Legacy imported records may select a terminal predecessor, but the Issue #122 path materializes only a public Mission Workspace revision and never exposes another Bot's working directory. See the exact claim rules in [03](03-mission-task.md).
 
 WorkspaceManager requires a source inside its root and a selected revision
 between 1 and the source's current revision. With a recorded Git commit it
@@ -396,7 +395,7 @@ when available and uses a valid measured value.
 | At/above max after successful compaction, known ratio at/above 0.8 | Rotate with `compaction_window_threshold`. |
 | At/above max, later `turn_end` with ratio at/above threshold | Rotate. |
 | At/above max, later `turn_end` with unknown usage | Log `continue_until_boundary`; this particular event does not immediately rotate. |
-| Successful compaction below both stopping conditions | Continue the same identity. |
+| Successful compaction below both stopping conditions | Continue the current Bot only while its Execution remains active; after a lifecycle boundary a fresh Bot reads public state. |
 | Failed/nonaborted compaction without result | Enter the session-failure/recovery path described in [02](02-execution.md). |
 
 When available, `estimatedTokensAfter` /
@@ -418,7 +417,7 @@ tokens after. No Workspace or a no-longer-active Execution makes the save
 all later saves or stranding the lifecycle.
 
 With reminders enabled and no closing/rotation in progress, Runtime queues a
-follow-up prompt asking the same identity to write substantive
+follow-up prompt asking the current Bot to write substantive
 `execution_progress`; the prompt has a 30-second timeout. Compaction metadata
 alone is not converted into invented findings. The full reminder and exact
 send path appear in [08](08-prompts.md).

@@ -128,6 +128,8 @@ export class JudgeService {
       if (attestation.task_id !== envelope.task_id || attestation.execution_id !== envelope.execution_id ||
         (attestation.path ?? null) !== (source.path ?? null) ||
         (attestation.workspace_revision ?? null) !== (source.workspace_revision ?? null) ||
+        (attestation.workspace_id ?? null) !== (source.workspace_id ?? null) ||
+        (attestation.revision ?? null) !== (source.revision ?? null) ||
         attestation.content_hash !== sourceHash) {
         throw new SwarmEnvError(ERROR_CODES.FENCED, 'Workspace source attestation does not match the current Execution source');
       }
