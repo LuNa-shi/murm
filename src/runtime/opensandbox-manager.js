@@ -263,13 +263,17 @@ export class OpenSandboxManager {
     const id = required(executionId, 'execution_id');
     const existing = this.executions.get(id);
     if (existing) return this.#snapshot(existing);
+    const workerToken = randomUUID();
+    const workerEntrypoint = this.entrypoint[0] === 'tail'
+      ? [...this.workerCommand, '--port', String(this.workerPort)]
+      : this.entrypoint;
     const response = await this.#request('/sandboxes', {
       method: 'POST',
       body: {
         image: { uri: this.image },
-        entrypoint: this.entrypoint,
+        entrypoint: workerEntrypoint,
         resourceLimits: this.resourceLimits,
-        env: { ...this.environment, ...envs(environment) },
+        env: { ...this.environment, ...envs(environment), SWARMENV_WORKER_TOKEN: workerToken },
         ...(this.volumes.length > 0 ? { volumes: this.volumes } : {}),
         metadata: {
           ...this.metadata,
@@ -302,7 +306,7 @@ export class OpenSandboxManager {
       });
       throw error;
     }
-    const record = { executionId: id, sandboxId, execdUrl: execdUrl.replace(/\/$/, ''), execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), jobs: new Map() };
+    const record = { executionId: id, sandboxId, execdUrl: execdUrl.replace(/\/$/, ''), execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), jobs: new Map(), workerToken };
     this.executions.set(id, record);
     try {
       if (this.waitForExecdReady) await this.#waitExecd(record);
@@ -399,14 +403,8 @@ export class OpenSandboxManager {
   async startAgent({ executionId, command: agentCommand, args = [], cwd = '/workspace', env = {}, secretEnvironment = {}, sessionDir = '/workspace/.swarm/pi-session', systemPrompt = null, systemPromptPath = null } = {}) {
     const record = this.#record(executionId);
     if (record.agent) return { ...record.agent };
-    const workerToken = randomUUID();
-    const workerArgv = [...this.workerCommand, '--port', String(this.workerPort)];
-    // Execd's background command remains attached to its command timeout in
-    // the released 1.2 server. Start the worker as a detached child of a
-    // short-lived shell so the launch request can complete without killing
-    // the long-lived authenticated worker listener.
-    const workerCommand = `nohup ${workerArgv.map(shellQuote).join(' ')} >/tmp/swarmenv-agent-worker.log 2>&1 </dev/null &`;
-    await this.exec({ executionId, command: ['sh', '-lc', workerCommand], cwd: '/workspace', internalEnvironment: { SWARMENV_WORKER_TOKEN: workerToken }, background: true, timeoutMs: 30_000 });
+    const workerToken = record.workerToken;
+    if (typeof workerToken !== 'string' || workerToken.length === 0) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox worker token is unavailable for this Execution');
     let endpoint = endpointForHost((await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}/endpoints/${this.workerPort}`, { method: 'GET', timeoutMs: 30_000 })).body, this.endpointHost);
     if (!endpoint) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return the Agent worker endpoint', { sandbox_id: record.sandboxId, port: this.workerPort });
     endpoint = endpoint.replace(/\/$/, '');

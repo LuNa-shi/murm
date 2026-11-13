@@ -107,7 +107,6 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
       calls.push({ url, options });
       if (url.endsWith('/sandboxes')) return response({ id: 'sbx-worker' }, { status: 202 });
       if (url.includes('/endpoints/44772')) return response({ url: 'http://execd.test/sbx-worker' });
-      if (url === 'http://execd.test/sbx-worker/command') return response({ command_id: 'worker-job', running: true });
       if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-worker' });
       if (url === 'http://worker.test/sbx-worker/health') return response({ ok: true });
       if (url === 'http://worker.test/sbx-worker/start') return response({ ok: true });
@@ -118,11 +117,10 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
   await manager.ensureExecution({ executionId: 'e-worker' });
   const started = await manager.startAgent({ executionId: 'e-worker', command: 'nurouter', args: ['pi', '--mode', 'rpc'] });
   assert.equal(started.worker_port, 44100);
-  const workerCommand = calls.find((call) => call.url === 'http://execd.test/sbx-worker/command');
-  const workerPayload = JSON.parse(workerCommand.options.body);
-  assert.match(workerPayload.argv.join(' '), /nohup/);
-  assert.doesNotMatch(workerPayload.argv.join(' '), /--token/);
-  assert.match(JSON.parse(workerCommand.options.body).envs.SWARMENV_WORKER_TOKEN, /^[0-9a-f-]{36}$/);
+  const sandboxCreate = calls.find((call) => call.url === 'http://sandbox.test/v1/sandboxes');
+  const sandboxPayload = JSON.parse(sandboxCreate.options.body);
+  assert.deepEqual(sandboxPayload.entrypoint, ['node', '/opt/swarmenv/agent-worker.mjs', '--port', '44100']);
+  assert.match(sandboxPayload.env.SWARMENV_WORKER_TOKEN, /^[0-9a-f-]{36}$/);
   const launch = calls.find((call) => call.url === 'http://worker.test/sbx-worker/start');
   assert.equal(launch.options.headers.authorization.startsWith('Bearer '), true);
   assert.deepEqual(JSON.parse(launch.options.body).args, ['pi', '--mode', 'rpc']);
