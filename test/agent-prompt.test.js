@@ -49,7 +49,7 @@ test('all prompt aliases describe one reusable identity contract', () => {
   for (const prompt of [GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT]) {
     assert.match(prompt, /task_take/);
     assert.match(prompt, /Session/);
-    assert.match(prompt, /cannot claim or select/);
+  assert.match(prompt, /cannot take or select/);
     assert.doesNotMatch(prompt, /Selection Agent|Selection Session|task\.claim/i);
   }
 });

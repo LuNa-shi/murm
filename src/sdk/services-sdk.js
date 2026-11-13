@@ -141,6 +141,7 @@ export class ServicesSDK {
     return this.#write('task_register', task, options);
   }
 
+  /** @deprecated Legacy transport alias. New callers must use taskTake. */
   claim(payload = {}, options = {}) {
     return this.#write('claim', payload, options);
   }

@@ -5,7 +5,9 @@ const SERVICE_NAMES = ['task', 'material', 'context', 'workspace', 'mission', 'j
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const ALIASES = Object.freeze({
-  task: { list: 'list_task', discover: 'task_list', view: 'task_view', create: 'task_create', take: 'task_take', feedback: 'task_feedback', complete: 'task_complete', block: 'task_block', close: 'task_close', link: 'task_link_material', status: 'task_status' },
+  // complete/block/close remain transport aliases for old clients; finish is
+  // the single public Task lifecycle command.
+  task: { list: 'list_task', discover: 'task_list', view: 'task_view', create: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', complete: 'task_complete', block: 'task_block', close: 'task_close', link: 'task_link_material', status: 'task_status' },
   context: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials' },
   // Public vocabulary. `context` remains a compatibility alias.
   material: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials' },
@@ -19,11 +21,9 @@ const COMMAND_HELP = Object.freeze({
     list: 'Discover Mission Tasks. Input: filters such as --mission-id, --state, --limit. Output: bounded task list.',
     view: 'Read one Task. Required: --task-id. Output: authoritative Task, state, relations and Material links.',
     create: 'Create a Task. Use --input or --stdin for the complete Task contract. Output: created Task.',
-    take: 'Claim a Task. Use --input or --stdin for claim_key, core_id and owner fields. Output: Execution binding.',
+    take: 'Take an eligible Task. Use --input or --stdin for the task request. Output: Execution binding.',
+    finish: 'Finish the current Task with outcome done, incomplete, blocked, or cancelled. Use --input or --stdin for the outcome contract.',
     feedback: 'Record feedback for the current Task. Use --input or --stdin for the feedback contract.',
-    complete: 'Complete a Task after its contract is satisfied. Use --input or --stdin for completion evidence.',
-    block: 'Block a Task with a typed dependency. Use --input or --stdin for reason and dependency.',
-    close: 'Close a Task after the existing service contract allows closure. Use --input or --stdin.',
   },
   context: {
     list: 'Read bounded Materials. Input: filters such as --mission-id, --kind and --limit.',
@@ -61,7 +61,7 @@ const COMMAND_HELP = Object.freeze({
 });
 
 function usage(scope = 'top', commandName = null) {
-  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|create|take|feedback|complete|block|close\n  material list|read|get|search|publish|consume\n  workspace files|read|search|save|merge\n  mission submit|status|finish\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --actor-ref <id>           Actor identity (default: cli:<user>)\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nService endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
+  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|create|take|finish|feedback\n  material list|read|get|search|publish|consume\n  workspace files|read|search|save|merge\n  mission submit|status|finish\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --actor-ref <id>           Actor identity (default: cli:<user>)\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nService endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
   if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest. No network is required for --help.';
   if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${DEFAULT_REQUEST_TIMEOUT_MS})\n  --help                     Show this command help`;
   return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Scalar flags such as\n--task-id and --execution-id are converted to the service input contract.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;

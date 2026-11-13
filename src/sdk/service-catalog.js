@@ -19,7 +19,7 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'task_list', service: 'task', operation: 'list_tasks', version: '1.0',
-    description: 'List the highest-priority claimable Tasks in a root Task tree.',
+    description: 'List the highest-priority eligible Tasks in a Mission.',
     scope: 'public-read', side_effect: false,
     parameters: { type: 'object', properties: { root_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, task_type: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, available_only: { type: 'boolean' } }, additionalProperties: false },
   },
@@ -114,7 +114,7 @@ const TOOL_DEFINITIONS = Object.freeze([
 const publicTaskTools = [
   {
     name: 'task_status', service: 'task', operation: 'task_status', version: '1.0',
-    description: 'Read the authoritative Mission, Task counts, claimable work, and observation timestamp.',
+    description: 'Read the authoritative Mission, Task counts, eligible work, and observation timestamp.',
     scope: 'task-read', side_effect: false,
     parameters: { type: 'object', required: ['mission_id'], properties: { mission_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false },
   },
