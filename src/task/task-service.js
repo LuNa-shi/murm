@@ -1016,17 +1016,11 @@ export class TaskService {
    * every adapter (legacy claim, canonical task_take, and Runtime recovery).
    */
   #isSharedMissionTask(taskOrId) {
-    const taskId = typeof taskOrId === 'string' ? taskOrId : taskOrId?.task_id;
-    if (!taskId) return false;
-    const task = typeof taskOrId === 'string' ? this.getTask(taskId) : taskOrId;
-    const modern = this.#modernTaskRecord(taskId);
-    if (!modern || !task) return false;
-    // Tie-break on insertion order: created_at has millisecond resolution and
-    // task_id is usually a random UUID, so two Tasks registered in the same
-    // millisecond previously made the shared Mission identity nondeterministic.
-    const first = this.db.prepare(`SELECT task_id FROM modern_task_records
-      WHERE mission_id = ? ORDER BY created_at, rowid LIMIT 1`).get(modern.mission_id);
-    return first?.task_id === taskId;
+    // Mission is a shared objective, never a claimable responsibility. Every
+    // Task is independently owned and uses the ordinary exclusive Execution
+    // contract. The previous first-Task special case allowed multiple
+    // concurrent Executions and made an empty Task list impossible to model.
+    return false;
   }
 
   #decorateModernTask(task) {
@@ -1680,17 +1674,7 @@ export class TaskService {
       SUM(CASE WHEN t.state = 'RUNNING' THEN 1 ELSE 0 END) AS running,
       SUM(CASE WHEN t.state = 'WAITING' THEN 1 ELSE 0 END) AS waiting,
       SUM(CASE WHEN t.state IN ('DONE', 'CLOSED', 'CANCELED', 'SATISFIED') THEN 1 ELSE 0 END) AS terminal,
-      SUM(CASE WHEN t.task_id = (
-        SELECT first_task.task_id FROM modern_task_records first_task
-        WHERE first_task.mission_id = m.mission_id
-        ORDER BY first_task.created_at, first_task.rowid LIMIT 1
-      ) THEN (CASE WHEN t.state IN ('OPEN', 'RUNNING') THEN 1 ELSE 0 END)
-      WHEN t.state = 'OPEN' AND NOT EXISTS (
-        SELECT 1 FROM task_relations r
-        JOIN tasks prerequisite ON prerequisite.task_id = r.related_task_id
-        WHERE r.task_id = t.task_id AND r.relation_kind = 'depends_on'
-          AND prerequisite.state NOT IN ('DONE', 'CLOSED')
-      ) THEN 1 ELSE 0 END) AS claimable
+      0 AS claimable
       FROM tasks t JOIN modern_task_records m ON m.task_id = t.task_id WHERE m.mission_id = ?`).get(missionId);
     const lanes = this.db.prepare(`SELECT core_id, task_id, execution_id, state, owner_ref, updated_at
       FROM executions WHERE core_id IS NOT NULL AND state IN ('CREATED', 'RUNNING', 'WAITING')
@@ -1717,7 +1701,7 @@ export class TaskService {
         running: Number(counts.running ?? 0),
         waiting: Number(counts.waiting ?? 0),
         terminal: Number(counts.terminal ?? 0),
-        claimable: Number(counts.claimable ?? 0),
+        claimable: claimable.length,
       },
       page: { limit, returned: tasks.length, total: pageTotal, complete: tasks.length >= pageTotal },
       observed_at: now(),
@@ -2459,6 +2443,18 @@ export class TaskService {
     const ownerRef = payload.owner_ref ?? envelope.actor_ref;
     const coreId = payload.core_id ?? payload.coreId ?? null;
     if (coreId !== null) requireString(coreId, 'core_id');
+    // A Bot is represented by its authenticated owner reference for the
+    // coordination boundary. It may have zero or one active Execution. A
+    // successor Bot receives a fresh owner reference after the previous
+    // Execution is terminal and fenced.
+    const ownerExecution = this.db.prepare("SELECT execution_id, task_id FROM executions WHERE owner_ref = ? AND state IN ('CREATED', 'RUNNING', 'WAITING') LIMIT 1").get(ownerRef);
+    if (ownerExecution) {
+      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot already owns an active Execution', {
+        owner_ref: ownerRef,
+        execution_id: ownerExecution.execution_id,
+        task_id: ownerExecution.task_id,
+      });
+    }
     if (coreId !== null) {
       const occupied = this.getActiveExecutionForCore(coreId);
       if (occupied) {
@@ -2473,7 +2469,11 @@ export class TaskService {
     if (typeof agentPrompt !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'agent_prompt must be a string');
     const inputMaterialRefs = payload.input_material_refs ?? task.input_material_refs;
     if (!Array.isArray(inputMaterialRefs)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'input_material_refs must be an array');
-    const workspaceMode = payload.workspace_mode ?? 'resume';
+    const modernTask = Boolean(this.#modernTaskRecord(task.task_id));
+    // New Mission Tasks start from the public Workspace revision resolved at
+    // take time. Legacy executions retain their explicit resume compatibility
+    // path until their data is migrated.
+    const workspaceMode = payload.workspace_mode ?? (modernTask ? 'clean' : 'resume');
     if (!['resume', 'clean'].includes(workspaceMode)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_mode must be resume or clean');
     }
