@@ -758,6 +758,13 @@ async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false }
     if (response?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
       await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: sequence });
     }
+    if (bootstrap && !core.takeResult?.task?.task_id && !core.stateRef?.rootTaskId && !core.stopping) {
+      const followUpSequence = session.rpcRecords?.length ?? 0;
+      await session.prompt('The public Workspace inspection is complete. Call swarmenv_task_create now with the exact Mission, proof Task contract, completion contract, and workspace object supplied above. Do not call another read tool and do not call task_take until task_create returns.', { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });
+      if (typeof session.waitForSettled === 'function') {
+        await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: followUpSequence });
+      }
+    }
     if (core.takeResult?.task?.task_id) return core.takeResult;
     if (core.bridge.lastTakeOutcome?.attempted && !core.bridge.lastTakeOutcome.ok) {
       return { take_failed: true, error: core.bridge.lastTakeOutcome };
