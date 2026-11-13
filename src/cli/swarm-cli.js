@@ -1,12 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
-const SERVICE_NAMES = ['task', 'context', 'judge', 'catalog'];
+const SERVICE_NAMES = ['task', 'material', 'context', 'judge', 'catalog'];
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const ALIASES = Object.freeze({
   task: { list: 'list_task', discover: 'task_list', view: 'task_view', create: 'task_create', take: 'task_take', feedback: 'task_feedback', complete: 'task_complete', block: 'task_block', close: 'task_close', link: 'task_link_material', status: 'task_status' },
   context: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials' },
+  // Public vocabulary. `context` remains a compatibility alias.
+  material: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials' },
   judge: { check: 'submit_candidate', submit: 'submit_candidate', result: 'get_check_result', get: 'get_check_result' },
 });
 const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'operation-id', 'timeout-ms']);
@@ -29,6 +31,14 @@ const COMMAND_HELP = Object.freeze({
     publish: 'Publish immutable Material. Use --input or --stdin for content and provenance.',
     consume: 'Record Material consumption. Use --input or --stdin for Material IDs and action.',
   },
+  material: {
+    list: 'Read bounded Materials. Input: filters such as --mission-id, --kind and --limit.',
+    read: 'Read Materials. Use --input or --stdin for the read filter.',
+    get: 'Read one Material. Required: --material-id.',
+    search: 'Search Materials. Input: --query and explicit scope filters.',
+    publish: 'Publish immutable Material. The service binds producer Task/Execution from the trusted request context.',
+    consume: 'Record a meaningful Material use. Use --input or --stdin for Material IDs and action.',
+  },
   judge: {
     check: 'Submit a Candidate for checking. Use --input or --stdin for the candidate contract.',
     result: 'Read one CheckResult. Use --check-result-id or --request-key; request-key lookup survives a lost submit response.',
@@ -36,7 +46,7 @@ const COMMAND_HELP = Object.freeze({
 });
 
 function usage(scope = 'top', commandName = null) {
-  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|create|take|feedback|complete|block|close\n  context list|read|get|search|publish|consume\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --actor-ref <id>           Actor identity (default: cli:<user>)\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nService endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
+  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|create|take|feedback|complete|block|close\n  material list|read|get|search|publish|consume\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --actor-ref <id>           Actor identity (default: cli:<user>)\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nService endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
   if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest. No network is required for --help.';
   if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${DEFAULT_REQUEST_TIMEOUT_MS})\n  --help                     Show this command help`;
   return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Scalar flags such as\n--task-id and --execution-id are converted to the service input contract.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;
@@ -58,8 +68,9 @@ function parseArgs(argv) {
   return { positionals, options };
 }
 
-function envName(service) { return `SWARMENV_${service.toUpperCase()}_SERVICE_URL`; }
-function tokenName(service) { return `SWARMENV_${service.toUpperCase()}_SERVICE_TOKEN`; }
+function transportService(service) { return service === 'material' ? 'context' : service; }
+function envName(service) { return `SWARMENV_${transportService(service).toUpperCase()}_SERVICE_URL`; }
+function tokenName(service) { return `SWARMENV_${transportService(service).toUpperCase()}_SERVICE_TOKEN`; }
 function endpointFor(service) { return process.env[envName(service)] ?? null; }
 function safeEndpoint(value) {
   try {
@@ -72,6 +83,7 @@ function safeEndpoint(value) {
   } catch { return '[invalid endpoint]'; }
 }
 function configuredEndpoint(service) {
+  service = transportService(service);
   const direct = endpointFor(service);
   if (direct) return { url: direct, token: process.env[tokenName(service)] ?? null };
   if (!process.env.SWARMENV_SERVICE_ENDPOINTS) return null;
@@ -158,6 +170,7 @@ async function request(url, { method = 'GET', token = null, body = undefined, ti
 }
 
 async function manifest(service) {
+  service = transportService(service);
   const endpoint = configuredEndpoint(service);
   if (!endpoint?.url) throw new Error(`no endpoint configured for ${service}; set ${envName(service)}`);
   return request(`${endpoint.url.replace(/\/$/, '')}/v1/manifest`, { token: endpoint.token });

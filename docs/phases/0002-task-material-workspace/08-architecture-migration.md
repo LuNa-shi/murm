@@ -1,7 +1,7 @@
 # 08. 架构迁移、实施切片与文档交付
 
 > 设计附件：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)。本文连接已确认的目标合同与实施迁移，**不是已经实现的 Architecture，也不构成 runtime 实施或付费运行授权**。
-> 当前实现对照固定为 main [`e6f97bc0d56709f94374a5f824c8e2cd9c312cb2`](https://github.com/LuNa-shi/SwarmEnv/commit/e6f97bc0d56709f94374a5f824c8e2cd9c312cb2)，替代原设计对照 `008ecdb9ab64adcd8135042ff2160ec1db704952`。该版本已包含 [#119](https://github.com/LuNa-shi/SwarmEnv/issues/119) / [阶段 01](../0001-sandbox-services-cli.md) 的 OpenSandbox、独立服务部署与 CLI 切片，flat-only 入口清理，以及 [#117](https://github.com/LuNa-shi/SwarmEnv/issues/117) / [ADR 0019](../../adr/0019-direct-judge-workspace-submission.md) 的 direct Judge 提交。现状按此代码树与对应手册核对，不以 Issue 是否关闭或 [PR #118](https://github.com/LuNa-shi/SwarmEnv/pull/118) 是否合并推断；这些前置实现也不等于本阶段目标和真实环境验收已完成。
+> 当前实现对照固定为 main [`1d9be9f8146a57ba50d769615045c21a03c215bd`](https://github.com/LuNa-shi/SwarmEnv/commit/1d9be9f8146a57ba50d769615045c21a03c215bd)，替代原设计对照 `008ecdb9ab64adcd8135042ff2160ec1db704952`。该版本已包含 [#119](https://github.com/LuNa-shi/SwarmEnv/issues/119) / [阶段 01](../0001-sandbox-services-cli.md) 的 OpenSandbox、独立服务部署与 CLI 切片，flat-only 入口清理，以及 [#117](https://github.com/LuNa-shi/SwarmEnv/issues/117) / [ADR 0019](../../adr/0019-direct-judge-workspace-submission.md) 的 direct Judge 提交。现状按此代码树与对应手册核对，不以 Issue 是否关闭或 [PR #118](https://github.com/LuNa-shi/SwarmEnv/pull/118) 是否合并推断；这些前置实现也不等于本阶段目标和真实环境验收已完成。
 
 本章把 [01 Core Runtime](01-model-and-runtime.md)、[02 Sandbox](02-sandbox-runtime.md)、[03 Task](03-task.md)、[04 Material](04-material.md)、[05 Workspace](05-workspace.md)、[06 Prompt/Skills](06-prompts-and-skills.md) 和 [07 Validation](07-validation-and-research.md) 连接到当前实现。它回答改动落在哪里、哪些能力必须一起交付、怎样迁移已有数据、何时可以停用旧接口，以及每个实施 PR 怎样交付可独立阅读的完整架构说明。
 
@@ -24,8 +24,8 @@
 
 | 记录 | 本次怎样使用 | 不能推断什么 |
 |---|---|---|
-| 固定 main `e6f97bc0…` 的源码、schema 和现有测试 | 核对现在存在的入口、状态、依赖和兼容路径；原 `008ecdb9…` 仅作历史差异对照 | 测试文件存在不表示本次运行过，也不表示真实隔离成立 |
-| [Architecture](../../architecture/INDEX.md) 及 [source-map.json](../../architecture/source-map.json) | 实现手册、覆盖清单及后来落地的更新；清单的 runtime baseline 同步为 `e6f97bc0d56709f94374a5f824c8e2cd9c312cb2`，包含当前 101 项映射；PR #116 仍是原始手册的历史出处 | baseline 只固定本轮对照代码树；源文件指纹、受影响流程的语义复核和实际运行验收是不同证据，不能仅改字符串或重新生成就宣称全分支验证 |
+| 固定 main `1d9be9f8…` 的源码、schema 和现有测试 | 核对现在存在的入口、状态、依赖和兼容路径；原 `008ecdb9…` 仅作历史差异对照 | 测试文件存在不表示本次运行过，也不表示真实隔离成立 |
+| [Architecture](../../architecture/INDEX.md) 及 [source-map.json](../../architecture/source-map.json) | 实现手册、覆盖清单及后来落地的更新；清单的 runtime baseline 同步为 `1d9be9f8146a57ba50d769615045c21a03c215bd`，包含当前 101 项映射；PR #116 仍是原始手册的历史出处 | baseline 只固定本轮对照代码树；源文件指纹、受影响流程的语义复核和实际运行验收是不同证据，不能仅改字符串或重新生成就宣称全分支验证 |
 | 本阶段模块化设计文档与批准 Issue | 说明建议实现的完整目标及迁移合同；由 Issue 指明采纳的文档 revision | 文档审核通过不证明代码已实现、真实 Bot 已表现良好或预算已获准 |
 
 本次文档 PR 可以调整阶段目录规则、链接和相应文档检查；这与后续改变 Swarm 运行行为是不同工作。它不将未来 `swarm` 命令、Workspace 主线或新状态写成当前 API。

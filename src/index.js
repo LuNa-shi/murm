@@ -22,6 +22,8 @@ export * from './sdk/http-domain-proxy.js';
 export * from './sdk/builtin-registry.js';
 export * from './services/mathlib-search-service.js';
 export * from './runtime/workspace-manager.js';
+export * from './runtime/mission-workspace.js';
+export * from './runtime/mission-submission.js';
 export * from './runtime/sandbox-manager.js';
 export * from './runtime/opensandbox-manager.js';
 export * from './runtime/workspace-contract.js';

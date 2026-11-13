@@ -2,12 +2,25 @@
 
 ## Mission
 
+Issue #122 introduces a Mission-level public Workspace alongside the Mission
+record. The IDs are distinct and one-to-one; the Workspace owns the persistent
+Git repository and `main`, while Mission submission owns the final acceptance
+freeze. `MissionSubmissionStore` snapshots `main_revision`, selected immutable
+Material IDs, checker/environment and acceptance configuration. Only one
+submission can be pending. A failed or timed-out result releases its own
+freeze; a late result is tied to its original submission and cannot alter a
+newer one. A passing result records the exact accepted submission and moves the
+Mission to its terminal accepted state.
+[MissionSubmissionStore](../../src/runtime/mission-submission.js)
+
 The persisted Mission record contains its `goal`, `acceptance_conditions`, `created_by` and timestamps (`src/storage/schema.js` and `TaskService.#createMission`). Initial Materials are separate Context/Task facts; model, timebox, checker and budget parameters are supplied by the benchmark/runtime configuration and/or Task contracts, not persisted as `missions.initial_material` or `missions.resource_scope` columns. Mission is not a permanent manager Agent.
 
-The shared Mission Task is the common research responsibility. In the current flat implementation it is identified as the **first Task registered in a Mission**, ordered by `created_at, rowid` (`TaskService.#isSharedMissionTask`); there is no explicit `is_shared_mission_task` column. Its identity therefore depends on creation order, a concrete implementation constraint worth testing before changing schema/registration order. Multiple
-Executions may work on it. When no ordinary Task is suitable, an identity
-continues the Mission instead of treating an empty ordinary-Task queue as
-retirement or completion.
+The current flat implementation still identifies a shared Mission Task as the
+first Task registered in a Mission. That is a compatibility path and does not
+meet the Issue #122 target: Mission itself is never taken, and a Mission may
+start with zero Tasks while Bots read public state, propose independent Tasks,
+or exit normally. The target implementation must remove the first-Task
+special case and keep Task ownership exclusive.
 
 ## Ordinary Task
 

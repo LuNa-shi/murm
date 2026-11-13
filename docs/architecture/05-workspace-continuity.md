@@ -7,6 +7,30 @@ explains durable ownership; [Mission and Task](03-mission-task.md) explains how 
 successor obtains responsibility. This chapter explains which files, commits,
 checkpoints, process state and feedback survive that transition.
 
+## 0. Mission Workspace repository (public revision path)
+
+`MissionWorkspace` (`src/runtime/mission-workspace.js`) is the runtime-owned
+repository seam for the Issue #122 Workspace contract. It is distinct from the
+legacy execution-local `WorkspaceManager` described below. `create` creates a
+Mission/Workspace pair with different IDs, an external revision `0.1`, and a
+Git `main` branch outside any Sandbox. `files`, `read`, and `search` resolve a
+fixed immutable revision and require no Execution lease, so an unbound Bot or a
+successor can inspect public files before take. `materialize` copies a selected
+revision into a new Execution directory without exposing `.git` or repository
+metadata.
+
+`save` requires a complete file tree and records a new revision with explicit
+parent lineage; it does not move `main`. `merge` checks the caller's expected
+main revision, optionally runs the configured final-tree checker, commits the
+whole source revision, and advances `main` with a compare-and-swap guard. A
+stale expected revision returns `STALE_VERSION`; the source revision and all
+files remain readable. `candidateFileRef` is only the tuple
+`(workspace_id, revision, path)`; there is no Candidate object or storage
+record. The older execution-local path remains executable for compatibility and
+is explicitly owner/fence bound; it must not be interpreted as the public
+Mission Workspace authority.
+[MissionWorkspace](../../src/runtime/mission-workspace.js)
+
 ## 1. What a Workspace represents
 
 Every `Runtime.startExecution` or `bindAgentExecution` prepares a private

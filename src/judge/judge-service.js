@@ -112,6 +112,13 @@ export class JudgeService {
     if (!source || typeof source.content !== 'string') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate requires a Workspace source');
     }
+    const candidateRef = source.workspace_id !== undefined || source.revision !== undefined
+      ? {
+        workspace_id: required(source.workspace_id, 'source.workspace_id'),
+        revision: required(String(source.revision), 'source.revision'),
+        path: required(source.path, 'source.path'),
+      }
+      : null;
     const sourceHash = source.content_hash ?? contentHash(source.content);
     if (source.content_hash !== undefined && source.content_hash !== sourceHash) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace source content_hash does not match content');
@@ -151,9 +158,11 @@ export class JudgeService {
       state_version: envelope.state_version,
       input_snapshot_hash: source.input_snapshot_hash ?? inputSnapshotHash,
       workspace_ref: null,
-      workspace_revision: source.workspace_revision ?? null,
+      workspace_revision: source.workspace_revision ?? source.revision ?? null,
     };
-    const sourceId = `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${sourceHash}`;
+    const sourceId = candidateRef
+      ? `workspace:${candidateRef.workspace_id}:${candidateRef.revision}:${candidateRef.path}`
+      : `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${sourceHash}`;
     const result = await this.judgeCandidate({
       request_key: payload.request_key ?? envelope.operation_id ?? hash({
         source_id: sourceId,
@@ -175,6 +184,7 @@ export class JudgeService {
         material_id: sourceId,
         content: source.content,
         content_hash: sourceHash,
+        ...(candidateRef ? { file_ref: candidateRef } : {}),
       },
       target_task: task,
       workspace: {
@@ -182,7 +192,8 @@ export class JudgeService {
         execution_id: envelope.execution_id,
         task_id: envelope.task_id,
         workspace_ref: execution.workspace_ref ?? null,
-        workspace_revision: source.workspace_revision ?? execution.workspace_revision ?? null,
+        workspace_revision: source.workspace_revision ?? source.revision ?? execution.workspace_revision ?? null,
+        ...(candidateRef ? { workspace_id: candidateRef.workspace_id, path: candidateRef.path, revision: candidateRef.revision } : {}),
       },
       fixture_manifest: fixtureManifest,
     }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref });

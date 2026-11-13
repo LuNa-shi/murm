@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "e6f97bc0d56709f94374a5f824c8e2cd9c312cb2",
+  "runtime_baseline": "f00710f",
   "reviewed_date": "2026-11-13",
   "scope_roots": [
     "src",
@@ -217,15 +217,6 @@
       "role": "Persistent observer, root/worktree/database discovery and metadata lifecycle"
     },
     {
-      "path": "scripts/service-host.mjs",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/00-overview.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Built-in HTTP service process composition and environment settings"
-    },
-    {
       "path": "scripts/service-host-entrypoint.sh",
       "category": "launch and composition",
       "chapters": [
@@ -235,6 +226,15 @@
       "role": "Explicit Judge checker prebuild gate and persistent volume marker"
     },
     {
+      "path": "scripts/service-host.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Built-in HTTP service process composition and environment settings"
+    },
+    {
       "path": "scripts/swarm.mjs",
       "category": "service and Agent integration",
       "chapters": [
@@ -242,6 +242,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Executable swarm CLI entry point and exit-code boundary"
+    },
+    {
+      "path": "services/builtin/compose.yaml",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Four-process isolated service deployment with independent persistent volumes"
     },
     {
       "path": "services/builtin/Dockerfile",
@@ -266,15 +275,6 @@
       "role": "Built-in provider deployment configuration"
     },
     {
-      "path": "services/builtin/compose.yaml",
-      "category": "provider deployment and instructions",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Four-process isolated service deployment with independent persistent volumes"
-    },
-    {
       "path": "services/mathlib-search/Dockerfile",
       "category": "provider deployment and instructions",
       "chapters": [
@@ -297,17 +297,6 @@
       "role": "Mathlib provider configuration and operation notes"
     },
     {
-      "path": "services/mathlib-search/SKILL.md",
-      "category": "provider deployment and instructions",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/08-prompts.md",
-        "docs/architecture/10-service-api-reference.md"
-      ],
-      "role": "Repository-owned full Mathlib tool usage instructions loaded by bundle"
-    },
-    {
       "path": "services/mathlib-search/references/loogle.md",
       "category": "provider deployment and instructions",
       "chapters": [
@@ -328,6 +317,17 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Optional provider manifest, schemas, help and documentation declarations"
+    },
+    {
+      "path": "services/mathlib-search/SKILL.md",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Repository-owned full Mathlib tool usage instructions loaded by bundle"
     },
     {
       "path": "services/opensandbox-agent/Dockerfile",
@@ -749,6 +749,28 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Per-Core discovery/take supervisor, rescans, waiting and wake events"
+    },
+    {
+      "path": "src/runtime/mission-submission.js",
+      "category": "Mission and Task",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Durable Mission submission snapshot, single active freeze, and late-result fencing"
+    },
+    {
+      "path": "src/runtime/mission-workspace.js",
+      "category": "Mission and Task",
+      "chapters": [
+        "docs/architecture/00-overview.md",
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Runtime-owned Mission Workspace repository with immutable public revisions, fixed-file reads, materialization, and whole-revision merge"
     },
     {
       "path": "src/runtime/opensandbox-manager.js",

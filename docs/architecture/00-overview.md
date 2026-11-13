@@ -1,6 +1,6 @@
 # 00. Overview
 
-SwarmEnv runs one or more Agent identities against a Mission through a small,
+SwarmEnv runs one or more Bot lifecycles against a Mission through a small,
 task-scoped service surface. The system has four different responsibilities:
 
 ```text
@@ -24,26 +24,29 @@ mathematical route.
 
 ## The three boundaries a reader must keep separate
 
-**Mission and Task** describe responsibility. A shared Mission Task can be
-continued by multiple Executions. An ordinary Task represents a separable
-responsibility and normally has one effective Execution at a time. Creating an
-ordinary Task does not give the creating identity management authority.
+**Mission and Task** describe responsibility. Mission is a shared objective
+and is never taken. A Task represents a separable responsibility and has at
+most one effective Execution at a time; a Mission may legally have no Tasks.
+Creating a Task does not give the creating Bot management authority.
 
-**Execution and Session** describe authorization and a running Agent process.
+**Bot, Execution and Session** describe authorization and a running process.
 An Execution is durable domain state. A Session is a Pi conversation attached
-to an identity/Core lane. A reusable identity can perform several Executions in
-sequence; a new Session is not automatically a new research responsibility.
+to a Bot/Core lane. A Bot starts a fresh Sandbox/Pi and performs zero or one
+Execution. After finish, handoff or timeout Runtime stops the Bot and destroys
+its Sandbox; a later Bot continues only through public Task, Material and
+Workspace revision records.
 
 **Material and Workspace** describe different forms of progress. Material is
-versioned shared evidence with producer provenance. Workspace is the private,
-mutable file surface of one Execution, with revisions and optional local Git
-lineage. A Material count or a Workspace write is activity evidence, not proof
-of useful research.
+versioned shared evidence with producer provenance. The Mission Workspace is a
+persistent Runtime-owned Git repository; each Execution receives a separate
+materialized directory and public revisions are referenced as
+`(workspace_id, revision, path)`. A Material count or a Workspace write is
+activity evidence, not proof of useful research.
 
 ## Normal flow
 
 ```text
-Agent reads capability profile and Mission/Task state
+Bot reads capability profile and public Mission/Task/Material/Workspace state
   → task_take in its own Core lane
   → Runtime binds one Execution and private Workspace
   → Agent reads/publishes/consumes Material and edits Workspace
@@ -52,7 +55,7 @@ Agent reads capability profile and Mission/Task state
   → Judge checks and persists a CheckResult; the Bridge returns it synchronously and the runner records its projection
   → Agent revises, checkpoints, completes, blocks, or hands off
   → Runtime fences/releases this Execution
-  → the same identity may take another responsibility
+  → Runtime stops the Bot; a fresh Bot may continue from public state
 ```
 
 The **flat Mission Task model** is the only runtime Task model described by this architecture. The benchmark CLI has no Task-model selector, and the Agent/SDK surface exposes Mission Tasks, relations, Materials and Execution progress without Root/Child structure operations. The normal bound profile uses named Task, Context, Judge, Workspace and Runtime capabilities.
