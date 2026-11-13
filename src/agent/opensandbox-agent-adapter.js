@@ -33,10 +33,11 @@ function secretAgentEnvironment(value) {
 }
 
 class RemoteAgentChild extends EventEmitter {
-  constructor(manager, executionId) {
+  constructor(manager, executionId, logger = null) {
     super();
     this.manager = manager;
     this.executionId = executionId;
+    this.logger = logger;
     this.stdout = new PassThrough();
     this.stderr = new PassThrough();
     this.stdin = { writable: true, write: (line) => { void this.#rpc(line); return true; } };
@@ -65,6 +66,13 @@ class RemoteAgentChild extends EventEmitter {
         // binding or contract error still reaches Runtime through the error
         // event.
         if (!this.closed) {
+          this.logger?.append({
+            event: 'agent_event_stream_error',
+            execution_id: this.executionId,
+            retryable: error?.retryable === true,
+            error_code: error?.code ?? error?.name ?? 'event_stream_error',
+            error_message: String(error?.message ?? error).slice(0, 256),
+          });
           const retryable = error?.retryable === true
             || ![ERROR_CODES.NOT_ALLOWED, ERROR_CODES.INVALID_CONTRACT].includes(error?.code);
           if (!retryable) this.emit('error', error);
@@ -89,7 +97,15 @@ class RemoteAgentChild extends EventEmitter {
         result = await this.manager.agentRpc(this.executionId, message);
       }
       for (const record of result?.records ?? []) this.#emitRecord(record);
-    } catch (error) { this.emit('error', error); }
+    } catch (error) {
+      this.logger?.append({
+        event: 'agent_rpc_error',
+        execution_id: this.executionId,
+        error_code: error?.code ?? error?.name ?? 'agent_rpc_error',
+        error_message: String(error?.message ?? error).slice(0, 256),
+      });
+      this.emit('error', error);
+    }
   }
 
   #emitRecord(record) {
@@ -191,7 +207,7 @@ export class OpenSandboxAgentAdapter {
       systemPromptPath: this.config.systemPrompt ? join(guestSessionDir, 'identity-system-prompt.md') : null,
       secretEnvironment: workerSecretEnvironment,
     });
-    const child = new RemoteAgentChild(this.sandboxManager, executionId);
+    const child = new RemoteAgentChild(this.sandboxManager, executionId, logger);
     const manifest = await createVersionManifest({
       ...this.manifestVersions,
       launchArgs,
