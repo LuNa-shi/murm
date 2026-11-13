@@ -6,7 +6,6 @@ const MUTATING_OPERATIONS = new Set([
   'heartbeat',
   'consume_materials',
   'publish_material',
-  'request_wait',
   'workspace_check',
 ]);
 
@@ -140,7 +139,7 @@ export class LocalServiceDouble {
     }
     if (envelope.state_version !== null && envelope.state_version !== undefined &&
       envelope.state_version !== execution.state_version &&
-      ['heartbeat', 'request_wait', 'workspace_check', 'abort'].includes(operation)) {
+      ['heartbeat', 'workspace_check', 'abort'].includes(operation)) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'execution state_version is stale', {
         expected: execution.state_version,
         received: envelope.state_version,

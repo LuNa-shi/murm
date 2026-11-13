@@ -143,10 +143,6 @@ export class ServicesSDK {
     return this.#write('heartbeat', payload, options);
   }
 
-  requestWait(payload, options = {}) {
-    return this.#write('request_wait', payload, options);
-  }
-
   publishMaterial(material, options = {}) {
     return this.#write('publish_material', material, options);
   }
