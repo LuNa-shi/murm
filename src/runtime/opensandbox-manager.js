@@ -400,7 +400,13 @@ export class OpenSandboxManager {
     const record = this.#record(executionId);
     if (record.agent) return { ...record.agent };
     const workerToken = randomUUID();
-    await this.exec({ executionId, command: [...this.workerCommand, '--port', String(this.workerPort)], cwd: '/workspace', internalEnvironment: { SWARMENV_WORKER_TOKEN: workerToken }, background: true, timeoutMs: 30_000 });
+    const workerArgv = [...this.workerCommand, '--port', String(this.workerPort)];
+    // Execd's background command remains attached to its command timeout in
+    // the released 1.2 server. Start the worker as a detached child of a
+    // short-lived shell so the launch request can complete without killing
+    // the long-lived authenticated worker listener.
+    const workerCommand = `nohup ${workerArgv.map(shellQuote).join(' ')} >/tmp/swarmenv-agent-worker.log 2>&1 </dev/null &`;
+    await this.exec({ executionId, command: ['sh', '-lc', workerCommand], cwd: '/workspace', internalEnvironment: { SWARMENV_WORKER_TOKEN: workerToken }, background: true, timeoutMs: 30_000 });
     let endpoint = endpointForHost((await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}/endpoints/${this.workerPort}`, { method: 'GET', timeoutMs: 30_000 })).body, this.endpointHost);
     if (!endpoint) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return the Agent worker endpoint', { sandbox_id: record.sandboxId, port: this.workerPort });
     endpoint = endpoint.replace(/\/$/, '');

@@ -119,7 +119,9 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
   const started = await manager.startAgent({ executionId: 'e-worker', command: 'nurouter', args: ['pi', '--mode', 'rpc'] });
   assert.equal(started.worker_port, 44100);
   const workerCommand = calls.find((call) => call.url === 'http://execd.test/sbx-worker/command');
-  assert.equal(JSON.parse(workerCommand.options.body).argv.includes('--token'), false);
+  const workerPayload = JSON.parse(workerCommand.options.body);
+  assert.match(workerPayload.argv.join(' '), /nohup/);
+  assert.doesNotMatch(workerPayload.argv.join(' '), /--token/);
   assert.match(JSON.parse(workerCommand.options.body).envs.SWARMENV_WORKER_TOKEN, /^[0-9a-f-]{36}$/);
   const launch = calls.find((call) => call.url === 'http://worker.test/sbx-worker/start');
   assert.equal(launch.options.headers.authorization.startsWith('Bearer '), true);
