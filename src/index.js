@@ -40,6 +40,5 @@ export * from './observability/observation-store.js';
 export * from './observability/observability-server.js';
 export * from './observability/workspace-provider.js';
 export * from './observability/benchmark-report-importer.js';
-export * from './e2e/script-executor.js';
 export * from './benchmark/putnam-runner.js';
 export * from './benchmark/parallelism.js';

@@ -52,10 +52,6 @@
       "sha256": "42421da24558f4c6e161bc0af07718768d61d99b58a13c68f7f40ebcef23be61"
     },
     {
-      "path": "src/e2e/script-executor.js",
-      "sha256": "bf12e9a2f5772c9f57cfa8642a6589fa53ec6f78d8bd48c25e7b484330d16436"
-    },
-    {
       "path": "src/sdk/service-catalog.js",
       "sha256": "d04737a186b7efe761e5ec2e8649c089e20dc6b0ddb227dbd3010e16e154c1b2"
     },

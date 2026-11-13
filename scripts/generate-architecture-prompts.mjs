@@ -24,7 +24,7 @@ const sourcePaths = [
   'src/agent/agent-prompt.js', 'src/agent/capability-profile.js', 'src/agent/pi-adapter.js',
   'src/agent/services-bridge.js', 'src/agent/swarmenv-extension.mjs', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
-  'src/runtime/runtime-capabilities.js', 'src/runtime/workspace-contract.js', 'src/e2e/script-executor.js',
+  'src/runtime/runtime-capabilities.js', 'src/runtime/workspace-contract.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
   'src/sdk/service-registry.js', 'src/sdk/service-manifest.js', 'src/protocol/envelope.js',
   'src/task/task-service.js', 'src/task/task-types.js',

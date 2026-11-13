@@ -4,7 +4,7 @@
 
 Runtime baseline: `f00710f`; review date: 2026-11-13. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **102 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **100 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -100,7 +100,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `60a718baf79b4ee81d16aed9813cef6f1b7c31d66810ea41e1c087cffc4fd2a8` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `8988c0ded31be6c2894535209881195c5288169ab329c8d4f6d2ed425416c57f` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `da488b85f9a94d2bb79586ba3d694db47ae9f4c684c01a2cd96b65b4f264d158` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `b390786aa6c868c2cac7d7728e3e0c063a9f2fc067b35f2f09c00446f56d822b` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `f12538fa3db491763d6fdbdce209523d4d3848313daa3980e33e6aab2d004f50` |
 
 ### durable storage (3)
 
@@ -118,7 +118,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 | [src/observability/public/index.html](../../src/observability/public/index.html) | Generated dashboard HTML served by the observation server | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `232d9988e73793b5d0a06e150396e8b504098c6a67ec9829804a4caed1975bf5` |
 | [src/observability/public/styles.css](../../src/observability/public/styles.css) | Generated dashboard CSS served by the observation server | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `66a89e74376ff5ad35345f72c22cba142d9a42ba5c8f60b2e95ce8883cd7df36` |
 
-### launch and composition (15)
+### launch and composition (13)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -128,15 +128,13 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 | [package-lock.json](../../package-lock.json) | Exact dependency resolution, including external Pi/frontend packages | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `c045ec16d6557deb0cb6bee8443fcbb97cd0d8a200c0d9c560e677347b5c7cfd` |
 | [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `d9f1d8bfffe5ca044cd82cac1f0c092f4e460256da2560bcc1b9631bca58eede` |
 | [scripts/mathlib-search-service.mjs](../../scripts/mathlib-search-service.mjs) | Mathlib HTTP provider process and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `1aed08fd45737f05d34d9bdcb3da3caa41c29fa777ed0e0c85fc0c9b2ca59b3f` |
-| [scripts/run-mvp-fixture.mjs](../../scripts/run-mvp-fixture.mjs) | Deterministic versus real-Agent fixture launcher and temporary cleanup | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `0aafc8f9760821a4ef91ea1077c58b095bab38d76fbe3cd25472bcc937566e26` |
 | [scripts/run-putnambench-benchmark.mjs](../../scripts/run-putnambench-benchmark.mjs) | CLI options, locked input, persistent observer, batch and aggregate outputs | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `7bf226fe300c02c41facad8d0d97e43dcc1c66aa92cc5fb1d5af3c657d827d80` |
 | [scripts/service-host-entrypoint.sh](../../scripts/service-host-entrypoint.sh) | Explicit Judge checker prebuild gate and persistent volume marker | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `4c067092da38e68214149badb57dfcdb662523787dc3fbdae9740a93f25f9b75` |
 | [scripts/service-host.mjs](../../scripts/service-host.mjs) | Built-in HTTP service process composition and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `78632fab24e499ae78dd6e41fa0d05e08241de99a3c67df686aa39564de62967` |
 | [services/opensandbox-agent/Dockerfile](../../services/opensandbox-agent/Dockerfile) | OpenSandbox agent image recipe containing the worker, Pi package and native shell tools | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `ed0b909ffae15ff18a056fe50a610761eca45292eff59af35f21a0c2486aa2f2` |
 | [services/opensandbox-agent/pi-models.json](../../services/opensandbox-agent/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `2f7af32c853568f358b7c7fabb66d6992df5fbc727eac777130e1650ed124070` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent claim loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `083ed371c9f9c9adfafffa43ecb97f6f22a4cdc64d7a1932187d1829fddca14f` |
-| [src/e2e/script-executor.js](../../src/e2e/script-executor.js) | Deterministic scripted legacy fixture and checker health shim | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `bf12e9a2f5772c9f57cfa8642a6589fa53ec6f78d8bd48c25e7b484330d16436` |
-| [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `0015c54c998c9af52fb5825abb12032defd137dad4f759b200ed5d385ec31616` |
+| [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `5dedc41b1cbc4954918b23135ecf7b1369972ce011b42b6b96352673c5437a72` |
 
 ### observation and analysis (9)
 

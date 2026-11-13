@@ -190,15 +190,6 @@
       "role": "Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface"
     },
     {
-      "path": "scripts/run-mvp-fixture.mjs",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/00-overview.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Deterministic versus real-Agent fixture launcher and temporary cleanup"
-    },
-    {
       "path": "scripts/run-putnambench-benchmark.mjs",
       "category": "launch and composition",
       "chapters": [
@@ -462,15 +453,6 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Material publication, lineage, read/search and consumption persistence"
-    },
-    {
-      "path": "src/e2e/script-executor.js",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/00-overview.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Deterministic scripted legacy fixture and checker health shim"
     },
     {
       "path": "src/errors.js",
