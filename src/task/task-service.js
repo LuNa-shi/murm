@@ -768,13 +768,8 @@ export class TaskService {
       if (this.#gatingDependencyBlockers(task).length > 0) return false;
       const executions = this.listExecutions(task.task_id, { includeTerminal: false });
       const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
-      // The shared Mission entry is a collaboration surface: a RUNNING
-      // Execution does not make it disappear from the eligible view.  Every
-      // independent Task still honours its explicit single-owner quota.
-      const sharedMission = this.#isSharedMissionTask(task);
-      if (!sharedMission && active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
+      if (active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
       const waiting = executions.filter((execution) => execution.state === 'WAITING');
-      if (sharedMission) return task.state === 'OPEN' || task.state === 'RUNNING';
       if (waiting.length === 0) return true;
       const resumableWaiting = waiting.some((execution) => this.#isWaitingResumable(execution, nowMs));
       return resumableWaiting || active.length + waiting.length < task.parallel_quota;
@@ -808,8 +803,6 @@ export class TaskService {
         const executions = this.listExecutions(task.task_id, { includeTerminal: false });
         const active = executions.filter((execution) => ['CREATED', 'RUNNING'].includes(execution.state));
         const waiting = executions.filter((execution) => execution.state === 'WAITING');
-        const sharedMission = this.#isSharedMissionTask(task);
-        if (sharedMission) return task.state === 'OPEN' || task.state === 'RUNNING';
         const rework = active.length === 1 && active[0].state === 'CREATED' && active[0].instruction_version > 1 && task.parallel_quota === 1;
         if (rework) return true;
         if (active.length >= task.parallel_quota && !this.#expiredReworkCanBeClaimed(task, active, nowMs)) return false;
@@ -977,21 +970,6 @@ export class TaskService {
     if (modern) return modern.mission_id;
     const task = rowToTask(this.db.prepare('SELECT * FROM tasks WHERE task_id = ?').get(taskId));
     return task?.root_id ?? null;
-  }
-
-  /**
-   * The first flat Task registered for a Mission is its shared Mission
-   * responsibility.  Later Tasks are independent responsibilities even when
-   * the caller does not provide a spawned_from relation.  Keeping this
-   * distinction in the Service makes the admission rule authoritative for
-   * every adapter (legacy take, canonical task_take, and Runtime recovery).
-   */
-  #isSharedMissionTask(taskOrId) {
-    // Mission is a shared objective, never a eligible responsibility. Every
-    // Task is independently owned and uses the ordinary exclusive Execution
-    // contract. The previous first-Task special case allowed multiple
-    // concurrent Executions and made an empty Task list impossible to model.
-    return false;
   }
 
   #decorateModernTask(task) {
@@ -1246,9 +1224,8 @@ export class TaskService {
       WHERE ${where.join(' AND ')} ORDER BY t.priority DESC, t.created_at, t.task_id LIMIT ?`).all(...params, queryLimit);
     const filtered = rows.map((row) => this.#decorateModernTask(rowToTask(row))).filter((task) => {
       if (!availableOnly) return true;
-      const sharedMission = this.#isSharedMissionTask(task);
-      if (task.state !== 'OPEN' && !(task.state === 'RUNNING' && sharedMission)) return false;
-      return sharedMission || this.#modernDependencyBlockers(task.task_id).length === 0;
+      if (task.state !== 'OPEN') return false;
+      return this.#modernDependencyBlockers(task.task_id).length === 0;
     });
     return filtered.slice(0, limit);
   }
@@ -1400,17 +1377,6 @@ export class TaskService {
     if (!completion.satisfied) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'completion_contract is not satisfied', { missing: completion.missing });
     }
-    // The shared Mission entry is a collaboration surface, not an ordinary
-    // subtask.  A local material/check must never let a research branch close
-    // the Mission unless it explicitly carries the complete-candidate
-    // contract and satisfies the Mission's own acceptance conditions.
-    if (this.#isSharedMissionTask(task)) {
-      const mission = this.#getMission(task.mission_id);
-      const missionCompletion = this.#missionCompletion(mission, task, execution, payload.check_result_id ?? null);
-      if (!missionCompletion.satisfied) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Mission acceptance conditions are not satisfied', { missing: missionCompletion.missing });
-      }
-    }
     const updatedAt = now();
     this.db.prepare(`UPDATE executions
       SET state = 'SUCCEEDED', wait_condition_json = NULL, wait_deadline = NULL,
@@ -1527,17 +1493,9 @@ export class TaskService {
       payload.reason ?? 'voluntary_handoff', json(metadata), updatedAt, execution.execution_id,
     );
     const task = this.getTask(execution.task_id);
-    if (this.#isSharedMissionTask(task)) {
-      // A shared Mission has one logical Task and many independent
-      // Executions.  Releasing one branch must not make siblings stale or
-      // hide their active work; refreshTaskState derives RUNNING/OPEN from
-      // the remaining durable Executions.
-      this.#refreshTaskState(execution.task_id, { updatedAt });
-    } else {
-      this.db.prepare(`UPDATE tasks SET state = 'OPEN', block_reason = NULL,
-        eligible_at = ?, state_version = state_version + 1, updated_at = ?
-        WHERE task_id = ? AND state NOT IN ('DONE', 'CLOSED', 'CANCELED')`).run(updatedAt, updatedAt, execution.task_id);
-    }
+    this.db.prepare(`UPDATE tasks SET state = 'OPEN', block_reason = NULL,
+      eligible_at = ?, state_version = state_version + 1, updated_at = ?
+      WHERE task_id = ? AND state NOT IN ('DONE', 'CLOSED', 'CANCELED')`).run(updatedAt, updatedAt, execution.task_id);
     return {
       task: this.getTask(execution.task_id),
       execution: this.getExecution(execution.execution_id),
@@ -2104,16 +2062,8 @@ export class TaskService {
     return false;
   }
 
-  /**
-   * Dependencies that gate take/readiness. A shared Mission Task records a
-   * branch's prerequisites as observable structure, but per the runtime
-   * contract (§1, §3) it remains OPEN and eligible whenever it has no
-   * executor until the Mission itself ends; one branch's prerequisite never
-   * removes the shared responsibility from the other identities.
-   */
   #gatingDependencyBlockers(taskOrId) {
     const taskId = typeof taskOrId === 'string' ? taskOrId : taskOrId?.task_id;
-    if (this.#isSharedMissionTask(taskOrId)) return [];
     return this.#dependencyBlockers(taskId);
   }
 
@@ -2209,12 +2159,6 @@ export class TaskService {
     const updatedAt = now();
     if (TERMINAL_TASK_STATES.includes(task.state) || active > 0) {
       return { task: this.getTask(taskId), changed: false, blockers };
-    }
-    if (task.state === 'BLOCKED' && this.#isSharedMissionTask(task)) {
-      // Repair durable state written before the shared-Mission block fix: a
-      // shared Mission is never aggregate-BLOCKED while the Mission is live.
-      const reopened = this.#refreshTaskState(taskId, { updatedAt });
-      return { task: reopened, changed: reopened.state !== task.state, blockers: [] };
     }
     if (blockers.length > 0 && task.state !== 'BLOCKED') {
       const reason = blockers.map((blocker) => `dependency:${blocker.dependency_id ?? 'unknown'}`).join(',');
@@ -2345,29 +2289,14 @@ export class TaskService {
       updatedAt,
       execution.execution_id,
     );
-    const sharedMission = this.#isSharedMissionTask(task);
-    // A dependency block on an ordinary Task releases its whole responsibility.
-    // A shared Mission is different: one branch may be blocked while sibling
-    // Executions continue to own the shared problem, so only the current
-    // Execution is fenced and aggregate state is refreshed from the survivors.
-    const otherExecutionIds = sharedMission ? [] : this.db.prepare("SELECT execution_id FROM executions WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')")
+    const otherExecutionIds = this.db.prepare("SELECT execution_id FROM executions WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')")
       .all(execution.task_id, execution.execution_id).map((row) => row.execution_id);
-    const fencedOthers = sharedMission ? 0 : this.db.prepare(`UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1,
+    const fencedOthers = this.db.prepare(`UPDATE executions SET state = 'FENCED', fencing_version = fencing_version + 1,
       terminal_reason = ?, state_version = state_version + 1, updated_at = ?
       WHERE task_id = ? AND execution_id <> ? AND state IN ('CREATED', 'RUNNING', 'WAITING')`)
       .run(`dependency_blocked:${blockReason}`, updatedAt, execution.task_id, execution.execution_id).changes;
-    if (sharedMission) {
-      // The block ends only this branch. Per the runtime contract (§1, §3)
-      // the shared Mission Task is RUNNING while others execute and OPEN with
-      // no executor, and stays eligible until the Mission ends. The typed
-      // prerequisite remains recorded on the Execution handoff metadata and
-      // as Task structure; it does not become an aggregate BLOCKED state
-      // (r12: that state idled every Core for the remaining 84 minutes).
-      this.#refreshTaskState(execution.task_id, { updatedAt });
-    } else {
-      this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, eligible_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
-        .run(blockReason, updatedAt, execution.task_id);
-    }
+    this.db.prepare("UPDATE tasks SET state = 'BLOCKED', block_reason = ?, eligible_at = NULL, state_version = state_version + 1, updated_at = ? WHERE task_id = ?")
+      .run(blockReason, updatedAt, execution.task_id);
     this.#emitExecutionState({
       kind: 'executions_fenced',
       task_id: execution.task_id,
@@ -2387,7 +2316,6 @@ export class TaskService {
 
   #takeTask(task, payload, envelope) {
     if (TERMINAL_TASK_STATES.includes(task.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be taken');
-    const sharedMission = this.#isSharedMissionTask(task);
     const dependencyBlockers = this.#gatingDependencyBlockers(task);
     if (dependencyBlockers.length > 0) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task is blocked by an explicit execution dependency', { blockers: dependencyBlockers });
@@ -2498,7 +2426,7 @@ export class TaskService {
     const reworkLeaseExpired = reworkExecution && (!reworkExecution.lease_expires_at || Date.parse(reworkExecution.lease_expires_at) <= Date.now());
     const sameReworkWorkspace = reworkExecution && sourceExecutionId === reworkExecution.execution_id &&
       (payload.workspace_revision === undefined || payload.workspace_revision === reworkExecution.workspace_revision);
-    if (!sharedMission && reworkExecution && reworkExecution.instruction_version > 1 && reworkLeaseExpired && !waitingExecution && activeCount === 1 && task.parallel_quota === 1 &&
+    if (reworkExecution && reworkExecution.instruction_version > 1 && reworkLeaseExpired && !waitingExecution && activeCount === 1 && task.parallel_quota === 1 &&
       workspaceMode === 'resume' && ((!sourceExecutionId && !sourceWorkspaceRef) || sameReworkWorkspace) &&
       (payload.workspace_revision === undefined || payload.workspace_revision === reworkExecution.workspace_revision)) {
       const updatedAt = now();
@@ -2515,13 +2443,13 @@ export class TaskService {
       return { task: this.getTask(task.task_id), execution: this.getExecution(reworkExecution.execution_id) };
     }
     const resumableWaiting = waitingExecution && this.#isWaitingResumable(rowToExecution(waitingExecution));
-    const canContinueCurrentWaiting = Boolean(!sharedMission && waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting &&
+    const canContinueCurrentWaiting = Boolean(waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting &&
       (payload.workspace_revision === undefined || payload.workspace_revision === waitingExecution.workspace_revision) &&
       !(coreId !== null && waitingExecution.core_id !== null && waitingExecution.core_id !== coreId));
     if (workspaceMode === 'resume' && payload.workspace_revision !== undefined && !sourceWorkspaceRef && !canContinueCurrentWaiting) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'resume Workspace selection with a revision requires a source Workspace or the current waiting Workspace revision');
     }
-    if (!sharedMission && waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting) {
+    if (waitingExecution && activeCount === 0 && task.parallel_quota === 1 && resumableWaiting) {
       const continueExisting = workspaceMode === 'resume' && !sourceExecutionId && !sourceWorkspaceRef && canContinueCurrentWaiting;
       if (!continueExisting) {
         // A worker may explicitly choose a clean start or a Workspace fork.
@@ -2545,7 +2473,7 @@ export class TaskService {
       return { task: this.getTask(task.task_id), execution: this.getExecution(waitingExecution.execution_id) };
       }
     }
-    if (!sharedMission && activeCount + (waitingExecution ? 1 : 0) >= task.parallel_quota) {
+    if (activeCount + (waitingExecution ? 1 : 0) >= task.parallel_quota) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Task has reached its active Execution quota', { parallel_quota: task.parallel_quota });
     }
     if (task.state === 'BLOCKED') {
