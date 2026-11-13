@@ -133,7 +133,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 | [scripts/service-host.mjs](../../scripts/service-host.mjs) | Built-in HTTP service process composition and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `78632fab24e499ae78dd6e41fa0d05e08241de99a3c67df686aa39564de62967` |
 | [services/opensandbox-agent/Dockerfile](../../services/opensandbox-agent/Dockerfile) | OpenSandbox agent image recipe containing the worker, Pi package and native shell tools | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `ed0b909ffae15ff18a056fe50a610761eca45292eff59af35f21a0c2486aa2f2` |
 | [services/opensandbox-agent/pi-models.json](../../services/opensandbox-agent/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `2f7af32c853568f358b7c7fabb66d6992df5fbc727eac777130e1650ed124070` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `b83f677823c900efcc019d47ddd6e72f1040e2cae39763825415fce74221851b` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `828aa10596f79df623328775b37ebe985358b7169ab3b47f2a785a25c85ddcdb` |
 | [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `5dedc41b1cbc4954918b23135ecf7b1369972ce011b42b6b96352673c5437a72` |
 
 ### observation and analysis (9)
@@ -168,7 +168,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/opensandbox-agent-worker.mjs](../../scripts/opensandbox-agent-worker.mjs) | Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `3491e0d92da8b2a8868e82943e082f317086bac18ba9582d04cd7ddf4843059c` |
-| [src/runtime/opensandbox-manager.js](../../src/runtime/opensandbox-manager.js) | OpenSandbox lifecycle and Execd provider boundary for one Execution | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `a0be9a6ab10f3f5458a841ee420a4a40fd11fe81420c14baeac5b9b1dcacb6ee` |
+| [src/runtime/opensandbox-manager.js](../../src/runtime/opensandbox-manager.js) | OpenSandbox lifecycle and Execd provider boundary for one Execution | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `427b22fb02bbc4b74d3d1a8de5cf550fa20d75d5afb11c5c53f1adbd52d1b27e` |
 
 ### service and Agent integration (3)
 

@@ -202,6 +202,9 @@ export class OpenSandboxManager {
     this.resourceLimits = structuredClone(resourceLimits);
     if (!Array.isArray(entrypoint) || entrypoint.length === 0 || !entrypoint.every((part) => typeof part === 'string')) throw new TypeError('entrypoint must be a non-empty string array');
     this.entrypoint = [...entrypoint];
+    if (this.entrypoint.length !== 3 || this.entrypoint[0] !== 'tail' || this.entrypoint[1] !== '-f' || this.entrypoint[2] !== '/dev/null') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'OpenSandbox uses the fixed Agent worker entrypoint; custom entrypoints are not supported');
+    }
     this.metadata = { ...metadata };
     this.environment = envs(environment);
     this.volumes = normalizeVolumes(volumes);
@@ -241,6 +244,7 @@ export class OpenSandboxManager {
     const value = responseValue(response.body);
     const sandboxes = Array.isArray(value) ? value : (value?.items ?? value?.sandboxes ?? []);
     const adopted = [];
+    const quarantined = [];
     for (const sandbox of sandboxes) {
       const metadata = sandbox?.metadata ?? {};
       const executionId = metadata.execution_id ?? metadata.executionId;
@@ -250,13 +254,20 @@ export class OpenSandboxManager {
       const endpointResponse = await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}/endpoints/${this.execdPort}`, { method: 'GET', timeoutMs });
       const execdUrl = endpointForHost(responseValue(endpointResponse.body), this.endpointHost);
       if (!execdUrl) continue;
-      const bindingVersion = Number.parseInt(metadata.binding_version ?? metadata.bindingVersion, 10);
-      const record = { executionId, sandboxId, execdUrl: execdUrl.replace(/\/$/, ''), execdHeaders: {}, bindingVersion: Number.isInteger(bindingVersion) ? bindingVersion : null, hostWorkspaceRef: null, createdAt: this.now(), jobs: new Map(), agent: null, reconciled: true };
-      this.executions.set(executionId, record);
-      adopted.push(this.#snapshot(record));
+      // A controller restart cannot recover the per-Execution worker token
+      // from provider state. Do not present an adopted Execd record as a
+      // usable Agent: quarantine the orphaned sandbox and let the next clean
+      // Execution resume from public Workspace/Material state.
+      quarantined.push({ execution_id: executionId, sandbox_id: sandboxId, execd_url: execdUrl.replace(/\/$/, '') });
+      this.logger?.({ event: 'sandbox.worker_unrecoverable', provider: 'opensandbox', execution_id: executionId, sandbox_id: sandboxId });
+      await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}`, { method: 'DELETE', timeoutMs, allowStatuses: [404] }).then(() => {
+        this.logger?.({ event: 'sandbox.quarantined', provider: 'opensandbox', execution_id: executionId, sandbox_id: sandboxId });
+      }).catch((error) => {
+        this.logger?.({ event: 'sandbox.quarantine_error', provider: 'opensandbox', execution_id: executionId, sandbox_id: sandboxId, error_class: error?.code ?? error?.name });
+      });
     }
-    this.logger?.({ event: 'sandbox.reconciled', provider: 'opensandbox', requested: allowed.size, adopted: adopted.length });
-    return { provider: 'opensandbox', adopted };
+    this.logger?.({ event: 'sandbox.reconciled', provider: 'opensandbox', requested: allowed.size, adopted: adopted.length, quarantined: quarantined.length });
+    return { provider: 'opensandbox', adopted, quarantined };
   }
 
   async ensureExecution({ executionId, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {} } = {}) {
@@ -264,9 +275,7 @@ export class OpenSandboxManager {
     const existing = this.executions.get(id);
     if (existing) return this.#snapshot(existing);
     const workerToken = randomUUID();
-    const workerEntrypoint = this.entrypoint[0] === 'tail'
-      ? [...this.workerCommand, '--port', String(this.workerPort)]
-      : this.entrypoint;
+    const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort)];
     const response = await this.#request('/sandboxes', {
       method: 'POST',
       body: {

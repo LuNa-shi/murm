@@ -83,6 +83,14 @@ test('OpenSandbox rejects host paths, secret environment variables, and unbound 
   assert.throws(() => createOpenSandboxManager({ lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test', volumes: [{ name: 'host', mountPath: '/workspace', host: { path: '/tmp' } }] }), (error) => error.code === ERROR_CODES.NOT_ALLOWED);
 });
 
+test('OpenSandbox rejects custom entrypoints outside the fixed worker contract', () => {
+  assert.throws(() => createOpenSandboxManager({
+    lifecycleBaseUrl: 'http://sandbox.test/v1',
+    image: 'image:test',
+    entrypoint: ['sh', '-lc', 'tail -f /dev/null'],
+  }), (error) => error.code === ERROR_CODES.INVALID_CONTRACT && /fixed Agent worker entrypoint/.test(error.message));
+});
+
 test('OpenSandbox compensates a created sandbox when Execd endpoint resolution fails', async () => {
   const calls = [];
   const manager = createOpenSandboxManager({
@@ -213,19 +221,20 @@ test('OpenSandbox workspace pull is idempotent after provider cleanup removed th
   }
 });
 
-test('OpenSandbox reconciles provider sandboxes by durable Execution metadata', async () => {
+test('OpenSandbox quarantines provider sandboxes whose Agent token cannot be recovered', async () => {
   const manager = createOpenSandboxManager({
     lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',
     fetchImpl: async (url) => {
       if (url.includes('/sandboxes?pageSize=100')) return response({ items: [{ id: 'sbx-existing', metadata: { execution_id: 'e-existing', binding_version: '4' } }] });
       if (url.includes('/endpoints/44772')) return response({ url: 'http://execd.test/existing' });
+      if (url.includes('/sandboxes/sbx-existing')) return response({});
       throw new Error(`unexpected URL: ${url}`);
     },
   });
   const result = await manager.reconcileExecutions({ executionIds: ['e-existing'] });
-  assert.equal(result.adopted[0].execution_id, 'e-existing');
-  assert.equal(result.adopted[0].sandbox_id, 'sbx-existing');
-  assert.equal(result.adopted[0].binding_version, 4);
+  assert.deepEqual(result.adopted, []);
+  assert.equal(result.quarantined[0].execution_id, 'e-existing');
+  assert.equal(result.quarantined[0].sandbox_id, 'sbx-existing');
 });
 
 test('OpenSandbox normalizes the Docker provider bare Execd endpoint shape', async () => {

@@ -5,7 +5,6 @@ import { DatabaseSync } from 'node:sqlite';
 import { cpus, freemem, totalmem } from 'node:os';
 import { join, resolve, relative } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { AgentCoreAdapter } from '../agent/pi-adapter.js';
 import { OpenSandboxAgentAdapter } from '../agent/opensandbox-agent-adapter.js';
 import { ContextService } from '../context/context-service.js';
 import { JudgeService } from '../judge/judge-service.js';
@@ -21,7 +20,7 @@ import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
-import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, SYSTEM_IDENTITY_PROMPT, taskLoopGuide } from '../agent/agent-prompt.js';
+import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, taskLoopGuide } from '../agent/agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
 import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
 import { createHttpJsonAdapter, createInProcessAdapter } from '../sdk/service-adapter.js';
@@ -29,7 +28,6 @@ import { loadServiceBundle } from '../sdk/service-bundle.js';
 import { createMathlibSearchManifest, createMathlibSearchService } from '../services/mathlib-search-service.js';
 import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
 import { IdentityTaskLoop } from '../runtime/identity-task-loop.js';
-import { ContainerSandboxManager } from '../runtime/sandbox-manager.js';
 import { OpenSandboxManager } from '../runtime/opensandbox-manager.js';
 import { TaskController } from '../runtime/task-controller.js';
 import { CoreParallelismTracker } from './parallelism.js';
@@ -330,14 +328,6 @@ function validateProblemInput(problem, source) {
   }
 }
 
-function restrictedArgs(args) {
-  return [
-    ...args,
-    '--thinking',
-    'high',
-  ];
-}
-
 function collectToolEvents(core, records) {
   for (const record of records) {
     const tool = record.toolName ?? record.tool_name ?? record.name;
@@ -371,44 +361,6 @@ function observationLogger(observationStore, experimentId, source) {
       });
     },
   };
-}
-
-export class BenchmarkAgentCoreAdapter extends AgentCoreAdapter {
-  constructor({ allowedToolNames = null, ...options } = {}) {
-    super(options);
-    this.allowedToolNames = allowedToolNames;
-  }
-
-  buildLaunchArgs(options) {
-    // Pi keeps its coordinator tools enabled when only built-ins are disabled.
-    // Start from a completely empty tool set, then add the explicit
-    // SwarmEnv allowlist below. This keeps the benchmark boundary closed even
-    // when a Pi version treats coordinator tools as non-built-ins.
-    const args = restrictedArgs(super.buildLaunchArgs(options)).map((arg) =>
-      arg === '--no-builtin-tools' ? '--no-tools' : arg);
-    // NuRouter/Pi versions have differed in how --no-builtin-tools is
-    // forwarded. An explicit allowlist makes the benchmark boundary
-    // deterministic: only named SwarmEnv extension tools are enabled.
-    const tools = this.allowedToolNames ?? [
-      'swarmenv_catalog_get_service_metadata', 'swarmenv_catalog_list_services', 'swarmenv_catalog_list_tools',
-      'swarmenv_context_consume', 'swarmenv_context_publish', 'swarmenv_context_read',
-      'swarmenv_context_search_materials', 'swarmenv_context_get_material',
-      'swarmenv_judge_get_check_result', 'swarmenv_judge_workspace_check',
-      'swarmenv_execution_get', 'swarmenv_task_status', 'swarmenv_task_take',
-      'swarmenv_task_feedback', 'swarmenv_execution_progress', 'swarmenv_task_list', 'swarmenv_task_view',
-      'swarmenv_task_create', 'swarmenv_task_link_material', 'swarmenv_task_finish',
-      'swarmenv_workspace_diff', 'swarmenv_workspace_get', 'swarmenv_workspace_list_files',
-      'swarmenv_workspace_read_file', 'swarmenv_workspace_write_file',
-      'swarmenv_sandbox_exec', 'swarmenv_sandbox_job',
-    ];
-    args.push('--tools', tools.join(','));
-    // Pi exposes its `parallel` coordinator even when built-in tools are
-    // disabled. It can issue unregistered tool events and invalidate an
-    // otherwise compliant benchmark run, so deny it explicitly at the
-    // benchmark boundary.
-    args.push('--exclude-tools', 'parallel');
-    return args;
-  }
 }
 
 export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyPinnedCheckout = false } = {}) {
@@ -1488,20 +1440,17 @@ async function createProjectState(problem, config, options) {
   const missionSubmissionStore = new MissionSubmissionStore({ file: missionSubmissionPath, workspace: missionWorkspace });
   let sandboxObservationStore = null;
   const sandboxConfig = options.sandbox ?? {};
-  const sandboxProvider = String(sandboxConfig.provider ?? process.env.SWARMENV_SANDBOX_PROVIDER ?? 'docker').toLowerCase();
+  const sandboxProvider = String(sandboxConfig.provider ?? process.env.SWARMENV_SANDBOX_PROVIDER ?? 'opensandbox').toLowerCase();
   const usesOpenSandbox = sandboxProvider === 'opensandbox' || sandboxProvider === 'open-sandbox';
-  if (options.requireThirdPartySandbox === true && (sandboxConfig.enabled !== true || !usesOpenSandbox)) {
-    throw new TypeError('Issue 119 benchmark runs require sandbox.enabled=true with sandbox.provider=opensandbox');
+  if (sandboxConfig.enabled !== true || !usesOpenSandbox) {
+    throw new TypeError('PutnamBench runs require sandbox.enabled=true with sandbox.provider=opensandbox');
   }
-  const sandboxManager = sandboxConfig.enabled === true
-    ? usesOpenSandbox
-      ? new OpenSandboxManager({
+  const sandboxManager = new OpenSandboxManager({
         lifecycleBaseUrl: sandboxConfig.lifecycleBaseUrl ?? process.env.SWARMENV_OPENSANDBOX_URL,
         endpointHost: sandboxConfig.endpointHost ?? process.env.SWARMENV_OPENSANDBOX_ENDPOINT_HOST ?? null,
         apiKey: sandboxConfig.apiKey ?? process.env.OPEN_SANDBOX_API_KEY ?? null,
         execdToken: sandboxConfig.execdToken ?? process.env.SWARMENV_EXECD_ACCESS_TOKEN ?? null,
         image: sandboxConfig.image,
-        entrypoint: sandboxConfig.entrypoint,
         resourceLimits: sandboxConfig.resourceLimits,
         environment: sandboxConfig.environment,
         volumes: sandboxConfig.volumes,
@@ -1515,25 +1464,8 @@ async function createProjectState(problem, config, options) {
         logger: (event) => {
           if (sandboxObservationStore?.getExperiment?.(runId)) sandboxObservationStore.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_event', payload: event });
         },
-      })
-      : new ContainerSandboxManager({
-      image: options.sandbox.image,
-      imageDigest: options.sandbox.imageDigest ?? null,
-      workspaceRoot,
-      allowedReadOnlyRoots: options.sandbox.allowedReadOnlyRoots ?? [],
-      network: options.sandbox.network ?? 'none',
-      user: options.sandbox.user ?? '1000:1000',
-      memory: options.sandbox.memory ?? '2g',
-      cpus: options.sandbox.cpus ?? 2,
-      pidsLimit: options.sandbox.pidsLimit ?? 256,
-      commandTimeoutMs: options.sandbox.commandTimeoutMs,
-      maxOutputBytes: options.sandbox.maxOutputBytes,
-        logger: (event) => {
-          if (sandboxObservationStore?.getExperiment?.(runId)) sandboxObservationStore.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_event', payload: event });
-        },
-    })
-    : null;
-  if (sandboxManager) await sandboxManager.preflight({ timeoutMs: options.sandbox.preflightTimeoutMs ?? 20_000 });
+      });
+  if (sandboxManager) await sandboxManager.preflight({ timeoutMs: sandboxConfig.preflightTimeoutMs ?? 20_000 });
   const logRoot = join(experimentRoot, 'logs', 'projects', problem.id);
   await Promise.all([
     mkdir(projectDir, { recursive: true }),
@@ -1803,8 +1735,7 @@ async function createProjectState(problem, config, options) {
     const coreDir = join(workspaceRoot, `core-${index}`);
     await mkdir(coreDir, { recursive: true });
     const childEnv = { ...process.env };
-    const adapter = sandboxManager && (sandboxProvider === 'opensandbox' || sandboxProvider === 'open-sandbox')
-      ? new OpenSandboxAgentAdapter({
+    const adapter = new OpenSandboxAgentAdapter({
         sandboxManager,
         command: options.command ?? 'pi',
         provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER,
@@ -1824,24 +1755,6 @@ async function createProjectState(problem, config, options) {
         // source imports. A guest path is required; the controller's source
         // tree is outside the sandbox and must never be passed through.
         extensionPath: sandboxConfig.extensionPath ?? '/opt/swarmenv/src/agent/swarmenv-extension.mjs',
-      })
-      : options.agentAdapterFactory
-      ? options.agentAdapterFactory({ index, problem, executionId: null, coreDir, env: childEnv })
-      : new BenchmarkAgentCoreAdapter({
-        command: options.command ?? 'pi',
-        provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER,
-        model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL,
-        account: options.account ?? process.env.NUROUTER_PI_ACCOUNT,
-        group: options.group ?? process.env.NUROUTER_PI_GROUP,
-        extensionPath: options.extensionPath ?? resolve(new URL('../agent/swarmenv-extension.mjs', import.meta.url).pathname),
-        cwd: coreDir,
-        sessionDir: join(coreDir, '.swarm', 'pi-session'),
-        env: childEnv,
-        allowedToolNames: allowedAgentToolNames,
-        // Stable identity rules are a system-role addendum, not a user
-        // prompt. Dynamic Mission/Task context is still sent per turn by the
-        // identity loop.
-        systemPrompt: SYSTEM_IDENTITY_PROMPT,
       });
     // All reusable slots must be able to resume an Execution created by any
     // other slot. The physical Workspace is execution-owned and unique, but
@@ -1856,7 +1769,7 @@ async function createProjectState(problem, config, options) {
       agentAdapter: adapter,
       runtimeCapabilities,
       sandboxManager,
-      cleanExecutionWorkspaces: usesOpenSandbox,
+      cleanExecutionWorkspaces: true,
       freshBotPerExecution: true,
       capabilityRegistry,
       maxWorkers: 1,
