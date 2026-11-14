@@ -30,14 +30,14 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `a2ea43efa380b7731557524d6084e3e138f5f2b43fa64494adf03c6279643a20` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `67189324940ba90f9d010d3e0792de2768babbcef779e3cbadcd8792b7dc6379` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `1072e4bf3f561a63959ac66911504eb59eeed98d681a7acf3bd42b8ee496b0a4` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `3561a5c89ee52836e6d46bca3129385426672a5fd60652f11c3cd301ed28ed18` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fc537d04cb0471d1496d82c1866b5fde81986f790768eea9e720bd7391ecdabd` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `151f99ae6fa903c93f99fec6ce63dc7cf6120cfe62476361840aee970e6057d3` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `5b99550182976cf351887ff2c5eb269a945ee56a9832aca91f1c9edc1be008df` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `79ba27b66c7f2fb6cc60acea4ee4a13564f4de2ea3e622d0afaad42cb0136ef1` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `eefc3bff5692aba757445b062772926f159a35ae38277d9153cf4e2c808c3fa3` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `233dac84b911076bdf83aeb1a6008a8300e8f1c37e7fa754d19f347a42e495e6` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
@@ -287,7 +287,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "b8dba5ed747d12bbf37eb3a264e647c1781adfb49a42573e9a699586730c85aa"
+  "manifest_hash": "2bde3dfc14de4a7186bf7505d98b035d840dc6007d1b8c9c76483d0c343659f0"
 }
 ```
 
@@ -1588,19 +1588,12 @@ Conditionally merge one complete public Workspace revision into main after confl
   "input_schema": {
     "type": "object",
     "required": [
-      "workspace_id",
-      "from_revision",
-      "expected_main_revision"
+      "from"
     ],
     "properties": {
-      "workspace_id": {
-        "type": "string"
-      },
-      "from_revision": {
-        "type": "string"
-      },
-      "expected_main_revision": {
-        "type": "string"
+      "from": {
+        "type": "string",
+        "pattern": "^\\d+\\.\\d+$"
       }
     },
     "additionalProperties": false

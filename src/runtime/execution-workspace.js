@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../protocol/envelope.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { publishWorkspace } from './workspace-publication.js';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const json = value => JSON.stringify(value);
@@ -295,18 +296,7 @@ export class ExecutionWorkspace {
     const files = Object.fromEntries(Object.entries(captured.files).map(([path, encoded]) => [path, Buffer.from(encoded, 'base64')]));
     const options = { workspaceId: captured.workspace_id, baseRevision: captured.base_revision, parentRevisions: captured.parents,
       files, source: captured.source, conflicts: captured.conflicts, requestId: `execution:${row.execution_id}:save:${row.request_id}`, guard: () => this.guard(identity),
-      withPublication: publish => {
-        // All TaskService writers serialize with this transaction. Hold it
-        // across the final guard and synchronous Git intent/publication, so
-        // another process cannot accept finish in between those two points.
-        try { this.db.exec('BEGIN IMMEDIATE'); }
-        catch (error) {
-          if (error.errcode === 5) throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'Publication lock is busy; retry the original request ID', undefined, { retryable: true, cause: error });
-          throw error;
-        }
-        try { publish(); this.db.exec('COMMIT'); }
-        catch (error) { this.db.exec('ROLLBACK'); throw error; }
-      } };
+      withPublication: publish => publishWorkspace(this.db, publish) };
     let result;
     try {
       result = await this.workspace.replaySave(options);

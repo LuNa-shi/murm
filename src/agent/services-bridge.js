@@ -558,7 +558,13 @@ export class ServicesBridge {
           this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
           return result;
         }
-        if (operation === 'workspace_merge') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Workspace apply/merge requires Runtime integration');
+        if (operation === 'workspace_merge') {
+          const execution = this.executionId && this.taskService.getExecution(this.executionId);
+          const result = await this.runtime.mergeExecutionWorkspace(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution?.fencing_version, requestId: bridgeOperationId });
+          assertIdentity();
+          this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
+          return result;
+        }
         if (WORKSPACE_OPERATIONS.has(operation) || operation === 'execution_progress') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Legacy private Workspace and Execution APIs are unavailable to registered Bots');
         if (operation === 'mission_submit') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission submission integration is not ready for Bot requests');
         if (payload.mission_id !== undefined && payload.mission_id !== bot.mission_id) {

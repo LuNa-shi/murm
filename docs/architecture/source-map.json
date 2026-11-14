@@ -808,6 +808,14 @@
       "role": "Authenticated guest snapshot, durable E save lineage and request reconciliation"
     },
     {
+      "path": "src/runtime/workspace-publication.js",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md"
+      ],
+      "role": "Synchronous lifecycle SQLite lock around Git publication and unknown-result classification"
+    },
+    {
       "path": "src/runtime/identity-task-loop.js",
       "category": "Execution and control",
       "chapters": [

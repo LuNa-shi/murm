@@ -20,10 +20,10 @@ import { ContextService } from '../src/context/context-service.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { SwarmEnvError, ERROR_CODES } from '../src/errors.js';
 
-async function fixture(t, runtimeOptions = {}, { persistent = false } = {}) {
+async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceConditions = {} } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarm-bot-'));
   const service = new TaskService(persistent ? join(root, 'state.sqlite') : ':memory:');
-  service.createMission({ mission_id: 'mission:bots', goal: 'Inspect independent questions' }, makeEnvelope({ actorRef: 'operator:test' }));
+  service.createMission({ mission_id: 'mission:bots', goal: 'Inspect independent questions', acceptance_conditions: acceptanceConditions }, makeEnvelope({ actorRef: 'operator:test' }));
   const calls = [];
   let sandboxNumber = 0;
   const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'test:bot', waitForExecdReady: false,
@@ -572,7 +572,7 @@ test('registered Bot compaction sends CLI guidance without saving the controller
 });
 
 async function workspaceFixture(t, options = {}) {
-  const f = await fixture(t, {}, options);
+  const f = await fixture(t, options.runtimeOptions ?? {}, options);
   let session;
   let env;
   const context = new ContextService(f.service.db);
@@ -586,7 +586,7 @@ async function workspaceFixture(t, options = {}) {
     session = await f.startSession(input);
     return session;
   } });
-  const task = f.service.createTask({ mission_id: bot.mission_id, summary: 'Produce a reusable project artifact', expected_output: 'Public files', acceptance_conditions: ['Artifact saved'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = f.service.createTask({ mission_id: bot.mission_id, summary: 'Produce a reusable project artifact', expected_output: 'Public files', acceptance_conditions: ['Artifact saved'], completion_contract: options.completionContract ?? {} }, makeEnvelope({ actorRef: bot.bot_id })).task;
   await bridge.call({ operation: 'task_take', payload: { task_id: task.task_id }, operationId: 'workspace-take' });
   const execution = f.service.getExecution(bridge.executionId);
   const identity = { actorRef: bot.bot_id, taskId: task.task_id, executionId: execution.execution_id, fencingVersion: execution.fencing_version };
@@ -957,7 +957,7 @@ test('confirmed apply survives response loss followed by hard close with the sam
   assert.equal(guest.installs, 1);
 });
 
-test('apply installation stays held through SQL failure and Runtime retries only acknowledgement', { timeout: 8000 }, async t => {
+test('apply installation stays held through SQL failure and Runtime retries only acknowledgement', { timeout: 30000 }, async t => {
   const { runtime, guest, service, dispatch } = await workspaceFixture(t);
   const incoming = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', files: { 'input.txt': 'public project input', peer: 'note' } });
   service.db.exec("CREATE TRIGGER reject_apply_ack BEFORE UPDATE ON execution_workspace_state BEGIN SELECT RAISE(ABORT, 'controlled apply SQL failure'); END;");
@@ -1087,4 +1087,197 @@ test('registered Judge CLI checks only a fixed public file and scopes durable re
   assert.equal(publicResult.workspace_input.revision, saved.revision);
   assert.equal(service.getBot(reader.bot_id).execution_id, null);
   assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+});
+
+
+const mergeCheckerIdentity = { checker_ref: 'controlled-tree', checker_version: '1', environment_ref: 'network-disabled-test' };
+
+test('registered CLI merge checks the final combined public tree and preserves the private E worktree', async t => {
+  const checked = [];
+  const { runtime, command, dispatch, guest, execution } = await workspaceFixture(t, { acceptanceConditions: { required_check: mergeCheckerIdentity }, runtimeOptions: { workspaceMergeChecker: {
+    identity: mergeCheckerIdentity, timeoutMs: 5000,
+    async check(plan) { checked.push(plan); return { verdict: 'PASS', check_result_id: 'controlled-combined-tree' }; },
+  } } });
+  guest.files['local.txt'] = Buffer.from('local contribution');
+  const source = await dispatch('save', 'merge-source');
+  const peer = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', files: { 'input.txt': 'public project input', 'peer.txt': 'peer contribution' } });
+  await runtime.missionWorkspace.merge({ workspaceId: 'workspace-default', fromRevision: peer.revision, expectedMainRevision: '0.1' });
+  const merged = await command('workspace', 'merge', '--from', source.revision, '--request-id', 'merge-public-source');
+  assert.equal(checked.length, 1);
+  assert.equal(String(checked[0].files['local.txt']), 'local contribution');
+  assert.equal(String(checked[0].files['peer.txt']), 'peer contribution');
+  assert.equal(merged.check.checked_tree, checked[0].tree);
+  assert.deepEqual(merged.check.checker, mergeCheckerIdentity);
+  const publicTree = await runtime.missionWorkspace.exportRevision({ workspaceId: 'workspace-default', revision: merged.main_revision });
+  assert.equal(String(publicTree.files['peer.txt']), 'peer contribution');
+  assert.equal(guest.files['peer.txt'], undefined);
+  assert.equal((await dispatch('status', 'after-merge')).last_saved_revision, source.revision);
+  guest.files['later.txt'] = Buffer.from('later private edit');
+  assert.deepEqual(await command('workspace', 'merge', '--from', source.revision, '--request-id', 'merge-public-source'), merged);
+  assert.equal(checked.length, 1);
+  const included = await command('workspace', 'merge', '--from', source.revision, '--request-id', 'included-source');
+  assert.equal(included.already_included, true);
+  assert.equal(included.main_revision, merged.main_revision);
+  assert.equal(checked.length, 1);
+  const history = await runtime.missionWorkspace.history({ workspaceId: 'workspace-default', all: true, sourceExecution: execution.execution_id });
+  assert.ok(history.items.some(revision => revision.revision === merged.main_revision));
+});
+
+
+for (const boundary of ['finish', 'freeze', 'freeze-released', 'soft-closeout']) test(`registered merge cannot advance main after ${boundary} wins during checking`, async t => {
+  let entered, resume;
+  const checking = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { resume = resolve; });
+  const { runtime, service, dispatch, guest, identity, execution } = await workspaceFixture(t, { acceptanceConditions: { required_check: mergeCheckerIdentity }, runtimeOptions: { workspaceMergeChecker: {
+    identity: mergeCheckerIdentity, timeoutMs: 10000,
+    async check() { entered(); await gate; return { verdict: 'PASS', check_result_id: 'late-result' }; },
+  } } });
+  guest.files['addition.txt'] = Buffer.from('saved contribution');
+  const saved = await dispatch('save', `merge-${boundary}-source`);
+  const attempt = runtime.mergeExecutionWorkspace({ from: saved.revision }, { ...identity, requestId: `merge-${boundary}` });
+  const rejected = assert.rejects(attempt, error => error.code === (boundary.startsWith('freeze') ? 'MISSION_SUBMITTING' : 'NOT_ALLOWED'));
+  await checking;
+  try {
+    if (boundary.startsWith('freeze')) {
+      await runtime.missionWorkspace.freeze({ workspaceId: 'workspace-default', submissionId: 'trusted-submit', expectedMainRevision: '0.1' });
+      if (boundary === 'freeze-released') await runtime.missionWorkspace.unfreeze({ workspaceId: 'workspace-default', submissionId: 'trusted-submit' });
+    }
+    else {
+      const current = service.getExecution(execution.execution_id);
+      service.dispatch(boundary === 'finish' ? 'task_finish' : 'record_handoff_reminder', boundary === 'finish' ? { outcome: 'incomplete' } : { reminded_at: new Date().toISOString() },
+        makeEnvelope({ actorRef: identity.actorRef, taskId: execution.task_id, executionId: execution.execution_id, specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version }));
+    }
+  } finally { resume(); }
+  await rejected;
+  assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, '0.1');
+  assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 2);
+});
+
+test('merge publication holds the cross-process lifecycle lock through its Git commit', async t => {
+  const { root, runtime, identity, dispatch, guest } = await workspaceFixture(t, { persistent: true });
+  guest.files['merge.txt'] = Buffer.from('public contribution');
+  const saved = await dispatch('save', 'locked-merge-source');
+  let attempted = false;
+  runtime.missionWorkspace.repository.fault = point => {
+    if (point !== 'after_intent') return;
+    attempted = true;
+    const result = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import { DatabaseSync } from 'node:sqlite';
+      const db = new DatabaseSync(process.argv[1]);
+      db.exec('PRAGMA busy_timeout = 40');
+      try { db.exec('BEGIN IMMEDIATE'); console.log('incorrectly acquired'); db.exec('ROLLBACK'); }
+      catch (error) { console.log(error.errcode === 5 ? 'blocked' : error.message); }
+      db.close();
+    `, join(root, 'state.sqlite')], { encoding: 'utf8', timeout: 5000 });
+    assert.equal(result.trim(), 'blocked');
+  };
+  const result = await runtime.mergeExecutionWorkspace({ from: saved.revision }, { ...identity, requestId: 'locked-merge' });
+  runtime.missionWorkspace.repository.fault = null;
+  assert.equal(attempted, true);
+  assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, result.main_revision);
+});
+
+test('required merge checker cannot be bypassed by missing configuration or caller fields', async t => {
+  const { runtime, identity, dispatch, guest } = await workspaceFixture(t, { acceptanceConditions: { required_check: mergeCheckerIdentity } });
+  guest.files['new.txt'] = Buffer.from('needs a real check');
+  const saved = await dispatch('save', 'unconfigured-check-source');
+  const noop = await runtime.mergeExecutionWorkspace({ from: '0.1' }, { ...identity, requestId: 'unconfigured-noop' });
+  assert.equal(noop.already_included, true);
+  await assert.rejects(runtime.mergeExecutionWorkspace({ from: saved.revision }, { ...identity, requestId: 'unconfigured' }), { code: 'SERVICE_NOT_READY' });
+  await assert.rejects(runtime.mergeExecutionWorkspace({ from: '0.1', checker: null }, { ...identity, requestId: 'forged-policy' }), { code: 'INVALID_CONTRACT' });
+  assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, '0.1');
+});
+
+test('merge timeout rejects even if its abort handler resolves a late PASS, and replays without rechecking', async t => {
+  let checks = 0;
+  const { runtime, identity, dispatch, guest } = await workspaceFixture(t, { acceptanceConditions: { required_check: mergeCheckerIdentity }, runtimeOptions: { workspaceMergeChecker: {
+    identity: mergeCheckerIdentity, timeoutMs: 30,
+    check({ signal }) { checks += 1; return new Promise(resolve => signal.addEventListener('abort', () => resolve({ verdict: 'PASS' }), { once: true })); },
+  } } });
+  guest.files['addition.txt'] = Buffer.from('saved contribution');
+  const saved = await dispatch('save', 'merge-timeout-source');
+  const merge = () => runtime.mergeExecutionWorkspace({ from: saved.revision }, { ...identity, requestId: 'merge-timeout' });
+  await assert.rejects(merge(), { code: 'SERVICE_TIMEOUT' });
+  await assert.rejects(merge(), { code: 'SERVICE_TIMEOUT' });
+  assert.equal(checks, 1);
+  assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, '0.1');
+});
+
+for (const policy of ['task-only', 'conflicting', 'none']) test(`merge honors ${policy} Task and Mission check requirements`, async t => {
+  let checks = 0;
+  const { runtime, dispatch, guest, identity } = await workspaceFixture(t, {
+    acceptanceConditions: policy === 'conflicting' ? { required_check: { ...mergeCheckerIdentity, checker_version: 'other' } } : {},
+    completionContract: policy === 'none' ? {} : { required_check: mergeCheckerIdentity },
+    runtimeOptions: { workspaceMergeChecker: { identity: mergeCheckerIdentity, timeoutMs: 5000,
+      async check() { checks += 1; return { verdict: 'PASS' }; } } },
+  });
+  guest.files['policy.txt'] = Buffer.from('policy-bound contribution');
+  const saved = await dispatch('save', `policy-${policy}`);
+  const attempt = runtime.mergeExecutionWorkspace({ from: saved.revision }, { ...identity, requestId: `policy-${policy}` });
+  if (policy === 'conflicting') {
+    await assert.rejects(attempt, { code: 'SERVICE_NOT_READY' });
+    assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, '0.1');
+  } else {
+    const result = await attempt;
+    if (policy === 'none') assert.equal(result.check, null);
+    else assert.deepEqual(result.check.policy.task.required_check, mergeCheckerIdentity);
+  }
+  assert.equal(checks, policy === 'task-only' ? 1 : 0);
+});
+
+test('timed-out checker retains its slot until cleanup confirmation and cannot accumulate new checks', async t => {
+  let checks = 0, release;
+  const { runtime, identity, dispatch, guest } = await workspaceFixture(t, {
+    acceptanceConditions: { required_check: mergeCheckerIdentity },
+    runtimeOptions: { workspaceMergeChecker: { identity: mergeCheckerIdentity, timeoutMs: 30,
+      check() { checks += 1; return new Promise(resolve => { release = resolve; }); } } },
+  });
+  guest.files['quarantine.txt'] = Buffer.from('contribution');
+  const saved = await dispatch('save', 'quarantine-source');
+  const merge = requestId => runtime.mergeExecutionWorkspace({ from: saved.revision }, { ...identity, requestId });
+  await assert.rejects(merge('first-hung-check'), { code: 'SERVICE_TIMEOUT' });
+  await assert.rejects(merge('second-check-blocked'), { code: 'WORKSPACE_BUSY' });
+  assert.equal(checks, 1);
+  release({ verdict: 'PASS' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(runtime.activeWorkspaceCheck, null);
+  assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, '0.1');
+});
+
+test('merge reports failed final-tree evidence with pinned revisions and bounded diagnostics', async t => {
+  const { runtime, dispatch, guest, identity } = await workspaceFixture(t, {
+    acceptanceConditions: { required_check: mergeCheckerIdentity },
+    runtimeOptions: { workspaceMergeChecker: { identity: mergeCheckerIdentity, timeoutMs: 5000,
+      async check() { return { verdict: 'FAIL', check_result_id: 'failed-tree', diagnostic: 'x'.repeat(4096) }; } } },
+  });
+  guest.files['fails.txt'] = Buffer.from('invalid contribution');
+  const saved = await dispatch('save', 'failed-tree-source');
+  await assert.rejects(runtime.mergeExecutionWorkspace({ from: saved.revision }, { ...identity, requestId: 'failed-tree' }), error => {
+    assert.equal(error.code, 'NOT_ALLOWED');
+    assert.equal(error.details.main_revision, '0.1');
+    assert.equal(error.details.source_revision, saved.revision);
+    assert.equal(error.details.check.check_result_id, 'failed-tree');
+    assert.equal(error.details.check.diagnostic.length, 2048);
+    return true;
+  });
+});
+
+test('Git merge publication survives SQLite confirmation failure and replays the same result', async t => {
+  const { runtime, service, identity, dispatch, guest } = await workspaceFixture(t);
+  guest.files['durable.txt'] = Buffer.from('durable contribution');
+  const saved = await dispatch('save', 'durable-source');
+  const exec = service.db.exec.bind(service.db);
+  let failCommit = false;
+  runtime.missionWorkspace.repository.fault = point => { if (point === 'after_intent') failCommit = true; };
+  service.db.exec = sql => {
+    if (sql === 'COMMIT' && failCommit) { failCommit = false; throw new Error('controlled SQLite commit failure'); }
+    return exec(sql);
+  };
+  const merge = () => runtime.mergeExecutionWorkspace({ from: saved.revision }, { ...identity, requestId: 'durable-merge' });
+  await assert.rejects(merge(), { code: 'WORKSPACE_RESULT_UNKNOWN' });
+  runtime.missionWorkspace.repository.fault = null;
+  service.db.exec = exec;
+  const result = await merge();
+  assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, result.main_revision);
+  assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 3);
 });

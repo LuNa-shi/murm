@@ -7,6 +7,7 @@ import { BOT_COMPACTION_MESSAGE, buildBotNotification } from '../agent/bot-contr
 import { BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT, buildPromptSnapshot, composeAgentPrompt } from '../agent/agent-prompt.js';
 import { runtimeCapabilityList } from './runtime-capabilities.js';
 import { ExecutionWorkspace } from './execution-workspace.js';
+import { publishWorkspace } from './workspace-publication.js';
 import { listServices, listTools } from '../sdk/service-catalog.js';
 
 function requireString(value, field) {
@@ -135,7 +136,7 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = true, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, workspaceMergeChecker = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = true, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -146,6 +147,14 @@ export class Runtime {
     this.missionWorkspace = missionWorkspace;
     this.missionWorkspaceId = missionWorkspaceId;
     this.missionSubmissionStore = missionSubmissionStore;
+    if (workspaceMergeChecker && (typeof workspaceMergeChecker.check !== 'function' ||
+        !['checker_ref', 'checker_version', 'environment_ref'].every(key => typeof workspaceMergeChecker.identity?.[key] === 'string' && workspaceMergeChecker.identity[key]) ||
+        !Number.isFinite(workspaceMergeChecker.timeoutMs) || workspaceMergeChecker.timeoutMs <= 0)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge checker requires fixed identity and a positive timeout');
+    }
+    this.workspaceMergeChecker = workspaceMergeChecker ? { identity: Object.freeze(structuredClone(workspaceMergeChecker.identity)),
+      timeoutMs: workspaceMergeChecker.timeoutMs, check: workspaceMergeChecker.check.bind(workspaceMergeChecker) } : null;
+    this.activeWorkspaceCheck = null;
     this.agentAdapter = agentAdapter;
     this.sandboxManager = sandboxManager;
     this.executionWorkspace = missionWorkspace && sandboxManager ? new ExecutionWorkspace({ taskService, workspace: missionWorkspace, sandboxManager,
@@ -453,6 +462,7 @@ export class Runtime {
    */
   async shutdown({ terminalState = 'FAILED', terminalReason = 'runtime_shutdown' } = {}) {
     this.stopping = true;
+    this.activeWorkspaceCheck?.controller.abort();
     for (const entry of this.workspaceReconcileTimers.values()) clearTimeout(entry.timer);
     this.workspaceReconcileTimers.clear();
     for (const timer of this.finishCleanupTimers.values()) clearTimeout(timer);
@@ -625,6 +635,59 @@ export class Runtime {
       }
     }, 1000);
     this.workspaceReconcileTimers.set(executionId, entry);
+  }
+
+  async mergeExecutionWorkspace(input, identity) {
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => key !== 'from') || !/^\d+\.\d+$/.test(input.from ?? '')) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge requires --from a fixed public revision');
+    }
+    if (typeof identity.requestId !== 'string' || !identity.requestId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Merge requires a stable request ID');
+    const initial = this.#guardExecutionWorkspace(identity, { receiptOnly: true });
+    const task = this.taskService.getTask(initial.task_id);
+    const requiredCheck = this.taskService.getMission(task.mission_id).acceptance_conditions?.required_check;
+    const taskCheck = task.completion_contract?.required_check;
+    const adapter = this.workspaceMergeChecker;
+    const requirements = [requiredCheck, taskCheck].filter(value => value !== undefined && value !== null);
+    const unavailableCheck = requirements.some(requirement => !requirement || typeof requirement !== 'object' || Array.isArray(requirement) ||
+      !requirement.checker_ref || !requirement.checker_version || !adapter || Object.entries(requirement).some(([key, value]) => adapter.identity[key] !== value));
+    const checkPolicy = { policy_version: 'workspace-merge-v1', mission: requiredCheck ?? null,
+      task: { spec_version: task.spec_version, required_check: taskCheck ?? null }, configured: requirements.length ? adapter?.identity ?? null : null };
+    const guard = () => {
+      const execution = this.#guardExecutionWorkspace(identity);
+      if (execution.handoff_reminder_sent_at || (execution.handoff_deadline && Date.now() >= Date.parse(execution.handoff_deadline))) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Soft closeout permits saving and finishing existing work, not new main merges');
+      }
+      return execution;
+    };
+    return this.missionWorkspace.merge({ workspaceId: this.missionWorkspaceId, fromRevision: input.from,
+      requestId: `execution:${identity.executionId}:merge:${identity.requestId}`,
+      source: { operation: 'merge', mission_id: task.mission_id, task_id: task.task_id, execution_id: initial.execution_id, bot_id: initial.owner_ref, fencing_version: identity.fencingVersion },
+      checkPolicy, guard,
+      checker: unavailableCheck ? async () => { throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission or Task requires an unavailable trusted final-tree checker', { policy: checkPolicy }); } : requirements.length ? async plan => {
+        const execution = guard();
+        if (this.activeWorkspaceCheck) throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'Previous final-tree checker has not confirmed completion; use a new attempt after it settles');
+        const remaining = Math.min(adapter.timeoutMs, Date.parse(execution.handoff_deadline ?? execution.execution_deadline) - Date.now());
+        if (!Number.isFinite(remaining) || remaining <= 0) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'No final-tree check budget remains');
+        const controller = new AbortController();
+        const active = { controller };
+        this.activeWorkspaceCheck = active;
+        const deadline = Date.now() + remaining;
+        let timer;
+        try {
+          // A checker promise must settle only after its resources stop. Timeout
+          // requests cancellation but retains this slot until that confirmation.
+          const checking = Promise.resolve().then(() => adapter.check({ ...plan, signal: controller.signal, identity: adapter.identity, source: { task_id: task.task_id, execution_id: initial.execution_id }, deadline }))
+            .finally(() => { if (this.activeWorkspaceCheck === active) this.activeWorkspaceCheck = null; });
+          const result = await Promise.race([checking,
+            new Promise((_, reject) => { timer = setTimeout(() => { reject(new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline')); controller.abort(); }, remaining); })]);
+          if (Date.now() >= deadline) throw new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline');
+          return { verdict: result?.verdict, check_result_id: typeof result?.check_result_id === 'string' ? result.check_result_id.slice(0, 256) : null,
+            diagnostic: typeof result?.diagnostic === 'string' ? result.diagnostic.slice(0, 2048) : null,
+            checked_tree: plan.tree, checker: adapter.identity, policy: checkPolicy };
+        } finally { clearTimeout(timer); }
+      } : null,
+      withPublication: publish => publishWorkspace(this.taskService.db, publish),
+    });
   }
 
   async mergePublicWorkspaceRevision(input = {}) {

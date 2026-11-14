@@ -14,7 +14,7 @@ Read the Mission and relevant public Tasks, Materials, and Workspace files withi
 ````
 ## Registered Bot discovery: complete synthetic example
 
-Body SHA-256: `41e153375061002308b4a1cb6a577cb13d41dfe33d7cac71f3e8478e35ff11d6`
+Body SHA-256: `b23e7e695dd8716bb6111a4f1ec39d4ed590f2930765e4d13f36337caddf3f68`
 
 ````text
 你已在全新的 sandbox/Pi Session 启动，尚无 Execution。通过 swarm CLI 读取相关公开工作，在预算内自主选择已有 Task，或先提出缺失的局部 Task 再 take。下方只是当前可领取任务的一页，不代表全部历史；空页不表示 Mission 完成。
@@ -96,7 +96,7 @@ Body SHA-256: `41e153375061002308b4a1cb6a577cb13d41dfe33d7cac71f3e8478e35ff11d6`
       "name": "mission",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "b8dba5ed747d12bbf37eb3a264e647c1781adfb49a42573e9a699586730c85aa",
+      "manifest_hash": "2bde3dfc14de4a7186bf7505d98b035d840dc6007d1b8c9c76483d0c343659f0",
       "help": "swarm mission --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -106,7 +106,7 @@ Body SHA-256: `41e153375061002308b4a1cb6a577cb13d41dfe33d7cac71f3e8478e35ff11d6`
       "name": "task",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "b8dba5ed747d12bbf37eb3a264e647c1781adfb49a42573e9a699586730c85aa",
+      "manifest_hash": "2bde3dfc14de4a7186bf7505d98b035d840dc6007d1b8c9c76483d0c343659f0",
       "help": "swarm task --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -116,7 +116,7 @@ Body SHA-256: `41e153375061002308b4a1cb6a577cb13d41dfe33d7cac71f3e8478e35ff11d6`
       "name": "workspace",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "b8dba5ed747d12bbf37eb3a264e647c1781adfb49a42573e9a699586730c85aa",
+      "manifest_hash": "2bde3dfc14de4a7186bf7505d98b035d840dc6007d1b8c9c76483d0c343659f0",
       "help": "swarm workspace --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -126,7 +126,7 @@ Body SHA-256: `41e153375061002308b4a1cb6a577cb13d41dfe33d7cac71f3e8478e35ff11d6`
       "name": "bot",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "b8dba5ed747d12bbf37eb3a264e647c1781adfb49a42573e9a699586730c85aa",
+      "manifest_hash": "2bde3dfc14de4a7186bf7505d98b035d840dc6007d1b8c9c76483d0c343659f0",
       "help": "swarm bot --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],

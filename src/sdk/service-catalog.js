@@ -298,7 +298,7 @@ const publicMissionWorkspaceTools = [
     name: 'workspace_merge', service: 'task', operation: 'workspace_merge', version: '1.0',
     description: 'Conditionally merge one complete public Workspace revision into main after conflict and check validation.',
     scope: 'execution-write', side_effect: true, capability: 'mission-workspace',
-    parameters: { type: 'object', required: ['workspace_id', 'from_revision', 'expected_main_revision'], properties: { workspace_id: { type: 'string' }, from_revision: { type: 'string' }, expected_main_revision: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['from'], properties: { from: { type: 'string', pattern: '^\\d+\\.\\d+$' } }, additionalProperties: false },
   },
   {
     name: 'mission_submit', service: 'task', operation: 'mission_submit', version: '1.0',

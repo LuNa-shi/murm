@@ -58,7 +58,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `835328d693fabcaad247f88160db5fc692077ec5ff36b855622ca258c5a4c4c0`.
+Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `61bfb8758de4c18aab7f7d99466e12951d55b4dce5305b775b3b9d0b39f95646`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (

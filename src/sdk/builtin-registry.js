@@ -164,7 +164,7 @@ function serviceDispatch(serviceId, services, registry) {
       if (capability.operation === 'workspace_public_search') return services.missionWorkspace.search({ workspaceId: input?.workspace_id, revision: input?.revision, prefix: input?.path ?? '', query: input?.query, maxResults: input?.max_results });
       if (capability.operation === 'workspace_public_apply') throw Object.assign(new Error('Workspace apply requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
       if (capability.operation === 'workspace_save') throw Object.assign(new Error('Workspace save requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
-      if (capability.operation === 'workspace_merge') return services.missionWorkspace.merge(input ?? {});
+      if (capability.operation === 'workspace_merge') throw Object.assign(new Error('Workspace merge requires authenticated Runtime integration'), { code: 'NOT_ALLOWED' });
     }
     if (serviceId === 'task' && ['mission_submit', 'mission_submission_get'].includes(capability.operation)) {
       if (!services.missionSubmissionStore) {

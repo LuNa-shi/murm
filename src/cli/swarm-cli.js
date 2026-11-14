@@ -55,7 +55,7 @@ const COMMAND_HELP = Object.freeze({
     search: 'Search text in a fixed public Workspace revision.',
     apply: 'Apply a fixed public revision into the current E using --from revision or main. Save dirty work first; reuse --request-id after an unknown response.',
     save: 'Save the actual current E project as a stable public revision. Use --resolved only after resolving recorded conflicts and removing their alternatives. No file, identity or lineage arguments. Reuse --request-id after an unknown response.',
-    merge: 'Conditionally merge a complete public Workspace revision into main.',
+    merge: 'Merge --from a fixed public revision; Runtime pins main, checks the combined tree when configured, and conditionally advances main. Reuse --request-id after response loss.',
   },
   mission: {
     view: 'Read the current Mission goal and acceptance conditions through the trusted Bot binding.',

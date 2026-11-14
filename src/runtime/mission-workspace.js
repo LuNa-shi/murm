@@ -223,6 +223,7 @@ export class MissionWorkspace {
       this.#assertWritable(record);
       if (expectedMainRevision !== undefined && resolvedRevision(expectedMainRevision, record) !== record.main_revision) throw new SwarmEnvError('MAIN_MOVED', 'main revision changed before Mission submission');
       if (record.frozen_submission_id && record.frozen_submission_id !== submissionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace main is frozen by another Mission submission');
+      if (!record.frozen_submission_id) record.freeze_epoch = (record.freeze_epoch ?? 0) + 1;
       record.frozen_submission_id = submissionId;
       record.updated_at = now();
       writeWorkspaceJson(join(root, META), record);
@@ -265,8 +266,9 @@ export class MissionWorkspace {
 
   async merge(options) {
     const normalized = { ...options, requestId: options.requestId ?? randomUUID() };
-    const { workspaceId, fromRevision, expectedMainRevision, requestId } = normalized;
-    const request = this.#request(requestId, { operation: 'merge', workspaceId, fromRevision, expectedMainRevision });
+    const { workspaceId, fromRevision, expectedMainRevision, requestId, source = null, checkPolicy = null } = normalized;
+    const request = this.#request(requestId, { operation: 'merge', workspaceId, fromRevision, expectedMainRevision,
+      ...(source ? { source, checkPolicy } : {}) });
     request.owner_id = randomUUID();
     return this.#runRequest(this.workspacePath(workspaceId), request, () => this.#merge(normalized, request));
   }
@@ -287,7 +289,7 @@ export class MissionWorkspace {
             await this.repository.locked(root, async () => {
               const stored = this.repository.readReceipt(root, request.key);
               const checking = stored?.phase === 'checking' && stored.owner_id === request.owner_id;
-              const definitive = ['CONFLICT', 'MAIN_MOVED', 'MISSION_SUBMITTING', 'NOT_ALLOWED', 'INVALID_CONTRACT'].includes(error.code);
+              const definitive = ['CONFLICT', 'MAIN_MOVED', 'MISSION_SUBMITTING', 'NOT_ALLOWED', 'INVALID_CONTRACT', 'SERVICE_NOT_READY', 'SERVICE_TIMEOUT', 'WORKSPACE_BUSY'].includes(error.code);
               if ((!stored && definitive) || checking) {
                 const outcome = definitive ? { code: error.code, message: error.message, details: error.details, retryable: error.retryable }
                   : { code: 'WORKSPACE_REQUEST_ABORTED', message: 'Workspace attempt stopped without a committed result; use a new attempt ID', details: { cause_code: error.code ?? 'INTERNAL_ERROR' }, retryable: false };
@@ -338,7 +340,8 @@ export class MissionWorkspace {
     });
   }
 
-  async #merge({ workspaceId, fromRevision, expectedMainRevision, checker = null, requestId = randomUUID(), guard = null }, request) {
+  async #merge({ workspaceId, fromRevision, expectedMainRevision, checker = null, requestId = randomUUID(), guard = null,
+    source: contributionSource = 'merge', withPublication = publish => publish() }, request) {
     const root = this.workspacePath(workspaceId);
     const plan = await this.repository.locked(root, async () => {
       const replay = this.#replay(root, request);
@@ -361,29 +364,39 @@ export class MissionWorkspace {
     let check = null;
     if (!merged.alreadyIncluded && typeof checker === 'function') {
       check = await checker({ workspaceId, revision: source.revision, mainRevision: pinned.main_revision, tree: merged.tree, files: Object.fromEntries(Object.entries(files).map(([path, content]) => [path, Buffer.isBuffer(content) ? Buffer.from(content) : content])) });
-      if (check !== true && check?.verdict !== 'PASS') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'final Workspace tree check failed');
+      if (check !== true && check?.verdict !== 'PASS') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'final Workspace tree check failed', {
+        workspace_id: workspaceId, main_revision: pinned.main_revision, source_revision: source.revision, checked_tree: merged.tree, check,
+      });
     }
     return this.repository.locked(root, async () => {
       const replay = this.#replay(root, request);
       if (replay) return replay;
       const record = await this.#read(root);
       this.#assertMergeAllowed(record, guard);
+      if ((record.freeze_epoch ?? 0) !== (pinned.freeze_epoch ?? 0)) throw new SwarmEnvError('MISSION_SUBMITTING', 'Mission submission invalidated this merge attempt; retry with a new request ID');
       if (record.main_revision !== pinned.main_revision || record.main_commit !== pinned.main_commit) throw new SwarmEnvError('MAIN_MOVED', 'main changed while the merge was being checked');
       if (merged.alreadyIncluded) {
         const result = { ...this.#public(record), already_included: true, merged_from: source.revision };
-        this.repository.writeReceipt(root, { ...request, result });
+        const published = withPublication(() => {
+          this.#assertMergeAllowed(record, guard);
+          this.repository.writeReceipt(root, { ...request, result });
+        });
+        if (published?.then) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace publication must be synchronous');
         return result;
       }
       const revision = record.next_revision;
       const parents = [pinned.main_revision, source.revision];
       const commit = await this.repository.commitTree(root, merged.tree, [pinned.main_commit, source.git_commit], `Merge Workspace revision ${source.revision}`);
-      const metadata = this.#revision(revision, parents, files, 'merge', { commit, tree: merged.tree }, requestId);
+      const metadata = this.#revision(revision, parents, files, contributionSource, { commit, tree: merged.tree }, requestId);
       metadata.check = check === true ? { verdict: 'PASS', tree: merged.tree } : check;
       const before = await this.#snapshot(root, pinned.main_revision);
       record.revisions.push(revision); record.main_revision = revision; record.main_commit = commit; record.next_revision = nextRevision(revision); record.updated_at = now();
-      const result = { ...this.#public(record), merged_from: source.revision, parents, changed_files: this.#changed(before, metadata.files), source_commit: source.git_commit };
-      this.#guard(guard);
-      this.repository.commit(root, { kind: 'merge', oldMain: pinned.main_commit, newMain: commit, record, revision: metadata, receipt: { ...request, result } });
+      const result = { ...this.#public(record), merged_from: source.revision, parents, changed_files: this.#changed(before, metadata.files), source_commit: source.git_commit, check: metadata.check };
+      const published = withPublication(() => {
+        this.#assertMergeAllowed(record, guard);
+        this.repository.commit(root, { kind: 'merge', oldMain: pinned.main_commit, newMain: commit, record, revision: metadata, receipt: { ...request, result } });
+      });
+      if (published?.then) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace publication must be synchronous');
       return result;
     });
   }
