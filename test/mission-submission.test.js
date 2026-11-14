@@ -25,7 +25,7 @@ test('Mission submission freezes Workspace main and releases the freeze on failu
   const created = await workspace.create({ missionId: 'm2', workspaceId: 'w2', initialFiles: { 'proof.lean': 'sorry' } });
   const store = new MissionSubmissionStore({ file: join(dir, 'submissions.json'), workspace });
   const submission = await store.submit({ missionId: 'm2', workspaceId: created.workspace_id, mainRevision: '0.1', actorRef: 'operator:test', requestId: 'sub-freeze' });
-  await assert.rejects(() => workspace.merge({ workspaceId: created.workspace_id, fromRevision: '0.1', expectedMainRevision: '0.1' }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(() => workspace.merge({ workspaceId: created.workspace_id, fromRevision: '0.1', expectedMainRevision: '0.1' }), { code: 'MISSION_SUBMITTING' });
   await store.finish({ missionId: 'm2', submissionId: submission.submission_id, verdict: 'fail' });
   await workspace.merge({ workspaceId: created.workspace_id, fromRevision: '0.1', expectedMainRevision: '0.1' });
 });

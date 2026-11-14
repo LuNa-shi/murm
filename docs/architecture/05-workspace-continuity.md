@@ -9,27 +9,21 @@ checkpoints, process state and feedback survive that transition.
 
 ## 0. Mission Workspace repository (public revision path)
 
-`MissionWorkspace` (`src/runtime/mission-workspace.js`) is the runtime-owned
-repository seam for the Issue #122 Workspace contract. It is distinct from the
-the Execution-local `WorkspaceManager` used for each Bot's materialized worktree. `create` creates a
-Mission/Workspace pair with different IDs, an external revision `0.1`, and a
-Git `main` branch outside any Sandbox. `files`, `read`, and `search` resolve a
-fixed immutable revision and require no Execution lease, so an unbound Bot or a
-successor can inspect public files before take. `materialize` copies a selected
-revision into a new Execution directory without exposing `.git` or repository
-metadata.
+`MissionWorkspace` owns the Mission's public versions; `WorkspaceRepository` owns Git object creation, exclusion, commit intent and recovery. This is separate from the Execution-local `WorkspaceManager` described below. New repositories have `format_version:2`. Creation imports the supplied complete initial tree into Git and publishes `0.1` with a real `main` ref. Saved versions have their own complete commit/tree and actual Git parents; saving leaves main unchanged. Internal `refs/swarm/revisions/<revision>` protect every published commit from becoming unreachable. These are neither Bot branches nor tags.
 
-`save` requires a complete file tree and records a new revision with explicit
-parent lineage; it does not move `main`. `merge` checks the caller's expected
-main revision, optionally runs the configured final-tree checker, commits the
-whole source revision, and advances `main` with a compare-and-swap guard. A
-stale expected revision returns `STALE_VERSION`; the source revision and all
-files remain readable. `candidateFileRef` is only the tuple
-`(workspace_id, revision, path)`; there is no Workspace artifact object or storage
-record. The older execution-local path remains executable for compatibility and
-is explicitly owner/fence bound; it must not be interpreted as the public
-Mission Workspace authority.
-[MissionWorkspace](../../src/runtime/mission-workspace.js)
+`save` accepts an actual complete tree from its trusted caller, validates paths and byte types, and defaults its parent to the supplied base or current main. Explicit multiple parents must include the base. It creates raw blobs with Git filters disabled and assembles an isolated temporary index, so `.gitattributes` cannot change stored bytes; project files never include repository metadata. Limits match the current provider copy boundary: 2 MiB per file and 16 MiB per tree. Dot/traversal/empty path segments, `.git`, `.pi`, `.swarm`, `.swarm-*`, `.env*` and `node_modules` are rejected. Binary Buffers retain their bytes. Reads return UTF-8 text or explicitly base64-encoded binary bytes, hash, byte count and truncation. Historical format repositories retain read access but cannot save/merge/freeze through the new writer.
+
+`merge` fixes source R and current main M, uses Git ancestry and `merge-tree` to construct the final combined tree, and gives that tree to an optional trusted checker. An ancestor already included in main returns a no-op without another checker charge. Conflicts preserve main and identify paths. A checker must return literal true or verdict PASS; a truthy failed result is insufficient. The checker runs outside the writer critical section. On return, the writer checks freeze, its synchronous authorization callback and the same M, creates a commit with M/R parents, then checks authorization again immediately before the synchronous commit boundary. `MAIN_MOVED` means a new attempt must merge/check against the new main; `MISSION_SUBMITTING` rejects a merge while frozen. An unconfigured checker does not invent a scientific gate.
+
+Public reads and materialization snapshot selection, as well as writes, pass through a per-repository in-process queue and an OS `flock` held by a helper whose stdin belongs to the coordinator. A second coordinator receives `WORKSPACE_BUSY`; process loss closes the pipe and releases the OS lock. The built-in service image installs `util-linux` for this dependency. Each entry first recovers any pending journal. main/index disagreement closes the operation with `WORKSPACE_RECONCILIATION_REQUIRED` instead of guessing which version won.
+
+The final commit boundary is synchronous: write/fsync/rename the intent, conditionally update main with its old commit, retain the revision ref, atomically publish revision/index metadata and the request receipt, then remove the journal. No checker runs here. Recovery uses actual refs: a merge still at the old main is explicitly aborted and its original request returns `WORKSPACE_REQUEST_ABORTED`; a ref already at the new main completes metadata and the original receipt. Neither old nor new closes the write path for reconciliation. An interrupted save can complete its retained immutable version without advancing main. The tests cover injected boundaries and actual coordinator SIGKILL after the ref update; this is process-crash evidence, not a machine-power-loss claim.
+
+Request IDs are Workspace-scoped. Same-ID concurrent operations join one in-process promise. A per-request OS lock excludes another coordinator throughout checking; it receives retryable `WORKSPACE_BUSY`. Before checker execution, the request fingerprint, source and fixed main are persisted. If that process disappears before a result, a later owner aborts the old attempt with `WORKSPACE_REQUEST_ABORTED` rather than checking again or selecting a newer main. Changed input is rejected, and persisted success or definitive rejection is replayed without another checker attempt. An I/O failure after durable intent returns retryable `WORKSPACE_RESULT_UNKNOWN`; recovery decides the original request rather than recording a false rejection. If a live checker fails before commit, the initial caller and replay receive the same recorded canonical outcome. Failure to record that outcome returns retryable `WORKSPACE_RESULT_UNKNOWN`, which instructs the caller to query or retry the original ID. Revision numbers are allocation order; ancestry comes from Git parents. `get` omits the repository's private path. `candidateFileRef` remains only `(workspace_id, revision, path)`.
+
+This repository slice does not establish the entire Workspace contract. Existing Runtime/public service adapters still need trusted complete-tree export, fixed project permissions, contribution authorization, schema translation and full save/apply/merge integration. `materialize` rejects repository descendants, symlink traversal and nonempty targets, holds an OS lock for the target, writes a private sibling staging tree, and atomically renames it over the still-empty target. Failed copying removes its staging tree and leaves the original target empty for retry; concurrent callers cannot mix revisions. A process killed during copying can leave an unpublished staging directory for operator cleanup, but no partial tree is published. `apply` currently remains that initialization helper; it does not yet provide same-Execution three-way installation or finish interlocking. Pagination, all-history CLI and source/conflict lineage also remain to be reconciled. The presence of the new repository API is not evidence that a Bot has used it through the final approved flow.
+
+[MissionWorkspace](../../src/runtime/mission-workspace.js), [WorkspaceRepository](../../src/runtime/workspace-repository.js).
 
 ## 1. What a Workspace represents
 

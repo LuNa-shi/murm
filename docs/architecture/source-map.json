@@ -746,6 +746,15 @@
       "role": "Runtime-owned Mission Workspace repository with immutable public revisions, fixed-file reads, materialization, and whole-revision merge"
     },
     {
+      "path": "src/runtime/workspace-repository.js",
+      "category": "Mission and Task",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Workspace Git object creation, single-writer OS locking, immutable revision refs, durable request results and ref/index recovery barrier"
+    },
+    {
       "path": "src/runtime/opensandbox-manager.js",
       "category": "runtime and execution",
       "chapters": [

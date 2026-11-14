@@ -41,7 +41,7 @@ This section is generated from executable exports and checked against the source
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `de3e6fd1e7d15ece74ff7c1ae4c47df982716c2f03ae0c67c67dab48e4424226` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
-| [src/errors.js](../../src/errors.js) | `eedbc3e6869e525c16369ca1aca042d12bdc0877a3f4447be4319f23e54e3ddc` |
+| [src/errors.js](../../src/errors.js) | `61c7bbf151fca86773254984cc62e5f5ff6451c7ef2246640c613ce15b4c7d64` |
 
 ### Exact tool exposure for the built-in benchmark
 
@@ -3104,6 +3104,12 @@ Registry matches are resolved first by capability name or operation and must be 
   "PROCESS_EXITED": "PROCESS_EXITED",
   "RPC_ERROR": "RPC_ERROR",
   "START_FAILED": "START_FAILED",
+  "WORKSPACE_BUSY": "WORKSPACE_BUSY",
+  "WORKSPACE_RECONCILIATION_REQUIRED": "WORKSPACE_RECONCILIATION_REQUIRED",
+  "WORKSPACE_REQUEST_ABORTED": "WORKSPACE_REQUEST_ABORTED",
+  "WORKSPACE_RESULT_UNKNOWN": "WORKSPACE_RESULT_UNKNOWN",
+  "MAIN_MOVED": "MAIN_MOVED",
+  "MISSION_SUBMITTING": "MISSION_SUBMITTING",
   "CHECKER_UNAVAILABLE": "CHECKER_UNAVAILABLE",
   "BRANCH_TASK_CANNOT_CREATE_BRANCH": "BRANCH_TASK_CANNOT_CREATE_BRANCH",
   "STALE_VERSION": "STALE_VERSION",

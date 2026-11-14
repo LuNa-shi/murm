@@ -38,7 +38,7 @@ test('three-way merge reports concurrent edits instead of overwriting main', asy
   const source = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'notes.md': 'source' } });
   const mainCandidate = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'notes.md': 'main' } });
   await store.merge({ workspaceId: created.workspace_id, fromRevision: mainCandidate.revision, expectedMainRevision: '0.1' });
-  await assert.rejects(() => store.merge({ workspaceId: created.workspace_id, fromRevision: source.revision, expectedMainRevision: '0.1' }), { code: 'STALE_VERSION' });
+  await assert.rejects(() => store.merge({ workspaceId: created.workspace_id, fromRevision: source.revision, expectedMainRevision: '0.1' }), { code: 'MAIN_MOVED' });
   await assert.rejects(() => store.merge({ workspaceId: created.workspace_id, fromRevision: source.revision, expectedMainRevision: '0.4' }), (error) => error.code === 'CONFLICT' && error.details.conflicts.includes('notes.md'));
 });
 
@@ -47,7 +47,7 @@ test('MissionWorkspace rejects stale main updates and protects metadata paths', 
   const store = new MissionWorkspace({ rootDir: root });
   const created = await store.create({ missionId: 'mission:2', workspaceId: 'workspace-2' });
   await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'notes.md': 'one' } });
-  await assert.rejects(() => store.merge({ workspaceId: created.workspace_id, fromRevision: '0.2', expectedMainRevision: '9.9' }), { code: 'STALE_VERSION' });
+  await assert.rejects(() => store.merge({ workspaceId: created.workspace_id, fromRevision: '0.2', expectedMainRevision: '9.9' }), { code: 'MAIN_MOVED' });
   await assert.rejects(() => store.save({ workspaceId: created.workspace_id, baseRevision: '0.2', files: { '.swarm-workspace.json': 'bad' } }), { code: 'NOT_ALLOWED' });
 });
 
@@ -61,7 +61,7 @@ test('MissionWorkspace apply materializes a public revision and freezes main dur
   assert.equal(applied.revision, saved.revision);
   assert.equal((await store.read({ workspaceId: created.workspace_id, revision: saved.revision, path: 'notes.md' })).content, 'candidate');
   await store.freeze({ workspaceId: created.workspace_id, submissionId: 'sub-1', expectedMainRevision: '0.1' });
-  await assert.rejects(() => store.merge({ workspaceId: created.workspace_id, fromRevision: saved.revision, expectedMainRevision: '0.1' }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(() => store.merge({ workspaceId: created.workspace_id, fromRevision: saved.revision, expectedMainRevision: '0.1' }), { code: 'MISSION_SUBMITTING' });
   await store.unfreeze({ workspaceId: created.workspace_id, submissionId: 'sub-1' });
   await store.merge({ workspaceId: created.workspace_id, fromRevision: saved.revision, expectedMainRevision: '0.1' });
 });

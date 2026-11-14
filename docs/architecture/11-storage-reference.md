@@ -672,3 +672,7 @@ CREATE UNIQUE INDEX tasks_active_responsibility
 ```
 
 <!-- END GENERATED REFERENCE -->
+
+## Public Workspace Git/index commit journal
+
+New Mission Workspace repositories use `.swarm-workspace.json` for the published index, `.swarm-revisions/<revision>.json` for immutable commit/tree/parent/source metadata, `.swarm-requests/<hash>.json` for request fingerprints and results, and one `.swarm-journal.json` for a pending commit intent. Actual file bytes live in Git objects protected by `refs/swarm/revisions/<revision>`; `.swarm-staging/` only holds temporary import indexes and trees. `.swarm-writer.lock` and `.swarm-request-locks/<hash>.lock` are OS lock files, not persisted leases or Bot credentials. A checking request records its fixed main/source before external checking; abandoned request identity is never reused to charge another check. The recovery barrier and ref comparison rules are described in [05](05-workspace-continuity.md). No public API treats these coordination files as project content.

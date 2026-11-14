@@ -1,13 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { execFile as nodeExecFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { stableStringify } from '../protocol/envelope.js';
+import { WorkspaceRepository, writeWorkspaceJson } from './workspace-repository.js';
 
-const execFile = promisify(nodeExecFile);
 const META = '.swarm-workspace.json';
 const REVISION_DIR = '.swarm-revisions';
+const pendingRequests = new Map();
 
 const textHash = (value) => createHash('sha256').update(value).digest('hex');
 const now = () => new Date().toISOString();
@@ -20,7 +20,8 @@ function safePath(value) {
   required(value, 'path');
   if (isAbsolute(value) || value.includes('\0')) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace path must be relative');
   const normalized = value.replaceAll('\\', '/');
-  if (normalized.split('/').includes('..') || normalized === '' || normalized.startsWith('.swarm-')) {
+  const segments = normalized.split('/');
+  if (segments.some(part => ['', '.', '..', '.git', '.pi', '.swarm', 'node_modules'].includes(part) || part.startsWith('.swarm-') || part === '.env' || part.startsWith('.env.'))) {
     throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace path is outside the public project tree');
   }
   return normalized;
@@ -30,14 +31,6 @@ async function exists(path) {
   try { await stat(path); return true; } catch { return false; }
 }
 
-async function git(repo, args) {
-  try {
-    const result = await execFile('git', ['-C', repo, ...args], { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
-    return String(result.stdout ?? '').trim();
-  } catch (error) {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `Workspace Git operation failed: ${error.message}`, { args }, { cause: error });
-  }
-}
 
 function revisionNumber(value) {
   if (!/^\d+\.\d+$/.test(String(value))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace revision must use major.minor form');
@@ -56,8 +49,8 @@ function nextRevision(value) {
 
 function fileEntries(files) {
   return Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)).map(([path, content]) => {
-    const bytes = Buffer.byteLength(String(content));
-    return [path, { content_hash: textHash(String(content)), bytes }];
+    const bytes = Buffer.byteLength(content);
+    return [path, { content_hash: textHash(content), bytes }];
   }));
 }
 
@@ -71,7 +64,9 @@ function fileEntries(files) {
  * with execution-local records while new callers should use this class.
  */
 export class MissionWorkspace {
-  constructor({ rootDir }) {
+  constructor({ rootDir, fault = null }) {
+    this.repository = new WorkspaceRepository({ fault });
+    this.fault = fault;
     this.rootDir = resolve(required(rootDir, 'rootDir'));
   }
 
@@ -84,59 +79,62 @@ export class MissionWorkspace {
   async create({ missionId, workspaceId = `workspace-${randomUUID()}`, initialFiles = {}, metadata = {} }) {
     required(missionId, 'mission_id');
     const root = this.workspacePath(workspaceId);
-    const metaPath = join(root, META);
-    if (await exists(metaPath)) return this.#read(root);
-    await mkdir(root, { recursive: true });
-    await mkdir(join(root, REVISION_DIR, '0.1'), { recursive: true });
-    const files = {};
-    for (const [inputPath, content] of Object.entries(initialFiles)) {
-      const path = safePath(inputPath);
-      if (typeof content !== 'string' && !Buffer.isBuffer(content)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `file ${path} must be text`);
-      files[path] = Buffer.isBuffer(content) ? content.toString('utf8') : content;
-    }
-    await this.#writeSnapshot(root, '0.1', files);
-    await writeFile(join(root, '.gitignore'), `${META}\n${REVISION_DIR}/\n`);
-    await execFile('git', ['init', '--initial-branch=main', root], { timeout: 30_000 });
-    await this.#materialize(root, files);
-    await git(root, ['add', '-A']);
-    await execFile('git', ['-C', root, '-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid', 'commit', '--allow-empty', '-m', 'Workspace revision 0.1'], { timeout: 30_000 });
-    const commit = await git(root, ['rev-parse', 'HEAD']);
-    const revision = { revision: '0.1', git_commit: commit, parents: [], files: fileEntries(files), content_hash: textHash(JSON.stringify(fileEntries(files))), created_at: now(), source: 'initial' };
-    await writeFile(join(root, REVISION_DIR, '0.1.json'), JSON.stringify(revision, null, 2));
-    const record = { workspace_id: workspaceId, mission_id: missionId, repository: root, main_revision: '0.1', main_commit: commit, next_revision: '0.2', revisions: ['0.1'], frozen_submission_id: null, metadata, created_at: now(), updated_at: now() };
-    await this.#write(root, record);
-    return this.#public(record);
+    return this.repository.locked(root, async () => {
+      if (await exists(join(root, META))) {
+        const existing = await this.#read(root);
+        if (existing.mission_id !== missionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace belongs to another Mission');
+        return this.#public(existing);
+      }
+      const files = this.#normalizeTree(initialFiles);
+      await this.repository.initialize(root);
+      const imported = await this.repository.importTree(root, files, [], 'Workspace revision 0.1');
+      const revision = this.#revision('0.1', [], files, 'initial', imported);
+      const record = { format_version: 2, workspace_id: workspaceId, mission_id: missionId, main_revision: '0.1', main_commit: imported.commit,
+        next_revision: '0.2', revisions: ['0.1'], frozen_submission_id: null, metadata, created_at: now(), updated_at: now() };
+      this.repository.commit(root, { kind: 'create', oldMain: null, newMain: imported.commit, record, revision });
+      return this.#public(record);
+    });
   }
 
-  async get({ workspaceId }) { return this.#public(await this.#read(this.workspacePath(workspaceId))); }
+  async get({ workspaceId }) {
+    const root = this.workspacePath(workspaceId);
+    return this.repository.locked(root, async () => this.#public(await this.#read(root)));
+  }
 
   async listRevisions({ workspaceId }) {
     const root = this.workspacePath(workspaceId);
-    const record = await this.#read(root);
-    const revisions = [];
-    for (const revision of record.revisions) revisions.push(JSON.parse(await readFile(join(root, REVISION_DIR, `${revision}.json`), 'utf8')));
-    return revisions;
+    return this.repository.locked(root, async () => {
+      const record = await this.#read(root);
+      return Promise.all(record.revisions.map(revision => this.#revisionMetadata(root, revision)));
+    });
   }
 
   async read({ workspaceId, revision = undefined, path, maxBytes = 1_000_000 }) {
     const root = this.workspacePath(workspaceId);
-    const record = await this.#read(root);
-    const selected = resolvedRevision(revision, record);
-    const snapshot = await this.#snapshot(root, selected);
-    const relativePath = safePath(path);
-    if (!snapshot[relativePath]) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'file is unavailable at requested revision');
-    const content = await readFile(join(root, REVISION_DIR, selected, 'files', relativePath));
-    if (!Number.isInteger(maxBytes) || maxBytes < 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'max_bytes must be positive');
-    return { workspace_id: record.workspace_id, revision: selected, path: relativePath, content: content.subarray(0, maxBytes).toString(), content_hash: snapshot[relativePath].content_hash, bytes: content.byteLength, truncated: content.byteLength > maxBytes };
+    return this.repository.locked(root, async () => {
+      const record = await this.#read(root);
+      const selected = resolvedRevision(revision, record);
+      const relativePath = safePath(path);
+      const tree = await this.#tree(root, selected);
+      if (!Object.hasOwn(tree, relativePath)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'file is unavailable at requested revision');
+      if (!Number.isInteger(maxBytes) || maxBytes < 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'max_bytes must be positive');
+      const content = Buffer.from(tree[relativePath]);
+      const binary = Buffer.isBuffer(tree[relativePath]);
+      return { workspace_id: record.workspace_id, revision: selected, path: relativePath,
+        content: content.subarray(0, maxBytes).toString(binary ? 'base64' : 'utf8'), encoding: binary ? 'base64' : 'utf8',
+        content_hash: textHash(content), bytes: content.length, truncated: content.length > maxBytes };
+    });
   }
 
   async files({ workspaceId, revision = undefined, prefix = '' }) {
     const root = this.workspacePath(workspaceId);
-    const record = await this.#read(root);
-    const selected = resolvedRevision(revision, record);
-    const files = await this.#snapshot(root, selected);
-    const normalized = prefix ? safePath(prefix) : '';
-    return { workspace_id: record.workspace_id, revision: selected, files: Object.entries(files).filter(([path]) => !normalized || path === normalized || path.startsWith(`${normalized}/`)).map(([path, entry]) => ({ path, ...entry })) };
+    return this.repository.locked(root, async () => {
+      const record = await this.#read(root);
+      const selected = resolvedRevision(revision, record);
+      const files = await this.#snapshot(root, selected);
+      const normalized = prefix ? safePath(prefix) : '';
+      return { workspace_id: record.workspace_id, revision: selected, files: Object.entries(files).filter(([path]) => !normalized || path === normalized || path.startsWith(`${normalized}/`)).map(([path, entry]) => ({ path, ...entry })) };
+    });
   }
 
   async search({ workspaceId, revision = undefined, query, prefix = '', maxResults = 100 }) {
@@ -158,118 +156,290 @@ export class MissionWorkspace {
   async freeze({ workspaceId, submissionId, expectedMainRevision = undefined }) {
     required(submissionId, 'submission_id');
     const root = this.workspacePath(workspaceId);
-    const record = await this.#read(root);
-    if (expectedMainRevision !== undefined && resolvedRevision(expectedMainRevision, record) !== record.main_revision) {
-      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'main revision changed before Mission submission', { expected: record.main_revision, received: expectedMainRevision });
-    }
-    if (record.frozen_submission_id && record.frozen_submission_id !== submissionId) {
-      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace main is frozen by another Mission submission', { submission_id: record.frozen_submission_id });
-    }
-    record.frozen_submission_id = submissionId;
-    record.updated_at = now();
-    await this.#write(root, record);
-    return this.#public(record);
+    return this.repository.locked(root, async () => {
+      const record = await this.#read(root);
+      this.#assertWritable(record);
+      if (expectedMainRevision !== undefined && resolvedRevision(expectedMainRevision, record) !== record.main_revision) throw new SwarmEnvError('MAIN_MOVED', 'main revision changed before Mission submission');
+      if (record.frozen_submission_id && record.frozen_submission_id !== submissionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace main is frozen by another Mission submission');
+      record.frozen_submission_id = submissionId;
+      record.updated_at = now();
+      writeWorkspaceJson(join(root, META), record);
+      return this.#public(record);
+    });
   }
 
   async unfreeze({ workspaceId, submissionId }) {
     required(submissionId, 'submission_id');
     const root = this.workspacePath(workspaceId);
-    const record = await this.#read(root);
-    if (record.frozen_submission_id && record.frozen_submission_id !== submissionId) {
-      throw new SwarmEnvError(ERROR_CODES.FENCED, 'Workspace freeze belongs to another Mission submission', { submission_id: record.frozen_submission_id });
+    return this.repository.locked(root, async () => {
+      const record = await this.#read(root);
+      this.#assertWritable(record);
+      if (record.frozen_submission_id && record.frozen_submission_id !== submissionId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'Workspace freeze belongs to another Mission submission');
+      record.frozen_submission_id = null;
+      record.updated_at = now();
+      writeWorkspaceJson(join(root, META), record);
+      return this.#public(record);
+    });
+  }
+
+  async save(options) {
+    const normalized = { ...options, requestId: options.requestId ?? randomUUID() };
+    const { workspaceId, baseRevision, parentRevisions = null, source = 'execution', requestId } = normalized;
+    const tree = this.#normalizeTree(normalized.files);
+    normalized.files = tree;
+    const request = this.#request(requestId, { operation: 'save', workspaceId, baseRevision, parentRevisions, files: fileEntries(tree), source });
+    return this.#runRequest(this.workspacePath(workspaceId), request, () => this.#save(normalized));
+  }
+
+  async merge(options) {
+    const normalized = { ...options, requestId: options.requestId ?? randomUUID() };
+    const { workspaceId, fromRevision, expectedMainRevision, requestId } = normalized;
+    const request = this.#request(requestId, { operation: 'merge', workspaceId, fromRevision, expectedMainRevision });
+    request.owner_id = randomUUID();
+    return this.#runRequest(this.workspacePath(workspaceId), request, () => this.#merge(normalized, request));
+  }
+
+  #runRequest(root, request, run) {
+    const key = `${root}:${request.key}`;
+    const existing = pendingRequests.get(key);
+    if (existing) {
+      if (existing.fingerprint !== request.fingerprint) return Promise.reject(new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace request ID has different pending input'));
+      return existing.promise;
     }
-    record.frozen_submission_id = null;
-    record.updated_at = now();
-    await this.#write(root, record);
-    return this.#public(record);
+    const promise = this.repository.requestLocked(root, request.key, async () => {
+      try { return await run(); }
+      catch (error) {
+        let reported = error;
+        if (!this.repository.hasIntent(root)) {
+          try {
+            await this.repository.locked(root, async () => {
+              const stored = this.repository.readReceipt(root, request.key);
+              const checking = stored?.phase === 'checking' && stored.owner_id === request.owner_id;
+              const definitive = ['CONFLICT', 'MAIN_MOVED', 'MISSION_SUBMITTING', 'NOT_ALLOWED', 'INVALID_CONTRACT'].includes(error.code);
+              if ((!stored && definitive) || checking) {
+                const outcome = definitive ? { code: error.code, message: error.message, details: error.details, retryable: error.retryable }
+                  : { code: 'WORKSPACE_REQUEST_ABORTED', message: 'Workspace attempt stopped without a committed result; use a new attempt ID', details: { cause_code: error.code ?? 'INTERNAL_ERROR' }, retryable: false };
+                this.repository.writeReceipt(root, { ...request, error: outcome });
+                reported = new SwarmEnvError(outcome.code, outcome.message, outcome.details, { retryable: outcome.retryable, cause: error });
+              }
+            });
+          } catch (persistenceError) {
+            throw new SwarmEnvError('WORKSPACE_RESULT_UNKNOWN', 'Workspace result is not yet available; query or retry the original request ID', undefined, { retryable: true, cause: persistenceError });
+          }
+        }
+        if (this.repository.hasIntent(root)) throw new SwarmEnvError('WORKSPACE_RESULT_UNKNOWN', 'Workspace result is not yet available; query or retry the original request ID', undefined, { retryable: true, cause: error });
+        throw reported;
+      }
+
+    }).finally(() => { if (pendingRequests.get(key)?.promise === promise) pendingRequests.delete(key); });
+    pendingRequests.set(key, { fingerprint: request.fingerprint, promise });
+    return promise;
   }
 
-  async save({ workspaceId, baseRevision, files, source = 'execution' }) {
+  async #save({ workspaceId, baseRevision, parentRevisions = null, files, source = 'execution', requestId = randomUUID(), guard = null }) {
     const root = this.workspacePath(workspaceId);
-    const record = await this.#read(root);
-    const base = revisionNumber(baseRevision ?? record.main_revision);
-    const parent = await this.#snapshot(root, base);
-    if (!files || typeof files !== 'object' || Array.isArray(files)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'save requires a complete file tree');
-    const tree = {};
-    for (const [inputPath, content] of Object.entries(files)) { const path = safePath(inputPath); if (typeof content !== 'string' && !Buffer.isBuffer(content)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `file ${path} must be text`); tree[path] = Buffer.isBuffer(content) ? content.toString() : content; }
-    const revision = nextRevision(record.revisions.at(-1));
-    await this.#writeSnapshot(root, revision, tree);
-    await this.#writeRevision(root, revision, { parents: [base], tree, source });
-    record.revisions.push(revision); record.next_revision = nextRevision(revision); record.updated_at = now();
-    await this.#write(root, record);
-    return { workspace_id: record.workspace_id, revision, base_revision: base, parents: [base], files: fileEntries(tree), changed_files: this.#changed(parent, tree) };
+    const tree = this.#normalizeTree(files);
+    const request = this.#request(requestId, { operation: 'save', workspaceId, baseRevision, parentRevisions, files: fileEntries(tree), source });
+    return this.repository.locked(root, async () => {
+      const replay = this.#replay(root, request);
+      if (replay) return replay;
+      const record = await this.#read(root);
+      this.#assertWritable(record);
+      const base = revisionNumber(baseRevision ?? record.main_revision);
+      const parents = parentRevisions ?? [base];
+      if (!Array.isArray(parents) || parents.length === 0 || !parents.includes(base) || new Set(parents).size !== parents.length) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'save parents must include its actual base exactly once');
+      const parentMetadata = await Promise.all(parents.map(parent => this.#revisionMetadata(root, parent)));
+      const before = await this.#snapshot(root, base);
+      const revision = record.next_revision;
+      const imported = await this.repository.importTree(root, tree, parentMetadata.map(parent => parent.git_commit), `Workspace revision ${revision}`);
+      const metadata = this.#revision(revision, parents, tree, source, imported, requestId);
+      const result = { workspace_id: workspaceId, revision, base_revision: base, parents, git_commit: imported.commit,
+        files: metadata.files, changed_files: this.#changed(before, metadata.files) };
+      record.revisions.push(revision); record.next_revision = nextRevision(revision); record.updated_at = now();
+      this.#guard(guard);
+      this.repository.commit(root, { kind: 'save', oldMain: record.main_commit, newMain: record.main_commit, record, revision: metadata, receipt: { ...request, result } });
+      return result;
+    });
   }
 
-  async merge({ workspaceId, fromRevision, expectedMainRevision, checker = null }) {
+  async #merge({ workspaceId, fromRevision, expectedMainRevision, checker = null, requestId = randomUUID(), guard = null }, request) {
     const root = this.workspacePath(workspaceId);
-    const record = await this.#read(root);
-    if (record.frozen_submission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace main is frozen for Mission submission', { submission_id: record.frozen_submission_id });
-    const expected = resolvedRevision(expectedMainRevision, record);
-    if (expected !== record.main_revision) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'main revision changed', { expected: record.main_revision, received: expected });
-    const sourceRevision = revisionNumber(fromRevision);
-    const oldMain = record.main_revision;
-    const source = await this.#tree(root, sourceRevision);
-    const sourceMeta = JSON.parse(await readFile(join(root, REVISION_DIR, `${sourceRevision}.json`), 'utf8'));
-    if (typeof checker === 'function' && !(await checker({ workspaceId, revision: sourceRevision, files: source }))) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace revision check failed');
-    const main = await this.#tree(root, oldMain);
-    const baseRevision = sourceMeta.parents?.[0] ?? oldMain;
-    const base = await this.#tree(root, baseRevision);
-    const merged = this.#threeWayMerge(base, main, source, { baseRevision, mainRevision: oldMain, sourceRevision });
-    const revision = nextRevision(record.revisions.at(-1));
-    await this.#writeSnapshot(root, revision, merged);
-    const commit = await this.#materializeCommit(root, merged, `Merge Workspace revision ${sourceRevision}`);
-    await this.#writeRevision(root, revision, { parents: [oldMain, sourceRevision], tree: merged, source: 'merge', git_commit: commit });
-    record.revisions.push(revision); record.main_revision = revision; record.main_commit = commit; record.next_revision = nextRevision(revision); record.updated_at = now();
-    await this.#write(root, record);
-    return { ...this.#public(record), merged_from: sourceRevision, parents: [oldMain, sourceRevision], changed_files: this.#changed(main, merged), source_commit: sourceMeta.git_commit ?? null };
+    const plan = await this.repository.locked(root, async () => {
+      const replay = this.#replay(root, request);
+      if (replay) return { replay };
+      const record = await this.#read(root);
+      this.#assertWritable(record);
+      this.#assertMergeAllowed(record, guard);
+      const expected = resolvedRevision(expectedMainRevision, record);
+      if (expected !== record.main_revision) throw new SwarmEnvError('MAIN_MOVED', 'main revision changed', { expected: record.main_revision, received: expected });
+      const source = await this.#revisionMetadata(root, revisionNumber(fromRevision));
+      this.repository.writeReceipt(root, { ...request, phase: 'checking', pinned_main_revision: record.main_revision, pinned_main_commit: record.main_commit, source_revision: source.revision });
+      return { record, source };
+    });
+    if (plan.replay) return plan.replay;
+    const { record: pinned, source } = plan;
+    const merged = await this.repository.mergeTrees(root, pinned.main_commit, source.git_commit);
+    if (merged.conflicts?.length) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace merge has unresolved file conflicts', { base_revision: pinned.main_revision, source_revision: source.revision, conflicts: merged.conflicts });
+    const files = merged.alreadyIncluded ? null : this.#normalizeTree(await this.repository.readTree(root, merged.tree));
+    let check = null;
+    if (!merged.alreadyIncluded && typeof checker === 'function') {
+      check = await checker({ workspaceId, revision: source.revision, mainRevision: pinned.main_revision, tree: merged.tree, files: Object.fromEntries(Object.entries(files).map(([path, content]) => [path, Buffer.isBuffer(content) ? Buffer.from(content) : content])) });
+      if (check !== true && check?.verdict !== 'PASS') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'final Workspace tree check failed');
+    }
+    return this.repository.locked(root, async () => {
+      const replay = this.#replay(root, request);
+      if (replay) return replay;
+      const record = await this.#read(root);
+      this.#assertMergeAllowed(record, guard);
+      if (record.main_revision !== pinned.main_revision || record.main_commit !== pinned.main_commit) throw new SwarmEnvError('MAIN_MOVED', 'main changed while the merge was being checked');
+      if (merged.alreadyIncluded) {
+        const result = { ...this.#public(record), already_included: true, merged_from: source.revision };
+        this.repository.writeReceipt(root, { ...request, result });
+        return result;
+      }
+      const revision = record.next_revision;
+      const parents = [pinned.main_revision, source.revision];
+      const commit = await this.repository.commitTree(root, merged.tree, [pinned.main_commit, source.git_commit], `Merge Workspace revision ${source.revision}`);
+      const metadata = this.#revision(revision, parents, files, 'merge', { commit, tree: merged.tree }, requestId);
+      metadata.check = check === true ? { verdict: 'PASS', tree: merged.tree } : check;
+      const before = await this.#snapshot(root, pinned.main_revision);
+      record.revisions.push(revision); record.main_revision = revision; record.main_commit = commit; record.next_revision = nextRevision(revision); record.updated_at = now();
+      const result = { ...this.#public(record), merged_from: source.revision, parents, changed_files: this.#changed(before, metadata.files), source_commit: source.git_commit };
+      this.#guard(guard);
+      this.repository.commit(root, { kind: 'merge', oldMain: pinned.main_commit, newMain: commit, record, revision: metadata, receipt: { ...request, result } });
+      return result;
+    });
   }
 
   async materialize({ workspaceId, revision = undefined, targetDir }) {
     required(targetDir, 'target_dir');
-    const root = this.workspacePath(workspaceId); const record = await this.#read(root); const selected = resolvedRevision(revision, record); const tree = await this.#tree(root, selected);
-    const target = resolve(targetDir); if (target === root || relative(root, target) === '') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'execution directory must be separate from repository');
-    await mkdir(target, { recursive: true }); await this.#materialize(target, tree); return { workspace_id: record.workspace_id, revision: selected, target_dir: target, files: fileEntries(tree) };
+    const root = this.workspacePath(workspaceId);
+    const snapshot = await this.repository.locked(root, async () => {
+      const record = await this.#read(root);
+      const selected = resolvedRevision(revision, record);
+      return { selected, tree: await this.#tree(root, selected) };
+    });
+    const target = resolve(targetDir);
+    const lexicalOffset = relative(root, target);
+    if (lexicalOffset !== '..' && !lexicalOffset.startsWith(`..${sep}`)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'execution directory must be separate from repository');
+    await this.#assertNoSymlinkDirectories(target);
+    await mkdir(target, { recursive: true });
+    const actualRoot = await realpath(root);
+    const actualTarget = await realpath(target);
+    const offset = relative(actualRoot, actualTarget);
+    if (offset !== '..' && !offset.startsWith(`..${sep}`)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'execution directory must be separate from repository');
+    return this.repository.requestLocked(dirname(actualTarget), `materialize-${textHash(actualTarget)}`, async () => {
+      await this.#assertNoSymlinkDirectories(actualTarget);
+      if ((await readdir(actualTarget)).length) throw new SwarmEnvError('WORKSPACE_BUSY', 'Initial materialization requires an empty project directory');
+      const stage = await mkdtemp(join(dirname(actualTarget), '.swarm-materialize-'));
+      try {
+        await this.#materialize(stage, snapshot.tree);
+        await this.#assertNoSymlinkDirectories(actualTarget);
+        if ((await readdir(actualTarget)).length) throw new SwarmEnvError('WORKSPACE_BUSY', 'Project changed during initial materialization');
+        // Directory rename publishes the whole tree or fails; a concurrent
+        // writer making the destination nonempty cannot be overwritten.
+        await rename(stage, actualTarget);
+      } finally { await rm(stage, { recursive: true, force: true }); }
+      return { workspace_id: workspaceId, revision: snapshot.selected, target_dir: target, files: fileEntries(snapshot.tree) };
+    });
   }
 
-  async #read(root) { try { return JSON.parse(await readFile(join(root, META), 'utf8')); } catch (error) { throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Workspace: ${root}`, undefined, { cause: error }); } }
-  async #write(root, record) { await writeFile(join(root, META), JSON.stringify(record, null, 2)); }
-  async #snapshot(root, revision) { revisionNumber(revision); const metadata = JSON.parse(await readFile(join(root, REVISION_DIR, `${revision}.json`), 'utf8')); return metadata.files; }
+  async #read(root) {
+    let record;
+    try { record = JSON.parse(await readFile(join(root, META), 'utf8')); }
+    catch (error) { throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unknown Workspace', undefined, { cause: error }); }
+    if (record.format_version === 2) this.repository.assertMain(root, record.main_commit);
+    return record;
+  }
+  async #revisionMetadata(root, revision) {
+    revisionNumber(revision);
+    const record = await this.#read(root);
+    if (!record.revisions.includes(revision)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace revision is not published');
+    return JSON.parse(await readFile(join(root, REVISION_DIR, `${revision}.json`), 'utf8'));
+  }
+  async #snapshot(root, revision) { return (await this.#revisionMetadata(root, revision)).files; }
   async #tree(root, revision) {
-    const files = await this.#snapshot(root, revision);
-    const tree = {};
-    for (const path of Object.keys(files)) tree[path] = await readFile(join(root, REVISION_DIR, revision, 'files', path), 'utf8');
+    const metadata = await this.#revisionMetadata(root, revision);
+    if (metadata.git_tree) return this.repository.readTree(root, metadata.git_tree);
+    const tree = Object.create(null);
+    for (const path of Object.keys(metadata.files)) {
+      const bytes = await readFile(join(root, REVISION_DIR, revision, 'files', safePath(path)));
+      const text = bytes.toString('utf8');
+      tree[path] = Buffer.from(text).equals(bytes) ? text : bytes;
+    }
     return tree;
   }
-  async #writeSnapshot(root, revision, tree) { const dir = join(root, REVISION_DIR, revision, 'files'); await rm(dir, { recursive: true, force: true }); await mkdir(dir, { recursive: true }); await this.#materialize(dir, tree); }
-  async #writeRevision(root, revision, { parents, tree, source, git_commit = null }) { const metadata = { revision, git_commit, parents, files: fileEntries(tree), content_hash: textHash(JSON.stringify(fileEntries(tree))), source, created_at: now() }; await writeFile(join(root, REVISION_DIR, `${revision}.json`), JSON.stringify(metadata, null, 2)); return metadata; }
-  async #materialize(root, tree) { for (const [path, content] of Object.entries(tree)) { const target = join(root, path); await mkdir(dirname(target), { recursive: true }); await writeFile(target, content); } }
-  async #materializeCommit(root, tree, message) {
-    // A full-revision merge must also remove files deleted in the source
-    // revision. Only Git-tracked project files are eligible for removal;
-    // Runtime metadata and the repository itself stay outside the Bot tree.
-    const tracked = (await git(root, ['ls-files'])).split('\n').map((path) => path.trim()).filter(Boolean);
-    for (const path of tracked) if (!Object.hasOwn(tree, path) && path !== '.gitignore') await rm(join(root, path), { force: true });
-    await this.#materialize(root, tree); await git(root, ['add', '-A']); const status = await git(root, ['status', '--porcelain']); if (status) await execFile('git', ['-C', root, '-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid', 'commit', '-m', message], { timeout: 30_000 }); return git(root, ['rev-parse', 'HEAD']);
-  }
-  #changed(before, after) { return [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((path) => before[path]?.content_hash !== after[path]?.content_hash || before[path]?.bytes !== after[path]?.bytes).sort(); }
-  #threeWayMerge(base, main, source, revisions) {
-    const merged = {};
-    const conflicts = [];
-    const paths = new Set([...Object.keys(base), ...Object.keys(main), ...Object.keys(source)]);
-    for (const path of paths) {
-      const baseValue = base[path] ?? null;
-      const mainValue = main[path] ?? null;
-      const sourceValue = source[path] ?? null;
-      const mainChanged = mainValue !== baseValue;
-      const sourceChanged = sourceValue !== baseValue;
-      if (mainChanged && sourceChanged && mainValue !== sourceValue) conflicts.push(path);
-      else if (sourceChanged) { if (sourceValue !== null) merged[path] = sourceValue; }
-      else if (mainValue !== null) merged[path] = mainValue;
+  #normalizeTree(files) {
+    if (!files || typeof files !== 'object' || Array.isArray(files)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'save requires a complete file tree');
+    const tree = Object.create(null);
+    let total = 0;
+    for (const [path, content] of Object.entries(files)) {
+      const normalized = safePath(path);
+      if (Object.hasOwn(tree, normalized)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace paths collide after normalization');
+      if (typeof content !== 'string' && !Buffer.isBuffer(content)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace files must contain actual bytes');
+      const bytes = Buffer.byteLength(content);
+      total += bytes;
+      if (bytes > 2 * 1024 * 1024 || total > 16 * 1024 * 1024) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace exceeds its file or tree byte bound');
+      tree[normalized] = Buffer.isBuffer(content) ? Buffer.from(content) : content;
     }
-    if (conflicts.length > 0) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace merge has unresolved file conflicts', { ...revisions, conflicts });
-    return merged;
+    return tree;
   }
-  #public(record) { return { ...record, revisions: [...record.revisions] }; }
+  #revision(revision, parents, tree, source, imported, requestId = null) {
+    const files = fileEntries(tree);
+    return { revision, parents, git_commit: imported.commit, git_tree: imported.tree, files, content_hash: textHash(stableStringify(files)), source, request_id: requestId, created_at: now() };
+  }
+  #request(id, payload) { required(id, 'request_id'); return { request_id: id, key: textHash(id), fingerprint: textHash(stableStringify(payload)) }; }
+  #replay(root, request) {
+    const stored = this.repository.readReceipt(root, request.key);
+    if (!stored) return null;
+    if (stored.fingerprint !== request.fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace request ID has different input');
+    if (stored.phase === 'checking') {
+      if (stored.owner_id === request.owner_id) return null;
+      // This caller owns the per-request OS lock. A different saved owner
+      // therefore lost its process before publishing a result; do not charge
+      // another checker or silently select a newer main for the old ID.
+      const error = { code: 'WORKSPACE_REQUEST_ABORTED', message: 'Previous Workspace attempt lost its result; use a new attempt ID' };
+      this.repository.writeReceipt(root, { ...request, error });
+      throw new SwarmEnvError(error.code, error.message);
+    }
+    if (stored.error) throw new SwarmEnvError(stored.error.code, stored.error.message, stored.error.details, { retryable: stored.error.retryable });
+    return stored.result;
+  }
+  #guard(guard) {
+    if (!guard) return;
+    const allowed = guard();
+    if (allowed === false || allowed?.then) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace final authorization must be synchronous and current');
+  }
+  #assertWritable(record) { if (record.format_version !== 2) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Historical Workspace format is read-only'); }
+  #assertMergeAllowed(record, guard) {
+    if (record.frozen_submission_id) throw new SwarmEnvError('MISSION_SUBMITTING', 'Workspace main is frozen for Mission submission');
+    this.#guard(guard);
+  }
+
+  async #assertNoSymlinkDirectories(target) {
+    const absolute = resolve(target);
+    const base = parse(absolute).root;
+    let current = base;
+    for (const part of relative(base, absolute).split(sep).filter(Boolean)) {
+      current = join(current, part);
+      try {
+        const entry = await lstat(current);
+        if (entry.isSymbolicLink() || !entry.isDirectory()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Project directory cannot traverse a symlink or non-directory');
+      } catch (error) { if (error.code === 'ENOENT') return; throw error; }
+    }
+  }
+  async #materialize(root, tree) {
+    for (const [path, content] of Object.entries(tree)) {
+      const target = join(root, safePath(path));
+      await this.#assertNoSymlinkDirectories(dirname(target));
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, content, { flag: 'wx' });
+      await this.fault?.('materialize_file');
+    }
+  }
+
+  #changed(before, after) { return [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((path) => before[path]?.content_hash !== after[path]?.content_hash || before[path]?.bytes !== after[path]?.bytes).sort(); }
+  #public(record) { const { repository: _privateRepository, ...result } = record; return { ...result, revisions: [...record.revisions] }; }
 }
 
 export function candidateFileRef({ workspaceId, revision, path }) { return { workspace_id: required(workspaceId, 'workspace_id'), revision: revisionNumber(revision), path: safePath(path) }; }
