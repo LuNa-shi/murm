@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "595c1da",
+  "runtime_baseline": "9172e04f51b14df26fbbda11d2f4a02173de27b9",
   "reviewed_date": "2026-11-14",
   "scope_roots": [
     "src",
@@ -235,7 +235,9 @@
     {
       "path": "scripts/preview-migration.mjs",
       "category": "launch and composition",
-      "chapters": ["docs/architecture/09-known-boundaries.md"],
+      "chapters": [
+        "docs/architecture/09-known-boundaries.md"
+      ],
       "role": "Read-only fresh-start migration preview and verified restore rehearsal"
     },
     {
