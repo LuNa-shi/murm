@@ -57,7 +57,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "78d4043bf8198335e4f9e868d0cb3a417e39067134e80faefd2ea30a95e27f9e"
+      "sha256": "233dac84b911076bdf83aeb1a6008a8300e8f1c37e7fa754d19f347a42e495e6"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -65,7 +65,7 @@
     },
     {
       "path": "src/runtime/identity-task-loop.js",
-      "sha256": "95327d9d9b11615f7d0a7659f10f6ed049a7bcff4abb5feabce41be41e06ee2c"
+      "sha256": "d79f2e8ef4703796ae5ccf62605f0d8bce13a3ddf21a4d52ea9c7c64a942fe41"
     },
     {
       "path": "src/runtime/runtime-capabilities.js",
@@ -128,7 +128,7 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 648,
+      "line": 647,
       "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
     },
     {
@@ -175,12 +175,12 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 429,
+      "line": 428,
       "expression": "const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 720,
+      "line": 719,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
     },
     {

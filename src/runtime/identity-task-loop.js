@@ -29,12 +29,6 @@ function isConflict(error) {
   return error?.code === CONFLICT_CODE || error?.code === 'CONFLICT' || error?.code === 'TAKE_CONFLICT' || error?.code === 'FAIRNESS_REQUIRED';
 }
 
-function normalizeTake(value) {
-  if (typeof value === 'string') return value;
-  if (!value || typeof value !== 'object') return null;
-  return value.task_id ?? value.taskId ?? value.id ?? value.selected_task_id ?? null;
-}
-
 function directTake(value) {
   const candidate = value?.take ?? value;
   return candidate?.task?.task_id && candidate?.execution?.execution_id ? candidate : null;
@@ -52,7 +46,7 @@ function errorView(error) {
 /**
  * Long-lived supervisor for one reusable Core slot.
  *
- * IdentityTaskLoop owns the discovery/take/take loop. Task Service remains the
+ * IdentityTaskLoop supervises discovery and the accepted Bot take receipt. Task Service remains the
  * take authority, while Runtime is invoked only after a successful take.
  * The identity loop keeps no durable responsibility for a Task and never exposes a
  * semantic blocked Core state; typed dependencies release the Core to IDLE.
@@ -65,7 +59,6 @@ export class IdentityTaskLoop {
     shortlistLimit = 8,
     takeTask,
     takePrompt = IDENTITY_TAKE_PROMPT,
-    takeSelectedTask = null,
     runtime = null,
     runExecution = null,
     releaseExecution = null,
@@ -86,10 +79,6 @@ export class IdentityTaskLoop {
       throw new TypeError('IdentityTaskLoop requires listEligibleTasks or taskService queue API');
     }
     if (typeof takeTask !== 'function') throw new TypeError('IdentityTaskLoop requires takeTask');
-    const serviceTake = taskService?.takeTask?.bind(taskService);
-    if (typeof takeSelectedTask !== 'function' && typeof serviceTake !== 'function') {
-      throw new TypeError('IdentityTaskLoop requires takeSelectedTask or taskService.takeTask');
-    }
     if (!Number.isInteger(shortlistLimit) || shortlistLimit < 1 || shortlistLimit > 100) throw new TypeError('shortlistLimit must be an integer between 1 and 100');
     if (!Number.isInteger(maxTakeRescans) || maxTakeRescans < 0 || maxTakeRescans > 10) throw new TypeError('maxTakeRescans must be an integer between 0 and 10');
     if (!Number.isInteger(maxTakeAttempts) || maxTakeAttempts < 1 || maxTakeAttempts > 10) throw new TypeError('maxTakeAttempts must be an integer between 1 and 10');
@@ -107,7 +96,6 @@ export class IdentityTaskLoop {
     this.shortlistLimit = shortlistLimit;
     this.takeTask = takeTask;
     this.takePrompt = takePrompt;
-    this.takeSelectedTask = takeSelectedTask ?? ((selectedTaskId, context) => serviceTake(selectedTaskId, context));
     this.runtime = runtime;
     this.runExecution = runExecution;
     this.releaseExecution = releaseExecution;
@@ -133,7 +121,6 @@ export class IdentityTaskLoop {
     this.takeTurnCount = 0;
     this.discoveryCount = 0;
     this.takeAttemptCount = 0;
-    this.takeKeySequence = this.#initialTakeKeySequence();
     this.takeCount = 0;
     this.takeConflictCount = 0;
     this.rescanCount = 0;
@@ -222,22 +209,6 @@ export class IdentityTaskLoop {
     return this.notify(reason);
   }
 
-  #initialTakeKeySequence() {
-    const database = this.taskService?.db;
-    if (!database || typeof database.prepare !== 'function') return 0;
-    try {
-      const rows = database.prepare("SELECT request_key FROM take_keys WHERE request_key LIKE ?").all(`${this.coreId}:%`);
-      return rows.reduce((next, row) => {
-        const match = String(row.request_key ?? '').match(/:(\d+)$/);
-        return match ? Math.max(next, Number(match[1]) + 1) : next;
-      }, 0);
-    } catch {
-      // Older stores may not have the take-key table during composition.
-      // A fresh sequence still works because the first persisted take will
-      // be visible to a later identity loop instance.
-      return 0;
-    }
-  }
 
   stop() {
     if (this.stopped) return this.snapshot();
@@ -325,7 +296,7 @@ export class IdentityTaskLoop {
         return { disposition: 'take_failed', error: this.lastError, snapshot: this.snapshot() };
       }
       const taken = directTake(selection);
-      const selectedId = taken?.task?.task_id ?? normalizeTake(selection);
+      const selectedId = taken?.task?.task_id ?? null;
       if (!taken && selection?.no_work === true) {
         this.waitingForWork = discoverySignalVersion === this.workSignalVersion;
         this.#setIdle({ reason: 'no_work' });
@@ -370,12 +341,10 @@ export class IdentityTaskLoop {
       // find or propose other work through the public services during its turn.
       // A take returned by the trusted tool transport already has Task Service
       // authority; do not abandon its live Execution because the page is stale.
-      const selected = taken?.task
-        ?? candidates.find((candidate) => String(taskId(candidate)) === String(selectedId))
-        ?? (selectedId ? this.taskService?.getTask?.(selectedId) : null);
+      const selected = taken?.task;
       if (!selected) {
         this.takeFailureCount += 1;
-        const error = new SwarmEnvError('TAKE_INVALID', 'take must identify an existing Task or return an accepted Task Service take', { task_id: selectedId });
+        const error = new SwarmEnvError('TAKE_INVALID', 'discovery must return the accepted Task Service take from the Bot transport; a selected Task ID is not a take', { task_id: selectedId });
         this.lastError = errorView(error);
         this.#emit({ kind: 'identity_loop_take_invalid', core_id: this.coreId, reason, error: this.lastError, timestamp: this.now() });
         this.#setIdle({ reason: 'take_invalid' });
@@ -387,43 +356,7 @@ export class IdentityTaskLoop {
       }
       this.takeAttemptCount += 1;
       this.#emit({ kind: 'identity_loop_take_started', core_id: this.coreId, task_id: taskId(selected), reason, rescan: rescans, timestamp: this.now() });
-      let take = taken;
-      try {
-        if (!take) {
-          const selectedTaskId = taskId(selected);
-          const takeSequence = this.takeKeySequence;
-          this.takeKeySequence += 1;
-          take = await this.takeSelectedTask(selectedTaskId, {
-            task_id: selectedTaskId,
-            core_id: this.coreId,
-            // A rescan counter only identifies attempts within one handoff.
-            // Include a identity-loop-wide sequence so a later retake of the same
-            // Task gets a fresh idempotency key and can create a new Execution.
-            take_key: `${this.coreId}:${selectedTaskId}:${takeSequence}`,
-            owner_ref: `identity:${this.coreId}`,
-            task: selected,
-            candidates: candidateView,
-            reason,
-            rescan: rescans,
-          });
-        }
-      } catch (error) {
-        if (isConflict(error)) {
-          this.takeConflictCount += 1;
-          this.#emit({ kind: 'identity_loop_take_conflict', core_id: this.coreId, task_id: taskId(selected), reason, rescan: rescans, error: errorView(error), timestamp: this.now() });
-          if (rescans >= this.maxTakeRescans) {
-            this.#setIdle({ reason: 'take_conflict' });
-            return { disposition: 'take_conflict', task_id: taskId(selected), rescans, snapshot: this.snapshot() };
-          }
-          rescans += 1;
-          this.rescanCount += 1;
-          continue;
-        }
-        this.lastError = errorView(error);
-        this.#emit({ kind: 'identity_loop_take_failed', core_id: this.coreId, task_id: taskId(selected), reason, error: this.lastError, timestamp: this.now() });
-        this.#setIdle({ reason: 'take_failed' });
-        return { disposition: 'take_failed', task_id: taskId(selected), error: this.lastError, snapshot: this.snapshot() };
-      }
+      const take = taken;
       const execution = take?.execution ?? take?.result?.execution ?? null;
       if (!execution?.execution_id) {
         const error = new SwarmEnvError('TAKE_INVALID', 'take must return an Execution identity');

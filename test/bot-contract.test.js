@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { TaskService } from '../src/task/task-service.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { takeTaskWithAgent } from '../src/benchmark/putnam-runner.js';
+import { takeTaskWithAgent, observedEligibleWorkCount, projectReport } from '../src/benchmark/putnam-runner.js';
 import { BOT_SKILLS, BOT_SYSTEM_HASH, botServiceDirectory } from '../src/agent/bot-contract.js';
 
 test('four Core discovery send paths carry current durable identity and pinned preview from a zero-Task Mission', { timeout: 10_000 }, async t => {
@@ -92,4 +92,52 @@ test('startup service directory names real CLI namespaces and excludes internal 
   assert.deepEqual(directory.map(item => item.name), ['mission', 'task', 'workspace', 'bot', 'material', 'service', 'judge', 'mathlib-search']);
   assert.ok(directory.every(item => !item.help.includes('view runtime')));
   assert.equal(directory.find(item => item.name === 'material').manifest_help, 'swarm service view context --json');
+});
+
+
+test('the first Mission proposal remains visible in ready and running work accounting', () => {
+  const service = new TaskService();
+  try {
+    const mission = service.createMission({ mission_id: 'M-first-proposal', goal: 'Build independent CSV features' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+    const first = service.createTask({ mission_id: mission.mission_id, summary: 'Implement a reusable CSV filter with documented edge cases', expected_output: 'Filter implementation and evidence', acceptance_conditions: ['Test the documented input cases'] }, makeEnvelope({ actorRef: 'bot:first' })).task;
+    const state = { taskService: service, missionId: mission.mission_id };
+    assert.equal(observedEligibleWorkCount(state, service.listEligibleTasks({ missionId: mission.mission_id })), 1);
+    service.takeTask(first.task_id, { owner_ref: 'bot:first', core_id: 'core-1', take_key: 'first', workspace_mode: 'clean' });
+    assert.equal(observedEligibleWorkCount(state, []), 1);
+    service.createTask({ mission_id: mission.mission_id, summary: 'Implement JSON output independently of CSV filtering', expected_output: 'JSON output and examples', acceptance_conditions: ['Output matches documented format'] }, makeEnvelope({ actorRef: 'bot:second' }));
+    assert.equal(observedEligibleWorkCount(state, service.listEligibleTasks({ missionId: mission.mission_id })), 2);
+  } finally { service.close(); }
+});
+
+
+test('proposal-only report counts more than one page exactly without claiming progress', () => {
+  const service = new TaskService();
+  try {
+    const mission = service.createMission({ mission_id: 'M-large-proposals', goal: 'Inspect a bounded set of independent cases' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+    let last;
+    for (let index = 0; index < 105; index++) last = service.createTask({ mission_id: mission.mission_id,
+      summary: `Investigate independent documented input case ${index}`, expected_output: 'Reproducible case result', acceptance_conditions: ['Publish evidence for this case'] }, makeEnvelope({ actorRef: 'bot:proposer' })).task;
+    const state = { taskService: service, missionId: mission.mission_id, cores: [], initialTaskIds: [],
+      contextService: { readMaterials: () => [], listMaterialConsumptions: () => [] },
+      judgeService: { listCheckerPreflights: () => [] }, capabilityRegistry: { listServices: () => [] },
+      parallelism: { snapshot: () => ({}) }, allowedAgentToolNames: ['read', 'write', 'edit', 'bash'],
+      publicWorkspace: { mission_id: mission.mission_id, metadata: { input_snapshot_hash: 'test-input' } },
+      inputMaterialHash: 'test-input', problem: { id: 'controlled', source_hash: 'test-input' }, fixtureManifest: {},
+      readinessSamples: [], schedulerEvents: [], solvedAt: null,
+    };
+    const report = projectReport(state, Date.now() - 1000, Date.now());
+    assert.equal(report.protocol.proposed_task_count, 105);
+    assert.equal(report.project.task_count, 105);
+    assert.equal(report.project.task_tree.length, 100);
+    assert.equal(report.project.task_page.complete, false);
+    assert.equal(report.parallelism.proposal_evidence.observed_task_count, 105);
+    assert.equal(report.run.progress_evidence.proposed_task_count, 105);
+    assert.equal(report.run.dynamic_task_count, 105);
+    assert.equal(report.run.made_progress, false);
+    assert.equal(report.run.solved, false);
+    assert.equal(report.audit.invalid, false);
+    assert.equal(Object.hasOwn(report.run, 'root_take_count'), false);
+    assert.equal(Object.hasOwn(report.parallelism, 'decomposition_available'), false);
+    assert.equal(observedEligibleWorkCount(state, [last]), 1, 'ready work outside the first page is still observed');
+  } finally { service.close(); }
 });

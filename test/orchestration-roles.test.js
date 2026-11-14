@@ -98,7 +98,6 @@ test('TaskController permits empty-queue discovery on every Core without repeate
     coreId: `core-${index}`,
     listEligibleTasks: () => [],
     takeTask: async () => { discoveries += 1; return { no_work: true }; },
-    takeSelectedTask: () => { throw new Error('no-work must not create an Execution'); },
   }));
   const controller = new TaskController({
     listEligibleTasks: () => [],
@@ -126,7 +125,6 @@ test('observing discovery in flight does not rearm a no-work Bot on the next con
       await finishReading.promise;
       return { no_work: true };
     },
-    takeSelectedTask: () => { throw new Error('no-work must not create an Execution'); },
   });
   const controller = new TaskController({
     listEligibleTasks: () => [],
@@ -281,11 +279,7 @@ test('IdentityTaskLoop presents a bounded shortlist, takes once, hands off to Ru
     shortlistLimit: 1,
     takeTask: async ({ candidates, prompt }) => {
       calls.push({ type: 'take', candidates, prompt });
-      return { task_id: 'task-1' };
-    },
-    takeSelectedTask: async (taskId, context) => {
-      calls.push({ type: 'take', taskId, context });
-      return { task: { task_id: taskId, state: 'RUNNING' }, execution: { execution_id: 'execution-1', task_id: taskId, state: 'CREATED' } };
+      return { task: { task_id: 'task-1', state: 'RUNNING' }, execution: { execution_id: 'execution-1', task_id: 'task-1', state: 'CREATED' } };
     },
     runExecution: async (take) => {
       calls.push({ type: 'run', take: take });
@@ -296,14 +290,10 @@ test('IdentityTaskLoop presents a bounded shortlist, takes once, hands off to Ru
   const result = await daemon.runOnce({ reason: 'initial' });
 
   assert.equal(result.disposition, 'completed');
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2);
   assert.deepEqual(calls[0].candidates.map((task) => task.task_id), ['task-1']);
   assert.match(calls[0].prompt, /task_take|same Core identity/s);
-  assert.equal(calls[1].taskId, 'task-1');
-  assert.equal(calls[1].context.core_id, 'core-1');
-  assert.equal(calls[1].context.take_key, 'core-1:task-1:0');
-  assert.equal(calls[1].context.owner_ref, 'identity:core-1');
-  assert.equal(calls[2].take.execution.execution_id, 'execution-1');
+  assert.equal(calls[1].take.execution.execution_id, 'execution-1');
   assert.equal(daemon.snapshot().state, 'IDLE');
   assert.equal(daemon.snapshot().execution_id, null);
   assert.deepEqual(daemon.snapshot().state_history.map((item) => item.state), ['IDLE', 'DISCOVERING', 'TAKING', 'RUNNING', 'IDLE']);
@@ -321,12 +311,7 @@ test('IdentityTaskLoop boundedly rescans after a lost take race without retrying
     },
     takeTask: async ({ candidates }) => {
       selected.push(candidates[0].task_id);
-      return candidates[0].task_id;
-    },
-    takeSelectedTask: async () => {
-      const error = new Error('another daemon won the take');
-      error.code = 'CONFLICT';
-      throw error;
+      return { take_failed: true, error: { code: 'CONFLICT', message: 'another Bot won the take' } };
     },
   });
 
@@ -353,9 +338,8 @@ test('IdentityTaskLoop re-arms a selection failure after its bounded cooldown', 
     takeTask: async () => {
       selectionAttempts += 1;
       if (selectionAttempts === 1) throw new Error('transient take provider failure');
-      return 'task-rearm';
+      return { task: { task_id: 'task-rearm' }, execution: { execution_id: 'execution-rearm', task_id: 'task-rearm', state: 'CREATED' } };
     },
-    takeSelectedTask: async () => ({ task: { task_id: 'task-rearm' }, execution: { execution_id: 'execution-rearm', task_id: 'task-rearm', state: 'CREATED' } }),
     runExecution: async (take) => ({ execution: { ...take.execution, state: 'SUCCEEDED' } }),
     onEvent: (event) => events.push(event),
   });
@@ -386,7 +370,6 @@ test('IdentityTaskLoop bounds infrastructure take failures instead of treating t
       attempts += 1;
       return { take_failed: true, error: { code: 'SERVICE_UNAVAILABLE', message: 'provider unavailable' } };
     },
-    takeSelectedTask: async () => { throw new Error('take should not be reached'); },
   });
 
   assert.equal((await daemon.runOnce({ reason: 'provider-failure' })).disposition, 'take_failed');
@@ -400,42 +383,31 @@ test('IdentityTaskLoop bounds infrastructure take failures instead of treating t
   assert.equal(daemon.snapshot().take_exhausted, false);
 });
 
-test('IdentityTaskLoop uses a fresh take key when the same Task is retaken later', async () => {
-  const takeKeys = [];
-  let executionNumber = 0;
+test('IdentityTaskLoop rejects a selected Task ID without creating an operator take', async () => {
+  let operatorTakes = 0;
   const daemon = new IdentityTaskLoop({
-    coreId: 'core-retake',
-    listEligibleTasks: () => [{ task_id: 'task-retake' }],
-    takeTask: async ({ candidates }) => candidates[0].task_id,
-    takeSelectedTask: async (taskId, context) => {
-      takeKeys.push(context.take_key);
-      executionNumber += 1;
-      return { task: { task_id: taskId }, execution: { execution_id: `execution-${executionNumber}`, task_id: taskId, state: 'CREATED' } };
-    },
-    runExecution: async (take) => ({ execution: { ...take.execution, state: 'SUCCEEDED' } }),
+    coreId: 'core-bare-selection',
+    taskService: { takeTask() { operatorTakes += 1; throw new Error('supervisor must not take'); } },
+    listEligibleTasks: () => [{ task_id: 'task-selected' }],
+    takeTask: async () => ({ selected_task_id: 'task-selected' }),
   });
-
-  await daemon.runOnce({ reason: 'first-attempt' });
-  await daemon.runOnce({ reason: 'later-retry' });
-
-  assert.deepEqual(takeKeys, ['core-retake:task-retake:0', 'core-retake:task-retake:1']);
+  assert.equal((await daemon.runOnce()).disposition, 'take_invalid');
+  assert.equal(operatorTakes, 0);
+  assert.equal(daemon.snapshot().take_count, 0);
 });
 
 test('IdentityTaskLoop discovers an empty queue without manufacturing a take', async () => {
   let selections = 0;
-  let takes = 0;
   const daemon = new IdentityTaskLoop({
     coreId: 'core-empty',
     listEligibleTasks: () => [],
     takeTask: async () => { selections += 1; return { no_work: true }; },
-    takeSelectedTask: async () => { takes += 1; },
   });
 
   const result = await daemon.runOnce({ reason: 'empty' });
 
   assert.equal(result.disposition, 'idle');
   assert.equal(selections, 1);
-  assert.equal(takes, 0);
   assert.equal(daemon.snapshot().state, IDENTITY_LOOP_STATES.IDLE);
 });
 
@@ -448,8 +420,7 @@ test('IdentityTaskLoop run loop waits for wake signals and stops cleanly', async
       discoveries += 1;
       return discoveries === 1 ? [] : [{ task_id: 'task-loop' }];
     },
-    takeTask: async ({ candidates }) => candidates.length ? 'task-loop' : { no_work: true },
-    takeSelectedTask: async () => ({ execution: { execution_id: 'execution-loop', task_id: 'task-loop', state: 'CREATED' } }),
+    takeTask: async ({ candidates }) => candidates.length ? { task: { task_id: 'task-loop' }, execution: { execution_id: 'execution-loop', task_id: 'task-loop', state: 'CREATED' } } : { no_work: true },
     runExecution: async () => ({ execution: { state: 'SUCCEEDED' } }),
     waitForSignal: () => wake.promise,
   });
@@ -474,8 +445,7 @@ test('IdentityTaskLoop notify wakes a custom waitForSignal path', async () => {
       discoveries += 1;
       return discoveries === 1 ? [] : [{ task_id: 'task-custom-wake' }];
     },
-    takeTask: async ({ candidates }) => candidates.length ? 'task-custom-wake' : { no_work: true },
-    takeSelectedTask: async () => ({ execution: { execution_id: 'execution-custom-wake', task_id: 'task-custom-wake', state: 'CREATED' } }),
+    takeTask: async ({ candidates }) => candidates.length ? { task: { task_id: 'task-custom-wake' }, execution: { execution_id: 'execution-custom-wake', task_id: 'task-custom-wake', state: 'CREATED' } } : { no_work: true },
     runExecution: async () => ({ execution: { state: 'SUCCEEDED' } }),
     waitForSignal: () => new Promise(() => {}),
   });
@@ -500,8 +470,7 @@ test('IdentityTaskLoop default idle wait is interruptible by notify', async () =
       discoveries += 1;
       return discoveries === 1 ? [] : [{ task_id: 'task-woken' }];
     },
-    takeTask: async ({ candidates }) => candidates.length ? 'task-woken' : { no_work: true },
-    takeSelectedTask: async () => ({ execution: { execution_id: 'execution-woken', task_id: 'task-woken', state: 'CREATED' } }),
+    takeTask: async ({ candidates }) => candidates.length ? { task: { task_id: 'task-woken' }, execution: { execution_id: 'execution-woken', task_id: 'task-woken', state: 'CREATED' } } : { no_work: true },
     runExecution: async () => {
       calls.push('run');
       return { execution: { state: 'SUCCEEDED' } };
@@ -525,8 +494,7 @@ test('IdentityTaskLoop stop aborts a taken Runtime handoff and fences the take',
   const daemon = new IdentityTaskLoop({
     coreId: 'core-abort',
     listEligibleTasks: () => [{ task_id: 'task-abort' }],
-    takeTask: async () => 'task-abort',
-    takeSelectedTask: async () => ({ task: { task_id: 'task-abort' }, execution: { execution_id: 'execution-abort', task_id: 'task-abort', state: 'CREATED' } }),
+    takeTask: async () => ({ task: { task_id: 'task-abort' }, execution: { execution_id: 'execution-abort', task_id: 'task-abort', state: 'CREATED' } }),
     runtime: {
       startTakenExecution: async (execution) => ({ execution }),
       waitForExecutionRelease: async (_executionId, { signal }) => new Promise((resolve) => signal.addEventListener('abort', () => resolve({ released: false, aborted: true }), { once: true })),
@@ -553,7 +521,6 @@ test('a Bot that loses a tool-level take race can rescan and execute other work'
     takeTask: async () => ++selections === 1
       ? { take_failed: true, error: { code: 'CONFLICT', message: 'another Bot owns this Task' } }
       : { task: { task_id: 'remaining-work' }, execution: { execution_id: 'next-execution', task_id: 'remaining-work' } },
-    takeSelectedTask: () => { throw new Error('the Bot already took its Task'); },
     runExecution: async (take) => ({ execution: { ...take.execution, state: 'SUCCEEDED' } }),
   });
   const result = await loop.runOnce();
@@ -639,7 +606,6 @@ test('no-work discovery waits for a public-state signal and permits a later empt
     coreId: 'core-no-work',
     listEligibleTasks: () => [],
     takeTask: async () => { discoveries += 1; return { no_work: true }; },
-    takeSelectedTask: () => { throw new Error('no-work must not manufacture an Execution'); },
   });
   assert.equal((await loop.runOnce()).disposition, 'idle');
   assert.equal(loop.snapshot().take_failure_count, 0);
@@ -659,7 +625,6 @@ test('a public change during discovery is not lost when the Bot reports no work'
       if (discoveries === 1) loop.notify('material_published');
       return { no_work: true };
     },
-    takeSelectedTask: () => { throw new Error('no Task was selected'); },
   });
   await loop.runOnce();
   await loop.runOnce();
@@ -695,7 +660,6 @@ test('private checkpoints do not wake no-work discovery but public Materials do'
   const loop = new IdentityTaskLoop({
     coreId: 'core-public-changes', listEligibleTasks: () => [],
     takeTask: async () => { discoveries += 1; return { no_work: true }; },
-    takeSelectedTask: () => { throw new Error('no Task was selected'); },
   });
   await loop.runOnce();
   for (const operation of ['save_checkpoint', 'save_workspace_revision', 'execution_progress', 'task_feedback']) {

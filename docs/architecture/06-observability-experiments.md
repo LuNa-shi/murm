@@ -131,15 +131,15 @@ The runner finalizes its report from Task/Execution/Material/check data, Core ac
 |---|---|
 | `solved` | The runner recorded `solvedAt`, protocol invalidity is false, and `madeProgress` is true. Judge's PASS/application trigger is described in [04](04-services.md); this is not an independent theorem-goal verifier. |
 | `protocol_valid` | Report/protocol checks passed, including allowed tool surface, placeholder flags and relevant run boundaries. It does not certify research progress. |
-| `made_progress` | Broad activity heuristic: child Task, Workspace write, nonfailure Material, or check can be enough. It is not a measured collaboration benefit. |
-| Task/dynamic/decomposition counts | The project Task query is limited to 100 in this report path; counts can underrepresent a larger run. |
+| `made_progress` | Broad output/activity heuristic: a Workspace write, nonfailure Material, or check can be enough. Proposals alone do not set this flag. It is not a measured collaboration benefit. |
+| `progress_evidence.proposed_task_count` and `parallelism.proposal_evidence.observed_task_count` | Count all observed Mission proposals, including the first; no root/child split or inferred semantic independence. Totals come from Task Service aggregates independently of the Task detail page. The detail/narrative projection remains bounded to 100 Tasks and `project.task_page` records its total, returned size and completeness. |
 | Core occupancy/parallelism | Overlap/interval accounting from recorded states/turns. Production `task_discovery_and_take` also starts an Agent-turn interval, so busy-time metrics can include discovery. |
 | Scheduler metrics | Compatibility reporting from the production identity-loop path; they do not imply a `Scheduler` instance is driving that benchmark. |
 | `audit.prompt_hashes` | Hashes the Core prompt value initialized from the generic prompt; it is not a digest of every fully composed/delivered per-turn prompt. |
 | Judge counts | Separate source failure, infrastructure failure, unassessed and preflight health. A request that never ran Lean is not a failed proof attempt. |
 | Material/read/consume counts | Publication, retrieval and explicit consumption are different facts; useful integration needs additional semantic evidence. |
 
-`CoreParallelismTracker` records states/intervals, Agent turns, work units, wait and Judge time. The report transforms them into overlap and utilization quantities; a populated lane or many tool calls is not proof of productive concurrency. Reports also retain historical naming where compatibility paths remain. Reading the current report schema should not erase the distinction between shared-Mission exploration and independent Task decomposition.
+`CoreParallelismTracker` records states/intervals, Agent turns, work units, wait and Judge time. The report transforms them into overlap and utilization quantities; a populated lane or many tool calls is not proof of productive concurrency. New reports omit root/child take counts and decomposition claims. `take_count` covers every accepted recorded take; proposal counts alone do not establish independent work. Historical imports may still contain old names. The Task-created observation identifies the actual created Task, while any proposing E is recorded separately. The initial-input audit uses the Mission public Workspace metadata rather than treating the first Task as the benchmark input owner.
 
 Sources: [runner report construction](../../src/benchmark/putnam-runner.js), [parallelism tracker](../../src/benchmark/parallelism.js), [parallelism tests](../../test/parallelism.test.js).
 

@@ -230,16 +230,15 @@ function inputSnapshotHash(task, inputMaterialRefs) {
   }));
 }
 
-function observedEligibleWorkCount(state, readyTasks) {
-  const tasks = projectTasks(state, { states: ['OPEN', 'RUNNING'], limit: 100, availableOnly: false });
-  const readyIds = new Set(readyTasks.map((task) => task.task_id));
-  return tasks.filter((task) => {
-    if (task.task_id === state.rootTaskId) return false;
-    if (readyIds.has(task.task_id)) return true;
-    if (task.state !== 'RUNNING') return false;
-    const execution = task.latest_execution ?? state.taskService.listExecutions(task.task_id, { includeTerminal: false })[0];
-    return execution && ['CREATED', 'RUNNING'].includes(execution.state);
-  }).length;
+export function missionTaskEvidence(state) {
+  return state.taskService.taskStatus({ mission_id: state.missionId, limit: 100,
+    states: ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'] });
+}
+
+export function observedEligibleWorkCount(state, readyTasks) {
+  const status = state.taskService.taskStatus({ mission_id: state.missionId, limit: 1 });
+  return new Set([...readyTasks.map(task => task.task_id), ...status.lanes
+    .filter(lane => ['CREATED', 'RUNNING'].includes(lane.state)).map(lane => lane.task_id)]).size;
 }
 
 function isPhysicallyAvailableCore(core) {
@@ -1094,21 +1093,21 @@ function recordReadinessSnapshot(state, at = Date.now()) {
   });
 }
 
-function projectReport(state, startedAt, deadline) {
+export function projectReport(state, startedAt, deadline) {
   const endedAt = Date.now();
   for (const core of state.cores) {
     for (const session of core.sessionHistory) collectToolEvents(core, session.rpcRecords);
   }
   const materials = state.contextService.readMaterials({});
   const materialConsumptions = state.contextService.listMaterialConsumptions({});
-  const taskTree = projectTasks(state, { limit: 100, availableOnly: false });
+  const taskEvidence = missionTaskEvidence(state);
+  const taskTree = taskEvidence.tasks;
   const takeHistory = state.cores.flatMap((core) => core.takeHistory);
-  const allowedTaskIds = new Set((state.rootTaskId ? [state.rootTaskId] : []).concat(takeHistory.map((take) => take.task_id)));
+  const allowedTaskIds = new Set(takeHistory.map((take) => take.task_id));
   const allowedExecutionIds = new Set(takeHistory.map((take) => take.execution_id));
   const materialBoundaryViolation = materials.some((material) =>
     !allowedTaskIds.has(material.source_task) || !allowedExecutionIds.has(material.source_execution));
-  const rootTask = state.taskService.getTask(state.rootTaskId);
-  const inputMaterialViolation = Boolean(rootTask && (!rootTask.workspace || rootTask.workspace.source_hash !== state.inputMaterialHash));
+  const inputMaterialViolation = state.publicWorkspace.mission_id !== state.missionId || state.publicWorkspace.metadata.input_snapshot_hash !== state.inputMaterialHash;
   const allowedInputMaterialIds = new Set(materials
     .filter((material) => allowedTaskIds.has(material.source_task) && allowedExecutionIds.has(material.source_execution))
     .map((material) => material.material_id));
@@ -1184,15 +1183,12 @@ function projectReport(state, startedAt, deadline) {
   });
   const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     workspaceSourceBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
-  const childTaskCount = taskTree.filter((task) => task.task_id !== state.rootTaskId).length;
-  const decompositionAvailable = childTaskCount > 0;
+  const proposedTaskCount = taskEvidence.counts.total;
   const lifecycle = lifecycleEvents(state.taskService);
   const taskLifecycle = taskLifecycleEvents(state.taskService);
   const notifications = state.taskService.listNotifications?.({ missionId: state.missionId }) ?? [];
   const narratives = executionNarratives(state, taskTree, materials);
   const invalidWaitAttemptCount = 0;
-  const childTakeCount = takeHistory.filter((take) => take.task_id !== state.rootTaskId).length;
-  const rootTakeCount = takeHistory.filter((take) => take.task_id === state.rootTaskId).length;
   const executionTakeCounts = new Map();
   for (const take of takeHistory) executionTakeCounts.set(take.execution_id, (executionTakeCounts.get(take.execution_id) ?? 0) + 1);
   const resumedExecutionCount = [...executionTakeCounts.values()].filter((count) => count > 1).length;
@@ -1200,7 +1196,7 @@ function projectReport(state, startedAt, deadline) {
   const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
   const checkCount = cores.reduce((count, core) => count + core.checks.length, 0);
   const structure = structureEvidence(state.taskService, taskTree, state.cores, state.parallelMode);
-  const madeProgress = childTaskCount > 0 || workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || checkCount > 0;
+  const madeProgress = workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || checkCount > 0;
   const parallelism = state.parallelism.snapshot({ endedAt });
   const checkerPreflights = state.judgeService.listCheckerPreflights().map((row) => ({
     preflight_key: row.preflight_key,
@@ -1241,7 +1237,7 @@ function projectReport(state, startedAt, deadline) {
       workspace_main_revision: '0.1',
       candidate_model: 'workspace_file_ref',
       initial_task_count: 0,
-      proposed_task_count: state.initialTaskIds?.length ?? 0,
+      proposed_task_count: proposedTaskCount,
       dynamic_task_budget: null,
       bot_max_ms: state.botMaxMs,
       selection_timeout_ms: state.selectionTimeoutMs,
@@ -1272,7 +1268,8 @@ function projectReport(state, startedAt, deadline) {
       workspace_id: state.workspaceId,
       database_path: state.databasePath,
       input_workspace_hash: state.inputMaterialHash,
-      task_count: taskTree.length,
+      task_count: proposedTaskCount,
+      task_page: taskEvidence.page,
       task_tree: taskTree.map((task) => ({
         expected_output: task.expected_output ?? null,
         acceptance_conditions: task.acceptance_conditions ?? null,
@@ -1306,10 +1303,9 @@ function projectReport(state, startedAt, deadline) {
     },
     parallelism: {
       ...parallelism,
-      decomposition_available: decompositionAvailable,
-      decomposition_evidence: {
-        definition: 'true only when an independent child Task was actually created and recorded; false means no independent child work was observed in this run',
-        observed_child_task_count: childTaskCount,
+      proposal_evidence: {
+        definition: 'All admitted Mission Tasks, including the first proposal. Creation alone does not establish independent progress or successful execution.',
+        observed_task_count: proposedTaskCount,
         scheduler_status_count: state.schedulerStatusCount,
         ready_work_ms: parallelism.ready_work_ms,
         ready_unassigned_ms: parallelism.ready_unassigned_ms,
@@ -1323,7 +1319,7 @@ function projectReport(state, startedAt, deadline) {
       protocol_valid: !invalid,
       made_progress: madeProgress,
       progress_evidence: {
-        child_task_count: childTaskCount,
+        proposed_task_count: proposedTaskCount,
         workspace_write_count: workspaceWriteCount,
         meaningful_material_count: meaningfulMaterialCount,
         candidate_check_count: checkCount,
@@ -1359,7 +1355,7 @@ function projectReport(state, startedAt, deadline) {
         created_at: notification.created_at,
       })),
       notification_count: notifications.length,
-      project_material_count: materials.filter((material) => material.source_task === state.rootTaskId).length,
+      project_material_count: materials.filter((material) => allowedTaskIds.has(material.source_task)).length,
       check_count: cores.reduce((count, core) => count + core.checks.length, 0),
       ended_early: state.stopOnSolved && state.solvedAt !== null,
       deadline_reached: Date.now() >= deadline,
@@ -1403,14 +1399,12 @@ function projectReport(state, startedAt, deadline) {
         condition_to_resumed_turn_ms: cores.flatMap((core) => core.latency_samples ?? [])
           .map((sample) => sample.condition_to_resumed_turn_ms).filter(Number.isFinite),
       },
-      decomposition_available: decompositionAvailable,
       dynamic_task_budget: null,
       // Count every Task admitted after Mission initialization.  The previous
       // projection counted only controller-generated `flat:proof-feedback:*`
       // Tasks and therefore hid Agent-created responsibilities from the
       // benchmark report and budget accounting.
-      dynamic_task_count: taskTree.filter((task) => !state.initialTaskIds.includes(task.task_id)).length,
-      controller_dynamic_task_count: taskTree.filter((task) => task.responsibility_key?.startsWith('flat:proof-feedback:')).length,
+      dynamic_task_count: proposedTaskCount - state.initialTaskIds.length,
       dynamic_task_events: state.dynamicTaskEvents,
       // Source-level Judge feedback is diagnostic. There is no controller
       // route gate or required Response handoff between candidate attempts.
@@ -1421,8 +1415,6 @@ function projectReport(state, startedAt, deadline) {
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
       taken_core_count: new Set(state.cores.filter((core) => core.takeHistory.length > 0).map((core) => core.index)).size,
       take_count: takeHistory.length,
-      child_take_count: childTakeCount,
-      root_take_count: rootTakeCount,
       resumed_execution_count: resumedExecutionCount,
       wait_count: 0,
       wake_count: 0,
@@ -1670,7 +1662,7 @@ async function createProjectState(problem, config, options) {
     metadata: { input_snapshot_hash: problem.source_hash, checker: fixture.checker_ref, environment: fixture.environment_ref },
   });
   // Every initial Task is proposed by a Bot after the zero-Task Mission starts.
-  observationStore.registerExperiment({ experimentId: runId, rootTaskId: null, status: 'CREATED', metadata: {
+  observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: {
     problem_id: problem.id,
     task_model: 'flat',
     mission_id: mission?.mission_id ?? null,
@@ -1678,9 +1670,8 @@ async function createProjectState(problem, config, options) {
     workspace_id: publicWorkspace.workspace_id,
   } });
   observationStore.append({ experimentId: runId, source: 'runtime', kind: 'mission_started_zero_tasks', payload: { mission_id: mission.mission_id, workspace_id: publicWorkspace.workspace_id } });
-  const root = null;
   const initialTasks = [];
-  observationStore.registerExperiment({ experimentId: runId, rootTaskId: null, status: 'RUNNING', metadata: { initial_task_count: 0, proposed_task_count: 0, workspace_id: publicWorkspace.workspace_id } });
+  observationStore.registerExperiment({ experimentId: runId, status: 'RUNNING', metadata: { initial_task_count: 0, proposed_task_count: 0, workspace_id: publicWorkspace.workspace_id } });
   observationStore.append({
     experimentId: runId,
     source: 'runtime',
@@ -1702,7 +1693,7 @@ async function createProjectState(problem, config, options) {
   // Deterministic queue scenarios may seed durable Tasks before reusable Core
   // sessions start. The hook uses the same Task Service boundary as Agent
   // operations; it does not replace queue take, Runtime, or dispatch logic.
-  await options.prepareProject?.({ owner, root, initialTasks, taskService, contextService, router, fixture, problem });
+  await options.prepareProject?.({ owner, root: null, mission, publicWorkspace, initialTasks, taskService, contextService, router, fixture, problem });
   const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt });
   const cores = [];
   try {
@@ -2075,7 +2066,6 @@ async function createProjectState(problem, config, options) {
           ready_tasks: readyTasks,
           current_task_id: payload.task_id ?? core.taskId,
           current_execution_id: payload.execution_id ?? core.executionId,
-          current_root_id: payload.root_id ?? core.stateRef?.rootTaskId ?? null,
         };
       },
       onRelease: async ({ taskId, executionId }) => {
@@ -2248,12 +2238,7 @@ async function createProjectState(problem, config, options) {
         } else if (operation === 'task_create') {
           const created = result?.task ?? result ?? {};
           const state = core.stateRef;
-          const dynamic = Boolean(created.task_id && !state.initialTaskIds.includes(created.task_id));
-          if (dynamic && state && !state.rootTaskId) {
-            state.rootTaskId = created.task_id;
-            state.observationStore.registerExperiment({ experimentId: state.runId, rootTaskId: created.task_id, status: 'RUNNING', metadata: { initial_task_count: 0, proposed_task_count: 1, workspace_id: state.publicWorkspace?.workspace_id ?? null } });
-            state.observationStore.append({ experimentId: state.runId, source: 'task-service', kind: 'task_proposed', taskId: created.task_id, executionId, coreId: `core-${core.index}`, payload: { mission_id: created.mission_id ?? payload?.mission_id ?? null, proposer: core.actorRef, proposal_kind: 'bot_bootstrap' } });
-          }
+          const dynamic = Boolean(created.task_id && state && !state.initialTaskIds.includes(created.task_id));
           if (dynamic && state) {
             state.dynamicTaskEvents.push({
               task_id: created.task_id ?? null,
@@ -2266,7 +2251,7 @@ async function createProjectState(problem, config, options) {
           }
           core.observe({
             source: 'task-service', kind: 'task_created', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
+            taskId: created.task_id ?? null, executionId, coreId: `core-${core.index}`,
             payload: {
               task_id: created.task_id ?? null,
               mission_id: created.mission_id ?? payload?.mission_id ?? null,
@@ -2423,7 +2408,6 @@ async function createProjectState(problem, config, options) {
     fixtureManifest: fixture,
     databasePath,
     projectDir,
-    rootTaskId: root?.task_id ?? null,
     initialTaskIds: initialTasks.map((task) => task.task_id),
     reportProjectDir,
     experimentDir: experimentRoot,
@@ -2592,55 +2576,12 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       taskService: state.taskService,
       listEligibleTasks: () => projectEligibleTasks(state, { limit: options.controllerShortlistLimit ?? 16 }),
       takeTask: ({ candidates, prompt }) => takeTaskWithAgent(core, candidates, prompt),
-      takeSelectedTask: async (selectedTaskId, context) => {
-        // The old selection transport may already have taken the Task. Reuse that
-        // durable result rather than creating a second Execution.
-        if (core.takeResult?.task?.task_id === selectedTaskId) {
-          return core.takeResult;
-        }
-        const selectedTask = state.taskService.getTask(selectedTaskId);
-        if (!selectedTask) {
-          core.turnInFlight = false;
-          core.dispatchReserved = false;
-          core.nextTurnAt = Date.now();
-          throw new Error(`selected Task disappeared: ${selectedTaskId}`);
-        }
-        try {
-          return state.taskService.takeTask(selectedTaskId, {
-            ...context,
-            owner_ref: core.actorRef,
-            core_id: `core-${core.index}`,
-            agent_prompt: selectedTask.task_instructions ?? BOUND_AGENT_PROMPT,
-            // Mission Tasks use public inputs and a fresh Execution directory.
-            // Private resume is not a valid selection mode.
-            workspace_mode: 'clean',
-          });
-        } catch (error) {
-          // A lost race or admission rejection must release the provisional
-          // Core reservation before the identity loop returns to its bounded idle loop.
-          core.turnInFlight = false;
-          core.dispatchReserved = false;
-          core.nextTurnAt = Date.now();
-          throw error;
-        }
-      },
       runtime: core.runtime,
       runExecution: async (take) => {
         if (core.takeResult?.execution?.execution_id === take.execution.execution_id) {
           return { execution: state.taskService.getExecution(take.execution.execution_id) };
         }
-        try {
-          await core.bridge.bindTake(take);
-          return { execution: state.taskService.getExecution(take.execution.execution_id) };
-        } catch (error) {
-          // ServicesBridge invokes its release hook for a failed bind, but the
-          // Core's provisional selection reservation still belongs to this
-          // failed handoff. Clear it before IdentityTaskLoop rescan/backoff.
-          core.turnInFlight = false;
-          core.dispatchReserved = false;
-          core.nextTurnAt = Date.now();
-          throw error;
-        }
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core handoff requires its already-bound Bot take receipt');
       },
       handoffTimeoutMs: options.handoffTimeoutMs ?? Math.max(executionTimeoutMs, turnTimeoutMs * 2),
       releaseExecution: async (execution, { error } = {}) => {
@@ -2943,7 +2884,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     experimentId: state.runId,
     source: 'runtime',
     kind: 'experiment_finished',
-    taskId: state.rootTaskId,
+    taskId: null,
     payload: { solved: report.run.solved, protocol_valid: report.run.protocol_valid, made_progress: report.run.made_progress },
   });
   state.observationStore.finishExperiment(state.runId, { status: report.run.solved ? 'SUCCEEDED' : 'FINISHED' });
@@ -2979,7 +2920,7 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
           run: {
             protocol_valid: false,
             made_progress: false,
-            progress_evidence: { child_task_count: 0, workspace_write_count: 0, meaningful_material_count: 0, candidate_check_count: 0 },
+            progress_evidence: { proposed_task_count: 0, workspace_write_count: 0, meaningful_material_count: 0, candidate_check_count: 0 },
             solved: false,
             ended_early: false,
             elapsed_ms: null,

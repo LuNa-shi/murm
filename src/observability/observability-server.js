@@ -471,7 +471,6 @@ function reportSummary(report) {
     candidate_count: run.candidate_count ?? null,
     tool_error_count: run.tool_error_count ?? null,
     take_count: run.take_count ?? null,
-    child_take_count: run.child_take_count ?? null,
     wait_count: run.wait_count ?? null,
     wake_count: run.wake_count ?? null,
     accept_count: run.accept_count ?? null,
