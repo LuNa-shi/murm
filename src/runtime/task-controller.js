@@ -77,6 +77,7 @@ export class TaskController {
     listBlockedTasks = null,
     reconcileTask = null,
     listIdentityLoops = () => [],
+    readPublicChangeToken = () => null,
     signalIdleIdentity = null,
     requestIdentityRecovery = null,
     shortlistLimit = DEFAULT_SHORTLIST_LIMIT,
@@ -91,6 +92,7 @@ export class TaskController {
       throw new TypeError('TaskController requires listEligibleTasks or taskService.listTasks');
     }
     if (typeof listIdentityLoops !== 'function') throw new TypeError('TaskController requires listIdentityLoops');
+    if (typeof readPublicChangeToken !== 'function') throw new TypeError('readPublicChangeToken must be a function');
     if (typeof now !== 'function') throw new TypeError('TaskController requires now');
     if (!Number.isInteger(shortlistLimit) || shortlistLimit < 1 || shortlistLimit > 100) {
       throw new TypeError('TaskController shortlistLimit must be an integer between 1 and 100');
@@ -115,6 +117,7 @@ export class TaskController {
     this.reconcileTask = reconcileTask
       ?? (this.usesTaskServiceReconcile ? (taskId) => taskService.reconcileTask(taskId) : null);
     this.listIdentityLoops = listIdentityLoops;
+    this.readPublicChangeToken = readPublicChangeToken;
     this.signalIdleIdentity = signalIdleIdentity;
     this.requestIdentityRecovery = requestIdentityRecovery;
     this.shortlistLimit = shortlistLimit;
@@ -250,7 +253,8 @@ export class TaskController {
       // Execution completion and bounded retry cooldowns may rearm discovery.
       else if (!['DISCOVERING', 'TAKING'].includes(String(view.state ?? '').toUpperCase())) this.loopSignals.delete(id);
     }
-    const signature = taskSignature(eligible);
+    const publicChange = await this.readPublicChangeToken();
+    const signature = `${taskSignature(eligible)}:${JSON.stringify(publicChange)}`;
     let signaled = 0;
     if (typeof this.signalIdleIdentity === 'function') {
       // The shortlist is context, not a limit on concurrent discovery. Each
@@ -271,6 +275,7 @@ export class TaskController {
     }
     const snapshot = {
       reason,
+      public_change_token: publicChange,
       eligible_count: eligible.length,
       eligible_task_ids: eligible.map(taskId).filter(Boolean),
       blocked_count: blocked.length,

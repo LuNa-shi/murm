@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `5667d738b843fb90cc263b12e49ad96291e1f9ae9c92078f564534b685103cd6`
+Body SHA-256: `b4f866d89fd71919212282a71eddc60e517506569ccfde03cc301425af82dbd5`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -89,7 +89,7 @@ Body SHA-256: `5667d738b843fb90cc263b12e49ad96291e1f9ae9c92078f564534b685103cd6`
   - swarmenv_task_feedback: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state. (logical operation task.task_feedback; writes state; inputs required=[notification_id,decision,action] fields=[action,decision,details,notification_id]; Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.)
   - swarmenv_task_finish: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.)
   - swarmenv_task_link_material: Link an immutable Material to a Task with an input, response, handoff, or experience role. (logical operation task.task_link_material; writes state; inputs required=[task_id,material_id,role] fields=[material_id,receiving_task_id,role,task_id]; Link an immutable Material to a Task with an input, response, handoff, or experience role.)
-  - swarmenv_task_list: List Mission Tasks and search their short summaries before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[limit,mission_id,query,state]; List Mission Tasks and search their short summaries before proposing new work.)
+  - swarmenv_task_list: Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[available_only,cursor,limit,mission_id,query,state,states]; Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.)
   - swarmenv_task_status: Read the authoritative Mission, Task counts, eligible work, and observation timestamp. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read the authoritative Mission, Task counts, eligible work, and observation timestamp.)
   - swarmenv_task_take: Take an existing Mission or ordinary Task using the caller identity and Core lane. (logical operation task.task_take; writes state; inputs required=[task_id] fields=[input_material_refs,take_key,task_id]; Take an existing Mission or ordinary Task using the caller identity and Core lane.)
   - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
@@ -516,14 +516,14 @@ Body SHA-256: `9b3dcb834e82a522d7ef01e4a6c3ce72f0baaeb64345b738700c85b185c12d00`
 ````
 ## swarmenv_task_list
 
-Body SHA-256: `34cda080c5ccd8362c46eda32a8a734e08c8213d964bf094f278ba3504b27a43`
+Body SHA-256: `d66eefc93b667ef4b5978afa69e0bda852bc11369e422a7d6e6726ea26316b6e`
 
 ````text
 {
-  "description": "List Mission Tasks and search their short summaries before proposing new work.",
-  "promptSnippet": "Task Service: List Mission Tasks and search their short summaries before proposing new work.",
+  "description": "Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.",
+  "promptSnippet": "Task Service: Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.",
   "promptGuidelines": [
-    "List Mission Tasks and search their short summaries before proposing new work.",
+    "Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.",
     "Help: service://task/task_list"
   ]
 }

@@ -856,7 +856,18 @@ export class TaskService {
   }
 
   listMissionTasks(filters = {}, envelope = makeEnvelope({ actorRef: 'unknown' })) {
-    return this.dispatch('list_task', filters, envelope);
+    // Controller/report helper retains full records. Bots use paged dispatch.
+    validateEnvelope(envelope);
+    return this.#listModernTasks(filters);
+  }
+
+  publicChangeToken(missionId) {
+    requireString(missionId, 'mission_id');
+    return this.db.prepare(`SELECT
+      (SELECT COUNT(*) FROM modern_task_records WHERE mission_id = ?) AS tasks,
+      (SELECT COALESCE(SUM(t.state_version + t.spec_version), 0) FROM tasks t JOIN modern_task_records m ON m.task_id = t.task_id WHERE m.mission_id = ?) AS versions,
+      (SELECT COUNT(*) FROM task_material_links link JOIN modern_task_records m ON m.task_id = link.task_id WHERE m.mission_id = ?) AS links,
+      (SELECT COUNT(*) FROM task_relations WHERE mission_id = ?) AS relations`).get(missionId, missionId, missionId, missionId);
   }
 
   taskStatus(filters = {}, envelope = makeEnvelope({ actorRef: 'unknown' })) {
@@ -1447,6 +1458,94 @@ export class TaskService {
     return filtered.slice(0, limit);
   }
 
+  #listTaskPage(payload, envelope) {
+    const bot = this.getBot(envelope.actor_ref);
+    if (bot) {
+      this.assertBotDeadline(bot.bot_id);
+      if (!['UNBOUND', 'ACTIVE'].includes(bot.state) || (bot.state === 'UNBOUND' && Date.parse(bot.selection_deadline) <= Date.now())) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot is not available for Task discovery');
+      }
+      if (payload.mission_id && payload.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task discovery must stay within the Bot Mission');
+    }
+    const missionId = bot?.mission_id ?? payload.mission_id ?? payload.missionId ?? null;
+    if (missionId !== null) requireString(missionId, 'mission_id');
+    const aliases = { ready: 'OPEN', running: 'RUNNING', blocked: 'BLOCKED', done: 'DONE', cancelled: 'CANCELLED' };
+    const requestedStates = payload.states ?? (payload.state ? [payload.state] : ['OPEN', 'RUNNING', 'BLOCKED', 'WAITING', 'DONE', 'CLOSED', 'CANCELED', 'CANCELLED', 'SATISFIED', 'FAILED', 'REJECTED']);
+    if (!Array.isArray(requestedStates) || !requestedStates.length || requestedStates.length > 16 || requestedStates.some(value => typeof value !== 'string' || !value)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task states must be a bounded nonempty list');
+    const states = [...new Set(requestedStates.flatMap(value => value.toLowerCase() === 'cancelled' ? ['CANCELLED', 'CANCELED'] : [aliases[value] ?? value.toUpperCase()]))].sort();
+    const query = payload.query ?? payload.search ?? null;
+    if (query !== null && (typeof query !== 'string' || !query || query.length > 4000)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task query must contain 1 to 4000 characters');
+    const limit = payload.limit ?? 20;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task page limit must be between 1 and 100');
+    const availableOnly = payload.available_only ?? false;
+    if (typeof availableOnly !== 'boolean') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'available_only must be boolean');
+    const scope = { mission_id: missionId, states, query, available_only: availableOnly };
+    const fingerprint = hash(scope);
+    let continuation = null;
+    if (payload.cursor !== undefined && payload.cursor !== null) {
+      try {
+        if (typeof payload.cursor !== 'string' || !payload.cursor || payload.cursor.length > 4096) throw new Error('invalid cursor');
+        continuation = JSON.parse(Buffer.from(payload.cursor, 'base64url').toString('utf8'));
+        if (continuation.version !== 1 || continuation.query_hash !== fingerprint ||
+            !Number.isSafeInteger(continuation.ceiling) || !Number.isSafeInteger(continuation.after) ||
+            continuation.after < 0 || continuation.after > continuation.ceiling || !Number.isFinite(Date.parse(continuation.started_at))) throw new Error('cursor mismatch');
+      } catch { throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task cursor is invalid or belongs to another query scope'); }
+    }
+    const ceiling = continuation?.ceiling ?? Number((missionId === null
+      ? this.db.prepare('SELECT COALESCE(MAX(rowid), 0) AS ceiling FROM modern_task_records').get()
+      : this.db.prepare('SELECT COALESCE(MAX(rowid), 0) AS ceiling FROM modern_task_records WHERE mission_id = ?').get(missionId)).ceiling);
+    const startedAt = continuation?.started_at ?? now();
+    const after = continuation?.after ?? 0;
+    const scopeSql = missionId === null ? '' : 'AND mission_id = ?';
+    // Bound the raw Mission window before applying any content/state filter.
+    // The Mission-only index includes rowid implicitly, so sparse matches do
+    // not force sorting or scanning the rest of the Mission on every page.
+    const rows = this.db.prepare(`WITH page AS MATERIALIZED (
+      SELECT task_id, mission_id, summary, timebox_ms, rowid AS creation_sequence
+      FROM modern_task_records WHERE rowid > ? AND rowid <= ? ${scopeSql} ORDER BY rowid LIMIT 501
+    ) SELECT t.task_id, t.state, t.spec_version, t.state_version, t.priority, t.created_at, t.updated_at,
+      substr(t.block_reason, 1, 1000) AS block_reason, length(t.block_reason) AS block_reason_length,
+      substr(t.expected_output, 1, 1000) AS expected_output, length(t.expected_output) AS expected_output_length,
+      page.mission_id, page.timebox_ms, page.creation_sequence,
+      substr(page.summary, 1, 1000) AS summary, length(page.summary) AS summary_length,
+      (? IS NULL OR page.summary LIKE ? OR t.goal LIKE ? OR t.expected_output LIKE ?) AS query_matches
+      FROM page JOIN tasks t ON t.task_id = page.task_id ORDER BY page.creation_sequence`).all(
+      after, ceiling, ...(missionId === null ? [] : [missionId]), query, ...Array(3).fill(query === null ? null : `%${query}%`));
+    const dependencySummary = this.db.prepare(`SELECT
+      EXISTS(SELECT 1 FROM task_relations WHERE task_id = ? AND relation_kind = 'depends_on') AS present,
+      EXISTS(SELECT 1 FROM task_relations r LEFT JOIN tasks prerequisite ON prerequisite.task_id = r.related_task_id
+        WHERE r.task_id = ? AND r.relation_kind = 'depends_on' AND (prerequisite.state IS NULL OR prerequisite.state <> 'DONE')) AS unsatisfied`);
+    const tasks = [];
+    let scanned = 0, last = after;
+    for (const row of rows.slice(0, 500)) {
+      last = row.creation_sequence; scanned += 1;
+      if (!states.includes(row.state) || !row.query_matches) continue;
+      const dependency = dependencySummary.get(row.task_id, row.task_id);
+      const ready = row.state === 'OPEN' && !dependency.unsatisfied;
+      if (availableOnly && !ready) continue;
+      const cancelled = ['CANCELLED', 'CANCELED'].includes(row.state)
+        ? this.db.prepare(`SELECT substr(f.reason, 1, 1000) AS reason, length(f.reason) AS reason_length
+            FROM executions e JOIN execution_finish_intents f ON f.execution_id = e.execution_id
+            WHERE e.task_id = ? AND f.outcome = 'cancelled' AND f.closed_at IS NOT NULL
+            ORDER BY f.closed_at DESC, e.execution_id DESC LIMIT 1`).get(row.task_id) : null;
+      const truncated = ['summary', 'expected_output', 'block_reason'].filter(field => row[`${field}_length`] > 1000);
+      if (cancelled?.reason_length > 1000) truncated.push('cancellation_reason');
+      const owner = this.db.prepare(`SELECT execution_id, owner_ref, state FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'CLOSING') ORDER BY created_at DESC LIMIT 1`).get(row.task_id) ?? null;
+      tasks.push({ task_id: row.task_id, mission_id: row.mission_id, summary: row.summary,
+        expected_output: row.expected_output, truncated_fields: truncated, state: row.state,
+        spec_version: row.spec_version, state_version: row.state_version, priority: row.priority, timebox_ms: row.timebox_ms,
+        created_at: row.created_at, updated_at: row.updated_at, available: ready, current_execution: owner,
+        dependencies: { present: Boolean(dependency.present), satisfied: !dependency.unsatisfied },
+        block_reason: row.block_reason, cancellation_reason: cancelled?.reason ?? null });
+      if (tasks.length === limit) break;
+    }
+    const more = rows.some(row => row.creation_sequence > last);
+    const cursor = more ? Buffer.from(JSON.stringify({ version: 1, query_hash: fingerprint, ceiling, after: last, started_at: startedAt })).toString('base64url') : null;
+    return { tasks, scope, limit, returned: tasks.length, scanned, next_cursor: cursor, truncated: more,
+      started_at: startedAt, read_at: now(), membership: 'state-and-availability-at-page-read', order: 'creation',
+      guidance: 'Read relevant continuation pages and Task detail before proposing or taking. New Tasks after this scan began require a fresh query.' };
+  }
+
   #viewModernTask(taskId) {
     const task = this.#decorateModernTask(rowToTask(this.db.prepare('SELECT * FROM tasks WHERE task_id = ?').get(taskId)));
     if (!task?.mission_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown modern Task: ${taskId}`);
@@ -1967,9 +2066,12 @@ export class TaskService {
   }
 
   #read(operation, payload, envelope) {
+    if (['list_tasks', 'list_eligible_tasks', 'list_executions'].includes(operation) && this.getBot(envelope.actor_ref)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Legacy Task discovery is unavailable to Bots; use task_list and task_view');
+    }
     if (operation === 'get_mission') return this.#getMission(requireString(payload.mission_id, 'mission_id'));
     if (operation === 'task_status') return this.#taskStatus(payload);
-    if (operation === 'list_task') return this.#listModernTasks(payload);
+    if (operation === 'list_task') return this.#listTaskPage(payload, envelope);
     if (operation === 'view_task') return this.#viewModernTask(requireString(payload.task_id ?? envelope.task_id, 'task_id'));
     if (operation === 'list_task_materials') {
       const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');

@@ -46,7 +46,7 @@ test('Mission creates a flat Task pool with explicit proposal and dependency rel
   assert.equal(first.summary.includes('task:first'), true);
   assert.deepEqual(second.relations.spawned_from.map((row) => row.related_task_id), [first.task_id]);
   assert.deepEqual(second.relations.depends_on.map((row) => row.related_task_id), [first.task_id]);
-  assert.deepEqual(service.dispatch('task.list', { mission_id: mission.mission_id, available_only: false }, op('task:list', 'agent:test')).map((task) => task.task_id), [first.task_id, second.task_id]);
+  assert.deepEqual(service.dispatch('task.list', { mission_id: mission.mission_id, available_only: false }, op('task:list', 'agent:test')).tasks.map((task) => task.task_id), [first.task_id, second.task_id]);
   assert.equal(service.dispatch('task.view', { task_id: second.task_id }, op('task:view', 'agent:test')).task.relations.depends_on[0].related_task_id, first.task_id);
   service.close();
 });
@@ -61,7 +61,7 @@ test('ServicesSDK exposes the Mission-scoped Task seam without parent-specific m
     expected_output: 'A route note',
     acceptance_conditions: ['note exists'],
   }, { operationId: 'sdk:task' }).task;
-  assert.equal(sdk.listMissionTasks({ mission_id: mission.mission_id }).length, 1);
+  assert.equal(sdk.listMissionTasks({ mission_id: mission.mission_id }).tasks.length, 1);
   assert.equal(sdk.viewTask(task.task_id).task.summary, 'Find one independent route');
   for (const method of ['proposeTask', 'createChildTask', 'createBranchGroup', 'addRequiredSubtask', 'getTaskStructure', 'createReworkTask']) {
     assert.equal(typeof sdk[method], 'undefined', `retired SDK method ${method} must not be reachable`);
@@ -199,7 +199,7 @@ test('only depends_on gates the flat eligible view and cycles are rejected', () 
   const spawnedOnly = createTask(service, mission.mission_id, 'task:spawned-only', { spawned_from: prerequisite.task_id });
 
   const available = service.dispatch('task.list', { mission_id: mission.mission_id, available_only: true }, op('task:available:one', 'agent:test'));
-  assert.deepEqual(available.map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
+  assert.deepEqual(available.tasks.map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
   assert.deepEqual(service.listEligibleTasks({ missionId: mission.mission_id, limit: 10 }).map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
 
   assert.throws(() => service.dispatch('task.create', {

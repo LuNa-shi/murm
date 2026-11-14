@@ -188,7 +188,37 @@ test('Bot public discovery refuses foreign Mission/Task identities and does not 
   assert.deepEqual(status.lanes, []);
   await assert.rejects(bridge.call({ operation: 'mission_submit', payload: {} }), { code: 'SERVICE_NOT_READY' });
   const { stdout } = await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', 'task', 'list', '--query=x=y=z'], { env: { PATH: process.env.PATH, ...env }, timeout: 10_000 });
-  assert.equal(JSON.parse(stdout).length, 0);
+  assert.equal(JSON.parse(stdout).tasks.length, 0);
+});
+
+test('real CLI follows Task pages and takes an existing low-priority responsibility beyond the first 500', { timeout: 30000 }, async t => {
+  let service;
+  const f = await fixture(t, { onTake: async result => {
+    const e = service.getExecution(result.execution.execution_id);
+    result.execution = service.dispatch('start_execution', {}, makeEnvelope({ actorRef: e.owner_ref, taskId: e.task_id, executionId: e.execution_id,
+      specVersion: e.spec_version, stateVersion: e.state_version, fencingVersion: e.fencing_version })).execution;
+  } });
+  service = f.service;
+  for (let i = 0; i < 505; i += 1) service.createTask({ mission_id: 'mission:auth', task_id: `existing:${i}`, summary: `Inspect reusable responsibility number ${i}`,
+    expected_output: 'A reusable result', acceptance_conditions: ['Result is readable'], priority: i === 504 ? 0 : 10 }, makeEnvelope({ actorRef: 'operator:fixture' }));
+  const env = f.start('bot:deep-lookup');
+  const run = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], {
+    env: { PATH: process.env.PATH, ...env }, timeout: 10000,
+  })).stdout);
+  let cursor, target, pages = 0;
+  do {
+    const page = await run('task', 'list', '--query', 'reusable', '--limit', '100', ...(cursor ? ['--cursor', cursor] : []));
+    target ??= page.tasks.find(task => task.task_id === 'existing:504');
+    cursor = page.next_cursor; pages += 1;
+  } while (cursor);
+  assert.equal(pages, 6); assert.equal(target.task_id, 'existing:504');
+  const detail = await run('task', 'view', target.task_id);
+  assert.equal(detail.task.expected_output, 'A reusable result');
+  const taken = await run('task', 'take', target.task_id, '--request-id', 'take-existing');
+  assert.equal(taken.execution.task_id, target.task_id);
+  assert.equal(taken.execution.owner_ref, 'bot:deep-lookup');
+  assert.equal(service.taskStatus({ mission_id: 'mission:auth' }).counts.total, 505);
+  await run('task', 'finish', '--outcome', 'incomplete', '--request-id', 'finish-existing');
 });
 
 
@@ -217,4 +247,16 @@ test('same-ID take retry joins preparation while altered payload and other write
   assert.deepEqual(await retry, await first);
   assert.equal(activations, 1);
   assert.equal(service.listExecutions(task.task_id).length, 1);
+});
+
+test('registered Bots cannot discover foreign Tasks through retired list aliases', async t => {
+  const { service, bridge, start } = await fixture(t);
+  service.createMission({ mission_id: 'mission:foreign', goal: 'Private independent project' }, makeEnvelope({ actorRef: 'operator:test' }));
+  service.createTask({ mission_id: 'mission:foreign', summary: 'Foreign responsibility', expected_output: 'Result', acceptance_conditions: ['Readable'] }, makeEnvelope({ actorRef: 'operator:test' }));
+  start('bot:scoped-discovery');
+  for (const operation of ['list_tasks', 'list_eligible_tasks', 'list_executions', 'task_discover']) {
+    await assert.rejects(bridge.call({ operation, payload: {} }), { code: 'NOT_ALLOWED' });
+    if (operation !== 'task_discover') assert.throws(() => service.dispatch(operation, {}, makeEnvelope({ actorRef: 'bot:scoped-discovery' })), { code: 'NOT_ALLOWED' });
+  }
+  assert.deepEqual((await bridge.call({ operation: 'task_list', payload: {} })).tasks, []);
 });

@@ -267,7 +267,7 @@ test('independent HTTP providers support discovery while an unconfigured Context
       serviceId: 'task', capability: 'task_list', input: { limit: 1 },
       envelope: makeEnvelope({ operationId: 'remote-task-list', actorRef: 'agent:bound' }), role: 'bound',
     });
-    assert.ok(Array.isArray(taskResult));
+    assert.ok(Array.isArray(taskResult.tasks));
     await assert.rejects(registry.invoke({
       serviceId: 'context', capability: 'read_materials', input: {},
       envelope: makeEnvelope({ operationId: 'remote-context-read', actorRef: 'agent:bound', taskId: 'task-1', executionId: 'exec-1' }), role: 'bound',

@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `479d3aa7b10a875dee6882218e28ad5e4d13e149b8b51ad4465e5e04c48f7e7c`.
+Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `d850875eefec08ce1fa20ec4df71c2f3ac3acc908954d9e23ce0b462e9b3c436`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -107,6 +107,10 @@ CREATE TABLE IF NOT EXISTS modern_task_records (
 
 CREATE INDEX IF NOT EXISTS modern_task_records_mission
   ON modern_task_records(mission_id, created_at, task_id);
+
+-- SQLite indexes carry rowid as their tie breaker: this supports bounded
+-- Mission creation-window scans without sorting every Mission record.
+CREATE INDEX IF NOT EXISTS modern_task_records_mission_scan ON modern_task_records(mission_id);
 
 CREATE TABLE IF NOT EXISTS task_relations (
   relation_id TEXT PRIMARY KEY,
@@ -683,7 +687,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `528357d2424f1a5dbb42a6bce92c885df4a8ae0c667a638aee7dd17b5c9d5d06`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `c3130883696c2dd14c6ffd265122b2e07e78bc36f7c84626f9c1e8a50db315ee`.
 
 #### executions_active_core
 

@@ -109,6 +109,14 @@ export class MissionWorkspace {
     return this.repository.locked(root, async () => this.#public(await this.#read(root)));
   }
 
+  async publicChangeToken({ workspaceId }) {
+    const root = this.workspacePath(workspaceId);
+    return this.repository.locked(root, async () => {
+      const record = await this.#read(root);
+      return { workspace_id: workspaceId, next_revision: record.next_revision, main_revision: record.main_revision };
+    });
+  }
+
   async listRevisions({ workspaceId }) {
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {

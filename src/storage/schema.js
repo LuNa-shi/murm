@@ -66,6 +66,10 @@ CREATE TABLE IF NOT EXISTS modern_task_records (
 CREATE INDEX IF NOT EXISTS modern_task_records_mission
   ON modern_task_records(mission_id, created_at, task_id);
 
+-- SQLite indexes carry rowid as their tie breaker: this supports bounded
+-- Mission creation-window scans without sorting every Mission record.
+CREATE INDEX IF NOT EXISTS modern_task_records_mission_scan ON modern_task_records(mission_id);
+
 CREATE TABLE IF NOT EXISTS task_relations (
   relation_id TEXT PRIMARY KEY,
   mission_id TEXT NOT NULL REFERENCES missions(mission_id),

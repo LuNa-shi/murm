@@ -8,6 +8,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
+import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
+import { TaskController } from '../src/runtime/task-controller.js';
+import { IdentityTaskLoop } from '../src/runtime/identity-task-loop.js';
 
 function fixture(t, database = ':memory:') {
   const tasks = new TaskService(database);
@@ -197,4 +200,80 @@ test('concurrent Context constructors migrate old Material identity storage unde
   const results = await Promise.all(Array.from({ length: 4 }, () => promisify(execFile)(process.execPath,
     ['--input-type=module', '-e', source, database], { timeout: 10000 })));
   for (const result of results) assert.equal(result.stdout.trim(), '1');
+});
+
+test('durable public changes wake no-work discovery even with lost hints and an unchanged eligible queue', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'discovery-public-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const { tasks, context, actor, publish } = fixture(t);
+  const producer = actor('public-producer', 'mission:a');
+  const workspace = new MissionWorkspace({ rootDir: root });
+  await workspace.create({ workspaceId: 'public-wake', missionId: 'mission:a', initialFiles: { 'note.txt': 'initial input' } });
+  let discoveries = 0;
+  const idle = new IdentityTaskLoop({ coreId: 'idle-core', listEligibleTasks: () => [], takeTask: async () => {
+    discoveries += 1; return { no_work: true };
+  } });
+  const controller = new TaskController({ taskService: tasks, sweepIntervalMs: 0,
+    listEligibleTasks: () => tasks.listEligibleTasks({ missionId: 'mission:a' }),
+    listIdentityLoops: () => [idle.snapshot(), { core_id: producer.id, state: 'RUNNING', healthy: true }],
+    signalIdleIdentity: (_loop, event) => { assert.equal(event.core_id, 'idle-core'); idle.notify(event.reason); },
+    readPublicChangeToken: async () => ({ tasks: tasks.publicChangeToken('mission:a'), materials: context.publicChangeToken('mission:a'),
+      workspace: await workspace.publicChangeToken({ workspaceId: 'public-wake' }) }),
+  });
+  t.after(() => controller.stop());
+  const poll = async expectedSignals => {
+    assert.equal((await controller.reconcile({ reason: 'repair-poll' })).signaled_loop_count, expectedSignals);
+    await idle.runOnce();
+  };
+  await poll(1); await poll(0); assert.equal(discoveries, 1);
+  const save = () => workspace.save({ workspaceId: 'public-wake', baseRevision: '0.1', requestId: 'public-save', files: { 'note.txt': 'shared new result' } });
+  await save(); await poll(1); assert.equal(discoveries, 2);
+  await save(); await poll(0);
+  tasks.dispatch('heartbeat', {}, producer.envelope('private-heartbeat')); await poll(0);
+  const a = publish(producer, 'wake-material').material;
+  await poll(1); assert.equal(discoveries, 3);
+  context.dispatch('dispute_material', { material_id: a.material_id, reason: 'A claim requires rechecking' }, producer.envelope('wake-dispute'));
+  await poll(1); assert.equal(discoveries, 4);
+  const b = publish(producer, 'wake-successor').material;
+  const relation = context.dispatch('supersede_material', { material_id: a.material_id, replacement_material_id: b.material_id, reason: 'Complete replacement' }, producer.envelope('wake-supersede')).relation;
+  await poll(1); assert.equal(discoveries, 5);
+  const revoke = () => context.dispatch('unsupersede_material', { material_id: a.material_id, replacement_material_id: b.material_id,
+    expected_version: relation.version, reason: 'Replacement was mistaken' }, producer.envelope('wake-unsupersede'));
+  revoke(); await poll(1); assert.equal(discoveries, 6);
+  revoke(); await poll(0);
+  tasks.createTask({ mission_id: 'mission:a', summary: 'Inspect a new responsibility dependent on existing research', expected_output: 'A follow-up conclusion',
+    acceptance_conditions: ['Use the prerequisite result'], depends_on: [producer.execution.task_id] }, producer.envelope('blocked-proposal'));
+  assert.deepEqual(tasks.listEligibleTasks({ missionId: 'mission:a' }), []);
+  await poll(1); assert.equal(discoveries, 7);
+});
+
+test('a public commit during discovery survives an in-flight repair poll and wakes once after no-work', async t => {
+  const { tasks, context, actor, publish } = fixture(t);
+  const producer = actor('inflight-producer', 'mission:a');
+  let entered, release;
+  const started = new Promise(resolve => { entered = resolve; });
+  const held = new Promise(resolve => { release = resolve; });
+  let discoveries = 0;
+  const loop = new IdentityTaskLoop({ coreId: 'inflight-core', listEligibleTasks: () => [], takeTask: async () => {
+    discoveries += 1;
+    if (discoveries === 1) { entered(); await held; }
+    return { no_work: true };
+  } });
+  const controller = new TaskController({ taskService: tasks, sweepIntervalMs: 0,
+    listEligibleTasks: () => [], listIdentityLoops: () => [loop.snapshot()],
+    signalIdleIdentity: (_loop, event) => loop.notify(event.reason),
+    readPublicChangeToken: () => context.publicChangeToken('mission:a') });
+  t.after(() => controller.stop());
+  assert.equal((await controller.reconcile()).signaled_loop_count, 1);
+  const active = loop.runOnce();
+  await started;
+  publish(producer, 'during-discovery');
+  assert.equal(loop.snapshot().state, 'TAKING'); // This state includes the asynchronous Bot discovery/take callback.
+  assert.equal((await controller.reconcile()).signaled_loop_count, 0);
+  release(); await active;
+  assert.equal((await controller.reconcile()).signaled_loop_count, 1);
+  await loop.runOnce();
+  assert.equal(discoveries, 2);
+  assert.equal((await controller.reconcile()).signaled_loop_count, 0);
+  await loop.runOnce(); assert.equal(discoveries, 2);
 });

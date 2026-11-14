@@ -192,6 +192,15 @@ export class ContextService {
     return this.#readMaterials(filters);
   }
 
+  /** Durable public-state observation for discovery; no heartbeat/read counts. */
+  publicChangeToken(missionId) {
+    requireString(missionId, 'mission_id');
+    return this.db.prepare(`SELECT
+      (SELECT COUNT(*) FROM materials WHERE mission_id = ?) AS materials,
+      (SELECT COUNT(*) FROM material_relations relation JOIN materials m ON m.material_id = relation.material_id WHERE m.mission_id = ?) AS relations,
+      (SELECT COALESCE(SUM(relation.active), 0) FROM material_relations relation JOIN materials m ON m.material_id = relation.material_id WHERE m.mission_id = ?) AS active_relations`).get(missionId, missionId, missionId);
+  }
+
   /** Return durable Material consumption edges for Task completion and reports. */
   listMaterialConsumptions(filters = {}) {
     const materialId = filters.material_id ?? filters.materialId ?? null;

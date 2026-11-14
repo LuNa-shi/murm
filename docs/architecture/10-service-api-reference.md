@@ -30,16 +30,16 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `1072e4bf3f561a63959ac66911504eb59eeed98d681a7acf3bd42b8ee496b0a4` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `3561a5c89ee52836e6d46bca3129385426672a5fd60652f11c3cd301ed28ed18` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `d4d88b3ebf245ee64aab431aef832b5d3e3b37e8f9f9b1600f9a9efabbf175ed` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `ca7b1da88de58c2273c90949b41134272d9c2e88f906e5bce15157b4cd7acb92` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fc537d04cb0471d1496d82c1866b5fde81986f790768eea9e720bd7391ecdabd` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `5b99550182976cf351887ff2c5eb269a945ee56a9832aca91f1c9edc1be008df` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `958fb394d8c2f3cf51a9b16d8d88720a93c3edbba3c1edb18b5e2fb5e1585203` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `eefc3bff5692aba757445b062772926f159a35ae38277d9153cf4e2c808c3fa3` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `233dac84b911076bdf83aeb1a6008a8300e8f1c37e7fa754d19f347a42e495e6` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `cdfae4cb5f12f2bfad6ffbd36a696fa296e558da7f71e9bc9b12a54c30ca9bf2` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `61c7bbf151fca86773254984cc62e5f5ff6451c7ef2246640c613ce15b4c7d64` |
 
@@ -287,7 +287,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "2bde3dfc14de4a7186bf7505d98b035d840dc6007d1b8c9c76483d0c343659f0"
+  "manifest_hash": "712e7e0784cc3ca7a7198aa6378a192da37cad9a5a356a52e41999a6b96d58a4"
 }
 ```
 
@@ -621,13 +621,13 @@ Save a bounded Progress Material and either continue the current Execution or ha
 
 #### task.task_list
 
-List Mission Tasks and search their short summaries before proposing new work.
+Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.
 
 ```json
 {
   "name": "task_list",
   "operation": "task_list",
-  "description": "List Mission Tasks and search their short summaries before proposing new work.",
+  "description": "Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.",
   "input_schema": {
     "type": "object",
     "properties": {
@@ -640,10 +640,24 @@ List Mission Tasks and search their short summaries before proposing new work.
       "state": {
         "type": "string"
       },
+      "states": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1,
+        "maxItems": 16
+      },
+      "available_only": {
+        "type": "boolean"
+      },
       "limit": {
         "type": "integer",
         "minimum": 1,
         "maximum": 100
+      },
+      "cursor": {
+        "type": "string"
       }
     },
     "additionalProperties": false
@@ -671,9 +685,9 @@ List Mission Tasks and search their short summaries before proposing new work.
   "requires_binding": false,
   "scope": "task-read",
   "help": {
-    "when": "List Mission Tasks and search their short summaries before proposing new work.",
+    "when": "Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.",
     "ref": "service://task/task_list",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: List Mission Tasks and search their short summaries before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_list",

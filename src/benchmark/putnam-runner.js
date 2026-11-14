@@ -2127,9 +2127,8 @@ async function createProjectState(problem, config, options) {
           core.taskId = null;
           core.executionId = null;
           core.take = null;
-          // Keep the identity Session alive. Runtime detached it from the
-          // released Execution; the next take re-binds this same Session.
-          // Deterministic adapters use `bound` to choose their scripted path.
+          // Production closes this Bot before the Core starts its successor.
+          // Deterministic adapters use `bound` only for their scripted path.
           if (core.session && 'bound' in core.session) core.session.bound = false;
           // Runtime has already detached the process before invoking this
           // callback. The transport turn still owns the dispatch reservation
@@ -2169,8 +2168,19 @@ async function createProjectState(problem, config, options) {
       },
       onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
         const materialPublishOperation = operation === 'publish_material' || operation === 'context_publish_material';
-        if (materialPublishOperation || ['task_link_material', 'workspace_check'].includes(operation)) {
+        if (materialPublishOperation || ['task_link_material', 'workspace_check', 'workspace_save', 'workspace_merge'].includes(operation)) {
           core.stateRef?.requestIdentityWake?.();
+        }
+        if (['workspace_save', 'workspace_merge'].includes(operation) && !result.already_included) {
+          const revision = operation === 'workspace_save' ? result.revision : result.main_revision;
+          if (!core.workspaceWrites.some(write => write.workspace_id === result.workspace_id && write.workspace_revision === revision && write.operation === operation)) {
+            const changedPaths = result.changed_paths ?? result.changed_files ?? [];
+            core.workspaceWrites.push({ operation, task_id: taskId, execution_id: executionId, workspace_id: result.workspace_id,
+              workspace_revision: revision, workspace_content_hash: result.content_hash ?? null, changed_paths: changedPaths });
+            core.observe({ source: 'workspace', kind: operation === 'workspace_save' ? 'workspace_revision_saved' : 'workspace_revision_merged', visibility: 'operator',
+              taskId, executionId, coreId: `core-${core.index}`, payload: { workspace_id: result.workspace_id, revision, changed_count: changedPaths.length } });
+            if (changedPaths.length) core.parallelism.recordWorkUnit({ task_id: taskId, execution_id: executionId, core: core.index, progress_kind: 'workspace_revision' });
+          }
         }
         if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
           const materialsRead = operation === 'context_get_material'
@@ -2494,6 +2504,11 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   for (const core of state.cores) core.stateRef = state;
   state.controller = new TaskController({
     taskService: state.taskService,
+    readPublicChangeToken: async () => ({
+      tasks: state.taskService.publicChangeToken(state.missionId),
+      materials: state.contextService.publicChangeToken(state.missionId),
+      workspace: await state.missionWorkspace.publicChangeToken({ workspaceId: state.workspaceId }),
+    }),
     listEligibleTasks: () => projectEligibleTasks(state, { limit: options.controllerShortlistLimit ?? 16 }),
     shortlistLimit: options.controllerShortlistLimit ?? 16,
     // The benchmark loop is already the bounded repair sweep. Keeping a
@@ -2659,7 +2674,8 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     // Task Service emits only after its mutation transaction commits. This is
     // the low-latency path; the Controller's periodic sweep remains the
     // repair path for missed notifications or a restarted process.
-    for (const loop of state.identityLoops) loop.notifyPublicChange(event);
+    // Hints request reconciliation; durable tokens suppress replayed hints
+    // and also repair missed or cross-process publication notifications.
     state.requestIdentityWake(event?.kind ?? 'task_event');
   });
   // Compatibility metrics keep the old report field readable while the

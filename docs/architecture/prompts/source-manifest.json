@@ -41,7 +41,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "5b99550182976cf351887ff2c5eb269a945ee56a9832aca91f1c9edc1be008df"
+      "sha256": "958fb394d8c2f3cf51a9b16d8d88720a93c3edbba3c1edb18b5e2fb5e1585203"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -57,7 +57,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "233dac84b911076bdf83aeb1a6008a8300e8f1c37e7fa754d19f347a42e495e6"
+      "sha256": "cdfae4cb5f12f2bfad6ffbd36a696fa296e558da7f71e9bc9b12a54c30ca9bf2"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -77,15 +77,15 @@
     },
     {
       "path": "src/runtime/mission-workspace.js",
-      "sha256": "6445258e1cd88949f8758b787696f8d46794213bfd542b2519dcc9609cb2e351"
+      "sha256": "647e8f9e261236216eaea9aa6179cca1ad9c829d4bc2d3b990426e86e229463a"
     },
     {
       "path": "src/sdk/service-catalog.js",
-      "sha256": "1072e4bf3f561a63959ac66911504eb59eeed98d681a7acf3bd42b8ee496b0a4"
+      "sha256": "d4d88b3ebf245ee64aab431aef832b5d3e3b37e8f9f9b1600f9a9efabbf175ed"
     },
     {
       "path": "src/sdk/builtin-registry.js",
-      "sha256": "3561a5c89ee52836e6d46bca3129385426672a5fd60652f11c3cd301ed28ed18"
+      "sha256": "ca7b1da88de58c2273c90949b41134272d9c2e88f906e5bce15157b4cd7acb92"
     },
     {
       "path": "src/sdk/service-bundle.js",
@@ -105,7 +105,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "528357d2424f1a5dbb42a6bce92c885df4a8ae0c667a638aee7dd17b5c9d5d06"
+      "sha256": "c3130883696c2dd14c6ffd265122b2e07e78bc36f7c84626f9c1e8a50db315ee"
     },
     {
       "path": "src/task/task-types.js",
@@ -320,13 +320,19 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1554,
+      "line": 1546,
+      "field": "guidance",
+      "sha256": "2331ed3898810daacce352f5433d670aae5a8e9127527d6f6dbdd13c314fa95e"
+    },
+    {
+      "path": "src/task/task-service.js",
+      "line": 1653,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1765,
+      "line": 1864,
       "field": "action",
       "sha256": "ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8"
     }
@@ -338,11 +344,11 @@
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "ef71e4ed2b0d1d34deac5d466bd111fe77cb8524002635dfef03e2d4d1618bf3"
+      "sha256": "ea39e24501ae49ad826c0751d8d8065f8f6727a63db48ad5f404de441d5ff739"
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "f3dfed88f22d0066aaa2a0c58d357c9a9b5f1138b11e3685317bd82d491683f1"
+      "sha256": "e494ba2534df0ee9e01f530e6c8d521cbe8b973b84bc8e4726fa13920f45c63a"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
@@ -354,11 +360,11 @@
     },
     {
       "path": "docs/architecture/prompts/05-composed-context-examples.md",
-      "sha256": "7e1f1cfd2fd6eab71e561cbe3553213359579ad8359a93a48f22a91bf066dd33"
+      "sha256": "e16a8bcbd748d7e94c0d3d84a73a9344daeabe4bcebba7addf5009875a92e02f"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "ec4a8399741dba7457fb00e751477b2ae181829acd9bc4de87c5d5317f8fc4ef"
+      "sha256": "cac1480b13b4bcccb363732ae443a4918f52dead4314ce55816714d2d3deebb3"
     }
   ]
 }

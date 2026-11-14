@@ -151,9 +151,9 @@ const publicTaskTools = [
   },
   {
     name: 'task_list', service: 'task', operation: 'task_list', version: '1.0',
-    description: 'List Mission Tasks and search their short summaries before proposing new work.',
+    description: 'Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.',
     scope: 'task-read', side_effect: false,
-    parameters: { type: 'object', properties: { mission_id: { type: 'string' }, query: { type: 'string' }, state: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, additionalProperties: false },
+    parameters: { type: 'object', properties: { mission_id: { type: 'string' }, query: { type: 'string' }, state: { type: 'string' }, states: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 16 }, available_only: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'task_view', service: 'task', operation: 'task_view', version: '1.0',

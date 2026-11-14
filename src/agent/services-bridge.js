@@ -555,6 +555,10 @@ export class ServicesBridge {
           if (!execution) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace operation requires an active E');
           const result = await this.runtime.dispatchExecutionWorkspace(({ workspace_save: 'save', workspace_status: 'status', workspace_current_diff: 'diff', workspace_public_apply: 'apply' })[operation], payload,
             { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution.fencing_version, requestId: bridgeOperationId });
+          if (operation === 'workspace_save') {
+            try { await this.onWorkUnit?.({ operation, taskId: execution.task_id, executionId: execution.execution_id, payload, result }); }
+            catch (error) { this.logger?.append({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
+          }
           this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
           return result;
         }
@@ -562,6 +566,8 @@ export class ServicesBridge {
           const execution = this.executionId && this.taskService.getExecution(this.executionId);
           const result = await this.runtime.mergeExecutionWorkspace(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution?.fencing_version, requestId: bridgeOperationId });
           assertIdentity();
+          try { await this.onWorkUnit?.({ operation, taskId: execution.task_id, executionId: execution.execution_id, payload, result }); }
+          catch (error) { this.logger?.append({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
           this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
           return result;
         }

@@ -15,7 +15,6 @@ const SHARED_READ_OPERATIONS = new Set(['task_status']);
 const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
     'bot_exit',
-    'list_tasks', 'list_executions',
     'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
     'task_status', 'task_take', 'task_feedback', 'execution_progress',
     'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_view', 'workspace_public_history', 'workspace_public_apply',
@@ -26,21 +25,10 @@ const EXPOSED_OPERATIONS = Object.freeze({
   catalog: new Set(['list_services', 'get_service_metadata', 'list_tools']),
 });
 
-const TOOL_OVERRIDES = Object.freeze({
-  list_tasks: { name: 'task_discover', description: 'Discover the bounded Mission Task view and relevant shared work.' },
-});
-
 function publicTools(serviceId) {
-  const selected = listTools(serviceId)
-    .filter((tool) => EXPOSED_OPERATIONS[serviceId]?.has(tool.operation));
-  const modernNames = new Set(selected.filter((tool) => tool.operation === tool.name).map((tool) => tool.name));
   const seen = new Set();
-  return selected.map((tool) => {
-    const override = TOOL_OVERRIDES[tool.operation] ?? {};
-    if (override.name && modernNames.has(override.name) && tool.operation !== override.name) return null;
-    return { ...tool, ...override };
-  }).filter((tool) => {
-    if (!tool || seen.has(tool.name) || seen.has(tool.operation)) return false;
+  return listTools(serviceId).filter(tool => {
+    if (!EXPOSED_OPERATIONS[serviceId]?.has(tool.operation) || seen.has(tool.name) || seen.has(tool.operation)) return false;
     seen.add(tool.name);
     seen.add(tool.operation);
     return true;

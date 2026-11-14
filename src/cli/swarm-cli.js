@@ -18,7 +18,7 @@ const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-i
 const COMMAND_HELP = Object.freeze({
   bot: { exit: 'End an unbound Bot. Required: --reason no-work or selection-budget. The Core is released after cleanup.' },
   task: {
-    list: 'Discover Mission Tasks. Input: filters such as --mission-id, --state, --limit. Output: bounded task list.',
+    list: 'Search Task summaries across states using --query, --state/--states, --limit (1-100) and --cursor. Follow next_cursor even after an empty page, then view Task details before proposing or taking. Creation order is stable within a scan; state and readiness are live at each page.',
     view: 'Read one Task. Required: <task-id> (or --task-id). Output: authoritative Task, state, relations and Material links.',
     propose: 'Propose a Task with a bounded goal, deliverable and completion conditions. Use --input file or --stdin. Creator and Mission come from the Bot binding.',
     create: 'Create a Task. Use --input or --stdin for the complete Task contract. Output: created Task.',
