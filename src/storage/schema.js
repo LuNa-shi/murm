@@ -168,7 +168,7 @@ CREATE TABLE IF NOT EXISTS executions (
   execution_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   owner_ref TEXT NOT NULL,
-  state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED')),
+  state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'CLOSING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED')),
   state_version INTEGER NOT NULL DEFAULT 0,
   attempt_no INTEGER NOT NULL,
   -- A Core binding is immutable for the lifetime of an Execution.  Legacy
@@ -206,6 +206,19 @@ CREATE TABLE IF NOT EXISTS executions (
   resume_token TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS execution_finish_intents (
+  execution_id TEXT PRIMARY KEY REFERENCES executions(execution_id),
+  request_id TEXT NOT NULL UNIQUE,
+  outcome TEXT NOT NULL CHECK (outcome IN ('done', 'incomplete', 'blocked', 'cancelled')),
+  payload_json TEXT NOT NULL,
+  terminal_state TEXT NOT NULL,
+  reason TEXT,
+  wait_for_task_id TEXT REFERENCES tasks(task_id),
+  replacement_task_id TEXT REFERENCES tasks(task_id),
+  accepted_at TEXT NOT NULL,
+  closed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS operations (

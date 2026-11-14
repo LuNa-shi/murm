@@ -11,6 +11,7 @@ import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { ServicesBridge } from '../src/agent/services-bridge.js';
 import { ContextService } from '../src/context/context-service.js';
+import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { CoreParallelismTracker } from '../src/benchmark/parallelism.js';
 import { ensureAgentSession, releaseTerminalExecution, stopCore } from '../src/benchmark/putnam-runner.js';
 
@@ -20,7 +21,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function fixture(t, { removeSandbox = async () => new Response('{}'), bind = true } = {}) {
+async function fixture(t, { removeSandbox = async () => new Response('{}'), bind = true, runtimeOptions = {} } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarm-cleanup-'));
   const service = new TaskService();
   const sandboxManager = createOpenSandboxManager({
@@ -33,7 +34,7 @@ async function fixture(t, { removeSandbox = async () => new Response('{}'), bind
       return new Response('{}');
     },
   });
-  const runtime = new Runtime({ taskService: service, workspaceManager: new WorkspaceManager({ rootDir: root }), agentAdapter: {}, sandboxManager });
+  const runtime = new Runtime({ taskService: service, workspaceManager: new WorkspaceManager({ rootDir: root }), agentAdapter: {}, sandboxManager, ...runtimeOptions });
   t.after(async () => {
     await runtime.shutdown();
     service.close();
@@ -55,7 +56,7 @@ async function fixture(t, { removeSandbox = async () => new Response('{}'), bind
 function benchmarkCore({ service, runtime, session, executionId }) {
   const core = { index: 1, runtime, session, executionId, taskId: service.getExecution(executionId).task_id, sessionHistory: [session], errors: [], parallelism: new CoreParallelismTracker({ coreCount: 1 }) };
   core.parallelism.transition(1, 'RUNNING', { execution_id: executionId, task_id: core.taskId });
-  core.bridge = new ServicesBridge({ taskService: service, contextService: new ContextService(service.db), runtime, taskId: core.taskId, executionId,
+  core.bridge = new ServicesBridge({ taskService: service, contextService: new ContextService(service.db), runtime, actorRef: service.getExecution(executionId).owner_ref, taskId: core.taskId, executionId,
     onRelease: () => { core.taskId = null; core.executionId = null; },
   });
   return core;
@@ -358,4 +359,205 @@ test('benchmark startup join shares cleanup grace and reports a still-pending la
     assert.equal(state.cleanupErrors.some(error => error.code === 'STARTUP_CLEANUP_TIMEOUT'), true);
     assert.equal(core.sessionStartPromise, startup.promise);
   } finally { startup.resolve(); }
+});
+
+test('accepted incomplete finish keeps the Task occupied through failed cleanup and closes exactly once after retry', async (t) => {
+  let fail = true;
+  const { service, runtime, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });
+  const execution = service.getExecution(executionId);
+  const envelope = makeEnvelope({ operationId: 'finish:cleanup', actorRef: execution.owner_ref, taskId: execution.task_id,
+    executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version });
+  service.dispatch('task_finish', { outcome: 'incomplete', reason: 'Continue this responsibility in a fresh Bot' }, envelope);
+  try {
+    await assert.rejects(runtime.releaseExecution(executionId), (error) => error.code === 'SERVICE_UNAVAILABLE');
+    assert.equal(service.getExecution(executionId).state, 'CLOSING');
+    assert.equal(service.getTask(execution.task_id).state, 'RUNNING');
+    assert.equal(service.listEligibleTasks().length, 0);
+  } finally {
+    fail = false;
+    await runtime.releaseExecution(executionId);
+  }
+  assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
+  assert.equal(service.getTask(execution.task_id).state, 'OPEN');
+  const successor = service.takeTask(execution.task_id, { owner_ref: 'bot:next', core_id: 'core-1', take_key: 'next' });
+  await runtime.releaseExecution(executionId);
+  assert.equal(service.getActiveExecutionForCore('core-1').execution_id, successor.execution.execution_id);
+  assert.equal(service.getTask(execution.task_id).state, 'RUNNING');
+});
+
+test('Runtime completes an accepted finish without a live CLI caller', { timeout: 3000 }, async (t) => {
+  const { service, runtime, session, executionId } = await fixture(t);
+  const closed = deferred();
+  service.subscribeTaskEvents((event) => { if (event.kind === 'task_finish_closed') closed.resolve(); });
+  const execution = service.getExecution(executionId);
+  service.dispatch('task_finish', { outcome: 'done' }, makeEnvelope({ actorRef: execution.owner_ref, taskId: execution.task_id,
+    executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
+  await closed.promise;
+  // Join the already initiated release, including its Workspace cleanup.
+  await runtime.releaseExecution(executionId);
+  assert.equal(session.closed, true);
+  assert.equal(service.getTask(execution.task_id).state, 'DONE');
+  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+});
+
+test('benchmark retries an accepted finish that remained closing after provider failure', async (t) => {
+  let fail = true;
+  const env = await fixture(t, { removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });
+  const { service, runtime, executionId } = env;
+  const core = benchmarkCore(env);
+  const current = service.getExecution(executionId);
+  service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: current.owner_ref, taskId: current.task_id,
+    executionId, specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version }));
+  try { await assert.rejects(runtime.releaseExecution(executionId)); } finally { fail = false; }
+  await releaseTerminalExecution(core);
+  assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
+  assert.equal(core.executionId, null);
+  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+});
+
+test('finish accepted during an existing release is finalized before its Core is reused', async (t) => {
+  const removing = deferred();
+  const removed = deferred();
+  const { service, runtime, executionId } = await fixture(t, { removeSandbox: async () => { removing.resolve(); await removed.promise; return new Response('{}'); } });
+  const release = runtime.releaseExecution(executionId);
+  await removing.promise;
+  const execution = service.getExecution(executionId);
+  service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: execution.owner_ref, taskId: execution.task_id,
+    executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
+  removed.resolve();
+  await release;
+  assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
+  assert.equal(service.getTask(execution.task_id).state, 'OPEN');
+  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+});
+
+for (const trigger of ['restart', 'process_exit', 'fence']) {
+  test(`finish wins safely while ${trigger} awaits physical isolation`, async (t) => {
+    const removing = deferred();
+    const removed = deferred();
+    const { service, runtime, session, executionId } = await fixture(t, { removeSandbox: async () => { removing.resolve(); await removed.promise; return new Response('{}'); } });
+    let pending;
+    if (trigger === 'restart') pending = runtime.restartSession(executionId);
+    else if (trigger === 'fence') pending = runtime.fenceExecution(executionId);
+    else { session.closed = true; session.emit('close'); }
+    // Capture asynchronous rejection before the controlled stop resolves.
+    const completed = pending?.then((value) => ({ value }), (error) => ({ error }));
+    await removing.promise;
+    const execution = service.getExecution(executionId);
+    service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: execution.owner_ref, taskId: execution.task_id,
+      executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
+    removed.resolve();
+    const result = await completed;
+    await runtime.releaseExecution(executionId);
+    assert.equal(result?.error, undefined);
+    assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
+    assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+  });
+}
+
+
+for (const registered of [false, true]) {
+  test(`Bridge preserves an accepted finish when cleanup fails (registry=${registered})`, async (t) => {
+    let fail = true;
+    const { service, runtime, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });
+    const current = service.getExecution(executionId);
+    const context = new ContextService(service.db, { taskService: service });
+    const registry = registered ? createBuiltinServiceRegistry({ taskService: service, contextService: context }) : null;
+    const bridge = new ServicesBridge({ taskService: service, contextService: context, runtime, registry,
+      actorRef: current.owner_ref, taskId: current.task_id, executionId });
+    try {
+      const receipt = await bridge.call({ operation: 'task_finish', service_id: 'task', payload: { outcome: 'incomplete' }, operation_id: 'finish:bridge' });
+      assert.equal(receipt.execution.state, 'CLOSING');
+      assert.equal(receipt.disposition, 'closing');
+      assert.equal(receipt.cleanup_pending, true);
+      assert.equal(bridge.executionId, executionId);
+      assert.equal(service.getTask(current.task_id).state, 'RUNNING');
+    } finally {
+      fail = false;
+      await runtime.releaseExecution(executionId);
+    }
+  });
+}
+
+
+test('concurrent Bridge and benchmark cleanup release only their original binding', async (t) => {
+  const removing = deferred();
+  const removed = deferred();
+  const env = await fixture(t, { removeSandbox: async () => { removing.resolve(); await removed.promise; return new Response('{}'); } });
+  const core = benchmarkCore(env);
+  const finish = core.bridge.call({ operation: 'task_finish', service_id: 'task', payload: { outcome: 'incomplete' } });
+  await removing.promise;
+  const sweep = releaseTerminalExecution(core);
+  removed.resolve();
+  await Promise.all([finish, sweep]);
+  assert.equal(core.executionId, null);
+  assert.equal(core.bridge.executionId, null);
+  assert.equal(env.service.getExecution(env.executionId).state, 'HANDED_OFF');
+});
+
+
+test('Runtime retries a transient finish cleanup failure without CLI or benchmark assistance', { timeout: 3000 }, async (t) => {
+  let attempts = 0;
+  const { service, runtime, executionId } = await fixture(t, {
+    removeSandbox: async () => new Response('{}', { status: ++attempts === 1 ? 503 : 200 }),
+    runtimeOptions: { finishCleanupRetryMs: 10 },
+  });
+  const closed = deferred();
+  service.subscribeTaskEvents((event) => { if (event.kind === 'task_finish_closed') closed.resolve(); });
+  const execution = service.getExecution(executionId);
+  service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: execution.owner_ref, taskId: execution.task_id,
+    executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
+  await closed.promise;
+  await runtime.waitForExecutionRelease(executionId, { timeoutMs: 1000 });
+  assert.equal(attempts, 2);
+  assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
+  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+});
+
+test('automatic finish cleanup has a retry bound and retains ownership when exhausted', { timeout: 3000 }, async (t) => {
+  let attempts = 0;
+  let fail = true;
+  const retried = deferred();
+  const { service, runtime, executionId } = await fixture(t, {
+    removeSandbox: async () => { if (++attempts === 2) retried.resolve(); return new Response('{}', { status: fail ? 503 : 200 }); },
+    runtimeOptions: { finishCleanupRetryMs: 10, maxFinishCleanupRetries: 1 },
+  });
+  const execution = service.getExecution(executionId);
+  service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: execution.owner_ref, taskId: execution.task_id,
+    executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
+  try {
+    await retried.promise;
+    await runtime.waitForSettled();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(attempts, 2);
+    assert.equal(service.getExecution(executionId).state, 'CLOSING');
+    assert.equal(service.getTask(execution.task_id).state, 'RUNNING');
+    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
+  } finally {
+    fail = false;
+    await runtime.sweepExpired();
+  }
+  assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
+});
+
+test('maintenance retries retained Workspace cleanup after finish is already terminal', { timeout: 3000 }, async (t) => {
+  const exhausted = deferred();
+  const { service, runtime, executionId } = await fixture(t, { runtimeOptions: {
+    finishCleanupRetryMs: 10, maxFinishCleanupRetries: 1,
+    logger: { append(event) { if (event.event === 'runtime.finish_cleanup_pending' && event.retries_exhausted) exhausted.resolve(); } },
+  } });
+  const execution = service.getExecution(executionId);
+  const originalPath = execution.workspace_ref;
+  const temporarilyUnavailable = `${originalPath}-offline`;
+  await rename(originalPath, temporarilyUnavailable);
+  try {
+    service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: execution.owner_ref, taskId: execution.task_id,
+      executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
+    await exhausted.promise;
+    await runtime.waitForSettled();
+    assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
+    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
+  } finally { await rename(temporarilyUnavailable, originalPath); }
+  await runtime.sweepExpired();
+  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });

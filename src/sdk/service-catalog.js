@@ -191,12 +191,12 @@ const publicTaskTools = [
   },
   {
     name: 'task_finish', service: 'task', operation: 'task_finish', version: '1.0',
-    description: 'Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.',
+    description: 'Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.',
     scope: 'task-write', side_effect: true,
     parameters: { type: 'object', required: ['outcome'], properties: {
       outcome: { type: 'string', enum: ['done', 'incomplete', 'blocked', 'cancelled'] },
       material_ids: { type: 'array', items: { type: 'string' } }, check_result_id: { type: 'string' },
-      handoff_material_id: { type: 'string' }, blocker: { type: 'object' }, dependency: { type: 'object' }, wait_for: { type: 'object' }, replacement_task_id: { type: 'string' }, reason: { type: 'string' },
+      handoff_material_id: { type: 'string' }, blocker: { type: 'object' }, dependency: { type: 'object' }, wait_for: { type: ['string', 'object'] }, replacement_task_id: { type: 'string' }, reason: { type: 'string' },
     }, additionalProperties: false },
   },
 

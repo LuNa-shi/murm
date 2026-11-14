@@ -7,7 +7,7 @@ These examples reproduce both composition stages of the current Mission Runtime 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Runtime Mission start/restart: exact two-stage composed body for synthetic inputs
 
-Body SHA-256: `b2186b85508b25bd0d49b658ee99d17e0c0f986682f20ce79ca81dce5e2ba9e4`
+Body SHA-256: `174be68a79caa9b1220893b7e726a59da21cf153826f95a7b301dc20e1430df7`
 
 ````text
 You are one SwarmEnv Bot lifecycle working with other Bots toward the supplied Mission; never lower its original acceptance requirements or treat one local Task as Mission completion.
@@ -30,7 +30,7 @@ Treat structured tool errors, missing context, and save failures as observable o
 
 Current role: bound
 
-Profile: registry:af7a58e757e33ab7 / af7a58e757e33ab7f18d69d99d4ae692c02ea95f28fc99b1cd2425255068753d
+Profile: registry:b517eaca4f78d2e8 / b517eaca4f78d2e8048e628537b2306bc05807a56d8e67cc229cd19417113eaa
 
 Callable capability directory:
 
@@ -61,7 +61,7 @@ Callable capability directory:
   - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[mission_id,workspace_id,main_revision,actor_ref] fields=[acceptance,actor_ref,checker,environment,main_revision,material_ids,mission_id,request_id,workspace_id]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
   - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,spawned_from,summary,task_instructions,task_type,timebox_ms,workspace]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.)
   - swarmenv_task_feedback: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state. (logical operation task.task_feedback; writes state; inputs required=[notification_id,decision,action] fields=[action,decision,details,notification_id]; Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.)
-  - swarmenv_task_finish: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.)
+  - swarmenv_task_finish: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.)
   - swarmenv_task_link_material: Link an immutable Material to a Task with an input, response, handoff, or experience role. (logical operation task.task_link_material; writes state; inputs required=[task_id,material_id,role] fields=[material_id,receiving_task_id,role,task_id]; Link an immutable Material to a Task with an input, response, handoff, or experience role.)
   - swarmenv_task_list: List Mission Tasks and search their short summaries before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[limit,mission_id,query,state]; List Mission Tasks and search their short summaries before proposing new work.)
   - swarmenv_task_status: Read the authoritative Mission, Task counts, eligible work, and observation timestamp. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read the authoritative Mission, Task counts, eligible work, and observation timestamp.)
@@ -205,119 +205,119 @@ Recovery: none.
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "execution_progress",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Save a bounded Progress Material and either continue the current Execution or hand it off.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "mission_submission_get",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the durable Mission submission state and its immutable acceptance snapshot.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "mission_submit",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_create",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_feedback",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_finish",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_link_material",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Link an immutable Material to a Task with an input, response, handoff, or experience role.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_list",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: List Mission Tasks and search their short summaries before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_status",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the authoritative Mission, Task counts, eligible work, and observation timestamp.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_take",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Take an existing Mission or ordinary Task using the caller identity and Core lane.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_view",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read one Task, its two relations, state, current Execution, and linked Materials.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_merge",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Conditionally merge one complete public Workspace revision into main after conflict and check validation.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_apply",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Materialize a selected public Mission Workspace revision into the current Execution directory.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_files",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: List files in the immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_read",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read one file from an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_search",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Search text in an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_save",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Save a complete public Mission Workspace file tree as an immutable revision without advancing main.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   }
 ]
@@ -325,7 +325,7 @@ Recovery: none.
 
 Current role: bound
 
-Profile: registry:af7a58e757e33ab7 / af7a58e757e33ab7f18d69d99d4ae692c02ea95f28fc99b1cd2425255068753d
+Profile: registry:b517eaca4f78d2e8 / b517eaca4f78d2e8048e628537b2306bc05807a56d8e67cc229cd19417113eaa
 
 Callable capability directory:
 
@@ -356,7 +356,7 @@ Callable capability directory:
   - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[mission_id,workspace_id,main_revision,actor_ref] fields=[acceptance,actor_ref,checker,environment,main_revision,material_ids,mission_id,request_id,workspace_id]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
   - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,spawned_from,summary,task_instructions,task_type,timebox_ms,workspace]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.)
   - swarmenv_task_feedback: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state. (logical operation task.task_feedback; writes state; inputs required=[notification_id,decision,action] fields=[action,decision,details,notification_id]; Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.)
-  - swarmenv_task_finish: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.)
+  - swarmenv_task_finish: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.)
   - swarmenv_task_link_material: Link an immutable Material to a Task with an input, response, handoff, or experience role. (logical operation task.task_link_material; writes state; inputs required=[task_id,material_id,role] fields=[material_id,receiving_task_id,role,task_id]; Link an immutable Material to a Task with an input, response, handoff, or experience role.)
   - swarmenv_task_list: List Mission Tasks and search their short summaries before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[limit,mission_id,query,state]; List Mission Tasks and search their short summaries before proposing new work.)
   - swarmenv_task_status: Read the authoritative Mission, Task counts, eligible work, and observation timestamp. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read the authoritative Mission, Task counts, eligible work, and observation timestamp.)
@@ -524,7 +524,7 @@ Recovery: none.
     "purpose": "Durable Task goals, takes, structure, and completion evidence.",
     "provider_version": "builtin-1",
     "contract_version": "1",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "documentation": [],
     "capabilities": [
       "execution_progress",
@@ -633,126 +633,126 @@ Recovery: none.
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "execution_progress",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Save a bounded Progress Material and either continue the current Execution or hand it off.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "mission_submission_get",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the durable Mission submission state and its immutable acceptance snapshot.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "mission_submit",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_create",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_feedback",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_finish",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_link_material",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Link an immutable Material to a Task with an input, response, handoff, or experience role.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_list",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: List Mission Tasks and search their short summaries before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_status",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the authoritative Mission, Task counts, eligible work, and observation timestamp.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_take",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Take an existing Mission or ordinary Task using the caller identity and Core lane.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_view",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read one Task, its two relations, state, current Execution, and linked Materials.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_merge",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Conditionally merge one complete public Workspace revision into main after conflict and check validation.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_apply",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Materialize a selected public Mission Workspace revision into the current Execution directory.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_files",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: List files in the immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_read",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read one file from an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_search",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Search text in an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_save",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Save a complete public Mission Workspace file tree as an immutable revision without advancing main.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   }
 ]
 ````
 ## Runtime Mission recovery: exact two-stage composed body for synthetic inputs
 
-Body SHA-256: `3b0d567aa14ff81f5f33ec1635869217dabd970c7e55837a350c16c5a6ef2744`
+Body SHA-256: `4c36765237c6f7fc29c1267b266865e1abe5995844e632474543f6feb250ccd5`
 
 ````text
 Resume the taken Task from its durable Workspace and checkpoint.
@@ -766,7 +766,7 @@ Do not assume the interrupted turn completed. Inspect the current Task, Executio
 
 Current role: recovery
 
-Profile: registry:829e48814bfd98a0 / 829e48814bfd98a0f2bfc057a4b6142735a33d8f9085c3138ea80e5bb04abb2f
+Profile: registry:7400457f9f681a82 / 7400457f9f681a82a107b190e3cd6affa65b5003b4c00e993c50b73a34bfe678
 
 Callable capability directory:
 
@@ -797,7 +797,7 @@ Callable capability directory:
   - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[mission_id,workspace_id,main_revision,actor_ref] fields=[acceptance,actor_ref,checker,environment,main_revision,material_ids,mission_id,request_id,workspace_id]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
   - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,spawned_from,summary,task_instructions,task_type,timebox_ms,workspace]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.)
   - swarmenv_task_feedback: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state. (logical operation task.task_feedback; writes state; inputs required=[notification_id,decision,action] fields=[action,decision,details,notification_id]; Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.)
-  - swarmenv_task_finish: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.)
+  - swarmenv_task_finish: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.)
   - swarmenv_task_link_material: Link an immutable Material to a Task with an input, response, handoff, or experience role. (logical operation task.task_link_material; writes state; inputs required=[task_id,material_id,role] fields=[material_id,receiving_task_id,role,task_id]; Link an immutable Material to a Task with an input, response, handoff, or experience role.)
   - swarmenv_task_list: List Mission Tasks and search their short summaries before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[limit,mission_id,query,state]; List Mission Tasks and search their short summaries before proposing new work.)
   - swarmenv_task_status: Read the authoritative Mission, Task counts, eligible work, and observation timestamp. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read the authoritative Mission, Task counts, eligible work, and observation timestamp.)
@@ -943,119 +943,119 @@ Dependency: none
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "execution_progress",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Save a bounded Progress Material and either continue the current Execution or hand it off.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "mission_submission_get",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the durable Mission submission state and its immutable acceptance snapshot.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "mission_submit",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_create",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_feedback",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_finish",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_link_material",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Link an immutable Material to a Task with an input, response, handoff, or experience role.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_list",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: List Mission Tasks and search their short summaries before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_status",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the authoritative Mission, Task counts, eligible work, and observation timestamp.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_take",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Take an existing Mission or ordinary Task using the caller identity and Core lane.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_view",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read one Task, its two relations, state, current Execution, and linked Materials.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_merge",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Conditionally merge one complete public Workspace revision into main after conflict and check validation.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_apply",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Materialize a selected public Mission Workspace revision into the current Execution directory.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_files",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: List files in the immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_read",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read one file from an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_search",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Search text in an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_save",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Save a complete public Mission Workspace file tree as an immutable revision without advancing main.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   }
 ]
@@ -1063,7 +1063,7 @@ Dependency: none
 
 Current role: bound
 
-Profile: registry:af7a58e757e33ab7 / af7a58e757e33ab7f18d69d99d4ae692c02ea95f28fc99b1cd2425255068753d
+Profile: registry:b517eaca4f78d2e8 / b517eaca4f78d2e8048e628537b2306bc05807a56d8e67cc229cd19417113eaa
 
 Callable capability directory:
 
@@ -1094,7 +1094,7 @@ Callable capability directory:
   - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[mission_id,workspace_id,main_revision,actor_ref] fields=[acceptance,actor_ref,checker,environment,main_revision,material_ids,mission_id,request_id,workspace_id]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
   - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,spawned_from,summary,task_instructions,task_type,timebox_ms,workspace]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.)
   - swarmenv_task_feedback: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state. (logical operation task.task_feedback; writes state; inputs required=[notification_id,decision,action] fields=[action,decision,details,notification_id]; Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.)
-  - swarmenv_task_finish: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.)
+  - swarmenv_task_finish: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.)
   - swarmenv_task_link_material: Link an immutable Material to a Task with an input, response, handoff, or experience role. (logical operation task.task_link_material; writes state; inputs required=[task_id,material_id,role] fields=[material_id,receiving_task_id,role,task_id]; Link an immutable Material to a Task with an input, response, handoff, or experience role.)
   - swarmenv_task_list: List Mission Tasks and search their short summaries before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[limit,mission_id,query,state]; List Mission Tasks and search their short summaries before proposing new work.)
   - swarmenv_task_status: Read the authoritative Mission, Task counts, eligible work, and observation timestamp. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read the authoritative Mission, Task counts, eligible work, and observation timestamp.)
@@ -1262,7 +1262,7 @@ Recovery: none.
     "purpose": "Durable Task goals, takes, structure, and completion evidence.",
     "provider_version": "builtin-1",
     "contract_version": "1",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "documentation": [],
     "capabilities": [
       "execution_progress",
@@ -1371,119 +1371,119 @@ Recovery: none.
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "execution_progress",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Save a bounded Progress Material and either continue the current Execution or hand it off.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "mission_submission_get",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the durable Mission submission state and its immutable acceptance snapshot.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "mission_submit",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_create",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_feedback",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_finish",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_link_material",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Link an immutable Material to a Task with an input, response, handoff, or experience role.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_list",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: List Mission Tasks and search their short summaries before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_status",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the authoritative Mission, Task counts, eligible work, and observation timestamp.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_take",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Take an existing Mission or ordinary Task using the caller identity and Core lane.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "task_view",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read one Task, its two relations, state, current Execution, and linked Materials.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_merge",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Conditionally merge one complete public Workspace revision into main after conflict and check validation.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_apply",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Materialize a selected public Mission Workspace revision into the current Execution directory.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_files",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: List files in the immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_read",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read one file from an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_public_search",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Search text in an immutable Mission Workspace revision before a Task is taken.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "task",
     "service_version": "builtin-1",
     "capability": "workspace_save",
-    "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37",
+    "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b",
     "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Save a complete public Mission Workspace file tree as an immutable revision without advancing main.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   }
 ]

@@ -30,16 +30,16 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `837947ecc352474da371716668ab641a939bc672a6d504b5c29ebabb7d00feb1` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `5b61e34dd15738d4d3cbcaf3863c8b4f8b6c767f3ad01fedd1021e9430775da5` |
 | [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `f32535685b3f964092ae65c62c2a58d8a2cd1721abe7775fc7a6599bf13c17f6` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fb811cb2c59cc4390357dbb072cff0f842fdb537e0bd020f9cc5e56ff74094af` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `86cf9a2116959cc695adde2279422fe173d025eead265165331163f6f3b3911d` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `6ec040f3b59bcd6205733bca1173e58a67e3fac4bb22f2fb76b898bcfe314163` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `1b75bcdc0833c4690709f0120d01c3e71cf0c4f4d61ffe6125f5202110055bbd` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `5a1856f090fc8b26847d2021bc31dca80d9c8eed18699087a68018de4d567510` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `16970e7a08508db64c320120aaa102dbe4d93962cd3d1c68aad5ed46cb7210fc` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `eedbc3e6869e525c16369ca1aca042d12bdc0877a3f4447be4319f23e54e3ddc` |
 
@@ -281,7 +281,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "b18d6326845a778125929c5e51c75cf15ed814b7a61fbb662be22f27e318ef37"
+  "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b"
 }
 ```
 
@@ -867,13 +867,13 @@ Link an immutable Material to a Task with an input, response, handoff, or experi
 
 #### task.task_finish
 
-Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.
+Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.
 
 ```json
 {
   "name": "task_finish",
   "operation": "task_finish",
-  "description": "Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.",
+  "description": "Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -908,7 +908,10 @@ Finish the current Task with one explicit outcome: done, incomplete, blocked, or
         "type": "object"
       },
       "wait_for": {
-        "type": "object"
+        "type": [
+          "string",
+          "object"
+        ]
       },
       "replacement_task_id": {
         "type": "string"
@@ -942,9 +945,9 @@ Finish the current Task with one explicit outcome: done, incomplete, blocked, or
   "requires_binding": false,
   "scope": "task-write",
   "help": {
-    "when": "Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.",
+    "when": "Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.",
     "ref": "service://task/task_finish",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_finish",

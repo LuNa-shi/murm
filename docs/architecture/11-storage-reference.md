@@ -23,6 +23,7 @@ The benchmark normally supplies one project SQLite connection to Task, Context a
 | `missions` | Mission columns are `mission_id`, `goal`, `acceptance_conditions_json`, `created_by`, `created_at`, `updated_at`. Initial Materials/resource budgets are not Mission columns. |
 | `tasks` + `modern_task_records` | Durable Task row plus `modern_task_records` Mission ID, short summary, timebox and registration hash. Responsibility keys live on `tasks`; feedback lives in notifications/receipts. Modern record projection combines these facts. A Mission may begin with zero Tasks; each Task is explicitly created and taken, with no implicit shared-Mission Task. |
 | `executions` | One authorization interval: Task/spec/state/fence, owner/Core, lease/deadline, Workspace/checkpoint, Workspace source/check references, input snapshot/Materials, and terminal reason. A Session restart can retain this Execution. |
+| `execution_finish_intents` | One accepted finish per Execution, unique request ID, immutable payload/outcome, optional wait/replacement references, and acceptance/closure timestamps. Stored atomically with CLOSING and dynamic wait edges; exposed through Task detail. |
 | `task_relations` | Modern `spawned_from` provenance and `depends_on` prerequisite edges. Provenance does not imply a scheduler dependency. |
 | `task_material_links` | A Material's input/response/handoff/experience role for a Task and receiving Task, separate from immutable producer provenance. |
 | `task_notifications` | Durable typed feedback queue with Mission/Task/Execution targeting and fallback delivery/handling metadata. |
@@ -31,7 +32,7 @@ The benchmark normally supplies one project SQLite connection to Task, Context a
 | `material_consumptions` | Explicit `(operation_id, material_id)` consumption with reader Task/Execution, action and optional action reference. Reading/searching alone does not create this row. |
 | `check_results` | Request key/hash and Workspace source binding; status/verdict; separate process status/result class/retryability/diagnostic; applied Task state/version/time. A result is evidence, not universally Mission acceptance. |
 | `checker_preflights` | Checker/environment/project identity, health fingerprint, repeated-failure count and evidence. |
-| `operations`, `take_keys`, `task_creation_keys`, `wait_keys`, `wake_keys` | Replay and conflict protection. Operation replay compares the full stable operation/payload/envelope fingerprint. |
+| `operations`, `take_keys`, `task_creation_keys`, `wait_keys`, `wake_keys` | Replay and conflict protection. Operation replay normally compares the full stable operation/payload/envelope fingerprint. New finish receipts exclude volatile state/fence versions while retaining actor, Task, Execution, spec and payload identity. |
 | `task_creation_provenance`, `task_structure_*`, `task_rework_links` | Retained structural/legacy support: versioned alternative/required groups, explicit dependencies, audit history and rework lineage. These tables still exist at this baseline. |
 | `task_admission_policies`, `execution_admission_counters`, `turn_admission_counters` | Creation/fairness limits and usage accounting; not the authoritative plan for a GitHub development Issue. |
 | `experiments`, `observation_events` | Monitoring registry and ordered projections. `visibility` is a label; Agent reads use the redacted payload column rather than filtering out all private-labeled rows. |
@@ -40,7 +41,7 @@ The benchmark normally supplies one project SQLite connection to Task, Context a
 
 Task and Observation schema setup enables foreign keys, a 5-second SQLite busy timeout and WAL mode. Context and Judge create their tables on the supplied connection. Task/Context dispatch mutation replay and Judge's `submit_check_result` replay use `BEGIN IMMEDIATE` transactions with rollback on failure. Judge commits its RUNNING request before awaiting the external checker; checker health and final result are later writes, so a whole compiler run is not one database transaction. A readonly query is not thereby a distributed snapshot across independently hosted providers.
 
-Constructors inspect existing columns and apply the current schema migrations. Context adds missing `role` (default `experience`) and `mission_id`. Judge adds Workspace source binding, Execution/applied-result metadata and explicit checker outcome fields. Task Service contains migrations for Task/Execution fields, constraints and notification receipts; the source inventory links that constructor. The SQL below is the complete create-schema definition for the reviewed tree.
+Constructors inspect existing columns and apply the current schema migrations. Context adds missing `role` (default `experience`) and `mission_id`. Judge adds Workspace source binding, Execution/applied-result metadata and explicit checker outcome fields. Task Service contains migrations for Task/Execution fields, constraints and notification receipts; the source inventory links that constructor. The Execution CHECK migration adds CLOSING in a transaction, preserving existing columns, non-Core indexes and triggers, and restoring foreign-key enforcement in a finally block. The active-Core index also includes CLOSING. The SQL below is the complete create-schema definition for the reviewed tree.
 
 Durable state can outlive a Session, but runtime recovery still has to validate the current fence, reconstruct/restore a Workspace, reacquire a Core and start a Session. Observation events do not authorize that recovery. See [02 Execution](02-execution.md) and [05 Workspace](05-workspace-continuity.md).
 
@@ -56,7 +57,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Task and Execution database
 
-Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `d7df9ba2e13831fd65b0f5ac885b2e12d023e86b076ef0c45d124abfc490203b`.
+Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `d402f95181e51897432029ce6cb23360d8b266d6e03522b64e49af739468bffe`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -223,7 +224,7 @@ CREATE TABLE IF NOT EXISTS executions (
   execution_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   owner_ref TEXT NOT NULL,
-  state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED')),
+  state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'CLOSING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED')),
   state_version INTEGER NOT NULL DEFAULT 0,
   attempt_no INTEGER NOT NULL,
   -- A Core binding is immutable for the lifetime of an Execution.  Legacy
@@ -261,6 +262,19 @@ CREATE TABLE IF NOT EXISTS executions (
   resume_token TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS execution_finish_intents (
+  execution_id TEXT PRIMARY KEY REFERENCES executions(execution_id),
+  request_id TEXT NOT NULL UNIQUE,
+  outcome TEXT NOT NULL CHECK (outcome IN ('done', 'incomplete', 'blocked', 'cancelled')),
+  payload_json TEXT NOT NULL,
+  terminal_state TEXT NOT NULL,
+  reason TEXT,
+  wait_for_task_id TEXT REFERENCES tasks(task_id),
+  replacement_task_id TEXT REFERENCES tasks(task_id),
+  accepted_at TEXT NOT NULL,
+  closed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS operations (
@@ -615,12 +629,12 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `36b59d0576e3fd8ebbe2b6ff6b01bc45106541880a49977d0318e6ab8844118c`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `44e21c0c9c07195f7e70a60a57539788d8d997b291ab0749ddb55f952ed1beba`.
 
 #### executions_active_core
 
 ```sql
-CREATE INDEX executions_active_core ON executions(core_id, state) WHERE core_id IS NOT NULL AND state IN ('CREATED', 'RUNNING');
+CREATE INDEX executions_active_core ON executions(core_id, state) WHERE core_id IS NOT NULL AND state IN ('CREATED', 'RUNNING', 'CLOSING');
 ```
 
 #### tasks_active_responsibility

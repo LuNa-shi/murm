@@ -50,6 +50,66 @@ usefulness.
 Task completion, consumer acceptance, Workspace artifact PASS and Mission completion are
 four different facts. A report must state which one was observed.
 
+## Accepted finish and safe release
+
+`task_finish` validates the current owner, Execution/spec/state/fence and one of
+`done`, `incomplete`, `blocked`, or `cancelled`. In one SQLite transaction it
+stores an `execution_finish_intents` row keyed by Execution and unique request
+ID, any new `depends_on` edge, and the replacement pointer when supplied. The
+Execution becomes `CLOSING`; the Task remains `RUNNING`, and the Execution still
+occupies its Bot, Core and Task for take eligibility. A new Task contribution or
+Context publication/consumption/correction using that Execution is rejected,
+even if its caller refreshes the state versions. Existing committed Materials
+are retained.
+
+- `done` checks explicit completion-contract requirements and supplied
+  Material/CheckResult references. An empty machine-readable contract does not
+  invent a compulsory linked Material. This trusts the Bot's completion claim
+  against its textual contract; it does not establish scientific correctness.
+- `incomplete` may include a handoff Material but does not require one.
+- `blocked` requires a reason/blocker and a same-Mission, non-cancelled Task.
+  `wait_for` accepts a Task ID or the existing typed Task reference. A new edge
+  joins the same modern dependency graph as creation-time `depends_on`; it is
+  added without removing existing edges, with cycle checks spanning current and retained historical edges and rollback
+  on any validation failure. Only `DONE` satisfies this graph's prerequisites.
+- `cancelled` requires a reason. Its optional replacement may already be done,
+  but must be a different, non-cancelled Task in the same Mission and must not
+  create a replacement-chain cycle. This pointer does not redirect dependents
+  or satisfy their prerequisites.
+
+After commit Task Service emits `execution_finish_accepted`. The Runtime that
+owns the Bot independently starts physical cleanup, so disappearance of the
+finish CLI does not cancel the accepted request. It stops the whole Session
+(including compatibility reusable Sessions for this finish path) and confirms
+Sandbox deletion. Failure retains its Core/process binding and the durable
+`CLOSING` owner. Runtime performs bounded delayed retries independently of its caller. After retry exhaustion, an explicit Runtime `sweepExpired()` call and the benchmark cleanup sweep can retry closing as well as terminal Executions; exhaustion never releases ownership. See [02 Execution](02-execution.md).
+
+Only the trusted, non-Agent `finalizeExecutionFinish` seam completes the
+transition after Runtime confirms isolation. Its transaction requires the same
+Execution/fence, a still-running Task and no other active owner. It records the
+close time, advances the fence, closes the Execution and projects Task state:
+`DONE`, `CANCELLED`, or `OPEN`/`BLOCKED` recomputed from all effective dependencies.
+A prerequisite that finishes during cleanup can therefore make a blocked result
+immediately eligible. Finalization also reconciles direct dependents and emits a committed public change that wakes no-work discovery loops. Repeating a completed finalization makes no further Task
+changes and cannot clear a successor's ownership.
+
+The original finish receipt remains an accepted `closing` receipt. Replaying
+its request ID with the same actor, Task, Execution, spec and payload returns
+that receipt, even with refreshed state/fence versions; changed content or
+identity conflicts. Exact old-format receipts also replay with their original envelope fingerprint. `getExecution` includes its persisted finish, and
+`task_view.finishes` returns finish history with accepted/closed timestamps.
+These records distinguish accepted cleanup from completed cleanup. A new
+Runtime without a known resource binding refuses to finalize merely because
+its in-memory process map is empty. Provider/Bot identity reconstruction across
+process loss remains a separate migration; persistent intent currently prevents
+premature retake rather than guaranteeing automatic recovery.
+
+The lifecycle tests exercise real Task/Context services, reopening and migrating
+SQLite stores, dependency rollback, request replay and trusted finalization.
+Runtime cleanup tests add actual Runtime/Workspace/Bridge/benchmark composition
+with controlled model/provider boundaries. They do not establish deployed
+Sandbox isolation or autonomous research behavior.
+
 ## Feedback
 
 Feedback belongs to a Task and may target a concrete Execution. Every affected

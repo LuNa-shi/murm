@@ -133,7 +133,7 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionSubmissionStore = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = true, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionSubmissionStore = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = true, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -158,6 +158,11 @@ export class Runtime {
     this.runtimeCapabilities = (runtimeCapabilities ?? runtimeCapabilityList())
       .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
     this.maxRecoveryAttempts = maxRecoveryAttempts;
+    if (!Number.isFinite(finishCleanupRetryMs) || finishCleanupRetryMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'finishCleanupRetryMs must be positive');
+    if (!Number.isInteger(maxFinishCleanupRetries) || maxFinishCleanupRetries < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'maxFinishCleanupRetries must be a non-negative integer');
+    this.finishCleanupRetryMs = finishCleanupRetryMs;
+    this.maxFinishCleanupRetries = maxFinishCleanupRetries;
+    this.finishCleanupTimers = new Map();
     if (!Number.isInteger(maxCompactions) || maxCompactions < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'maxCompactions must be a non-negative integer');
     if (!Number.isFinite(handoffWindowRatio) || handoffWindowRatio <= 0 || handoffWindowRatio > 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffWindowRatio must be greater than 0 and at most 1');
     this.maxCompactions = maxCompactions;
@@ -283,7 +288,7 @@ export class Runtime {
     if (!Number.isFinite(pollMs) || pollMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'pollMs must be positive');
     const startedAt = this.clock();
     let current = this.taskService.getExecution(id);
-    while (this.activeProcesses.has(id) || ['CREATED', 'RUNNING'].includes(current?.state)) {
+    while (this.activeProcesses.has(id) || ['CREATED', 'RUNNING', 'CLOSING'].includes(current?.state)) {
       if (signal?.aborted) return { released: false, aborted: true, execution: current, elapsed_ms: this.clock() - startedAt };
       if (timeoutMs !== Number.POSITIVE_INFINITY && this.clock() - startedAt >= timeoutMs) {
         return { released: false, execution: current, elapsed_ms: this.clock() - startedAt };
@@ -313,6 +318,8 @@ export class Runtime {
    */
   async shutdown({ terminalState = 'FAILED', terminalReason = 'runtime_shutdown' } = {}) {
     this.stopping = true;
+    for (const timer of this.finishCleanupTimers.values()) clearTimeout(timer);
+    this.finishCleanupTimers.clear();
     await Promise.allSettled([...this.startupPromises]);
     this.executionStateUnsubscribe?.();
     this.executionStateUnsubscribe = null;
@@ -740,11 +747,9 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (active) {
       await this.#stopExecutionResources(executionId, { forceSessionStop: true });
-      this.activeProcesses.delete(executionId);
-      this.identitySessions.delete(active.session);
-      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
     let current = this.#getExecution(executionId);
+    if (!['CREATED', 'RUNNING'].includes(current.state)) return this.releaseExecution(executionId);
     if (current.state === 'RUNNING') {
       if (current.workspace_ref) {
         await this.workspaceManager.fenceWorkspace({
@@ -754,10 +759,17 @@ export class Runtime {
           newFencingVersion: current.fencing_version + 1,
         });
       }
+      current = this.#getExecution(executionId);
+      if (!['CREATED', 'RUNNING'].includes(current.state)) return this.releaseExecution(executionId);
       current = this.taskService.dispatch('recover_execution', {
         runtime_generation: this.runtimeGeneration,
         ...(agentPrompt ? { agent_prompt: agentPrompt } : {}),
       }, this.#executionEnvelope(current, operationId('session-restart'))).execution;
+    }
+    if (active && this.activeProcesses.get(executionId) === active) {
+      this.activeProcesses.delete(executionId);
+      this.identitySessions.delete(active.session);
+      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
     const restarted = await this.startExecution(executionId, {
       coreId: current.core_id ?? null,
@@ -1342,10 +1354,7 @@ export class Runtime {
     return result;
   }
 
-  /** Release a process and its Workspace after Task Service already reached a
-   * terminal state. This preserves Runtime ownership without another Task
-   * state transition.
-   */
+  /** Stop resources, finalize any accepted finish, then release the Core. */
   async releaseExecution(executionId) {
     const id = requireString(executionId, 'execution_id');
     const pending = this.resourceReleasePromises.get(id);
@@ -1375,7 +1384,20 @@ export class Runtime {
   }
 
   async #releaseExecutionResources(id) {
-    await this.#stopExecutionResources(id);
+    const before = this.#getExecution(id);
+    if (before.state === 'CLOSING' && !this.activeProcesses.has(id)) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
+    }
+    await this.#stopExecutionResources(id, { forceSessionStop: before.state === 'CLOSING' });
+    if (this.#getExecution(id).state === 'CLOSING') {
+      if (!this.activeProcesses.has(id)) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
+      }
+      // Finish may commit while a pre-existing release awaits the provider.
+      // Recheck it after stopping, including a compatibility reusable Session.
+      if (before.state !== 'CLOSING') await this.#stopExecutionResources(id, { forceSessionStop: true });
+      this.taskService.finalizeExecutionFinish(id, { fencingVersion: this.#getExecution(id).fencing_version });
+    }
     const execution = this.#getExecution(id);
     const active = this.activeProcesses.get(id);
     if (execution.workspace_ref) {
@@ -1390,9 +1412,14 @@ export class Runtime {
         fencingVersion: execution.fencing_version,
       });
     }
+    // Workspace I/O also yields: a finish accepted during that interval must
+    // complete before the final synchronous removal of this Core binding.
+    if (this.#getExecution(id).state === 'CLOSING') return this.#releaseExecutionResources(id);
     // Retain the binding and Core on any cleanup failure. A retry must still
     // know which resources it owns, and no successor may use this slot yet.
     if (active && this.activeProcesses.get(id) === active) {
+      clearTimeout(this.finishCleanupTimers.get(id));
+      this.finishCleanupTimers.delete(id);
       this.activeProcesses.delete(id);
       this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
     }
@@ -1441,6 +1468,7 @@ export class Runtime {
     await this.#drainCompactionCheckpoint(activeBeforeFence);
     await this.#stopExecutionResources(executionId);
     execution = this.#getExecution(executionId);
+    if (!['CREATED', 'RUNNING', 'WAITING'].includes(execution.state)) return this.releaseExecution(executionId);
     const result = this.taskService.dispatch('fence_execution', {
       runtime_generation: this.runtimeGeneration,
       terminal_reason: reason,
@@ -1456,6 +1484,13 @@ export class Runtime {
   async sweepExpired(at = new Date()) {
     this.logger?.append({ event: 'runtime.sweep_expired', at: at.toISOString() });
     const expired = [];
+    // A finish may already be terminal while its Workspace release is still
+    // pending. Durable active rows alone cannot enumerate retained resources.
+    for (const id of [...this.activeProcesses.keys()]) {
+      if (!this.taskService.getExecution(id)?.finish) continue;
+      try { await this.releaseExecution(id); }
+      catch (error) { this.logger?.append({ event: 'runtime.finish_cleanup_pending', execution_id: id, error_class: error?.code ?? error?.name }); }
+    }
     for (const execution of this.taskService.listActiveExecutions()) {
       if (!['CREATED', 'RUNNING'].includes(execution.state) || Date.parse(execution.lease_expires_at) > at.getTime()) continue;
       await this.#stopExecutionResources(execution.execution_id);
@@ -2063,7 +2098,28 @@ export class Runtime {
     }
   }
 
+  #startFinishCleanup(id, attempt = 0) {
+    if (this.stopping || !this.activeProcesses.has(id)) return;
+    const promise = this.releaseExecution(id).catch((error) => {
+      this.logger?.append({ event: 'runtime.finish_cleanup_pending', execution_id: id, attempt,
+        retries_exhausted: attempt >= this.maxFinishCleanupRetries, error_class: error?.code ?? error?.name });
+      if (this.stopping || !this.activeProcesses.has(id) || attempt >= this.maxFinishCleanupRetries || this.finishCleanupTimers.has(id)) return;
+      const delay = Math.min(30_000, this.finishCleanupRetryMs * (2 ** attempt));
+      const timer = setTimeout(() => {
+        this.finishCleanupTimers.delete(id);
+        this.#startFinishCleanup(id, attempt + 1);
+      }, delay);
+      this.finishCleanupTimers.set(id, timer);
+    }).finally(() => this.pendingReleasePromises.delete(promise));
+    this.pendingReleasePromises.add(promise);
+  }
+
   #onExecutionState(event) {
+    if (event?.kind === 'execution_finish_accepted') {
+      // Only the Runtime owning the live Bot can confirm its isolation.
+      this.#startFinishCleanup(event.execution_id);
+      return;
+    }
     if (event?.kind !== 'executions_fenced' || !Array.isArray(event.execution_ids)) return;
     for (const executionId of event.execution_ids) {
       if (!executionId || executionId === event.excluded_execution_id || !this.activeProcesses.has(executionId)) continue;
@@ -2365,12 +2421,9 @@ export class Runtime {
     active.lastFailureClass = failureClass;
     const failurePromise = (async () => {
       const coreId = active.coreId;
-      await this.#stopExecutionResources(executionId);
-      this.activeProcesses.delete(executionId);
-      this.#setCoreState(coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
-      const execution = this.#getExecution(executionId);
-      if (execution.state !== 'RUNNING') return { execution };
-      await Promise.resolve(active.session.stop?.()).catch(() => undefined);
+      await this.#stopExecutionResources(executionId, { forceSessionStop: true });
+      let execution = this.#getExecution(executionId);
+      if (execution.state !== 'RUNNING') return this.releaseExecution(executionId);
       this.identitySessions.delete(active.session);
       if (this.stopping) return { execution, disposition: 'stopping' };
       const recoveryAttempt = (this.recoveryAttempts.get(execution.task_id) ?? 0) + 1;
@@ -2400,6 +2453,8 @@ export class Runtime {
           newFencingVersion: nextFencingVersion,
         });
       }
+      execution = this.#getExecution(executionId);
+      if (execution.state !== 'RUNNING') return this.releaseExecution(executionId);
       const recovered = this.taskService.dispatch('recover_execution', {
         runtime_generation: this.runtimeGeneration,
         agent_prompt: recoveryPrompt,
@@ -2408,6 +2463,10 @@ export class Runtime {
       // failed Session's compaction count; only an ordinary handoff carries
       // the lane's count forward.
       this.identityCompactionCounts.delete(this.#identityKey(coreId, execution));
+      if (this.activeProcesses.get(executionId) === active) {
+        this.activeProcesses.delete(executionId);
+        this.#setCoreState(coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+      }
       const replacement = await this.startExecution(recovered.execution.execution_id, { sessionReason: 'recovery' });
       return { execution: execution, recovery: replacement.execution, disposition: 'recovered' };
     })();

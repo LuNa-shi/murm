@@ -346,6 +346,29 @@ export class ServicesBridge {
     });
   }
 
+  async #afterAcceptedFinish(result, payload) {
+    const executionId = result.execution.execution_id;
+    const taskId = result.execution.task_id;
+    try {
+      await this.onWorkUnit?.({ operation: 'task_finish', taskId, executionId, payload, result });
+    } catch (error) {
+      this.logger?.append({ event: 'bridge.finish_observer_error', execution_id: executionId, error_class: error?.code ?? error?.name });
+    }
+    let released;
+    try {
+      if (typeof this.runtime.releaseExecution !== 'function') throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'finish cleanup Runtime is unavailable');
+      released = await this.runtime.releaseExecution(executionId);
+    } catch (error) {
+      this.logger?.append({ event: 'bridge.finish_cleanup_pending', execution_id: executionId, error_class: error?.code ?? error?.name });
+      return { ...result, cleanup_pending: true };
+    }
+    if (this.executionId === executionId && this.taskId === taskId) {
+      try { await this.releaseTake({ result: { ...result, ...released } }); }
+      catch (error) { this.logger?.append({ event: 'bridge.finish_release_observer_error', execution_id: executionId, error_class: error?.code ?? error?.name }); }
+    }
+    return result;
+  }
+
   async releaseTake({ result = null } = {}) {
     const released = { taskId: this.taskId, executionId: this.executionId, result };
     this.taskId = null;
@@ -465,7 +488,7 @@ export class ServicesBridge {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
       }
       const service = this.router ?? { dispatch: (name, body, envelope) => {
-        if (['get_execution', 'list_tasks', 'list_executions', 'task_status', 'task_take', 'task_feedback', 'execution_progress'].includes(name)) return this.taskService.dispatch(name, body, envelope);
+        if (['get_execution', 'list_tasks', 'list_executions', 'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish', 'task_status', 'task_take', 'task_feedback', 'execution_progress'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
       } };
       if (operation === 'execution_progress') {
@@ -601,11 +624,7 @@ export class ServicesBridge {
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
         }
         if (operation === 'task_finish') {
-          await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
-          // The Task Service commits the semantic completion; Runtime owns the
-          // physical Session/Core/Workspace release that follows it.
-          await this.runtime.releaseExecution?.(this.executionId);
-          await this.releaseTake({ result });
+          result = await this.#afterAcceptedFinish(result, payload);
           this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
           return result;
         }
@@ -665,16 +684,7 @@ export class ServicesBridge {
           break;
         case 'task_link_material': result = sdk.linkMaterial(payload, options); break;
         case 'task_finish':
-          result = sdk.finishTask(payload, options);
-          await this.onWorkUnit?.({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
-          // Task Service records the semantic DONE/SUCCEEDED transition first.
-          // Runtime then releases the live Session/Core/Workspace without
-          // attempting a second Task transition.  Test doubles that do not
-          // materialize a Runtime process may omit this optional seam.
-          if (typeof this.runtime.releaseExecution === 'function') {
-            await this.runtime.releaseExecution(boundExecutionId);
-          }
-          await this.releaseTake({ result });
+          result = await this.#afterAcceptedFinish(sdk.finishTask(payload, options), payload);
           break;
         case 'context_search_materials': result = sdk.searchMaterials(payload); break;
         case 'context_get_material': result = sdk.getMaterial(payload.material_id ?? payload.materialId); break;

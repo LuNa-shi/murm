@@ -755,18 +755,21 @@ async function takeTaskWithAgent(core, candidates, prompt) {
 }
 
 export async function releaseTerminalExecution(core) {
-  if (!core.executionId) return;
-  const execution = core.runtime.taskService.getExecution(core.executionId);
-  if (!execution || !['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(execution.state)) return;
-  const activeWorkspace = core.runtime.activeProcesses?.get?.(core.executionId)?.workspace;
-  const latestTake = core.latencyByExecution?.get?.(core.executionId);
+  const executionId = core.executionId;
+  if (!executionId) return;
+  let execution = core.runtime.taskService.getExecution(executionId);
+  if (!execution || !['CLOSING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(execution.state)) return;
+  const activeWorkspace = core.runtime.activeProcesses?.get?.(executionId)?.workspace;
+  const latestTake = core.latencyByExecution?.get?.(executionId);
   if (latestTake && activeWorkspace?.git_commit) latestTake.workspace_git_commit_end = activeWorkspace.git_commit;
   try {
-    await core.runtime.releaseExecution(core.executionId);
+    await core.runtime.releaseExecution(executionId);
+    execution = core.runtime.taskService.getExecution(executionId);
   } catch (error) {
     core.errors.push({ code: error?.code ?? 'CLEANUP_PENDING', class: 'execution_cleanup_pending' });
-    return { cleanup_pending: true, execution_id: core.executionId };
+    return { cleanup_pending: true, execution_id: executionId };
   }
+  if (core.executionId !== executionId || core.bridge.executionId !== executionId) return;
   core.parallelism.transition(core.index, 'IDLE', {
     task_id: execution.task_id,
     execution_id: execution.execution_id,

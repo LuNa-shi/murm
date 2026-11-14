@@ -151,7 +151,7 @@ For every call, the Bridge obtains the current profile, resolves the capability,
 | Retired operation | Legacy lease/wait/tree/rework operations are absent from the live profile; unavailable or unsupported calls are rejected rather than forwarded through a retired runner path |
 | `execution_progress` | Runtime coordinates files, Progress and handoff |
 | Semantic `task_finish(outcome=blocked)` | Runtime boundary; currently callable capability rejected as an alleged external blocker |
-| `task_finish` | Task Service commits completion, then Runtime releases Execution and Bridge clears binding |
+| `task_finish` | Task Service commits a CLOSING finish intent; Runtime confirms process/Sandbox isolation and finalizes Task state before Bridge clears binding; cleanup failure returns the accepted receipt with `cleanup_pending: true` and retains binding |
 | `judge.workspace_check` | Bridge reads the relative Workspace path (or resolves a referenced Material), attaches the current revision/hash attestation and invokes Judge directly. The returned CheckResult is diagnostic feedback; Task completion remains a separate explicit operation. See [04](04-services.md). |
 
 Do not generalize unbound discovery to every similarly named API: the explicit discovery list includes `list_tasks`, `list_executions`, `task_view` and `task_status`; registered `task_list` is not in that branch and normally requires provider binding. The supplied Task view is therefore important when unbound.
@@ -202,3 +202,5 @@ The benchmark's `core.prompt` hash is a hash of a base SOP field, not the evolvi
 Existing checks include [prompt tests](../../test/agent-prompt.test.js), [Pi adapter](../../test/pi-adapter.test.js), [capability profile](../../test/capability-profile.test.js), [profile/Bridge](../../test/capability-profile-bridge.test.js), [flat Task behavior](../../test/task-oriented-flat.test.js), [Judge boundary](../../test/judge-direct-submit.test.js) and [flat benchmark CLI](../../test/flat-only-cli.test.js). These identify tested seams; execution results belong in the linked GitHub Issue/PR and experiment reports.
 
 Known baseline inconsistencies remain visible: benchmark Task instructions prohibit `shell` while a Sandbox-enabled deployment advertises bounded `sandbox_exec`; normal discovery does not automatically send the full Service-document block; Runtime can repeat composed context; and frozen Pi registrations can lag a later Bridge Registry revision. Resolve these through approved Issues. This documentation preserves the actual texts rather than silently improving their wording.
+
+Accepted finish handling captures IDs from the durable receipt before observer callbacks. Observer or release-callback failure is logged without converting the accepted finish into a rejected tool call. The registered and fallback paths use the same handler; an asynchronous callback cannot make it release a different current binding.

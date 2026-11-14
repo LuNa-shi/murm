@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `57a2c83a83c4a7b0bf2130368fb06942616338606b87e62435f50987a4e216b7`
+Body SHA-256: `ed9bab9636d2a4d76798565e7a881f94a57b5fb296a2702622a13a5565f991af`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -85,7 +85,7 @@ Body SHA-256: `57a2c83a83c4a7b0bf2130368fb06942616338606b87e62435f50987a4e216b7`
   - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[mission_id,workspace_id,main_revision,actor_ref] fields=[acceptance,actor_ref,checker,environment,main_revision,material_ids,mission_id,request_id,workspace_id]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
   - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,spawned_from,summary,task_instructions,task_type,timebox_ms,workspace]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.)
   - swarmenv_task_feedback: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state. (logical operation task.task_feedback; writes state; inputs required=[notification_id,decision,action] fields=[action,decision,details,notification_id]; Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.)
-  - swarmenv_task_finish: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.)
+  - swarmenv_task_finish: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.)
   - swarmenv_task_link_material: Link an immutable Material to a Task with an input, response, handoff, or experience role. (logical operation task.task_link_material; writes state; inputs required=[task_id,material_id,role] fields=[material_id,receiving_task_id,role,task_id]; Link an immutable Material to a Task with an input, response, handoff, or experience role.)
   - swarmenv_task_list: List Mission Tasks and search their short summaries before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[limit,mission_id,query,state]; List Mission Tasks and search their short summaries before proposing new work.)
   - swarmenv_task_status: Read the authoritative Mission, Task counts, eligible work, and observation timestamp. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read the authoritative Mission, Task counts, eligible work, and observation timestamp.)
@@ -454,14 +454,14 @@ Body SHA-256: `bb0c294b36bdff3b59a9b08eea93b48b33c2bc0777c9dbbe6cb13c01cb4af43e`
 ````
 ## swarmenv_task_finish
 
-Body SHA-256: `70190a399f8e259f5ba883db0733a4f1e4c62c551542c87b1d8d402aa44a2d86`
+Body SHA-256: `6424e36ee76e14d32993c6f7c4340a5e4ef70fc25aff955c9351ad67c4d6e41e`
 
 ````text
 {
-  "description": "Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.",
-  "promptSnippet": "Task Service: Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.",
+  "description": "Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.",
+  "promptSnippet": "Task Service: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.",
   "promptGuidelines": [
-    "Finish the current Task with one explicit outcome: done, incomplete, blocked, or cancelled.",
+    "Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.",
     "Help: service://task/task_finish"
   ]
 }

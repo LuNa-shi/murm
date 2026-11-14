@@ -179,7 +179,7 @@ export class IdentityTaskLoop {
 
   /** Wake an idle identity loop after Task Controller observes new eligible work. */
   notifyPublicChange(event = {}) {
-    const publicOperations = ['create_task', 'finish_task', 'stop_execution', 'fence_execution', 'expire_execution', 'reopen_task', 'handoff_execution', 'link_material', 'publish_material', 'dispute_material', 'supersede_material', 'unsupersede_material', 'workspace_save', 'workspace_merge'];
+    const publicOperations = ['create_task', 'finish_task', 'finish_closed', 'stop_execution', 'fence_execution', 'expire_execution', 'reopen_task', 'handoff_execution', 'link_material', 'publish_material', 'dispute_material', 'supersede_material', 'unsupersede_material', 'workspace_save', 'workspace_merge'];
     if (event.changed === false || (!publicOperations.includes(event.operation) && event.kind !== 'material_published')) return this.snapshot();
     return this.notify(event.kind ?? event.operation);
   }
