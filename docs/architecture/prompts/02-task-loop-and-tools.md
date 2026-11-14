@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `ed9bab9636d2a4d76798565e7a881f94a57b5fb296a2702622a13a5565f991af`
+Body SHA-256: `caad76f4e4f43407871f84b4c077baa80223ec46cbbf47769a9172f24eadbdbf`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -80,6 +80,7 @@ Body SHA-256: `ed9bab9636d2a4d76798565e7a881f94a57b5fb296a2702622a13a5565f991af`
   - swarmenv_workspace_read_file: Read a text file from the current task-scoped Workspace. (logical operation runtime.read_workspace_file; read-only; inputs required=[path] fields=[max_bytes,path]; Read only a path allowed by the Workspace contract.)
   - swarmenv_workspace_write_file: Write one declared output file in the current task-scoped Workspace and save a revision. (logical operation runtime.write_workspace_file; writes state; inputs required=[path,content] fields=[content,expected_revision,path]; Write only declared outputs with the current Workspace revision.)
 - Task Service — Durable Task goals, takes, structure, and completion evidence.
+  - swarmenv_bot_exit: End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup. (logical operation task.bot_exit; writes state; inputs required=[reason] fields=[reason]; End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.)
   - swarmenv_execution_progress: Save a bounded Progress Material and either continue the current Execution or hand it off. (logical operation task.execution_progress; writes state; inputs required=[kind,progress] fields=[checkpoint,files,kind,progress,reason,summary]; Save a bounded Progress Material and either continue the current Execution or hand it off.)
   - swarmenv_mission_submission_get: Read the durable Mission submission state and its immutable acceptance snapshot. (logical operation task.mission_submission_get; read-only; inputs required=[mission_id] fields=[mission_id,submission_id]; Read the durable Mission submission state and its immutable acceptance snapshot.)
   - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[mission_id,workspace_id,main_revision,actor_ref] fields=[acceptance,actor_ref,checker,environment,main_revision,material_ids,mission_id,request_id,workspace_id]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
@@ -379,6 +380,20 @@ Body SHA-256: `1cd486893b7abd7f2be69895560e2d82e5b2be4c4689004ab1f3d4bd0a82a7f1`
   "promptGuidelines": [
     "Write only declared outputs with the current Workspace revision.",
     "Help: workspace://write-file"
+  ]
+}
+````
+## swarmenv_bot_exit
+
+Body SHA-256: `f131ab42ed8caafa0ff1d0ff1220b5d8ed5ec4efbd8ab108bafebca708dc3f16`
+
+````text
+{
+  "description": "End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.",
+  "promptSnippet": "Task Service: End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.",
+  "promptGuidelines": [
+    "End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.",
+    "Help: service://task/bot_exit"
   ]
 }
 ````

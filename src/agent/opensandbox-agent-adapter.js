@@ -33,11 +33,12 @@ function secretAgentEnvironment(value) {
 }
 
 class RemoteAgentChild extends EventEmitter {
-  constructor(manager, executionId, logger = null) {
+  constructor(manager, executionId, logger = null, observationIdentity = () => ({ execution_id: executionId })) {
     super();
     this.manager = manager;
     this.executionId = executionId;
     this.logger = logger;
+    this.observationIdentity = observationIdentity;
     this.stdout = new PassThrough();
     this.stderr = new PassThrough();
     this.stdin = { writable: true, write: (line) => { void this.#rpc(line); return true; } };
@@ -64,7 +65,7 @@ class RemoteAgentChild extends EventEmitter {
         } catch (error) {
           this.logger?.append({
             event: 'agent_event_poll_error',
-            execution_id: this.executionId,
+            ...this.observationIdentity(),
             error_code: error?.code ?? error?.name ?? 'event_poll_error',
             error_message: String(error?.message ?? error).slice(0, 256),
           });
@@ -109,7 +110,7 @@ class RemoteAgentChild extends EventEmitter {
             if (failures === 1 || (failures & (failures - 1)) === 0 || now - this.lastEventStreamLogAt >= 10_000) {
               this.logger?.append({
                 event: 'agent_event_stream_error',
-                execution_id: this.executionId,
+                ...this.observationIdentity(),
                 retryable: true,
                 failure_count: failures,
                 error_code: error?.code ?? error?.name ?? 'event_stream_error',
@@ -146,7 +147,7 @@ class RemoteAgentChild extends EventEmitter {
     } catch (error) {
       this.logger?.append({
         event: 'agent_rpc_error',
-        execution_id: this.executionId,
+        ...this.observationIdentity(),
         error_code: error?.code ?? error?.name ?? 'agent_rpc_error',
         error_message: String(error?.message ?? error).slice(0, 256),
       });
@@ -223,14 +224,15 @@ export class OpenSandboxAgentAdapter {
     return starting;
   }
 
-  async #startTracked({ executionId, sessionDir = this.config.sessionDir, cwd = null, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = executionId } = {}) {
+  async #startTracked({ executionId, bot = null, signal = null, onSandboxCreated = null, sessionDir = this.config.sessionDir, cwd = null, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = executionId } = {}) {
     await this.#cleanupFailedStarts();
     if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent adapter is stopping');
     this.pendingStartupCleanup ??= new Set();
     required(executionId, 'execution_id');
     try {
-      const session = await this.#startSession({ executionId, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId });
-      if (this.stopping) {
+      if (signal?.aborted) throw signal.reason;
+      const session = await this.#startSession({ executionId, bot, signal, onSandboxCreated, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId });
+      if (this.stopping || signal?.aborted) {
         await session.stop();
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent startup was stopped');
       }
@@ -258,15 +260,16 @@ export class OpenSandboxAgentAdapter {
     }
   }
 
-  async #startSession({ executionId, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId }) {
+  async #startSession({ executionId, bot, signal, onSandboxCreated, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId }) {
     // Runtime passes its host-side session directory to every adapter. The
     // remote worker has one fixed guest work surface and must never receive a
     // host path as an argv or filesystem target.
     const guestSessionDir = '/workspace/.swarm/pi-session';
     const launchArgs = this.buildLaunchArgs({ executionId, sessionId, sessionDir: guestSessionDir });
-    await this.sandboxManager.ensureExecution({ executionId, bindingVersion: observationContext.fencingVersion ?? null });
-    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent startup was stopped');
-    if (cwd) await this.sandboxManager.syncWorkspace({ executionId, workspaceRef: cwd });
+    const sandbox = await this.sandboxManager.ensureExecution({ executionId, botId: bot?.bot_id ?? null,
+      onCreated: onSandboxCreated, bindingVersion: observationContext.fencingVersion ?? null });
+    if (this.stopping || signal?.aborted) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent startup was stopped');
+    if (cwd && !bot) await this.sandboxManager.syncWorkspace({ executionId, workspaceRef: cwd });
     const workerEnvironment = publicAgentEnvironment(this.config.env, this.config.agentEnvironment);
     // Runtime creates the bridge token when each Core's bridge starts. The
     // bridge URL is public worker configuration, but its bearer token must
@@ -298,7 +301,8 @@ export class OpenSandboxAgentAdapter {
       systemPromptPath: this.config.systemPrompt ? join(guestSessionDir, 'identity-system-prompt.md') : null,
       secretEnvironment: workerSecretEnvironment,
     });
-    const child = new RemoteAgentChild(this.sandboxManager, executionId, logger);
+    let session;
+    const child = new RemoteAgentChild(this.sandboxManager, executionId, logger, () => ({ execution_id: bot ? session?.executionId ?? null : executionId, ...(bot ? { bot_id: bot.bot_id, resource_key: executionId } : {}) }));
     const manifest = await createVersionManifest({
       ...this.manifestVersions,
       launchArgs,
@@ -306,7 +310,11 @@ export class OpenSandboxAgentAdapter {
       nurouterVersion: explicitVersions.nurouterVersion === null ? null : (explicitVersions.nurouterVersion ?? guestVersions?.nurouterVersion),
       nodeVersion: explicitVersions.nodeVersion ?? guestVersions?.nodeVersion,
     });
-    const session = new AgentCoreSession(child, { executionId: observationContext.executionId ?? executionId, sessionId, launchArgs, manifest, logger, observation, coreId: observationContext.coreId ?? null, taskId: observationContext.taskId ?? null });
+    const observedExecutionId = bot ? null : (observationContext.executionId ?? executionId);
+    session = new AgentCoreSession(child, { executionId: observedExecutionId, sessionId, launchArgs, manifest, logger, observation, coreId: observationContext.coreId ?? null, taskId: observationContext.taskId ?? null });
+    session.botId = bot?.bot_id ?? null;
+    session.resourceKey = executionId;
+    session.sandboxId = sandbox?.sandbox_id ?? null;
     const stopProcess = session.stop.bind(session);
     session.stop = async (...args) => {
       const result = await stopProcess(...args);
@@ -316,7 +324,7 @@ export class OpenSandboxAgentAdapter {
       await this.sandboxManager.stopExecution(executionId);
       return result;
     };
-    observation?.({ source: 'agent', kind: 'session_started', visibility: 'operator', payload: { launch_args: launchArgs, manifest, transport: 'opensandbox-worker' }, sessionId, executionId: observationContext.executionId ?? executionId, taskId: observationContext.taskId ?? null, coreId: observationContext.coreId ?? null });
+    observation?.({ source: 'agent', kind: 'session_started', visibility: 'operator', payload: { launch_args: launchArgs, manifest, transport: 'opensandbox-worker', bot_id: bot?.bot_id ?? null }, sessionId, executionId: observedExecutionId, taskId: observationContext.taskId ?? null, coreId: observationContext.coreId ?? null });
     if (agentPrompt) {
       await session.waitForReady({ timeoutMs: 30_000 });
       await session.setAutoCompaction(true);

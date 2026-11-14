@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
-const SERVICE_NAMES = ['task', 'material', 'workspace', 'mission', 'judge', 'catalog'];
+const SERVICE_NAMES = ['task', 'bot', 'material', 'workspace', 'mission', 'judge', 'catalog'];
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const ALIASES = Object.freeze({
+  bot: { exit: 'bot_exit' },
   // complete/block/close remain transport aliases for old clients; finish is
   // the single public Task lifecycle command.
   task: { list: 'list_task', discover: 'task_list', view: 'task_view', create: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status' },
@@ -15,6 +16,7 @@ const ALIASES = Object.freeze({
 });
 const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'operation-id', 'timeout-ms']);
 const COMMAND_HELP = Object.freeze({
+  bot: { exit: 'End an unbound Bot. Required: --reason no-work or selection-budget. The Core is released after cleanup.' },
   task: {
     list: 'Discover Mission Tasks. Input: filters such as --mission-id, --state, --limit. Output: bounded task list.',
     view: 'Read one Task. Required: --task-id. Output: authoritative Task, state, relations and Material links.',
@@ -81,7 +83,7 @@ function parseArgs(argv) {
   return { positionals, options };
 }
 
-function transportService(service) { return service === 'material' ? 'context' : service; }
+function transportService(service) { return service === 'material' ? 'context' : service === 'bot' ? 'task' : service; }
 function envName(service) { return `SWARMENV_${transportService(service).toUpperCase()}_SERVICE_URL`; }
 function tokenName(service) { return `SWARMENV_${transportService(service).toUpperCase()}_SERVICE_TOKEN`; }
 function endpointFor(service) { return process.env[envName(service)] ?? null; }
@@ -205,6 +207,17 @@ async function listServices() {
 
 async function invoke(service, commandName, options) {
   const operation = ALIASES[service]?.[commandName] ?? commandName;
+  if (process.env.SWARMENV_BRIDGE_URL) {
+    const bridgeUrl = process.env.SWARMENV_BRIDGE_URL.replace(/\/$/, '');
+    const token = process.env.SWARMENV_BRIDGE_TOKEN;
+    if (!token) throw new Error('SWARMENV_BRIDGE_TOKEN is required for Bot operations');
+    const operationName = operation === 'list_task' ? 'task_list' : operation;
+    return request(`${bridgeUrl}/call`, {
+      method: 'POST', token, timeoutMs: parseScalar(options['timeout-ms']) ?? DEFAULT_REQUEST_TIMEOUT_MS,
+      body: { operation: operationName, operation_id: options['operation-id'] ?? undefined,
+        payload: { ...(await inputFrom(options)), ...flagInput(options) } },
+    });
+  }
   const provider = await manifest(service);
   const capability = provider.capabilities?.find((candidate) => candidate.operation === operation || candidate.name === operation);
   if (!capability) throw new Error(`service ${service} does not advertise capability ${operation}`);

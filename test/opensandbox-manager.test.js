@@ -318,3 +318,35 @@ test('OpenSandbox foreground session mode uses an interruptible Execd session', 
   assert.equal(calls.some((call) => call.url.endsWith('/session/session-1/run')), true);
   await manager.stopExecution('e-session');
 });
+
+test('Bot Sandbox is recorded before endpoint preparation and reused for its sole Execution', async () => {
+  const calls = [];
+  let recorded = false;
+  const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'bot:test', waitForExecdReady: false,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (options.method === 'POST' && url.endsWith('/sandboxes')) return response({ id: 'sandbox:one' });
+      if (url.includes('/endpoints/')) { assert.equal(recorded, true); return response({ url: 'http://execd.test' }); }
+      return response({});
+    },
+  });
+  const unbound = await manager.ensureExecution({ executionId: 'bot:one', botId: 'bot:one', onCreated: (snapshot) => {
+    assert.equal(snapshot.execution_id, null);
+    assert.equal(snapshot.bot_id, 'bot:one');
+    assert.equal(snapshot.sandbox_id, 'sandbox:one');
+    recorded = true;
+  } });
+  assert.equal(unbound.execution_id, null);
+  const metadata = JSON.parse(calls[0].options.body).metadata;
+  assert.equal(metadata.bot_id, 'bot:one');
+  assert.equal(metadata.execution_id, undefined);
+  const bound = manager.bindBotExecution({ botId: 'bot:one', executionId: 'execution:one', bindingVersion: 0 });
+  assert.equal(bound.sandbox_id, unbound.sandbox_id);
+  assert.equal(bound.execution_id, 'execution:one');
+  assert.equal(manager.snapshot().executions.length, 1);
+  assert.throws(() => manager.bindBotExecution({ botId: 'bot:one', executionId: 'execution:two' }), /already bound/);
+  await manager.stopExecution('execution:one');
+  assert.equal(manager.snapshot().executions.length, 0);
+  assert.equal(await manager.stopExecution('bot:one'), false);
+  assert.equal(calls.filter(({ options }) => options.method === 'POST').length, 1);
+});

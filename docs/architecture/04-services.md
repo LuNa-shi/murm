@@ -269,3 +269,7 @@ ServicesRouter first resolves a unique registered capability by name/operation; 
 `LocalServiceDouble` is a deterministic in-memory test seam with Maps and simplified accepted-operation responses. It has no full SQLite lifecycle, real checker, Workspace, Runtime or multi-process semantics, so success against it cannot establish real-Agent acceptance. Fixture/e2e scripts exercise different retained routes; their coverage is classified separately in the [source inventory](INDEX.md).
 
 Sources: [SDK](../../src/sdk/services-sdk.js), [router](../../src/sdk/service-router.js), [local test double](../../src/sdk/local-service-double.js), [SDK tests](../../test/services-sdk.test.js), [service-catalog tests](../../test/service-catalog.test.js).
+
+### Bot CLI routing
+
+When a worker supplies `SWARMENV_BRIDGE_URL`, `swarm` requires `SWARMENV_BRIDGE_TOKEN` and posts its operation and input to `/call`; actor, Core and Execution binding come from the Bridge. This route covers public Task, Material, Workspace and Bot operations, including `swarm bot exit --reason no-work|selection-budget`. Operator-style standalone invocation without a Bridge still discovers the configured Service manifest and calls its advertised path. A configured Bridge failure does not silently fall back to standalone credentials. The `bot` command is a Task Service transport alias in standalone mode.

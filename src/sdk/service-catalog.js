@@ -113,6 +113,12 @@ const TOOL_DEFINITIONS = Object.freeze([
 // name even when an adapter temporarily maps them to an older implementation.
 const publicTaskTools = [
   {
+    name: 'bot_exit', service: 'task', operation: 'bot_exit', version: '1.0',
+    description: 'End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['reason'], properties: { reason: { type: 'string', enum: ['no-work', 'selection-budget'] } }, additionalProperties: false },
+  },
+  {
     name: 'task_status', service: 'task', operation: 'task_status', version: '1.0',
     description: 'Read the authoritative Mission, Task counts, eligible work, and observation timestamp.',
     scope: 'task-read', side_effect: false,

@@ -498,44 +498,40 @@ function scheduleTurn(core, prompt, timeoutMs) {
 }
 
 async function startAgentSession(core) {
-  core.bridge.actorRef = core.actorRef;
-  // A Core owns one reusable Agent identity.  It discovers work and calls
-  // task_take from this same Session; production must not create a detached
-  // old selection transport/session that chooses on the identity's behalf.
   core.childEnv.SWARMENV_AGENT_ROLE = AGENT_ROLES.BOUND;
   core.sessionNumber += 1;
-  const suffix = core.sessionNumber === 1 ? 'worker-session' : `worker-session-${core.sessionNumber}`;
-  const session = await core.adapter.start({
-    executionId: `worker-${core.startConfig.problem.id}-core-${core.index}-session-${core.sessionNumber}`,
-    sessionDir: join(core.coreDir, '.swarm', suffix),
-    cwd: core.coreDir,
-    logger: new DurableEventLog(join(core.startConfig.logRoot, 'agents', `core-${core.index}.ndjson`), { raw: true, scope: `agent:core-${core.index}` }),
-    observation: core.observe,
-    observationContext: { coreId: `core-${core.index}`, taskId: null, executionId: null },
+  const suffix = `bot-session-${core.sessionNumber}`;
+  const { bot, session } = await core.runtime.startBot({
+    missionId: core.stateRef.mission.mission_id,
+    coreId: `core-${core.index}`,
+    selectionTimeoutMs: core.startConfig.options.selectionTimeoutMs ?? 300_000,
+    readyTimeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000,
+    startSession: async ({ bot: startingBot, signal, onSandboxCreated }) => {
+      core.actorRef = startingBot.bot_id;
+      Object.assign(core.childEnv, core.bridge.startBotIdentity(startingBot.bot_id));
+      return core.adapter.start({
+        executionId: startingBot.resource_key,
+        bot: startingBot,
+        signal,
+        onSandboxCreated,
+        sessionDir: join(core.coreDir, '.swarm', suffix),
+        cwd: core.coreDir,
+        logger: new DurableEventLog(join(core.startConfig.logRoot, 'agents', `core-${core.index}.ndjson`), { raw: true, scope: startingBot.bot_id }),
+        observation: core.observe,
+        observationContext: { coreId: `core-${core.index}`, taskId: null, executionId: null },
+      });
+    },
   });
   if (core.stopping) {
-    core.releasedSession = session;
-    await session.stop();
-    if (session.closed === false) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Late Bot stop is unconfirmed');
-    core.releasedSession = null;
+    core.runtime.taskService.requestBotStop(bot.bot_id, 'core-stopped');
+    await core.runtime.releaseBot(bot.bot_id);
     throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core stopped during Bot startup');
   }
-  // This Session is the durable identity for the Core lane. It survives
-  // ordinary Execution completion/handoff and is replaced only by explicit
-  // recovery or identity rotation.
+  core.botId = bot.bot_id;
   session.identitySession = true;
   core.session = session;
   core.sessionHistory.push(session);
   core.versionManifest = session.manifest ?? null;
-  await session.waitForReady({ timeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000 });
-  // Configure retry/compaction on every reusable identity before the first
-  // discovery turn. Adapters apply these flags only for an inline startup
-  // prompt; the benchmark sends discovery as the first later turn.
-  await session.setAutoCompaction?.(true);
-  await session.setAutoRetry?.(true);
-  // The identity loop supplies a bounded Task view to this reusable identity.  The
-  // first prompt is sent by the identity's task_take loop, not by a separate
-  // old selection transport.
   core.unboundSessionCount += 1;
   core.initialTurnPromise = null;
 }
@@ -682,6 +678,11 @@ async function takeTaskWithAgent(core, candidates, prompt) {
   const session = await ensureAgentSession(core);
   if (core.stopping) return { take_deferred: true };
   if (!session) return core.turnInFlight ? { take_deferred: true } : { take_failed: true, error: { code: 'SERVICE_UNAVAILABLE', message: 'Bot session could not start' } };
+  const discoveryBotId = core.botId;
+  const exitedWithoutWork = () => {
+    const bot = core.runtime.taskService.getBot(discoveryBotId);
+    return bot && !bot.execution_id && ['CLOSING', 'CLOSED'].includes(bot.state) && ['no-work', 'selection-budget'].includes(bot.exit_reason);
+  };
   const sequence = session.rpcRecords?.length ?? 0;
   core.takeResult = null;
   core.takeActive = true;
@@ -699,7 +700,7 @@ async function takeTaskWithAgent(core, candidates, prompt) {
     prompt,
     'You are an unbound Bot on this Core. Discover and choose work in this Session; a successful task_take binds this Bot to one Execution.',
     'Prefer suitable existing responsibilities. Read related Tasks in all relevant states, Materials, and public Workspace files within your selection budget. If a useful independent responsibility is missing, propose it with task_create and you may take that new Task. Do not duplicate work merely to occupy a Core.',
-    'The view below is a bounded page of eligible Tasks, not the complete Mission history or an admission allowlist. Use public queries to inspect related work beyond this page. An empty page does not mean the Mission is complete. If no useful work is available, finish discovery without taking a Task.',
+    'The view below is a bounded page of eligible Tasks, not the complete Mission history or an admission allowlist. Use public queries to inspect related work beyond this page. An empty page does not mean the Mission is complete. If no useful work is available, call bot_exit with reason no-work. If your selection budget is exhausted, call bot_exit with reason selection-budget.',
     `Eligible Task page (other Tasks and states may exist):\n${JSON.stringify(selectionView(candidates))}`,
   ].join('\n\n');
   try {
@@ -708,12 +709,14 @@ async function takeTaskWithAgent(core, candidates, prompt) {
       await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: sequence });
     }
     if (core.takeResult?.task?.task_id) return core.takeResult;
+    if (exitedWithoutWork()) return { no_work: true };
     if (core.bridge.lastTakeOutcome?.attempted && !core.bridge.lastTakeOutcome.ok) {
       return { take_failed: true, error: core.bridge.lastTakeOutcome };
     }
     if (core.taskId || core.executionId) return { take_deferred: true };
     return { take_failed: true, error: { code: 'DISCOVERY_INCOMPLETE', message: 'Discovery settled without an accepted take or an explicit no-work outcome' } };
   } catch (error) {
+    if (exitedWithoutWork()) return { no_work: true };
     if (core.bridge.lastTakeOutcome?.attempted && !core.bridge.lastTakeOutcome.ok) {
       return { take_failed: true, error: core.bridge.lastTakeOutcome };
     }
@@ -911,7 +914,7 @@ export async function stopCore(state, core, { cleanupGraceMs = 30_000 } = {}) {
   await waitForCleanup(
     shutdownPromise.then((result) => {
       shutdownSettled = true;
-      cleanupComplete = result.active_process_count === 0 && (result.cleanup_pending_session_count ?? 0) === 0;
+      cleanupComplete = result.active_process_count === 0 && (result.cleanup_pending_session_count ?? 0) === 0 && (result.cleanup_pending_bot_ids?.length ?? 0) === 0;
       if (!cleanupComplete) recordCleanupError({ code: 'RUNTIME_CLEANUP_PENDING', class: 'runtime_cleanup_pending' });
     }).catch(error => {
       recordCleanupError({ code: error?.code ?? 'RUNTIME_CLEANUP_PENDING', class: 'runtime_cleanup_pending' });
@@ -2003,6 +2006,8 @@ async function createProjectState(problem, config, options) {
           agentPrompt: BOUND_AGENT_PROMPT,
         });
         // Publish a usable receipt only after Runtime binding succeeds.
+        take.execution = bound.execution;
+        take.workspace = bound.workspace;
         core.takeResult = take;
         const boundSession = core.session;
         const boundExecutionId = take.execution.execution_id;

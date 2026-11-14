@@ -180,3 +180,25 @@ test('OpenSandbox Agent adapter replays worker history after provider SSE become
   assert.match(session.stdout, /"worker_sequence":1/);
   await session.stop();
 });
+
+test('unbound Bot adapter records its Sandbox without copying a Core directory or inventing an Execution', async () => {
+  const manager = new FakeSandboxManager();
+  let recorded;
+  manager.ensureExecution = async ({ executionId, botId, onCreated }) => {
+    assert.equal(executionId, 'bot:new');
+    assert.equal(botId, 'bot:new');
+    const snapshot = { bot_id: botId, execution_id: null, sandbox_id: 'sandbox:new' };
+    await onCreated(snapshot);
+    return snapshot;
+  };
+  manager.syncWorkspace = async () => { assert.fail('unbound Bot must not inherit the Core directory'); };
+  const events = [];
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
+  const session = await adapter.start({ executionId: 'bot:new', bot: { bot_id: 'bot:new' }, cwd: '/host/core', onSandboxCreated: snapshot => { recorded = snapshot; }, observation: event => events.push(event) });
+  try {
+    assert.equal(recorded.sandbox_id, 'sandbox:new');
+    assert.equal(session.executionId, null);
+    assert.equal(session.botId, 'bot:new');
+    assert.equal(events.find(event => event.kind === 'session_started').executionId, null);
+  } finally { await session.stop(); }
+});

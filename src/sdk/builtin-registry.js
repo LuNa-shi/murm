@@ -14,6 +14,7 @@ const ALL_ROLES = Object.freeze(['bound', 'recovery']);
 const SHARED_READ_OPERATIONS = new Set(['task_status']);
 const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
+    'bot_exit',
     'list_tasks', 'list_executions',
     'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
     'task_status', 'task_take', 'task_feedback', 'execution_progress',
@@ -117,7 +118,7 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
       audience: audienceFor(tool),
       side_effect: tool.side_effect ? 'write' : 'read',
       idempotent: !tool.side_effect,
-      context: serviceId === 'catalog' || ['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'mission_submit', 'mission_submission_get'].includes(tool.operation) ? [] : ['task', 'execution'],
+      context: serviceId === 'catalog' || ['bot_exit', 'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'mission_submit', 'mission_submission_get'].includes(tool.operation) ? [] : ['task', 'execution'],
       help: {
         when: tool.description,
         ref: `service://${serviceId}/${tool.operation}`,

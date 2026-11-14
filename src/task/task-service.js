@@ -13,6 +13,7 @@ import {
 
 const EXECUTION_WRITE_OPERATIONS = new Set(['execution_progress', 'expire_execution', 'fence_execution', 'finish_task', 'heartbeat', 'handoff_execution', 'link_material', 'record_handoff_reminder', 'recover_execution', 'save_checkpoint', 'save_workspace_revision', 'start_execution', 'stop_execution', 'task_feedback']);
 const MODERN_OPERATION_ALIASES = Object.freeze({
+  'bot.exit': 'bot_exit',
   'mission.create': 'create_mission',
   'mission.get': 'get_mission',
   'task.create': 'create_task',
@@ -40,6 +41,7 @@ const MODERN_OPERATION_ALIASES = Object.freeze({
 const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'finish_task', 'task_feedback']);
 const MODERN_READ_OPERATIONS = new Set(['get_mission', 'list_task', 'view_task', 'list_task_materials']);
 const TASK_MUTATING_OPERATIONS = new Set([
+  'bot_exit',
   'reconcile_task', 'reopen_task', 'start_execution', 'stop_execution', 'fence_execution', 'recover_execution', 'save_checkpoint', 'save_workspace_revision', 'handoff_execution',
   'link_material', 'finish_task',
   ...MODERN_MUTATING_OPERATIONS,
@@ -179,6 +181,8 @@ export class TaskService {
   constructor(database = ':memory:', { contextService = null, checkerHealthReader = null, logger = null, admission = {} } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(SCHEMA_SQL);
+    const botColumns = new Set(this.db.prepare('PRAGMA table_info(bots)').all().map(column => column.name));
+    if (!botColumns.has('stop_terminal_state')) this.db.exec('ALTER TABLE bots ADD COLUMN stop_terminal_state TEXT');
     // Notifications gained per-recipient handling state after the initial
     // lifecycle schema.  Keep old persistent stores readable while allowing
     // a shared Mission notification to be delivered and handled independently
@@ -652,6 +656,9 @@ export class TaskService {
       if (normalizedOperation === 'finish_task' && !replayed) {
         this.#emitExecutionState({ kind: 'execution_finish_accepted', execution_id: result.execution.execution_id });
       }
+      if (normalizedOperation === 'bot_exit' && !replayed) {
+        this.#emitExecutionState({ kind: 'bot_exit_accepted', bot_id: result.bot.bot_id });
+      }
       if (TASK_EVENT_OPERATIONS.has(normalizedOperation) && !replayed && (normalizedOperation !== 'reconcile_task' || result?.changed === true)) {
         this.#emitTaskEvent({
           kind: `task_${normalizedOperation}`,
@@ -679,6 +686,101 @@ export class TaskService {
   /** Public Mission lookup for the Issue #100 flat Task surface. */
   getMission(missionId) {
     return this.#getMission(requireString(missionId, 'mission_id'));
+  }
+
+  getBot(botId) {
+    const row = this.db.prepare('SELECT * FROM bots WHERE bot_id = ?').get(requireString(botId, 'bot_id'));
+    return row ? { ...row } : null;
+  }
+
+  /** Runtime-only registration; no model capability may invent a Bot identity. */
+  registerBot({ botId = `bot:${randomUUID()}`, missionId, coreId, selectionDeadline }) {
+    requireString(botId, 'bot_id');
+    requireString(missionId, 'mission_id');
+    requireString(coreId, 'core_id');
+    if (typeof selectionDeadline !== 'string' || !Number.isFinite(Date.parse(selectionDeadline)) || Date.parse(selectionDeadline) <= Date.now()) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'selection_deadline must be a finite future timestamp');
+    }
+    return this.#transaction(() => {
+      if (!this.getMission(missionId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unknown Mission');
+      if (this.getBot(botId)) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot identity already exists');
+      const occupant = this.db.prepare("SELECT bot_id FROM bots WHERE mission_id = ? AND core_id = ? AND state <> 'CLOSED'").get(missionId, coreId);
+      if (occupant) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core still owns a Bot', { bot_id: occupant.bot_id });
+      const startedAt = now();
+      this.db.prepare(`INSERT INTO bots (bot_id, mission_id, core_id, state, selection_deadline, resource_key, started_at, updated_at)
+        VALUES (?, ?, ?, 'STARTING', ?, ?, ?, ?)`).run(botId, missionId, coreId, selectionDeadline, botId, startedAt, startedAt);
+      return this.getBot(botId);
+    });
+  }
+
+  recordBotSandbox(botId, { provider, sandboxId }) {
+    requireString(provider, 'provider');
+    requireString(sandboxId, 'sandbox_id');
+    return this.#transaction(() => {
+      const bot = this.getBot(botId);
+      if (!bot || bot.state === 'CLOSED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot is not awaiting a resource');
+      if (bot.sandbox_id && (bot.sandbox_id !== sandboxId || bot.provider !== provider)) {
+        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot already owns another sandbox');
+      }
+      this.db.prepare('UPDATE bots SET provider = ?, sandbox_id = ?, updated_at = ? WHERE bot_id = ?').run(provider, sandboxId, now(), botId);
+      return this.getBot(botId);
+    });
+  }
+
+  markBotReady(botId) {
+    return this.#transaction(() => {
+      const bot = this.getBot(botId);
+      if (bot?.state === 'UNBOUND') return bot;
+      if (!bot || bot.state !== 'STARTING' || !bot.sandbox_id || Date.parse(bot.selection_deadline) <= Date.now()) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup is not eligible to become ready');
+      }
+      const readyAt = now();
+      this.db.prepare("UPDATE bots SET state = 'UNBOUND', ready_at = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
+        .run(readyAt, readyAt, botId);
+      return this.getBot(botId);
+    });
+  }
+
+  /** Runtime-only stop; a taken Task must already have reached a terminal state. */
+  requestBotStop(botId, reason, { terminalState = null } = {}) {
+    requireString(reason, 'reason');
+    if (terminalState !== null && !TERMINAL_EXECUTION_STATES.includes(terminalState)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot stop requires a terminal Execution state');
+    return this.#transaction(() => {
+      const bot = this.getBot(botId);
+      if (!bot || (bot.execution_id && !terminalState && !TERMINAL_EXECUTION_STATES.includes(this.getExecution(bot.execution_id)?.state))) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bound Bot must close through its Execution');
+      }
+      if (['CLOSING', 'CLOSED'].includes(bot.state)) return bot;
+      this.db.prepare("UPDATE bots SET state = 'CLOSING', exit_request_id = ?, exit_reason = ?, stop_terminal_state = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
+        .run(`runtime:${randomUUID()}`, reason, terminalState, now(), botId);
+      return this.getBot(botId);
+    });
+  }
+
+  /** Trusted Runtime confirms all resources have stopped before freeing a Bot/Core. */
+  finalizeBotClose(botId) {
+    return this.#transaction(() => {
+      const bot = this.getBot(botId);
+      if (bot?.state === 'CLOSED') return bot;
+      if (!bot || bot.state !== 'CLOSING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot has no accepted close');
+      if (bot.execution_id && !TERMINAL_EXECUTION_STATES.includes(this.getExecution(bot.execution_id)?.state)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot Execution has not safely closed');
+      }
+      const closedAt = now();
+      this.db.prepare("UPDATE bots SET state = 'CLOSED', closed_at = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
+        .run(closedAt, closedAt, botId);
+      return this.getBot(botId);
+    });
+  }
+
+  #exitBot(payload, envelope) {
+    if (envelope.execution_id || envelope.task_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bound Bot must finish its Task');
+    const bot = this.getBot(envelope.actor_ref);
+    if (!bot || bot.state !== 'UNBOUND' || bot.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bot exit requires an unbound Bot with no pending take');
+    if (!['no-work', 'selection-budget'].includes(payload.reason)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bot exit reason must be no-work or selection-budget');
+    this.db.prepare("UPDATE bots SET state = 'CLOSING', exit_request_id = ?, exit_reason = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
+      .run(envelope.operation_id, payload.reason, now(), bot.bot_id);
+    return { bot: this.getBot(bot.bot_id), disposition: 'closing' };
   }
 
   createMission(input, envelope = makeEnvelope({ actorRef: input?.created_by ?? 'unknown' })) {
@@ -1824,6 +1926,7 @@ export class TaskService {
 
   #mutate(operation, payload, envelope) {
     switch (operation) {
+      case 'bot_exit': return this.#exitBot(payload, envelope);
       case 'create_mission': return this.#createMission(payload, envelope);
       case 'create_task': return this.#createModernTask(payload, envelope);
       case 'link_material': return this.#linkMaterial(payload, envelope);
@@ -1848,6 +1951,10 @@ export class TaskService {
   }
 
   #acceptTaskFinish(payload, envelope, { outcome, terminalState, waitForTaskId = null, replacementTaskId = null }) {
+    const bot = this.getBot(envelope.actor_ref);
+    if (bot && (bot.state !== 'ACTIVE' || bot.execution_id !== envelope.execution_id)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Only an active Bot may request a new Task finish');
+    }
     const execution = this.#executionForWrite(envelope);
     if (execution.owner_ref !== envelope.actor_ref || !['CREATED', 'RUNNING'].includes(execution.state)) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the current active owner may finish');
@@ -1858,6 +1965,8 @@ export class TaskService {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(execution.execution_id, envelope.operation_id, outcome, json(payload),
         terminalState, payload.reason ?? outcome, waitForTaskId, replacementTaskId, acceptedAt);
     this.db.prepare("UPDATE executions SET state = 'CLOSING', state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
+      .run(acceptedAt, execution.execution_id);
+    this.db.prepare("UPDATE bots SET state = 'CLOSING', state_version = state_version + 1, updated_at = ? WHERE execution_id = ? AND state <> 'CLOSED'")
       .run(acceptedAt, execution.execution_id);
     return { task: this.getTask(execution.task_id), execution: this.getExecution(execution.execution_id), disposition: 'closing' };
   }
@@ -2373,6 +2482,13 @@ export class TaskService {
     const ownerRef = payload.owner_ref ?? envelope.actor_ref;
     const coreId = payload.core_id ?? payload.coreId ?? null;
     if (coreId !== null) requireString(coreId, 'core_id');
+    const bot = this.getBot(ownerRef);
+    const occupiedBot = coreId === null ? null : this.db.prepare("SELECT bot_id FROM bots WHERE mission_id = ? AND core_id = ? AND state <> 'CLOSED'").get(this.#taskMissionId(task.task_id), coreId);
+    if (occupiedBot && occupiedBot.bot_id !== ownerRef) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns another Bot');
+    if (bot && (envelope.actor_ref !== ownerRef || bot.state !== 'UNBOUND' || bot.execution_id || bot.mission_id !== this.#taskMissionId(task.task_id) || bot.core_id !== coreId || Date.parse(bot.selection_deadline) <= Date.now())) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot cannot reserve another Execution or leave its Mission/Core');
+    }
+
     // A Bot is represented by its authenticated owner reference for the
     // coordination boundary. It may have zero or one active Execution. A
     // successor Bot receives a fresh owner reference after the previous
@@ -2489,6 +2605,8 @@ export class TaskService {
     if (coreId !== null) {
       this.db.prepare('UPDATE executions SET core_id = ? WHERE execution_id = ?').run(coreId, executionId);
     }
+    if (bot) this.db.prepare("UPDATE bots SET execution_id = ?, state = 'PREPARING', state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
+      .run(executionId, createdAt, bot.bot_id);
     this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, eligible_at = CASE WHEN ? = \'OPEN\' THEN eligible_at ELSE NULL END, updated_at = ? WHERE task_id = ?')
       .run('RUNNING', 'RUNNING', createdAt, task.task_id);
     this.db.prepare('INSERT INTO take_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
@@ -2593,6 +2711,8 @@ export class TaskService {
     }
     this.db.prepare('UPDATE executions SET state = ?, core_id = COALESCE(?, core_id), started_at = ?, handoff_deadline = ?, execution_deadline = ?, handoff_reminder_sent_at = NULL, terminal_reason = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
       .run('RUNNING', coreId, startedAt, handoffDeadline, executionDeadline, updatedAt, execution.execution_id);
+    this.db.prepare("UPDATE bots SET state = 'ACTIVE', state_version = state_version + 1, updated_at = ? WHERE execution_id = ? AND state = 'PREPARING'")
+      .run(updatedAt, execution.execution_id);
     return { execution: this.getExecution(execution.execution_id) };
   }
 

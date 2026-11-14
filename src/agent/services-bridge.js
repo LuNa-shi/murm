@@ -18,6 +18,7 @@ const WORKSPACE_OPERATIONS = new Set([
 // owns an Execution. Requiring an Execution for these operations makes a
 // zero-Task Mission impossible to bootstrap.
 const UNBOUND_OPERATIONS = new Set([
+  'bot_exit',
   'task_list', 'task_view', 'task_status', 'task_create',
   'read_materials', 'context_search_materials', 'context_get_material',
   'material_read', 'material_search', 'material_get',
@@ -196,6 +197,21 @@ export class ServicesBridge {
 
   beginTakeAttempt() {
     this.lastTakeOutcome = null;
+  }
+
+  startBotIdentity(botId) {
+    const bot = this.taskService.getBot(botId);
+    const previous = this.taskService.getBot(this.actorRef);
+    if (!bot || bot.state !== 'STARTING' || bot.core_id !== this.coreId ||
+        this.executionId || (previous && previous.state !== 'CLOSED')) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge cannot replace an occupied Bot');
+    }
+    this.actorRef = botId;
+    this.token = randomUUID();
+    this.lastTakeOutcome = null;
+    this.capabilityProfile = null;
+    this.capabilityProfileRegistryRevision = null;
+    return this.environment();
   }
 
 
@@ -443,8 +459,10 @@ export class ServicesBridge {
       send(response, 401, { ok: false, error: { code: 'UNAUTHORIZED', message: 'invalid bridge token' } });
       return;
     }
+    const authenticatedToken = this.token;
     try {
       const input = await readBody(request);
+      if (authenticatedToken !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed while reading the request');
       const result = await this.call(input);
       send(response, 200, { ok: true, result });
       this.logger?.append({ event: 'bridge.response_sent', operation: input.operation });
@@ -463,6 +481,14 @@ export class ServicesBridge {
   }
 
   async call({ operation, payload = {}, operation_id: operationId = null, service_id: serviceId = null, capability_id: capabilityId = null } = {}) {
+    const identityToken = this.token;
+    const assertIdentity = (beforeDispatch = false) => {
+      if (this.token !== identityToken) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before dispatch');
+      const bot = beforeDispatch ? this.taskService.getBot?.(this.actorRef) : null;
+      if (bot && !['UNBOUND', 'ACTIVE'].includes(bot.state) && !['bot_exit', 'task_finish'].includes(operation)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped before dispatch');
+      }
+    };
     const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
     this.logger?.append({ event: 'bridge.start', operation, operation_id: bridgeOperationId, task_id: this.taskId, execution_id: this.executionId, payload });
     try {
@@ -483,6 +509,13 @@ export class ServicesBridge {
         });
       }
       const boundTask = this.taskId ? this.taskService.getTask(this.taskId) : null;
+      const bot = this.taskService.getBot?.(this.actorRef);
+      if (bot && !['UNBOUND', 'ACTIVE'].includes(bot.state) && !['bot_exit', 'task_finish'].includes(operation)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot is not authorized to contribute in its current state', { bot_state: bot.state });
+      }
+      if (operation === 'bot_exit') {
+        return this.taskService.dispatch('bot_exit', payload, makeEnvelope({ actorRef: this.actorRef, operationId: bridgeOperationId }));
+      }
       const modernBoundTask = boundTask?.mission_id ? boundTask : null;
       if (modernBoundTask && WORKSPACE_OPERATIONS.has(operation) && !usesWorkspace(modernBoundTask)) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
@@ -569,9 +602,11 @@ export class ServicesBridge {
           }
           : payload;
         const invoke = async () => {
+          assertIdentity(true);
           if (operation === 'task_create') {
             const guard = this.onTaskCreate?.({ taskId: this.taskId, executionId: this.executionId, payload });
             if (guard && typeof guard.then === 'function') await guard;
+            assertIdentity(true);
             assertTaskCapabilityAdmission(payload, profile);
           }
           if (operation === 'task_take') this.lastTakeOutcome = { attempted: true, ok: false, task_id: invocationPayload.task_id ?? null };
@@ -614,11 +649,13 @@ export class ServicesBridge {
               },
             };
           }
+          assertIdentity(true);
           return this.#invokeRegistered(capability, registeredPayload, bridgeOperationId);
         };
         let result = operation === 'task_create' && this.taskCreateMutex
           ? await this.taskCreateMutex.run(invoke)
           : await invoke();
+        assertIdentity();
         if (operation === 'task_take') {
           await this.bindTake(result);
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
@@ -662,8 +699,10 @@ export class ServicesBridge {
         case 'task_create':
           {
             const createTask = async () => {
+              assertIdentity(true);
               const guard = this.onTaskCreate?.({ taskId: boundTaskId, executionId: boundExecutionId, payload });
               if (guard && typeof guard.then === 'function') await guard;
+              assertIdentity(true);
               assertTaskCapabilityAdmission(payload, profile);
               return sdk.createTask(payload, options);
             };
@@ -758,7 +797,7 @@ export class ServicesBridge {
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
       return result;
     } catch (error) {
-      if (operation === 'task_take') {
+      if (operation === 'task_take' && this.token === identityToken) {
         this.lastTakeOutcome = {
           attempted: true, ok: false, task_id: payload?.task_id ?? null, operation_id: bridgeOperationId,
           code: error.code ?? 'SERVICE_UNAVAILABLE', message: error.message,

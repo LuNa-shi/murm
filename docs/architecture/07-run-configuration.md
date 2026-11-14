@@ -192,3 +192,7 @@ Relevant deterministic tests: [flat benchmark CLI](../../test/flat-only-cli.test
 ### Phase 02 migration and comparison labels
 
 The repaired discovery path gives every Core the same autonomous local-Task selection instructions. The `direct`, `semantic` and `root-only` option values remain accepted for historical report/configuration compatibility, but the old treatment-specific `taskPayload` instructions are not the new discovery sender. These labels currently do not establish distinct experimental interventions. Do not use them as comparative research conditions until treatment delivery and actual behavior are separately implemented and verified. This limitation does not authorize a new comparison or alter the approved fixture/checker.
+
+### Registered Bot startup and cleanup accounting
+
+Each Core startup now calls `Runtime.startBot` with the shared Mission, its Core ID, `selectionTimeoutMs` (default 300,000 ms) and readiness timeout (`turnTimeoutMs`, default 30,000 ms). The adapter factory receives the newly persisted Bot and provider-ID callback; the Bridge rotates identity/token before worker launch. Core records retain `botId` for discovery-result interpretation. An explicit durable no-work/budget exit lets the identity loop wait for relevant public changes; an empty turn does not. Cleanup is complete only when active processes, retained Sessions, pending Bot IDs and adapter/startup cleanup are all empty. These checks supplement the finite whole-run cleanup grace above.

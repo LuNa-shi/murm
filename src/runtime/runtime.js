@@ -178,6 +178,8 @@ export class Runtime {
     this.onSessionStarted = onSessionStarted;
     this.onCoreEvent = onCoreEvent;
     this.activeProcesses = new Map();
+    this.botBindings = new Map();
+    this.botStopPromises = new Map();
     this.coreStates = new Map();
     // Compaction count belongs to the reusable identity/lane, not to one
     // Execution. An ordinary Task handoff keeps the count; an explicit
@@ -204,6 +206,117 @@ export class Runtime {
     this.notificationUnsubscribe = typeof this.taskService?.subscribeNotifications === 'function'
       ? this.taskService.subscribeNotifications((notification) => this.#onNotification(notification))
       : null;
+  }
+
+  startBot(options) {
+    return this.#trackStartup(() => this.#startBot(options));
+  }
+
+  async #startBot({ missionId, coreId, selectionTimeoutMs = 300_000, startSession, readyTimeoutMs = 30_000 }) {
+    if (typeof startSession !== 'function' || !Number.isFinite(selectionTimeoutMs) || selectionTimeoutMs <= 0 || selectionTimeoutMs > 2_147_483_647 ||
+        !Number.isFinite(readyTimeoutMs) || readyTimeoutMs <= 0) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot requires a Session factory and finite selection timeout');
+    }
+    if (this.getCoreStatus(coreId)?.state !== 'IDLE' || this.taskService.getActiveExecutionForCore(coreId)) {
+      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core is occupied');
+    }
+    const bot = this.taskService.registerBot({ missionId, coreId, selectionDeadline: new Date(Date.now() + selectionTimeoutMs).toISOString() });
+    const binding = { botId: bot.bot_id, coreId, session: null, starting: true, selectionTimer: null };
+    this.botBindings.set(bot.bot_id, binding);
+    this.#setCoreState(coreId, { state: 'STARTING', bot_id: bot.bot_id, execution_id: null, task_id: null });
+    const controller = new AbortController();
+    binding.cancelStartup = () => controller.abort(new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped'));
+    const cancelled = new Promise((_, reject) => controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true }));
+    void cancelled.catch(() => undefined);
+    const stopUnbound = (reason) => {
+      const current = this.taskService.getBot(bot.bot_id);
+      if (current?.state === 'PREPARING' && current.execution_id) {
+        if (binding.closing) return;
+        this.#prepareBotExecutionStop(current.execution_id, 'FAILED', reason);
+        this.#startFinishCleanup(current.execution_id);
+        return;
+      }
+      if (!current || !['STARTING', 'UNBOUND'].includes(current.state) || current.execution_id) return;
+      this.taskService.requestBotStop(bot.bot_id, reason);
+      binding.cancelStartup();
+      this.#startFinishCleanup(bot.bot_id, 0, true);
+    };
+    binding.selectionTimer = setTimeout(() => stopUnbound('selection-budget'), selectionTimeoutMs);
+    binding.selectionTimer.unref?.();
+    const factory = Promise.resolve().then(() => startSession({ bot, signal: controller.signal,
+      onSandboxCreated: (resource) => this.taskService.recordBotSandbox(bot.bot_id,
+        { provider: resource.provider ?? 'opensandbox', sandboxId: resource.sandbox_id }) }));
+    const prepared = factory.then((session) => {
+      binding.session = session;
+      binding.starting = false;
+      if (!session || typeof session.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot Session must support confirmed stop');
+      this.identitySessions.add(session);
+      session.on?.('close', () => stopUnbound('process-exited'));
+      session.on?.('processError', () => stopUnbound('process-error'));
+      return session;
+    }, (error) => { binding.starting = false; throw error; });
+    // A non-cooperative factory can settle after the caller's deadline. Its
+    // late resource still belongs to this retained Bot, never a successor.
+    void prepared.then(() => {
+      if (controller.signal.aborted) this.#startFinishCleanup(bot.bot_id, 0, true);
+    }, () => {
+      if (controller.signal.aborted) this.#startFinishCleanup(bot.bot_id, 0, true);
+    });
+    try {
+      const session = await Promise.race([prepared, cancelled]);
+      if (this.stopping || session.closed || this.taskService.getBot(bot.bot_id).state !== 'STARTING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped');
+      await Promise.race([(async () => {
+        await session.waitForReady({ timeoutMs: readyTimeoutMs });
+        if (controller.signal.aborted) throw controller.signal.reason;
+        await session.setAutoCompaction?.(true);
+        if (controller.signal.aborted) throw controller.signal.reason;
+        await session.setAutoRetry?.(true);
+      })(), cancelled]);
+      if (this.stopping || session.closed) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during Bot startup');
+      const ready = this.taskService.markBotReady(bot.bot_id);
+      this.#setCoreState(coreId, { state: 'DISCOVERING', session_id: session.sessionId ?? null });
+      return { bot: ready, session };
+    } catch (error) {
+      this.taskService.requestBotStop(bot.bot_id, 'startup-failed');
+      binding.cancelStartup();
+      try { await this.releaseBot(bot.bot_id); }
+      catch (cleanupError) { this.logger?.append({ event: 'runtime.bot_cleanup_pending', bot_id: bot.bot_id, error_class: cleanupError?.code ?? cleanupError?.name }); }
+      throw error;
+    }
+  }
+
+  async releaseBot(botId) {
+    const pending = this.resourceReleasePromises.get(botId);
+    if (pending) return pending;
+    const release = this.#releaseBotResources(botId).finally(() => this.resourceReleasePromises.delete(botId));
+    this.resourceReleasePromises.set(botId, release);
+    return release;
+  }
+
+  async #releaseBotResources(botId) {
+    const bot = this.taskService.getBot(botId);
+    const binding = this.botBindings.get(botId);
+    if (bot?.state === 'CLOSED' && !binding) return { bot };
+    if (!bot || !binding || bot.state !== 'CLOSING' || bot.execution_id) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'unbound Bot cleanup requires its retained resource binding');
+    }
+    this.#setCoreState(binding.coreId, { state: 'CLOSING' });
+    const stoppedSession = binding.session;
+    await stoppedSession?.stop?.();
+    if (stoppedSession?.closed === false) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot stop was not confirmed');
+    await this.sandboxManager?.stopExecution(bot.resource_key);
+    if (binding.session !== stoppedSession || this.taskService.getBot(botId).sandbox_id !== bot.sandbox_id) return this.#releaseBotResources(botId);
+    if (binding.starting) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot factory has not settled; late resources remain owned');
+    const closed = this.taskService.finalizeBotClose(botId);
+    clearTimeout(binding.selectionTimer);
+    this.identitySessions.delete(binding.session);
+    clearTimeout(this.finishCleanupTimers.get(botId));
+    this.finishCleanupTimers.delete(botId);
+    this.botBindings.delete(botId);
+    if (this.getCoreStatus(binding.coreId)?.bot_id === botId) {
+      this.#setCoreState(binding.coreId, { state: 'IDLE', bot_id: null, execution_id: null, task_id: null, session_id: null });
+    }
+    return { bot: closed };
   }
 
   getActiveProcessCount() {
@@ -320,6 +433,11 @@ export class Runtime {
     this.stopping = true;
     for (const timer of this.finishCleanupTimers.values()) clearTimeout(timer);
     this.finishCleanupTimers.clear();
+    for (const [botId, binding] of this.botBindings) {
+      const bot = this.taskService.getBot(botId);
+      if (bot && !bot.execution_id && !['CLOSING', 'CLOSED'].includes(bot.state)) this.taskService.requestBotStop(botId, terminalReason);
+      if (!bot?.execution_id) binding.cancelStartup?.();
+    }
     await Promise.allSettled([...this.startupPromises]);
     this.executionStateUnsubscribe?.();
     this.executionStateUnsubscribe = null;
@@ -343,6 +461,14 @@ export class Runtime {
         this.logger?.append({ event: 'runtime.shutdown_cleanup_pending', execution_id: executionId, error_class: error?.code ?? error?.name });
       }
     }
+    for (const botId of this.botBindings.keys()) {
+      const bot = this.taskService.getBot(botId);
+      if (bot?.execution_id) continue;
+      try {
+        this.taskService.requestBotStop(botId, terminalReason);
+        await this.releaseBot(botId);
+      } catch (error) { this.logger?.append({ event: 'runtime.bot_cleanup_pending', bot_id: botId, error_class: error?.code ?? error?.name }); }
+    }
     for (const session of ownedSessions) {
       if ([...this.activeProcesses.values()].some((active) => active.session === session)) continue;
       try {
@@ -355,7 +481,7 @@ export class Runtime {
       }
     }
     await this.waitForSettled();
-    return { active_process_count: this.activeProcesses.size, cleanup_pending_execution_ids: [...this.activeProcesses.keys()], cleanup_pending_session_count: this.identitySessions.size };
+    return { active_process_count: this.activeProcesses.size, cleanup_pending_execution_ids: [...this.activeProcesses.keys()], cleanup_pending_session_count: this.identitySessions.size, cleanup_pending_bot_ids: [...this.botBindings.keys()] };
   }
 
   getSchedulerStatus({ rootId = null, taskId = null, executionId = null, limit = 100 } = {}) {
@@ -540,6 +666,14 @@ export class Runtime {
 
   async #ensureSandbox(execution, workspace) {
     if (!this.sandboxManager) return;
+    const bot = this.taskService.getBot(execution.owner_ref);
+    if (bot) {
+      if (bot.execution_id !== execution.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot does not own this Execution');
+      this.sandboxManager.bindBotExecution({ botId: bot.bot_id, executionId: execution.execution_id,
+        workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref, bindingVersion: execution.fencing_version });
+      await this.sandboxManager.syncWorkspace({ executionId: execution.execution_id, workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref });
+      return;
+    }
     await this.sandboxManager.ensureExecution({
       executionId: execution.execution_id,
       workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref,
@@ -581,6 +715,7 @@ export class Runtime {
   async #startExecution(executionId, { sessionReason = 'start', coreId = null } = {}) {
     this.logger?.append({ event: 'runtime.start_execution', execution_id: executionId, session_reason: sessionReason });
     const execution = this.#getExecution(executionId);
+    if (this.taskService.getBot(execution.owner_ref)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Registered Bot must bind its original Session with bindAgentExecution');
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only start CREATED executions, got ${execution.state}`);
     if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
     const selectedCoreId = this.#resolveCoreId(execution, coreId);
@@ -655,6 +790,10 @@ export class Runtime {
     let current = execution;
     let initialPrompt = agentPrompt;
     let initialPromptSnapshot = promptSnapshot;
+    const registeredBot = this.taskService.getBot(execution.owner_ref);
+    if (registeredBot && (this.botBindings.get(registeredBot.bot_id)?.session !== session || registeredBot.core_id !== selectedCoreId)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task take must bind its original Bot Session and Core');
+    }
     let boundSession = session;
     let startedDurably = false;
     try {
@@ -696,6 +835,18 @@ export class Runtime {
           profile_hash: initialPromptSnapshot.profile_hash,
         });
       }
+      const bot = this.taskService.getBot(current.owner_ref);
+      if (bot) {
+        const retained = this.botBindings.get(bot.bot_id);
+        if (!retained || retained.session !== boundSession || bot.core_id !== selectedCoreId || bot.state !== 'PREPARING') {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task take must bind its original Bot Session and Core');
+        }
+        clearTimeout(retained.selectionTimer);
+        await this.#ensureSandbox(current, workspace);
+        if (retained.closing || boundSession.closed || this.stopping || this.taskService.getBot(bot.bot_id)?.state !== 'PREPARING') {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during Task preparation');
+        }
+      }
       current = this.taskService.dispatch('start_execution', {
         ...this.#executionTimingPayload(this.clock(), current),
         ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
@@ -705,7 +856,7 @@ export class Runtime {
       if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
       if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during startup');
       this.#registerActiveProcess(current, workspace, boundSession, { sessionReason, coreId: selectedCoreId });
-      await this.#ensureSandbox(current, workspace);
+      if (!bot) await this.#ensureSandbox(current, workspace);
       if (sendInitialPrompt !== false) {
         await this.#sendInitialPrompt(boundSession, initialPrompt, current, workspace);
       } else {
@@ -718,6 +869,10 @@ export class Runtime {
       }
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
+      if (registeredBot) {
+        await this.stopExecution(executionId, 'FAILED', 'bind_prepare_failed');
+        throw error;
+      }
       this.#retainCleanupBinding(executionId, { session: boundSession, workspace, coreId: selectedCoreId });
       await this.#stopExecutionResources(executionId);
       const failed = this.#getExecution(executionId);
@@ -741,6 +896,9 @@ export class Runtime {
    */
   async restartSession(executionId, { reason = 'session_restart', agentPrompt = null } = {}) {
     const existing = this.#getExecution(executionId);
+    if (this.taskService.getBot(existing.owner_ref)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'A Bot cannot replace its Pi Session; end this Execution and start a successor Bot');
+    }
     if (!['CREATED', 'RUNNING'].includes(existing.state)) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only restart CREATED or RUNNING executions, got ${existing.state}`);
     }
@@ -1333,8 +1491,31 @@ export class Runtime {
     return result;
   }
 
+  #prepareBotExecutionStop(executionId, terminalState, reason) {
+    const execution = this.#getExecution(executionId);
+    const bot = this.taskService.getBot(execution.owner_ref);
+    if (!bot) return;
+    const intent = this.taskService.requestBotStop(bot.bot_id, reason, { terminalState });
+    const binding = this.botBindings.get(bot.bot_id);
+    if (binding) {
+      binding.closing = true;
+      this.#retainCleanupBinding(executionId, { session: binding.session, workspace: null, coreId: binding.coreId });
+    }
+    return intent;
+  }
+
   async stopExecution(executionId, terminalState = 'CANCELLED', terminalReason = null) {
-    const reason = terminalReason ?? terminalState.toLowerCase();
+    if (this.botStopPromises.has(executionId)) return this.botStopPromises.get(executionId);
+    const stopping = this.#stopExecution(executionId, terminalState, terminalReason).finally(() => this.botStopPromises.delete(executionId));
+    this.botStopPromises.set(executionId, stopping);
+    return stopping;
+  }
+
+  async #stopExecution(executionId, terminalState, terminalReason) {
+    let reason = terminalReason ?? terminalState.toLowerCase();
+    const intent = this.#prepareBotExecutionStop(executionId, terminalState, reason);
+    terminalState = intent?.stop_terminal_state ?? terminalState;
+    reason = intent?.stop_terminal_state ? intent.exit_reason : reason;
     this.logger?.append({ event: 'runtime.stop_execution', execution_id: executionId, terminal_state: terminalState, terminal_reason: reason });
     let execution = this.#getExecution(executionId);
     const active = this.activeProcesses.get(executionId);
@@ -1369,18 +1550,27 @@ export class Runtime {
     const active = this.activeProcesses.get(id) ?? { execution, session, workspace, coreId };
     active.closing = true;
     this.activeProcesses.set(id, active);
-    this.#setCoreState(active.coreId, { state: 'CLOSING', execution_id: id, task_id: execution.task_id, session_id: active.session?.sessionId ?? null });
+    if (this.#canUpdateExecutionCore(active.coreId, execution)) this.#setCoreState(active.coreId, { state: 'CLOSING', execution_id: id, task_id: execution.task_id, session_id: active.session?.sessionId ?? null });
   }
 
   async #stopExecutionResources(id, { forceSessionStop = false } = {}) {
     const active = this.activeProcesses.get(id);
+    const bot = this.taskService.getBot(this.#getExecution(id).owner_ref);
+    const retainedBot = bot ? this.botBindings.get(bot.bot_id) : null;
+    if (retainedBot) retainedBot.closing = true;
     if (active) {
       active.closing = true;
-      this.#setCoreState(active.coreId, { state: 'CLOSING' });
+      if (this.#canUpdateExecutionCore(active.coreId, this.#getExecution(id))) this.#setCoreState(active.coreId, { state: 'CLOSING' });
       await this.#drainCompactionCheckpoint(active);
-      await this.#releaseSessionBinding(active, id, { forceStop: forceSessionStop });
+      await this.#releaseSessionBinding(active, id, { forceStop: forceSessionStop || Boolean(bot) });
+    }
+    if (retainedBot?.session && retainedBot.session !== active?.session) {
+      await retainedBot.session.stop();
+      if (retainedBot.session.closed === false) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot stop was not confirmed');
+      this.identitySessions.delete(retainedBot.session);
     }
     await this.#stopSandbox(id);
+    if (bot) await this.sandboxManager?.stopExecution(bot.resource_key);
   }
 
   async #releaseExecutionResources(id) {
@@ -1415,13 +1605,22 @@ export class Runtime {
     // Workspace I/O also yields: a finish accepted during that interval must
     // complete before the final synchronous removal of this Core binding.
     if (this.#getExecution(id).state === 'CLOSING') return this.#releaseExecutionResources(id);
+    const bot = this.taskService.getBot(execution.owner_ref);
+    if (bot && bot.state !== 'CLOSED') {
+      this.taskService.requestBotStop(bot.bot_id, execution.terminal_reason ?? 'execution-closed');
+      this.taskService.finalizeBotClose(bot.bot_id);
+      this.identitySessions.delete(this.botBindings.get(bot.bot_id)?.session);
+      clearTimeout(this.botBindings.get(bot.bot_id)?.selectionTimer);
+      this.botBindings.delete(bot.bot_id);
+      if (this.getCoreStatus(bot.core_id)?.bot_id === bot.bot_id) this.#setCoreState(bot.core_id, { state: 'IDLE', bot_id: null, execution_id: null, task_id: null, session_id: null });
+    }
     // Retain the binding and Core on any cleanup failure. A retry must still
     // know which resources it owns, and no successor may use this slot yet.
     if (active && this.activeProcesses.get(id) === active) {
       clearTimeout(this.finishCleanupTimers.get(id));
       this.finishCleanupTimers.delete(id);
       this.activeProcesses.delete(id);
-      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
+      if (this.#canUpdateExecutionCore(active.coreId, execution)) this.#setCoreState(active.coreId, { state: 'IDLE', bot_id: null, execution_id: null, task_id: null, session_id: null });
     }
     return { execution };
   }
@@ -1484,6 +1683,15 @@ export class Runtime {
   async sweepExpired(at = new Date()) {
     this.logger?.append({ event: 'runtime.sweep_expired', at: at.toISOString() });
     const expired = [];
+    for (const botId of this.botBindings.keys()) {
+      const bot = this.taskService.getBot(botId);
+      if (bot?.state !== 'CLOSING') continue;
+      try {
+        if (bot.execution_id && bot.stop_terminal_state) await this.stopExecution(bot.execution_id, bot.stop_terminal_state, bot.exit_reason);
+        else if (!bot.execution_id) await this.releaseBot(botId);
+      }
+      catch (error) { this.logger?.append({ event: 'runtime.bot_cleanup_pending', bot_id: botId, error_class: error?.code ?? error?.name }); }
+    }
     // A finish may already be terminal while its Workspace release is still
     // pending. Durable active rows alone cannot enumerate retained resources.
     for (const id of [...this.activeProcesses.keys()]) {
@@ -2035,6 +2243,9 @@ export class Runtime {
     // time; re-binding must not multiply handlers or route late events to the
     // previous Execution.
     session.boundExecutionId = execution.execution_id;
+    session.executionId = execution.execution_id;
+    session.taskId = execution.task_id;
+    session.coreId = coreId;
     if (session.identitySession === true) this.identitySessions.add(session);
     if (session.__swarmenvRuntimeBound !== true) {
       session.__swarmenvRuntimeBound = true;
@@ -2098,16 +2309,21 @@ export class Runtime {
     }
   }
 
-  #startFinishCleanup(id, attempt = 0) {
-    if (this.stopping || !this.activeProcesses.has(id)) return;
-    const promise = this.releaseExecution(id).catch((error) => {
-      this.logger?.append({ event: 'runtime.finish_cleanup_pending', execution_id: id, attempt,
+  #startFinishCleanup(id, attempt = 0, isBot = false) {
+    const bindings = isBot ? this.botBindings : this.activeProcesses;
+    if ((this.stopping && !isBot) || !bindings.has(id)) return;
+    const execution = isBot ? null : this.taskService.getExecution(id);
+    const bot = execution ? this.taskService.getBot(execution.owner_ref) : null;
+    const cleanup = isBot ? this.releaseBot(id) : bot?.stop_terminal_state && !execution.finish
+      ? this.stopExecution(id, bot.stop_terminal_state, bot.exit_reason) : this.releaseExecution(id);
+    const promise = cleanup.catch((error) => {
+      this.logger?.append({ event: isBot ? 'runtime.bot_cleanup_pending' : 'runtime.finish_cleanup_pending', ...(isBot ? { bot_id: id } : { execution_id: id }), attempt,
         retries_exhausted: attempt >= this.maxFinishCleanupRetries, error_class: error?.code ?? error?.name });
-      if (this.stopping || !this.activeProcesses.has(id) || attempt >= this.maxFinishCleanupRetries || this.finishCleanupTimers.has(id)) return;
+      if (this.stopping || !bindings.has(id) || attempt >= this.maxFinishCleanupRetries || this.finishCleanupTimers.has(id)) return;
       const delay = Math.min(30_000, this.finishCleanupRetryMs * (2 ** attempt));
       const timer = setTimeout(() => {
         this.finishCleanupTimers.delete(id);
-        this.#startFinishCleanup(id, attempt + 1);
+        this.#startFinishCleanup(id, attempt + 1, isBot);
       }, delay);
       this.finishCleanupTimers.set(id, timer);
     }).finally(() => this.pendingReleasePromises.delete(promise));
@@ -2115,6 +2331,10 @@ export class Runtime {
   }
 
   #onExecutionState(event) {
+    if (event?.kind === 'bot_exit_accepted') {
+      this.#startFinishCleanup(event.bot_id, 0, true);
+      return;
+    }
     if (event?.kind === 'execution_finish_accepted') {
       // Only the Runtime owning the live Bot can confirm its isolation.
       this.#startFinishCleanup(event.execution_id);
@@ -2369,6 +2589,9 @@ export class Runtime {
         old_identity_id: previousIdentity, compaction_count: previousCompactions,
         reason, window_ratio: windowRatio, usage_source: usageSource,
       });
+      if (this.taskService.getBot(this.#getExecution(executionId).owner_ref)) {
+        return this.stopExecution(executionId, 'HANDED_OFF', 'compaction_rotation');
+      }
       const restarted = await this.restartSession(executionId, { reason: 'compaction_rotation' });
       const replacement = this.activeProcesses.get(executionId);
       if (replacement) {
@@ -2421,9 +2644,18 @@ export class Runtime {
     active.lastFailureClass = failureClass;
     const failurePromise = (async () => {
       const coreId = active.coreId;
+      if (this.taskService.getBot(this.#getExecution(executionId).owner_ref)) {
+        this.#prepareBotExecutionStop(executionId, 'FAILED', failureClass);
+        this.#startFinishCleanup(executionId);
+        return this.stopExecution(executionId, 'FAILED', failureClass);
+      }
       await this.#stopExecutionResources(executionId, { forceSessionStop: true });
       let execution = this.#getExecution(executionId);
       if (execution.state !== 'RUNNING') return this.releaseExecution(executionId);
+      if (this.taskService.getBot(execution.owner_ref)) {
+        this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED', terminal_reason: failureClass }, this.#executionEnvelope(execution, operationId('bot-failed')));
+        return this.releaseExecution(executionId);
+      }
       this.identitySessions.delete(active.session);
       if (this.stopping) return { execution, disposition: 'stopping' };
       const recoveryAttempt = (this.recoveryAttempts.get(execution.task_id) ?? 0) + 1;
@@ -2526,9 +2758,18 @@ export class Runtime {
     return idle?.core_id ?? null;
   }
 
+  #canUpdateExecutionCore(coreId, execution) {
+    const current = this.coreStates.get(coreId);
+    return (!current?.bot_id || current.bot_id === execution.owner_ref) &&
+      (!current?.execution_id || current.execution_id === execution.execution_id);
+  }
+
   #assertCoreAvailable(coreId, executionId) {
     if (coreId === null) return;
     const current = this.coreStates.get(coreId);
+    if (current?.bot_id && this.taskService.getBot(current.bot_id)?.execution_id !== executionId) {
+      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns a Bot', { core_id: coreId, bot_id: current.bot_id });
+    }
     if (current && current.execution_id !== null && current.execution_id !== executionId) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', {
         core_id: coreId,

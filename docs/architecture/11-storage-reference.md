@@ -6,7 +6,7 @@ This chapter separates persisted facts from live-process state, and provides eve
 
 | Owner | Durable records | What remains outside the database |
 |---|---|---|
-| Task Service | Mission, Task contract/state, Execution/fence/lease, Task relationships, admission counters, replay keys, Material links, notification and receipt state | Runtime Core occupancy, callback subscriptions and scheduling loop |
+| Task Service | Mission, Bot/Core occupancy and provider identity, Task contract/state, Execution/fence/lease, Task relationships, admission counters, replay keys, Material links, notification and receipt state | Runtime Core occupancy, callback subscriptions and scheduling loop |
 | Context Service | Immutable Material content/provenance/hash/version and explicit consumption edges | No semantic proof of whether the Agent used or understood the text |
 | Judge Service | Workspace artifact request/checker/input binding, CheckResult and result class, checker health/preflight attempts, applied-result bookkeeping | The currently executing checker subprocess and pending asynchronous call |
 | Workspace Manager | File content plus `.swarm/workspace.json`, revision/checkpoint metadata; local Git commits/refs are separate filesystem history | Live process working memory and unsaved shell edits |
@@ -22,7 +22,8 @@ The benchmark normally supplies one project SQLite connection to Task, Context a
 |---|---|
 | `missions` | Mission columns are `mission_id`, `goal`, `acceptance_conditions_json`, `created_by`, `created_at`, `updated_at`. Initial Materials/resource budgets are not Mission columns. |
 | `tasks` + `modern_task_records` | Durable Task row plus `modern_task_records` Mission ID, short summary, timebox and registration hash. Responsibility keys live on `tasks`; feedback lives in notifications/receipts. Modern record projection combines these facts. A Mission may begin with zero Tasks; each Task is explicitly created and taken, with no implicit shared-Mission Task. |
-| `executions` | One authorization interval: Task/spec/state/fence, owner/Core, lease/deadline, Workspace/checkpoint, Workspace source/check references, input snapshot/Materials, and terminal reason. A Session restart can retain this Execution. |
+| `bots` | One Bot run: Mission/Core, state/version, unique optional Execution, selection deadline, resource key, provider/Sandbox IDs, exit request/reason, optional Runtime stop terminal state, and lifecycle timestamps. A partial unique index reserves each Mission/Core until CLOSED. Pi/worker tokens are not stored here. |
+| `executions` | One authorization interval: Task/spec/state/fence, owner/Core, lease/deadline, Workspace/checkpoint, Workspace source/check references, input snapshot/Materials, and terminal reason. Only the unregistered compatibility path can retain this Execution across a Session restart. |
 | `execution_finish_intents` | One accepted finish per Execution, unique request ID, immutable payload/outcome, optional wait/replacement references, and acceptance/closure timestamps. Stored atomically with CLOSING and dynamic wait edges; exposed through Task detail. |
 | `task_relations` | Modern `spawned_from` provenance and `depends_on` prerequisite edges. Provenance does not imply a scheduler dependency. |
 | `task_material_links` | A Material's input/response/handoff/experience role for a Task and receiving Task, separate from immutable producer provenance. |
@@ -57,7 +58,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Task and Execution database
 
-Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `d402f95181e51897432029ce6cb23360d8b266d6e03522b64e49af739468bffe`.
+Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `ed65a09b43e9971c771016929df68bfdc74f0f7aba7c16be63b85e9a8e2dad09`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -276,6 +277,31 @@ CREATE TABLE IF NOT EXISTS execution_finish_intents (
   accepted_at TEXT NOT NULL,
   closed_at TEXT
 );
+
+-- Runtime creates Bot identities before there is any Task take. The Task
+-- coordinator stores them here so take and lifecycle guards share a transaction.
+CREATE TABLE IF NOT EXISTS bots (
+  bot_id TEXT PRIMARY KEY,
+  mission_id TEXT NOT NULL REFERENCES missions(mission_id),
+  core_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('STARTING', 'UNBOUND', 'PREPARING', 'ACTIVE', 'CLOSING', 'CLOSED')),
+  execution_id TEXT UNIQUE REFERENCES executions(execution_id),
+  state_version INTEGER NOT NULL DEFAULT 0,
+  selection_deadline TEXT NOT NULL,
+  resource_key TEXT NOT NULL UNIQUE,
+  provider TEXT,
+  sandbox_id TEXT,
+  exit_request_id TEXT UNIQUE,
+  exit_reason TEXT,
+  stop_terminal_state TEXT,
+  started_at TEXT NOT NULL,
+  ready_at TEXT,
+  closed_at TEXT,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS bots_occupied_core
+  ON bots(mission_id, core_id) WHERE state <> 'CLOSED';
 
 CREATE TABLE IF NOT EXISTS operations (
   operation_id TEXT PRIMARY KEY,
@@ -629,7 +655,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `44e21c0c9c07195f7e70a60a57539788d8d997b291ab0749ddb55f952ed1beba`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `6db181c427051fa38d399ae5f823d656579ef2bd99ee2e36bc5ff5c97bd92f1b`.
 
 #### executions_active_core
 

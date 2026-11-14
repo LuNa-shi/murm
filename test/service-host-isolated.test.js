@@ -115,8 +115,7 @@ test('service-host isolated mode owns one service database and HTTP manifest', a
     assert.equal(manifest?.result?.service_id, 'context');
     assert.match(output, /"service_id":"context"/);
   } finally {
-    child.kill('SIGTERM');
-    await once(child, 'close').catch(() => undefined);
+    await stopServiceProcess(child);
     await rm(root, { recursive: true, force: true });
   }
 });

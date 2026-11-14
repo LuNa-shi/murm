@@ -16,6 +16,7 @@ const INTERNAL_AUDIENCES = new Set(['runtime', 'daemon', 'internal']);
 // this allowlist keeps the fallback equally aligned with the current Agent
 // contract while callers migrate to a Registry.
 const CURRENT_AGENT_OPERATIONS = new Set([
+  'bot_exit',
   'list_services', 'get_service_metadata', 'list_tools',
   'list_tasks', 'list_executions',
   'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',

@@ -30,16 +30,16 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `5b61e34dd15738d4d3cbcaf3863c8b4f8b6c767f3ad01fedd1021e9430775da5` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `f32535685b3f964092ae65c62c2a58d8a2cd1721abe7775fc7a6599bf13c17f6` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `eb616dc2ff3039aec448ec7ef421358bff4f90dfe3dadfa64913c192eeb20c85` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `8a8e1c712bab0eae88553557074fb529bea9324985f9f539c5311f1efd93939d` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fb811cb2c59cc4390357dbb072cff0f842fdb537e0bd020f9cc5e56ff74094af` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `6ec040f3b59bcd6205733bca1173e58a67e3fac4bb22f2fb76b898bcfe314163` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fcfbf9ed0efad34f9998a273a419715974c61e3572e76a67a91ee8c3cab4a988` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `c80f965d3b6583b50e9c2defef5ff61b61eb0916ae44a2c229b0677732d7f990` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `1b75bcdc0833c4690709f0120d01c3e71cf0c4f4d61ffe6125f5202110055bbd` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `16970e7a08508db64c320120aaa102dbe4d93962cd3d1c68aad5ed46cb7210fc` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `de3e6fd1e7d15ece74ff7c1ae4c47df982716c2f03ae0c67c67dab48e4424226` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `eedbc3e6869e525c16369ca1aca042d12bdc0877a3f4447be4319f23e54e3ddc` |
 
@@ -68,6 +68,7 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `runtime.workspace_list_files` | `swarmenv_workspace_list_files` | `swarmenv_workspace_list_files` |
 | `runtime.workspace_read_file` | `swarmenv_workspace_read_file` | `swarmenv_workspace_read_file` |
 | `runtime.workspace_write_file` | `swarmenv_workspace_write_file` | `swarmenv_workspace_write_file` |
+| `task.bot_exit` | `swarmenv_bot_exit` | `swarmenv_bot_exit` |
 | `task.execution_progress` | `swarmenv_execution_progress` | `swarmenv_execution_progress` |
 | `task.mission_submission_get` | `swarmenv_mission_submission_get` | `swarmenv_mission_submission_get` |
 | `task.mission_submit` | `swarmenv_mission_submit` | `swarmenv_mission_submit` |
@@ -258,7 +259,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 17 registered capabilities
+### Task Service: 18 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -281,7 +282,62 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "3e106ea3f47c23211cb41dcbb6b1e607bf7663f2a59fdfd649950d192f7cbf7b"
+  "manifest_hash": "117a840e11288c114d2fe3a25aa91ad8f1e8456aa35e9b8c9905642b4946e3db"
+}
+```
+
+#### task.bot_exit
+
+End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.
+
+```json
+{
+  "name": "bot_exit",
+  "operation": "bot_exit",
+  "description": "End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "reason"
+    ],
+    "properties": {
+      "reason": {
+        "type": "string",
+        "enum": [
+          "no-work",
+          "selection-budget"
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [],
+  "requires_binding": false,
+  "scope": "task-write",
+  "help": {
+    "when": "End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.",
+    "ref": "service://task/bot_exit",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/bot_exit",
+  "errors": []
 }
 ```
 
