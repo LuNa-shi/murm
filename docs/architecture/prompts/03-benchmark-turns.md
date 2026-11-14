@@ -14,7 +14,7 @@ Read the Mission and relevant public Tasks, Materials, and Workspace files withi
 ````
 ## Registered Bot discovery: complete synthetic example
 
-Body SHA-256: `91a9ce517b644441c0cfc17ef5d573486926e48d56f6b55f43924fe5c21c2f57`
+Body SHA-256: `b9f11290ca1458882fa5151230070d16b0a26aacd4af6f4c4b1dec396b0c02e1`
 
 ````text
 你已在全新的 sandbox/Pi Session 启动，尚无 Execution。通过 swarm CLI 读取相关公开工作，在预算内自主选择已有 Task，或先提出缺失的局部 Task 再 take。下方只是当前可领取任务的一页，不代表全部历史；空页不表示 Mission 完成。
@@ -96,7 +96,7 @@ Body SHA-256: `91a9ce517b644441c0cfc17ef5d573486926e48d56f6b55f43924fe5c21c2f57`
       "name": "mission",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "fa074c7acb9bd3f3b1d9ac20f16bdef409ce17329e05a015f00b23e7a37f42fe",
+      "manifest_hash": "b8dba5ed747d12bbf37eb3a264e647c1781adfb49a42573e9a699586730c85aa",
       "help": "swarm mission --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -106,7 +106,7 @@ Body SHA-256: `91a9ce517b644441c0cfc17ef5d573486926e48d56f6b55f43924fe5c21c2f57`
       "name": "task",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "fa074c7acb9bd3f3b1d9ac20f16bdef409ce17329e05a015f00b23e7a37f42fe",
+      "manifest_hash": "b8dba5ed747d12bbf37eb3a264e647c1781adfb49a42573e9a699586730c85aa",
       "help": "swarm task --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -116,17 +116,17 @@ Body SHA-256: `91a9ce517b644441c0cfc17ef5d573486926e48d56f6b55f43924fe5c21c2f57`
       "name": "workspace",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "fa074c7acb9bd3f3b1d9ac20f16bdef409ce17329e05a015f00b23e7a37f42fe",
+      "manifest_hash": "b8dba5ed747d12bbf37eb3a264e647c1781adfb49a42573e9a699586730c85aa",
       "help": "swarm workspace --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
-      "permission": "public view/history/files/read/search before take; status/diff/save require current E; apply/merge integration pending"
+      "permission": "public view/history/files/read/search before take; status/diff/save/apply require current E; merge integration pending"
     },
     {
       "name": "bot",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "fa074c7acb9bd3f3b1d9ac20f16bdef409ce17329e05a015f00b23e7a37f42fe",
+      "manifest_hash": "b8dba5ed747d12bbf37eb3a264e647c1781adfb49a42573e9a699586730c85aa",
       "help": "swarm bot --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],

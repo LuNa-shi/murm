@@ -162,7 +162,7 @@ function serviceDispatch(serviceId, services, registry) {
       if (capability.operation === 'workspace_public_files') return services.missionWorkspace.files({ workspaceId: input?.workspace_id, revision: input?.revision, prefix: input?.path ?? '' });
       if (capability.operation === 'workspace_public_read') return services.missionWorkspace.read({ workspaceId: input?.workspace_id, revision: input?.revision, path: input?.path, maxBytes: input?.max_bytes });
       if (capability.operation === 'workspace_public_search') return services.missionWorkspace.search({ workspaceId: input?.workspace_id, revision: input?.revision, prefix: input?.path ?? '', query: input?.query, maxResults: input?.max_results });
-      if (capability.operation === 'workspace_public_apply') return services.missionWorkspace.apply({ workspaceId: input?.workspace_id, revision: input?.revision, targetDir: input?.target_dir });
+      if (capability.operation === 'workspace_public_apply') throw Object.assign(new Error('Workspace apply requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
       if (capability.operation === 'workspace_save') throw Object.assign(new Error('Workspace save requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
       if (capability.operation === 'workspace_merge') return services.missionWorkspace.merge(input ?? {});
     }

@@ -195,6 +195,8 @@ async function botProcesses() {
   return pids;
 }
 
+const heldWriters = new Set();
+let installHoldTimer = null;
 function withBotPaused(operation) {
   const pending = writerGate.then(async () => {
     if (project.closing) throw new Error('Bot is closing');
@@ -224,13 +226,20 @@ function withBotPaused(operation) {
         if (Date.now() >= deadline) throw Object.assign(new Error('Bot project writers could not be paused'), { code: 'WORKSPACE_BUSY' });
         await new Promise(resolve => setTimeout(resolve, 5));
       }
-      const result = await operation();
+      const result = await operation([...paused]);
       if (project.closing) throw new Error('Bot closed during project operation');
       return { ...result, paused_process_count: paused.size };
     } finally {
       if (project.closing) await stopBot();
-      else for (const pid of paused) {
-        try { process.kill(pid, 'SIGCONT'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+      else if (project.installPending) {
+        for (const pid of paused) heldWriters.add(pid);
+        installHoldTimer ??= setTimeout(() => { void stopBot().catch(() => undefined); }, 30_000);
+      } else {
+        clearTimeout(installHoldTimer); installHoldTimer = null;
+        for (const pid of new Set([...paused, ...heldWriters])) {
+          try { process.kill(pid, 'SIGCONT'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+        }
+        heldWriters.clear();
       }
     }
   });
@@ -240,6 +249,8 @@ function withBotPaused(operation) {
 
 function stopBot() {
   project.beginClose();
+  clearTimeout(installHoldTimer); installHoldTimer = null;
+  heldWriters.clear();
   if (stopping) return stopping;
   stopping = (async () => {
     if (child?.pid) { try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
@@ -252,7 +263,7 @@ function stopBot() {
       await new Promise(resolve => setTimeout(resolve, 10));
     }
     await project.close();
-    return { stopped: true };
+    return { stopped: true, project_installs: await project.installReceipts() };
   })().catch(error => { stopping = null; throw error; });
   return stopping;
 }
@@ -266,6 +277,9 @@ const server = createServer(async (request, response) => {
     if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.grant(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/snapshot') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.snapshot(input)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/install') { const input = await body(request, 32 * 1024 * 1024); send(response, 200, { ok: true, result: await withBotPaused(pids => project.install(input, pids)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/install-result') { const input = await body(request); send(response, 200, { ok: true, result: project.queryInstall(input) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/install-confirm') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.confirmInstall(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/rpc') { send(response, 200, { ok: true, result: await rpc(await body(request)) }); return; }
     if (request.method === 'POST' && url.pathname === '/stop') {
       await body(request);
@@ -282,7 +296,7 @@ const server = createServer(async (request, response) => {
     }
     send(response, 404, { ok: false, error: 'unknown worker route' });
   } catch (error) {
-    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(error.code === 'WORKSPACE_BUSY' ? { code: error.code } : {}) });
+    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT'].includes(error.code) ? { code: error.code } : {}) });
   }
 });
 

@@ -16,6 +16,7 @@ RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund
 
 COPY scripts/opensandbox-agent-worker.mjs /opt/swarmenv/agent-worker.mjs
 COPY scripts/sandbox-project.mjs /opt/swarmenv/sandbox-project.mjs
+COPY scripts/project-install.mjs scripts/project-processes.mjs /opt/swarmenv/
 COPY scripts/swarm.mjs /opt/swarmenv/scripts/swarm.mjs
 COPY src /opt/swarmenv/src
 COPY services/opensandbox-agent/pi-models.json /opt/swarmenv/pi-agent/models.json

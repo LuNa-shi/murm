@@ -548,16 +548,16 @@ export class ServicesBridge {
       // Scope is established by Runtime's durable Bot binding, never by CLI
       // flags. Only add fields supported by each public request schema.
       if (bot) {
-        if (['workspace_save', 'workspace_status', 'workspace_current_diff'].includes(operation)) {
+        if (['workspace_save', 'workspace_status', 'workspace_current_diff', 'workspace_public_apply'].includes(operation)) {
           assertIdentity(true);
           const execution = this.executionId && this.taskService.getExecution(this.executionId);
           if (!execution) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace operation requires an active E');
-          const result = await this.runtime.dispatchExecutionWorkspace(({ workspace_save: 'save', workspace_status: 'status', workspace_current_diff: 'diff' })[operation], payload,
+          const result = await this.runtime.dispatchExecutionWorkspace(({ workspace_save: 'save', workspace_status: 'status', workspace_current_diff: 'diff', workspace_public_apply: 'apply' })[operation], payload,
             { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution.fencing_version, requestId: bridgeOperationId });
           this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
           return result;
         }
-        if (['workspace_public_apply', 'workspace_merge'].includes(operation)) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Workspace apply/merge requires Runtime integration');
+        if (operation === 'workspace_merge') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Workspace apply/merge requires Runtime integration');
         if (WORKSPACE_OPERATIONS.has(operation) || operation === 'execution_progress') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Legacy private Workspace and Execution APIs are unavailable to registered Bots');
         if (operation === 'mission_submit') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission submission integration is not ready for Bot requests');
         if (payload.mission_id !== undefined && payload.mission_id !== bot.mission_id) {

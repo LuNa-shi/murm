@@ -30,14 +30,14 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `8ecaae2d57d9e19359d8302f82d26f19c07b858baccee0e2a1eab583d6aba24f` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `86acf983948ce1653b08f2429fe6715ea69fa18b3134e042398dbf1d4e873652` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `748557769ac24a09daed33613b481a33a6bb68fcbbca222499456c4b60d10c25` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `c523fe3c91695603ac7e6aa6c6ff5b7dbf2229ccbc2ad6c13c1d4e320a1ef8ed` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fc537d04cb0471d1496d82c1866b5fde81986f790768eea9e720bd7391ecdabd` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `ae805bbcaca1e2cd741d4ecf84e049b6f101602c8139738231369f61af6fc42f` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `6b7a7267dcfa205d42787750b5dfaf31d2f0f3e85f32702f5692db576b2f4a4c` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `036b18cf09085b4e485a5ba478437bafd0af2c8c7fef0c36827f6eda72691f94` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `79ba27b66c7f2fb6cc60acea4ee4a13564f4de2ea3e622d0afaad42cb0136ef1` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `78d4043bf8198335e4f9e868d0cb3a417e39067134e80faefd2ea30a95e27f9e` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
@@ -287,7 +287,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "fa074c7acb9bd3f3b1d9ac20f16bdef409ce17329e05a015f00b23e7a37f42fe"
+  "manifest_hash": "b8dba5ed747d12bbf37eb3a264e647c1781adfb49a42573e9a699586730c85aa"
 }
 ```
 
@@ -1473,27 +1473,20 @@ Search text in an immutable Mission Workspace revision before a Task is taken.
 
 #### task.workspace_public_apply
 
-Materialize a selected public Mission Workspace revision into the current Execution directory.
+Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.
 
 ```json
 {
   "name": "workspace_public_apply",
   "operation": "workspace_public_apply",
-  "description": "Materialize a selected public Mission Workspace revision into the current Execution directory.",
+  "description": "Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.",
   "input_schema": {
     "type": "object",
     "required": [
-      "workspace_id",
-      "target_dir"
+      "from"
     ],
     "properties": {
-      "workspace_id": {
-        "type": "string"
-      },
-      "revision": {
-        "type": "string"
-      },
-      "target_dir": {
+      "from": {
         "type": "string"
       }
     },
@@ -1522,9 +1515,9 @@ Materialize a selected public Mission Workspace revision into the current Execut
   "requires_binding": false,
   "scope": "execution-write",
   "help": {
-    "when": "Materialize a selected public Mission Workspace revision into the current Execution directory.",
+    "when": "Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.",
     "ref": "service://task/workspace_public_apply",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Materialize a selected public Mission Workspace revision into the current Execution directory.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_public_apply",
@@ -1543,7 +1536,11 @@ Save a complete public Mission Workspace file tree as an immutable revision with
   "description": "Save a complete public Mission Workspace file tree as an immutable revision without advancing main.",
   "input_schema": {
     "type": "object",
-    "properties": {},
+    "properties": {
+      "resolved": {
+        "type": "boolean"
+      }
+    },
     "additionalProperties": false
   },
   "output_schema": {

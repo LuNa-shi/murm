@@ -284,15 +284,15 @@ const publicMissionWorkspaceTools = [
   },
   {
     name: 'workspace_public_apply', service: 'task', operation: 'workspace_public_apply', version: '1.0',
-    description: 'Materialize a selected public Mission Workspace revision into the current Execution directory.',
+    description: 'Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.',
     scope: 'execution-write', side_effect: true, capability: 'mission-workspace',
-    parameters: { type: 'object', required: ['workspace_id', 'target_dir'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, target_dir: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['from'], properties: { from: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'workspace_save', service: 'task', operation: 'workspace_save', version: '1.0',
     description: 'Save a complete public Mission Workspace file tree as an immutable revision without advancing main.',
     scope: 'execution-write', side_effect: true, capability: 'mission-workspace',
-    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    parameters: { type: 'object', properties: { resolved: { type: 'boolean' } }, additionalProperties: false },
   },
   {
     name: 'workspace_merge', service: 'task', operation: 'workspace_merge', version: '1.0',

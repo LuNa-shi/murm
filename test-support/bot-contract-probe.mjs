@@ -23,6 +23,7 @@ if (!process.argv.includes('--inside')) {
       '--env', `SWARMENV_WORKER_TOKEN=${token}`, '--tmpfs', '/workspace:rw,nosuid,nodev,size=64m',
       '--mount', `type=bind,source=${root}scripts/opensandbox-agent-worker.mjs,target=/opt/swarmenv/agent-worker.mjs,readonly`,
       '--mount', `type=bind,source=${root}scripts/sandbox-project.mjs,target=/opt/swarmenv/sandbox-project.mjs,readonly`,
+      ...['project-install.mjs', 'project-processes.mjs'].flatMap(file => ['--mount', `type=bind,source=${root}scripts/${file},target=/opt/swarmenv/${file},readonly`]),
       '--entrypoint', 'node', 'swarmenv/agent:issue122', '/opt/swarmenv/agent-worker.mjs']);
     await docker(['exec', name, 'mkdir', '-p', '/opt/swarmenv/test-support']);
     for (const path of ['src/agent/bot-contract', 'src/agent/bot-contract.js', 'src/cli/swarm-cli.js', 'test-support/bot-contract-probe.mjs']) {

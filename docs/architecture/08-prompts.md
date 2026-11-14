@@ -207,3 +207,5 @@ The implementation author should:
 5. Update the architecture baseline/coverage map and link the observed evidence in the originating Issue/PR, naming the checks actually run.
 
 The generated fingerprints catch source drift; human review still checks whether the changed assembly is accurately explained and whether a new indirect producer needs coverage. No automated hash check proves that a model complied with its instructions or that every external Pi/provider input is captured.
+
+The apply conflict README is repository-controlled guidance delivered as an ordinary project artifact, not proactively sent to Pi. Its complete text is in [generated guidance](prompts/06-tool-return-guidance.md), with construction and read conditions in [Workspace apply](05-workspace-continuity.md#02-same-e-apply-held-installation-and-conflict-resolution). Native Read or Bash can include that file in a later model turn; installation alone is not evidence that the model read it.

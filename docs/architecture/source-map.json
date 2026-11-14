@@ -190,6 +190,22 @@
       "role": "Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface"
     },
     {
+      "path": "scripts/project-install.mjs",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md"
+      ],
+      "role": "Worker private write-ahead install receipts, exact rollback and held acknowledgement"
+    },
+    {
+      "path": "scripts/project-processes.mjs",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md"
+      ],
+      "role": "Immutable same-UID process inspection before changing paused project paths"
+    },
+    {
       "path": "scripts/run-putnambench-benchmark.mjs",
       "category": "launch and composition",
       "chapters": [

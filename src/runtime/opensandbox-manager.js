@@ -229,6 +229,7 @@ export class OpenSandboxManager {
     this.logger = logger;
     this.now = now;
     this.executions = new Map();
+    this.projectInstallReceipts = new Map();
     this.verified = null;
   }
 
@@ -563,23 +564,31 @@ export class OpenSandboxManager {
     return { execution_id: executionId, file_count: files.length, bytes: total, workspace: record.botId ? '/workspace/project' : '/workspace' };
   }
 
-  async #projectCall(executionId, action, manifest = undefined) {
+  async #projectCall(executionId, action, manifest = undefined, input = {}) {
     const record = this.#record(executionId);
     if (!record.botId || record.boundExecutionId !== executionId || !record.agent || record.stopPromise) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Project control requires the live bound Bot worker');
-    const body = { execution_id: executionId, binding_version: record.bindingVersion, ...(manifest ? { manifest } : {}) };
+    const body = { ...input, execution_id: executionId, binding_version: record.bindingVersion, ...(manifest ? { manifest } : {}) };
     const response = await this.#request(`${record.agent.endpoint}/project/${action}`, { absolute: true, method: 'POST',
-      extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body, timeoutMs: 30_000 });
+      extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body, timeoutMs: action.startsWith('install') ? 5000 : 30_000 });
     const result = responseValue(response.body);
     const expected = action === 'prepare' ? 'PREPARED' : 'ACTIVE';
-    if (result?.state !== expected || result.execution_id !== executionId || result.binding_version !== record.bindingVersion) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'Worker did not confirm the expected project permission state');
+    if ((!action.startsWith('install') && result?.state !== expected) || result?.execution_id !== executionId || result?.binding_version !== record.bindingVersion) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'Worker did not confirm the expected project permission state');
     if (record.stopPromise || this.executions.get(executionId) !== record) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during project control');
-    this.logger?.({ event: `sandbox.project_${action === 'prepare' ? 'prepared' : action === 'grant' ? 'granted' : 'snapshot'}`, bot_id: record.botId, execution_id: executionId, binding_version: record.bindingVersion });
+    this.logger?.({ event: `sandbox.project_${action === 'prepare' ? 'prepared' : action === 'grant' ? 'granted' : action}`, bot_id: record.botId, execution_id: executionId, binding_version: record.bindingVersion });
     return result;
   }
 
   prepareBotProject({ executionId, manifest }) { return this.#projectCall(executionId, 'prepare', manifest); }
   grantBotProject({ executionId }) { return this.#projectCall(executionId, 'grant'); }
   snapshotBotProject({ executionId }) { return this.#projectCall(executionId, 'snapshot'); }
+  installBotProject({ executionId, ...input }) { return this.#projectCall(executionId, 'install', undefined, input); }
+  queryBotProjectInstall({ executionId, request_id }) {
+    const closed = this.projectInstallReceipts.get(executionId);
+    if (closed) return structuredClone(closed.receipts.find(receipt => receipt.request_id === request_id) ?? { execution_id: executionId, binding_version: closed.bindingVersion, request_id, phase: 'not_found' });
+    return this.#projectCall(executionId, 'install-result', undefined, { request_id });
+  }
+  forgetBotProjectInstalls({ executionId }) { this.projectInstallReceipts.delete(executionId); }
+  confirmBotProjectInstall({ executionId, request_id, content_hash }) { return this.#projectCall(executionId, 'install-confirm', undefined, { request_id, content_hash }); }
 
   /** Pull guest files back before Runtime checkpoints or deletes the sandbox. */
   async syncWorkspaceBack({ executionId, workspaceRef, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 } = {}) {
@@ -651,7 +660,12 @@ export class OpenSandboxManager {
   async stopAgent(executionId, signal = 'SIGTERM') {
     const record = this.executions.get(executionId);
     if (!record?.agent) return false;
-    await this.#request(`${record.agent.endpoint}/stop`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { signal }, timeoutMs: 15_000 });
+    const response = await this.#request(`${record.agent.endpoint}/stop`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { signal }, timeoutMs: 15_000 });
+    const stopped = responseValue(response.body);
+    if (stopped?.stopped === true && Array.isArray(stopped.project_installs) && record.boundExecutionId) {
+      this.projectInstallReceipts.set(record.boundExecutionId, { bindingVersion: record.bindingVersion,
+        receipts: stopped.project_installs.filter(receipt => receipt.execution_id === record.boundExecutionId && receipt.binding_version === record.bindingVersion) });
+    }
     record.agent = null;
     return true;
   }
@@ -778,8 +792,8 @@ export class OpenSandboxManager {
       const response = await this.fetch(url, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: controller.signal });
       const text = await response.text();
       const parsed = response.headers?.get?.('content-type')?.includes('text/event-stream') ? null : (text ? jsonData(text) : {});
-      if (!response.ok && !allowStatuses.includes(response.status)) throw new SwarmEnvError(absolute && new URL(url).pathname === '/project/snapshot' && parsed?.code === ERROR_CODES.WORKSPACE_BUSY
-        ? ERROR_CODES.WORKSPACE_BUSY : response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT,
+      if (!response.ok && !allowStatuses.includes(response.status)) throw new SwarmEnvError(absolute && /\/project\/(snapshot|install|install-result|install-confirm)$/.test(new URL(url).pathname) && [ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED].includes(parsed?.code)
+        ? parsed.code : response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT,
       `OpenSandbox request failed with HTTP ${response.status}`, { status: response.status, diagnostic: safeDiagnostic(parsed ?? text) }, { retryable: response.status >= 500 || response.status === 429 || parsed?.code === ERROR_CODES.WORKSPACE_BUSY });
       return { status: response.status, body: parsed, text };
     } catch (error) {

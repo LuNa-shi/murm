@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { chmod, chown, lstat, mkdir, opendir, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { ProjectInstaller } from './project-install.mjs';
 
 export const BOT_UID = 10001;
 export const PROJECT_DIR = '/workspace/project';
@@ -21,6 +22,8 @@ export class SandboxProject {
     this.binding = null;
     this.closing = false;
     this.pending = Promise.resolve();
+    this.installer = new ProjectInstaller({ projectDir: PROJECT_DIR, controlDir: '/workspace/.swarm-project-control', uid: BOT_UID,
+      snapshot: input => this.#capture(input), assertOpen: input => this.#active(input) });
   }
 
   async initialize() {
@@ -37,6 +40,7 @@ export class SandboxProject {
     await chmod(PROJECT_DIR, 0o555);
     await chown(RUNTIME_DIR, BOT_UID, BOT_UID);
     await chmod(RUNTIME_DIR, 0o700);
+    await this.installer.initialize();
   }
 
   #open() { if (this.closing || this.state === 'CLOSED') throw new Error('Bot project is closing'); }
@@ -131,8 +135,25 @@ export class SandboxProject {
     });
   }
 
+  #active(input) {
+    this.#open();
+    const identity = this.#identity(input);
+    if (this.state !== 'ACTIVE' || this.binding?.execution_id !== identity.execution_id || this.binding?.binding_version !== identity.binding_version) throw new Error('project operation requires its active E binding');
+  }
+
+  get installPending() { return this.installer.held !== null; }
+  install(input, pids) { return this.#locked(() => this.installer.install(input, pids)); }
+  queryInstall(input) { this.#identity(input); return this.installer.query(input); }
+  installReceipts() { return this.installer.receipts(); }
+  confirmInstall(input) { return this.#locked(() => this.installer.confirm(input)); }
   snapshot(input) {
-    return this.#locked(async () => {
+    return this.#locked(() => {
+      if (this.installPending) throw busy('Apply is awaiting durable acknowledgement');
+      return this.#capture(input);
+    });
+  }
+
+  async #capture(input) {
       this.#open();
       const identity = this.#identity(input);
       if (this.state !== 'ACTIVE' || this.binding?.execution_id !== identity.execution_id || this.binding?.binding_version !== identity.binding_version) throw new Error('snapshot requires the active project binding');
@@ -176,7 +197,6 @@ export class SandboxProject {
       this.#open();
       if (captured.content_hash !== checked.content_hash || Date.now() >= deadline) throw busy('project changed or exceeded the stable snapshot window');
       return { state: this.state, ...identity, ...captured };
-    });
   }
 
   beginClose() { this.closing = true; }

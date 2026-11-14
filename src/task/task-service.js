@@ -1988,6 +1988,10 @@ export class TaskService {
     if (execution.owner_ref !== envelope.actor_ref || !['CREATED', 'RUNNING'].includes(execution.state)) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the current active owner may finish');
     }
+    if (this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'execution_workspace_requests'").get() &&
+        this.db.prepare("SELECT 1 FROM execution_workspace_requests WHERE execution_id = ? AND phase IN ('installing', 'installed') LIMIT 1").get(execution.execution_id)) {
+      throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'Workspace apply must settle before Task finish can be accepted', undefined, { retryable: true });
+    }
     const acceptedAt = now();
     this.db.prepare(`INSERT INTO execution_finish_intents
       (execution_id, request_id, outcome, payload_json, terminal_state, reason, wait_for_task_id, replacement_task_id, accepted_at)

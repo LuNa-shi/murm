@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `441f0aff0c8bcd2e73916188316fff82c4d59edf1591a050c83ca869d3a54e11`
+Body SHA-256: `6489c9798b74a993c3a02efbf66af6717bc2a13c8078050b02c96dbb61cf6bd8`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -95,13 +95,13 @@ Body SHA-256: `441f0aff0c8bcd2e73916188316fff82c4d59edf1591a050c83ca869d3a54e11`
   - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
   - swarmenv_workspace_current_diff: Compare the current E tree with its last saved revision. (logical operation task.workspace_current_diff; read-only; inputs required=[none] fields=[none]; Compare the current E tree with its last saved revision.)
   - swarmenv_workspace_merge: Conditionally merge one complete public Workspace revision into main after conflict and check validation. (logical operation task.workspace_merge; writes state; inputs required=[workspace_id,from_revision,expected_main_revision] fields=[expected_main_revision,from_revision,workspace_id]; Conditionally merge one complete public Workspace revision into main after conflict and check validation.)
-  - swarmenv_workspace_public_apply: Materialize a selected public Mission Workspace revision into the current Execution directory. (logical operation task.workspace_public_apply; writes state; inputs required=[workspace_id,target_dir] fields=[revision,target_dir,workspace_id]; Materialize a selected public Mission Workspace revision into the current Execution directory.)
+  - swarmenv_workspace_public_apply: Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents. (logical operation task.workspace_public_apply; writes state; inputs required=[from] fields=[from]; Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.)
   - swarmenv_workspace_public_files: List files in the immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_files; read-only; inputs required=[workspace_id] fields=[path,revision,workspace_id]; List files in the immutable Mission Workspace revision before a Task is taken.)
   - swarmenv_workspace_public_history: Read main history by default or all saved revisions, with provenance and bounded snapshot pagination. (logical operation task.workspace_public_history; read-only; inputs required=[workspace_id] fields=[all,cursor,limit,path,source_execution,source_task,workspace_id]; Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.)
   - swarmenv_workspace_public_read: Read one file from an immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_read; read-only; inputs required=[workspace_id,path] fields=[max_bytes,path,revision,workspace_id]; Read one file from an immutable Mission Workspace revision before a Task is taken.)
   - swarmenv_workspace_public_search: Search text in an immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_search; read-only; inputs required=[workspace_id,query] fields=[max_results,path,query,revision,workspace_id]; Search text in an immutable Mission Workspace revision before a Task is taken.)
   - swarmenv_workspace_public_view: Read the public Mission Workspace and current main. (logical operation task.workspace_public_view; read-only; inputs required=[workspace_id] fields=[workspace_id]; Read the public Mission Workspace and current main.)
-  - swarmenv_workspace_save: Save a complete public Mission Workspace file tree as an immutable revision without advancing main. (logical operation task.workspace_save; writes state; inputs required=[none] fields=[none]; Save a complete public Mission Workspace file tree as an immutable revision without advancing main.)
+  - swarmenv_workspace_save: Save a complete public Mission Workspace file tree as an immutable revision without advancing main. (logical operation task.workspace_save; writes state; inputs required=[none] fields=[resolved]; Save a complete public Mission Workspace file tree as an immutable revision without advancing main.)
   - swarmenv_workspace_status: Inspect the current E tree, initial revision and saved lineage. (logical operation task.workspace_status; read-only; inputs required=[none] fields=[none]; Inspect the current E tree, initial revision and saved lineage.)
 ````
 
@@ -600,14 +600,14 @@ Body SHA-256: `50c35db47cdc008653485c598bc1fed6ec8cd9fbc691206f282054920bd0015d`
 ````
 ## swarmenv_workspace_public_apply
 
-Body SHA-256: `b3e2bebf27118544c2780a6b6177bb02eb262f532f6b1d2c90a18d555c1d28c6`
+Body SHA-256: `449b15adb7353f5835f2893f20546e784bbd313964f3e8bfffe6d162b56a83a2`
 
 ````text
 {
-  "description": "Materialize a selected public Mission Workspace revision into the current Execution directory.",
-  "promptSnippet": "Task Service: Materialize a selected public Mission Workspace revision into the current Execution directory.",
+  "description": "Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.",
+  "promptSnippet": "Task Service: Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.",
   "promptGuidelines": [
-    "Materialize a selected public Mission Workspace revision into the current Execution directory.",
+    "Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.",
     "Help: service://task/workspace_public_apply"
   ]
 }

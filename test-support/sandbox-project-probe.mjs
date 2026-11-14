@@ -41,6 +41,10 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     } else if (message.type === 'write') { fs.writeFileSync(message.path, message.base64 ? Buffer.from(message.base64, 'base64') : message.content); data = { written: true }; }
     else if (message.type === 'remove') { fs.unlinkSync(message.path); data = { removed: true }; }
     else if (message.type === 'link') { fs.symlinkSync('/etc/passwd', message.path); data = { linked: true }; }
+    else if (message.type === 'open-file') {
+      const reader = spawn('/usr/local/bin/node', ['-e', "require('fs').openSync(process.argv[1], 'r'); setInterval(()=>{},1000)", message.path], { detached: true, stdio: 'ignore' });
+      reader.unref(); data = { pid: reader.pid };
+    }
     else if (message.type === 'watch') {
       const watcher = spawn('/usr/local/bin/node', ['-e', ${JSON.stringify(watcherCode)}], { detached: true, stdio: 'ignore' });
       watcher.unref(); data = { pid: watcher.pid };
@@ -60,6 +64,7 @@ try {
     '--tmpfs', '/workspace:rw,nosuid,nodev,size=64m',
     '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/opensandbox-agent-worker.mjs', import.meta.url))},target=/opt/swarmenv/agent-worker.mjs,readonly`,
     '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/sandbox-project.mjs', import.meta.url))},target=/opt/swarmenv/sandbox-project.mjs,readonly`,
+    ...['project-install.mjs', 'project-processes.mjs'].flatMap(file => ['--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/' + file, import.meta.url))},target=/opt/swarmenv/${file},readonly`]),
     '--entrypoint', 'node', 'swarmenv/agent:issue122', '/opt/swarmenv/agent-worker.mjs']);
   await docker(['cp', fileURLToPath(new URL('../src/agent/bot-contract', import.meta.url)), `${name}:/opt/swarmenv/src/agent/bot-contract`]);
   await docker(['exec', name, 'chown', '-R', '0:0', '/opt/swarmenv/src/agent/bot-contract']);
@@ -134,12 +139,56 @@ try {
     assert.match((await call('/project/snapshot', { execution_id: 'e', binding_version: 1 })).body.error, /ambiguous decoded filenames/);
     await docker(['exec', name, 'node', '-e', "const fs=require('fs'); fs.unlinkSync(Buffer.concat([Buffer.from('/workspace/project/x'),Buffer.from([255])])); fs.unlinkSync('/workspace/project/x\ufffd');"]);
     assert.ok((await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 })).files['2']);
+    const beforeApply = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
+    const targetFiles = { ...beforeApply.files, '2': Buffer.from('installed bytes').toString('base64'), 'installed/note': Buffer.from('incoming').toString('base64') };
+    const manifestOf = files => Object.fromEntries(Object.entries(files).map(([path, encoded]) => {
+      const bytes = Buffer.from(encoded, 'base64');
+      return [path, { bytes: bytes.length, content_hash: createHash('sha256').update(bytes).digest('hex') }];
+    }));
+    const treeHash = files => createHash('sha256').update(stableStringify(manifestOf(files))).digest('hex');
+    const install = { execution_id: 'e', binding_version: 1, request_id: 'install-one', expected_content_hash: beforeApply.content_hash, content_hash: treeHash(targetFiles), files: targetFiles };
+    const inode = async () => (await docker(['exec', name, 'node', '-e', "console.log(require('fs').statSync('/workspace/project').ino)"])).stdout;
+    const initialInode = await inode();
+    const installed = await accepted('/project/install', install);
+    assert.equal(installed.phase, 'installed');
+    assert.equal((await accepted('/project/install-result', install)).phase, 'installed');
+    assert.equal((await call('/project/snapshot', { execution_id: 'e', binding_version: 1 })).body.code, 'WORKSPACE_BUSY');
+    assert.equal(await inode(), initialInode);
+    const confirmed = await accepted('/project/install-confirm', install);
+    assert.equal(confirmed.phase, 'committed');
+    assert.equal((await rpc({ type: 'identity' })).cwd, '/workspace/project');
+    await rpc({ type: 'write', path: '/workspace/project/2', content: 'newer Bot edit after install' });
+    assert.equal((await accepted('/project/install', install)).phase, 'committed');
+    const afterReplay = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
+    assert.equal(Buffer.from(afterReplay.files['2'], 'base64').toString(), 'newer Bot edit after install');
+    const unsafeFiles = { ...afterReplay.files, 'input.txt': Buffer.from('must not replace an open FD').toString('base64') };
+    const unsafe = await call('/project/install', { ...install, request_id: 'open-fd', expected_content_hash: afterReplay.content_hash, content_hash: treeHash(unsafeFiles), files: unsafeFiles });
+    assert.equal(unsafe.body.code, 'WORKSPACE_BUSY');
+    assert.equal((await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 })).content_hash, afterReplay.content_hash);
+    for (const path of ['literal (deleted)', 'space and\nnewline']) {
+      await rpc({ type: 'write', path: '/workspace/project/' + path, content: 'open original' });
+      await rpc({ type: 'open-file', path: '/workspace/project/' + path });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const before = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
+      const nextFiles = { ...before.files, [path]: Buffer.from('unsafe replacement').toString('base64') };
+      assert.equal((await call('/project/install', { ...install, request_id: 'fd-' + path, expected_content_hash: before.content_hash, content_hash: treeHash(nextFiles), files: nextFiles })).body.code, 'WORKSPACE_BUSY');
+    }
     const background = await rpc({ type: 'background' });
-    await rpc({ type: 'exit' });
+    if (process.argv.includes('--close-held')) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const before = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
+      const nextFiles = { ...before.files, '2': Buffer.from('held install').toString('base64') };
+      await accepted('/project/install', { ...install, request_id: 'close-held', expected_content_hash: before.content_hash, content_hash: treeHash(nextFiles), files: nextFiles });
+    } else await rpc({ type: 'exit' });
     await new Promise(resolve => setTimeout(resolve, 200));
     const size = async () => Number((await docker(['exec', name, 'node', '-e', "console.log(require('fs').statSync('/workspace/runtime/heartbeat').size)"])).stdout);
     assert.ok(await size() > 0);
-    await accepted('/stop', {});
+    const stopped = await accepted('/stop', {});
+    assert.equal(stopped.project_installs.find(receipt => receipt.request_id === 'install-one').phase, 'committed');
+    if (process.argv.includes('--close-held')) {
+      assert.equal(stopped.project_installs.find(receipt => receipt.request_id === 'close-held').phase, 'installed');
+      assert.equal((await call('/project/install-confirm', { ...install, request_id: 'close-held' })).status, 400);
+    }
     const stoppedSize = await size();
     await new Promise(resolve => setTimeout(resolve, 150));
     assert.equal(await size(), stoppedSize);

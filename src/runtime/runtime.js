@@ -149,7 +149,7 @@ export class Runtime {
     this.agentAdapter = agentAdapter;
     this.sandboxManager = sandboxManager;
     this.executionWorkspace = missionWorkspace && sandboxManager ? new ExecutionWorkspace({ taskService, workspace: missionWorkspace, sandboxManager,
-      guard: (identity, options) => this.#guardExecutionWorkspace(identity, options) }) : null;
+      guard: (identity, options) => this.#guardExecutionWorkspace(identity, options), onPending: id => this.#scheduleWorkspaceReconcile(id) }) : null;
     this.cleanExecutionWorkspaces = cleanExecutionWorkspaces === true;
     this.freshBotPerExecution = freshBotPerExecution === true;
     this.maxWorkers = maxWorkers;
@@ -184,6 +184,7 @@ export class Runtime {
     this.onCoreEvent = onCoreEvent;
     this.activeProcesses = new Map();
     this.botBindings = new Map();
+    this.workspaceReconcileTimers = new Map();
     this.botStopPromises = new Map();
     this.coreStates = new Map();
     // Compaction count belongs to the reusable identity/lane, not to one
@@ -452,6 +453,8 @@ export class Runtime {
    */
   async shutdown({ terminalState = 'FAILED', terminalReason = 'runtime_shutdown' } = {}) {
     this.stopping = true;
+    for (const entry of this.workspaceReconcileTimers.values()) clearTimeout(entry.timer);
+    this.workspaceReconcileTimers.clear();
     for (const timer of this.finishCleanupTimers.values()) clearTimeout(timer);
     this.finishCleanupTimers.clear();
     for (const [botId, binding] of this.botBindings) {
@@ -582,6 +585,27 @@ export class Runtime {
   async dispatchExecutionWorkspace(operation, input, identity) {
     if (!this.executionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Execution Workspace control is unavailable');
     return this.executionWorkspace.dispatch(operation, input, identity);
+  }
+
+  #scheduleWorkspaceReconcile(executionId, attempt = 0) {
+    if (this.stopping || this.workspaceReconcileTimers.has(executionId)) return;
+    const entry = { timer: null };
+    entry.timer = setTimeout(async () => {
+      let retry = false;
+      try { await this.executionWorkspace.reconcile(executionId); }
+      catch (error) {
+        this.logger?.append({ event: 'runtime.workspace_apply_pending', execution_id: executionId, attempt, error_class: error.code ?? error.name });
+        if (attempt < 10) retry = true;
+        else {
+          try { await this.stopExecution(executionId, 'FAILED', 'workspace_apply_reconciliation_failed'); }
+          catch (stopError) { this.logger?.append({ event: 'runtime.workspace_apply_cleanup_pending', execution_id: executionId, error_class: stopError.code ?? stopError.name }); }
+        }
+      } finally {
+        this.workspaceReconcileTimers.delete(executionId);
+        if (retry) this.#scheduleWorkspaceReconcile(executionId, attempt + 1);
+      }
+    }, 1000);
+    this.workspaceReconcileTimers.set(executionId, entry);
   }
 
   async mergePublicWorkspaceRevision(input = {}) {
@@ -1592,7 +1616,7 @@ export class Runtime {
       execution = this.#getExecution(executionId);
     }
     await this.#stopExecutionResources(executionId);
-    await this.executionWorkspace?.reconcile(executionId);
+    await this.executionWorkspace?.reconcile(executionId, { closedConfirmed: true });
     execution = this.#getExecution(executionId);
     const result = ['CREATED', 'RUNNING', 'WAITING'].includes(execution.state) ? this.taskService.dispatch('stop_execution', {
       terminal_state: terminalState,
@@ -1646,7 +1670,7 @@ export class Runtime {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
     }
     await this.#stopExecutionResources(id, { forceSessionStop: before.state === 'CLOSING' });
-    await this.executionWorkspace?.reconcile(id);
+    await this.executionWorkspace?.reconcile(id, { closedConfirmed: true });
     if (this.#getExecution(id).state === 'CLOSING') {
       if (!this.activeProcesses.has(id)) {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
@@ -1691,6 +1715,7 @@ export class Runtime {
       this.activeProcesses.delete(id);
       if (this.#canUpdateExecutionCore(active.coreId, execution)) this.#setCoreState(active.coreId, { state: 'IDLE', bot_id: null, execution_id: null, task_id: null, session_id: null });
     }
+    this.sandboxManager?.forgetBotProjectInstalls?.({ executionId: id });
     return { execution };
   }
 
@@ -1736,7 +1761,7 @@ export class Runtime {
     }
     await this.#drainCompactionCheckpoint(activeBeforeFence);
     await this.#stopExecutionResources(executionId);
-    await this.executionWorkspace?.reconcile(executionId);
+    await this.executionWorkspace?.reconcile(executionId, { closedConfirmed: true });
     execution = this.#getExecution(executionId);
     if (!['CREATED', 'RUNNING', 'WAITING'].includes(execution.state)) return this.releaseExecution(executionId);
     const result = this.taskService.dispatch('fence_execution', {

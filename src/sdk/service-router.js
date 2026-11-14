@@ -130,7 +130,7 @@ export class ServicesRouter {
     if (operation === 'workspace_public_files') return this.missionWorkspace.files({ workspaceId: payload.workspace_id, revision: payload.revision, prefix: payload.path ?? '' });
     if (operation === 'workspace_public_read') return this.missionWorkspace.read({ workspaceId: payload.workspace_id, revision: payload.revision, path: payload.path, maxBytes: payload.max_bytes });
     if (operation === 'workspace_public_search') return this.missionWorkspace.search({ workspaceId: payload.workspace_id, revision: payload.revision, prefix: payload.path ?? '', query: payload.query, maxResults: payload.max_results });
-    if (operation === 'workspace_public_apply') return this.missionWorkspace.apply({ workspaceId: payload.workspace_id, revision: payload.revision, targetDir: payload.target_dir });
+    if (operation === 'workspace_public_apply') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace apply requires the authenticated Runtime Bridge');
     if (operation === 'workspace_save') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace save requires the authenticated Runtime Bridge');
     if (operation === 'workspace_merge') return this.missionWorkspace.merge(payload);
     if (operation === 'mission_submit') return this.missionSubmissionStore.submit({ ...payload, actorRef: payload.actor_ref ?? envelope.actor_ref });
