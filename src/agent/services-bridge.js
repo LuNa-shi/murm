@@ -193,6 +193,7 @@ export class ServicesBridge {
     // the Core loop to distinguish "invalid choice" from "lost a take race".
     // It is reset by the Runner at the start of each discovery turn.
     this.lastTakeOutcome = null;
+    this.bindingPending = false;
   }
 
   beginTakeAttempt() {
@@ -203,7 +204,7 @@ export class ServicesBridge {
     const bot = this.taskService.getBot(botId);
     const previous = this.taskService.getBot(this.actorRef);
     if (!bot || bot.state !== 'STARTING' || bot.core_id !== this.coreId ||
-        this.executionId || (previous && previous.state !== 'CLOSED')) {
+        this.executionId || this.bindingPending || (previous && previous.state !== 'CLOSED')) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge cannot replace an occupied Bot');
     }
     this.actorRef = botId;
@@ -221,6 +222,7 @@ export class ServicesBridge {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bindTake requires a Task and Execution result');
     }
     if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'bridge already has a taken binding');
+    this.bindingPending = true;
     this.taskId = result.task.task_id;
     this.executionId = result.execution.execution_id;
     this.coreId = this.coreId ?? result.execution.core_id ?? null;
@@ -273,7 +275,7 @@ export class ServicesBridge {
       // handoff error, so a Core cannot retain a stale Execution identity.
       try { await this.onRelease?.(released); } catch { /* preserve handoff failure */ }
       throw error;
-    }
+    } finally { this.bindingPending = false; }
     return result;
   }
 
@@ -481,8 +483,10 @@ export class ServicesBridge {
   }
 
   async call({ operation, payload = {}, operation_id: operationId = null, service_id: serviceId = null, capability_id: capabilityId = null } = {}) {
+    if (this.bindingPending) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
     const identityToken = this.token;
     const assertIdentity = (beforeDispatch = false) => {
+      if (this.bindingPending) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
       if (this.token !== identityToken) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before dispatch');
       const bot = beforeDispatch ? this.taskService.getBot?.(this.actorRef) : null;
       if (bot && !['bot_exit', 'task_finish'].includes(operation)) this.taskService.assertBotDeadline(this.actorRef);

@@ -653,6 +653,7 @@ export class Runtime {
    */
   async sandboxExec(executionId, { command, cwd = '/workspace', timeout_ms: timeoutMs = undefined, env = {}, background = false } = {}) {
     const execution = this.#getExecution(executionId);
+    if (this.taskService.getBot(execution.owner_ref)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Registered Bots run shell commands through their non-root Pi Bash tool');
     if (!this.sandboxManager) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox execution is not enabled');
     const active = this.activeProcesses.get(executionId);
     if (!active || active.closing || !['CREATED', 'RUNNING'].includes(execution.state)) {
@@ -685,10 +686,12 @@ export class Runtime {
     if (!this.sandboxManager) return;
     const bot = this.taskService.getBot(execution.owner_ref);
     if (bot) {
+      if (!workspace?.public_workspace_input) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot Sandbox preparation requires pinned public Workspace input');
       if (bot.execution_id !== execution.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot does not own this Execution');
       this.sandboxManager.bindBotExecution({ botId: bot.bot_id, executionId: execution.execution_id,
         workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref, bindingVersion: execution.fencing_version });
       await this.sandboxManager.syncWorkspace({ executionId: execution.execution_id, workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref, manifest: workspace?.public_workspace_input?.manifest ?? null });
+      if (workspace?.public_workspace_input) await this.sandboxManager.prepareBotProject({ executionId: execution.execution_id, manifest: workspace.public_workspace_input.manifest });
       return;
     }
     await this.sandboxManager.ensureExecution({
@@ -871,6 +874,13 @@ export class Runtime {
       if (bot) this.botBindings.get(bot.bot_id).armDeadline(Date.parse(current.execution_deadline),
         Date.parse(current.execution_deadline) < Date.parse(bot.hard_deadline) ? 'execution-timebox' : 'bot-lifetime-budget');
       startedDurably = true;
+      if (bot && workspace.public_workspace_input && this.sandboxManager) {
+        this.taskService.assertBotDeadline(bot.bot_id);
+        await this.sandboxManager.grantBotProject({ executionId: current.execution_id });
+        const latestBot = this.taskService.getBot(bot.bot_id);
+        if (latestBot.state !== 'ACTIVE' || this.botBindings.get(bot.bot_id)?.closing || boundSession.closed || this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during project grant');
+        this.taskService.assertBotDeadline(bot.bot_id);
+      }
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
       if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
       if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during startup');

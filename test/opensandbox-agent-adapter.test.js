@@ -18,8 +18,8 @@ class FakeSandboxManager {
 test('OpenSandbox Agent adapter keeps Pi RPC inside the provider worker', async () => {
   const manager = new FakeSandboxManager();
   const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi', systemPrompt: 'identity' });
-  const session = await adapter.start({ executionId: 'execution-remote', sessionId: 'session-remote', agentPrompt: 'inspect the task' });
-  assert.equal(manager.started.cwd, '/workspace');
+  const session = await adapter.start({ executionId: 'execution-remote', bot: { bot_id: 'execution-remote' }, sessionId: 'session-remote', agentPrompt: 'inspect the task' });
+  assert.equal(manager.started.cwd, '/workspace/project');
   assert.deepEqual(manager.started.args.slice(0, 2), ['--mode', 'rpc']);
   assert.equal(manager.started.args.includes('--no-builtin-tools'), true);
   assert.equal(manager.started.args.includes('--extension'), false);
@@ -38,7 +38,7 @@ test('remote Session stop reports sandbox deletion failure and retries even afte
     manager.executionStopped = true;
   };
   const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
-  const session = await adapter.start({ executionId: 'worker-cleanup' });
+  const session = await adapter.start({ executionId: 'worker-cleanup', bot: { bot_id: 'worker-cleanup' } });
   try {
     await assert.rejects(session.stop(), /provider deletion unconfirmed/);
     assert.equal(manager.executionStopped, false);
@@ -54,12 +54,12 @@ test('failed unbound startup blocks a replacement until its sandbox cleanup succ
   manager.startAgent = async () => { starts += 1; throw new Error('worker startup failed'); };
   manager.stopExecution = async () => { if (failCleanup) throw new Error('cleanup pending'); };
   const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
-  await assert.rejects(adapter.start({ executionId: 'first-worker' }), /cleanup pending/);
-  await assert.rejects(adapter.start({ executionId: 'second-worker' }), /cleanup pending/);
+  await assert.rejects(adapter.start({ executionId: 'first-worker', bot: { bot_id: 'first-worker' } }), /cleanup pending/);
+  await assert.rejects(adapter.start({ executionId: 'second-worker', bot: { bot_id: 'second-worker' } }), /cleanup pending/);
   assert.equal(starts, 1);
   failCleanup = false;
   await adapter.cleanupPendingStarts();
-  await assert.rejects(adapter.start({ executionId: 'second-worker' }), /worker startup failed/);
+  await assert.rejects(adapter.start({ executionId: 'second-worker', bot: { bot_id: 'second-worker' } }), /worker startup failed/);
   assert.equal(starts, 2);
 });
 
@@ -71,10 +71,10 @@ test('adapter shutdown joins an in-flight provider creation and prevents a late 
   const pendingCreate = new Promise(resolve => { finish = resolve; });
   manager.ensureExecution = async () => { entered(); await pendingCreate; };
   const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
-  const start = adapter.start({ executionId: 'slow-start' });
+  const start = adapter.start({ executionId: 'slow-start', bot: { bot_id: 'slow-start' } });
   const rejected = assert.rejects(start, /stopped/);
   await started;
-  await assert.rejects(adapter.start({ executionId: 'second-start' }), (error) => error.code === 'CONFLICT');
+  await assert.rejects(adapter.start({ executionId: 'second-start', bot: { bot_id: 'second-start' } }), (error) => error.code === 'CONFLICT');
   let cleanupFinished = false;
   const cleanup = adapter.cleanupPendingStarts({ shutdown: true }).then(() => { cleanupFinished = true; });
   await new Promise(resolve => setImmediate(resolve));
@@ -83,7 +83,7 @@ test('adapter shutdown joins an in-flight provider creation and prevents a late 
   await Promise.all([rejected, cleanup]);
   assert.equal(manager.started, null);
   assert.equal(manager.executionStopped, true);
-  await assert.rejects(adapter.start({ executionId: 'after-shutdown' }), /stopping/);
+  await assert.rejects(adapter.start({ executionId: 'after-shutdown', bot: { bot_id: 'after-shutdown' } }), /stopping/);
 });
 
 test('OpenSandbox Agent adapter passes the guest extension path to Pi', () => {
@@ -116,14 +116,14 @@ test('OpenSandbox Agent adapter forwards only configured service environment and
     agentEnvironment: { SWARMENV_CONTEXT_SERVICE_URL: 'http://context:8787' },
     secretEnv: { SWARMENV_TASK_SERVICE_TOKEN: 'task-secret', SWARMENV_BRIDGE_TOKEN: 'bridge-secret', OPENAI_API_KEY: 'explicit-secret' },
   });
-  await adapter.start({ executionId: 'execution-env', sessionId: 'session-env' });
-  assert.equal(manager.started.env.SWARMENV_TASK_SERVICE_URL, 'http://task:8787');
-  assert.equal(manager.started.env.SWARMENV_CONTEXT_SERVICE_URL, 'http://context:8787');
+  await adapter.start({ executionId: 'execution-env', bot: { bot_id: 'execution-env' }, sessionId: 'session-env' });
+  assert.equal(manager.started.env.SWARMENV_TASK_SERVICE_URL, undefined);
+  assert.equal(manager.started.env.SWARMENV_CONTEXT_SERVICE_URL, undefined);
   assert.equal(manager.started.env.SWARMENV_OPENSANDBOX_URL, undefined);
   assert.equal(manager.started.env.PI_CODING_AGENT_DIR, undefined);
   assert.equal(manager.started.env.SWARMENV_BRIDGE_URL, 'http://host-gateway:40123');
   assert.equal(manager.started.env.OPENAI_API_KEY, undefined);
-  assert.equal(manager.started.secretEnvironment.SWARMENV_TASK_SERVICE_TOKEN, 'task-secret');
+  assert.equal(manager.started.secretEnvironment.SWARMENV_TASK_SERVICE_TOKEN, undefined);
   assert.equal(manager.started.secretEnvironment.SWARMENV_BRIDGE_TOKEN, 'bridge-secret');
   assert.equal(manager.started.secretEnvironment.OPENAI_API_KEY, 'explicit-secret');
 });
@@ -132,7 +132,7 @@ test('OpenSandbox Agent adapter records versions resolved inside the provider gu
   const manager = new FakeSandboxManager();
   manager.agentVersions = async () => ({ piVersion: '1.3.0', nurouterVersion: '0.2.16', nodeVersion: '22.19.0' });
   const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
-  const session = await adapter.start({ executionId: 'execution-versions', sessionId: 'session-versions' });
+  const session = await adapter.start({ executionId: 'execution-versions', bot: { bot_id: 'execution-versions' }, sessionId: 'session-versions' });
   assert.equal(session.manifest.pi_version, '1.3.0');
   assert.equal(session.manifest.nurouter_version, null);
   assert.equal(session.manifest.node_version, '22.19.0');
@@ -147,7 +147,7 @@ test('OpenSandbox Agent adapter reconnects after a transient event-stream interr
     await new Promise((resolve) => { manager.releaseEvents = resolve; });
   };
   const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
-  const session = await adapter.start({ executionId: 'execution-reconnect', sessionId: 'session-reconnect' });
+  const session = await adapter.start({ executionId: 'execution-reconnect', bot: { bot_id: 'execution-reconnect' }, sessionId: 'session-reconnect' });
   await new Promise((resolve) => setTimeout(resolve, 150));
   assert.equal(session.closed, false);
   assert.ok(eventCalls >= 2);
@@ -173,7 +173,7 @@ test('OpenSandbox Agent adapter replays worker history after provider SSE become
     return { records: [{ type: 'response', id: message.id, success: true, data: {} }] };
   };
   const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
-  const session = await adapter.start({ executionId: 'execution-poll-history', sessionId: 'session-poll-history' });
+  const session = await adapter.start({ executionId: 'execution-poll-history', bot: { bot_id: 'execution-poll-history' }, sessionId: 'session-poll-history' });
   await new Promise((resolve) => setTimeout(resolve, 1_150));
   assert.ok(eventCalls >= 1);
   assert.deepEqual(polls.slice(0, 2), [0, 1]);
@@ -201,4 +201,28 @@ test('unbound Bot adapter records its Sandbox without copying a Core directory o
     assert.equal(session.botId, 'bot:new');
     assert.equal(events.find(event => event.kind === 'session_started').executionId, null);
   } finally { await session.stop(); }
+});
+
+
+test('registered Bot receives its Bridge credential without global service bearer credentials', async () => {
+  const manager = new FakeSandboxManager();
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi',
+    env: { SWARMENV_BRIDGE_TOKEN: 'scoped-bridge', SWARMENV_SERVICE_ENDPOINTS: '{"task":{"token":"global-service"}}' },
+    secretEnv: { SWARMENV_TASK_SERVICE_TOKEN: 'global-service', OPENAI_API_KEY: 'configured-model-key' },
+  });
+  const session = await adapter.start({ executionId: 'bot:scoped', bot: { bot_id: 'bot:scoped' } });
+  assert.equal(manager.started.env.SWARMENV_SERVICE_ENDPOINTS, undefined);
+  assert.equal(manager.started.secretEnvironment.SWARMENV_TASK_SERVICE_TOKEN, undefined);
+  assert.equal(manager.started.secretEnvironment.SWARMENV_BRIDGE_TOKEN, 'scoped-bridge');
+  assert.equal(manager.started.sessionDir, '/workspace/runtime/pi-session');
+  await session.stop();
+});
+
+
+test('unregistered remote Agent startup fails before creating a provider resource', async () => {
+  const manager = new FakeSandboxManager();
+  manager.ensureExecution = async () => assert.fail('retired Agent path must not create a Sandbox');
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, command: 'pi', provider: 'openai', model: 'gpt-6.1-sol' });
+  await assert.rejects(adapter.start({ executionId: 'legacy-execution' }), /requires a registered Bot/);
+  assert.equal(manager.started, null);
 });

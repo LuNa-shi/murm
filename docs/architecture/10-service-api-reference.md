@@ -35,7 +35,7 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fcfbf9ed0efad34f9998a273a419715974c61e3572e76a67a91ee8c3cab4a988` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `bc7a51d1169ad7d92bebcd3526a42c45ed37bbbc584181f07a6e89691cb6d9bc` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `b1c53350b16044d165154058e955795bef66845b0b746fb0aba2f168dae70402` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `1b75bcdc0833c4690709f0120d01c3e71cf0c4f4d61ffe6125f5202110055bbd` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |

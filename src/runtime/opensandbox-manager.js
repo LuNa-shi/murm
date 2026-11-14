@@ -435,8 +435,9 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ executionId, command: agentCommand, args = [], cwd = '/workspace', env = {}, secretEnvironment = {}, sessionDir = '/workspace/.swarm/pi-session', systemPrompt = null, systemPromptPath = null } = {}) {
+  async startAgent({ executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null } = {}) {
     const record = this.#record(executionId);
+    if (!record.botId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
     if (record.agent) return { ...record.agent };
     const workerToken = record.workerToken;
     if (typeof workerToken !== 'string' || workerToken.length === 0) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox worker token is unavailable for this Execution');
@@ -528,7 +529,8 @@ export class OpenSandboxManager {
       const path = relative(root, source).split('\\').join('/');
       const digest = createHash('sha256').update(content).digest('hex');
       if (manifest && (manifest[path]?.content_hash !== digest || manifest[path]?.bytes !== content.length)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Public Workspace input bytes differ from the pinned manifest', { path });
-      const target = `/workspace/${relative(root, source).split('\\').join('/')}`;
+      const projectRoot = record.botId ? '/workspace/project' : '/workspace';
+      const target = `${projectRoot}/${relative(root, source).split('\\').join('/')}`;
       const encoded = content.toString('base64');
       const stage = join(target, '..', `.swarm-input-${randomUUID()}`);
       // Linux limits each argv string independently of the request body's
@@ -548,8 +550,25 @@ export class OpenSandboxManager {
       }
     }
     this.logger?.({ event: 'sandbox.workspace_initialized', provider: 'opensandbox', execution_id: executionId, file_count: files.length, bytes: total });
-    return { execution_id: executionId, file_count: files.length, bytes: total, workspace: '/workspace' };
+    return { execution_id: executionId, file_count: files.length, bytes: total, workspace: record.botId ? '/workspace/project' : '/workspace' };
   }
+
+  async #projectCall(executionId, action, manifest = undefined) {
+    const record = this.#record(executionId);
+    if (!record.botId || record.boundExecutionId !== executionId || !record.agent || record.stopPromise) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Project control requires the live bound Bot worker');
+    const body = { execution_id: executionId, binding_version: record.bindingVersion, ...(manifest ? { manifest } : {}) };
+    const response = await this.#request(`${record.agent.endpoint}/project/${action}`, { absolute: true, method: 'POST',
+      extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body, timeoutMs: 30_000 });
+    const result = responseValue(response.body);
+    const expected = action === 'prepare' ? 'PREPARED' : 'ACTIVE';
+    if (result?.state !== expected || result.execution_id !== executionId || result.binding_version !== record.bindingVersion) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'Worker did not confirm the expected project permission state');
+    if (record.stopPromise || this.executions.get(executionId) !== record) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during project control');
+    this.logger?.({ event: `sandbox.project_${action === 'prepare' ? 'prepared' : 'granted'}`, bot_id: record.botId, execution_id: executionId, binding_version: record.bindingVersion });
+    return result;
+  }
+
+  prepareBotProject({ executionId, manifest }) { return this.#projectCall(executionId, 'prepare', manifest); }
+  grantBotProject({ executionId }) { return this.#projectCall(executionId, 'grant'); }
 
   /** Pull guest files back before Runtime checkpoints or deletes the sandbox. */
   async syncWorkspaceBack({ executionId, workspaceRef, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 } = {}) {
@@ -621,7 +640,7 @@ export class OpenSandboxManager {
   async stopAgent(executionId, signal = 'SIGTERM') {
     const record = this.executions.get(executionId);
     if (!record?.agent) return false;
-    await this.#request(`${record.agent.endpoint}/stop`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { signal }, timeoutMs: 15_000 }).catch(() => undefined);
+    await this.#request(`${record.agent.endpoint}/stop`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { signal }, timeoutMs: 15_000 });
     record.agent = null;
     return true;
   }
@@ -676,7 +695,7 @@ export class OpenSandboxManager {
 
   snapshot() { return { provider: 'opensandbox', lifecycle_url: this.lifecycleBaseUrl, image: this.image, verified: this.verified, executions: [...new Set(this.executions.values())].map((record) => this.#snapshot(record)) }; }
 
-  #snapshot(record) { return { execution_id: record.botId ? record.boundExecutionId : record.executionId, ...(record.botId ? { bot_id: record.botId, resource_key: record.executionId } : {}), sandbox_id: record.sandboxId, binding_version: record.bindingVersion, workspace: '/workspace', host_workspace_ref: null, agent_worker: record.agent ? { worker_port: record.agent.worker_port, started_at: record.agent.started_at } : null, jobs: [...record.jobs.values()].map((job) => this.#jobView(job)) }; }
+  #snapshot(record) { return { execution_id: record.botId ? record.boundExecutionId : record.executionId, ...(record.botId ? { bot_id: record.botId, resource_key: record.executionId } : {}), sandbox_id: record.sandboxId, binding_version: record.bindingVersion, workspace: record.botId ? '/workspace/project' : '/workspace', host_workspace_ref: null, agent_worker: record.agent ? { worker_port: record.agent.worker_port, started_at: record.agent.started_at } : null, jobs: [...record.jobs.values()].map((job) => this.#jobView(job)) }; }
   #jobView(job) { return { job_id: job.jobId, execution_id: job.executionId, state: job.state, exit_code: job.exit_code ?? null, timed_out: job.timed_out ?? false, cancel_reason: job.cancel_reason ?? null, started_at: job.started_at ?? null, finished_at: job.finished_at ?? null, command: job.command ?? null }; }
   #record(executionId) { const record = this.executions.get(executionId); if (!record) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'sandbox is not bound to this Execution', { execution_id: executionId }); return record; }
 

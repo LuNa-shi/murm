@@ -142,7 +142,7 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
       throw new Error(`unexpected URL: ${url}`);
     },
   });
-  await manager.ensureExecution({ executionId: 'e-worker' });
+  await manager.ensureExecution({ executionId: 'e-worker', botId: 'e-worker' });
   const started = await manager.startAgent({ executionId: 'e-worker', command: 'nurouter', args: ['pi', '--mode', 'rpc'] });
   assert.equal(started.worker_port, 44100);
   const sandboxCreate = calls.find((call) => call.url === 'http://sandbox.test/v1/sandboxes');
@@ -171,7 +171,7 @@ test('OpenSandbox keeps explicit Agent secrets in the authenticated worker start
       throw new Error(`unexpected URL: ${url}`);
     },
   });
-  await manager.ensureExecution({ executionId: 'e-secret' });
+  await manager.ensureExecution({ executionId: 'e-secret', botId: 'e-secret' });
   await manager.startAgent({ executionId: 'e-secret', command: 'pi', secretEnvironment: { SWARMENV_TASK_SERVICE_TOKEN: 'secret-value' } });
   const startCall = calls.find((call) => call.url === 'http://worker.test/sbx-secret/start');
   assert.equal(JSON.parse(startCall.options.body).secret_env.SWARMENV_TASK_SERVICE_TOKEN, 'secret-value');

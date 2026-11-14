@@ -3,8 +3,9 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile, writeFile, mkdir, chown, readdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { SandboxProject, BOT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.mjs';
 
 const argv = process.argv.slice(2);
 function option(name, fallback = null) {
@@ -15,6 +16,11 @@ const port = Number(option('--port', process.env.SWARMENV_WORKER_PORT ?? 44100))
 const token = option('--token', process.env.SWARMENV_WORKER_TOKEN) ?? randomUUID();
 if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('worker port must be an integer from 1 to 65535');
 
+const project = new SandboxProject();
+await project.initialize();
+let everStarted = false;
+let stopping = null;
+let writerGate = Promise.resolve();
 let child = null;
 let stdoutBuffer = '';
 let sequence = 0;
@@ -89,23 +95,34 @@ function processStdout(chunk) {
 }
 
 async function startAgent(input) {
-  if (child) throw new Error('worker Agent is already started');
+  if (everStarted || project.closing) throw new Error('worker Bot cannot start another Agent');
   if (!Array.isArray(input.args) || !input.args.every((value) => typeof value === 'string')) throw new Error('worker args must be a string array');
   if (typeof input.command !== 'string' || !input.command) throw new Error('worker command is required');
-  const cwd = input.cwd ?? '/workspace';
-  if (typeof cwd !== 'string' || !(cwd === '/workspace' || cwd.startsWith('/workspace/')) || cwd.split('/').includes('..')) throw new Error('worker cwd must stay inside /workspace');
-  if (input.system_prompt_path && (typeof input.system_prompt_path !== 'string' || !(input.system_prompt_path === '/workspace' || input.system_prompt_path.startsWith('/workspace/')) || input.system_prompt_path.split('/').includes('..'))) throw new Error('worker system prompt path must stay inside /workspace');
+  const cwd = input.cwd ?? PROJECT_DIR;
+  if (cwd !== PROJECT_DIR) throw new Error('worker project cwd must be /workspace/project');
+  everStarted = true;
+  for (const path of ['home', 'tmp', 'pi-agent', 'pi-session']) {
+    await mkdir(join(RUNTIME_DIR, path), { recursive: true });
+    await chown(join(RUNTIME_DIR, path), BOT_UID, BOT_UID);
+  }
+  if (input.system_prompt_path && (typeof input.system_prompt_path !== 'string' || !input.system_prompt_path.startsWith(`${RUNTIME_DIR}/`) || input.system_prompt_path.split('/').includes('..'))) throw new Error('worker system prompt path must stay inside /workspace');
   if (input.system_prompt_path && typeof input.system_prompt === 'string') {
     await mkdir(dirname(input.system_prompt_path), { recursive: true });
     await writeFile(input.system_prompt_path, input.system_prompt, { mode: 0o600 });
+    await chown(input.system_prompt_path, BOT_UID, BOT_UID);
   }
-  const childEnv = { ...process.env };
-  delete childEnv.SWARMENV_WORKER_TOKEN;
   const suppliedEnv = { ...(input.env ?? {}), ...(input.secret_env ?? {}) };
   delete suppliedEnv.SWARMENV_WORKER_TOKEN;
-  const agentEnvironment = { ...childEnv, ...suppliedEnv };
+  const agentEnvironment = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', ...suppliedEnv,
+    HOME: join(RUNTIME_DIR, 'home'), TMPDIR: join(RUNTIME_DIR, 'tmp'), PI_CODING_AGENT_DIR: join(RUNTIME_DIR, 'pi-agent') };
+  const catalog = await readFile('/opt/swarmenv/pi-agent/models.json');
+  await writeFile(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), catalog, { mode: 0o600 });
   await expandPiModelCatalog(agentEnvironment);
-  child = spawn(input.command, input.args, { cwd, env: agentEnvironment, stdio: ['pipe', 'pipe', 'pipe'] });
+  await chown(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), BOT_UID, BOT_UID);
+  if (project.closing) throw new Error('Bot stopped during startup');
+  child = spawn('setpriv', ['--reuid', String(BOT_UID), '--regid', String(BOT_UID), '--clear-groups', '--no-new-privs',
+    '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all', '--', input.command, ...input.args],
+    { cwd, env: agentEnvironment, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdout.on('data', processStdout);
   child.stderr.on('data', (chunk) => { for (const response of subscribers) response.write(`event: stderr\ndata: ${JSON.stringify({ text: chunk.toString() })}\n\n`); });
   child.on('error', (error) => publish({ type: 'worker_error', message: error.message }));
@@ -150,16 +167,92 @@ async function rpc(input) {
   return result;
 }
 
+async function botProcesses() {
+  const pids = [];
+  for (const name of await readdir('/proc')) {
+    if (!/^\d+$/.test(name)) continue;
+    let status;
+    try { status = await readFile(`/proc/${name}/status`, 'utf8'); } catch (error) { if (['ENOENT', 'ESRCH'].includes(error.code)) continue; throw error; }
+    const uid = Number(status.match(/^Uid:\s+(\d+)/m)?.[1]);
+    if (uid === BOT_UID && !/^State:\s+Z/m.test(status)) pids.push(Number(name));
+  }
+  return pids;
+}
+
+function withBotPaused(operation) {
+  const pending = writerGate.then(async () => {
+    if (project.closing) throw new Error('Bot is closing');
+    const paused = new Set();
+    let stable = 0;
+    const deadline = Date.now() + 2000;
+    try {
+      while (stable < 2) {
+        if (project.closing) throw new Error('Bot closed while pausing project writers');
+        const pids = await botProcesses();
+        if (child?.pid && !pids.includes(child.pid)) pids.push(child.pid);
+        let changed = false;
+        for (const pid of pids) {
+          if (!paused.has(pid)) {
+            try { process.kill(pid, 'SIGSTOP'); paused.add(pid); changed = true; }
+            catch (error) { if (error.code !== 'ESRCH') throw error; }
+          }
+        }
+        let allStopped = true;
+        for (const pid of pids) {
+          try {
+            const status = await readFile(`/proc/${pid}/status`, 'utf8');
+            if (!/^State:\s+[TtZ]/m.test(status)) allStopped = false;
+          } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
+        }
+        stable = !changed && allStopped ? stable + 1 : 0;
+        if (Date.now() >= deadline) throw new Error('Bot project writers could not be paused');
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      const result = await operation();
+      if (project.closing) throw new Error('Bot closed during project operation');
+      return { ...result, paused_process_count: paused.size };
+    } finally {
+      if (project.closing) await stopBot();
+      else for (const pid of paused) {
+        try { process.kill(pid, 'SIGCONT'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+      }
+    }
+  });
+  writerGate = pending.catch(() => undefined);
+  return pending;
+}
+
+function stopBot() {
+  project.beginClose();
+  if (stopping) return stopping;
+  stopping = (async () => {
+    if (child?.pid) { try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
+    const deadline = Date.now() + 5_000;
+    while (true) {
+      const pids = await botProcesses();
+      if (!pids.length) break;
+      for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
+      if (Date.now() >= deadline) throw new Error('Bot descendant stop was not confirmed');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    await project.close();
+    return { stopped: true };
+  })().catch(error => { stopping = null; throw error; });
+  return stopping;
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
   try {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
     if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.grant(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/rpc') { send(response, 200, { ok: true, result: await rpc(await body(request)) }); return; }
     if (request.method === 'POST' && url.pathname === '/stop') {
-      if (child) child.kill((await body(request)).signal ?? 'SIGTERM');
-      send(response, 200, { ok: true });
+      await body(request);
+      send(response, 200, { ok: true, result: await stopBot() });
       return;
     }
     if (request.method === 'GET' && url.pathname === '/events') {
@@ -177,5 +270,6 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(port, '0.0.0.0');
-process.on('SIGTERM', () => { child?.kill('SIGTERM'); server.close(() => process.exit(0)); });
-process.on('SIGINT', () => { child?.kill('SIGINT'); server.close(() => process.exit(0)); });
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {
+  void stopBot().finally(() => server.close(() => process.exit(0)));
+});

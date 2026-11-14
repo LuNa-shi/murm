@@ -89,3 +89,21 @@ test('Bridge refuses an expired Bot credential before the cleanup timer runs', a
   assert.equal(service.getBot('bot:expired').state, 'UNBOUND');
   await assert.rejects(bridge.call({ operation: 'task_create', payload: { summary: 'A late proposal at the real Bridge boundary', expected_output: 'Note', acceptance_conditions: ['Note'] } }), /hard deadline elapsed/);
 });
+
+
+test('Bridge withholds contribution binding until the activation and grant callback completes', async t => {
+  let entered; let release;
+  const started = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  const { service, bridge, start } = await fixture(t, { onTake: async () => { entered(); await gate; } });
+  start('bot:preparing-grant');
+  const task = service.createTask({ mission_id: 'mission:auth', summary: 'Inspect the protected binding boundary', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: 'bot:preparing-grant' })).task;
+  const taken = service.takeTask(task.task_id, { owner_ref: 'bot:preparing-grant', core_id: 'core-1', take_key: 'bridge-grant' });
+  const binding = bridge.bindTake(taken);
+  await started;
+  try {
+    await assert.rejects(bridge.call({ operation: 'task_create', payload: { summary: 'A proposal before grant completes', expected_output: 'Note', acceptance_conditions: ['Note'] } }), /binding is still being prepared/);
+  } finally { release(); }
+  await binding;
+  assert.equal(bridge.bindingPending, false);
+});

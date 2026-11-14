@@ -199,6 +199,16 @@
       "role": "CLI options, locked input, persistent observer, batch and aggregate outputs"
     },
     {
+      "path": "scripts/sandbox-project.mjs",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/02-execution.md",
+        "docs/architecture/05-workspace-continuity.md"
+      ],
+      "role": "Trusted worker-owned project directory preparation, manifest validation, grant and revocation"
+    },
+    {
       "path": "scripts/serve-observability.mjs",
       "category": "observation and analysis",
       "chapters": [
@@ -235,15 +245,6 @@
       "role": "Executable swarm CLI entry point and exit-code boundary"
     },
     {
-      "path": "services/builtin/compose.yaml",
-      "category": "provider deployment and instructions",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Four-process isolated service deployment with independent persistent volumes"
-    },
-    {
       "path": "services/builtin/Dockerfile",
       "category": "provider deployment and instructions",
       "chapters": [
@@ -264,6 +265,15 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Built-in provider deployment configuration"
+    },
+    {
+      "path": "services/builtin/compose.yaml",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Four-process isolated service deployment with independent persistent volumes"
     },
     {
       "path": "services/mathlib-search/Dockerfile",
@@ -288,6 +298,17 @@
       "role": "Mathlib provider configuration and operation notes"
     },
     {
+      "path": "services/mathlib-search/SKILL.md",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Repository-owned full Mathlib tool usage instructions loaded by bundle"
+    },
+    {
       "path": "services/mathlib-search/references/loogle.md",
       "category": "provider deployment and instructions",
       "chapters": [
@@ -308,17 +329,6 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Optional provider manifest, schemas, help and documentation declarations"
-    },
-    {
-      "path": "services/mathlib-search/SKILL.md",
-      "category": "provider deployment and instructions",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/08-prompts.md",
-        "docs/architecture/10-service-api-reference.md"
-      ],
-      "role": "Repository-owned full Mathlib tool usage instructions loaded by bundle"
     },
     {
       "path": "services/opensandbox-agent/Dockerfile",
@@ -746,15 +756,6 @@
       "role": "Runtime-owned Mission Workspace repository with immutable public revisions, fixed-file reads, materialization, and whole-revision merge"
     },
     {
-      "path": "src/runtime/workspace-repository.js",
-      "category": "Mission and Task",
-      "chapters": [
-        "docs/architecture/05-workspace-continuity.md",
-        "docs/architecture/11-storage-reference.md"
-      ],
-      "role": "Workspace Git object creation, single-writer OS locking, immutable revision refs, durable request results and ref/index recovery barrier"
-    },
-    {
       "path": "src/runtime/opensandbox-manager.js",
       "category": "runtime and execution",
       "chapters": [
@@ -833,6 +834,15 @@
         "docs/architecture/09-known-boundaries.md"
       ],
       "role": "Execution-owned filesystem, manifests, revisions, local Git and snapshots"
+    },
+    {
+      "path": "src/runtime/workspace-repository.js",
+      "category": "Mission and Task",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Workspace Git object creation, single-writer OS locking, immutable revision refs, durable request results and ref/index recovery barrier"
     },
     {
       "path": "src/sdk/builtin-registry.js",

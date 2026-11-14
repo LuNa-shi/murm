@@ -23,14 +23,21 @@ async function fixture(t, runtimeOptions = {}) {
       if (options.method === 'DELETE') return new Response('{}');
       if (url.endsWith('/sandboxes')) return new Response(JSON.stringify({ id: `sandbox:${++sandboxNumber}` }), { status: 202 });
       if (url.includes('/endpoints/')) return new Response(JSON.stringify({ url: 'http://execd.test' }));
+      if (url.includes('/project/')) {
+        const input = JSON.parse(options.body);
+        return new Response(JSON.stringify({ result: { state: url.endsWith('/prepare') ? 'PREPARED' : 'ACTIVE', execution_id: input.execution_id, binding_version: input.binding_version } }));
+      }
       if (url.endsWith('/command')) return new Response('event: execution_complete\ndata: {"exit_code":0}\n\n');
       return new Response('{}');
     },
   });
-  const runtime = new Runtime({ taskService: service, workspaceManager: new WorkspaceManager({ rootDir: root }), sandboxManager: manager, agentAdapter: {}, ...runtimeOptions });
+  const missionWorkspace = new MissionWorkspace({ rootDir: join(root, 'default-public') });
+  await missionWorkspace.create({ missionId: 'mission:bots', workspaceId: 'workspace-default', initialFiles: { 'input.txt': 'public project input' } });
+  const runtime = new Runtime({ taskService: service, missionWorkspace, missionWorkspaceId: 'workspace-default', workspaceManager: new WorkspaceManager({ rootDir: root }), sandboxManager: manager, agentAdapter: {}, ...runtimeOptions });
   t.after(async () => { await runtime.shutdown(); service.close(); await rm(root, { recursive: true, force: true }); });
   const startSession = async ({ bot, onSandboxCreated }) => {
     const sandbox = await manager.ensureExecution({ executionId: bot.resource_key, botId: bot.bot_id, onCreated: onSandboxCreated });
+    await manager.startAgent({ executionId: bot.resource_key, command: 'controlled-session', args: [] });
     const session = new EventEmitter();
     session.closed = false;
     session.waitForReady = async () => {};
@@ -455,8 +462,22 @@ test('registered take pins the complete public tree even when main advances duri
     await publicStore.merge({ workspaceId: 'workspace-bots', fromRevision: next.revision });
     return create(options);
   };
+  const prepare = runtime.sandboxManager.prepareBotProject.bind(runtime.sandboxManager);
+  const grant = runtime.sandboxManager.grantBotProject.bind(runtime.sandboxManager);
+  const permissionOrder = [];
+  runtime.sandboxManager.prepareBotProject = async input => {
+    assert.equal(service.getBot(bot.bot_id).state, 'PREPARING');
+    assert.equal(service.getExecution(execution.execution_id).state, 'CREATED');
+    permissionOrder.push('prepare'); return prepare(input);
+  };
+  runtime.sandboxManager.grantBotProject = async input => {
+    assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+    assert.equal(service.getExecution(execution.execution_id).state, 'RUNNING');
+    permissionOrder.push('grant'); return grant(input);
+  };
   const { workspace } = await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
   const current = service.getExecution(execution.execution_id);
+  assert.deepEqual(permissionOrder, ['prepare', 'grant']);
   assert.equal(current.workspace_input.revision, '0.1');
   assert.equal((await publicStore.get({ workspaceId: 'workspace-bots' })).main_revision, '0.3');
   assert.equal(current.workspace_input.git_commit, workspace.public_workspace_input.git_commit);
@@ -473,6 +494,7 @@ test('registered take pins the complete public tree even when main advances duri
 test('a Task cannot materialize another Mission public Workspace', async t => {
   const { root, service, runtime, startSession } = await fixture(t);
   runtime.missionWorkspace = new MissionWorkspace({ rootDir: join(root, 'public-repositories') });
+  runtime.missionWorkspaceId = null;
   await runtime.missionWorkspace.create({ missionId: 'mission:other', workspaceId: 'workspace-other', initialFiles: { 'other.txt': 'private to another Mission' } });
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
   const task = service.createTask({ mission_id: bot.mission_id, summary: 'Attempt a foreign project input', expected_output: 'Note', acceptance_conditions: ['Note'], workspace: { workspace_id: 'workspace-other' } }, makeEnvelope({ actorRef: bot.bot_id })).task;
@@ -496,4 +518,27 @@ test('a Task explicit public revision is used instead of the current main', asyn
   const { workspace } = await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
   assert.equal(service.getExecution(execution.execution_id).workspace_input.revision, saved.revision);
   assert.equal(await readFile(join(workspace.workspace_ref, 'input.txt'), 'utf8'), 'selected saved revision');
+});
+
+
+test('a delayed project grant cannot return a successful binding after Bot stop', async t => {
+  const { root, service, runtime, startSession } = await fixture(t);
+  runtime.missionWorkspace = new MissionWorkspace({ rootDir: join(root, 'public-repositories') });
+  runtime.missionWorkspaceId = 'workspace-late-grant';
+  await runtime.missionWorkspace.create({ missionId: 'mission:bots', workspaceId: 'workspace-late-grant', initialFiles: { 'input.txt': 'input' } });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a late permission transition', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'late-grant' });
+  let entered; let release;
+  const started = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  runtime.sandboxManager.grantBotProject = async () => { entered(); await gate; return { state: 'ACTIVE' }; };
+  const binding = runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
+  const rejected = assert.rejects(binding, /stopped during project grant/);
+  await started;
+  await runtime.stopExecution(execution.execution_id, 'FAILED', 'controlled-hard-stop');
+  release(); await rejected;
+  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
+  assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'controlled-hard-stop');
+  assert.equal(runtime.hasActiveExecution(execution.execution_id), false);
 });

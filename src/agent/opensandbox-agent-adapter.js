@@ -188,7 +188,7 @@ class RemoteAgentChild extends EventEmitter {
  * messages over the provider endpoint and never spawns the Agent command.
  */
 export class OpenSandboxAgentAdapter {
-  constructor({ sandboxManager, command = 'nurouter', provider, model, account, group, env = {}, agentEnvironment = {}, secretEnv = {}, systemPrompt = null, extensionPath = null, sessionDir = '/workspace/.swarm/pi-session', manifestVersions = {} } = {}) {
+  constructor({ sandboxManager, command = 'nurouter', provider, model, account, group, env = {}, agentEnvironment = {}, secretEnv = {}, systemPrompt = null, extensionPath = null, sessionDir = '/workspace/runtime/pi-session', manifestVersions = {} } = {}) {
     if (!sandboxManager) throw new TypeError('OpenSandboxAgentAdapter requires sandboxManager');
     this.sandboxManager = sandboxManager;
     this.command = command;
@@ -218,6 +218,7 @@ export class OpenSandboxAgentAdapter {
 
   async start(options = {}) {
     if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent adapter is stopping');
+    if (!options.bot?.bot_id || options.executionId !== (options.bot.resource_key ?? options.bot.bot_id)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'OpenSandbox Agent startup requires a registered Bot resource identity');
     if (this.startPromise) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Agent startup is already in progress');
     const starting = this.#startTracked(options).finally(() => { this.startPromise = null; });
     this.startPromise = starting;
@@ -264,7 +265,7 @@ export class OpenSandboxAgentAdapter {
     // Runtime passes its host-side session directory to every adapter. The
     // remote worker has one fixed guest work surface and must never receive a
     // host path as an argv or filesystem target.
-    const guestSessionDir = '/workspace/.swarm/pi-session';
+    const guestSessionDir = '/workspace/runtime/pi-session';
     const launchArgs = this.buildLaunchArgs({ executionId, sessionId, sessionDir: guestSessionDir });
     const sandbox = await this.sandboxManager.ensureExecution({ executionId, botId: bot?.bot_id ?? null,
       onCreated: onSandboxCreated, bindingVersion: observationContext.fencingVersion ?? null });
@@ -280,6 +281,11 @@ export class OpenSandboxAgentAdapter {
       ...this.config.secretEnv,
       SWARMENV_BRIDGE_TOKEN: this.config.env.SWARMENV_BRIDGE_TOKEN ?? this.config.secretEnv.SWARMENV_BRIDGE_TOKEN,
     });
+    if (bot) {
+      delete workerEnvironment.SWARMENV_SERVICE_ENDPOINTS;
+      for (const key of Object.keys(workerEnvironment)) if (/^SWARMENV_.*_SERVICE_URL$/.test(key)) delete workerEnvironment[key];
+      for (const key of Object.keys(workerSecretEnvironment)) if (/^SWARMENV_.*_SERVICE_TOKEN$/.test(key)) delete workerSecretEnvironment[key];
+    }
     let guestVersions = null;
     const directPi = this.command === 'pi' || this.command.endsWith('/pi');
     const explicitVersions = {
@@ -294,7 +300,7 @@ export class OpenSandboxAgentAdapter {
       executionId,
       command: this.command,
       args: launchArgs,
-      cwd: '/workspace',
+      cwd: '/workspace/project',
       env: workerEnvironment,
       sessionDir: guestSessionDir,
       systemPrompt: this.config.systemPrompt,
