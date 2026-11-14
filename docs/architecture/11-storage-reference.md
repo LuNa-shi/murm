@@ -58,7 +58,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `61bfb8758de4c18aab7f7d99466e12951d55b4dce5305b775b3b9d0b39f95646`.
+Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `506ac449b886a29af5f829b20db2eb7826135d2975ad4d71ff92e1e252190822`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -687,7 +687,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `3a689efdd8a777c5952a0f6b88e53dc2ae57bdf30698d12596ba93f1e3904ed6`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `bb957b448e5f72fc768593b578c9f696414d1ff55155b03a4766bf6e8f4e9d58`.
 
 #### executions_active_core
 

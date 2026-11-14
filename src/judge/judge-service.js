@@ -1,3 +1,4 @@
+import { assertNewExecutionWork } from '../task/execution-budget.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -32,6 +33,13 @@ function resultFromRow(row) {
   };
 }
 
+function executionRejection(error) {
+  if (![ERROR_CODES.NOT_ALLOWED, ERROR_CODES.FENCED].includes(error.code)) return null;
+  return { verdict: 'ERROR', result_class: 'request_failure', checker_process_status: 'not_started',
+    evidence: { diagnostic: error.message, error: error.name, checker_started: false,
+      diagnostic_code: error.details?.phase === 'soft_closeout' ? 'soft_closeout' : 'execution_closed' } };
+}
+
 export class JudgeService {
   constructor(database = ':memory:', {
     checker,
@@ -39,6 +47,7 @@ export class JudgeService {
     maxInfrastructureRetries = 2,
     dependencyEventSink = null,
     fixtureManifest = null,
+    taskService = null,
   } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     ensureJudgeSchema(this.db);
@@ -47,6 +56,7 @@ export class JudgeService {
     this.maxInfrastructureRetries = Number.isInteger(maxInfrastructureRetries) && maxInfrastructureRetries >= 0 ? maxInfrastructureRetries : 2;
     this.dependencyEventSink = dependencyEventSink;
     this.fixtureManifest = fixtureManifest;
+    this.taskService = taskService;
   }
 
   close() { this.db.close(); }
@@ -227,22 +237,41 @@ export class JudgeService {
         ...(workspaceSourceRef ? { workspace_id: workspaceSourceRef.workspace_id, path: workspaceSourceRef.path, revision: workspaceSourceRef.revision } : {}),
       },
       fixture_manifest: fixtureManifest,
-    }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref });
+    }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref, envelope });
     return envelope.actor_ref?.startsWith('agent:') ? agentCheckResult(result) : result;
   }
 
-  async #checkWorkspaceSourceRequest(input, { operationId = randomUUID(), actorRef = 'judge:lean' } = {}) {
+  async #checkWorkspaceSourceRequest(input, { operationId = randomUUID(), actorRef = 'judge:lean', envelope: requestEnvelope } = {}) {
     this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: operationId, target_task_id: input?.target_task_id, workspace_source_id: input?.workspace_source_id });
     const normalized = this.#validateRequest(input);
     // E state versions can advance while the same immutable check is running
     // or awaiting a response. They are not part of the scientific input.
     const requestHash = hash(normalized.workspace_source.file_ref?.git_commit ? { ...normalized, state_version: null } : normalized);
-    const request = this.#beginRequest(normalized, requestHash);
+    const publicInput = Boolean(normalized.workspace_source.file_ref?.git_commit);
+    const registered = Boolean(this.taskService?.getBot(requestEnvelope.actor_ref));
+    const authority = ({ newWork = false } = {}) => {
+      if (!publicInput && !registered) return; // trusted historical source helper
+      if (!this.taskService || this.taskService.db !== this.db) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires the shared Task lifecycle authority');
+      const execution = this.taskService.getExecution(requestEnvelope.execution_id);
+      if (!execution || execution.owner_ref !== requestEnvelope.actor_ref || execution.task_id !== requestEnvelope.task_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge request requires its actual Execution owner');
+      if (newWork) {
+        this.taskService.materialScope({ ...requestEnvelope, state_version: execution.state_version }, { write: true });
+        assertNewExecutionWork(execution);
+      }
+    };
+    const request = this.#beginRequest(normalized, requestHash, authority);
     if (!request.shouldCheck) return request.result;
     const requested = request.result;
-    const preflight = await this.#runPreflight(normalized);
+    let admissionFailure = null;
+    const assertCanStart = () => authority({ newWork: true });
+    const preflight = await this.#runPreflight(normalized, assertCanStart).catch(error => {
+      admissionFailure = executionRejection(error);
+      if (!admissionFailure) throw error;
+      return { status: 'not_admitted' };
+    });
     let checked;
-    if (preflight.status !== 'healthy') {
+    if (admissionFailure) checked = admissionFailure;
+    else if (preflight.status !== 'healthy') {
       checked = {
         verdict: 'ERROR',
         checker_process_status: preflight.checker_process_status,
@@ -260,11 +289,15 @@ export class JudgeService {
       };
     } else {
       try {
-        checked = await this.checker.check({ workspace_source: normalized.workspace_source, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest });
+        // A preflight can finish after the soft/hard boundary. Do not launch
+        // a new scientific calculation merely because preflight was admitted.
+        authority({ newWork: true });
+        checked = await this.checker.check({ workspace_source: normalized.workspace_source, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest, assertCanStart });
       } catch (error) {
-        checked = { verdict: 'ERROR', evidence: { diagnostic: error.message, error: error.name, checker_started: false } };
+        admissionFailure = executionRejection(error);
+        checked = admissionFailure ?? { verdict: 'ERROR', evidence: { diagnostic: error.message, error: error.name, checker_started: false } };
       }
-      if (typeof normalized.workspace_source.content === 'string' && /\b(?:sorry|admit|axiom)\b/i.test(normalized.workspace_source.content)) {
+      if (!admissionFailure && typeof normalized.workspace_source.content === 'string' && /\b(?:sorry|admit|axiom)\b/i.test(normalized.workspace_source.content)) {
         checked = {
           ...(checked ?? {}),
           verdict: 'ERROR',
@@ -430,8 +463,9 @@ export class JudgeService {
     return resultFromRow(this.db.prepare('SELECT * FROM check_results WHERE check_result_id = ?').get(checkResultId));
   }
 
-  #beginRequest(normalized, requestHash) {
+  #beginRequest(normalized, requestHash, authority) {
     return this.#transaction(() => {
+      authority();
       const alias = this.db.prepare('SELECT * FROM judge_request_aliases WHERE request_key = ?').get(normalized.request_key);
       if (alias) {
         if (alias.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
@@ -442,6 +476,7 @@ export class JudgeService {
         if (existing.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
         return { result: existing, shouldCheck: false };
       }
+      authority({ newWork: true });
       // request_key is the transport idempotency key, but it is not a license
       // to rerun an unchanged workspace_source under a fresh key.  A workspace_source and
       // its locked checker/input binding define the durable check identity;
@@ -498,7 +533,7 @@ export class JudgeService {
     });
   }
 
-  async #runPreflight(normalized) {
+  async #runPreflight(normalized, assertCanStart = () => {}) {
     const identity = checkerIdentity(normalized.fixture_manifest);
     let result;
     if (typeof this.checker.preflight !== 'function') {
@@ -520,8 +555,9 @@ export class JudgeService {
       }, identity);
     } else {
       try {
-        result = normalizePreflight(await this.checker.preflight({ fixtureManifest: normalized.fixture_manifest }), identity);
+        result = normalizePreflight(await this.checker.preflight({ fixtureManifest: normalized.fixture_manifest, assertCanStart }), identity);
       } catch (error) {
+        if (executionRejection(error)) throw error;
         result = normalizePreflight({
           status: 'unavailable',
           checker_process_status: 'not_started',

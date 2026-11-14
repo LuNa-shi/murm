@@ -89,7 +89,7 @@ export class LeanChecker {
     this.logger = logger;
   }
 
-  async preflight({ fixtureManifest }) {
+  async preflight({ fixtureManifest, assertCanStart = () => {} }) {
     validateFixtureManifest(fixtureManifest);
     const identity = checkerIdentity(fixtureManifest);
     const projectRoot = fixtureManifest.project_root;
@@ -158,6 +158,7 @@ export class LeanChecker {
       return result;
     }
     let process;
+    assertCanStart();
     try {
       // Exercise the same toolchain entrypoint used for a WorkspaceSource.  A bare
       // `lake --version` can succeed while the project toolchain or Mathlib
@@ -238,7 +239,7 @@ export class LeanChecker {
     return result;
   }
 
-  async check({ workspace_source, targetTask, workspace, fixtureManifest }) {
+  async check({ workspace_source, targetTask, workspace, fixtureManifest, assertCanStart = () => {} }) {
     validateFixtureManifest(fixtureManifest);
     if (!workspace_source || typeof workspace_source.content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content is required');
     const workspace_sourceHash = sha256(workspace_source.content);
@@ -252,8 +253,9 @@ export class LeanChecker {
     await mkdir(directory, { recursive: true });
     const workspace_sourcePath = join(directory, 'WorkspaceSource.lean');
     await writeFile(workspace_sourcePath, workspace_source.content, 'utf8');
-    this.logger?.append({ event: 'checker.start', workspace_source_hash: workspace_sourceHash, target_task_id: targetTask?.task_id ?? null, input_snapshot_hash: inputSnapshotHash, workspace_source_path: workspace_sourcePath });
+    this.logger?.append({ event: 'checker.input_prepared', workspace_source_hash: workspace_sourceHash, target_task_id: targetTask?.task_id ?? null, input_snapshot_hash: inputSnapshotHash, workspace_source_path: workspace_sourcePath });
     try {
+      assertCanStart();
       if (this.rejectSorry && /\bsorry\b/.test(workspace_source.content)) {
         const result = normalizeCheckerResult({
           verdict: 'FAIL',
@@ -269,6 +271,7 @@ export class LeanChecker {
       // project/toolchain cwd.  The per-workspace_source directory only stores the
       // workspace_source file; it is not a substitute for the project root.
       const projectRoot = fixtureManifest.project_root ?? this.workRoot;
+      assertCanStart();
       const result = await this.runner(this.command, ['env', 'lean', workspace_sourcePath], { cwd: projectRoot, timeoutMs: this.timeoutMs, maxOutputBytes: this.maxOutputBytes });
       const processStatus = result.error || result.checker_started === false
         ? 'not_started'

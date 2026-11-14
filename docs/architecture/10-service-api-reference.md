@@ -39,7 +39,7 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `eefc3bff5692aba757445b062772926f159a35ae38277d9153cf4e2c808c3fa3` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `6359c69353974ecc34ac09cbde93cb63057e849acd138d4a9ac0e51232ba1afa` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `db04e700c40f446570da9c24f817db4a832e9442acaffcbc7295bfd221e5f8cd` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `61c7bbf151fca86773254984cc62e5f5ff6451c7ef2246640c613ce15b4c7d64` |
 

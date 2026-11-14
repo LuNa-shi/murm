@@ -3,7 +3,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
-import { BOT_COMPACTION_MESSAGE, buildBotNotification } from '../agent/bot-contract.js';
+import { assertNewExecutionWork } from '../task/execution-budget.js';
+import { BOT_COMPACTION_MESSAGE, buildBotNotification, buildBotContinuationMessage } from '../agent/bot-contract.js';
 import { BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT, buildPromptSnapshot, composeAgentPrompt } from '../agent/agent-prompt.js';
 import { runtimeCapabilityList } from './runtime-capabilities.js';
 import { ExecutionWorkspace } from './execution-workspace.js';
@@ -660,9 +661,7 @@ export class Runtime {
       task: { spec_version: task.spec_version, required_check: taskCheck ?? null }, configured: requirements.length ? adapter?.identity ?? null : null };
     const guard = () => {
       const execution = this.#guardExecutionWorkspace(identity);
-      if (execution.handoff_reminder_sent_at || (execution.handoff_deadline && Date.now() >= Date.parse(execution.handoff_deadline))) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Soft closeout permits saving and finishing existing work, not new main merges');
-      }
+      assertNewExecutionWork(execution);
       return execution;
     };
     return this.missionWorkspace.merge({ workspaceId: this.missionWorkspaceId, fromRevision: input.from,
@@ -2720,11 +2719,14 @@ export class Runtime {
         }
         const current = this.#getExecution(executionId);
         if (!['CREATED', 'RUNNING'].includes(current.state)) return { status: 'not_applicable', execution: current };
-        if (this.taskService.getBot(current.owner_ref)) {
+        const bot = this.taskService.getBot(current.owner_ref);
+        if (bot) {
+          if (bot.state !== 'ACTIVE' || bot.execution_id !== executionId) return { status: 'not_applicable', execution: current };
+          this.taskService.assertBotDeadline(bot.bot_id);
           // Pi's private compaction is not a public Workspace save. In the
           // Bot path, only the explicit stable-snapshot API can publish files.
           if (this.compactionCheckpointReminder && !active.closing && !active.rotationPromise) {
-            await active.session.prompt?.(BOT_COMPACTION_MESSAGE, { timeoutMs: 30_000, streamingBehavior: 'followUp' });
+            await active.session.prompt?.(buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });
           }
           this.logger?.append({ event: 'runtime.bot_compaction_recorded', execution_id: executionId, compaction_count: active.compactionCount, public_save: false });
           return { status: 'not_saved', execution: current };

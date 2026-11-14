@@ -184,7 +184,7 @@ Body SHA-256: `510f8ad7edbb8964875921dfd292cd680e99a32f1d473f35364b43b29c984b4a`
 ````text
 Use workspace_list_files as the authoritative existing-file index; write only declared allowed_outputs.
 ````
-## guidance — src/task/task-service.js:1553
+## guidance — src/task/task-service.js:1556
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
 
@@ -193,7 +193,7 @@ Body SHA-256: `2331ed3898810daacce352f5433d670aae5a8e9127527d6f6dbdd13c314fa95e`
 ````text
 Read relevant continuation pages and Task detail before proposing or taking. New Tasks after this scan began require a fresh query.
 ````
-## action — src/task/task-service.js:1660
+## action — src/task/task-service.js:1663
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -202,7 +202,7 @@ Body SHA-256: `70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f`
 ````text
 inspect_material_and_record_task_feedback
 ````
-## action — src/task/task-service.js:1871
+## action — src/task/task-service.js:1874
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 

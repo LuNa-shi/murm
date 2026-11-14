@@ -200,14 +200,23 @@ Body SHA-256: `167a132c6206fdb83c6506fe901a776fabf9a8a92bc761598cab047b31f7dcd8`
 ````
 ## Current bound continuation
 
-Both bound continuation send paths use this message. They do not resend the old SDK system SOP or per-Service tool guide.
+Both bound continuation send paths reread durable Execution state after Session readiness. Before soft closeout they use this ordinary message; after the deadline or an early reminder they send the closeout body below. Closing or expired identities do not receive another research turn.
 
 Body SHA-256: `11354c574ae63980d2af9af6aa7730b36a000e71daa5e404789a3a856448295d`
 
 ````text
 继续当前 Task/E。先核对剩余预算、真实 Workspace 状态和新的 Material/检查反馈，再推进当前责任。需要收尾时先保存有用文件、发布有用 Material，再以真实 outcome 调用 swarm task finish；未保存、未确认或失败的操作不能声明成功。
 ````
+## Soft closeout continuation
+
+Body SHA-256: `be2c918881f23b78f3a134503920904bbaac676a85389f401c00cdc3a99e9e6b`
+
+````text
+当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；仅保存已有有用文件、发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要提出新 Task、apply 新输入、发起新 Judge 检查或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。
+````
 ## Registered Bot compaction follow-up
+
+If the current E has reached soft closeout, the closeout body replaces this ordinary follow-up.
 
 Body SHA-256: `2a7382aa7bba76a8c50e0bbeeae541bf2d759d3f90adaec26242153fb586a0c5`
 

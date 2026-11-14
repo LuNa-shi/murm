@@ -4,6 +4,7 @@ import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { storedCheckerProcessStatus, storedResultClass } from '../judge/check-result.js';
 import { makeEnvelope, operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
 import { SCHEMA_SQL, TASKS_TABLE_DEFINITION } from '../storage/schema.js';
+import { assertNewExecutionWork } from './execution-budget.js';
 import { ensureJudgeSchema } from '../storage/judge-schema.js';
 import {
   TERMINAL_EXECUTION_STATES,
@@ -648,9 +649,10 @@ export class TaskService {
           // after a lost response; a new request still checks current fences.
           const fingerprintEnvelope = normalizedOperation === 'finish_task'
             ? { ...envelope, state_version: null, fencing_version: null }
-            : envelope;
+            : normalizedOperation === 'create_task' && this.getBot(envelope.actor_ref)
+              ? { ...envelope, state_version: null } : envelope;
           const fingerprint = operationPayload(normalizedOperation, payload, fingerprintEnvelope);
-          const replay = this.#replay(envelope.operation_id, fingerprint, normalizedOperation === 'finish_task' ? operationPayload(normalizedOperation, payload, envelope) : null);
+          const replay = this.#replay(envelope.operation_id, fingerprint, fingerprintEnvelope !== envelope ? operationPayload(normalizedOperation, payload, envelope) : null);
           if (replay) {
             replayed = true;
             return replay;
@@ -1314,6 +1316,7 @@ export class TaskService {
     if (envelope.execution_id !== null && envelope.execution_id !== undefined) {
       currentExecution = this.#executionForWrite(envelope);
       if (bot && (currentExecution.state !== 'RUNNING' || currentExecution.owner_ref !== bot.bot_id || Date.parse(currentExecution.lease_expires_at) <= Date.now())) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task proposal requires the current active Execution');
+      assertNewExecutionWork(currentExecution);
       if (currentExecution.task_id !== envelope.task_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bound Task creation must use the current Task Execution');
       if (!['CREATED', 'RUNNING'].includes(currentExecution.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only an active Execution may create a Task');
       if (this.#taskMissionId(envelope.task_id) !== missionId) {

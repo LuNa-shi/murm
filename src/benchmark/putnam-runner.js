@@ -20,7 +20,7 @@ import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
-import { BOT_SYSTEM_PROMPT, BOT_CONTINUATION_MESSAGE, BOT_TOOL_NAMES, buildBotStartupMessage, botServiceDirectory } from '../agent/bot-contract.js';
+import { BOT_SYSTEM_PROMPT, BOT_CONTINUATION_MESSAGE, buildBotContinuationMessage, BOT_TOOL_NAMES, buildBotStartupMessage, botServiceDirectory } from '../agent/bot-contract.js';
 import { AGENT_ROLES } from '../agent/capability-profile.js';
 import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
 import { createHttpJsonAdapter, createInProcessAdapter } from '../sdk/service-adapter.js';
@@ -401,11 +401,12 @@ export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyP
   return { ...config, putnam_bench_root: root, lean_project_root: projectRoot, problems };
 }
 
-async function runTurn(core, prompt, timeoutMs) {
+export async function runTurn(core, prompt, timeoutMs) {
   if (core.turnInFlight) return;
   core.turnInFlight = true;
   const session = core.session;
-  const countsAsAgentTurn = Boolean(core.taskId && core.executionId);
+  const boundExecutionId = core.executionId;
+  const countsAsAgentTurn = Boolean(core.taskId && boundExecutionId);
   if (countsAsAgentTurn) {
     core.parallelism.beginAgentTurn(core.index, {
       task_id: core.taskId,
@@ -425,6 +426,15 @@ async function runTurn(core, prompt, timeoutMs) {
   const sequence = session.rpcRecords.length;
   try {
     await session.waitForReady({ timeoutMs: Math.min(timeoutMs, 30_000) });
+    if (core.stopping || core.session !== session || core.executionId !== boundExecutionId) return;
+    if (countsAsAgentTurn) {
+      const execution = core.runtime.taskService.getExecution(boundExecutionId);
+      if (execution?.state !== 'RUNNING') return;
+      const bot = core.runtime.taskService.getBot(execution.owner_ref);
+      if (bot && (bot.state !== 'ACTIVE' || bot.execution_id !== boundExecutionId)) return;
+      core.runtime.taskService.assertBotDeadline(execution.owner_ref);
+      prompt = buildBotContinuationMessage(execution, { ordinary: prompt });
+    }
     const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });
     if (response?.data?.disposition !== 'handled') {
       await session.waitForSettled({ timeoutMs, afterSequence: sequence });
@@ -1523,6 +1533,7 @@ async function createProjectState(problem, config, options) {
     }
     const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
     const judgeService = new JudgeService(database, {
+      taskService,
       logger: judgeLogger,
       maxInfrastructureRetries: options.maxInfrastructureRetries,
       fixtureManifest: fixture,
@@ -1968,7 +1979,7 @@ async function createProjectState(problem, config, options) {
                   if (core.stopping || core.session !== boundSession || core.executionId !== boundExecutionId) break;
                   core.turnStartedAt = Date.now();
                   core.turnInFlight = false;
-                  await runTurn(core, BOT_CONTINUATION_MESSAGE, core.startConfig.options.turnTimeoutMs ?? 30_000);
+                  await runTurn(core, buildBotContinuationMessage(core.runtime.taskService.getExecution(boundExecutionId)), core.startConfig.options.turnTimeoutMs ?? 30_000);
                 }
               } catch (error) {
                 const expectedHandoff = boundSession.expectedStop || core.session !== boundSession || core.stopping;
@@ -2567,7 +2578,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
   // successful take. Keep that ownership deadline at least as long as the
   // durable Runtime deadline; a turn timeout is only the per-prompt bound.
   const executionTimeoutMs = state.executionTimeoutMs;
-  const basePrompt = () => BOT_CONTINUATION_MESSAGE;
+  const basePrompt = core => buildBotContinuationMessage(core.runtime.taskService.getExecution(core.executionId));
   state.identityLoopEvents = state.identityLoopEvents ?? [];
   state.identityLoops = state.cores.map((core) => {
     const loop = new IdentityTaskLoop({

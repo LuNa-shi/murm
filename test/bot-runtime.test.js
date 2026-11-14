@@ -629,7 +629,7 @@ async function workspaceFixture(t, options = {}) {
   let env;
   const context = new ContextService(f.service.db, { taskService: f.service });
   const bridge = new ServicesBridge({ taskService: f.service, contextService: context, runtime: f.runtime, coreId: 'core-1',
-    registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace, judgeService: options.judgeService }),
+    registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace, judgeService: options.createJudgeService?.(f.service) ?? options.judgeService }),
     onTake: result => f.runtime.bindAgentExecution(result.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }) });
   await bridge.start();
   t.after(() => bridge.stop());
@@ -1071,12 +1071,12 @@ test('Task finish accepted before apply intent prevents any guest installation',
 test('registered Judge CLI checks only a fixed public file and scopes durable results to its Mission', async t => {
   const { JudgeService } = await import('../src/judge/judge-service.js');
   const checked = [];
-  const judge = new JudgeService(':memory:', { fixtureManifest: { fixture_id: 'public-source', putnambench_commit: 'a'.repeat(40), problem_file: 'input.txt', problem_file_hash: 'b'.repeat(64), lean_toolchain: 'leanprover/lean4:v4.33.1', mathlib_version: 'test', checker_ref: 'lean', checker_version: 'test', environment_ref: 'test' }, checker: {
+  let judge;
+  const createJudgeService = service => (judge = new JudgeService(service.db, { taskService: service, fixtureManifest: { fixture_id: 'public-source', putnambench_commit: 'a'.repeat(40), problem_file: 'input.txt', problem_file_hash: 'b'.repeat(64), lean_toolchain: 'leanprover/lean4:v4.33.1', mathlib_version: 'test', checker_ref: 'lean', checker_version: 'test', environment_ref: 'test' }, checker: {
     preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: { input_binding_verified: true, toolchain_version_verified: true, checker_version_verified: true } }),
     check: async input => { checked.push(input); return { verdict: 'PASS', evidence: { checker_started: true, exit_code: 0, private_internal_field: 'private checker stream', diagnostic: 'verified input' } }; },
-  } });
-  t.after(() => judge.close());
-  const { runtime, command, dispatch, guest, bridge, service, bot } = await workspaceFixture(t, { judgeService: judge });
+  } }));
+  const { runtime, command, dispatch, guest, bridge, service, bot } = await workspaceFixture(t, { createJudgeService });
   guest.files['proof.lean'] = Buffer.from('theorem local : True := by trivial');
   const saved = await dispatch('save', 'check-source-save');
   guest.files['proof.lean'] = Buffer.from('unsaved private edit');
@@ -1369,4 +1369,37 @@ test('Runtime shutdown rejects new Bot admission before persistence or provider 
   assert.equal(service.db.prepare('SELECT COUNT(*) AS count FROM bots').get().count, 0);
   assert.equal(manager.snapshot().executions.length, 0);
   assert.equal(calls.length, 0);
+});
+
+test('soft closeout allows real CLI save publish finish and receipt replay but rejects new apply before capture', async t => {
+  const { service, execution, dispatch, command, guest } = await workspaceFixture(t);
+  const saved = await dispatch('save', 'before-soft-save');
+  const applied = await dispatch('apply', 'before-soft-apply', { from: saved.revision });
+  service.db.prepare('UPDATE executions SET handoff_deadline = ? WHERE execution_id = ?').run(new Date(Date.now() - 1).toISOString(), execution.execution_id);
+  const captures = guest.captures;
+  assert.deepEqual(await dispatch('apply', 'before-soft-apply', { from: saved.revision }), applied);
+  await assert.rejects(dispatch('apply', 'new-soft-apply', { from: saved.revision }), error => error.code === 'NOT_ALLOWED' && error.details.phase === 'soft_closeout');
+  assert.equal(guest.captures, captures);
+  guest.files['note.txt'] = Buffer.from('Existing result saved during closeout');
+  assert.ok((await command('workspace', 'save', '--request-id', 'soft-save')).revision);
+  assert.ok((await command('material', 'publish', '--role', 'experience', '--content', 'Existing conclusion', '--request-id', 'soft-note')).material.material_id);
+  await command('task', 'finish', '--outcome', 'incomplete', '--request-id', 'soft-finish');
+  assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
+});
+
+test('apply snapshot crossing soft closeout cannot install newly selected input', async t => {
+  const { service, execution, dispatch, guest } = await workspaceFixture(t);
+  guest.before = async () => { service.db.prepare('UPDATE executions SET handoff_deadline = ? WHERE execution_id = ?').run(new Date(Date.now() - 1).toISOString(), execution.execution_id); };
+  await assert.rejects(dispatch('apply', 'cross-soft', { from: 'main' }), error => error.code === 'WORKSPACE_REQUEST_ABORTED' && error.details.cause_code === 'NOT_ALLOWED');
+  assert.equal(guest.installs, 0);
+});
+
+test('an apply already captured before soft closeout completes its original installation once', async t => {
+  const { service, execution, runtime, dispatch, guest } = await workspaceFixture(t);
+  const contribution = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', requestId: 'incoming-soft', files: { 'input.txt': 'public project input', 'shared.txt': 'existing contribution' } });
+  guest.installHook = async () => { service.db.prepare('UPDATE executions SET handoff_deadline = ? WHERE execution_id = ?').run(new Date(Date.now() - 1).toISOString(), execution.execution_id); };
+  const result = await dispatch('apply', 'accepted-before-soft', { from: contribution.revision });
+  assert.equal(guest.files['shared.txt'].toString(), 'existing contribution');
+  assert.deepEqual(await dispatch('apply', 'accepted-before-soft', { from: contribution.revision }), result);
+  assert.equal(guest.installs, 1);
 });

@@ -5,7 +5,7 @@
   "sources": [
     {
       "path": "src/agent/bot-contract.js",
-      "sha256": "102418a3ff68ab1e9b0e86ad3dae58df74f6b38fa73063c3a04fb6dab644683c"
+      "sha256": "5b73bcaf7c0f3fdef0b06ee4dc818bae911782ef85855541198e51c8365d773f"
     },
     {
       "path": "src/agent/bot-contract/system.txt",
@@ -57,11 +57,11 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "6359c69353974ecc34ac09cbde93cb63057e849acd138d4a9ac0e51232ba1afa"
+      "sha256": "db04e700c40f446570da9c24f817db4a832e9442acaffcbc7295bfd221e5f8cd"
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "222606b86e2ccdbf20f8a23d2367e4890fa7139a77df8ad1a74408351be3225a"
+      "sha256": "e82f09a473c5d1157b980fb642d4e02bae4de765d9df3bfaa559846cebbff87b"
     },
     {
       "path": "src/runtime/identity-task-loop.js",
@@ -105,7 +105,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "3a689efdd8a777c5952a0f6b88e53dc2ae57bdf30698d12596ba93f1e3904ed6"
+      "sha256": "bb957b448e5f72fc768593b578c9f696414d1ff55155b03a4766bf6e8f4e9d58"
     },
     {
       "path": "src/task/task-types.js",
@@ -128,37 +128,37 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 647,
+      "line": 657,
       "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #notificationText",
-      "line": 2294,
+      "line": 2293,
       "sha256": "dcb4b6b8cafb3d4f36b9c33aadd300c45924a65c12116ea481515599030f9768"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #recoveryPrompt",
-      "line": 2922,
+      "line": 2924,
       "sha256": "9ba0d06fb75945a5e5e3fd4a5768df5c449818e7f6abbc0b5879feb6941cf61b"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "        const prompt = ",
-      "line": 1609,
+      "line": 1608,
       "sha256": "7324112e1ed5f71238d9bf5ac227047ab65eb0e32c8e609355b9959928503c2f"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "              await active.session.prompt(\n                ",
-      "line": 2755,
+      "line": 2757,
       "sha256": "aa531fc52ff79a137d3465b431a874606d420f627f5d4723998fb1ab0bc8dec6"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "function modernTaskPromptProjection",
-      "line": 112,
+      "line": 113,
       "sha256": "bbdc50ea1cb01e75ece711c5616abe8fc06ff99d50508c0f71bdf409550ccdf8"
     }
   ],
@@ -175,37 +175,37 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 428,
+      "line": 438,
       "expression": "const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 719,
+      "line": 729,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1614,
+      "line": 1613,
       "expression": "active.promptChain = active.promptChain.catch(() => undefined).then(() => active.session.prompt?.(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' }));"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2280,
+      "line": 2279,
       "expression": "await session.prompt(dynamic.prompt, { timeoutMs: 30_000 });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2345,
+      "line": 2344,
       "expression": "await active.session.prompt?.(this.taskService.getBot(active.execution.owner_ref) ? buildBotNotification(notification) : this.#notificationText(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2727,
-      "expression": "await active.session.prompt?.(BOT_COMPACTION_MESSAGE, { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
+      "line": 2729,
+      "expression": "await active.session.prompt?.(buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2755,
+      "line": 2757,
       "expression": "await active.session.prompt("
     }
   ],
@@ -320,19 +320,19 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1553,
+      "line": 1556,
       "field": "guidance",
       "sha256": "2331ed3898810daacce352f5433d670aae5a8e9127527d6f6dbdd13c314fa95e"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1660,
+      "line": 1663,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1871,
+      "line": 1874,
       "field": "action",
       "sha256": "ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8"
     }
@@ -348,7 +348,7 @@
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "e494ba2534df0ee9e01f530e6c8d521cbe8b973b84bc8e4726fa13920f45c63a"
+      "sha256": "a03bb503d65694e3237c4f158bd161a73e87771b8e554673905aa38d7646a1ff"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
@@ -364,7 +364,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "2d3e627f33685283c5ef2e672886262ade78e19b51e85df40dce8e6d04df811c"
+      "sha256": "5891cb13a388b0ec369c1130b756b44482c70b7879ecd2bcd6dab69158129f31"
     }
   ]
 }

@@ -115,3 +115,7 @@ Sandbox isolation or autonomous research behavior.
 Feedback belongs to a Task and may target a concrete Execution. Every affected
 recipient keeps its own delivery and handling state. A persisted notification
 is not a receipt; a receipt is not proof of a changed research route.
+
+## Proposal replay during closeout
+
+For a registered Bot's Task proposal, the operation fingerprint excludes the volatile E state version while preserving Bot, Task/E identity, spec/fence and payload. This permits replay when a heartbeat or closeout reminder advanced the E version. Historical exact fingerprints remain accepted with their original envelope. A new request still passes durable Bot/Mission/binding, lease, hard deadline and soft-closeout checks; changing the payload under an accepted ID conflicts. An unbound Bot remains governed by its selection/hard budgets and does not acquire an E merely by proposing.

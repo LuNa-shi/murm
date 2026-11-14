@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../protocol/envelope.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { assertNewExecutionWork } from '../task/execution-budget.js';
 import { publishWorkspace } from './workspace-publication.js';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -129,6 +130,8 @@ export class ExecutionWorkspace {
       this.guard(identity, { receiptOnly: true });
       const original = this.#request(execution.execution_id, requestId);
       if (original && original.fingerprint !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace request ID was reused with another payload');
+      if (original?.error_json) { const error = JSON.parse(original.error_json); throw new SwarmEnvError(error.code, error.message, error.details); }
+      if (original?.phase === 'done' && original.result_json) return JSON.parse(original.result_json);
       // A prior process can have committed Git before its SQL acknowledgement.
       // Reconcile captured operations before selecting the next saved parent.
       for (const pending of this.db.prepare("SELECT * FROM execution_workspace_requests WHERE execution_id = ? AND phase IN ('capturing', 'captured', 'installing', 'installed') ORDER BY created_at, request_id").all(execution.execution_id)) {
@@ -145,7 +148,9 @@ export class ExecutionWorkspace {
         if (existing.error_json) { const error = JSON.parse(existing.error_json); throw new SwarmEnvError(error.code, error.message, error.details); }
         if (existing.result_json) return JSON.parse(existing.result_json);
       }
-      const current = this.#state(this.guard(identity));
+      const active = this.guard(identity);
+      if (operation === 'apply') assertNewExecutionWork(active);
+      const current = this.#state(active);
       if (['status', 'diff'].includes(operation)) {
         const snapshot = await this.#capture(execution, identity);
         const view = this.#view(current, snapshot);
@@ -166,9 +171,14 @@ export class ExecutionWorkspace {
           if (plan.expected_content_hash !== snapshot.content_hash) throw invalid('Apply base differs from the current saved project');
           captured = { kind: 'apply', state_version: current.version, source: captured.source, ...plan, files: Object.fromEntries(Object.entries(plan.files).map(([path, bytes]) => [path, Buffer.from(bytes).toString('base64')])) };
         } else if (input.resolved) captured.conflicts = this.#resolveConflicts(current.conflicts, snapshot.files);
-        this.guard(identity);
-        this.db.prepare("UPDATE execution_workspace_requests SET phase = 'captured', captured_json = ?, updated_at = ? WHERE execution_id = ? AND request_id = ?")
-          .run(json(captured), new Date().toISOString(), execution.execution_id, requestId);
+        this.db.exec('BEGIN IMMEDIATE');
+        try {
+          const active = this.guard(identity);
+          if (operation === 'apply') assertNewExecutionWork(active);
+          this.db.prepare("UPDATE execution_workspace_requests SET phase = 'captured', captured_json = ?, updated_at = ? WHERE execution_id = ? AND request_id = ?")
+            .run(json(captured), new Date().toISOString(), execution.execution_id, requestId);
+          this.db.exec('COMMIT');
+        } catch (error) { this.db.exec('ROLLBACK'); throw error; }
         return await this.#complete(this.#request(execution.execution_id, requestId), identity);
       } catch (error) {
         const row = this.#request(execution.execution_id, requestId);

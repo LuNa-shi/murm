@@ -1,0 +1,14 @@
+import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+
+// The durable boundary applies even when the reminder delivery is delayed.
+// A recorded early reminder (for example context pressure) also starts closeout.
+export function isSoftCloseout(execution, at = Date.now()) {
+  return Boolean(execution?.handoff_reminder_sent_at ||
+    (execution?.handoff_deadline && Date.parse(execution.handoff_deadline) <= at));
+}
+
+export function assertNewExecutionWork(execution, at = Date.now()) {
+  if (isSoftCloseout(execution, at)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED,
+    'Soft closeout permits saving, publishing existing work and finish; new research work is closed',
+    { phase: 'soft_closeout', execution_id: execution.execution_id, deadline: execution.execution_deadline });
+}

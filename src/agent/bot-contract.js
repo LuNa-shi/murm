@@ -1,3 +1,4 @@
+import { isSoftCloseout } from '../task/execution-budget.js';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
@@ -34,6 +35,12 @@ export function buildBotStartupMessage({ mission, bot, workspace, sessionId, bud
 
 export const BOT_CONTINUATION_MESSAGE = '继续当前 Task/E。先核对剩余预算、真实 Workspace 状态和新的 Material/检查反馈，再推进当前责任。需要收尾时先保存有用文件、发布有用 Material，再以真实 outcome 调用 swarm task finish；未保存、未确认或失败的操作不能声明成功。';
 
+
+export const BOT_SOFT_CLOSEOUT_MESSAGE = '当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；仅保存已有有用文件、发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要提出新 Task、apply 新输入、发起新 Judge 检查或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。';
+
+export function buildBotContinuationMessage(execution, { ordinary = BOT_CONTINUATION_MESSAGE, at = Date.now() } = {}) {
+  return isSoftCloseout(execution, at) ? BOT_SOFT_CLOSEOUT_MESSAGE : ordinary;
+}
 
 export const BOT_COMPACTION_MESSAGE = '上下文压缩已完成。压缩本身没有保存或发布工作成果。继续前核对 Task、剩余预算和 Workspace 状态；有值得保留的新成果时通过 swarm workspace save、swarm material publish 持久化，确认返回结果，不把压缩元数据当成交付。';
 
