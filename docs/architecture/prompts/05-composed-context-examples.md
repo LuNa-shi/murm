@@ -7,7 +7,7 @@ These examples reproduce both composition stages of the current Mission Runtime 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Runtime Mission start/restart: exact two-stage composed body for synthetic inputs
 
-Body SHA-256: `07b989db3af388dcab05d1da7ae3ab92f77d184daf2cff125137ab09a1ff6c97`
+Body SHA-256: `ca6a1529729fa61594e9ab14a270fc5b6126f3c1dd6a217fd6020a970c90ad50`
 
 ````text
 You are one SwarmEnv Bot lifecycle working with other Bots toward the supplied Mission; never lower its original acceptance requirements or treat one local Task as Mission completion.
@@ -92,7 +92,7 @@ Goal: <TASK_GOAL>
 Expected output: <EXPECTED_OUTPUT>
 Completion contract: {"final_candidate":true,"required_candidate":{"kind":"artifact","scope":"proof_relevant"},"required_check":{"checker_ref":"<CHECKER_REF>","checker_version":"<CHECKER_VERSION>"}}
 Allowed inputs: none
-Task instructions: The goal of this Task is to prove the locked PutnamBench problem. Start by reading the public Workspace revision and then the materialized Execution Workspace, inspect the formalization and toolchain, and work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a result. Create a separate proof file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. Until an honest proof is ready, keep researching and publish useful evidence; never submit the input file. Search Task summaries, Materials, and public Workspace revisions before proposing substantial new work. The current Task may call the Judge directly whenever a Workspace file is ready. A source-level Judge FAIL is diagnostic feedback: read the returned CheckResult, revise the file in this Execution, and submit the same Workspace file reference again. Create a separate Task only for genuinely independent work. Publish bounded Materials for distinct findings or checkpoints when useful, link them to their producer, and do not publish duplicate copies. Complete the current Task when its own contract is satisfied. The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition. Publish and link durable evidence when the Task has a result; consume useful linked research Material with an explicit integration action when it informs the proof. When a real prerequisite blocks progress, call task_finish with outcome blocked and wait_for the prerequisite Task; this ends the current Bot Execution and releases the Core. Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.
+Task instructions: <TASK_LOCAL_INSTRUCTIONS>
 
 Execution ID: <EXECUTION_ID>
 Workspace revision: 1
@@ -786,7 +786,7 @@ Recovery: none.
 ````
 ## Runtime Mission recovery: exact two-stage composed body for synthetic inputs
 
-Body SHA-256: `c6bb18f842afe1a4aabc4cf79c2381ea60826bfe6bb545f2c7c8f9a3781d8bca`
+Body SHA-256: `ac92bfdea1643f5bc1de789685cc84814ccd5fbd12f54e5c8781f801238ae807`
 
 ````text
 Resume the taken Task from its durable Workspace and checkpoint.
@@ -862,7 +862,7 @@ Goal: <TASK_GOAL>
 Expected output: <EXPECTED_OUTPUT>
 Completion contract: {"final_candidate":true,"required_candidate":{"kind":"artifact","scope":"proof_relevant"},"required_check":{"checker_ref":"<CHECKER_REF>","checker_version":"<CHECKER_VERSION>"}}
 Allowed inputs: none
-Task instructions: The goal of this Task is to prove the locked PutnamBench problem. Start by reading the public Workspace revision and then the materialized Execution Workspace, inspect the formalization and toolchain, and work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a result. Create a separate proof file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. Until an honest proof is ready, keep researching and publish useful evidence; never submit the input file. Search Task summaries, Materials, and public Workspace revisions before proposing substantial new work. The current Task may call the Judge directly whenever a Workspace file is ready. A source-level Judge FAIL is diagnostic feedback: read the returned CheckResult, revise the file in this Execution, and submit the same Workspace file reference again. Create a separate Task only for genuinely independent work. Publish bounded Materials for distinct findings or checkpoints when useful, link them to their producer, and do not publish duplicate copies. Complete the current Task when its own contract is satisfied. The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition. Publish and link durable evidence when the Task has a result; consume useful linked research Material with an explicit integration action when it informs the proof. When a real prerequisite blocks progress, call task_finish with outcome blocked and wait_for the prerequisite Task; this ends the current Bot Execution and releases the Core. Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.
+Task instructions: <TASK_LOCAL_INSTRUCTIONS>
 
 Execution ID: <EXECUTION_ID>
 Workspace revision: 1

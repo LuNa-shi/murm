@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { BOT_SYSTEM_PROMPT, BOT_SYSTEM_RESOURCE, BOT_SKILLS } from '../src/agent/bot-contract.js';
 import { createOpenSandboxAgentAdapter } from '../src/index.js';
 
 class FakeSandboxManager {
@@ -17,13 +18,16 @@ class FakeSandboxManager {
 
 test('OpenSandbox Agent adapter keeps Pi RPC inside the provider worker', async () => {
   const manager = new FakeSandboxManager();
-  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi', systemPrompt: 'identity' });
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi', systemPrompt: BOT_SYSTEM_PROMPT });
   const session = await adapter.start({ executionId: 'execution-remote', bot: { bot_id: 'execution-remote' }, sessionId: 'session-remote', agentPrompt: 'inspect the task' });
   assert.equal(manager.started.cwd, '/workspace/project');
   assert.deepEqual(manager.started.args.slice(0, 2), ['--mode', 'rpc']);
-  assert.equal(manager.started.args.includes('--no-builtin-tools'), true);
+  assert.equal(manager.started.args.includes('--no-builtin-tools'), false);
+  assert.equal(manager.started.args[manager.started.args.indexOf('--tools') + 1], 'read,write,edit,bash');
+  assert.equal(manager.started.args.includes('--no-extensions'), true);
+  assert.deepEqual(manager.started.resources, [BOT_SYSTEM_RESOURCE, ...BOT_SKILLS.map(({ path, sha256 }) => ({ path, sha256 }))]);
   assert.equal(manager.started.args.includes('--extension'), false);
-  assert.equal(manager.started.systemPrompt, 'identity');
+  assert.equal(manager.started.args[manager.started.args.indexOf('--append-system-prompt') + 1], BOT_SYSTEM_RESOURCE.path);
   assert.equal(session.sessionId, 'session-remote');
   await session.stop();
   assert.equal(manager.stopped, true);
@@ -86,17 +90,8 @@ test('adapter shutdown joins an in-flight provider creation and prevents a late 
   await assert.rejects(adapter.start({ executionId: 'after-shutdown', bot: { bot_id: 'after-shutdown' } }), /stopping/);
 });
 
-test('OpenSandbox Agent adapter passes the guest extension path to Pi', () => {
-  const adapter = createOpenSandboxAgentAdapter({
-    sandboxManager: new FakeSandboxManager(),
-    provider: 'openai',
-    model: 'gpt-6.1-sol',
-    command: 'pi',
-    extensionPath: '/opt/swarmenv/src/agent/swarmenv-extension.mjs',
-  });
-  const args = adapter.buildLaunchArgs({ executionId: 'execution-extension' });
-  const index = args.indexOf('--extension');
-  assert.equal(args[index + 1], '/opt/swarmenv/src/agent/swarmenv-extension.mjs');
+test('registered Bots reject the retired Service-tool extension', () => {
+  assert.throws(() => createOpenSandboxAgentAdapter({ sandboxManager: new FakeSandboxManager(), extensionPath: '/opt/swarmenv/src/agent/swarmenv-extension.mjs' }), /extensions are retired/);
 });
 
 test('OpenSandbox Agent adapter forwards only configured service environment and explicit secrets', async () => {

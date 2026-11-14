@@ -359,6 +359,66 @@
       "role": "Stable identity SOP, prompt compositions, task-loop guide and hashes"
     },
     {
+      "path": "src/agent/bot-contract.js",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Versioned registered Bot contract, immutable skill resources and dynamic message composition"
+    },
+    {
+      "path": "src/agent/bot-contract/finish-task.md",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Versioned registered Bot contract, immutable skill resources and dynamic message composition"
+    },
+    {
+      "path": "src/agent/bot-contract/plan-task.md",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Versioned registered Bot contract, immutable skill resources and dynamic message composition"
+    },
+    {
+      "path": "src/agent/bot-contract/system.txt",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Versioned registered Bot contract, immutable skill resources and dynamic message composition"
+    },
+    {
+      "path": "src/agent/bot-contract/use-material.md",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Versioned registered Bot contract, immutable skill resources and dynamic message composition"
+    },
+    {
+      "path": "src/agent/bot-contract/use-workspace.md",
+      "category": "Agent and prompts",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Versioned registered Bot contract, immutable skill resources and dynamic message composition"
+    },
+    {
       "path": "src/agent/capability-profile.js",
       "category": "Agent and prompts",
       "chapters": [

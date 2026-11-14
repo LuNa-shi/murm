@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
 import { createOpenSandboxManager, ERROR_CODES } from '../src/index.js';
 
 function response(body, { status = 200, contentType = 'application/json' } = {}) {
@@ -137,7 +138,7 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
       if (url.includes('/endpoints/44772')) return response({ url: 'http://execd.test/sbx-worker' });
       if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-worker' });
       if (url === 'http://worker.test/sbx-worker/health') return response({ ok: true });
-      if (url === 'http://worker.test/sbx-worker/start') return response({ ok: true });
+      if (url === 'http://worker.test/sbx-worker/start') return response({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } });
       if (url.includes('/sandboxes/sbx-worker')) return response({});
       throw new Error(`unexpected URL: ${url}`);
     },
@@ -166,7 +167,7 @@ test('OpenSandbox keeps explicit Agent secrets in the authenticated worker start
       if (url === 'http://execd.test/sbx-secret/command') return response({ command_id: 'worker-job', running: true });
       if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-secret' });
       if (url === 'http://worker.test/sbx-secret/health') return response({ ok: true });
-      if (url === 'http://worker.test/sbx-secret/start') return response({ ok: true });
+      if (url === 'http://worker.test/sbx-secret/start') return response({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } });
       if (url.includes('/sandboxes/sbx-secret')) return response({});
       throw new Error(`unexpected URL: ${url}`);
     },
@@ -350,3 +351,24 @@ test('Bot Sandbox is recorded before endpoint preparation and reused for its sol
   assert.equal(await manager.stopExecution('bot:one'), false);
   assert.equal(calls.filter(({ options }) => options.method === 'POST').length, 1);
 });
+
+
+for (const receipt of [null, { version: BOT_PROTOCOL_VERSION, resources: [] }, { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES.map(item => ({ ...item, sha256: '0'.repeat(64) })) }]) {
+  test(`Agent startup refuses missing or mismatched worker contract attestation: ${receipt === null ? 'missing' : receipt.resources.length}`, async () => {
+    const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'fixture', waitForExecdReady: false,
+      fetchImpl: async (url, options) => {
+        if (options.method === 'DELETE') return response({});
+        if (url.endsWith('/sandboxes')) return response({ id: 'sandbox-attestation' }, { status: 202 });
+        if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
+        if (url.endsWith('/health')) return response({ ok: true });
+        if (url.endsWith('/start')) return response({ result: { pid: 123, contract: receipt } });
+        throw new Error(`unexpected: ${url}`);
+      },
+    });
+    await manager.ensureExecution({ executionId: 'B-attestation', botId: 'B-attestation' });
+    await assert.rejects(manager.startAgent({ executionId: 'B-attestation', command: 'pi' }), { code: 'START_FAILED' });
+    assert.equal(manager.snapshot().executions[0].agent, undefined);
+    await manager.stopExecution('B-attestation');
+    assert.equal(manager.snapshot().executions.length, 0);
+  });
+}

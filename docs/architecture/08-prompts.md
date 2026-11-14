@@ -8,9 +8,10 @@ A research Agent does not receive one fixed paragraph called “the prompt.” I
 
 | Appendix | Complete content |
 |---|---|
-| [01 Stable identity](prompts/01-system-identity.md) | The entire system addendum, shared by all five exported prompt aliases; current system version `4`, composition version `6` |
+| [01 Stable identity](prompts/01-system-identity.md) | The registered Bot draft.2 system addendum, followed by the separate compatibility SDK aliases (system version `4`, composition version `6`) |
+| [08 Bot skills](prompts/08-bot-skills.md) | The four immutable default skill files, their guest paths, versions and content hashes |
 | [02 Tool instructions](prompts/02-task-loop-and-tools.md) | Exact Task-loop guides for built-ins, Sandbox, and Sandbox plus Mathlib; full built-in capability-directory text; all extension description/snippet/guidance fields; full Mathlib `SKILL.md` and reference text |
-| [03 Benchmark turns](prompts/03-benchmark-turns.md) | Default take prompt, complete synthetic discovery turn, flat continuation body and the current direct/root-only treatment instructions |
+| [03 Benchmark turns](prompts/03-benchmark-turns.md) | Complete registered Bot discovery example, bound continuation, compaction and lifecycle notification bodies; compatibility take default |
 | [04 Runtime messages](prompts/04-runtime-messages.md) | Deadline, Material, dependency, compaction, recovery and controlled E2E repair messages, including fallback text |
 | [05 Composed context](prompts/05-composed-context-examples.md) | Full synthetic Runtime start/restart and recovery user bodies, preserving the current two-stage composition; dynamic helper defaults |
 | [06 Tool-return guidance](prompts/06-tool-return-guidance.md) | Every fixed `hint`, `remediation` and `guidance` field in runtime sources, plus instructional `action` values; delivery conditions distinguish errors, notifications and an exported helper unused by the benchmark |
@@ -23,70 +24,48 @@ The automatic inventory is a textual guard, not a JavaScript call-graph proof. I
 
 ## 2. Which inputs are actually sent on each path
 
-This table is the key to interpreting the catalog. A function that can compose a prompt is not evidence that every launch path uses it.
+The registered Bot/OpenSandbox path and the older direct SDK path are distinct. A composed snapshot or a compatibility template is not proof that the normal Bot received it.
 
-| Path/event | System addendum | User-turn body actually selected | Other context and important distinction |
-|---|---|---|---|
-| Normal benchmark reusable Session start | OpenSandbox defaults to no addendum; explicit `sandbox.systemPrompt` supplies one | No user message is sent by `adapter.start` because `agentPrompt` is absent | Extension loads its profile and registers tool metadata; runner waits for readiness |
-| First or later unbound discovery | Existing Session's system addendum | SOP + Task-loop guide + Mission/input context + autonomous discovery instructions + partial eligible Task JSON | `takeTaskWithAgent` is the sender; it does not call `composeAgentPrompt` |
-| Successful `task_take` during discovery | Unchanged | No second initial user prompt | `bindAgentExecution(..., sendInitialPrompt:false)` activates the existing Session, but Bridge returns the original Task Service take snapshot, not the refreshed Runtime binding/Workspace object; a composed snapshot can still be logged |
-| Bound continuation inside the `onTake` loop | Unchanged | The bound SOP plus the current flat Task-loop guide | Treatment choice changes research guidance only; there is no legacy Task-model wrapper |
-| Bound continuation from the outer benchmark loop | Unchanged | `basePrompt(core)`: SOP + Task-loop guide + continuation paragraph, passed through treatment selection where called | Distinct from the shorter `onTake` continuation; it does not automatically append all Materials |
-| Generic `AgentCoreAdapter.start({agentPrompt})` | Only if configured | Caller-supplied `agentPrompt` verbatim | Adapter waits for readiness, enables compaction/retry and sends; it does no Mission composition itself |
-| Runtime start/restart/wake with Registry | Adapter's configured addendum | `buildPromptSnapshot` body, then Mission wrapper when applicable | Two stages can repeat profile/Task/Workspace/Service context; source hashes logged before the final wrapper are not final-message hashes |
-| Runtime recovery | Adapter's configured addendum | Recovery instructions in a recovery snapshot, then current Mission wrapper | Persisted Execution rows do not carry `session_reason`; the outer wrapper uses its default bound profile in this baseline |
-| Material/deadline/dependency notification | Unchanged | One selected notification message with runtime IDs | Queued with `streamingBehavior:followUp`; successful delivery is separate from `task_feedback` processing |
-| Compaction completion | Unchanged | Substantive `execution_progress(kind=checkpoint)` reminder when enabled and still active | Pi's own compaction operation/summary is a separate external mechanism |
-| Non-Mission deadline reminder | Unchanged | Three-line compatibility reminder | Mission Tasks instead receive the durable `handoff_warning` notification |
-| Controlled real-Agent repair probe | Stable addendum configured by E2E harness | Workspace artifact repair instructions, then Runtime's applicable composition | Intentionally invalid first candidate is a probe input, not production research policy |
+| Path/event | Actual input | Evidence and order |
+|---|---|---|
+| Registered Bot worker startup | Pi base context, exactly native read/write/edit/bash, immutable system addendum, four explicit skill metadata entries | Adapter disables ambient extensions, skills, prompt templates and project context discovery. Explicit `--skill` paths still load in pinned Pi 1.3.0. Worker validates file ownership, permissions and SHA-256 before spawn. No user turn is sent at adapter startup. |
+| Initial unbound discovery | `buildBotStartupMessage` output with current Mission, durable Bot/Core/Sandbox, Pi Session ID, resolved Workspace preview, deadlines, configured services/skill manifest and a bounded Task page | Runner reads current state after Session readiness, records `bot_prompt_composed` with final user-body SHA-256, then calls `session.prompt`. The raw RPC log establishes actual dispatch; a composition event alone does not. |
+| Further selection turn | Refreshed dynamic message identifying continued selection in the same Bot | It does not claim a new Session or preassign a Task. Empty page is not Mission completion. |
+| Successful take | CLI JSON containing refreshed E and actual prepared Workspace input | No second initial prompt is sent. The callback completes prepare/activate/grant before returning this binding; original same-ID retry can join preparation or recover the receipt. |
+| Bound continuation | `BOT_CONTINUATION_MESSAGE` | Both runner continuation send paths use this body, without repeating the old SDK SOP/tool guide. |
+| Registered Bot notification | `buildBotNotification` for soft closeout, Material or dependency change | Runtime sends as `followUp` using the same Session. Save/publish/finish remain explicit CLI operations. Material delivery is distinct from recorded feedback. |
+| Registered Bot compaction | Pi's own compaction plus `BOT_COMPACTION_MESSAGE` when configured and still active | Runtime records the count but does not save a stale host tree or private checkpoint as public progress. Threshold/closure handling can suppress the reminder. |
+| Direct SDK start/restart/recovery | Compatibility `agent-prompt.js` SOP, capability directory and Runtime compositions described below | These paths remain exported for SDK callers and deterministic tests. Unregistered OpenSandbox startup rejects; this is not the normal registered Bot transport. |
 
-Sources: [benchmark runner](../../src/benchmark/putnam-runner.js), [Runtime](../../src/runtime/runtime.js), [Pi adapter](../../src/agent/pi-adapter.js). The [generated send-site list](prompts/source-manifest.json) covers two runner sends, four Runtime sends, and the adapter's optional startup send. All use the adapter's common RPC forwarding method.
-
-### What the normal take path does not automatically include
-
-The reusable discovery turn includes candidate Task instructions and a Task-loop guide. It does not include the composer's standalone Mission object, full capability directory, full `Authorized Service Documentation` block or freshly queried linked-Material/notification dump. Tool registrations supply descriptions, input schemas and short help guidance; a successful take returns structured binding data; subsequent explicit tool calls can retrieve more information. Those are separate ways for the Agent to learn its context.
-
-The full Service-document block is generated and can be sent by Runtime-managed starts/restarts. Its presence in `buildPromptSnapshot` or its hash in a log must not be used to take that the ordinary first discovery turn delivered those documents. This is a current implementation limitation, not a future design silently substituted for the code.
+Full registered bodies appear in [01](prompts/01-system-identity.md), [03](prompts/03-benchmark-turns.md) and [08](prompts/08-bot-skills.md). Compatibility templates remain fully catalogued because their code is still executable through the direct SDK. Provider-owned context and actual provider serialization are separate from these repository text files.
 
 ## 3. The stable identity contract
 
-`BOUND_SOP` is an ordered array of 16 paragraphs joined with one newline. All of `SYSTEM_IDENTITY_PROMPT`, `GENERIC_AGENT_PROMPT`, `BOUND_AGENT_PROMPT`, `IDLE_AGENT_PROMPT` and `RECOVERY_AGENT_PROMPT` reference the same string. A recovery alias does not have a different research policy; the recovery-specific message is assembled separately by Runtime.
+`src/agent/bot-contract/system.txt` contains the approved phase 06 stable text, identified as `swarm-bot-v1-draft.2`. Every registered Bot gets this same addendum. It defines Mission/Task/E responsibility, bounded discovery, same-Sandbox take, protected initial project, explicit save/apply/merge, Material provenance/corrections, final submission and terminal cleanup. Skills cannot grant permissions or replace this mandatory contract.
 
-Its rules cover Mission acceptance, valid Execution authority, same-Session `task_take`, independent Task creation, register-and-take, exact capability naming, Workspace boundaries, decomposition decisions, Judge iteration, shared-Mission blocking, evidence/notification feedback, Progress, Runtime-requested handoff and honest error/completion reporting. The [full 16 paragraphs](prompts/01-system-identity.md) are the authoritative text record; this list is navigation, not a replacement for the text.
+The file and four skill resources are baked into the image, root-owned and not writable by UID 10001. The adapter passes expected resource hashes through manager `/start`; the worker rejects absent, changed, symlinked or writable files before Pi starts. Startup failure follows ordinary Bot cleanup. Custom system replacements and the old per-Service extension option reject in `OpenSandboxAgentAdapter`; the runner always selects this versioned contract. Resource hashes describe image bytes; the system body hash excludes the final newline. A matching hash is not proof of model compliance.
 
-`PROMPT_VERSION='6'` and `SYSTEM_PROMPT_VERSION='4' are manually declared version identifiers. Content hashes detect wording changes even if a developer forgets to increment a label. The adapter writes the system string to a file and uses `--append-system-prompt`; the upstream Pi base system text remains separate. [Sources: agent-prompt](../../src/agent/agent-prompt.js), [adapter](../../src/agent/pi-adapter.js).
+The installed Pi 1.3.0 loader keeps explicit `--skill` resources even with `--no-skills`, which disables ambient discovery. Metadata is available initially; full bodies enter the conversation through actual `read` tool output when requested. The four defaults are plan-task, use-material, use-workspace and finish-task. The local network-disabled `bot-contract-probe.mjs` captures the actual Pi request against a scripted in-container endpoint and verifies the four native tool definitions, complete system text, all four skill reads and Bash invoking the authenticated CLI. This controlled transport evidence does not establish compatibility or success of the real configured model/provider.
+
+`agent-prompt.js` retains the compatibility SDK string aliases and composers explained in sections 5–6. The registered runner no longer dispatches these strings or the old per-Service task-loop guide. The generic SDK's `PROMPT_VERSION=6` and `SYSTEM_PROMPT_VERSION=4` therefore are not the version labels of the registered Bot contract.
 
 ## 4. Discovery and benchmark Task instructions
 
 ### 4.1 Discovery assembly order
 
-The benchmark constructs `takePrompt` from the stable SOP, profile-derived Task-loop guide, the shared Mission object, public Workspace ID and project input coordinates. Mission acceptance is explicitly separate from each Task's Goal, Deliverable and Completion condition. The guide places choosing or proposing work before execution; it still names current Bridge capabilities while the full CLI/skills migration is pending.
+After the Bot is ready, the runner resolves the configured Mission Workspace's current main. After this await it rereads the durable Bot and checks the same Core/Session binding, not closing, selection deadline and hard deadline before composing/sending. `buildBotStartupMessage` requires an unbound Bot with no E and a Workspace belonging to that Mission. The message records observed time, Bot/Core/Sandbox/Pi IDs, preview revision and protected project path. Budget fields are the durable selection/hard deadlines, run deadline, execution maximum, soft-closeout lead time and supervisor dispatch-attempt limit, Runtime compaction maximum and context closeout fraction. The supervisor limit is not a claim that every model/tool call has its own counter. It does not invent cost limits or counters unavailable from Runtime.
 
-`takeTaskWithAgent` sends that prompt, identifies the unbound Bot, asks it to inspect related Tasks/Materials/files within budget and prefer suitable existing responsibilities, and supplies an explicitly partial eligible Task page. Every Core follows this same path, including when the page is empty. There is no fixed whole-proof bootstrap Task, forced follow-up proposal, or retry message forbidding further reads. A Task successfully taken after a new proposal need not be in the old page.
+Configured service metadata includes versions, hashes, capability names and bundle documentation when present, with a `swarm service view` help entry. It is a capability directory for CLI use, not additional native Pi tools and not a grant of state-dependent authority. Internal Runtime profiles are omitted; task/context metadata is projected onto the actual Mission/Task/Workspace/Bot/Material CLI namespaces. The CLI/Bridge still checks permissions. The skill manifest contains names, purposes, immutable paths, versions and hashes.
 
-The default page limit is 16. `selectionView` includes `task_id`, `mission_id`, summary and relations; goal, expected output, Task instructions, acceptance and completion contract; and priority/state/age/fairness/rank. It omits the retired tree projection fields `task_type` and `parent_id`. Missing optional fields follow normal JSON omission/default rules. The full synthetic sent body is in [03](prompts/03-benchmark-turns.md).
-
-The sender waits for settlement where the adapter supports it, then distinguishes an accepted take, a deferred binding and a structured take failure. A settled turn without an accepted take is `DISCOVERY_INCOMPLETE`, not proof of no useful work; it follows bounded retries. The supervisor's explicit no-work callback waits for public state change, but the durable Bot exit/selection-budget protocol has not yet been connected to the benchmark. The sender preserves Bridge take error codes through normal tool-error settlement and RPC failure.
+The default eligible page has at most 16 Tasks. It includes contracts/instructions and current state/ranking through `selectionView`, explicitly marks `complete_history:false` and does not claim to be an admission allowlist. No Task is bootstrapped by the runner; all initial proposals are made by Bots. Four-Core controlled send-path coverage holds all four prompt calls open concurrently and checks each actual message against the corresponding durable Bot and the resolved Git main.
 
 ### 4.2 What creates the benchmark Task text
 
-The initial benchmark proof Task gets a common instruction prefix and suffix with three inserted strings:
-
-| Inserted string | Selection rule |
-|---|---|
-| `modeInstructions` | Flat model's independent shared-Task/Judge-iteration instructions; otherwise semantic, root-only or direct-child legacy treatment |
-| `taskSpecificInstruction` | Flat Task owns its result and consumes useful linked research; legacy child/root completion wording otherwise |
-| `dependencyInstruction` | Flat normal-flow typed Handoff/block; legacy normal-flow Execution block; or legacy wait wording when `normalFlow` is false |
-
-The common text requires reading the real locked Workspace, treating the unsolved formalization as read-only input, writing a separate candidate and avoiding placeholder proofs or solution-derived inputs. It also literally prohibits “shell” and “web.” The full text for every combination is preserved in [03](prompts/03-benchmark-turns.md).
-
-This wording is not globally inferred from the system prompt. It is stored in `task_instructions`, enters the discovery view, and can later enter generic Task composition. Agent-created Tasks can supply different `task_instructions`; Task Service persists those strings. The Bridge does not trust an Agent-supplied `agent_prompt` on `task_take`: it substitutes its stable configured prompt and authenticated owner/Core. [Sources: benchmark](../../src/benchmark/putnam-runner.js), [Bridge](../../src/agent/services-bridge.js), [Task Service](../../src/task/task-service.js).
+The unused whole-proof `taskPayload` and its root-only/decomposition/shell-prohibition instructions have been removed. Bot proposals supply local Task contracts and optional Task instructions; these are work data, not authority to override the stable contract. The Mission retains benchmark acceptance and the startup project entry names locked input coordinates and the prohibition on solution-derived input. The Bridge supplies the versioned system contract as stored Execution prompt provenance during take, instead of trusting a caller override.
 
 ### 4.3 Continuations are not fresh full snapshots
 
-The short continuation in `onTake` repeats the SOP after the previous turn settles. The outer `basePrompt(core)` bound branch additionally repeats the exact Task-loop guide and asks the Agent to continue from its Workspace, read new Materials/Judge feedback, and retain the Execution until a lifecycle boundary. Neither form reconstructs the full evolving Mission state on every turn. Retained conversation, explicit tool reads and targeted notifications supply the missing evolving information.
-
-Legacy semantic/root-only treatment wrappers are still executable baseline branches and are recorded in the appendix. The flat branch bypasses these wrappers. Their planned removal must update this chapter only when the removal is actually part of the accepted implementation.
+Both bound continuation send paths use the same short reminder to check remaining budget, Workspace state and new feedback, then proceed or save/publish/finish honestly. They do not rescan all history or resend old SOPs. Explicit CLI reads, retained conversation and targeted notifications carry evolving state. An unbound turn settling without a take or explicit Bot exit remains `DISCOVERY_INCOMPLETE`; bounded retries and durable selection/hard limits govern further work.
 
 ## 5. Generic composer: every field and default
 
@@ -205,22 +184,15 @@ The runtime event can record the inner snapshot before Mission wrapping or recor
 | Dynamic Task/Mission data | State records/views and the actual outgoing message/tool result | Reading the later database alone can show a newer value than the Agent saw |
 | Notifications | Queue/attempt/delivery records plus corresponding outgoing follow-up | Delivered is different from feedback processed |
 
-The benchmark installs raw Agent logs under `<experimentRoot>/logs/projects/<problemId>/agents/core-N.ndjson` and creates Pi Session directories below each Core's `.swarm/worker-session*` location. Runtime-managed Sessions also preserve their Session directory and runtime version-manifest evidence. The exact run root is a deployment input; architecture does not embed personal host paths.
+The benchmark installs raw Agent logs under `<experimentRoot>/logs/projects/<problemId>/agents/core-N.ndjson`; registered Bot Pi Sessions live in guest `/workspace/runtime/pi-session`, separate from `/workspace/project`. Runtime-managed Sessions also preserve their Session directory and runtime version-manifest evidence. The exact run root is a deployment input; architecture does not embed personal host paths.
 
 The private raw logs can contain complete repository-issued user messages. The public/sanitized experiment report intentionally does not duplicate conversations, proof candidates, credentials or personal paths. This documentation introduces no upstream request interceptor and does not retroactively recover missing old logs. A take that a particular Agent received a particular full message must cite its actual private RPC/Session record or be labeled unverified. Full model-request replay additionally requires Pi/provider-owned system/tool rendering and compaction state, which are not captured as one canonical request by this repository.
 
 ## 9. Known inconsistencies the reader must see
 
-| Observed baseline behavior | Consequence for interpretation |
-|---|---|
-| Normal discovery suppresses the full initial composer send | Full bundle docs in the composer/catalog are not proof of first-turn delivery |
-| Runtime can wrap a complete snapshot in another context | Repeated context is a real input-size/clarity cost, not an appendix formatting mistake |
-| Stored Task instructions prohibit shell; optional profile exposes bounded Sandbox execution | Prompt and exposed capability are not fully consistent; do not silently rewrite either in this description |
-| A Task instruction says the Task can call Judge directly | The Agent-facing route is direct through Bridge/Registry to Judge; Task completion remains a separate explicit projection |
-| Pi registers tools once; Bridge can refresh its cached profile | Adding a Registry capability later does not automatically create a callable Pi tool in the old Session |
-| Composition and base-SOP hashes are used in evidence | They cannot replace a hash of the actual final user message or a full transcript |
+The prompt/tool migration is not complete phase acceptance. Workspace save/apply and the final Mission acceptance flow still need their trusted Runtime integrations. Registered Bot `mission submit` currently returns `SERVICE_NOT_READY`. Mission storage/view lacks the full scope/budget/accepted-snapshot model described in the phase target. Material correction/consumption and public authorization also retain separate open work. The stable target text does not make these APIs implemented.
 
-The Judge integration is implemented under [Issue #117](https://github.com/LuNa-shi/SwarmEnv/issues/117). Other changes require their own approved scope. This chapter documents the direct Workspace submission path and keeps generated prompt/catalog records aligned with it.
+Compatibility SDK compositions can still repeat context and use old per-Service tool names and checkpoint semantics. They are catalogued separately and must be reconciled at full-stage closeout. Composition hashes cannot replace final message/RPC evidence. The live configured provider's append-system path requires its own verification before a formal run; the local scripted probe proves Pi serialization, not remote gateway behavior.
 
 ## 10. Keeping the catalog current at stage closeout
 

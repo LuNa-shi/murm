@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
+import { BOT_COMPACTION_MESSAGE, buildBotNotification } from '../agent/bot-contract.js';
 import { BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT, buildPromptSnapshot, composeAgentPrompt } from '../agent/agent-prompt.js';
 import { runtimeCapabilityList } from './runtime-capabilities.js';
 import { listServices, listTools } from '../sdk/service-catalog.js';
@@ -2190,7 +2191,7 @@ export class Runtime {
       }
       this.taskService.recordNotificationAttempt?.(notification.notification_id);
       try {
-        await active.session.prompt?.(this.#notificationText(notification), {
+        await active.session.prompt?.(this.taskService.getBot(active.execution.owner_ref) ? buildBotNotification(notification) : this.#notificationText(notification), {
           timeoutMs: 30_000,
           streamingBehavior: 'followUp',
         });
@@ -2568,6 +2569,15 @@ export class Runtime {
         }
         const current = this.#getExecution(executionId);
         if (!['CREATED', 'RUNNING'].includes(current.state)) return { status: 'not_applicable', execution: current };
+        if (this.taskService.getBot(current.owner_ref)) {
+          // Pi's private compaction is not a public Workspace save. In the
+          // Bot path, only the explicit stable-snapshot API can publish files.
+          if (this.compactionCheckpointReminder && !active.closing && !active.rotationPromise) {
+            await active.session.prompt?.(BOT_COMPACTION_MESSAGE, { timeoutMs: 30_000, streamingBehavior: 'followUp' });
+          }
+          this.logger?.append({ event: 'runtime.bot_compaction_recorded', execution_id: executionId, compaction_count: active.compactionCount, public_save: false });
+          return { status: 'not_saved', execution: current };
+        }
         if (!current.workspace_ref) {
           this.logger?.append({ event: 'runtime.compaction_checkpoint_skipped', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, reason: 'no_workspace' });
           return { status: 'not_applicable', execution: current };

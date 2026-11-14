@@ -176,3 +176,6 @@ Sources: [analysis entry](../../scripts/analyze-experiment.mjs), [analysis engin
 | Did the run stop cleanly? | Final durable Execution/Task disposition, process/Core/Workspace cleanup and the report's cleanup errors. |
 
 Missing evidence is `unknown`. Generated docs and schema checks make source changes visible; they cannot create missing historical traces or establish real-Agent acceptance. At a phase/Issue closeout, update the affected implementation chapters and evidence status while retaining the exact experiment baseline. Do not rewrite a past report to appear to have run against the newer implementation.
+
+
+The registered Bot report tool policy now admits exactly Pi `read`, `write`, `edit`, and `bash`. `swarmenv_*` extension tools are not accepted in this path. CLI service evidence remains in Bridge/Service logs; a successful Bash command by itself is not proof of a Workspace save, Material publish or Judge result. `bot_prompt_composed` records the exact dynamic body hash and preview revision before dispatch; raw RPC records establish actual transmission. The adapter version manifest identifies the immutable system/skill resources. Local scripted Pi serialization probes are controlled infrastructure evidence, not scientific or remote-provider results.

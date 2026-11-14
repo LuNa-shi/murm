@@ -9,6 +9,7 @@ import vm from 'node:vm';
 import { SYSTEM_IDENTITY_PROMPT, BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, PROMPT_VERSION, SYSTEM_PROMPT_VERSION, buildPromptSnapshot, composeAgentPrompt, composeDynamicAgentPrompt, taskLoopGuide } from '../src/agent/agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile, capabilityDirectory } from '../src/agent/capability-profile.js';
 import swarmenvExtension from '../src/agent/swarmenv-extension.mjs';
+import { BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION, buildBotStartupMessage } from '../src/agent/bot-contract.js';
 import { IDENTITY_TAKE_PROMPT } from '../src/runtime/identity-task-loop.js';
 import { runtimeCapabilityList } from '../src/runtime/runtime-capabilities.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
@@ -21,6 +22,8 @@ assert.ok(args.length === 0 || (args.length === 1 && args[0] === '--check'), 'Us
 const check = args[0] === '--check';
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
+  'src/agent/bot-contract.js', 'src/agent/bot-contract/system.txt',
+  ...BOT_SKILLS.map(skill => `src/agent/bot-contract/${skill.name}.md`),
   'src/agent/agent-prompt.js', 'src/agent/capability-profile.js', 'src/agent/pi-adapter.js',
   'src/agent/services-bridge.js', 'src/agent/swarmenv-extension.mjs', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
@@ -72,8 +75,9 @@ const extendedRegistry = createBuiltinServiceRegistry();
 extendedRegistry.registerService({ manifest: mathlibBundle.manifest, bundle: mathlibBundle, adapter: { invoke() { throw new Error('documentation never invokes services'); } } });
 const extendedProfile = buildCapabilityProfile({ registry: extendedRegistry, role: AGENT_ROLES.BOUND, runtimeCapabilities: runtimeCaps });
 
-output('01-system-identity.md', header('Complete stable identity instructions', 'Source: [agent-prompt.js](../../../src/agent/agent-prompt.js). The same body is exported as SYSTEM_IDENTITY_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT and RECOVERY_AGENT_PROMPT. The aliases do not create distinct selection Agents or research strategies.')
-  + block(`System addendum (system version ${SYSTEM_PROMPT_VERSION}; composition version ${PROMPT_VERSION})`, SYSTEM_IDENTITY_PROMPT, 'AgentCoreAdapter writes this body to identity-system-prompt.md and passes that file through Pi --append-system-prompt. It is an addendum to Pi-owned system instructions; it is not the whole upstream model request.'));
+output('01-system-identity.md', header('Complete stable identity instructions', 'Source: [agent-prompt.js](../../../src/agent/agent-prompt.js). The normal registered Bot body is bot-contract/system.txt. The older compatibility SDK body is exported as SYSTEM_IDENTITY_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT and RECOVERY_AGENT_PROMPT. The aliases do not create distinct selection Agents or research strategies.')
+  + block(`Registered Bot system addendum (${BOT_PROTOCOL_VERSION})`, BOT_SYSTEM_PROMPT, 'Normal OpenSandbox Bots load the immutable image resource through --append-system-prompt. The worker verifies its hash and permissions before spawning Pi.')
+  + block(`Compatibility SDK system addendum (system version ${SYSTEM_PROMPT_VERSION}; composition version ${PROMPT_VERSION})`, SYSTEM_IDENTITY_PROMPT, 'AgentCoreAdapter writes this body to identity-system-prompt.md and passes that file through Pi --append-system-prompt. It is an addendum to Pi-owned system instructions; it is not the whole upstream model request.'));
 
 let toolsDoc = header('Task-loop guide and tool-visible instructions', 'The first profile below is the benchmark flat Task model with built-in Services and no Sandbox or optional provider. Later profiles show the optional Sandbox/Mathlib additions. Exact schemas and exposure conditions are in [the API reference](../10-service-api-reference.md). The directory/help blocks exist as composer output; [the prompt path table](../08-prompts.md) states when they are actually delivered.');
 for (const [title, p] of [['Flat built-ins, no Sandbox', profile], ['Flat built-ins with Sandbox', sandboxProfile], ['Flat built-ins with Sandbox and Mathlib Search', extendedProfile]]) {
@@ -93,50 +97,35 @@ output('02-task-loop-and-tools.md', toolsDoc);
 
 const runnerPath = 'src/benchmark/putnam-runner.js';
 const runtimePath = 'src/runtime/runtime.js';
-const modeExpression = between(runnerPath, '  const modeInstructions = ', ';\n  const dependencyInstruction');
-const dependencyExpression = between(runnerPath, '  const dependencyInstruction = ', ';\n  const taskSpecificInstruction');
-const taskSpecificExpression = between(runnerPath, '  const taskSpecificInstruction = ', ';\n  const taskPayload');
-const taskInstructionsExpression = between(runnerPath, '    task_instructions: ', ',\n    completion_contract:', '  const taskPayload =');
-function benchmarkInstructions(selectedTaskModel, selectedParallelMode, normalFlow) {
-  const context = { selectedTaskModel, selectedParallelMode, normalFlow };
-  return evaluate(taskInstructionsExpression, {
-    modeInstructions: evaluate(modeExpression, context),
-    dependencyInstruction: evaluate(dependencyExpression, context),
-    taskSpecificInstruction: evaluate(taskSpecificExpression, context),
-  });
-}
 const selectionExpression = between(runnerPath, 'function selectionView(candidates) {\n  return ', ';\n}', 'function selectionView');
 const syntheticTask = {
   task_id: '<TASK_ID>', mission_id: '<MISSION_ID>', summary: '<TASK_SUMMARY>', relations: [],
   task_type: 'proof', parent_id: null, goal: '<TASK_GOAL>', expected_output: '<EXPECTED_OUTPUT>',
-  task_instructions: benchmarkInstructions('flat', 'direct', true),
+  task_instructions: '<TASK_LOCAL_INSTRUCTIONS>',
   acceptance_conditions: { example: '<ACCEPTANCE_CONDITIONS>' },
   completion_contract: { final_candidate: true, required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: '<CHECKER_REF>', checker_version: '<CHECKER_VERSION>' } },
   priority: 110, state: 'OPEN', age_ms: 0, fairness_protected: false, selection_rank: 0,
 };
-const takeExpression = between(runnerPath, '      takePrompt: ', ',\n      shortlistLimit:');
-const takePrompt = evaluate(takeExpression, { BOUND_AGENT_PROMPT, state: { agentTaskLoopGuide: taskLoopGuide(profile), mission: { mission_id: '<MISSION_ID>', goal: '<MISSION_GOAL>', acceptance_conditions: ['<MISSION_ACCEPTANCE>'] }, publicWorkspace: { workspace_id: '<WORKSPACE_ID>' }, problem: { id: '<PROJECT_ID>', problem_file: '<PROBLEM_FILE>', source_hash: '<SOURCE_HASH>' } } });
-const discoveryExpression = between(runnerPath, '  const message = ', ';\n  try {', 'async function takeTaskWithAgent');
-const discoveryPrompt = evaluate(discoveryExpression, {
-  prompt: takePrompt,
-  candidates: [syntheticTask],
-  selectionView: (candidates) => evaluate(selectionExpression, { candidates }),
+const sampleBot = { bot_id: '<BOT_ID>', mission_id: '<MISSION_ID>', core_id: '<CORE_ID>', sandbox_id: '<SANDBOX_ID>', state: 'UNBOUND', execution_id: null,
+  selection_deadline: '2026-11-14T00:05:00.000Z', hard_deadline: '2026-11-14T00:10:00.000Z' };
+const discoveryPrompt = buildBotStartupMessage({
+  mission: { mission_id: '<MISSION_ID>', goal: '<MISSION_GOAL>', acceptance_conditions: ['<MISSION_ACCEPTANCE>'] }, bot: sampleBot,
+  workspace: { workspace_id: '<WORKSPACE_ID>', mission_id: '<MISSION_ID>', main_revision: '0.1' }, sessionId: '<PI_SESSION_ID>',
+  budget: { run_deadline: '2026-11-14T00:30:00.000Z', execution_max_ms: 600000, soft_closeout_lead_ms: 60000, supervisor_max_take_attempts: 3, compaction_max: 3, context_closeout_fraction: 0.8 },
+  services: botServiceDirectory(profile),
+  project: { project_id: '<PROJECT_ID>', problem_file: '<PROBLEM_FILE>', source_hash: '<SOURCE_HASH>', input_policy: 'locked unsolved formalization only; no external answers or solution-derived candidates' },
+  eligibleTasks: evaluate(selectionExpression, { candidates: [syntheticTask] }), observedAt: '2026-11-14T00:00:00.000Z',
 });
-// The flat-only benchmark no longer has the old modePrompt helper. Keep the
-// generated continuation example anchored to the literal underlying body
-// supplied by the current runner rather than resurrecting a retired wrapper.
-const modePrompt = (_mode, underlyingPrompt) => underlyingPrompt;
-const baseExpression = between(runnerPath, '  const basePrompt = ', ';\n  state.identityLoopEvents');
-const basePrompt = evaluate(baseExpression, { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, state: { agentTaskLoopGuide: taskLoopGuide(profile) } });
-let benchmarkDoc = header('Complete benchmark task and turn messages', 'Sources: [putnam-runner.js](../../../src/benchmark/putnam-runner.js) and [identity-task-loop.js](../../../src/runtime/identity-task-loop.js). The main benchmark overrides IdentityTaskLoop’s short default prompt. The OpenSandbox system addendum is conditional on configuration; the texts below are the user-turn bodies or Task instructions, as labeled.');
-benchmarkDoc += block('IdentityTaskLoop default, when a caller does not override takePrompt', IDENTITY_TAKE_PROMPT);
-benchmarkDoc += block('Normal flat discovery turn, one complete synthetic candidate', discoveryPrompt, 'The example contains one eligible Task; the message explicitly identifies the view as a bounded page, not a complete search or admission allowlist. Real candidate fields are inserted with JSON.stringify(selectionView(candidates)); no real Mission text or proof is embedded here.');
-benchmarkDoc += block('Bound continuation from the onTake continuation loop', modePrompt('direct', BOUND_AGENT_PROMPT, 'flat'), 'This is the shorter continuation used by onTake after the previous turn settles. It repeats the identity SOP; it does not automatically append a fresh Mission/Material dump.');
-benchmarkDoc += block('Bound continuation from the outer benchmark loop', basePrompt({ taskId: '<TASK_ID>' }), 'This is the separate basePrompt(core) bound branch. It includes the exact tool guide and a final continuation paragraph.');
-for (const mode of ['direct', 'root-only']) {
-  benchmarkDoc += block(`Flat benchmark Task instructions: ${mode}`, benchmarkInstructions('flat', mode, true), 'This body is stored as task_instructions and appears in the discovery Task view. The treatment controls only whether the Agent may register independent work; it does not select a second Task model.');
-}
+let benchmarkDoc = header('Complete benchmark turn messages', 'The registered Bot path loads the stable system contract from the image, then dispatches buildBotStartupMessage using current durable Bot identity/deadlines and the resolved Workspace main. The values below are synthetic, not an experiment transcript. Retry turns refresh the state and identify themselves as continued selection.');
+benchmarkDoc += block('IdentityTaskLoop default for compatibility callers', IDENTITY_TAKE_PROMPT);
+benchmarkDoc += block('Registered Bot discovery: complete synthetic example', discoveryPrompt);
+benchmarkDoc += block('Current bound continuation', BOT_CONTINUATION_MESSAGE, 'Both bound continuation send paths use this message. They do not resend the old SDK system SOP or per-Service tool guide.');
+benchmarkDoc += block('Registered Bot compaction follow-up', BOT_COMPACTION_MESSAGE);
+for (const notification_type of ['handoff_warning', 'material_available', 'dependency_updated']) benchmarkDoc += block(`Registered Bot notification: ${notification_type}`, buildBotNotification({ notification_type, notification_id: '<NOTIFICATION_ID>', recipient_task_id: '<TASK_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', material_id: '<MATERIAL_ID>' }));
 output('03-benchmark-turns.md', benchmarkDoc);
+let skillDoc = header('Complete registered Bot skills', 'Root-owned immutable image files. Pi receives explicit --skill paths with ambient discovery disabled; the four metadata entries are included in system context, and actual read-tool results carry the loaded bodies into subsequent model input. The worker verifies bytes and permissions before startup.');
+for (const skill of BOT_SKILLS) skillDoc += block(`${skill.name} (${skill.version})`, sources.get(`src/agent/bot-contract/${skill.name}.md`), `Guest path: ${skill.path}; file SHA-256: ${skill.sha256}`);
+output('08-bot-skills.md', skillDoc);
 
 const notificationFunction = between(runtimePath, '  #notificationText', '\n\n  #onNotification');
 const notificationText = evaluate(`function notificationText${notificationFunction}`);

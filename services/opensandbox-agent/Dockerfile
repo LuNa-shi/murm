@@ -19,7 +19,8 @@ COPY scripts/sandbox-project.mjs /opt/swarmenv/sandbox-project.mjs
 COPY scripts/swarm.mjs /opt/swarmenv/scripts/swarm.mjs
 COPY src /opt/swarmenv/src
 COPY services/opensandbox-agent/pi-models.json /opt/swarmenv/pi-agent/models.json
-RUN chmod 0555 /opt/swarmenv/scripts/swarm.mjs \
+RUN chmod -R u=rwX,go=rX /opt/swarmenv/src/agent/bot-contract \
+  && chmod 0555 /opt/swarmenv/scripts/swarm.mjs \
   && ln -s /opt/swarmenv/scripts/swarm.mjs /usr/local/bin/swarm \
   && mkdir -p /workspace /opt/swarmenv/pi-agent
 

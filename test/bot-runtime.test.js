@@ -9,6 +9,7 @@ import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
+import { BOT_RESOURCES, BOT_PROTOCOL_VERSION, BOT_COMPACTION_MESSAGE } from '../src/agent/bot-contract.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
 async function fixture(t, runtimeOptions = {}) {
@@ -23,6 +24,7 @@ async function fixture(t, runtimeOptions = {}) {
       if (options.method === 'DELETE') return new Response('{}');
       if (url.endsWith('/sandboxes')) return new Response(JSON.stringify({ id: `sandbox:${++sandboxNumber}` }), { status: 202 });
       if (url.includes('/endpoints/')) return new Response(JSON.stringify({ url: 'http://execd.test' }));
+      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } }));
       if (url.includes('/project/')) {
         const input = JSON.parse(options.body);
         return new Response(JSON.stringify({ result: { state: url.endsWith('/prepare') ? 'PREPARED' : 'ACTIVE', execution_id: input.execution_id, binding_version: input.binding_version } }));
@@ -541,4 +543,22 @@ test('a delayed project grant cannot return a successful binding after Bot stop'
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
   assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'controlled-hard-stop');
   assert.equal(runtime.hasActiveExecution(execution.execution_id), false);
+});
+
+
+test('registered Bot compaction sends CLI guidance without saving the controller private tree', async t => {
+  const { service, runtime, startSession } = await fixture(t, { maxCompactions: 3 });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect compaction without claiming file persistence', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:compact-message' });
+  await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
+  const before = service.getExecution(execution.execution_id);
+  const messages = [];
+  session.prompt = async message => { messages.push(message); };
+  runtime.workspaceManager.saveWorkspaceRevision = async () => { throw new Error('compaction must not save private files'); };
+  session.emit('rpc', { type: 'compaction_end', result: { tokensBefore: 1000, estimatedTokensAfter: 100 } });
+  await runtime.activeProcesses.get(execution.execution_id).compactionCheckpointPromise;
+  assert.deepEqual(messages, [BOT_COMPACTION_MESSAGE]);
+  assert.equal(service.getExecution(execution.execution_id).workspace_revision, before.workspace_revision);
+  assert.equal(service.getExecution(execution.execution_id).checkpoint_ref, before.checkpoint_ref);
 });

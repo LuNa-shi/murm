@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { readFile, writeFile, mkdir, chown, readdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, chown, readdir, lstat, realpath } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { SandboxProject, BOT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.mjs';
 
@@ -101,6 +101,22 @@ async function startAgent(input) {
   const cwd = input.cwd ?? PROJECT_DIR;
   if (cwd !== PROJECT_DIR) throw new Error('worker project cwd must be /workspace/project');
   everStarted = true;
+  const expectedNames = ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
+  if (input.contract_version !== 'swarm-bot-v1-draft.2' || !Array.isArray(input.resources) || input.resources.length !== 5 ||
+      new Set(input.resources.map(resource => resource.path)).size !== 5 ||
+      !expectedNames.every(name => input.resources.some(resource => resource.path === `/opt/swarmenv/src/agent/bot-contract/${name}`))) throw new Error('complete versioned Bot contract resources are required');
+  for (const resource of input.resources) {
+    if (!/^\/opt\/swarmenv\/src\/agent\/bot-contract\/(system\.txt|(?:plan-task|use-material|use-workspace|finish-task)\.md)$/.test(resource.path ?? '')) throw new Error('unsupported Bot contract resource');
+    const info = await lstat(resource.path);
+    if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022) || !(info.mode & 0o004) || await realpath(resource.path) !== resource.path) throw new Error('Bot contract resource must be immutable to the Bot');
+    for (let parent = dirname(resource.path); parent !== '/'; parent = dirname(parent)) {
+      const directory = await lstat(parent);
+      if (!directory.isDirectory() || directory.uid !== 0 || (directory.mode & 0o022) || !(directory.mode & 0o001)) throw new Error('Bot contract parent must be protected and traversable');
+    }
+    const sha256 = createHash('sha256').update(await readFile(resource.path)).digest('hex');
+    if (sha256 !== resource.sha256) throw new Error('Bot contract resource does not match the pinned version');
+  }
+  if (project.closing) throw new Error('Bot stopped during resource validation');
   for (const path of ['home', 'tmp', 'pi-agent', 'pi-session']) {
     await mkdir(join(RUNTIME_DIR, path), { recursive: true });
     await chown(join(RUNTIME_DIR, path), BOT_UID, BOT_UID);
@@ -132,7 +148,7 @@ async function startAgent(input) {
     subscribers.clear();
     child = null;
   });
-  return { pid: child.pid };
+  return { pid: child.pid, contract: { version: input.contract_version, resources: input.resources } };
 }
 
 async function rpc(input) {

@@ -20,8 +20,8 @@ import { TaskService } from '../task/task-service.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
-import { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, taskLoopGuide } from '../agent/agent-prompt.js';
-import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
+import { BOT_SYSTEM_PROMPT, BOT_CONTINUATION_MESSAGE, BOT_TOOL_NAMES, buildBotStartupMessage, botServiceDirectory } from '../agent/bot-contract.js';
+import { AGENT_ROLES } from '../agent/capability-profile.js';
 import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
 import { createHttpJsonAdapter, createInProcessAdapter } from '../sdk/service-adapter.js';
 import { loadServiceBundle } from '../sdk/service-bundle.js';
@@ -529,6 +529,7 @@ async function startAgentSession(core) {
     throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core stopped during Bot startup');
   }
   core.botId = bot.bot_id;
+  core.botDiscoveryTurns = 0;
   session.identitySession = true;
   core.session = session;
   core.sessionHistory.push(session);
@@ -671,7 +672,7 @@ function selectionView(candidates) {
  * already-created take from this same identity and never asks another
  * process to choose on its behalf.
  */
-async function takeTaskWithAgent(core, candidates, prompt) {
+export async function takeTaskWithAgent(core, candidates) {
   // An active Execution owns the identity. Never open a parallel discovery
   // turn or ask the model to take a second responsibility.
   if (core.taskId || core.executionId) return { take_deferred: true };
@@ -697,14 +698,25 @@ async function takeTaskWithAgent(core, candidates, prompt) {
   }, core.turnStartedAt);
   core.agentTurnSession = session;
   core.takeTurnCount = (core.takeTurnCount ?? 0) + 1;
-  const message = [
-    prompt,
-    'You are an unbound Bot on this Core. Discover and choose work in this Session; a successful task_take binds this Bot to one Execution.',
-    'Prefer suitable existing responsibilities. Read related Tasks in all relevant states, Materials, and public Workspace files within your selection budget. If a useful independent responsibility is missing, propose it with task_create and you may take that new Task. Do not duplicate work merely to occupy a Core.',
-    'The view below is a bounded page of eligible Tasks, not the complete Mission history or an admission allowlist. Use public queries to inspect related work beyond this page. An empty page does not mean the Mission is complete. If no useful work is available, call bot_exit with reason no-work. If your selection budget is exhausted, call bot_exit with reason selection-budget.',
-    `Eligible Task page (other Tasks and states may exist):\n${JSON.stringify(selectionView(candidates))}`,
-  ].join('\n\n');
   try {
+    const workspace = await core.runtime.missionWorkspace.get({ workspaceId: core.runtime.missionWorkspaceId });
+    const bot = core.runtime.taskService.getBot(discoveryBotId);
+    if (core.stopping || core.session !== session || core.botId !== discoveryBotId || session.closed || bot?.state !== 'UNBOUND') return { take_deferred: true };
+    core.runtime.taskService.assertBotDeadline(discoveryBotId);
+    if (Date.now() >= Date.parse(bot.selection_deadline)) return { take_deferred: true };
+    const message = buildBotStartupMessage({
+      mission: core.runtime.taskService.getMission(bot.mission_id), bot, workspace, sessionId: session.sessionId,
+      budget: { run_deadline: core.runtime.runDeadlineAt == null ? null : new Date(core.runtime.runDeadlineAt).toISOString(),
+        execution_max_ms: core.runtime.executionTimeoutMs, soft_closeout_lead_ms: core.runtime.executionTimeoutMs - core.runtime.handoffReminderMs,
+        supervisor_max_take_attempts: core.startConfig.options.maxStartupAttempts ?? 3,
+        compaction_max: core.runtime.maxCompactions, context_closeout_fraction: core.runtime.handoffWindowRatio },
+      services: botServiceDirectory(core.bridge.getCapabilityProfile()),
+      project: { project_id: core.stateRef.problem.id, problem_file: core.stateRef.problem.problem_file, source_hash: core.stateRef.problem.source_hash, input_policy: 'locked unsolved formalization only; no external answers or solution-derived candidates' },
+      eligibleTasks: selectionView(candidates), firstTurn: core.botDiscoveryTurns === 0,
+    });
+    core.botDiscoveryTurns += 1;
+    core.observe?.({ source: 'agent', kind: 'bot_prompt_composed', visibility: 'operator',
+      payload: { bot_id: bot.bot_id, prompt_sha256: createHash('sha256').update(message).digest('hex'), preview_revision: workspace.main_revision }, sessionId: session.sessionId });
     const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });
     if (response?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
       await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: sequence });
@@ -1146,7 +1158,7 @@ function projectReport(state, startedAt, deadline) {
   });
   const toolViolation = cores.some((core) => core.tool_events.some((tool) => {
     const name = String(tool);
-    return !name.startsWith('swarmenv_');
+    return !BOT_TOOL_NAMES.includes(name);
   }));
   const toolErrorCount = cores.reduce((count, core) => count + core.tool_errors.length, 0);
   // A Service tool can reject an Agent request because the model supplied a
@@ -1236,7 +1248,7 @@ function projectReport(state, startedAt, deadline) {
       execution_timeout_ms: state.executionTimeoutMs,
       handoff_reminder_ms: state.handoffReminderMs,
       input_policy: 'pinned formalization only; no candidate or solution input',
-      tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; generic service calls are rejected',
+      tool_policy: 'Pi read/write/edit/bash; services through authenticated swarm CLI; ambient extensions, skills, prompt templates and project context discovery disabled',
       registered_services: state.capabilityRegistry.listServices().map((service) => ({
         service_id: service.service_id,
         provider_version: service.provider_version,
@@ -1245,7 +1257,7 @@ function projectReport(state, startedAt, deadline) {
         tool_count: service.tool_count,
       })),
       allowed_agent_tool_names: [...state.allowedAgentToolNames].sort(),
-      cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
+      cheating_policy: 'placeholder or tool event outside read/write/edit/bash invalidates the project',
     },
     project: {
       problem_id: state.problem.id,
@@ -1528,14 +1540,6 @@ async function createProjectState(problem, config, options) {
     });
   }
   const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
-  const inputMetadata = {
-    putnambench_commit: fixture.putnambench_commit,
-    lean_toolchain: fixture.lean_toolchain,
-    mathlib_version: fixture.mathlib_version,
-    checker_ref: fixture.checker_ref,
-    checker_version: fixture.checker_version,
-    environment_ref: fixture.environment_ref,
-  };
   const judgeService = new JudgeService(database, {
     logger: judgeLogger,
     maxInfrastructureRetries: options.maxInfrastructureRetries,
@@ -1639,64 +1643,10 @@ async function createProjectState(problem, config, options) {
   // Flat Mission Tasks finish through the single registered Task capability.
   const runtimeCapabilities = runtimeCapabilityList()
     .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
-  const allowedAgentToolNames = [...new Set([
-    AGENT_ROLES.BOUND,
-    AGENT_ROLES.RECOVERY,
-  ].flatMap((role) => buildCapabilityProfile({
-    role,
-    registry: capabilityRegistry,
-    runtimeCapabilities,
-  }).capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`)))];
-  // The loop guide names the exact registered tools for each identity step;
-  // it is recomputed from the same profile the Pi extension registers.
-  const agentTaskLoopGuide = taskLoopGuide(buildCapabilityProfile({
-    role: AGENT_ROLES.BOUND,
-    registry: capabilityRegistry,
-    runtimeCapabilities,
-  }));
+  const allowedAgentToolNames = [...BOT_TOOL_NAMES];
   const owner = sdk(router, { actorRef: 'owner:benchmark' });
   const taskCreateMutex = new SerialTaskCreateAdmission();
   observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
-  const modeInstructions = selectedParallelMode === 'root-only'
-    ? 'Root-only benchmark treatment: do not register additional Tasks after the initial responsibility. This is a controlled treatment, not a shared Mission Task; Mission itself is never taken.'
-    : 'Search Task summaries, Materials, and public Workspace revisions before proposing substantial new work. The current Task may call the Judge directly whenever a Workspace file is ready. A source-level Judge FAIL is diagnostic feedback: read the returned CheckResult, revise the file in this Execution, and submit the same Workspace file reference again. Create a separate Task only for genuinely independent work. Publish bounded Materials for distinct findings or checkpoints when useful, link them to their producer, and do not publish duplicate copies. Complete the current Task when its own contract is satisfied.';
-  const dependencyInstruction = 'When a real prerequisite blocks progress, call task_finish with outcome blocked and wait_for the prerequisite Task; this ends the current Bot Execution and releases the Core.';
-  const taskSpecificInstruction = 'The current Task owns its own result. Other Tasks may read its Materials, and completion is based on this Task contract rather than a prescribed decomposition. Publish and link durable evidence when the Task has a result; consume useful linked research Material with an explicit integration action when it informs the proof.';
-  const taskPayload = {
-    task_type: 'proof',
-    summary: `Prove ${problem.id} with an independently checked candidate and a clear boundary from other Mission work.`,
-    goal: `Prove ${problem.id}`,
-    expected_output: 'A verified Lean proof for the locked PutnamBench problem',
-  // Keep the final proof lane eligible alongside the bounded research pool
-    // when the pool is larger than the Core count; research routes remain
-    // independently available instead of starving the integration lane.
-    priority: 110,
-    task_instructions: `The goal of this Task is to prove the locked PutnamBench problem. Start by reading the public Workspace revision and then the materialized Execution Workspace, inspect the formalization and toolchain, and work toward a real Lean proof and the completion contract. Use only the locked problem Workspace and registered SwarmEnv Services; do not use external answers, hidden solution files, shell, web, or solution-derived input. The locked formalization is read-only input and may contain sorry as the unsolved-problem marker; never publish or submit that input file as a result. Create a separate proof file, read it back, and verify it contains a real proof with no sorry, admit, axiom, or other placeholder. Until an honest proof is ready, keep researching and publish useful evidence; never submit the input file. ${modeInstructions} ${taskSpecificInstruction} ${dependencyInstruction} Continue the current Task after creating useful additional work, and publish durable evidence when a distinct finding or checkpoint is ready; do not repeatedly publish or consume the same finding.`,
-    completion_contract: {
-      normal_flow: true,
-      required_materials: [{
-        kinds: ['fact', 'experience', 'conjecture', 'artifact', 'failure'],
-        scope: 'proof_relevant', min_count: 1,
-        requires_consumption: true, cross_task: true, action: 'integration',
-      }],
-      final_candidate: true,
-      required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
-      required_check: {
-        checker_ref: fixture.checker_ref,
-        checker_version: fixture.checker_version,
-        environment_ref: fixture.environment_ref,
-      },
-    },
-    acceptance_conditions: { project: problem.id, source_hash: problem.source_hash },
-    owner_ref: 'owner:benchmark',
-    workspace: {
-      project: problem.id,
-      problem_file: problem.problem_file,
-      source_hash: problem.source_hash,
-      input_metadata: inputMetadata,
-      formal_source: problem.source,
-    },
-  };
   const mission = owner.createMission({
     mission_id: `mission:${problem.id}:${runId}`,
     goal: `Solve ${problem.id} through independent, shared Task work.`,
@@ -1719,10 +1669,7 @@ async function createProjectState(problem, config, options) {
     initialFiles: { [problem.problem_file]: problem.source },
     metadata: { input_snapshot_hash: problem.source_hash, checker: fixture.checker_ref, environment: fixture.environment_ref },
   });
-  // The target protocol observes a real zero-Task Mission before any
-  // responsibility is proposed. The benchmark's locked proof workload then
-  // creates one explicit proposal so the deterministic run has work to
-  // execute; the observation keeps these two facts separate.
+  // Every initial Task is proposed by a Bot after the zero-Task Mission starts.
   observationStore.registerExperiment({ experimentId: runId, rootTaskId: null, status: 'CREATED', metadata: {
     problem_id: problem.id,
     task_model: 'flat',
@@ -1773,16 +1720,7 @@ async function createProjectState(problem, config, options) {
         env: childEnv,
         agentEnvironment: sandboxConfig.agentEnvironment ?? {},
         secretEnv: sandboxConfig.secretEnvironment ?? {},
-        // The native gpt_proxy catalog is currently incompatible with Pi's
-        // append-system-prompt request path (the gateway returns `Invalid URL`
-        // before processing the first turn). The full identity contract is
-        // still sent in the bounded discovery/follow-up user prompt; callers
-        // may opt back into a provider that supports system prompts.
-        systemPrompt: sandboxConfig.systemPrompt ?? null,
-        // The provider image carries the repository extension and all of its
-        // source imports. A guest path is required; the controller's source
-        // tree is outside the sandbox and must never be passed through.
-        extensionPath: sandboxConfig.extensionPath ?? '/opt/swarmenv/src/agent/swarmenv-extension.mjs',
+        systemPrompt: BOT_SYSTEM_PROMPT,
       });
     // All reusable slots must be able to resume an Execution created by any
     // other slot. The physical Workspace is execution-owned and unique, but
@@ -1874,7 +1812,7 @@ async function createProjectState(problem, config, options) {
       childEnv,
       taskId: null,
       executionId: null,
-      prompt: GENERIC_AGENT_PROMPT,
+      prompt: BOT_CONTINUATION_MESSAGE,
       take: null,
       takeHistory: [],
       latencySamples: [],
@@ -1948,6 +1886,7 @@ async function createProjectState(problem, config, options) {
       // and prevents the retired Selection role from becoming a second Agent.
       role: AGENT_ROLES.BOUND,
       taskCreateMutex,
+      agentPrompt: BOT_SYSTEM_PROMPT,
       // OpenSandbox workers cannot reach the controller's loopback address.
       // Deployments that expose the bridge to a provider network must bind it
       // explicitly and advertise a reachable host with `{port}`.
@@ -2006,7 +1945,7 @@ async function createProjectState(problem, config, options) {
           // another initial prompt from inside task_take would race the
           // in-flight RPC and violate the single-turn ordering contract.
           sendInitialPrompt: false,
-          agentPrompt: BOUND_AGENT_PROMPT,
+          agentPrompt: BOT_SYSTEM_PROMPT,
         });
         // Publish a usable receipt only after Runtime binding succeeds.
         take.execution = bound.execution;
@@ -2050,7 +1989,7 @@ async function createProjectState(problem, config, options) {
                 if (core.stopping || core.session !== boundSession || core.executionId !== boundExecutionId) break;
                 core.turnStartedAt = Date.now();
                 core.turnInFlight = false;
-                await runTurn(core, BOUND_AGENT_PROMPT, core.startConfig.options.turnTimeoutMs ?? 30_000);
+                await runTurn(core, BOT_CONTINUATION_MESSAGE, core.startConfig.options.turnTimeoutMs ?? 30_000);
               }
             } catch (error) {
               const expectedHandoff = boundSession.expectedStop || core.session !== boundSession || core.stopping;
@@ -2499,7 +2438,6 @@ async function createProjectState(problem, config, options) {
     mission,
     publicWorkspace,
     allowedAgentToolNames,
-    agentTaskLoopGuide,
     judgeService,
     sandboxManager,
     cores,
@@ -2636,16 +2574,14 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   // successful take. Keep that ownership deadline at least as long as the
   // durable Runtime deadline; a turn timeout is only the per-prompt bound.
   const executionTimeoutMs = state.executionTimeoutMs;
-  const basePrompt = (core) => core.taskId
-      ? `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nThis is a follow-up turn for the current bound Execution. Continue from the current Workspace revision. Research, reading, and publishing research Materials are normal work in this Execution. Read new Materials and Judge feedback before refining, publishing, submitting, completing, or blocking on a typed dependency. Keep this Execution until its Task is complete, a real prerequisite stops it, or Runtime asks for handoff.`
-      : GENERIC_AGENT_PROMPT;
+  const basePrompt = () => BOT_CONTINUATION_MESSAGE;
   state.identityLoopEvents = state.identityLoopEvents ?? [];
   state.identityLoops = state.cores.map((core) => {
     const loop = new IdentityTaskLoop({
       coreId: `core-${core.index}`,
       // This is a bounded discovery prompt for the reusable identity, not a
       // old selection transport SOP.  The identity must call task_take itself.
-      takePrompt: `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nMission (shared objective and final acceptance, not a Task contract):\n${JSON.stringify(state.mission)}\nPublic Workspace: ${state.publicWorkspace.workspace_id}. Query its current main and read actual files before choosing local work.\nProject input coordinates for proposed Tasks: ${JSON.stringify({ project: state.problem.id, problem_file: state.problem.problem_file, source_hash: state.problem.source_hash, workspace_id: state.publicWorkspace.workspace_id })}. Keep Mission acceptance separate from each local Task's Goal, Deliverable, and Completion condition.`,
+      takePrompt: 'Runtime composes the current unbound Bot context at dispatch.',
       shortlistLimit: options.controllerShortlistLimit ?? 16,
       maxTakeAttempts: options.maxStartupAttempts ?? 3,
       maxTakeRescans: options.maxTakeRescans ?? 1,
@@ -3035,8 +2971,8 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
             project_isolation: true,
             core_count: 4,
             input_policy: 'pinned formalization only; no candidate or solution input',
-            tool_policy: 'registered swarmenv_* Service tools; Pi built-in tools, shell, web, and external context are disabled; generic service calls are rejected',
-            cheating_policy: 'placeholder or non-SwarmEnv tool event invalidates the project',
+            tool_policy: 'Pi read/write/edit/bash; services through authenticated swarm CLI; ambient extensions, skills, prompt templates and project context discovery disabled',
+            cheating_policy: 'placeholder or tool event outside read/write/edit/bash invalidates the project',
           },
           parallelism,
           project: { problem_id: problems[index].id, source_hash: problems[index].source_hash ?? null },

@@ -1,3 +1,4 @@
+import { BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
 // Local, network-disabled container probe. No model or provider request is made.
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
@@ -57,6 +58,9 @@ try {
     '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/opensandbox-agent-worker.mjs', import.meta.url))},target=/opt/swarmenv/agent-worker.mjs,readonly`,
     '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/sandbox-project.mjs', import.meta.url))},target=/opt/swarmenv/sandbox-project.mjs,readonly`,
     '--entrypoint', 'node', 'swarmenv/agent:issue122', '/opt/swarmenv/agent-worker.mjs']);
+  await docker(['cp', fileURLToPath(new URL('../src/agent/bot-contract', import.meta.url)), `${name}:/opt/swarmenv/src/agent/bot-contract`]);
+  await docker(['exec', name, 'chown', '-R', '0:0', '/opt/swarmenv/src/agent/bot-contract']);
+  await docker(['exec', name, 'chmod', '-R', 'u=rwX,go=rX', '/opt/swarmenv/src/agent/bot-contract']);
   let health;
   for (let i = 0; i < 20; i += 1) {
     try { health = await call('/health'); if (health.status === 200) break; } catch {}
@@ -64,7 +68,7 @@ try {
   }
   assert.equal(health?.status, 200);
   assert.equal((await call('/project/grant', { execution_id: 'e', binding_version: 1 }, false)).status, 401);
-  await accepted('/start', { command: '/usr/local/bin/node', args: ['--input-type=module', '-e', agentCode], cwd: '/workspace/project', env: {}, secret_env: {} });
+  await accepted('/start', { contract_version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES, command: '/usr/local/bin/node', args: ['--input-type=module', '-e', agentCode], cwd: '/workspace/project', env: {}, secret_env: {} });
   const identity = await rpc({ type: 'identity' });
   assert.equal(identity.uid, 10001);
   assert.equal(identity.cwd, '/workspace/project');

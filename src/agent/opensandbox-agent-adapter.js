@@ -3,6 +3,7 @@ import { PassThrough } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { AgentCoreSession, resolveAgentCoreRoute } from './pi-adapter.js';
+import { BOT_SYSTEM_PROMPT, BOT_SYSTEM_RESOURCE, BOT_SYSTEM_HASH, BOT_SKILLS, BOT_TOOL_NAMES, BOT_PROTOCOL_VERSION } from './bot-contract.js';
 import { createVersionManifest } from './version-manifest.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
@@ -190,6 +191,9 @@ class RemoteAgentChild extends EventEmitter {
 export class OpenSandboxAgentAdapter {
   constructor({ sandboxManager, command = 'nurouter', provider, model, account, group, env = {}, agentEnvironment = {}, secretEnv = {}, systemPrompt = null, extensionPath = null, sessionDir = '/workspace/runtime/pi-session', manifestVersions = {} } = {}) {
     if (!sandboxManager) throw new TypeError('OpenSandboxAgentAdapter requires sandboxManager');
+    if (systemPrompt && systemPrompt !== BOT_SYSTEM_PROMPT) throw new TypeError('registered Bots require the versioned Bot system contract');
+    if (extensionPath) throw new TypeError('registered Bots use four native Pi tools and the swarm CLI; Service tool extensions are retired');
+    systemPrompt = BOT_SYSTEM_PROMPT;
     this.sandboxManager = sandboxManager;
     this.command = command;
     this.config = { provider, model, account, group, env, agentEnvironment, secretEnv, systemPrompt, extensionPath, sessionDir };
@@ -208,10 +212,10 @@ export class OpenSandboxAgentAdapter {
     if (!directPi && this.config.group) args.push('--group', this.config.group);
     if (!directPi) args.push('--');
     args.push('--mode', 'rpc', '--session-dir', sessionDir, '--session-id', sessionId,
-      ...(this.config.extensionPath ? ['--extension', this.config.extensionPath] : []),
-      '--no-builtin-tools',
+      '--tools', BOT_TOOL_NAMES.join(','), '--no-extensions',
       '--no-skills', '--no-prompt-templates', '--no-context-files',
-      ...(this.config.systemPrompt ? ['--append-system-prompt', join(sessionDir, 'identity-system-prompt.md')] : []),
+      ...BOT_SKILLS.flatMap(skill => ['--skill', skill.path]),
+      '--append-system-prompt', BOT_SYSTEM_RESOURCE.path,
       ...(placement === 'pi' ? ['--provider', this.config.provider, '--model', this.config.model] : []));
     return args;
   }
@@ -303,19 +307,18 @@ export class OpenSandboxAgentAdapter {
       cwd: '/workspace/project',
       env: workerEnvironment,
       sessionDir: guestSessionDir,
-      systemPrompt: this.config.systemPrompt,
-      systemPromptPath: this.config.systemPrompt ? join(guestSessionDir, 'identity-system-prompt.md') : null,
+      resources: [BOT_SYSTEM_RESOURCE, ...BOT_SKILLS.map(({ path, sha256 }) => ({ path, sha256 }))],
       secretEnvironment: workerSecretEnvironment,
     });
     let session;
     const child = new RemoteAgentChild(this.sandboxManager, executionId, logger, () => ({ execution_id: bot ? session?.executionId ?? null : executionId, ...(bot ? { bot_id: bot.bot_id, resource_key: executionId } : {}) }));
-    const manifest = await createVersionManifest({
+    const manifest = { ...await createVersionManifest({
       ...this.manifestVersions,
       launchArgs,
       piVersion: explicitVersions.piVersion ?? guestVersions?.piVersion,
       nurouterVersion: explicitVersions.nurouterVersion === null ? null : (explicitVersions.nurouterVersion ?? guestVersions?.nurouterVersion),
       nodeVersion: explicitVersions.nodeVersion ?? guestVersions?.nodeVersion,
-    });
+    }), bot_contract: { protocol_version: BOT_PROTOCOL_VERSION, system_prompt_sha256: BOT_SYSTEM_HASH, system_resource: BOT_SYSTEM_RESOURCE, skills: BOT_SKILLS, tools: BOT_TOOL_NAMES } };
     const observedExecutionId = bot ? null : (observationContext.executionId ?? executionId);
     session = new AgentCoreSession(child, { executionId: observedExecutionId, sessionId, launchArgs, manifest, logger, observation, coreId: observationContext.coreId ?? null, taskId: observationContext.taskId ?? null });
     session.botId = bot?.bot_id ?? null;
