@@ -260,3 +260,54 @@ test('registered Bots cannot discover foreign Tasks through retired list aliases
   }
   assert.deepEqual((await bridge.call({ operation: 'task_list', payload: {} })).tasks, []);
 });
+
+test('Bridge stop closes an incomplete HTTP request and rejects new direct calls', async t => {
+  const { bridge, start } = await fixture(t);
+  const env = start('bot:stopping');
+  let arrived;
+  const received = new Promise(resolve => { arrived = resolve; });
+  bridge.server.once('request', arrived);
+  const req = httpRequest(`${env.SWARMENV_BRIDGE_URL}/call`, { method: 'POST', headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}`, 'content-length': '1000' } });
+  const disconnected = new Promise(resolve => { req.on('error', resolve); req.on('close', resolve); });
+  req.write('{');
+  await received;
+  await bridge.stop(); await disconnected;
+  await assert.rejects(bridge.call({ operation: 'bot_exit', payload: { reason: 'no-work' } }), { code: 'NOT_ALLOWED' });
+});
+
+test('Bridge stop drains an admitted real HTTP call after its connection is gone', async t => {
+  let entered, release;
+  const accepted = new Promise(resolve => { entered = resolve; });
+  const held = new Promise(resolve => { release = resolve; });
+  let completed = false;
+  const { service, bridge, start } = await fixture(t, { onWorkUnit: async ({ operation, result }) => {
+    if (operation !== 'task_create') return;
+    entered(); await held;
+    assert.equal(service.getTask(result.task.task_id).mission_id, 'mission:auth');
+    completed = true;
+  } });
+  const env = start('bot:admitted-stop');
+  const req = httpRequest(`${env.SWARMENV_BRIDGE_URL}/call`, { method: 'POST', headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}` } });
+  const disconnected = new Promise(resolve => { req.on('error', resolve); req.on('close', resolve); });
+  req.end(JSON.stringify({ operation: 'task_create', payload: { summary: 'Inspect one independent research responsibility', expected_output: 'Readable note', acceptance_conditions: ['Answer the question'] } }));
+  await accepted;
+  let stopFinished = false;
+  const stopping = bridge.stop().then(() => { stopFinished = true; });
+  await disconnected;
+  assert.equal(stopFinished, false);
+  assert.equal(completed, false);
+  assert.equal(bridge.pendingCalls.size, 1);
+  release(); await stopping;
+  assert.equal(completed, true);
+  assert.equal(bridge.pendingCalls.size, 0); assert.equal(bridge.pendingHandlers.size, 0);
+  await assert.rejects(bridge.start(), { code: 'NOT_ALLOWED' });
+});
+
+test('Bridge start settles when stop wins before the listening event', async t => {
+  const { service, bridge } = await fixture(t);
+  const pending = new ServicesBridge({ taskService: service, contextService: bridge.contextService, runtime: {} });
+  const starting = pending.start();
+  const rejected = assert.rejects(starting, /stopped/);
+  await pending.stop(); await rejected;
+  assert.equal(pending.server, null);
+});

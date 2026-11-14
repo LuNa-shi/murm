@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
+import { EventEmitter, once } from 'node:events';
+import { createServer } from 'node:http';
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
+import { TaskController } from '../src/runtime/task-controller.js';
 import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
@@ -13,7 +15,7 @@ import { ServicesBridge } from '../src/agent/services-bridge.js';
 import { ContextService } from '../src/context/context-service.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { CoreParallelismTracker } from '../src/benchmark/parallelism.js';
-import { ensureAgentSession, releaseTerminalExecution, stopCore } from '../src/benchmark/putnam-runner.js';
+import { ensureAgentSession, releaseTerminalExecution, stopCore, stopBenchmarkRuntime, withinRunDeadline, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
 
 function deferred() {
   let resolve;
@@ -560,4 +562,72 @@ test('maintenance retries retained Workspace cleanup after finish is already ter
   } finally { await rename(temporarilyUnavailable, originalPath); }
   await runtime.sweepExpired();
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+});
+
+test('one cleanup deadline bounds held orchestration and Bridge drains while every Core stops', async () => {
+  const held = deferred();
+  const events = [];
+  const state = { cleanupErrors: [], identityLoopAbortController: new AbortController(),
+    identityLoops: [{ stop: () => events.push('loop-stopped') }], identityLoopRuns: [held.promise],
+    controller: { stop: async () => { events.push('controller-stopped'); await held.promise; } },
+    backgroundStopPromises: [held.promise], cores: [1, 2, 3, 4].map(index => ({ index, sessionHistory: [],
+      bridge: { stop: async () => { events.push(`bridge-${index}`); if (index === 1) await held.promise; } },
+      runtime: { shutdown: async () => { events.push(`runtime-${index}`); return { active_process_count: 0 }; }, waitForSettled: async () => {} },
+    })) };
+  const runStarted = Date.now();
+  await assert.rejects(withinRunDeadline(state, () => held.promise, runStarted + 20), { code: 'BENCHMARK_TIMEBOX_EXPIRED' });
+  assert.equal(state.pendingRunOperations.size, 1);
+  const cleanupStarted = Date.now();
+  try {
+    await stopBenchmarkRuntime(state, { cleanupGraceMs: 50 });
+    assert.ok(Date.now() - cleanupStarted < 750, 'independent waits must share one grace period');
+    assert.equal(state.identityLoopAbortController.signal.aborted, true);
+    for (let index = 1; index <= 4; index += 1) assert.ok(events.includes(`runtime-${index}`));
+    for (const code of ['CONTROLLER_STOP_TIMEOUT', 'IDENTITY_LOOP_STOP_TIMEOUT', 'BACKGROUND_STOP_TIMEOUT', 'BRIDGE_CLEANUP_TIMEOUT']) {
+      assert.ok(state.cleanupErrors.some(error => error.code === code), code);
+    }
+  } finally { held.resolve(); await state.cleanupPromise; }
+  assert.equal(state.pendingRunOperations.size, 0);
+  let startedLate = false;
+  await assert.rejects(withinRunDeadline(state, () => { startedLate = true; }, Date.now() - 1), { code: 'BENCHMARK_TIMEBOX_EXPIRED' });
+  assert.equal(startedLate, false);
+});
+
+test('Controller stop prevents a held public-token read from waking another Bot later', async () => {
+  const entered = deferred(), held = deferred();
+  let wakeups = 0;
+  const controller = new TaskController({ listEligibleTasks: () => [], listBlockedTasks: () => [], sweepIntervalMs: 0,
+    listIdentityLoops: () => [{ core_id: 'core-1', state: 'IDLE', healthy: true }],
+    readPublicChangeToken: async () => { entered.resolve(); await held.promise; return 'new-public-work'; },
+    signalIdleIdentity: () => { wakeups += 1; } });
+  const reconciling = controller.reconcile();
+  await entered.promise;
+  const stopping = controller.stop();
+  held.resolve();
+  await Promise.all([reconciling, stopping]);
+  assert.equal(wakeups, 0);
+});
+
+for (const failure of ['initialization', 'orchestration', 'report-write']) test(`benchmark closes authority after ${failure} failure without allocating a Bot`, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'benchmark-failure-'));
+  const requests = [];
+  const server = createServer((request, response) => { requests.push(request.method); response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ items: [] })); });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true }); });
+  let service;
+  const problem = { id: 'controlled_cleanup', problem_file: 'input.lean', source: 'theorem fixture : True := by trivial', source_hash: 'a'.repeat(64) };
+  const config = { lean_project_root: root, putnam_bench_root: root, putnambench_commit: 'b'.repeat(40), lean_toolchain: 'controlled', mathlib_version: 'controlled', checker_ref: 'controlled', checker_version: '1', environment_ref: 'controlled' };
+  await assert.rejects(runBenchmarkProject(problem, config, { experimentDir: root, reportDir: join(root, 'reports'), timeboxMs: 0, botMaxMs: 60_000,
+    sandbox: { enabled: true, provider: 'opensandbox', lifecycleBaseUrl: `http://127.0.0.1:${server.address().port}`, image: 'controlled:test' },
+    prepareProject: async ({ taskService }) => {
+      service = taskService;
+      if (failure === 'initialization') throw new Error('controlled initialization failure');
+      if (failure === 'orchestration') service.listMissionTasks = () => { throw new Error('controlled orchestration failure'); };
+      else await mkdir(join(root, 'reports', problem.id, 'report.json'));
+    },
+  }), failure === 'report-write' ? { code: 'EISDIR' } : new RegExp(`controlled ${failure} failure`));
+  assert.ok(service);
+  assert.throws(() => service.db.prepare('SELECT 1'), /closed|not open/i);
+  assert.ok(requests.length > 0);
+  assert.ok(requests.every(method => method === 'GET'), 'controlled preflight reads only; no provider allocation or model calls');
 });

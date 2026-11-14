@@ -209,6 +209,7 @@ export class TaskController {
     const reconciliationTasks = asArray(await this.listBlockedTasks(), ['blocked_tasks', 'tasks']);
     const repairs = [];
     for (const task of reconciliationTasks) {
+      if (this.stopped) return this.snapshot();
       const id = taskId(task);
       if (!id || typeof this.reconcileTask !== 'function') continue;
       try {
@@ -225,6 +226,7 @@ export class TaskController {
         this.#emit({ kind: 'controller_task_reconcile_failed', task_id: id, reason, error: this.#error(error), timestamp: this.now() });
       }
     }
+    if (this.stopped) return this.snapshot();
     const blocked = asArray(await this.listBlockedTasks(), ['blocked_tasks', 'tasks'])
       .filter((task) => task?.state === undefined || task.state === 'BLOCKED');
     const eligible = asArray(await this.listEligibleTasks(), ['eligible_tasks', 'ready_tasks', 'tasks']).slice(0, this.shortlistLimit);
@@ -233,6 +235,7 @@ export class TaskController {
     const healthy = [];
     const recovery = [];
     for (let index = 0; index < identityLoops.length; index += 1) {
+      if (this.stopped) return this.snapshot();
       const loop = identityLoops[index];
       const view = loopState(loop);
       const id = loopId(view, index);
@@ -254,6 +257,7 @@ export class TaskController {
       else if (!['DISCOVERING', 'TAKING'].includes(String(view.state ?? '').toUpperCase())) this.loopSignals.delete(id);
     }
     const publicChange = await this.readPublicChangeToken();
+    if (this.stopped) return this.snapshot();
     const signature = `${taskSignature(eligible)}:${JSON.stringify(publicChange)}`;
     let signaled = 0;
     if (typeof this.signalIdleIdentity === 'function') {
@@ -261,6 +265,7 @@ export class TaskController {
       // idle Bot can inspect existing responsibility or propose distinct work;
       // Task Service, rather than a wake quota, arbitrates exclusive takes.
       for (const { loop, view, id } of idle) {
+        if (this.stopped) return this.snapshot();
         // Include the identity loop's idle epoch so a completed failed/invalid
         // take attempt can be woken again even when the Controller never saw a
         // non-IDLE snapshot between attempts.  The task signature and state

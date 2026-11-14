@@ -113,7 +113,7 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `identityLoopIdleBackoffMs` | `5000`; fallback wake when no durable event arrives |
 | `heartbeatMs`, `watchdogIntervalMs`, `executionTimeoutSweepMs` | Each `10000`; independent timers |
 | `watchdogTimeoutMs` | Runtime default `120000`; productivity/recovery interpretation in [02](02-execution.md) |
-| `identityLoopStopGraceMs` | `15000`; wait before continuing finalization with a recorded supervisor-stop timeout |
+| `cleanupGraceMs` | `30000`; one absolute grace shared by all Core, Controller, identity and background joins; must be finite and positive |
 | `checker`, `leanCommand`, `checkerTimeoutMs` | Inject checker or use LeanChecker, command `lake`, timeout `120000` |
 | `maxInfrastructureRetries` | Forwarded to JudgeService; see exact Judge defaults in [04](04-services.md) |
 | `command`, `account`, `group`, `extensionPath` | Override command and routing; runner command defaults to `pi`. Top-level `extensionPath` applies to the local compatibility adapter; registered OpenSandbox Bots reject custom Service-tool extensions and use four native tools |
@@ -153,14 +153,13 @@ Heartbeat runs only for a durable `RUNNING` Execution with an active Runtime pro
 
 Shutdown runs after the active loop exits:
 
-1. Clear heartbeat/watchdog/timeout timers and await any in-flight sweeps.
-2. Unsubscribe Task events, stop Controller, abort/stop identity loops, and wait up to the identity-loop stop grace. Record `IDENTITY_LOOP_STOP_TIMEOUT` if necessary.
-3. Clean Core lanes concurrently. Mark each Core stopping, stop any visible unbound Session, and join adapter/Core startup within the same 30-second cleanup grace used for Runtime and Session cleanup. An unfinished join records `STARTUP_CLEANUP_TIMEOUT` and retains its promise/late-stop guards. Stop Bridge next so deferred tool-result lifecycle work drains while Runtime is still available.
-4. Ask Runtime to shut down with `benchmark_deadline_cleanup`; wait within the remaining shared 30-second cleanup grace. If it does not settle, record `RUNTIME_SHUTDOWN_TIMEOUT` and force-fence matching active Executions.
-5. Stop all known Sessions. Drain turn and bound-turn promises with five-second grace each, and Runtime pending work with ten-second grace. Record capacity as idle only after confirmed cleanup; pending Runtime/session cleanup is a report error and retains occupancy. These are several local bounds, not a single strict wall-clock cleanup deadline.
-6. Build the project report, append final observation, finish the observation experiment and write `<report root>/<problem id>/report.json`; close Task Service. The CLI closes its observation connection, writes `aggregate-report.json`, and updates experiment metadata with counts and validity.
+1. Clear heartbeat/watchdog/timeout timers and retain their in-flight promises for cleanup; do not join them before issuing stop.
+2. Unsubscribe Task events, stop new wake requests, abort/stop identity loops, and begin Controller stop. A suspended Controller cannot subsequently signal another Bot.
+3. Mark every Core stopping. Concurrently stop Runtime, Bridge transport, Sessions and startup; join turns and pending handlers. Runtime persists closing intent before joining startup and cleans a late arriving Session. Bridge no longer waits for deferred lifecycle work before closing HTTP admission.
+4. All joins share `cleanupGraceMs` (default 30 seconds) measured from the start of finalization. Each pending component receives a typed timeout and, where applicable, a Core ID. A failed sibling does not bypass other pending joins. There are no extra per-turn or per-Core grace periods. Owner/capacity release remains conditional on Runtime-confirmed physical stop, not the reporting timeout.
+5. Read only an already recorded Mission submission within the remaining allowance; never create a synthetic operator verdict from report fields. Build/write the report and final observations. Pending cleanup makes the run invalid and is recorded explicitly. Keep the shared authority database open until tracked late cleanup settles; otherwise close it after writing. The CLI writes `aggregate-report.json` and experiment metadata. Process/host restart reconciliation remains incomplete.
 
-The active timebox starts after setup, the polling fallback can cross its boundary, and cleanup adds time. External execution allowances therefore need to account for more than `timeboxMs`. A code exception still runs `finally` cleanup but can propagate before a normal project report is built. Batch execution catches such errors per problem and writes an invalid `project_runner_error` report; a direct single-project call does not receive that batch fallback. Abrupt process/host termination is not a guaranteed complete-report path.
+The active timebox starts after setup. Polling and awaited orchestration are bounded by its absolute deadline, and a shared cleanup grace adds time. External execution allowances therefore need to account for more than `timeboxMs`. A code exception still runs `finally` cleanup but can propagate before a normal project report is built. Batch execution catches such errors per problem and writes an invalid `project_runner_error` report; a direct single-project call does not receive that batch fallback. Abrupt process/host termination is not a guaranteed complete-report path.
 
 ## 8. On-disk outputs
 
@@ -200,7 +199,7 @@ The repaired discovery path gives every Core the same autonomous local-Task sele
 
 ### Registered Bot startup and cleanup accounting
 
-Each Core startup now calls `Runtime.startBot` with the shared Mission, its Core ID, `selectionTimeoutMs` (default min(300,000 ms, Bot maximum)), `maxLifetimeMs` from `botMaxMs` (default run timebox), and readiness timeout (`turnTimeoutMs`, default 30,000 ms). The adapter factory receives the newly persisted Bot and provider-ID callback; the Bridge rotates identity/token before worker launch. Core records retain `botId` for discovery-result interpretation. An explicit durable no-work/selection-budget exit or unbound Bot hard-budget stop lets the identity loop wait for relevant public changes; an empty turn does not. Cleanup is complete only when active processes, retained Sessions, pending Bot IDs and adapter/startup cleanup are all empty. These checks supplement the finite whole-run cleanup grace above.
+Each Core startup now calls `Runtime.startBot` with the shared Mission, its Core ID, `selectionTimeoutMs` (default min(300,000 ms, Bot maximum)), `maxLifetimeMs` from `botMaxMs` (default run timebox), and readiness timeout (`turnTimeoutMs`, default 30,000 ms). The adapter factory receives the newly persisted Bot and provider-ID callback; the Bridge rotates identity/token before worker launch. Core records retain `botId` for discovery-result interpretation. An explicit durable no-work/selection-budget exit or unbound Bot hard-budget stop lets the identity loop wait for relevant public changes; an empty turn does not. Cleanup is complete only when active processes, retained Sessions, pending Bot IDs and adapter/startup cleanup are all empty. These checks use the shared whole-run cleanup grace above; no separate per-join grace extends it.
 
 The run manifest, aggregate protocol and project report record Bot, selection and Execution maximums separately in milliseconds. A 30-minute single-project configuration can set `--timebox-ms 1800000 --bot-max-ms 600000 --selection-timeout-ms 120000`; this is configuration syntax, not evidence of an executed or accepted experiment. Existing finalization grace is additional to the research timebox and retained cleanup remains visible on failure.
 

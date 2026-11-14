@@ -150,6 +150,8 @@ async function readBody(request) {
 export class ServicesBridge {
   constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
+    this.pendingCalls = new Set();
+    this.pendingHandlers = new Set();
     this.taskService = taskService;
     this.contextService = contextService;
     this.runtime = runtime;
@@ -282,14 +284,32 @@ export class ServicesBridge {
     return result;
   }
 
+  #track(pending, operation) {
+    const promise = Promise.resolve().then(operation);
+    pending.add(promise);
+    promise.then(() => pending.delete(promise), () => pending.delete(promise));
+    return promise;
+  }
+
   async start({ port = 0 } = {}) {
+    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Stopped Bridge cannot restart; create a new Bridge');
     if (this.server) return this.environment();
     this.server = createServer((request, response) => {
-      void this.#handle(request, response);
+      void this.#track(this.pendingHandlers, () => this.#handle(request, response)).catch(error => {
+        this.logger?.append({ event: 'bridge.handler_failed', code: error.code ?? 'HANDLER_ERROR' });
+      });
     });
-    this.server.listen(port, this.host);
-    await once(this.server, 'listening');
-    const address = this.server.address();
+    const server = this.server;
+    await new Promise((resolve, reject) => {
+      const cleanup = () => { server.off('listening', listening); server.off('close', closed); server.off('error', failed); };
+      const listening = () => { cleanup(); resolve(); };
+      const failed = error => { cleanup(); reject(error); };
+      const closed = () => failed(new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge stopped before listening'));
+      server.once('listening', listening); server.once('close', closed); server.once('error', failed);
+      try { server.listen(port, this.host); } catch (error) { failed(error); }
+    });
+    if (this.stopping || this.server !== server) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge stopped during startup');
+    const address = server.address();
     if (!address || typeof address === 'string') throw new Error('bridge did not receive a loopback address');
     this.address = address;
     return this.environment();
@@ -421,7 +441,22 @@ export class ServicesBridge {
     return settled;
   }
 
-  async stop() {
+  stop() {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopping = true;
+    this.stopPromise = this.#stop();
+    return this.stopPromise;
+  }
+
+  async #stop() {
+    // Stop admission and transport first; accepted lifecycle operations drain
+    // concurrently with Runtime shutdown, never ahead of it.
+    const server = this.server;
+    this.server = null;
+    this.address = null;
+    const closed = server ? once(server, 'close').catch(() => undefined) : Promise.resolve();
+    if (server) { server.close(); server.closeAllConnections?.(); }
+    await Promise.allSettled([...this.pendingHandlers, ...this.pendingCalls]);
     // A synchronous Judge response may stage a typed block to run after the
     // HTTP response is sent. Drain that lifecycle work before the caller
     // tears down Runtime/log directories; otherwise the setImmediate
@@ -435,15 +470,11 @@ export class ServicesBridge {
       }
     }
     if (this.deferredLifecyclePromise) await this.deferredLifecyclePromise.catch(() => undefined);
-    if (!this.server) return;
-    const server = this.server;
-    this.server = null;
-    this.address = null;
-    server.close();
-    await once(server, 'close').catch(() => undefined);
+    await closed;
   }
 
   async #handle(request, response) {
+    if (this.stopping) { send(response, 503, { ok: false, error: { code: 'NOT_ALLOWED', message: 'Bridge is stopping' } }); return; }
     if (request.method === 'GET' && request.url === '/health') {
       send(response, 200, { ok: true, service: 'swarmenv-agent-bridge' });
       return;
@@ -465,8 +496,9 @@ export class ServicesBridge {
       return;
     }
     const authenticatedToken = this.token;
+    let input;
     try {
-      const input = await readBody(request);
+      input = await readBody(request);
       if (authenticatedToken !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed while reading the request');
       const result = await this.call(input);
       send(response, 200, { ok: true, result });
@@ -486,6 +518,12 @@ export class ServicesBridge {
   }
 
   async call(request = {}) {
+    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
+    return this.#track(this.pendingCalls, () => this.#admittedCall(request));
+  }
+
+  async #admittedCall(request) {
+    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
     // Coalesce only an explicit take request, for this live credential. A lost
     // CLI response must not turn in-flight preparation into a second take.
     const key = request.operation === 'task_take' && request.operation_id;
@@ -513,6 +551,7 @@ export class ServicesBridge {
     if (this.bindingPending) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
     const identityToken = this.token;
     const assertIdentity = (beforeDispatch = false) => {
+      if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
       if (this.bindingPending) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
       if (this.token !== identityToken) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before dispatch');
       const bot = beforeDispatch ? this.taskService.getBot?.(this.actorRef) : null;

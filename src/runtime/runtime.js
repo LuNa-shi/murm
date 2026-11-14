@@ -469,10 +469,10 @@ export class Runtime {
     this.finishCleanupTimers.clear();
     for (const [botId, binding] of this.botBindings) {
       const bot = this.taskService.getBot(botId);
-      if (bot && !bot.execution_id && !['CLOSING', 'CLOSED'].includes(bot.state)) this.taskService.requestBotStop(botId, terminalReason);
+      if (bot && !['CLOSING', 'CLOSED'].includes(bot.state)) this.taskService.requestBotStop(botId, terminalReason, { terminalState });
       if (!bot?.execution_id) binding.cancelStartup?.();
     }
-    await Promise.allSettled([...this.startupPromises]);
+    const pendingStarts = [...this.startupPromises];
     this.executionStateUnsubscribe?.();
     this.executionStateUnsubscribe = null;
     this.notificationUnsubscribe?.();
@@ -483,7 +483,7 @@ export class Runtime {
     // release path detaches the Execution binding.
     const ownedSessions = new Set([...this.activeProcesses.values()].map((active) => active.session).filter(Boolean));
     for (const session of this.identitySessions) ownedSessions.add(session);
-    for (const executionId of executionIds) {
+    const stopOwnedExecution = async executionId => {
       const execution = this.taskService.getExecution(executionId);
       try {
         if (execution && ['CREATED', 'RUNNING'].includes(execution.state)) {
@@ -494,15 +494,21 @@ export class Runtime {
       } catch (error) {
         this.logger?.append({ event: 'runtime.shutdown_cleanup_pending', execution_id: executionId, error_class: error?.code ?? error?.name });
       }
-    }
-    for (const botId of this.botBindings.keys()) {
+    };
+    const stoppingExecutions = executionIds.map(stopOwnedExecution);
+    const stoppingBots = [...this.botBindings.keys()].map(async botId => {
       const bot = this.taskService.getBot(botId);
-      if (bot?.execution_id) continue;
+      if (bot?.execution_id) return;
       try {
         this.taskService.requestBotStop(botId, terminalReason);
         await this.releaseBot(botId);
       } catch (error) { this.logger?.append({ event: 'runtime.bot_cleanup_pending', bot_id: botId, error_class: error?.code ?? error?.name }); }
-    }
+    });
+    await Promise.allSettled([...pendingStarts, ...stoppingExecutions, ...stoppingBots]);
+    // A launch already in flight can register its rejected Session only when
+    // it returns. Join and stop that late ownership as well.
+    await Promise.allSettled([...this.activeProcesses.keys()].filter(id => !executionIds.includes(id)).map(stopOwnedExecution));
+    for (const session of this.identitySessions) ownedSessions.add(session);
     for (const session of ownedSessions) {
       if ([...this.activeProcesses.values()].some((active) => active.session === session)) continue;
       try {

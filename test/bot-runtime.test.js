@@ -1333,3 +1333,40 @@ test('Git merge publication survives SQLite confirmation failure and replays the
   assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, result.main_revision);
   assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 3);
 });
+
+test('shutdown revokes and stops an active Bot before a different Core startup returns', { timeout: 15_000 }, async t => {
+  const { service, runtime, startSession } = await fixture(t, { maxWorkers: 2 });
+  const active = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: 'mission:bots', summary: 'A bounded active responsibility', expected_output: 'Research note', acceptance_conditions: ['Readable'] }, makeEnvelope({ actorRef: active.bot.bot_id })).task;
+  const take = service.takeTask(task.task_id, { owner_ref: active.bot.bot_id, core_id: 'core-1', take_key: 'shutdown-active' });
+  await runtime.bindAgentExecution(take.execution.execution_id, active.session, { coreId: 'core-1', sendInitialPrompt: false });
+  let entered, release, stopped;
+  const entering = new Promise(resolve => { entered = resolve; });
+  const held = new Promise(resolve => { release = resolve; });
+  const activeStopped = new Promise(resolve => { stopped = resolve; });
+  const stop = active.session.stop;
+  active.session.stop = async () => { await stop(); stopped(); };
+  const starting = runtime.startBot({ missionId: 'mission:bots', coreId: 'core-2', startSession: async options => { entered(); await held; return startSession(options); } });
+  const rejected = assert.rejects(starting, /stopp|clos|cancel/i);
+  await entering;
+  const shuttingDown = runtime.shutdown();
+  try {
+    assert.equal(service.getBot(active.bot.bot_id).state, 'CLOSING');
+    assert.equal(service.getTask(task.task_id).state, 'RUNNING');
+    assert.throws(() => service.createTask({ mission_id: 'mission:bots', summary: 'Investigate another independent responsibility after shutdown', expected_output: 'Result', acceptance_conditions: ['Readable'] }, makeEnvelope({ actorRef: active.bot.bot_id })), { code: 'NOT_ALLOWED' });
+    await activeStopped;
+  } finally { release(); }
+  await rejected;
+  const result = await shuttingDown;
+  assert.equal(result.active_process_count, 0);
+  assert.deepEqual(result.cleanup_pending_bot_ids, []);
+});
+
+test('Runtime shutdown rejects new Bot admission before persistence or provider allocation', async t => {
+  const { service, runtime, manager, startSession, calls } = await fixture(t);
+  await runtime.shutdown();
+  assert.throws(() => runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession }), { code: 'NOT_ALLOWED' });
+  assert.equal(service.db.prepare('SELECT COUNT(*) AS count FROM bots').get().count, 0);
+  assert.equal(manager.snapshot().executions.length, 0);
+  assert.equal(calls.length, 0);
+});

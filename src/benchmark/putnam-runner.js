@@ -881,129 +881,106 @@ function resourceSnapshot() {
   };
 }
 
-export async function stopCore(state, core, { cleanupGraceMs = 30_000 } = {}) {
-  let cleanupFailed = false;
-  const recordCleanupError = (error) => { cleanupFailed = true; state.cleanupErrors.push(error); };
-  const cleanupDeadline = Date.now() + cleanupGraceMs;
-  const waitForCleanup = async (promise) => {
-    let timer;
-    try {
-      return await Promise.race([Promise.resolve(promise).then(() => true), new Promise(resolve => { timer = setTimeout(() => resolve(false), Math.max(0, cleanupDeadline - Date.now())); })]);
-    } finally { clearTimeout(timer); }
-  };
-  core.stopping = true;
-  if (core.parallelism) core.parallelism.transition(core.index, 'STOPPING', {
-    task_id: core.taskId ?? null, execution_id: core.executionId ?? null, reason: 'benchmark_cleanup',
-  });
-  // Stop a visible unbound Session immediately so its readiness wait can
-  // settle. Join startup within the same grace as Runtime/provider cleanup;
-  // timeout retains the tracked promises and late-start stop guards.
-  const startupCleanup = Promise.all([
-    core.adapter?.cleanupPendingStarts?.({ shutdown: true }),
-    core.sessionStartPromise?.catch(() => undefined),
-    !core.executionId ? core.session?.stop?.() : undefined,
-  ]).catch(error => {
-    recordCleanupError({ code: error?.code ?? 'STARTUP_CLEANUP_PENDING', class: 'startup_cleanup_pending' });
-  });
-  const startupSettled = await waitForCleanup(startupCleanup);
-  if (!startupSettled) recordCleanupError({ code: 'STARTUP_CLEANUP_TIMEOUT', class: 'startup_cleanup_timeout' });
-  const sessions = new Set([
-    ...core.sessionHistory,
-    core.session,
-    core.releasedSession,
-  ].filter(Boolean));
-  // Flush any post-response Judge lifecycle (for example a typed checker
-  // health block) while Runtime is still live. Closing the Bridge only after
-  // Runtime shutdown lets that deferred callback race report-directory
-  // cleanup and write an unhandled late log event.
-  await core.bridge.stop().catch(() => undefined);
-  // Runtime owns process termination, capacity release, fencing, and recovery
-  // suppression. Keep those effects behind its public shutdown seam.
-  const shutdownPromise = Promise.resolve(core.runtime.shutdown({ terminalState: 'FAILED', terminalReason: 'benchmark_deadline_cleanup' }));
-  shutdownPromise.catch(() => undefined);
-  let shutdownSettled = false;
-  let cleanupComplete = false;
-  await waitForCleanup(
-    shutdownPromise.then((result) => {
-      shutdownSettled = true;
-      cleanupComplete = result.active_process_count === 0 && (result.cleanup_pending_session_count ?? 0) === 0 && (result.cleanup_pending_bot_ids?.length ?? 0) === 0;
-      if (!cleanupComplete) recordCleanupError({ code: 'RUNTIME_CLEANUP_PENDING', class: 'runtime_cleanup_pending' });
-    }).catch(error => {
-      recordCleanupError({ code: error?.code ?? 'RUNTIME_CLEANUP_PENDING', class: 'runtime_cleanup_pending' });
-    }),
-  );
-  if (!shutdownSettled) {
-    recordCleanupError({ code: 'RUNTIME_SHUTDOWN_TIMEOUT', class: 'runtime_shutdown_timeout' });
-    forceFenceCoreExecutions(state, core, 'benchmark_cleanup_shutdown_timeout');
-  }
-  const sessionsSettled = await waitForCleanup(Promise.all([...sessions].map(async (session) => {
-    try {
-      await session.stop?.();
-      if (session.closed === false) throw new Error('Bot process stop was not confirmed');
-    } catch (error) {
-      // Cleanup must continue so the remaining Core sessions and Services are
-      // released even when one Agent process exits with an error.
-      cleanupComplete = false;
-      recordCleanupError({ code: error?.code ?? 'SESSION_CLEANUP_PENDING', class: 'session_cleanup_pending' });
-    }
-  })));
-  if (!sessionsSettled) recordCleanupError({ code: 'SESSION_CLEANUP_TIMEOUT', class: 'session_cleanup_timeout' });
-  cleanupComplete = cleanupComplete && startupSettled && sessionsSettled && !cleanupFailed;
-  // Runtime shutdown above owns the durable fence/release boundary. Agent
-  // turns are transport cleanup and may be stuck in a provider wait; drain
-  // each with a bounded grace period so one Pi session cannot prevent the
-  // report and observability terminalization indefinitely.
-  if (core.turnPromise) {
-    await Promise.race([
-      core.turnPromise.catch(() => undefined),
-      sleep(5_000),
-    ]);
-  }
-  if (core.boundTurnPromise) {
-    await Promise.race([
-      core.boundTurnPromise.catch(() => undefined),
-      sleep(5_000),
-    ]);
-  }
-  // Drain recovery/fence/rotation handlers before the caller removes the
-  // experiment directory; a late workspace revision must not race cleanup.
-  await Promise.race([
-    Promise.resolve(core.runtime.waitForSettled?.()).catch(() => undefined),
-    sleep(10_000),
-  ]);
-  const current = core.executionId ? state.taskService.getExecution(core.executionId) : null;
-  if (core.parallelism && cleanupComplete && !cleanupFailed) core.parallelism.transition(core.index, 'IDLE', {
-    task_id: current?.task_id ?? null,
-    execution_id: current?.execution_id ?? null,
-    reason: 'benchmark_cleanup_complete',
-  });
+async function joinCleanup(promises) {
+  const results = await Promise.allSettled(promises);
+  const failure = results.find(result => result.status === 'rejected');
+  if (failure) throw failure.reason;
+  return results.map(result => result.value);
 }
 
-function forceFenceCoreExecutions(state, core, reason) {
-  const executions = state.taskService.listActiveExecutions().filter((execution) =>
-    execution.core_id === `core-${core.index}` || execution.execution_id === core.executionId);
-  for (const execution of executions) {
-    if (!['CREATED', 'RUNNING'].includes(execution.state)) continue;
-    try {
-      state.taskService.dispatch('fence_execution', {
-        runtime_generation: execution.runtime_generation ?? 1,
-        terminal_reason: reason,
-      }, makeEnvelope({
-        operationId: `benchmark:force-fence:${execution.execution_id}:${randomUUID()}`,
-        actorRef: execution.owner_ref,
-        taskId: execution.task_id,
-        executionId: execution.execution_id,
-        specVersion: execution.spec_version,
-        stateVersion: execution.state_version,
-        fencingVersion: execution.fencing_version,
-      }));
-    } catch (error) {
-      state.cleanupErrors.push({
-        code: error?.code ?? error?.name ?? 'FORCE_FENCE_ERROR',
-        class: safeDiagnostic(error?.message) ?? 'force_fence_error',
-      });
-    }
+async function settleBy(promise, deadline) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve(promise).then(value => ({ status: 'fulfilled', value }), reason => ({ status: 'rejected', reason })),
+      new Promise(resolve => { timer = setTimeout(() => resolve({ status: 'pending' }), Math.max(0, deadline - Date.now())); }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
+// This deadline bounds orchestration waits, not just individual model turns.
+// The underlying operation remains tracked and joins the shutdown boundary.
+export async function withinRunDeadline(state, operation, deadline) {
+  if (Date.now() >= deadline) throw Object.assign(new Error('Benchmark execution timebox elapsed'), { code: 'BENCHMARK_TIMEBOX_EXPIRED' });
+  const promise = typeof operation === 'function' ? operation() : operation;
+  state.pendingRunOperations ??= new Set();
+  const tracked = Promise.resolve(promise).finally(() => state.pendingRunOperations.delete(tracked));
+  state.pendingRunOperations.add(tracked);
+  const result = await settleBy(tracked, deadline);
+  if (result.status === 'rejected') throw result.reason;
+  if (result.status === 'pending') {
+    const error = new Error('Benchmark execution timebox elapsed');
+    error.code = 'BENCHMARK_TIMEBOX_EXPIRED';
+    throw error;
   }
+  return result.value;
+}
+
+export async function stopCore(state, core, { cleanupGraceMs = 30_000, cleanupDeadline = Date.now() + cleanupGraceMs } = {}) {
+  let cleanupFailed = false;
+  const recordCleanupError = error => { cleanupFailed = true; state.cleanupErrors.push({ ...error, core_id: `core-${core.index}` }); };
+  core.stopping = true;
+  core.parallelism?.transition(core.index, 'STOPPING', { task_id: core.taskId ?? null,
+    execution_id: core.executionId ?? null, reason: 'benchmark_cleanup' });
+  const sessions = new Set([...(core.sessionHistory ?? []), core.session, core.releasedSession].filter(Boolean));
+  // Start all termination paths before joining any of them. In particular a
+  // Bridge client or startup wait may need Runtime shutdown in order to end.
+  const jobs = [
+    ['STARTUP_CLEANUP', () => joinCleanup([core.adapter?.cleanupPendingStarts?.({ shutdown: true }), core.sessionStartPromise])],
+    ['RUNTIME_SHUTDOWN', () => core.runtime.shutdown({ terminalState: 'FAILED', terminalReason: 'benchmark_deadline_cleanup' })],
+    ['BRIDGE_CLEANUP', () => core.bridge.stop()],
+    ['SESSION_CLEANUP', () => joinCleanup([...sessions].map(async session => {
+      await session.stop?.();
+      if (session.closed === false) throw new Error('Bot process stop was not confirmed');
+    }))],
+    ['TURN_CLEANUP', () => Promise.allSettled([core.turnPromise, core.boundTurnPromise])],
+    ['RUNTIME_SETTLE', () => core.runtime.waitForSettled?.()],
+  ].map(([name, run]) => {
+    const promise = Promise.resolve().then(run);
+    return { name, promise };
+  });
+  core.cleanupPromise = Promise.allSettled(jobs.map(job => job.promise));
+  await Promise.all(jobs.map(async ({ name, promise }) => {
+    const result = await settleBy(promise, cleanupDeadline);
+    if (result.status === 'pending') recordCleanupError({ code: `${name}_TIMEOUT`, class: `${name.toLowerCase()}_timeout` });
+    else if (result.status === 'rejected') recordCleanupError({ code: result.reason?.code ?? `${name}_PENDING`, class: `${name.toLowerCase()}_pending` });
+    else if (name === 'RUNTIME_SHUTDOWN' && (result.value.active_process_count !== 0 ||
+        (result.value.cleanup_pending_session_count ?? 0) !== 0 || (result.value.cleanup_pending_bot_ids?.length ?? 0) !== 0)) {
+      recordCleanupError({ code: 'RUNTIME_CLEANUP_PENDING', class: 'runtime_cleanup_pending' });
+    }
+  }));
+  // Runtime owns the durable CLOSING/owner boundary until physical stop is
+  // confirmed. A reporting timeout must never manufacture capacity release.
+  if (!cleanupFailed) core.parallelism?.transition(core.index, 'IDLE', {
+    task_id: core.taskId ?? null, execution_id: core.executionId ?? null, reason: 'benchmark_cleanup_complete' });
+  return { complete: !cleanupFailed };
+}
+
+export async function stopBenchmarkRuntime(state, { cleanupGraceMs = 30_000 } = {}) {
+  if (!Number.isFinite(cleanupGraceMs) || cleanupGraceMs <= 0) throw new TypeError('cleanupGraceMs must be finite and positive');
+  const started = Date.now();
+  const deadline = started + cleanupGraceMs;
+  state.cleanupDeadline = deadline;
+  state.stopping = true;
+  state.unsubscribeTaskEvents?.();
+  state.identityLoopAbortController?.abort();
+  for (const loop of state.identityLoops ?? []) loop.stop();
+  const controller = Promise.resolve().then(() => state.controller?.stop?.());
+  const jobs = [
+    ['CONTROLLER_STOP', controller],
+    ['IDENTITY_LOOP_STOP', joinCleanup(state.identityLoopRuns ?? [])],
+    ['BACKGROUND_STOP', joinCleanup([...(state.pendingRunOperations ?? []), ...(state.backgroundStopPromises ?? [])])],
+    ...state.cores.map(core => [`CORE_${core.index}_STOP`, stopCore(state, core, { cleanupDeadline: deadline }), true]),
+  ];
+  state.cleanupPromise = Promise.allSettled(jobs.map(([, promise]) => promise))
+    .then(() => Promise.allSettled(state.cores.map(core => core.cleanupPromise)));
+  await Promise.all(jobs.map(async ([name, promise, alreadyBounded]) => {
+    const result = alreadyBounded
+      ? await promise.then(value => ({ status: 'fulfilled', value }), reason => ({ status: 'rejected', reason }))
+      : await settleBy(promise, deadline);
+    if (result.status !== 'fulfilled') state.cleanupErrors.push({ code: result.status === 'pending' ? `${name}_TIMEOUT` : result.reason?.code ?? `${name}_ERROR`, class: name.toLowerCase() });
+  }));
+  state.cleanupElapsedMs = Date.now() - started;
 }
 
 function structureEvidence(taskService, taskTree, cores, mode) {
@@ -1181,7 +1158,8 @@ export function projectReport(state, startedAt, deadline) {
     const material = state.contextService.getMaterial(execution.workspace_source_id);
     return !material || material.source_task !== take.task_id || material.source_execution !== take.execution_id;
   });
-  const invalid = toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
+  const cleanupPending = (state.cleanupErrors?.length ?? 0) > 0;
+  const invalid = cleanupPending || toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     workspaceSourceBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
   const proposedTaskCount = taskEvidence.counts.total;
   const lifecycle = lifecycleEvents(state.taskService);
@@ -1433,6 +1411,7 @@ export function projectReport(state, startedAt, deadline) {
       all_tool_events: [...new Set(cores.flatMap((core) => core.tool_events))],
       invalid,
       invalid_reasons: [
+        ...(cleanupPending ? ['cleanup_pending'] : []),
         ...(toolViolation ? ['non_swarmenv_tool_event'] : []),
         ...(toolProtocolErrorCount > 0 ? ['agent_tool_protocol_error'] : []),
         ...(materialBoundaryViolation ? ['material_boundary_violation'] : []),
@@ -1507,982 +1486,996 @@ async function createProjectState(problem, config, options) {
   ]);
   const databasePath = join(projectDir, 'project.sqlite');
   const database = new DatabaseSync(databasePath);
-  const observationStore = options.observationStore ?? new ObservationStore(database);
-  sandboxObservationStore = observationStore;
-  const serviceLogger = (name) => fanoutLogger(
-    new DurableEventLog(join(logRoot, 'services', `${name}.ndjson`), { scope: name }),
-    observationLogger(observationStore, runId, name),
-  );
-  const taskLogger = serviceLogger('task-service');
-  const contextLogger = serviceLogger('context-service');
-  const routerLogger = serviceLogger('service-router');
-  const judgeLogger = serviceLogger('judge-service');
-  const checkerLogger = fanoutLogger(
-    new DurableEventLog(join(logRoot, 'judge', 'lean-checker.ndjson'), { raw: true, scope: 'judge:lean-checker' }),
-    observationLogger(observationStore, runId, 'judge'),
-  );
-  const contextService = new ContextService(database, { logger: contextLogger });
-  const taskService = new TaskService(database, { contextService, logger: taskLogger });
-  contextService.taskService = taskService;
-  if (typeof sandboxManager?.reconcileExecutions === 'function') {
-    await sandboxManager.reconcileExecutions({
-      executionIds: taskService.listActiveExecutions().map((execution) => execution.execution_id),
-    }).catch((error) => {
-      sandboxObservationStore?.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_reconcile_error', payload: { error_class: error?.code ?? error?.name ?? 'sandbox_reconcile_error' } });
-    });
+  const cores = [];
+  try { return await initializeProjectState(); }
+  catch (error) {
+    const cleanup = { cores, cleanupErrors: [] };
+    await stopBenchmarkRuntime(cleanup, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
+    if (cleanup.cleanupErrors.length) void cleanup.cleanupPromise.finally(() => database.close()).catch(() => undefined);
+    else database.close();
+    throw error;
   }
-  const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
-  const judgeService = new JudgeService(database, {
-    logger: judgeLogger,
-    maxInfrastructureRetries: options.maxInfrastructureRetries,
-    fixtureManifest: fixture,
-    checker: options.checker ?? new LeanChecker({
-      workRoot: join(projectDir, 'judge-work'),
-      logger: checkerLogger,
-      command: options.leanCommand ?? 'lake',
-      timeoutMs: options.checkerTimeoutMs ?? 120_000,
-    }),
-  });
-  taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
-  judgeService.setDependencyEventSink((event) => taskService.notifyDependencyEvent(event));
-  const mathlibSearchUrl = options.mathlibSearchUrl ?? process.env.SWARMENV_MATHLIB_SEARCH_URL ?? null;
-  const serviceEndpoints = options.serviceEndpoints ?? Object.fromEntries(
-    ['task', 'context', 'judge', 'catalog']
-      .map((serviceId) => {
-        const key = serviceId.toUpperCase();
-        const url = process.env[`SWARMENV_${key}_SERVICE_URL`];
-        if (!url) return [serviceId, undefined];
-        return [serviceId, {
-          url,
-          token: process.env[`SWARMENV_${key}_SERVICE_TOKEN`] ?? null,
-        }];
-      })
-      .filter(([, endpoint]) => endpoint !== undefined),
-  );
-  const capabilityRegistry = options.serviceRegistry ?? createBuiltinServiceRegistry({
-    taskService,
-    contextService,
-    judgeService,
-    missionWorkspace,
-    serviceEndpoints,
-    customServices: options.customServices ?? [],
-  });
-  if (!options.serviceRegistry && Array.isArray(options.serviceBundles) && options.serviceBundles.length > 0) {
-    for (const bundleDir of options.serviceBundles) {
-      const loaded = await loadServiceBundle(bundleDir, { rootDir: options.serviceBundleRoot ?? undefined });
-      const configured = options.serviceBundleEndpoints?.[loaded.service_id] ?? null;
-      const endpoint = configured
-        ? { transport: 'http-json', url: typeof configured === 'string' ? configured : configured.url }
-        : null;
-      const bundle = endpoint
-        ? await loadServiceBundle(bundleDir, { rootDir: options.serviceBundleRoot ?? undefined, manifestOverrides: { endpoint } })
-        : loaded;
-      if (capabilityRegistry.listServices().some((service) => service.service_id === bundle.service_id)) continue;
-      let adapter = options.serviceBundleAdapters?.[bundle.service_id] ?? null;
-      if (!adapter && bundle.manifest.endpoint.transport === 'http-json') {
-        const tokenRef = bundle.secret_refs?.token ?? null;
-        const token = tokenRef ? process.env[tokenRef.slice('env:'.length)] ?? null : null;
-        adapter = createHttpJsonAdapter({ token });
-      }
-      if (!adapter) throw new TypeError(`service bundle ${bundle.service_id} requires an adapter for ${bundle.manifest.endpoint.transport}`);
-      await capabilityRegistry.registerBundle({ bundle, adapter });
-      if (bundle.manifest.endpoint.transport === 'http-json') await capabilityRegistry.checkReadiness(bundle.service_id);
+
+  async function initializeProjectState() {
+    const observationStore = options.observationStore ?? new ObservationStore(database);
+    sandboxObservationStore = observationStore;
+    const serviceLogger = (name) => fanoutLogger(
+      new DurableEventLog(join(logRoot, 'services', `${name}.ndjson`), { scope: name }),
+      observationLogger(observationStore, runId, name),
+    );
+    const taskLogger = serviceLogger('task-service');
+    const contextLogger = serviceLogger('context-service');
+    const routerLogger = serviceLogger('service-router');
+    const judgeLogger = serviceLogger('judge-service');
+    const checkerLogger = fanoutLogger(
+      new DurableEventLog(join(logRoot, 'judge', 'lean-checker.ndjson'), { raw: true, scope: 'judge:lean-checker' }),
+      observationLogger(observationStore, runId, 'judge'),
+    );
+    const contextService = new ContextService(database, { logger: contextLogger });
+    const taskService = new TaskService(database, { contextService, logger: taskLogger });
+    contextService.taskService = taskService;
+    if (typeof sandboxManager?.reconcileExecutions === 'function') {
+      await sandboxManager.reconcileExecutions({
+        executionIds: taskService.listActiveExecutions().map((execution) => execution.execution_id),
+      }).catch((error) => {
+        sandboxObservationStore?.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_reconcile_error', payload: { error_class: error?.code ?? error?.name ?? 'sandbox_reconcile_error' } });
+      });
     }
-  }
-  if (!options.serviceRegistry && mathlibSearchUrl && !capabilityRegistry.listServices().some((service) => service.service_id === 'mathlib-search')) {
-    registerUserService(capabilityRegistry, {
-      manifest: createMathlibSearchManifest({
-        endpoint: { transport: 'http-json', url: mathlibSearchUrl },
-        mathlibRevision: options.mathlibRevision ?? fixture.mathlib_version ?? null,
-        leanVersion: options.leanVersion ?? fixture.lean_toolchain ?? null,
+    const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
+    const judgeService = new JudgeService(database, {
+      logger: judgeLogger,
+      maxInfrastructureRetries: options.maxInfrastructureRetries,
+      fixtureManifest: fixture,
+      checker: options.checker ?? new LeanChecker({
+        workRoot: join(projectDir, 'judge-work'),
+        logger: checkerLogger,
+        command: options.leanCommand ?? 'lake',
+        timeoutMs: options.checkerTimeoutMs ?? 120_000,
       }),
-      adapter: createHttpJsonAdapter({ token: options.mathlibSearchToken ?? process.env.SWARMENV_MATHLIB_SEARCH_TOKEN ?? null }),
     });
-    await capabilityRegistry.checkReadiness('mathlib-search');
-  }
-  if (!options.serviceRegistry && !mathlibSearchUrl && !capabilityRegistry.listServices().some((service) => service.service_id === 'mathlib-search')) {
-    // The locked PutnamBench checkout already contains the Mathlib source
-    // used by Lean. Register the local provider in-process when no external
-    // endpoint was configured, so research admission and Agent search use the
-    // same pinned project rather than silently exposing no mathlib capability.
-    const sourceRoot = options.mathlibSearchSourceRoot
-      ?? process.env.MATHLIB_SEARCH_SOURCE_ROOT
-      ?? join(config.lean_project_root, '.lake', 'packages', 'mathlib', 'Mathlib');
-    try {
-      await access(sourceRoot);
-      const provider = createMathlibSearchService({
-        endpoint: { transport: 'in-process' },
-        sourceRoot,
-        projectRoot: config.lean_project_root,
-        mathlibRevision: options.mathlibRevision ?? fixture.mathlib_version ?? null,
-        leanVersion: options.leanVersion ?? fixture.lean_toolchain ?? null,
-      });
-      registerUserService(capabilityRegistry, {
-        manifest: provider.manifest,
-        adapter: createInProcessAdapter({ invoke: provider.handler, readiness: provider.readiness }),
-      });
-    } catch (error) {
-      if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error;
-      // A synthetic/unit fixture may not ship Mathlib. The capability remains
-      // absent and Task admission will return a structured, actionable error.
+    taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
+    judgeService.setDependencyEventSink((event) => taskService.notifyDependencyEvent(event));
+    const mathlibSearchUrl = options.mathlibSearchUrl ?? process.env.SWARMENV_MATHLIB_SEARCH_URL ?? null;
+    const serviceEndpoints = options.serviceEndpoints ?? Object.fromEntries(
+      ['task', 'context', 'judge', 'catalog']
+        .map((serviceId) => {
+          const key = serviceId.toUpperCase();
+          const url = process.env[`SWARMENV_${key}_SERVICE_URL`];
+          if (!url) return [serviceId, undefined];
+          return [serviceId, {
+            url,
+            token: process.env[`SWARMENV_${key}_SERVICE_TOKEN`] ?? null,
+          }];
+        })
+        .filter(([, endpoint]) => endpoint !== undefined),
+    );
+    const capabilityRegistry = options.serviceRegistry ?? createBuiltinServiceRegistry({
+      taskService,
+      contextService,
+      judgeService,
+      missionWorkspace,
+      serviceEndpoints,
+      customServices: options.customServices ?? [],
+    });
+    if (!options.serviceRegistry && Array.isArray(options.serviceBundles) && options.serviceBundles.length > 0) {
+      for (const bundleDir of options.serviceBundles) {
+        const loaded = await loadServiceBundle(bundleDir, { rootDir: options.serviceBundleRoot ?? undefined });
+        const configured = options.serviceBundleEndpoints?.[loaded.service_id] ?? null;
+        const endpoint = configured
+          ? { transport: 'http-json', url: typeof configured === 'string' ? configured : configured.url }
+          : null;
+        const bundle = endpoint
+          ? await loadServiceBundle(bundleDir, { rootDir: options.serviceBundleRoot ?? undefined, manifestOverrides: { endpoint } })
+          : loaded;
+        if (capabilityRegistry.listServices().some((service) => service.service_id === bundle.service_id)) continue;
+        let adapter = options.serviceBundleAdapters?.[bundle.service_id] ?? null;
+        if (!adapter && bundle.manifest.endpoint.transport === 'http-json') {
+          const tokenRef = bundle.secret_refs?.token ?? null;
+          const token = tokenRef ? process.env[tokenRef.slice('env:'.length)] ?? null : null;
+          adapter = createHttpJsonAdapter({ token });
+        }
+        if (!adapter) throw new TypeError(`service bundle ${bundle.service_id} requires an adapter for ${bundle.manifest.endpoint.transport}`);
+        await capabilityRegistry.registerBundle({ bundle, adapter });
+        if (bundle.manifest.endpoint.transport === 'http-json') await capabilityRegistry.checkReadiness(bundle.service_id);
+      }
     }
-  }
-  // Owner/controller SDK calls are synchronous local transactions. Keep that
-  // control-plane registry local even when Agent-facing providers are remote;
-  // ServicesBridge uses capabilityRegistry for the named HTTP calls.
-  const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore });
-  const router = new ServicesRouter({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore, registry: routerRegistry, logger: routerLogger });
-  // Flat Mission Tasks finish through the single registered Task capability.
-  const runtimeCapabilities = runtimeCapabilityList()
-    .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
-  const allowedAgentToolNames = [...BOT_TOOL_NAMES];
-  const owner = sdk(router, { actorRef: 'owner:benchmark' });
-  const taskCreateMutex = new SerialTaskCreateAdmission();
-  observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
-  const mission = owner.createMission({
-    mission_id: `mission:${problem.id}:${runId}`,
-    goal: `Solve ${problem.id} through independent, shared Task work.`,
-    acceptance_conditions: {
-      project: problem.id,
-      source_hash: problem.source_hash,
-      final_candidate: true,
-      required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
-      required_check: {
-        checker_ref: fixture.checker_ref,
-        checker_version: fixture.checker_version,
-        environment_ref: fixture.environment_ref,
+    if (!options.serviceRegistry && mathlibSearchUrl && !capabilityRegistry.listServices().some((service) => service.service_id === 'mathlib-search')) {
+      registerUserService(capabilityRegistry, {
+        manifest: createMathlibSearchManifest({
+          endpoint: { transport: 'http-json', url: mathlibSearchUrl },
+          mathlibRevision: options.mathlibRevision ?? fixture.mathlib_version ?? null,
+          leanVersion: options.leanVersion ?? fixture.lean_toolchain ?? null,
+        }),
+        adapter: createHttpJsonAdapter({ token: options.mathlibSearchToken ?? process.env.SWARMENV_MATHLIB_SEARCH_TOKEN ?? null }),
+      });
+      await capabilityRegistry.checkReadiness('mathlib-search');
+    }
+    if (!options.serviceRegistry && !mathlibSearchUrl && !capabilityRegistry.listServices().some((service) => service.service_id === 'mathlib-search')) {
+      // The locked PutnamBench checkout already contains the Mathlib source
+      // used by Lean. Register the local provider in-process when no external
+      // endpoint was configured, so research admission and Agent search use the
+      // same pinned project rather than silently exposing no mathlib capability.
+      const sourceRoot = options.mathlibSearchSourceRoot
+        ?? process.env.MATHLIB_SEARCH_SOURCE_ROOT
+        ?? join(config.lean_project_root, '.lake', 'packages', 'mathlib', 'Mathlib');
+      try {
+        await access(sourceRoot);
+        const provider = createMathlibSearchService({
+          endpoint: { transport: 'in-process' },
+          sourceRoot,
+          projectRoot: config.lean_project_root,
+          mathlibRevision: options.mathlibRevision ?? fixture.mathlib_version ?? null,
+          leanVersion: options.leanVersion ?? fixture.lean_toolchain ?? null,
+        });
+        registerUserService(capabilityRegistry, {
+          manifest: provider.manifest,
+          adapter: createInProcessAdapter({ invoke: provider.handler, readiness: provider.readiness }),
+        });
+      } catch (error) {
+        if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error;
+        // A synthetic/unit fixture may not ship Mathlib. The capability remains
+        // absent and Task admission will return a structured, actionable error.
+      }
+    }
+    // Owner/controller SDK calls are synchronous local transactions. Keep that
+    // control-plane registry local even when Agent-facing providers are remote;
+    // ServicesBridge uses capabilityRegistry for the named HTTP calls.
+    const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore });
+    const router = new ServicesRouter({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore, registry: routerRegistry, logger: routerLogger });
+    // Flat Mission Tasks finish through the single registered Task capability.
+    const runtimeCapabilities = runtimeCapabilityList()
+      .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
+    const allowedAgentToolNames = [...BOT_TOOL_NAMES];
+    const owner = sdk(router, { actorRef: 'owner:benchmark' });
+    const taskCreateMutex = new SerialTaskCreateAdmission();
+    observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
+    const mission = owner.createMission({
+      mission_id: `mission:${problem.id}:${runId}`,
+      goal: `Solve ${problem.id} through independent, shared Task work.`,
+      acceptance_conditions: {
+        project: problem.id,
+        source_hash: problem.source_hash,
+        final_candidate: true,
+        required_candidate: { kind: 'artifact', scope: 'proof_relevant' },
+        required_check: {
+          checker_ref: fixture.checker_ref,
+          checker_version: fixture.checker_version,
+          environment_ref: fixture.environment_ref,
+        },
       },
-    },
-  }, { operationId: `benchmark:mission:create:${runId}` }).mission;
-  const workspaceId = `workspace-${problem.id}-${runId}`;
-  const publicWorkspace = await missionWorkspace.create({
-    missionId: mission.mission_id,
-    workspaceId,
-    initialFiles: { [problem.problem_file]: problem.source },
-    metadata: { input_snapshot_hash: problem.source_hash, checker: fixture.checker_ref, environment: fixture.environment_ref },
-  });
-  // Every initial Task is proposed by a Bot after the zero-Task Mission starts.
-  observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: {
-    problem_id: problem.id,
-    task_model: 'flat',
-    mission_id: mission?.mission_id ?? null,
-    initial_task_count: 0,
-    workspace_id: publicWorkspace.workspace_id,
-  } });
-  observationStore.append({ experimentId: runId, source: 'runtime', kind: 'mission_started_zero_tasks', payload: { mission_id: mission.mission_id, workspace_id: publicWorkspace.workspace_id } });
-  const initialTasks = [];
-  observationStore.registerExperiment({ experimentId: runId, status: 'RUNNING', metadata: { initial_task_count: 0, proposed_task_count: 0, workspace_id: publicWorkspace.workspace_id } });
-  observationStore.append({
-    experimentId: runId,
-    source: 'runtime',
-    kind: 'experiment_started',
-    taskId: null,
-    payload: {
+    }, { operationId: `benchmark:mission:create:${runId}` }).mission;
+    const workspaceId = `workspace-${problem.id}-${runId}`;
+    const publicWorkspace = await missionWorkspace.create({
+      missionId: mission.mission_id,
+      workspaceId,
+      initialFiles: { [problem.problem_file]: problem.source },
+      metadata: { input_snapshot_hash: problem.source_hash, checker: fixture.checker_ref, environment: fixture.environment_ref },
+    });
+    // Every initial Task is proposed by a Bot after the zero-Task Mission starts.
+    observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: {
       problem_id: problem.id,
-      core_count: 4,
-      timebox_ms: options.timeboxMs ?? 60 * 60_000,
-      parallel_mode: selectedParallelMode,
       task_model: 'flat',
       mission_id: mission?.mission_id ?? null,
-      workspace_id: publicWorkspace.workspace_id,
       initial_task_count: 0,
-      proposed_task_count: 0,
-      normal_flow: normalFlow,
-    },
-  });
-  // Deterministic queue scenarios may seed durable Tasks before reusable Core
-  // sessions start. The hook uses the same Task Service boundary as Agent
-  // operations; it does not replace queue take, Runtime, or dispatch logic.
-  await options.prepareProject?.({ owner, root: null, mission, publicWorkspace, initialTasks, taskService, contextService, router, fixture, problem });
-  const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt });
-  const cores = [];
-  try {
-    for (let index = 1; index <= 4; index += 1) {
-    const coreDir = join(workspaceRoot, `core-${index}`);
-    await mkdir(coreDir, { recursive: true });
-    const childEnv = { ...process.env };
-    const adapter = new OpenSandboxAgentAdapter({
-        sandboxManager,
-        command: options.command ?? 'pi',
-        provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER,
-        model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL,
-        account: options.account ?? process.env.NUROUTER_PI_ACCOUNT,
-        group: options.group ?? process.env.NUROUTER_PI_GROUP,
-        env: childEnv,
-        agentEnvironment: sandboxConfig.agentEnvironment ?? {},
-        secretEnv: sandboxConfig.secretEnvironment ?? {},
-        systemPrompt: BOT_SYSTEM_PROMPT,
-      });
-    // All reusable slots must be able to resume an Execution created by any
-    // other slot. The physical Workspace is execution-owned and unique, but
-    // its Runtime root is project-wide rather than core-private.
-    const workspaceManager = new WorkspaceManager({ rootDir: workspaceRoot });
-    const runtime = new Runtime({
-      taskService,
-      contextService,
-      workspaceManager,
-      missionWorkspace,
-      missionWorkspaceId: publicWorkspace.workspace_id,
-      missionSubmissionStore,
-      agentAdapter: adapter,
-      runtimeCapabilities,
-      sandboxManager,
-      cleanExecutionWorkspaces: true,
-      freshBotPerExecution: true,
-      capabilityRegistry,
-      maxWorkers: 1,
-      coreIds: [`core-${index}`],
-      actorRef: `runtime:core-${index}`,
-      watchdogTimeoutMs: options.watchdogTimeoutMs,
-      // Keep transient provider/session failures on the same durable
-      // Execution. Fencing after one retry lets a recovered identity start a
-      // second Task and invalidates a bounded formal run.
-      maxRecoveryAttempts: options.maxRecoveryAttempts ?? 5,
-      // Execution, Task, Bot and Mission limits intersect. Bot lifetime starts
-      // before discovery and cannot reset when take becomes active.
-      executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
-      handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
-      logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
-      agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
-      onSessionStarted: ({ execution, session, recovery }) => {
-        if (recovery) {
-          // Recovery reuses the durable Execution. Restore the benchmark's
-          // local binding before the recovered prompt can issue any tool call;
-          // otherwise a late runTurn cleanup can make the Bridge look unbound
-          // and the model may create a second Execution with task_take.
-          const recoveredTask = taskService.getTask(execution.task_id);
-          core.taskId = execution.task_id;
-          core.executionId = execution.execution_id;
-          core.take = recoveredTask ? { task: recoveredTask, execution } : { task: { task_id: execution.task_id }, execution };
-          if (core.bridge && (!core.bridge.taskId || core.bridge.taskId === execution.task_id)) {
-            core.bridge.taskId = execution.task_id;
-            core.bridge.executionId = execution.execution_id;
-            core.bridge.role = AGENT_ROLES.BOUND;
-            core.bridge.capabilityProfile = null;
-            core.bridge.capabilityProfileRegistryRevision = null;
-          }
-          attachRecoveredSession(core, { execution, session });
-          return;
-        }
-        if (core.executionId !== execution.execution_id || core.session === session) return;
-        // Explicit identity rotation replaced the Session in the same
-        // Execution. Runtime has already sent the initial prompt; track the
-        // replacement so the next idle wake does not start a competing turn.
-        session.identitySession = true;
-        core.session = session;
-        core.sessionHistory.push(session);
-        core.versionManifest = session.manifest ?? core.versionManifest;
-        core.turnInFlight = true;
-        core.agentTurnSession = session;
-        core.sessionRotationCount = (core.sessionRotationCount ?? 0) + 1;
-        void (async () => {
-          try {
-            await session.waitForSettled?.({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
-          } catch (error) {
-            const expected = session.expectedStop || core.session !== session || core.stopping;
-            if (!expected) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'rotation_turn_error' });
-          } finally {
-            if (core.agentTurnSession === session) {
-              core.parallelism.endAgentTurn(core.index, Date.now(), 'identity_rotation_settled');
-              core.agentTurnSession = null;
-            }
-            if (core.session === session) {
-              core.turnInFlight = false;
-              core.nextTurnAt = Date.now();
-            }
-            core.stateRef?.requestIdentityWake?.();
-          }
-        })();
-      },
-    });
-    const core = {
-      index,
-      actorRef: `agent:core-${index}`,
-      coreDir,
-      adapter,
-      childEnv,
+      workspace_id: publicWorkspace.workspace_id,
+    } });
+    observationStore.append({ experimentId: runId, source: 'runtime', kind: 'mission_started_zero_tasks', payload: { mission_id: mission.mission_id, workspace_id: publicWorkspace.workspace_id } });
+    const initialTasks = [];
+    observationStore.registerExperiment({ experimentId: runId, status: 'RUNNING', metadata: { initial_task_count: 0, proposed_task_count: 0, workspace_id: publicWorkspace.workspace_id } });
+    observationStore.append({
+      experimentId: runId,
+      source: 'runtime',
+      kind: 'experiment_started',
       taskId: null,
-      executionId: null,
-      prompt: BOT_CONTINUATION_MESSAGE,
-      take: null,
-      takeHistory: [],
-      latencySamples: [],
-      latencyByExecution: new Map(),
-      runtime,
-      workspaceManager,
-      bridge: null,
-      session: null,
-      releasedSession: null,
-      waitingExecutionId: null,
-      sessionHistory: [],
-      sessionNumber: 0,
-      sessionRecoveryCount: 0,
-      startConfig: { problem, logRoot, options },
-      turnInFlight: false,
-      recoveryInFlight: false,
-      agentTurnSession: null,
-      turnPromise: null,
-      initialTurnPromise: null,
-      boundTurnPromise: null,
-      turnStartedAt: 0,
-      nextTurnAt: 0,
-      turnIntervalMs: options.turnIntervalMs ?? 1_000,
-      turns: 0,
-      toolEvents: [],
-      workspaceWrites: [],
-      toolErrors: [],
-      errors: [],
-      materialReads: [],
-      structureOperations: [],
-      checks: [],
-      checked: new Set(),
-      checkAttempts: new Map(),
-      cheatingFlags: [],
-      materialConsumptions: [],
-      stopping: false,
-      turnDurationsMs: [],
-      turnTimeoutCount: 0,
-      watchdogPromise: null,
-      dispatchReserved: false,
-      sessionStartAttempts: 0,
-      sessionStartFailures: 0,
-      takeActive: false,
-      takeResult: null,
-      takeTurnCount: 0,
-      identityLoop: null,
-      unboundSessionCount: 0,
-      parallelism,
-      versionManifest: null,
-      observe(event) {
-        observationStore.append({ experimentId: runId, ...event });
+      payload: {
+        problem_id: problem.id,
+        core_count: 4,
+        timebox_ms: options.timeboxMs ?? 60 * 60_000,
+        parallel_mode: selectedParallelMode,
+        task_model: 'flat',
+        mission_id: mission?.mission_id ?? null,
+        workspace_id: publicWorkspace.workspace_id,
+        initial_task_count: 0,
+        proposed_task_count: 0,
+        normal_flow: normalFlow,
       },
-    };
-    core.observe({
-      source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
-      coreId: `core-${core.index}`,
-      payload: { state: 'IDLE', reason: 'core_ready' },
     });
-    const bridge = new ServicesBridge({
-      taskService,
-      contextService,
-      runtime,
-      router,
-      runtimeCapabilities,
-      registry: capabilityRegistry,
-      actorRef: `agent:core-${index}`,
-      // The bridge, not the model payload, owns the lane identity.
-      coreId: `core-${index}`,
-      // This is an active reusable identity even while it has no current
-      // Execution.  BOUND is intentional: it exposes task_status/task_take
-      // and prevents the retired Selection role from becoming a second Agent.
-      role: AGENT_ROLES.BOUND,
-      taskCreateMutex,
-      agentPrompt: BOT_SYSTEM_PROMPT,
-      // OpenSandbox workers cannot reach the controller's loopback address.
-      // Deployments that expose the bridge to a provider network must bind it
-      // explicitly and advertise a reachable host with `{port}`.
-      host: (sandboxProvider === 'opensandbox' || sandboxProvider === 'open-sandbox')
-        ? (sandboxConfig.bridgeHost ?? '127.0.0.1')
-        : '127.0.0.1',
-      publicUrl: (sandboxProvider === 'opensandbox' || sandboxProvider === 'open-sandbox')
-        ? (sandboxConfig.bridgeUrl ?? process.env.SWARMENV_BRIDGE_PUBLIC_URL ?? null)
-        : null,
-      // Mission Task creation is governed by the Task Service contract and
-      // responsibility-key idempotency. The benchmark must not add a hidden
-      // count quota or reject independent work after a fixed number of Tasks.
-      onTake: async (take) => {
-        // task_take is invoked by this Core's reusable identity. Keep the
-        // durable result available to IdentityTaskLoop so it does not issue a
-        // second take or manufacture a separate selection handoff.
-        core.dispatchReserved = false;
-        const takenAt = Date.now();
-        const priorWaitingExecutionId = core.waitingExecutionId;
-        core.waitingExecutionId = null;
-        core.parallelism.transition(core.index, 'ASSIGNED', {
-          task_id: take.task.task_id,
-          execution_id: take.execution.execution_id,
-          reason: 'take_succeeded',
+    // Deterministic queue scenarios may seed durable Tasks before reusable Core
+    // sessions start. The hook uses the same Task Service boundary as Agent
+    // operations; it does not replace queue take, Runtime, or dispatch logic.
+    await options.prepareProject?.({ owner, root: null, mission, publicWorkspace, initialTasks, taskService, contextService, router, fixture, problem });
+    const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt });
+      for (let index = 1; index <= 4; index += 1) {
+      const coreDir = join(workspaceRoot, `core-${index}`);
+      await mkdir(coreDir, { recursive: true });
+      const childEnv = { ...process.env };
+      const adapter = new OpenSandboxAgentAdapter({
+          sandboxManager,
+          command: options.command ?? 'pi',
+          provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER,
+          model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL,
+          account: options.account ?? process.env.NUROUTER_PI_ACCOUNT,
+          group: options.group ?? process.env.NUROUTER_PI_GROUP,
+          env: childEnv,
+          agentEnvironment: sandboxConfig.agentEnvironment ?? {},
+          secretEnv: sandboxConfig.secretEnvironment ?? {},
+          systemPrompt: BOT_SYSTEM_PROMPT,
         });
-        core.taskId = take.task.task_id;
-        core.executionId = take.execution.execution_id;
-        core.take = take;
-        const workerSession = core.session;
-        if (!workerSession) throw new Error('Agent took a Task before its session was registered');
-        // Deterministic compatibility adapters expose a `bound` marker to
-        // choose their scripted prompt path.  The real Pi Session has no such
-        // field; updating it here preserves the same-identity transition
-        // without creating a second Session.
-        if ('bound' in workerSession) workerSession.bound = true;
-        const takeRecord = {
-          task_id: take.task.task_id,
-          execution_id: take.execution.execution_id,
-          workspace_revision_start: null,
-        workspace_git_commit_start: null,
-          taken_at: new Date(takenAt).toISOString(),
-          ready_observed_at: core.stateRef?.readyObservedAt.get(take.task.task_id)
-            ? new Date(core.stateRef.readyObservedAt.get(take.task.task_id)).toISOString()
-            : null,
-          ready_to_take_ms: core.stateRef?.readyObservedAt.has(take.task.task_id)
-            ? Math.max(0, takenAt - core.stateRef.readyObservedAt.get(take.task.task_id))
-            : null,
-          resumed_from_wait: priorWaitingExecutionId === take.execution.execution_id || take.execution.attempt_no > 1,
-        };
-        core.latencySamples.push(takeRecord);
-        core.latencyByExecution.set(take.execution.execution_id, takeRecord);
-        core.takeHistory.push(takeRecord);
-        const bound = await runtime.bindAgentExecution(take.execution.execution_id, workerSession, {
-          workspaceRef: join(workspaceRoot, take.execution.execution_id),
-          // The current Agent turn is already the first bound turn.  Sending
-          // another initial prompt from inside task_take would race the
-          // in-flight RPC and violate the single-turn ordering contract.
-          sendInitialPrompt: false,
-          agentPrompt: BOT_SYSTEM_PROMPT,
-        });
-        // Publish a usable receipt only after Runtime binding succeeds.
-        take.execution = bound.execution;
-        take.workspace = bound.workspace;
-        core.takeResult = take;
-        const boundSession = core.session;
-        const boundExecutionId = take.execution.execution_id;
-        core.parallelism.transition(core.index, 'RUNNING', {
-          task_id: take.task.task_id,
-          execution_id: boundExecutionId,
-          reason: 'execution_started_same_identity',
-        });
-        const latency = core.latencyByExecution.get(boundExecutionId);
-        if (latency && !latency.first_turn_started_at) {
-          const firstTurnAt = Date.now();
-          latency.first_turn_started_at = new Date(firstTurnAt).toISOString();
-          latency.take_to_first_turn_ms = Math.max(0, firstTurnAt - Date.parse(latency.taken_at));
-          const eligibilityAt = core.stateRef?.waitEligibilityAt.get(boundExecutionId);
-          if (eligibilityAt !== undefined) {
-            latency.condition_satisfied_observed_at = new Date(eligibilityAt).toISOString();
-            latency.resume_eligible_at = new Date(eligibilityAt).toISOString();
-            latency.condition_to_resumed_turn_ms = Math.max(0, firstTurnAt - eligibilityAt);
+      // All reusable slots must be able to resume an Execution created by any
+      // other slot. The physical Workspace is execution-owned and unique, but
+      // its Runtime root is project-wide rather than core-private.
+      const workspaceManager = new WorkspaceManager({ rootDir: workspaceRoot });
+      const runtime = new Runtime({
+        taskService,
+        contextService,
+        workspaceManager,
+        missionWorkspace,
+        missionWorkspaceId: publicWorkspace.workspace_id,
+        missionSubmissionStore,
+        agentAdapter: adapter,
+        runtimeCapabilities,
+        sandboxManager,
+        cleanExecutionWorkspaces: true,
+        freshBotPerExecution: true,
+        capabilityRegistry,
+        maxWorkers: 1,
+        coreIds: [`core-${index}`],
+        actorRef: `runtime:core-${index}`,
+        watchdogTimeoutMs: options.watchdogTimeoutMs,
+        // Keep transient provider/session failures on the same durable
+        // Execution. Fencing after one retry lets a recovered identity start a
+        // second Task and invalidates a bounded formal run.
+        maxRecoveryAttempts: options.maxRecoveryAttempts ?? 5,
+        // Execution, Task, Bot and Mission limits intersect. Bot lifetime starts
+        // before discovery and cannot reset when take becomes active.
+        executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
+        handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
+        logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
+        agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
+        onSessionStarted: ({ execution, session, recovery }) => {
+          if (recovery) {
+            // Recovery reuses the durable Execution. Restore the benchmark's
+            // local binding before the recovered prompt can issue any tool call;
+            // otherwise a late runTurn cleanup can make the Bridge look unbound
+            // and the model may create a second Execution with task_take.
+            const recoveredTask = taskService.getTask(execution.task_id);
+            core.taskId = execution.task_id;
+            core.executionId = execution.execution_id;
+            core.take = recoveredTask ? { task: recoveredTask, execution } : { task: { task_id: execution.task_id }, execution };
+            if (core.bridge && (!core.bridge.taskId || core.bridge.taskId === execution.task_id)) {
+              core.bridge.taskId = execution.task_id;
+              core.bridge.executionId = execution.execution_id;
+              core.bridge.role = AGENT_ROLES.BOUND;
+              core.bridge.capabilityProfile = null;
+              core.bridge.capabilityProfileRegistryRevision = null;
+            }
+            attachRecoveredSession(core, { execution, session });
+            return;
           }
-        }
-        if (boundSession && core.runtime.hasActiveExecution(take.execution.execution_id)) {
+          if (core.executionId !== execution.execution_id || core.session === session) return;
+          // Explicit identity rotation replaced the Session in the same
+          // Execution. Runtime has already sent the initial prompt; track the
+          // replacement so the next idle wake does not start a competing turn.
+          session.identitySession = true;
+          core.session = session;
+          core.sessionHistory.push(session);
+          core.versionManifest = session.manifest ?? core.versionManifest;
           core.turnInFlight = true;
-          let boundTurnPromise;
-          boundTurnPromise = (async () => {
+          core.agentTurnSession = session;
+          core.sessionRotationCount = (core.sessionRotationCount ?? 0) + 1;
+          void (async () => {
             try {
-              if (typeof boundSession.waitForSettled === 'function') await boundSession.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
-              // A settled Agent turn does not necessarily release its
-              // Execution: source-level checker feedback, incremental edits,
-              // and ordinary progress may leave the Task RUNNING. Continue
-              // that same bound Session until Runtime observes a wait or a
-              // terminal Task state; IdentityTaskLoop must not wait forever for a
-              // release that only a later turn can produce.
-              while (!core.stopping && core.session === boundSession && core.executionId === boundExecutionId) {
-                const current = taskService.getExecution(boundExecutionId);
-                if (!current || current.state !== 'RUNNING') break;
-                await new Promise((resolve) => setTimeout(resolve, Math.min(core.turnIntervalMs ?? 1_000, 100)));
-                if (core.stopping || core.session !== boundSession || core.executionId !== boundExecutionId) break;
-                core.turnStartedAt = Date.now();
-                core.turnInFlight = false;
-                await runTurn(core, BOT_CONTINUATION_MESSAGE, core.startConfig.options.turnTimeoutMs ?? 30_000);
-              }
+              await session.waitForSettled?.({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
             } catch (error) {
-              const expectedHandoff = boundSession.expectedStop || core.session !== boundSession || core.stopping;
-              if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
+              const expected = session.expectedStop || core.session !== session || core.stopping;
+              if (!expected) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'rotation_turn_error' });
             } finally {
-              collectToolEvents(core, boundSession.rpcRecords ?? []);
-              if (core.agentTurnSession === boundSession) {
-                core.parallelism.endAgentTurn(core.index, Date.now());
+              if (core.agentTurnSession === session) {
+                core.parallelism.endAgentTurn(core.index, Date.now(), 'identity_rotation_settled');
                 core.agentTurnSession = null;
               }
-              if (core.session === boundSession || (!core.executionId && !core.runtime.hasActiveExecution(boundExecutionId))) {
-                core.turns += 1;
+              if (core.session === session) {
                 core.turnInFlight = false;
                 core.nextTurnAt = Date.now();
               }
-              // IdentityTaskLoop waits for the Runtime release boundary. Terminal
-              // Task transitions must therefore release the bridge binding
-              // here, rather than relying on the benchmark's periodic repair
-              // sweep to break a handoff wait.
-              if (core.executionId === boundExecutionId) {
-                const settled = taskService.getExecution(boundExecutionId);
-                if (settled && ['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(settled.state)) {
-                  await releaseTerminalExecution(core);
-                }
-              }
               core.stateRef?.requestIdentityWake?.();
-              if (core.boundTurnPromise === boundTurnPromise) core.boundTurnPromise = null;
             }
           })();
-          core.boundTurnPromise = boundTurnPromise;
-          void boundTurnPromise.catch(() => undefined);
-        }
-        takeRecord.workspace_revision_start = bound.workspace.workspace_revision;
-        takeRecord.workspace_git_commit_start = bound.workspace.git_commit ?? null;
-        core.observe({
-          source: 'runtime', kind: 'execution_assigned', visibility: 'operator',
-          taskId: take.task.task_id, executionId: take.execution.execution_id,
-          sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
-          payload: {
-            workspace_ref: bound.workspace.workspace_ref,
-            workspace_revision: bound.workspace.workspace_revision,
-            workspace_content_hash: bound.workspace.content_hash,
-            state: take.execution.state,
-          },
-        });
-        core.observe({
-          source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
-          taskId: take.task.task_id, executionId: take.execution.execution_id,
-          sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
-          payload: { state: 'RUNNING', reason: 'execution_bound' },
-        });
-        // The worker session is only the take transport. The handoff result
-        // tells the current turn to stop; once that turn settles, the
-        // existing cleanup path stops this transport session.
-        // Runtime replaces core.session with the newly started bound session,
-        // so checking core.session for equality here is too late. The take
-        // transport must always stop after a successful handoff before the
-        // model can issue another take or a take-only call.
-        if (workerSession !== core.session) await Promise.resolve(workerSession.stop?.()).catch(() => undefined);
-      },
-      onTakeAccepted: async () => {
-      },
-      onSchedulerStatus: async (payload) => {
-        if (core.stateRef) core.stateRef.schedulerStatusCount += 1;
-        const cores = core.stateRef?.cores ?? [core];
-        const readyTasks = projectTasks(core.stateRef, {
-          states: ['OPEN', 'RUNNING'],
-          limit: payload.limit ?? 100,
-          availableOnly: true,
-        });
-        const activeCoreCount = cores.filter((candidate) => candidate.taskId || candidate.dispatchReserved || candidate.turnInFlight).length;
-        const waitingOwners = new Set(taskService.listActiveExecutions()
-          .filter((execution) => execution.state === 'WAITING')
-          .map((execution) => execution.owner_ref));
-        return {
-          core_count: cores.length,
-          active_core_count: activeCoreCount,
-          idle_core_count: Math.max(0, cores.length - activeCoreCount),
-          waiting_core_count: waitingOwners.size,
-          waiting_execution_count: taskService.listActiveExecutions().filter((execution) => execution.state === 'WAITING').length,
-          ready_task_count: readyTasks.length,
-          ready_task_ids: readyTasks.map((task) => task.task_id),
-          ready_tasks: readyTasks,
-          current_task_id: payload.task_id ?? core.taskId,
-          current_execution_id: payload.execution_id ?? core.executionId,
-        };
-      },
-      onRelease: async ({ taskId, executionId }) => {
-        const releasedAt = Date.now();
-        const hasTaskLineage = typeof taskId === 'string' && taskId.length > 0;
-        const hasExecutionLineage = typeof executionId === 'string' && executionId.length > 0;
-        if (!hasTaskLineage || !hasExecutionLineage) {
-          // A duplicate release can race bound-turn cleanup with the
-          // periodic terminal sweep. It releases physical capacity, but it
-          // does not identify an owned Execution and must not masquerade as
-          // an Execution lifecycle boundary.
-          core.observe({
-            source: 'runtime', kind: 'core_capacity_released', visibility: 'operator',
-            taskId: null, executionId: null, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
-            payload: { state: 'IDLE', reason: 'unbound_or_duplicate_release' },
-          });
-          core.stateRef?.requestIdentityWake?.();
-          return;
-        }
-        const releaseLatency = core.latencyByExecution.get(executionId);
-        if (releaseLatency) {
-          releaseLatency.core_released_at = new Date(releasedAt).toISOString();
-          if (releaseLatency.wait_requested_at) {
-            releaseLatency.wait_to_core_release_ms = Math.max(0, releasedAt - Date.parse(releaseLatency.wait_requested_at));
-          }
-        }
-        const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
-        const releasedState = releasedExecution?.state ?? 'RELEASED';
-        const coreProjection = 'IDLE';
-        // A take record is created before Runtime binds its Workspace. If a
-        // very short bound turn fails before the handoff callback records the
-        // starting revision, retain the attempted ownership with the durable
-        // revision that Runtime prepared instead of emitting a null lineage.
-        const latestTake = core.takeHistory.at(-1);
-        if (latestTake?.task_id === taskId && latestTake.execution_id === executionId &&
-          latestTake.workspace_revision_start === null && Number.isInteger(releasedExecution?.workspace_revision)) {
-          latestTake.workspace_revision_start = releasedExecution.workspace_revision;
-        }
-        core.observe({
-          source: 'runtime', kind: 'execution_released', visibility: 'operator',
-          taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
-          payload: { state: releasedState },
-        });
-        core.observe({
-          source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
-          taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
-          payload: {
-            state: coreProjection,
-            reason: 'execution_released',
-          },
-        });
-        core.parallelism.transition(core.index, coreProjection, {
-          task_id: taskId,
-          execution_id: executionId,
-          reason: releasedExecution?.state?.toLowerCase() ?? 'take_released',
-        });
-        if (core.taskId === taskId && core.executionId === executionId) {
+        },
+      });
+      const core = {
+        index,
+        actorRef: `agent:core-${index}`,
+        coreDir,
+        adapter,
+        childEnv,
+        taskId: null,
+        executionId: null,
+        prompt: BOT_CONTINUATION_MESSAGE,
+        take: null,
+        takeHistory: [],
+        latencySamples: [],
+        latencyByExecution: new Map(),
+        runtime,
+        workspaceManager,
+        bridge: null,
+        session: null,
+        releasedSession: null,
+        waitingExecutionId: null,
+        sessionHistory: [],
+        sessionNumber: 0,
+        sessionRecoveryCount: 0,
+        startConfig: { problem, logRoot, options },
+        turnInFlight: false,
+        recoveryInFlight: false,
+        agentTurnSession: null,
+        turnPromise: null,
+        initialTurnPromise: null,
+        boundTurnPromise: null,
+        turnStartedAt: 0,
+        nextTurnAt: 0,
+        turnIntervalMs: options.turnIntervalMs ?? 1_000,
+        turns: 0,
+        toolEvents: [],
+        workspaceWrites: [],
+        toolErrors: [],
+        errors: [],
+        materialReads: [],
+        structureOperations: [],
+        checks: [],
+        checked: new Set(),
+        checkAttempts: new Map(),
+        cheatingFlags: [],
+        materialConsumptions: [],
+        stopping: false,
+        turnDurationsMs: [],
+        turnTimeoutCount: 0,
+        watchdogPromise: null,
+        dispatchReserved: false,
+        sessionStartAttempts: 0,
+        sessionStartFailures: 0,
+        takeActive: false,
+        takeResult: null,
+        takeTurnCount: 0,
+        identityLoop: null,
+        unboundSessionCount: 0,
+        parallelism,
+        versionManifest: null,
+        observe(event) {
+          observationStore.append({ experimentId: runId, ...event });
+        },
+      };
+      core.observe({
+        source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
+        coreId: `core-${core.index}`,
+        payload: { state: 'IDLE', reason: 'core_ready' },
+      });
+      const bridge = new ServicesBridge({
+        taskService,
+        contextService,
+        runtime,
+        router,
+        runtimeCapabilities,
+        registry: capabilityRegistry,
+        actorRef: `agent:core-${index}`,
+        // The bridge, not the model payload, owns the lane identity.
+        coreId: `core-${index}`,
+        // This is an active reusable identity even while it has no current
+        // Execution.  BOUND is intentional: it exposes task_status/task_take
+        // and prevents the retired Selection role from becoming a second Agent.
+        role: AGENT_ROLES.BOUND,
+        taskCreateMutex,
+        agentPrompt: BOT_SYSTEM_PROMPT,
+        // OpenSandbox workers cannot reach the controller's loopback address.
+        // Deployments that expose the bridge to a provider network must bind it
+        // explicitly and advertise a reachable host with `{port}`.
+        host: (sandboxProvider === 'opensandbox' || sandboxProvider === 'open-sandbox')
+          ? (sandboxConfig.bridgeHost ?? '127.0.0.1')
+          : '127.0.0.1',
+        publicUrl: (sandboxProvider === 'opensandbox' || sandboxProvider === 'open-sandbox')
+          ? (sandboxConfig.bridgeUrl ?? process.env.SWARMENV_BRIDGE_PUBLIC_URL ?? null)
+          : null,
+        // Mission Task creation is governed by the Task Service contract and
+        // responsibility-key idempotency. The benchmark must not add a hidden
+        // count quota or reject independent work after a fixed number of Tasks.
+        onTake: async (take) => {
+          // task_take is invoked by this Core's reusable identity. Keep the
+          // durable result available to IdentityTaskLoop so it does not issue a
+          // second take or manufacture a separate selection handoff.
+          core.dispatchReserved = false;
+          const takenAt = Date.now();
+          const priorWaitingExecutionId = core.waitingExecutionId;
           core.waitingExecutionId = null;
-          core.taskId = null;
-          core.executionId = null;
-          core.take = null;
-          // Production closes this Bot before the Core starts its successor.
-          // Deterministic adapters use `bound` only for their scripted path.
-          if (core.session && 'bound' in core.session) core.session.bound = false;
-          // Runtime has already detached the process before invoking this
-          // callback. The transport turn still owns the dispatch reservation
-          // until its promise settles, so another identity loop cannot start a
-          // second worker against this Core during handoff.
-        }
-        core.stateRef?.requestIdentityWake?.();
-      },
-      onWorkspaceWrite: async ({ taskId, executionId, result }) => {
-        core.observe({
-          source: 'workspace', kind: 'workspace_revision_saved', visibility: 'operator',
-          taskId, executionId, coreId: `core-${core.index}`,
-          payload: {
-            workspace_ref: result.workspace?.workspace_ref ?? taskService.getExecution(executionId)?.workspace_ref ?? null,
-            workspace_revision: result.workspace?.workspace_revision ?? null,
-            workspace_content_hash: result.workspace?.content_hash ?? null,
+          core.parallelism.transition(core.index, 'ASSIGNED', {
+            task_id: take.task.task_id,
+            execution_id: take.execution.execution_id,
+            reason: 'take_succeeded',
+          });
+          core.taskId = take.task.task_id;
+          core.executionId = take.execution.execution_id;
+          core.take = take;
+          const workerSession = core.session;
+          if (!workerSession) throw new Error('Agent took a Task before its session was registered');
+          // Deterministic compatibility adapters expose a `bound` marker to
+          // choose their scripted prompt path.  The real Pi Session has no such
+          // field; updating it here preserves the same-identity transition
+          // without creating a second Session.
+          if ('bound' in workerSession) workerSession.bound = true;
+          const takeRecord = {
+            task_id: take.task.task_id,
+            execution_id: take.execution.execution_id,
+            workspace_revision_start: null,
+          workspace_git_commit_start: null,
+            taken_at: new Date(takenAt).toISOString(),
+            ready_observed_at: core.stateRef?.readyObservedAt.get(take.task.task_id)
+              ? new Date(core.stateRef.readyObservedAt.get(take.task.task_id)).toISOString()
+              : null,
+            ready_to_take_ms: core.stateRef?.readyObservedAt.has(take.task.task_id)
+              ? Math.max(0, takenAt - core.stateRef.readyObservedAt.get(take.task.task_id))
+              : null,
+            resumed_from_wait: priorWaitingExecutionId === take.execution.execution_id || take.execution.attempt_no > 1,
+          };
+          core.latencySamples.push(takeRecord);
+          core.latencyByExecution.set(take.execution.execution_id, takeRecord);
+          core.takeHistory.push(takeRecord);
+          const bound = await runtime.bindAgentExecution(take.execution.execution_id, workerSession, {
+            workspaceRef: join(workspaceRoot, take.execution.execution_id),
+            // The current Agent turn is already the first bound turn.  Sending
+            // another initial prompt from inside task_take would race the
+            // in-flight RPC and violate the single-turn ordering contract.
+            sendInitialPrompt: false,
+            agentPrompt: BOT_SYSTEM_PROMPT,
+          });
+          // Publish a usable receipt only after Runtime binding succeeds.
+          take.execution = bound.execution;
+          take.workspace = bound.workspace;
+          core.takeResult = take;
+          const boundSession = core.session;
+          const boundExecutionId = take.execution.execution_id;
+          core.parallelism.transition(core.index, 'RUNNING', {
+            task_id: take.task.task_id,
+            execution_id: boundExecutionId,
+            reason: 'execution_started_same_identity',
+          });
+          const latency = core.latencyByExecution.get(boundExecutionId);
+          if (latency && !latency.first_turn_started_at) {
+            const firstTurnAt = Date.now();
+            latency.first_turn_started_at = new Date(firstTurnAt).toISOString();
+            latency.take_to_first_turn_ms = Math.max(0, firstTurnAt - Date.parse(latency.taken_at));
+            const eligibilityAt = core.stateRef?.waitEligibilityAt.get(boundExecutionId);
+            if (eligibilityAt !== undefined) {
+              latency.condition_satisfied_observed_at = new Date(eligibilityAt).toISOString();
+              latency.resume_eligible_at = new Date(eligibilityAt).toISOString();
+              latency.condition_to_resumed_turn_ms = Math.max(0, firstTurnAt - eligibilityAt);
+            }
+          }
+          if (boundSession && core.runtime.hasActiveExecution(take.execution.execution_id)) {
+            core.turnInFlight = true;
+            let boundTurnPromise;
+            boundTurnPromise = (async () => {
+              try {
+                if (typeof boundSession.waitForSettled === 'function') await boundSession.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
+                // A settled Agent turn does not necessarily release its
+                // Execution: source-level checker feedback, incremental edits,
+                // and ordinary progress may leave the Task RUNNING. Continue
+                // that same bound Session until Runtime observes a wait or a
+                // terminal Task state; IdentityTaskLoop must not wait forever for a
+                // release that only a later turn can produce.
+                while (!core.stopping && core.session === boundSession && core.executionId === boundExecutionId) {
+                  const current = taskService.getExecution(boundExecutionId);
+                  if (!current || current.state !== 'RUNNING') break;
+                  await new Promise((resolve) => setTimeout(resolve, Math.min(core.turnIntervalMs ?? 1_000, 100)));
+                  if (core.stopping || core.session !== boundSession || core.executionId !== boundExecutionId) break;
+                  core.turnStartedAt = Date.now();
+                  core.turnInFlight = false;
+                  await runTurn(core, BOT_CONTINUATION_MESSAGE, core.startConfig.options.turnTimeoutMs ?? 30_000);
+                }
+              } catch (error) {
+                const expectedHandoff = boundSession.expectedStop || core.session !== boundSession || core.stopping;
+                if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
+              } finally {
+                collectToolEvents(core, boundSession.rpcRecords ?? []);
+                if (core.agentTurnSession === boundSession) {
+                  core.parallelism.endAgentTurn(core.index, Date.now());
+                  core.agentTurnSession = null;
+                }
+                if (core.session === boundSession || (!core.executionId && !core.runtime.hasActiveExecution(boundExecutionId))) {
+                  core.turns += 1;
+                  core.turnInFlight = false;
+                  core.nextTurnAt = Date.now();
+                }
+                // IdentityTaskLoop waits for the Runtime release boundary. Terminal
+                // Task transitions must therefore release the bridge binding
+                // here, rather than relying on the benchmark's periodic repair
+                // sweep to break a handoff wait.
+                if (core.executionId === boundExecutionId) {
+                  const settled = taskService.getExecution(boundExecutionId);
+                  if (settled && ['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(settled.state)) {
+                    await releaseTerminalExecution(core);
+                  }
+                }
+                core.stateRef?.requestIdentityWake?.();
+                if (core.boundTurnPromise === boundTurnPromise) core.boundTurnPromise = null;
+              }
+            })();
+            core.boundTurnPromise = boundTurnPromise;
+            void boundTurnPromise.catch(() => undefined);
+          }
+          takeRecord.workspace_revision_start = bound.workspace.workspace_revision;
+          takeRecord.workspace_git_commit_start = bound.workspace.git_commit ?? null;
+          core.observe({
+            source: 'runtime', kind: 'execution_assigned', visibility: 'operator',
+            taskId: take.task.task_id, executionId: take.execution.execution_id,
+            sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+            payload: {
+              workspace_ref: bound.workspace.workspace_ref,
+              workspace_revision: bound.workspace.workspace_revision,
+              workspace_content_hash: bound.workspace.content_hash,
+              state: take.execution.state,
+            },
+          });
+          core.observe({
+            source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
+            taskId: take.task.task_id, executionId: take.execution.execution_id,
+            sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+            payload: { state: 'RUNNING', reason: 'execution_bound' },
+          });
+          // The worker session is only the take transport. The handoff result
+          // tells the current turn to stop; once that turn settles, the
+          // existing cleanup path stops this transport session.
+          // Runtime replaces core.session with the newly started bound session,
+          // so checking core.session for equality here is too late. The take
+          // transport must always stop after a successful handoff before the
+          // model can issue another take or a take-only call.
+          if (workerSession !== core.session) await Promise.resolve(workerSession.stop?.()).catch(() => undefined);
+        },
+        onTakeAccepted: async () => {
+        },
+        onSchedulerStatus: async (payload) => {
+          if (core.stateRef) core.stateRef.schedulerStatusCount += 1;
+          const cores = core.stateRef?.cores ?? [core];
+          const readyTasks = projectTasks(core.stateRef, {
+            states: ['OPEN', 'RUNNING'],
+            limit: payload.limit ?? 100,
+            availableOnly: true,
+          });
+          const activeCoreCount = cores.filter((candidate) => candidate.taskId || candidate.dispatchReserved || candidate.turnInFlight).length;
+          const waitingOwners = new Set(taskService.listActiveExecutions()
+            .filter((execution) => execution.state === 'WAITING')
+            .map((execution) => execution.owner_ref));
+          return {
+            core_count: cores.length,
+            active_core_count: activeCoreCount,
+            idle_core_count: Math.max(0, cores.length - activeCoreCount),
+            waiting_core_count: waitingOwners.size,
+            waiting_execution_count: taskService.listActiveExecutions().filter((execution) => execution.state === 'WAITING').length,
+            ready_task_count: readyTasks.length,
+            ready_task_ids: readyTasks.map((task) => task.task_id),
+            ready_tasks: readyTasks,
+            current_task_id: payload.task_id ?? core.taskId,
+            current_execution_id: payload.execution_id ?? core.executionId,
+          };
+        },
+        onRelease: async ({ taskId, executionId }) => {
+          const releasedAt = Date.now();
+          const hasTaskLineage = typeof taskId === 'string' && taskId.length > 0;
+          const hasExecutionLineage = typeof executionId === 'string' && executionId.length > 0;
+          if (!hasTaskLineage || !hasExecutionLineage) {
+            // A duplicate release can race bound-turn cleanup with the
+            // periodic terminal sweep. It releases physical capacity, but it
+            // does not identify an owned Execution and must not masquerade as
+            // an Execution lifecycle boundary.
+            core.observe({
+              source: 'runtime', kind: 'core_capacity_released', visibility: 'operator',
+              taskId: null, executionId: null, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+              payload: { state: 'IDLE', reason: 'unbound_or_duplicate_release' },
+            });
+            core.stateRef?.requestIdentityWake?.();
+            return;
+          }
+          const releaseLatency = core.latencyByExecution.get(executionId);
+          if (releaseLatency) {
+            releaseLatency.core_released_at = new Date(releasedAt).toISOString();
+            if (releaseLatency.wait_requested_at) {
+              releaseLatency.wait_to_core_release_ms = Math.max(0, releasedAt - Date.parse(releaseLatency.wait_requested_at));
+            }
+          }
+          const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
+          const releasedState = releasedExecution?.state ?? 'RELEASED';
+          const coreProjection = 'IDLE';
+          // A take record is created before Runtime binds its Workspace. If a
+          // very short bound turn fails before the handoff callback records the
+          // starting revision, retain the attempted ownership with the durable
+          // revision that Runtime prepared instead of emitting a null lineage.
+          const latestTake = core.takeHistory.at(-1);
+          if (latestTake?.task_id === taskId && latestTake.execution_id === executionId &&
+            latestTake.workspace_revision_start === null && Number.isInteger(releasedExecution?.workspace_revision)) {
+            latestTake.workspace_revision_start = releasedExecution.workspace_revision;
+          }
+          core.observe({
+            source: 'runtime', kind: 'execution_released', visibility: 'operator',
+            taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+            payload: { state: releasedState },
+          });
+          core.observe({
+            source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
+            taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+            payload: {
+              state: coreProjection,
+              reason: 'execution_released',
+            },
+          });
+          core.parallelism.transition(core.index, coreProjection, {
+            task_id: taskId,
+            execution_id: executionId,
+            reason: releasedExecution?.state?.toLowerCase() ?? 'take_released',
+          });
+          if (core.taskId === taskId && core.executionId === executionId) {
+            core.waitingExecutionId = null;
+            core.taskId = null;
+            core.executionId = null;
+            core.take = null;
+            // Production closes this Bot before the Core starts its successor.
+            // Deterministic adapters use `bound` only for their scripted path.
+            if (core.session && 'bound' in core.session) core.session.bound = false;
+            // Runtime has already detached the process before invoking this
+            // callback. The transport turn still owns the dispatch reservation
+            // until its promise settles, so another identity loop cannot start a
+            // second worker against this Core during handoff.
+          }
+          core.stateRef?.requestIdentityWake?.();
+        },
+        onWorkspaceWrite: async ({ taskId, executionId, result }) => {
+          core.observe({
+            source: 'workspace', kind: 'workspace_revision_saved', visibility: 'operator',
+            taskId, executionId, coreId: `core-${core.index}`,
+            payload: {
+              workspace_ref: result.workspace?.workspace_ref ?? taskService.getExecution(executionId)?.workspace_ref ?? null,
+              workspace_revision: result.workspace?.workspace_revision ?? null,
+              workspace_content_hash: result.workspace?.content_hash ?? null,
+              path: result.file?.path ?? null,
+              file_content_hash: result.file?.content_hash ?? null,
+              changed_files: result.diff?.changed_files?.map((file) => ({ path: file.path, status: file.status })) ?? [],
+            },
+          });
+          core.workspaceWrites.push({
+            task_id: taskId,
+            execution_id: executionId,
             path: result.file?.path ?? null,
             file_content_hash: result.file?.content_hash ?? null,
+            workspace_revision: result.workspace?.workspace_revision ?? null,
+            workspace_content_hash: result.workspace?.content_hash ?? null,
             changed_files: result.diff?.changed_files?.map((file) => ({ path: file.path, status: file.status })) ?? [],
-          },
-        });
-        core.workspaceWrites.push({
-          task_id: taskId,
-          execution_id: executionId,
-          path: result.file?.path ?? null,
-          file_content_hash: result.file?.content_hash ?? null,
-          workspace_revision: result.workspace?.workspace_revision ?? null,
-          workspace_content_hash: result.workspace?.content_hash ?? null,
-          changed_files: result.diff?.changed_files?.map((file) => ({ path: file.path, status: file.status })) ?? [],
-        });
-        core.parallelism.recordWorkUnit({
-          task_id: taskId,
-          execution_id: executionId,
-          core: core.index,
-          progress_kind: 'workspace_revision',
-        });
-      },
-      onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
-        const materialPublishOperation = operation === 'publish_material' || operation === 'context_publish_material';
-        if (materialPublishOperation || ['task_link_material', 'workspace_check', 'workspace_save', 'workspace_merge'].includes(operation)) {
-          core.stateRef?.requestIdentityWake?.();
-        }
-        if (['workspace_save', 'workspace_merge'].includes(operation) && !result.already_included) {
-          const revision = operation === 'workspace_save' ? result.revision : result.main_revision;
-          if (!core.workspaceWrites.some(write => write.workspace_id === result.workspace_id && write.workspace_revision === revision && write.operation === operation)) {
-            const changedPaths = result.changed_paths ?? result.changed_files ?? [];
-            core.workspaceWrites.push({ operation, task_id: taskId, execution_id: executionId, workspace_id: result.workspace_id,
-              workspace_revision: revision, workspace_content_hash: result.content_hash ?? null, changed_paths: changedPaths });
-            core.observe({ source: 'workspace', kind: operation === 'workspace_save' ? 'workspace_revision_saved' : 'workspace_revision_merged', visibility: 'operator',
-              taskId, executionId, coreId: `core-${core.index}`, payload: { workspace_id: result.workspace_id, revision, changed_count: changedPaths.length } });
-            if (changedPaths.length) core.parallelism.recordWorkUnit({ task_id: taskId, execution_id: executionId, core: core.index, progress_kind: 'workspace_revision' });
+          });
+          core.parallelism.recordWorkUnit({
+            task_id: taskId,
+            execution_id: executionId,
+            core: core.index,
+            progress_kind: 'workspace_revision',
+          });
+        },
+        onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
+          const materialPublishOperation = operation === 'publish_material' || operation === 'context_publish_material';
+          if (materialPublishOperation || ['task_link_material', 'workspace_check', 'workspace_save', 'workspace_merge'].includes(operation)) {
+            core.stateRef?.requestIdentityWake?.();
           }
-        }
-        if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
-          const materialsRead = operation === 'context_get_material'
-            ? [result?.material ?? result].filter(Boolean)
-            : Array.isArray(result) ? result : Array.isArray(result?.materials) ? result.materials : [];
-          const materialRead = {
-            read_at: new Date().toISOString(),
-            reader_task_id: taskId,
-            reader_execution_id: executionId,
-            material_ids: materialsRead.map((material) => material.material_id).filter(Boolean).slice(0, 100),
-            source_task_ids: [...new Set(materialsRead.map((material) => material.source_task).filter(Boolean))].slice(0, 100),
-          };
-          core.materialReads.push(materialRead);
-          // Reading is intentionally separate from durable consumption. Only
-          // identifiers and source Task IDs are recorded; Material contents
-          // never enter the observation payload.
-          core.observe({
-            source: 'context-service', kind: 'material_read', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
-            payload: {
-              material_ids: materialRead.material_ids,
-              source_task_ids: materialRead.source_task_ids,
-              count: materialRead.material_ids.length,
-            },
-          });
-          core.parallelism.recordWorkUnit({
-            task_id: taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'material_read',
-          });
-        } else if (operation === 'consume_materials') {
-          const consumedIds = Array.isArray(result?.material_ids)
-            ? result.material_ids.filter((id) => typeof id === 'string').slice(0, 100)
-            : Array.isArray(payload?.material_ids)
-              ? payload.material_ids.filter((id) => typeof id === 'string').slice(0, 100)
-              : [];
-          const consumption = {
-            consumed_at: new Date().toISOString(),
-            reader_task_id: taskId,
-            reader_execution_id: executionId,
-            material_ids: consumedIds,
-            action: typeof result?.action === 'string' ? result.action : payload?.action ?? null,
-            action_ref: typeof result?.action_ref === 'string' ? result.action_ref : payload?.action_ref ?? null,
-          };
-          core.materialConsumptions.push(consumption);
-          const state = core.stateRef;
-          core.observe({
-            source: 'context-service', kind: 'material_consumed', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
-            payload: {
+          if (['workspace_save', 'workspace_merge'].includes(operation) && !result.already_included) {
+            const revision = operation === 'workspace_save' ? result.revision : result.main_revision;
+            if (!core.workspaceWrites.some(write => write.workspace_id === result.workspace_id && write.workspace_revision === revision && write.operation === operation)) {
+              const changedPaths = result.changed_paths ?? result.changed_files ?? [];
+              core.workspaceWrites.push({ operation, task_id: taskId, execution_id: executionId, workspace_id: result.workspace_id,
+                workspace_revision: revision, workspace_content_hash: result.content_hash ?? null, changed_paths: changedPaths });
+              core.observe({ source: 'workspace', kind: operation === 'workspace_save' ? 'workspace_revision_saved' : 'workspace_revision_merged', visibility: 'operator',
+                taskId, executionId, coreId: `core-${core.index}`, payload: { workspace_id: result.workspace_id, revision, changed_count: changedPaths.length } });
+              if (changedPaths.length) core.parallelism.recordWorkUnit({ task_id: taskId, execution_id: executionId, core: core.index, progress_kind: 'workspace_revision' });
+            }
+          }
+          if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
+            const materialsRead = operation === 'context_get_material'
+              ? [result?.material ?? result].filter(Boolean)
+              : Array.isArray(result) ? result : Array.isArray(result?.materials) ? result.materials : [];
+            const materialRead = {
+              read_at: new Date().toISOString(),
+              reader_task_id: taskId,
+              reader_execution_id: executionId,
+              material_ids: materialsRead.map((material) => material.material_id).filter(Boolean).slice(0, 100),
+              source_task_ids: [...new Set(materialsRead.map((material) => material.source_task).filter(Boolean))].slice(0, 100),
+            };
+            core.materialReads.push(materialRead);
+            // Reading is intentionally separate from durable consumption. Only
+            // identifiers and source Task IDs are recorded; Material contents
+            // never enter the observation payload.
+            core.observe({
+              source: 'context-service', kind: 'material_read', visibility: 'operator',
+              taskId, executionId, coreId: `core-${core.index}`,
+              payload: {
+                material_ids: materialRead.material_ids,
+                source_task_ids: materialRead.source_task_ids,
+                count: materialRead.material_ids.length,
+              },
+            });
+            core.parallelism.recordWorkUnit({
+              task_id: taskId,
+              execution_id: executionId,
+              core: core.index,
+              progress_kind: 'material_read',
+            });
+          } else if (operation === 'consume_materials') {
+            const consumedIds = Array.isArray(result?.material_ids)
+              ? result.material_ids.filter((id) => typeof id === 'string').slice(0, 100)
+              : Array.isArray(payload?.material_ids)
+                ? payload.material_ids.filter((id) => typeof id === 'string').slice(0, 100)
+                : [];
+            const consumption = {
+              consumed_at: new Date().toISOString(),
+              reader_task_id: taskId,
+              reader_execution_id: executionId,
               material_ids: consumedIds,
-              action: consumption.action,
-              action_ref: consumption.action_ref,
-              count: consumedIds.length,
-              durable: true,
-            },
-          });
-          core.parallelism.recordWorkUnit({
-            task_id: taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'material_consumption',
-          });
-        } else if (operation === 'task_create') {
-          const created = result?.task ?? result ?? {};
-          const state = core.stateRef;
-          const dynamic = Boolean(created.task_id && state && !state.initialTaskIds.includes(created.task_id));
-          if (dynamic && state) {
-            state.dynamicTaskEvents.push({
-              task_id: created.task_id ?? null,
-              source_task_id: taskId,
-              source_execution_id: executionId,
-              responsibility_key: created.responsibility_key ?? payload?.responsibility_key ?? null,
-              status: result?.deduplicated === true ? 'deduplicated' : 'created',
-              origin: 'agent',
+              action: typeof result?.action === 'string' ? result.action : payload?.action ?? null,
+              action_ref: typeof result?.action_ref === 'string' ? result.action_ref : payload?.action_ref ?? null,
+            };
+            core.materialConsumptions.push(consumption);
+            const state = core.stateRef;
+            core.observe({
+              source: 'context-service', kind: 'material_consumed', visibility: 'operator',
+              taskId, executionId, coreId: `core-${core.index}`,
+              payload: {
+                material_ids: consumedIds,
+                action: consumption.action,
+                action_ref: consumption.action_ref,
+                count: consumedIds.length,
+                durable: true,
+              },
+            });
+            core.parallelism.recordWorkUnit({
+              task_id: taskId,
+              execution_id: executionId,
+              core: core.index,
+              progress_kind: 'material_consumption',
+            });
+          } else if (operation === 'task_create') {
+            const created = result?.task ?? result ?? {};
+            const state = core.stateRef;
+            const dynamic = Boolean(created.task_id && state && !state.initialTaskIds.includes(created.task_id));
+            if (dynamic && state) {
+              state.dynamicTaskEvents.push({
+                task_id: created.task_id ?? null,
+                source_task_id: taskId,
+                source_execution_id: executionId,
+                responsibility_key: created.responsibility_key ?? payload?.responsibility_key ?? null,
+                status: result?.deduplicated === true ? 'deduplicated' : 'created',
+                origin: 'agent',
+              });
+            }
+            core.observe({
+              source: 'task-service', kind: 'task_created', visibility: 'operator',
+              taskId: created.task_id ?? null, executionId, coreId: `core-${core.index}`,
+              payload: {
+                task_id: created.task_id ?? null,
+                mission_id: created.mission_id ?? payload?.mission_id ?? null,
+                spawned_from: payload?.spawned_from ?? null,
+                responsibility_key: created.responsibility_key ?? payload?.responsibility_key ?? null,
+                deduplicated: result?.deduplicated === true,
+                dynamic,
+              },
+            });
+            core.parallelism.recordWorkUnit({
+              task_id: created.task_id ?? taskId,
+              execution_id: executionId,
+              core: core.index,
+              progress_kind: 'task_create',
+            });
+            core.stateRef?.requestIdentityWake?.();
+          } else if (materialPublishOperation) {
+            const published = result?.material ?? result ?? {};
+            core.observe({
+              source: 'context-service', kind: 'material_published', visibility: 'operator',
+              taskId, executionId, coreId: `core-${core.index}`,
+              payload: {
+                material_id: published.material_id ?? null,
+                kind: published.kind ?? payload?.kind ?? null,
+                scope: published.scope ?? payload?.scope ?? null,
+                source_task: published.source_task ?? taskId,
+                source_execution: published.source_execution ?? executionId,
+                consumed_material_ids: Array.isArray(published.provenance?.consumed_material_ids)
+                  ? published.provenance.consumed_material_ids.filter((id) => typeof id === 'string').slice(0, 100)
+                  : [],
+                publish_reason: payload?.scope === 'judge_feedback' ? 'judge_feedback' : null,
+              },
+            });
+            core.parallelism.recordWorkUnit({
+              task_id: taskId,
+              execution_id: executionId,
+              core: core.index,
+              progress_kind: 'material',
+            });
+          } else if (operation === 'task_link_material') {
+            const link = result?.link ?? result ?? {};
+            const state = core.stateRef;
+            core.observe({
+              source: 'task-service', kind: 'material_linked', visibility: 'operator',
+              taskId, executionId, coreId: `core-${core.index}`,
+              payload: {
+                material_id: link.material_id ?? payload?.material_id ?? null,
+                role: link.role ?? payload?.role ?? null,
+                receiving_task_id: link.receiving_task_id ?? payload?.receiving_task_id ?? payload?.task_id ?? null,
+                producer_task_id: link.producer_task_id ?? null,
+                producer_execution_id: link.producer_execution_id ?? null,
+              },
+            });
+            core.parallelism.recordWorkUnit({
+              task_id: taskId,
+              execution_id: executionId,
+              core: core.index,
+              progress_kind: 'material_link',
+            });
+          } else if (operation === 'task_finish') {
+            const lifecycleResult = result && typeof result === 'object' ? result : {};
+            const lifecycleEvidence = {
+              operation,
+              task_id: taskId,
+              execution_id: executionId,
+              disposition: lifecycleResult.disposition ?? payload?.outcome ?? null,
+              task_state: lifecycleResult.task?.state ?? null,
+              execution_state: lifecycleResult.execution?.state ?? null,
+              dependency_kind: lifecycleResult.dependency?.dependency_kind ?? payload?.dependency?.dependency_kind ?? null,
+            };
+            core.observe({
+              source: 'runtime', kind: 'task_lifecycle_operation', visibility: 'operator',
+              taskId, executionId, coreId: `core-${core.index}`,
+              payload: lifecycleEvidence,
+            });
+            core.parallelism.recordWorkUnit({
+              task_id: taskId,
+              execution_id: executionId,
+              core: core.index,
+              progress_kind: 'coordination',
+            });
+            core.stateRef?.requestIdentityWake?.();
+          } else if (operation === 'workspace_check') {
+            const check = result?.check_result ?? result?.checkResult ?? result ?? {};
+            const candidateMaterial = {
+              material_id: payload?.workspace_source_id ?? check.workspace_source_id ?? null,
+              content_hash: check.content_hash ?? null,
+            };
+            core.checks.push({
+              ...sanitizedCheck(check, candidateMaterial),
+              source_path: payload?.path ?? null,
+            });
+            if (check.evidence?.forbidden_placeholder === true || check.diagnostic_class === 'forbidden_placeholder' || check.diagnostic_code === 'checker_request_rejected') {
+              core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: check.material_hash ?? null });
+            }
+            core.observe({
+              source: 'judge-service', kind: 'workspace_checked', visibility: 'operator',
+              taskId, executionId, coreId: `core-${core.index}`,
+              payload: {
+                candidate_path: payload?.path ?? result?.path ?? null,
+                workspace_source_id: payload?.workspace_source_id ?? result?.workspace_source_id ?? null,
+                check_result_id: check.check_result_id ?? result?.check_result_id ?? null,
+                verdict: check.verdict ?? result?.verdict ?? null,
+              },
+            });
+            core.parallelism.recordWorkUnit({
+              task_id: taskId,
+              execution_id: executionId,
+              core: core.index,
+              progress_kind: 'workspace_check',
             });
           }
-          core.observe({
-            source: 'task-service', kind: 'task_created', visibility: 'operator',
-            taskId: created.task_id ?? null, executionId, coreId: `core-${core.index}`,
-            payload: {
-              task_id: created.task_id ?? null,
-              mission_id: created.mission_id ?? payload?.mission_id ?? null,
-              spawned_from: payload?.spawned_from ?? null,
-              responsibility_key: created.responsibility_key ?? payload?.responsibility_key ?? null,
-              deduplicated: result?.deduplicated === true,
-              dynamic,
-            },
-          });
-          core.parallelism.recordWorkUnit({
-            task_id: created.task_id ?? taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'task_create',
-          });
-          core.stateRef?.requestIdentityWake?.();
-        } else if (materialPublishOperation) {
-          const published = result?.material ?? result ?? {};
-          core.observe({
-            source: 'context-service', kind: 'material_published', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
-            payload: {
-              material_id: published.material_id ?? null,
-              kind: published.kind ?? payload?.kind ?? null,
-              scope: published.scope ?? payload?.scope ?? null,
-              source_task: published.source_task ?? taskId,
-              source_execution: published.source_execution ?? executionId,
-              consumed_material_ids: Array.isArray(published.provenance?.consumed_material_ids)
-                ? published.provenance.consumed_material_ids.filter((id) => typeof id === 'string').slice(0, 100)
-                : [],
-              publish_reason: payload?.scope === 'judge_feedback' ? 'judge_feedback' : null,
-            },
-          });
-          core.parallelism.recordWorkUnit({
-            task_id: taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'material',
-          });
-        } else if (operation === 'task_link_material') {
-          const link = result?.link ?? result ?? {};
-          const state = core.stateRef;
-          core.observe({
-            source: 'task-service', kind: 'material_linked', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
-            payload: {
-              material_id: link.material_id ?? payload?.material_id ?? null,
-              role: link.role ?? payload?.role ?? null,
-              receiving_task_id: link.receiving_task_id ?? payload?.receiving_task_id ?? payload?.task_id ?? null,
-              producer_task_id: link.producer_task_id ?? null,
-              producer_execution_id: link.producer_execution_id ?? null,
-            },
-          });
-          core.parallelism.recordWorkUnit({
-            task_id: taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'material_link',
-          });
-        } else if (operation === 'task_finish') {
-          const lifecycleResult = result && typeof result === 'object' ? result : {};
-          const lifecycleEvidence = {
+        },
+        onError: async ({ operation, operationId, error }) => {
+          core.toolErrors.push({
             operation,
-            task_id: taskId,
-            execution_id: executionId,
-            disposition: lifecycleResult.disposition ?? payload?.outcome ?? null,
-            task_state: lifecycleResult.task?.state ?? null,
-            execution_state: lifecycleResult.execution?.state ?? null,
-            dependency_kind: lifecycleResult.dependency?.dependency_kind ?? payload?.dependency?.dependency_kind ?? null,
-          };
-          core.observe({
-            source: 'runtime', kind: 'task_lifecycle_operation', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
-            payload: lifecycleEvidence,
+            code: error.code ?? error.name,
+            message_class: safeDiagnostic(error.message) ?? error.code ?? 'tool_error',
+            // A Service contract error is feedback for the Agent to correct and
+            // retry. It is not a protocol violation by itself. Multiple
+            // unbound slots may also observe the same OPEN Task before one
+            // take commits; that scheduling contention is recoverable too.
+            recoverable: ['INVALID_CONTRACT', 'INVALID_TASK_CONTRACT'].includes(error.code) || (error.code === 'CONFLICT' && operation === 'task_take'),
+            protocol: false,
           });
-          core.parallelism.recordWorkUnit({
-            task_id: taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'coordination',
-          });
-          core.stateRef?.requestIdentityWake?.();
-        } else if (operation === 'workspace_check') {
-          const check = result?.check_result ?? result?.checkResult ?? result ?? {};
-          const candidateMaterial = {
-            material_id: payload?.workspace_source_id ?? check.workspace_source_id ?? null,
-            content_hash: check.content_hash ?? null,
-          };
-          core.checks.push({
-            ...sanitizedCheck(check, candidateMaterial),
-            source_path: payload?.path ?? null,
-          });
-          if (check.evidence?.forbidden_placeholder === true || check.diagnostic_class === 'forbidden_placeholder' || check.diagnostic_code === 'checker_request_rejected') {
-            core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: check.material_hash ?? null });
+          if (error.code === 'CONFLICT' && operation === 'task_take') {
+            core.parallelism.recordTakeConflict(operationId ? `bridge:${operationId}` : null);
           }
-          core.observe({
-            source: 'judge-service', kind: 'workspace_checked', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
-            payload: {
-              candidate_path: payload?.path ?? result?.path ?? null,
-              workspace_source_id: payload?.workspace_source_id ?? result?.workspace_source_id ?? null,
-              check_result_id: check.check_result_id ?? result?.check_result_id ?? null,
-              verdict: check.verdict ?? result?.verdict ?? null,
-            },
-          });
-          core.parallelism.recordWorkUnit({
-            task_id: taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'workspace_check',
-          });
-        }
-      },
-      onError: async ({ operation, operationId, error }) => {
-        core.toolErrors.push({
-          operation,
-          code: error.code ?? error.name,
-          message_class: safeDiagnostic(error.message) ?? error.code ?? 'tool_error',
-          // A Service contract error is feedback for the Agent to correct and
-          // retry. It is not a protocol violation by itself. Multiple
-          // unbound slots may also observe the same OPEN Task before one
-          // take commits; that scheduling contention is recoverable too.
-          recoverable: ['INVALID_CONTRACT', 'INVALID_TASK_CONTRACT'].includes(error.code) || (error.code === 'CONFLICT' && operation === 'task_take'),
-          protocol: false,
-        });
-        if (error.code === 'CONFLICT' && operation === 'task_take') {
-          core.parallelism.recordTakeConflict(operationId ? `bridge:${operationId}` : null);
-        }
-      },
-      logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),
-    });
-    core.bridge = bridge;
-    cores.push(core);
-    }
-    await Promise.all(cores.map(async (core) => {
-      Object.assign(core.childEnv, await core.bridge.start());
-    }));
-  } catch (error) {
-    for (const core of cores.reverse()) {
-      await Promise.resolve(core.session?.stop?.()).catch(() => undefined);
-      await core.runtime.shutdown({ terminalState: 'FAILED' }).catch(() => undefined);
-      await core.bridge?.stop().catch(() => undefined);
-    }
-    taskService.close();
-    throw error;
+        },
+        logger: new DurableEventLog(join(logRoot, 'bridge', `core-${index}.ndjson`), { scope: `bridge:core-${index}` }),
+      });
+      core.bridge = bridge;
+      cores.push(core);
+      }
+      await Promise.all(cores.map(async (core) => {
+        Object.assign(core.childEnv, await core.bridge.start());
+      }));
+    const state = {
+      runId,
+      problem,
+      config,
+      provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER ?? null,
+      model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL ?? null,
+      timeboxMs: options.timeboxMs ?? 60 * 60_000,
+      fixtureManifest: fixture,
+      databasePath,
+      projectDir,
+      initialTaskIds: initialTasks.map((task) => task.task_id),
+      reportProjectDir,
+      experimentDir: experimentRoot,
+      logRoot,
+      inputMaterialId: null,
+      inputMaterialHash: problem.source_hash,
+      observationStore,
+      taskService,
+      contextService,
+      router,
+      capabilityRegistry,
+      mission,
+      publicWorkspace,
+      allowedAgentToolNames,
+      judgeService,
+      sandboxManager,
+      cores,
+      solvedAt: null,
+      solvedBy: null,
+      stopOnSolved: options.stopOnSolved === true,
+      cleanupElapsedMs: null,
+      cleanupErrors: [],
+      heartbeatCount: 0,
+      heartbeatErrorCount: 0,
+      watchdogSweepCount: 0,
+      watchdogRecoveryCount: 0,
+      watchdogErrorCount: 0,
+      executionTimeoutSweepCount: 0,
+      executionTimeoutErrorCount: 0,
+      schedulerStatusCount: 0,
+      schedulerEvents: [],
+      identityLoopEvents: [],
+      identityLoops: [],
+      identityLoopRuns: [],
+      identityLoopErrors: [],
+      unhandledRejections: [],
+      identityLoopAbortController: null,
+      unsubscribeTaskEvents: null,
+      controllerEvents: [],
+      controller: null,
+      readyObservedAt: new Map(),
+      waitEligibilityAt: new Map(),
+      resourcesAtStart: resourceSnapshot(),
+      repositoryCommit: options.repositoryCommit ?? null,
+      repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
+      parallelism,
+      parallelMode: selectedParallelMode,
+      missionId: mission.mission_id,
+      workspaceId: publicWorkspace.workspace_id,
+      missionWorkspace,
+      missionSubmissionStore,
+      taskCreateMutex,
+      dynamicTaskEvents: [],
+      botMaxMs: options.botMaxMs ?? flatExecutionTimeoutMs(options),
+      selectionTimeoutMs: options.selectionTimeoutMs ?? Math.min(300_000, options.botMaxMs ?? flatExecutionTimeoutMs(options)),
+      executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
+      handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
+      normalFlow,
+      readinessSamples: [],
+    };
+    return state;
   }
-  const state = {
-    runId,
-    problem,
-    config,
-    provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER ?? null,
-    model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL ?? null,
-    timeboxMs: options.timeboxMs ?? 60 * 60_000,
-    fixtureManifest: fixture,
-    databasePath,
-    projectDir,
-    initialTaskIds: initialTasks.map((task) => task.task_id),
-    reportProjectDir,
-    experimentDir: experimentRoot,
-    logRoot,
-    inputMaterialId: null,
-    inputMaterialHash: problem.source_hash,
-    observationStore,
-    taskService,
-    contextService,
-    router,
-    capabilityRegistry,
-    mission,
-    publicWorkspace,
-    allowedAgentToolNames,
-    judgeService,
-    sandboxManager,
-    cores,
-    solvedAt: null,
-    solvedBy: null,
-    stopOnSolved: options.stopOnSolved === true,
-    cleanupElapsedMs: null,
-    cleanupErrors: [],
-    heartbeatCount: 0,
-    heartbeatErrorCount: 0,
-    watchdogSweepCount: 0,
-    watchdogRecoveryCount: 0,
-    watchdogErrorCount: 0,
-    executionTimeoutSweepCount: 0,
-    executionTimeoutErrorCount: 0,
-    schedulerStatusCount: 0,
-    schedulerEvents: [],
-    identityLoopEvents: [],
-    identityLoops: [],
-    identityLoopRuns: [],
-    identityLoopErrors: [],
-    unhandledRejections: [],
-    identityLoopAbortController: null,
-    unsubscribeTaskEvents: null,
-    controllerEvents: [],
-    controller: null,
-    readyObservedAt: new Map(),
-    waitEligibilityAt: new Map(),
-    resourcesAtStart: resourceSnapshot(),
-    repositoryCommit: options.repositoryCommit ?? null,
-    repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
-    parallelism,
-    parallelMode: selectedParallelMode,
-    missionId: mission.mission_id,
-    workspaceId: publicWorkspace.workspace_id,
-    missionWorkspace,
-    missionSubmissionStore,
-    taskCreateMutex,
-    dynamicTaskEvents: [],
-    botMaxMs: options.botMaxMs ?? flatExecutionTimeoutMs(options),
-    selectionTimeoutMs: options.selectionTimeoutMs ?? Math.min(300_000, options.botMaxMs ?? flatExecutionTimeoutMs(options)),
-    executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
-    handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
-    normalFlow,
-    readinessSamples: [],
-  };
-  return state;
 }
 
 export async function runBenchmarkProject(problem, config, options = {}) {
+  if (!Number.isFinite(options.cleanupGraceMs ?? 30_000) || (options.cleanupGraceMs ?? 30_000) <= 0) throw new TypeError('cleanupGraceMs must be finite and positive');
   const state = await createProjectState(problem, config, options);
+  try { return await executeBenchmarkProject(state, problem, config, options); }
+  finally {
+    if (!state.cleanupPromise) await stopBenchmarkRuntime(state, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
+    if (state.unhandledRejectionHandler) process.off('unhandledRejection', state.unhandledRejectionHandler);
+    // Also owns exceptions during orchestration, report generation and write.
+    // A timed-out join retains the store until all admitted work settles.
+    if (state.cleanupErrors.length) void state.cleanupPromise.finally(() => state.taskService.close()).catch(() => undefined);
+    else state.taskService.close();
+  }
+}
+
+async function executeBenchmarkProject(state, problem, config, options) {
   const unhandledRejectionHandler = (reason) => {
     const record = {
       code: reason?.code ?? reason?.name ?? 'UNHANDLED_REJECTION',
@@ -2500,6 +2493,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   // A provider/session promise must not abort report generation. Keep this
   // handler scoped to this benchmark lifecycle and preserve the error as
   // explicit evidence; normal paths still attach their own catches.
+  state.unhandledRejectionHandler = unhandledRejectionHandler;
   process.on('unhandledRejection', unhandledRejectionHandler);
   for (const core of state.cores) core.stateRef = state;
   state.controller = new TaskController({
@@ -2666,6 +2660,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     return loop;
   });
   state.requestIdentityWake = (reason = 'event') => {
+    if (state.stopping) return;
     state.identityWakeRequested = true;
     resolveIdentityWake();
     void state.controller.notify(reason).catch(() => undefined);
@@ -2695,7 +2690,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   try {
     // Every configured Core enters discovery, including a zero-Task Mission.
     // Readiness is context for the Bot, not permission to start discovery.
-    await state.controller.reconcile({ reason: 'initial' });
+    await withinRunDeadline(state, () => state.controller.reconcile({ reason: 'initial' }), deadline);
     // Each physical Core owns one long-lived identity loop supervisor. The
     // Controller only reconciles durable readiness and wakes these loops; it
     // never performs a selection or take itself.
@@ -2790,7 +2785,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     try {
       while (Date.now() < deadline && (!state.stopOnSolved || state.solvedAt === null)) {
         if (!state.identityWakeRequested) {
-          await Promise.race([sleep(options.pollMs ?? 5_000), identityWake]);
+          await Promise.race([sleep(Math.max(0, Math.min(options.pollMs ?? 5_000, deadline - Date.now()))), identityWake]);
         }
         const reconcileReason = state.identityWakeRequested ? 'event' : 'poll';
         state.identityWakeRequested = false;
@@ -2809,12 +2804,12 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           eligibleWorkCount: observedEligibleWorkCount(state, readyTasks),
         });
         for (const core of state.cores) {
-          if (state.solvedAt === null) await releaseTerminalExecution(core);
+          if (state.solvedAt === null) await withinRunDeadline(state, () => releaseTerminalExecution(core), deadline);
         }
         // The Controller owns reconciliation and signals each idle identity loop;
         // each long-lived identity loop owns its bounded take/take loop. The
         // main loop is only the periodic repair and observability sweep.
-        await state.controller.reconcile({ reason: reconcileReason });
+        await withinRunDeadline(state, () => state.controller.reconcile({ reason: reconcileReason }), deadline);
         for (const core of state.cores) {
           if (state.solvedAt !== null) break;
           if (!core.turnInFlight && !core.recoveryInFlight && Date.now() < deadline && state.solvedAt === null) {
@@ -2827,74 +2822,24 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       clearInterval(heartbeat);
       clearInterval(watchdog);
       clearInterval(executionTimeoutSweep);
-      await executionTimeoutSweepPromise;
-      await Promise.all(state.cores.map((core) => core.watchdogPromise ?? Promise.resolve()));
+      state.backgroundStopPromises = [executionTimeoutSweepPromise, ...state.cores.map(core => core.watchdogPromise)].filter(Boolean);
     }
+  } catch (error) {
+    if (error.code !== 'BENCHMARK_TIMEBOX_EXPIRED') throw error;
   } finally {
-    const cleanupStartedAt = Date.now();
-    state.unsubscribeTaskEvents?.();
-    await state.controller?.stop?.();
-    state.identityLoopAbortController?.abort();
-    for (const loop of state.identityLoops ?? []) loop.stop();
-    // A take turn may still be inside its Agent turn at the deadline (the
-    // Agent keeps working after task_take in the same turn), and that turn
-    // only settles when the Session stops. Waiting unboundedly here kept r14
-    // running past its timebox until the outer timeout killed it without a
-    // report. Bound the wait; stopCore below stops the Sessions.
-    const identityLoopStopGraceMs = options.identityLoopStopGraceMs ?? 15_000;
-    let identityLoopsSettled = false;
-    const identityResults = await Promise.race([
-      Promise.allSettled(state.identityLoopRuns ?? []).then((results) => { identityLoopsSettled = true; return results; }),
-      sleep(identityLoopStopGraceMs).then(() => []),
-    ]);
-    if (!identityLoopsSettled) {
-      state.cleanupErrors.push({ code: 'IDENTITY_LOOP_STOP_TIMEOUT', class: 'identity_loop_stop_timeout' });
-    }
-    for (const result of identityResults) {
-      if (result.status === 'rejected') {
-        state.identityLoopErrors.push({
-          core_id: null,
-          code: result.reason?.code ?? result.reason?.name ?? 'IDENTITY_LOOP_ERROR',
-          class: safeDiagnostic(result.reason?.message) ?? 'identity_loop_error',
-        });
-      }
-    }
-    // Cleanup of one Core can wait for a provider/session recovery boundary.
-    // Run the independent Core cleanup paths concurrently so one slow Pi
-    // process cannot consume the entire outer benchmark grace period before
-    // the remaining Cores are fenced and the report is written.
-    const cleanupResults = await Promise.allSettled(state.cores.map((core) => stopCore(state, core)));
-    state.cleanupErrors.push(...cleanupResults
-      .filter((result) => result.status === 'rejected')
-      .map((result) => ({ code: result.reason?.code ?? result.reason?.name ?? 'CLEANUP_ERROR', class: safeDiagnostic(result.reason?.message) ?? 'cleanup_error' })));
-    state.cleanupElapsedMs = Date.now() - cleanupStartedAt;
-    process.off('unhandledRejection', unhandledRejectionHandler);
+    await stopBenchmarkRuntime(state, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
   }
   const report = projectReport(state, startedAt, deadline);
-  try {
-    const workspace = await state.missionWorkspace.get({ workspaceId: state.workspaceId });
-    const materials = state.contextService.readMaterials({ mission_id: state.missionId, include_history: true }).map((material) => material.material_id);
-    const submission = await state.missionSubmissionStore.submit({
-      missionId: state.missionId,
-      workspaceId: state.workspaceId,
-      mainRevision: workspace.main_revision,
-      materialIds: materials,
-      checker: state.fixtureManifest.checker_ref,
-      environment: state.fixtureManifest.environment_ref,
-      acceptance: state.taskService.getMission(state.missionId)?.acceptance_conditions ?? {},
-      actorRef: 'operator:benchmark',
-      requestId: `mission-submit:${state.runId}`,
-    });
-    report.mission_submission = await state.missionSubmissionStore.finish({
-      missionId: state.missionId,
-      submissionId: submission.submission_id,
-      verdict: report.run.solved ? 'PASS' : 'FAIL',
-      result: { solved: report.run.solved, protocol_valid: report.run.protocol_valid },
-    });
-  } catch (error) {
-    report.mission_submission = { state: 'error', error: { code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'mission_submission_error' } };
+  // Reporting must not invent a submission or convert source diagnostics into
+  // Mission acceptance. Only expose a submission already owned by its service.
+  const submission = await settleBy(state.missionSubmissionStore.get({ missionId: state.missionId }), state.cleanupDeadline);
+  report.mission_submission = submission.status === 'fulfilled' ? submission.value : null;
+  if (submission.status !== 'fulfilled') {
+    report.run.cleanup_errors.push({ code: 'MISSION_RESULT_READ_PENDING', class: 'mission_result_read_pending' });
     report.audit.invalid = true;
-    report.audit.invalid_reasons.push('mission_submission_error');
+    report.run.protocol_valid = false;
+    report.run.solved = false;
+    report.audit.invalid_reasons.push('cleanup_pending');
   }
   state.observationStore.append({
     experimentId: state.runId,
@@ -2905,7 +2850,6 @@ export async function runBenchmarkProject(problem, config, options = {}) {
   });
   state.observationStore.finishExperiment(state.runId, { status: report.run.solved ? 'SUCCEEDED' : 'FINISHED' });
   await writeFile(join(state.reportProjectDir, 'report.json'), JSON.stringify(report, null, 2));
-  state.taskService.close();
   return report;
 }
 

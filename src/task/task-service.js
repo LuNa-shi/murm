@@ -1304,9 +1304,16 @@ export class TaskService {
     const missionId = payload.mission_id;
     const mission = this.#getMission(missionId);
     if (!mission) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown mission: ${missionId}`);
+    const bot = this.getBot(envelope.actor_ref);
+    if (bot) {
+      if (!['UNBOUND', 'ACTIVE'].includes(bot.state) || bot.mission_id !== missionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task proposal requires a live Bot in its own Mission');
+      if (bot.state === 'ACTIVE' && (!envelope.execution_id || bot.execution_id !== envelope.execution_id)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bound Task proposal must include the current Bot Execution');
+      if (bot.state === 'UNBOUND' && (envelope.execution_id || envelope.task_id || bot.execution_id || Date.parse(bot.selection_deadline) <= Date.now())) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Unbound Task proposal requires valid selection authority');
+    }
     let currentExecution = null;
     if (envelope.execution_id !== null && envelope.execution_id !== undefined) {
       currentExecution = this.#executionForWrite(envelope);
+      if (bot && (currentExecution.state !== 'RUNNING' || currentExecution.owner_ref !== bot.bot_id || Date.parse(currentExecution.lease_expires_at) <= Date.now())) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task proposal requires the current active Execution');
       if (currentExecution.task_id !== envelope.task_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bound Task creation must use the current Task Execution');
       if (!['CREATED', 'RUNNING'].includes(currentExecution.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only an active Execution may create a Task');
       if (this.#taskMissionId(envelope.task_id) !== missionId) {
