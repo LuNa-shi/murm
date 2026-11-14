@@ -485,6 +485,7 @@ export class ServicesBridge {
     const assertIdentity = (beforeDispatch = false) => {
       if (this.token !== identityToken) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before dispatch');
       const bot = beforeDispatch ? this.taskService.getBot?.(this.actorRef) : null;
+      if (bot && !['bot_exit', 'task_finish'].includes(operation)) this.taskService.assertBotDeadline(this.actorRef);
       if (bot && !['UNBOUND', 'ACTIVE'].includes(bot.state) && !['bot_exit', 'task_finish'].includes(operation)) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped before dispatch');
       }
@@ -510,6 +511,7 @@ export class ServicesBridge {
       }
       const boundTask = this.taskId ? this.taskService.getTask(this.taskId) : null;
       const bot = this.taskService.getBot?.(this.actorRef);
+      if (bot && !['bot_exit', 'task_finish'].includes(operation)) this.taskService.assertBotDeadline(this.actorRef);
       if (bot && !['UNBOUND', 'ACTIVE'].includes(bot.state) && !['bot_exit', 'task_finish'].includes(operation)) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot is not authorized to contribute in its current state', { bot_state: bot.state });
       }

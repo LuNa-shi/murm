@@ -31,6 +31,9 @@ Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is
 | `--cores` | `4`; CLI rejects any other value |
 | `--project-parallelism` | `1`; positive integer; batch concurrency is capped at the problem count |
 | `--timebox-ms` | `3600000`; positive finite execution-loop duration per project |
+| `--bot-max-ms` | Defaults to run timebox; timer-safe integer of at least 2 ms; total Bot lifetime including startup/discovery/preparation |
+| `--selection-timeout-ms` | Defaults to min(300000, Bot maximum); timer-safe integer of at least 2 ms, clamped to Bot/run deadline |
+| `--execution-timeout-ms` | Defaults to Bot maximum; timer-safe integer of at least 2 ms; active Execution cap intersects Task/Bot/run limits |
 | `--turn-timeout-ms` | `540000`; per-turn settling bound, not the overall project deadline |
 | `--parallel-mode` | `semantic`; accepts `direct`, `semantic`, `root-only` |
 | `--task-model` | Rejected; the benchmark has one flat Mission Task model |
@@ -96,8 +99,10 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `repositoryCommit`, `repositoryWorktreeDirty` | `null` unless caller/CLI supplies them; report provenance |
 | `stopOnSolved` | Only literal `true` enables early exit; otherwise continue toward the deadline |
 | `taskTimeboxMs` | Flat initial Task timebox: run timebox unless supplied |
-| `executionTimeoutMs` | Run timebox; Runtime owns the active Execution deadline |
-| `handoffReminderMs` | Run `timeboxMs` minus `min(5 min, floor(timeboxMs/10))`, at least 1 ms. This default is not recalculated from an explicit `executionTimeoutMs` override; Runtime requires it below execution timeout. |
+| `botMaxMs` | Run timebox; total lifetime starting before discovery |
+| `selectionTimeoutMs` | min(300000, Bot maximum) for library calls; Runtime clamps to the Bot deadline |
+| `executionTimeoutMs` | Bot maximum if set, otherwise run timebox; Runtime owns the active Execution deadline |
+| `handoffReminderMs` | Effective Execution maximum minus `min(5 min, floor(maximum/10))`, at least 1 ms. Explicit Execution or Bot maximum overrides are reflected; Runtime requires the reminder below the Execution maximum. |
 | `handoffTimeoutMs` | Identity-loop ownership wait: `max(executionTimeoutMs, 2 * turnTimeoutMs)` |
 | `turnIntervalMs` | `1000`; bound continuation waits at most 100 ms before its next turn, while periodic scheduling also checks this interval |
 | `pollMs` | `5000`; outer repair/observation wake fallback |
@@ -195,4 +200,6 @@ The repaired discovery path gives every Core the same autonomous local-Task sele
 
 ### Registered Bot startup and cleanup accounting
 
-Each Core startup now calls `Runtime.startBot` with the shared Mission, its Core ID, `selectionTimeoutMs` (default 300,000 ms) and readiness timeout (`turnTimeoutMs`, default 30,000 ms). The adapter factory receives the newly persisted Bot and provider-ID callback; the Bridge rotates identity/token before worker launch. Core records retain `botId` for discovery-result interpretation. An explicit durable no-work/budget exit lets the identity loop wait for relevant public changes; an empty turn does not. Cleanup is complete only when active processes, retained Sessions, pending Bot IDs and adapter/startup cleanup are all empty. These checks supplement the finite whole-run cleanup grace above.
+Each Core startup now calls `Runtime.startBot` with the shared Mission, its Core ID, `selectionTimeoutMs` (default min(300,000 ms, Bot maximum)), `maxLifetimeMs` from `botMaxMs` (default run timebox), and readiness timeout (`turnTimeoutMs`, default 30,000 ms). The adapter factory receives the newly persisted Bot and provider-ID callback; the Bridge rotates identity/token before worker launch. Core records retain `botId` for discovery-result interpretation. An explicit durable no-work/selection-budget exit or unbound Bot hard-budget stop lets the identity loop wait for relevant public changes; an empty turn does not. Cleanup is complete only when active processes, retained Sessions, pending Bot IDs and adapter/startup cleanup are all empty. These checks supplement the finite whole-run cleanup grace above.
+
+The run manifest, aggregate protocol and project report record Bot, selection and Execution maximums separately in milliseconds. A 30-minute single-project configuration can set `--timebox-ms 1800000 --bot-max-ms 600000 --selection-timeout-ms 120000`; this is configuration syntax, not evidence of an executed or accepted experiment. Existing finalization grace is additional to the research timebox and retained cleanup remains visible on failure.

@@ -89,7 +89,7 @@ function flatExecutionTimeoutMs(options) {
 }
 
 function flatHandoffReminderMs(options) {
-  const timeoutMs = flatExecutionTimeoutMs(options);
+  const timeoutMs = options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options);
   return Math.max(1, timeoutMs - Math.min(5 * 60_000, Math.floor(timeoutMs / 10)));
 }
 
@@ -504,7 +504,8 @@ async function startAgentSession(core) {
   const { bot, session } = await core.runtime.startBot({
     missionId: core.stateRef.mission.mission_id,
     coreId: `core-${core.index}`,
-    selectionTimeoutMs: core.startConfig.options.selectionTimeoutMs ?? 300_000,
+    selectionTimeoutMs: core.startConfig.options.selectionTimeoutMs ?? Math.min(300_000, core.startConfig.options.botMaxMs ?? flatExecutionTimeoutMs(core.startConfig.options)),
+    maxLifetimeMs: core.startConfig.options.botMaxMs ?? flatExecutionTimeoutMs(core.startConfig.options),
     readyTimeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000,
     startSession: async ({ bot: startingBot, signal, onSandboxCreated }) => {
       core.actorRef = startingBot.bot_id;
@@ -681,7 +682,7 @@ async function takeTaskWithAgent(core, candidates, prompt) {
   const discoveryBotId = core.botId;
   const exitedWithoutWork = () => {
     const bot = core.runtime.taskService.getBot(discoveryBotId);
-    return bot && !bot.execution_id && ['CLOSING', 'CLOSED'].includes(bot.state) && ['no-work', 'selection-budget'].includes(bot.exit_reason);
+    return bot && !bot.execution_id && ['CLOSING', 'CLOSED'].includes(bot.state) && ['no-work', 'selection-budget', 'bot-lifetime-budget'].includes(bot.exit_reason);
   };
   const sequence = session.rpcRecords?.length ?? 0;
   core.takeResult = null;
@@ -1229,6 +1230,8 @@ function projectReport(state, startedAt, deadline) {
       initial_task_count: 0,
       proposed_task_count: state.initialTaskIds?.length ?? 0,
       dynamic_task_budget: null,
+      bot_max_ms: state.botMaxMs,
+      selection_timeout_ms: state.selectionTimeoutMs,
       execution_timeout_ms: state.executionTimeoutMs,
       handoff_reminder_ms: state.handoffReminderMs,
       input_policy: 'pinned formalization only; no candidate or solution input',
@@ -1804,11 +1807,9 @@ async function createProjectState(problem, config, options) {
       // Execution. Fencing after one retry lets a recovered identity start a
       // second Task and invalidates a bounded formal run.
       maxRecoveryAttempts: options.maxRecoveryAttempts ?? 5,
-      // Contract §5 (r15 revision): in the flat model an Execution may last
-      // the whole run. Its deadline is the run deadline (set at run start)
-      // and the handoff reminder fires a lead time before it; compaction
-      // rotation bounds identity lifetime. retired callers keep 60/55 minutes.
-      executionTimeoutMs: options.executionTimeoutMs ?? flatExecutionTimeoutMs(options),
+      // Execution, Task, Bot and Mission limits intersect. Bot lifetime starts
+      // before discovery and cannot reset when take becomes active.
+      executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
       handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
       logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
@@ -2536,7 +2537,9 @@ async function createProjectState(problem, config, options) {
     missionSubmissionStore,
     taskCreateMutex,
     dynamicTaskEvents: [],
-    executionTimeoutMs: options.executionTimeoutMs ?? flatExecutionTimeoutMs(options),
+    botMaxMs: options.botMaxMs ?? flatExecutionTimeoutMs(options),
+    selectionTimeoutMs: options.selectionTimeoutMs ?? Math.min(300_000, options.botMaxMs ?? flatExecutionTimeoutMs(options)),
+    executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
     handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
     normalFlow,
     readinessSamples: [],

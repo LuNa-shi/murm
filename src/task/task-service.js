@@ -182,6 +182,10 @@ export class TaskService {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(SCHEMA_SQL);
     const botColumns = new Set(this.db.prepare('PRAGMA table_info(bots)').all().map(column => column.name));
+    if (!botColumns.has('hard_deadline')) {
+      this.db.exec('ALTER TABLE bots ADD COLUMN hard_deadline TEXT');
+    }
+    this.db.exec("UPDATE bots SET hard_deadline = selection_deadline WHERE hard_deadline IS NULL");
     if (!botColumns.has('stop_terminal_state')) this.db.exec('ALTER TABLE bots ADD COLUMN stop_terminal_state TEXT');
     // Notifications gained per-recipient handling state after the initial
     // lifecycle schema.  Keep old persistent stores readable while allowing
@@ -648,6 +652,7 @@ export class TaskService {
             replayed = true;
             return replay;
           }
+          this.assertBotDeadline(envelope.actor_ref);
           const value = this.#mutate(normalizedOperation, payload, envelope);
           this.#saveOperation(envelope.operation_id, normalizedOperation, fingerprint, value);
           return value;
@@ -693,13 +698,29 @@ export class TaskService {
     return row ? { ...row } : null;
   }
 
+  // Read the durable clock boundary on the synchronous write path. A delayed
+  // timer still owns cleanup, but cannot extend authorization for new work.
+  assertBotDeadline(actorRef) {
+    const bot = this.getBot(actorRef);
+    if (!bot) return;
+    const hard = Date.parse(bot.hard_deadline);
+    const execution = bot.execution_id ? this.getExecution(bot.execution_id) : null;
+    const executionDeadline = execution?.execution_deadline ? Date.parse(execution.execution_deadline) : Infinity;
+    if (!Number.isFinite(hard) || hard <= Date.now() || executionDeadline <= Date.now()) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot or Execution hard deadline elapsed');
+    }
+  }
+
   /** Runtime-only registration; no model capability may invent a Bot identity. */
-  registerBot({ botId = `bot:${randomUUID()}`, missionId, coreId, selectionDeadline }) {
+  registerBot({ botId = `bot:${randomUUID()}`, missionId, coreId, selectionDeadline, hardDeadline = selectionDeadline }) {
     requireString(botId, 'bot_id');
     requireString(missionId, 'mission_id');
     requireString(coreId, 'core_id');
     if (typeof selectionDeadline !== 'string' || !Number.isFinite(Date.parse(selectionDeadline)) || Date.parse(selectionDeadline) <= Date.now()) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'selection_deadline must be a finite future timestamp');
+    }
+    if (typeof hardDeadline !== 'string' || !Number.isFinite(Date.parse(hardDeadline)) || Date.parse(hardDeadline) <= Date.now() || Date.parse(selectionDeadline) > Date.parse(hardDeadline)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot hard deadline must be finite and no earlier than its selection deadline');
     }
     return this.#transaction(() => {
       if (!this.getMission(missionId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unknown Mission');
@@ -707,8 +728,8 @@ export class TaskService {
       const occupant = this.db.prepare("SELECT bot_id FROM bots WHERE mission_id = ? AND core_id = ? AND state <> 'CLOSED'").get(missionId, coreId);
       if (occupant) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core still owns a Bot', { bot_id: occupant.bot_id });
       const startedAt = now();
-      this.db.prepare(`INSERT INTO bots (bot_id, mission_id, core_id, state, selection_deadline, resource_key, started_at, updated_at)
-        VALUES (?, ?, ?, 'STARTING', ?, ?, ?, ?)`).run(botId, missionId, coreId, selectionDeadline, botId, startedAt, startedAt);
+      this.db.prepare(`INSERT INTO bots (bot_id, mission_id, core_id, state, selection_deadline, hard_deadline, resource_key, started_at, updated_at)
+        VALUES (?, ?, ?, 'STARTING', ?, ?, ?, ?, ?)`).run(botId, missionId, coreId, selectionDeadline, hardDeadline, botId, startedAt, startedAt);
       return this.getBot(botId);
     });
   }
@@ -731,7 +752,7 @@ export class TaskService {
     return this.#transaction(() => {
       const bot = this.getBot(botId);
       if (bot?.state === 'UNBOUND') return bot;
-      if (!bot || bot.state !== 'STARTING' || !bot.sandbox_id || Date.parse(bot.selection_deadline) <= Date.now()) {
+      if (!bot || bot.state !== 'STARTING' || !bot.sandbox_id || (Date.parse(bot.selection_deadline) <= Date.now() || Date.parse(bot.hard_deadline) <= Date.now())) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup is not eligible to become ready');
       }
       const readyAt = now();
@@ -2485,7 +2506,7 @@ export class TaskService {
     const bot = this.getBot(ownerRef);
     const occupiedBot = coreId === null ? null : this.db.prepare("SELECT bot_id FROM bots WHERE mission_id = ? AND core_id = ? AND state <> 'CLOSED'").get(this.#taskMissionId(task.task_id), coreId);
     if (occupiedBot && occupiedBot.bot_id !== ownerRef) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns another Bot');
-    if (bot && (envelope.actor_ref !== ownerRef || bot.state !== 'UNBOUND' || bot.execution_id || bot.mission_id !== this.#taskMissionId(task.task_id) || bot.core_id !== coreId || Date.parse(bot.selection_deadline) <= Date.now())) {
+    if (bot && (envelope.actor_ref !== ownerRef || bot.state !== 'UNBOUND' || bot.execution_id || bot.mission_id !== this.#taskMissionId(task.task_id) || bot.core_id !== coreId || (Date.parse(bot.selection_deadline) <= Date.now() || Date.parse(bot.hard_deadline) <= Date.now()))) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot cannot reserve another Execution or leave its Mission/Core');
     }
 
@@ -2683,6 +2704,13 @@ export class TaskService {
   #startExecution(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot start Execution from ${execution.state}`);
+    const bot = this.getBot(execution.owner_ref);
+    if (bot) {
+      this.assertBotDeadline(bot.bot_id);
+      if (bot.state !== 'PREPARING' || bot.execution_id !== execution.execution_id || bot.core_id !== execution.core_id) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Activation requires the preparing Bot and its reserved Execution');
+      }
+    }
     const coreId = payload.core_id ?? payload.coreId ?? null;
     if (coreId !== null) {
       requireString(coreId, 'core_id');
@@ -2705,9 +2733,12 @@ export class TaskService {
     const startedAt = payload.started_at ?? updatedAt;
     if (typeof startedAt !== 'string' || Number.isNaN(Date.parse(startedAt))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'started_at must be an ISO timestamp');
     const handoffDeadline = payload.handoff_deadline ?? null;
-    const executionDeadline = payload.execution_deadline ?? null;
+    const executionDeadline = payload.execution_deadline ?? bot?.hard_deadline ?? null;
     for (const [name, value] of [['handoff_deadline', handoffDeadline], ['execution_deadline', executionDeadline]]) {
       if (value !== null && (typeof value !== 'string' || Number.isNaN(Date.parse(value)))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${name} must be an ISO timestamp`);
+    }
+    if (bot && (Date.parse(executionDeadline) <= Date.now() || Date.parse(executionDeadline) > Date.parse(bot.hard_deadline))) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution activation deadline exceeds the remaining Bot budget');
     }
     this.db.prepare('UPDATE executions SET state = ?, core_id = COALESCE(?, core_id), started_at = ?, handoff_deadline = ?, execution_deadline = ?, handoff_reminder_sent_at = NULL, terminal_reason = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
       .run('RUNNING', coreId, startedAt, handoffDeadline, executionDeadline, updatedAt, execution.execution_id);

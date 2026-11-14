@@ -35,11 +35,11 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fcfbf9ed0efad34f9998a273a419715974c61e3572e76a67a91ee8c3cab4a988` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `c80f965d3b6583b50e9c2defef5ff61b61eb0916ae44a2c229b0677732d7f990` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `bc7a51d1169ad7d92bebcd3526a42c45ed37bbbc584181f07a6e89691cb6d9bc` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `1b75bcdc0833c4690709f0120d01c3e71cf0c4f4d61ffe6125f5202110055bbd` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `de3e6fd1e7d15ece74ff7c1ae4c47df982716c2f03ae0c67c67dab48e4424226` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `1855125eaf40c20df774389e6e7ca6870de3b76cd2b51f346b630fee96b5d697` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `61c7bbf151fca86773254984cc62e5f5ff6451c7ef2246640c613ce15b4c7d64` |
 

@@ -231,6 +231,7 @@ CREATE TABLE IF NOT EXISTS bots (
   execution_id TEXT UNIQUE REFERENCES executions(execution_id),
   state_version INTEGER NOT NULL DEFAULT 0,
   selection_deadline TEXT NOT NULL,
+  hard_deadline TEXT NOT NULL,
   resource_key TEXT NOT NULL UNIQUE,
   provider TEXT,
   sandbox_id TEXT,

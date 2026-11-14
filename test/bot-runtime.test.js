@@ -367,3 +367,72 @@ test('prepare rollback joins the original stop and preserves its terminal reason
   assert.equal(service.getExecution(execution.execution_id).state, 'CANCELLED');
   assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'explicit-user-stop');
 });
+
+test('Bot lifetime is fixed before take and caps the active Execution deadline', async t => {
+  const { service, runtime, startSession } = await fixture(t, { executionTimeoutMs: 60_000, handoffReminderMs: 50_000 });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', maxLifetimeMs: 350, startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a bounded independent research question', expected_output: 'Note', acceptance_conditions: ['Note written'], timebox_ms: 60_000 }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'bounded-take' });
+  await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
+  assert.ok(Date.parse(service.getExecution(execution.execution_id).execution_deadline) <= Date.parse(bot.hard_deadline));
+  await new Promise(resolve => setTimeout(resolve, Math.max(1, Date.parse(bot.hard_deadline) - Date.now() + 100)));
+  await runtime.waitForExecutionRelease(execution.execution_id, { timeoutMs: 1_000 });
+  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
+  assert.equal(session.closed, true);
+  assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'bot-lifetime-budget');
+});
+
+test('Bot lifetime stops a taken Bot even while Workspace preparation has not returned', async t => {
+  const { service, runtime, startSession } = await fixture(t);
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: 60_000, maxLifetimeMs: 250, startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Prepare inputs for an independent research question', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'prepare-budget' });
+  const create = runtime.workspaceManager.createWorkspace.bind(runtime.workspaceManager);
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  runtime.workspaceManager.createWorkspace = async options => { await gate; return create(options); };
+  const binding = runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
+  const rejected = assert.rejects(binding);
+  await new Promise(resolve => setTimeout(resolve, 350));
+  assert.equal(session.closed, true);
+  release();
+  await rejected;
+  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
+});
+
+test('elapsed Mission deadline rejects Bot creation before a provider request', async t => {
+  const { runtime, startSession, calls } = await fixture(t);
+  runtime.setRunDeadline(Date.now() - 1);
+  await assert.rejects(runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession }), /deadline already elapsed/);
+  assert.equal(calls.length, 0);
+  for (const maxLifetimeMs of [0, -1, Infinity, 2_147_483_648]) {
+    await assert.rejects(runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', maxLifetimeMs, startSession }), { code: 'INVALID_CONTRACT' });
+  }
+});
+
+for (const boundary of ['task', 'bot']) test(`registered Bot ${boundary} timeout sweep uses hard stop without synthesizing a checkpoint`, async t => {
+  const { service, runtime, startSession } = await fixture(t);
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', maxLifetimeMs: 60_000, startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect an independent deadline boundary', expected_output: 'Note', acceptance_conditions: ['Note'], timebox_ms: boundary === 'task' ? 30_000 : 120_000 }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: `deadline:${boundary}` });
+  await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
+  runtime.workspaceManager.saveWorkspaceRevision = async () => assert.fail('hard stop must not create a new revision');
+  runtime.workspaceManager.saveCheckpoint = async () => assert.fail('hard stop must not create a new checkpoint');
+  runtime.sandboxManager.syncWorkspaceBack = async () => assert.fail('hard stop must not export unpersisted private data');
+  const deadline = service.getExecution(execution.execution_id).execution_deadline;
+  await runtime.sweepExecutionTimeouts(new Date(deadline));
+  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
+  assert.equal(service.getExecution(execution.execution_id).terminal_reason, boundary === 'task' ? 'execution-timebox' : 'bot-lifetime-budget');
+});
+
+test('earlier Task hard deadline automatically stops a registered Bot without an external sweep', async t => {
+  const { service, runtime, startSession } = await fixture(t);
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', maxLifetimeMs: 60_000, startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a locally bounded question', expected_output: 'Note', acceptance_conditions: ['Note'], timebox_ms: 150 }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'automatic-short-task' });
+  await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
+  await runtime.waitForExecutionRelease(execution.execution_id, { timeoutMs: 1_000 });
+  assert.equal(session.closed, true);
+  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
+  assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'execution-timebox');
+});

@@ -212,16 +212,19 @@ export class Runtime {
     return this.#trackStartup(() => this.#startBot(options));
   }
 
-  async #startBot({ missionId, coreId, selectionTimeoutMs = 300_000, startSession, readyTimeoutMs = 30_000 }) {
+  async #startBot({ missionId, coreId, selectionTimeoutMs = 300_000, maxLifetimeMs = selectionTimeoutMs + this.executionTimeoutMs, startSession, readyTimeoutMs = 30_000 }) {
     if (typeof startSession !== 'function' || !Number.isFinite(selectionTimeoutMs) || selectionTimeoutMs <= 0 || selectionTimeoutMs > 2_147_483_647 ||
-        !Number.isFinite(readyTimeoutMs) || readyTimeoutMs <= 0) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot requires a Session factory and finite selection timeout');
+        !Number.isFinite(readyTimeoutMs) || readyTimeoutMs <= 0 || !Number.isInteger(maxLifetimeMs) || maxLifetimeMs < 2 || maxLifetimeMs > 2_147_483_647) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot requires a Session factory and finite selection and lifetime limits');
     }
     if (this.getCoreStatus(coreId)?.state !== 'IDLE' || this.taskService.getActiveExecutionForCore(coreId)) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core is occupied');
     }
-    const bot = this.taskService.registerBot({ missionId, coreId, selectionDeadline: new Date(Date.now() + selectionTimeoutMs).toISOString() });
-    const binding = { botId: bot.bot_id, coreId, session: null, starting: true, selectionTimer: null };
+    const startedAt = Date.now();
+    const hardDeadlineAt = Math.min(startedAt + maxLifetimeMs, this.runDeadlineAt ?? Infinity);
+    if (hardDeadlineAt <= startedAt) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission run deadline already elapsed');
+    const bot = this.taskService.registerBot({ missionId, coreId, selectionDeadline: new Date(Math.min(startedAt + selectionTimeoutMs, hardDeadlineAt)).toISOString(), hardDeadline: new Date(hardDeadlineAt).toISOString() });
+    const binding = { botId: bot.bot_id, coreId, session: null, starting: true, selectionTimer: null, hardTimer: null };
     this.botBindings.set(bot.bot_id, binding);
     this.#setCoreState(coreId, { state: 'STARTING', bot_id: bot.bot_id, execution_id: null, task_id: null });
     const controller = new AbortController();
@@ -241,7 +244,19 @@ export class Runtime {
       binding.cancelStartup();
       this.#startFinishCleanup(bot.bot_id, 0, true);
     };
-    binding.selectionTimer = setTimeout(() => stopUnbound('selection-budget'), selectionTimeoutMs);
+    binding.armDeadline = (deadlineAt, reason) => {
+      clearTimeout(binding.hardTimer);
+      binding.hardTimer = setTimeout(() => {
+        const current = this.taskService.getBot(bot.bot_id);
+        if (current?.execution_id && ['PREPARING', 'ACTIVE'].includes(current.state)) {
+          this.#prepareBotExecutionStop(current.execution_id, 'FAILED', reason);
+          this.#startFinishCleanup(current.execution_id);
+        } else stopUnbound(reason);
+      }, Math.max(1, deadlineAt - Date.now()));
+      binding.hardTimer.unref?.();
+    };
+    binding.armDeadline(hardDeadlineAt, 'bot-lifetime-budget');
+    binding.selectionTimer = setTimeout(() => stopUnbound('selection-budget'), Math.max(1, Date.parse(bot.selection_deadline) - Date.now()));
     binding.selectionTimer.unref?.();
     const factory = Promise.resolve().then(() => startSession({ bot, signal: controller.signal,
       onSandboxCreated: (resource) => this.taskService.recordBotSandbox(bot.bot_id,
@@ -309,6 +324,7 @@ export class Runtime {
     if (binding.starting) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot factory has not settled; late resources remain owned');
     const closed = this.taskService.finalizeBotClose(botId);
     clearTimeout(binding.selectionTimer);
+    clearTimeout(binding.hardTimer);
     this.identitySessions.delete(binding.session);
     clearTimeout(this.finishCleanupTimers.get(botId));
     this.finishCleanupTimers.delete(botId);
@@ -685,7 +701,7 @@ export class Runtime {
     if (!this.sandboxManager || !executionId) return;
     try {
       const current = this.taskService.getExecution(executionId);
-      if (typeof this.sandboxManager.syncWorkspaceBack === 'function' && current?.workspace_ref) await this.sandboxManager.syncWorkspaceBack({ executionId, workspaceRef: current.workspace_ref });
+      if (!this.taskService.getBot(current?.owner_ref ?? 'unknown') && typeof this.sandboxManager.syncWorkspaceBack === 'function' && current?.workspace_ref) await this.sandboxManager.syncWorkspaceBack({ executionId, workspaceRef: current.workspace_ref });
     } catch (error) {
       this.logger?.append({
         event: 'runtime.sandbox_sync_error',
@@ -851,6 +867,8 @@ export class Runtime {
         ...this.#executionTimingPayload(this.clock(), current),
         ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
       }, this.#executionEnvelope(current, operationId('bind'))).execution;
+      if (bot) this.botBindings.get(bot.bot_id).armDeadline(Date.parse(current.execution_deadline),
+        Date.parse(current.execution_deadline) < Date.parse(bot.hard_deadline) ? 'execution-timebox' : 'bot-lifetime-budget');
       startedDurably = true;
       if (!boundSession) boundSession = await startSession({ execution: current, workspace });
       if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
@@ -1105,6 +1123,13 @@ export class Runtime {
       const reminderMs = Date.parse(execution.handoff_deadline ?? '') || startedMs + this.handoffReminderMs;
       const timeoutMs = Date.parse(execution.execution_deadline ?? '') || startedMs + this.executionTimeoutMs;
       if (atDate.getTime() >= timeoutMs) {
+        const bot = this.taskService.getBot(execution.owner_ref);
+        if (bot) {
+          const reason = Date.parse(bot.hard_deadline) <= atDate.getTime() ? 'bot-lifetime-budget' : 'execution-timebox';
+          const result = await this.stopExecution(execution.execution_id, 'FAILED', reason);
+          events.push({ kind: 'timeout', ...result });
+          continue;
+        }
         const result = await this.handoffExecution(execution.execution_id, {
           terminalState: 'EXPIRED',
           // Preserve the existing terminal_reason string for legacy report
@@ -1611,6 +1636,7 @@ export class Runtime {
       this.taskService.finalizeBotClose(bot.bot_id);
       this.identitySessions.delete(this.botBindings.get(bot.bot_id)?.session);
       clearTimeout(this.botBindings.get(bot.bot_id)?.selectionTimer);
+      clearTimeout(this.botBindings.get(bot.bot_id)?.hardTimer);
       this.botBindings.delete(bot.bot_id);
       if (this.getCoreStatus(bot.core_id)?.bot_id === bot.bot_id) this.#setCoreState(bot.core_id, { state: 'IDLE', bot_id: null, execution_id: null, task_id: null, session_id: null });
     }
@@ -2816,10 +2842,11 @@ export class Runtime {
     const taskTimeout = task?.mission_id && Number.isInteger(task.timebox_ms) ? task.timebox_ms : this.executionTimeoutMs;
     const leadMs = Math.max(1, this.executionTimeoutMs - this.handoffReminderMs);
     const untilRunDeadline = this.runDeadlineAt === null ? Number.POSITIVE_INFINITY : this.runDeadlineAt - at;
-    const timeoutMs = Math.max(1, Math.min(taskTimeout, untilRunDeadline));
-    const reminderMs = this.runDeadlineAt === null
-      ? Math.min(this.handoffReminderMs, Math.max(1, timeoutMs - 1))
-      : Math.max(1, Math.min(timeoutMs - 1, timeoutMs - leadMs));
+    const bot = execution?.owner_ref ? this.taskService.getBot(execution.owner_ref) : null;
+    const untilBotDeadline = bot ? Date.parse(bot.hard_deadline) - at : Infinity;
+    if (untilBotDeadline <= 0 || untilRunDeadline <= 0) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot or Mission deadline elapsed before activation');
+    const timeoutMs = Math.max(1, Math.min(taskTimeout, this.executionTimeoutMs, untilRunDeadline, untilBotDeadline));
+    const reminderMs = Math.max(0, Math.min(timeoutMs - 1, timeoutMs - leadMs));
     const startedAt = new Date(at).toISOString();
     return {
       started_at: startedAt,

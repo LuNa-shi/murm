@@ -70,3 +70,36 @@ test('unbound exit is durable, creates no Execution, and releases the Core only 
   assert.equal(service.getBot(bot.bot_id).exit_reason, 'no-work');
   assert.equal(start('bot:after-event').state, 'STARTING');
 });
+
+test('interrupted Bot deadline migration repairs an existing nullable column', t => {
+  const { service, start } = fixture(t);
+  const bot = start('bot:migration');
+  service.db.exec('ALTER TABLE bots DROP COLUMN hard_deadline; ALTER TABLE bots ADD COLUMN hard_deadline TEXT');
+  assert.equal(service.getBot(bot.bot_id).hard_deadline, null);
+  const reopened = new TaskService(service.db);
+  assert.equal(reopened.getBot(bot.bot_id).hard_deadline, bot.selection_deadline);
+});
+
+test('expired durable deadline denies a fresh Bot write even before a timer changes state', t => {
+  const { service, start } = fixture(t);
+  const bot = start('bot:expired');
+  service.recordBotSandbox(bot.bot_id, { provider: 'controlled', sandboxId: 'sandbox:expired' });
+  service.markBotReady(bot.bot_id);
+  const past = new Date(Date.now() - 1).toISOString();
+  service.db.prepare('UPDATE bots SET hard_deadline = ? WHERE bot_id = ?').run(past, bot.bot_id);
+  assert.equal(service.getBot(bot.bot_id).state, 'UNBOUND');
+  assert.throws(() => service.createTask({ mission_id: bot.mission_id, summary: 'Late proposal must be rejected at the write boundary', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })), /hard deadline elapsed/);
+});
+
+test('trusted Runtime activation rechecks the Bot deadline inside the Task write transaction', t => {
+  const { service, start } = fixture(t);
+  const bot = start('bot:activate-expired');
+  service.recordBotSandbox(bot.bot_id, { provider: 'controlled', sandboxId: 'sandbox:activate-expired' });
+  service.markBotReady(bot.bot_id);
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Verify the activation write boundary', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'expired-activation' });
+  service.db.prepare('UPDATE bots SET hard_deadline = ? WHERE bot_id = ?').run(new Date(Date.now() - 1).toISOString(), bot.bot_id);
+  assert.throws(() => service.dispatch('start_execution', {}, makeEnvelope({ actorRef: 'runtime:trusted', taskId: task.task_id, executionId: execution.execution_id,
+    specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version })), /hard deadline elapsed/);
+  assert.equal(service.getExecution(execution.execution_id).state, 'CREATED');
+});

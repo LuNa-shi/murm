@@ -81,3 +81,11 @@ test('swarm bot exit uses the provisioned Bridge identity without an actor overr
   assert.equal(service.getBot('bot:cli').state, 'CLOSING');
   assert.equal(service.getBot('bot:cli').execution_id, null);
 });
+
+test('Bridge refuses an expired Bot credential before the cleanup timer runs', async t => {
+  const { service, bridge, start } = await fixture(t);
+  start('bot:expired');
+  service.db.prepare('UPDATE bots SET hard_deadline = ? WHERE bot_id = ?').run(new Date(Date.now() - 1).toISOString(), 'bot:expired');
+  assert.equal(service.getBot('bot:expired').state, 'UNBOUND');
+  await assert.rejects(bridge.call({ operation: 'task_create', payload: { summary: 'A late proposal at the real Bridge boundary', expected_output: 'Note', acceptance_conditions: ['Note'] } }), /hard deadline elapsed/);
+});

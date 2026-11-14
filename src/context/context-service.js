@@ -506,6 +506,7 @@ export class ContextService {
   }
 
   #assertExecutionFence(envelope) {
+    this.taskService?.assertBotDeadline?.(envelope.actor_ref);
     if (!this.taskService || envelope.execution_id === null) return;
     const execution = this.taskService.getExecution(envelope.execution_id);
     if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material source execution does not exist');

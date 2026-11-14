@@ -174,6 +174,9 @@ function optionsFromArgs(argv) {
       '--cores': 'cores',
       '--project-parallelism': 'projectParallelism',
       '--timebox-ms': 'timeboxMs',
+      '--bot-max-ms': 'botMaxMs',
+      '--selection-timeout-ms': 'selectionTimeoutMs',
+      '--execution-timeout-ms': 'executionTimeoutMs',
       '--turn-timeout-ms': 'turnTimeoutMs',
       '--observability-port': 'observabilityPort',
       '--observability-host': 'observabilityHost',
@@ -185,7 +188,7 @@ function optionsFromArgs(argv) {
     };
     if (!fields[key]) throw new Error(`unknown option: ${arg}`);
     const value = inline ?? argv[++index];
-    options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'turnTimeoutMs', 'observabilityPort'].includes(fields[key])
+    options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'botMaxMs', 'selectionTimeoutMs', 'executionTimeoutMs', 'turnTimeoutMs', 'observabilityPort'].includes(fields[key])
       ? Number(value)
       : value;
   }
@@ -200,7 +203,9 @@ function usage() {
     '    --putnambench-root /path/to/PutnamBench',
     '    --cores 4',
     '    --project-parallelism 3',
-    '    --timebox-ms 3600000',
+    '    --timebox-ms 1800000',
+    '    --bot-max-ms 600000 --selection-timeout-ms 120000',
+    '    --execution-timeout-ms 600000',
     '    --parallel-mode direct|semantic|root-only',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
@@ -227,6 +232,12 @@ if (!options.configPath || !options.putnamBenchRoot) throw new Error(usage() + '
 if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark protocol');
 if (!Number.isInteger(options.projectParallelism) || options.projectParallelism < 1) throw new Error('--project-parallelism must be a positive integer');
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
+options.botMaxMs ??= options.timeboxMs;
+options.selectionTimeoutMs ??= Math.min(300_000, options.botMaxMs);
+options.executionTimeoutMs ??= options.botMaxMs;
+for (const [field, flag] of [['botMaxMs', '--bot-max-ms'], ['selectionTimeoutMs', '--selection-timeout-ms'], ['executionTimeoutMs', '--execution-timeout-ms']]) {
+  if (!Number.isInteger(options[field]) || options[field] < 2 || options[field] > 2_147_483_647) throw new Error(`${flag} must be a timer-safe integer of at least 2 milliseconds`);
+}
 if (!['direct', 'semantic', 'root-only'].includes(options.parallelMode)) throw new Error('--parallel-mode must be direct, semantic, or root-only');
 if (!options.provider) throw new Error('PI_PROVIDER is required; set it in .env or the environment');
 if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the environment');
@@ -289,6 +300,9 @@ const metadata = {
     core_count: options.cores,
     project_parallelism: options.projectParallelism,
     timebox_ms: options.timeboxMs,
+    bot_max_ms: options.botMaxMs,
+    selection_timeout_ms: options.selectionTimeoutMs,
+    execution_timeout_ms: options.executionTimeoutMs,
     parallel_mode: options.parallelMode,
     task_model: 'flat',
     workspace_model: 'mission_workspace_public_revisions',
@@ -339,6 +353,9 @@ const aggregate = {
     core_count: options.cores,
     project_parallelism: options.projectParallelism,
     timebox_ms: options.timeboxMs,
+    bot_max_ms: options.botMaxMs,
+    selection_timeout_ms: options.selectionTimeoutMs,
+    execution_timeout_ms: options.executionTimeoutMs,
     experiment_dir: resolve(options.experimentDir),
     report_dir: resolve(options.reportDir),
     repository_commit: repositoryCommit,
