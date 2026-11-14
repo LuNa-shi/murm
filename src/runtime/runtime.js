@@ -133,7 +133,7 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionSubmissionStore = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = true, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = true, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -142,6 +142,7 @@ export class Runtime {
     // When configured, these methods are the only Runtime seam that exposes
     // repository revisions to a Bot; Git itself remains Runtime-owned.
     this.missionWorkspace = missionWorkspace;
+    this.missionWorkspaceId = missionWorkspaceId;
     this.missionSubmissionStore = missionSubmissionStore;
     this.agentAdapter = agentAdapter;
     this.sandboxManager = sandboxManager;
@@ -687,7 +688,7 @@ export class Runtime {
       if (bot.execution_id !== execution.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot does not own this Execution');
       this.sandboxManager.bindBotExecution({ botId: bot.bot_id, executionId: execution.execution_id,
         workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref, bindingVersion: execution.fencing_version });
-      await this.sandboxManager.syncWorkspace({ executionId: execution.execution_id, workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref });
+      await this.sandboxManager.syncWorkspace({ executionId: execution.execution_id, workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref, manifest: workspace?.public_workspace_input?.manifest ?? null });
       return;
     }
     await this.sandboxManager.ensureExecution({
@@ -1818,7 +1819,7 @@ export class Runtime {
         executionId: execution.execution_id,
         fencingVersion: execution.fencing_version,
       });
-      return this.#ensurePiSettings(execution, workspace);
+      return workspace.public_workspace_input ? workspace : this.#ensurePiSettings(execution, workspace);
     }
     const workspaceManifest = {
       task_id: task.task_id,
@@ -1849,17 +1850,25 @@ export class Runtime {
     const freshWorkspaceRef = fresh
       ? this.workspaceManager.workspacePath(`${execution.execution_id}-fresh-${execution.fencing_version}`)
       : workspaceRef;
-    const workspaceTask = await this.#materializeMissionInputs(task);
+    const publicSnapshot = this.missionWorkspace && this.taskService.getBot(execution.owner_ref)
+      ? await this.missionWorkspace.exportRevision({ workspaceId: requireString(this.missionWorkspaceId ?? task.workspace?.workspace_id, 'Mission workspace_id'), revision: task.workspace?.revision ?? 'main' })
+      : null;
+    if (publicSnapshot && (publicSnapshot.mission_id !== task.mission_id ||
+        (task.workspace?.workspace_id && task.workspace.workspace_id !== publicSnapshot.workspace_id))) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task Workspace inputs must belong to the Bot Mission');
+    }
+    const workspaceTask = publicSnapshot ? task : await this.#materializeMissionInputs(task);
     const workspace = await this.workspaceManager.createWorkspace({
       executionId: execution.execution_id,
       fencingVersion: execution.fencing_version,
       task: workspaceTask,
+      publicSnapshot,
       ...(freshWorkspaceRef ? { workspaceRef: freshWorkspaceRef } : {}),
       workspaceManifest,
       inputSnapshotManifest,
       runtimeManifest: { runtime_generation: this.runtimeGeneration, actor_ref: this.actorRef },
     });
-    return this.#ensurePiSettings(execution, workspace);
+    return publicSnapshot ? workspace : this.#ensurePiSettings(execution, workspace);
   }
 
   async #materializeMissionInputs(task) {
@@ -1913,6 +1922,7 @@ export class Runtime {
           workspace_ref: workspace.workspace_ref,
           workspace_revision: workspace.workspace_revision,
           workspace_content_hash: workspace.content_hash,
+          ...(workspace.public_workspace_input ? { workspace_input: workspace.public_workspace_input } : {}),
         }, this.#executionEnvelope(current, saveOperationId)).execution;
       } catch (error) {
         if (error?.code !== ERROR_CODES.STALE_VERSION || attempt === 2) throw error;

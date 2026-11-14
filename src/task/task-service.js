@@ -120,6 +120,7 @@ function rowToExecution(row) {
     workspace_manifest_ref: row.workspace_manifest_ref,
     workspace_snapshot_hash: row.input_snapshot_hash,
     workspace_selection: parse(row.workspace_selection_json) ?? {},
+    workspace_input: parse(row.workspace_input_json),
     steer_material_refs: parse(row.steer_material_refs_json),
     wait_condition: parse(row.wait_condition_json),
     handoff_metadata: parse(row.handoff_metadata_json),
@@ -268,6 +269,7 @@ export class TaskService {
       if (executionColumns.has('initial_context_ref')) this.db.exec('ALTER TABLE executions RENAME COLUMN initial_context_ref TO workspace_manifest_ref');
       else this.db.exec("ALTER TABLE executions ADD COLUMN workspace_manifest_ref TEXT NOT NULL DEFAULT ''");
     }
+    if (!executionColumns.has('workspace_input_json')) this.db.exec('ALTER TABLE executions ADD COLUMN workspace_input_json TEXT');
     if (!executionColumns.has('workspace_selection_json')) this.db.exec("ALTER TABLE executions ADD COLUMN workspace_selection_json TEXT NOT NULL DEFAULT '{}'");
     if (!executionColumns.has('started_at')) this.db.exec('ALTER TABLE executions ADD COLUMN started_at TEXT');
     if (!executionColumns.has('handoff_deadline')) this.db.exec('ALTER TABLE executions ADD COLUMN handoff_deadline TEXT');
@@ -2761,9 +2763,18 @@ export class TaskService {
     if (payload.workspace_revision !== expectedRevision) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'workspace_revision is not the next revision', { expected: expectedRevision });
     }
+    const input = payload.workspace_input ?? execution.workspace_input;
+    if (payload.workspace_input) {
+      if (execution.workspace_input && stableStringify(execution.workspace_input) !== stableStringify(input)) {
+        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Initial public Workspace input is immutable');
+      }
+      if (!execution.workspace_input && execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Initial Workspace input must be recorded before activation');
+      for (const field of ['workspace_id', 'mission_id', 'revision', 'git_commit', 'content_hash']) requireString(input[field], `workspace_input.${field}`);
+      if (input.mission_id !== this.#taskMissionId(execution.task_id)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace input belongs to another Mission');
+    }
     const updatedAt = now();
-    this.db.prepare('UPDATE executions SET workspace_ref = ?, workspace_revision = ?, workspace_content_hash = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
-      .run(payload.workspace_ref, payload.workspace_revision, payload.workspace_content_hash, updatedAt, execution.execution_id);
+    this.db.prepare('UPDATE executions SET workspace_ref = ?, workspace_revision = ?, workspace_content_hash = ?, workspace_input_json = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
+      .run(payload.workspace_ref, payload.workspace_revision, payload.workspace_content_hash, json(input), updatedAt, execution.execution_id);
     return { execution: this.getExecution(execution.execution_id) };
   }
 

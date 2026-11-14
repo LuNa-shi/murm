@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile as defaultExecFile } from 'node:child_process';
-import { cp, mkdir, lstat, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, lstat, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { dirname, isAbsolute, join, relative as pathRelative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
+import { WorkspaceRepository } from './workspace-repository.js';
 import {
   assertReadableWorkspacePath,
   assertWritableWorkspacePath,
@@ -106,7 +107,34 @@ export class WorkspaceManager {
     return join(this.rootDir, id);
   }
 
-  async createWorkspace({ executionId, fencingVersion, task, workspaceManifest, workspaceRef = this.workspacePath(executionId), inputSnapshotManifest = {}, runtimeManifest = {} }) {
+  async createWorkspace(options) {
+    if (!options.publicSnapshot) return this.#createWorkspace(options);
+    const target = this.#assertWorkspacePath(options.workspaceRef ?? this.workspacePath(options.executionId));
+    await mkdir(this.rootDir, { recursive: true });
+    await this.#assertNoSymlinkAncestors(this.rootDir, target);
+    const repository = new WorkspaceRepository();
+    return repository.requestLocked(this.rootDir, `prepare-${textHash(target)}`, async () => {
+      if (await exists(join(target, META_DIR, META_FILE))) {
+        const existing = await this.#readMetadata(target);
+        const input = Object.fromEntries(Object.entries(options.publicSnapshot).filter(([key]) => key !== 'files'));
+        if (existing.execution_id !== options.executionId || existing.fencing_version !== options.fencingVersion || existing.released_at ||
+            stableStringify(existing.public_workspace_input) !== stableStringify(input)) {
+          throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Execution directory already records different input or lifecycle ownership');
+        }
+        return this.#publicMetadata(existing);
+      }
+      if (await exists(target) && (await readdir(target)).length) throw new SwarmEnvError('WORKSPACE_BUSY', 'Execution input target is not empty');
+      const stage = await mkdtemp(join(this.rootDir, '.swarm-prepare-'));
+      try {
+        const prepared = await this.#createWorkspace({ ...options, workspaceRef: stage, publishedWorkspaceRef: target });
+        await this.#assertNoSymlinkAncestors(this.rootDir, target);
+        await rename(stage, target);
+        return prepared;
+      } finally { await rm(stage, { recursive: true, force: true }); }
+    });
+  }
+
+  async #createWorkspace({ executionId, fencingVersion, task, workspaceManifest, workspaceRef = this.workspacePath(executionId), inputSnapshotManifest = {}, runtimeManifest = {}, publicSnapshot = null, publishedWorkspaceRef = workspaceRef }) {
     workspaceRef = this.#assertWorkspacePath(workspaceRef);
     await mkdir(this.rootDir, { recursive: true });
     await this.#assertNoSymlinkAncestors(this.rootDir, workspaceRef);
@@ -125,7 +153,7 @@ export class WorkspaceManager {
     }
     const taskWorkspace = task.workspace && typeof task.workspace === 'object' ? task.workspace : {};
     const workspaceContract = normalizeWorkspaceContract(taskWorkspace);
-    const files = {
+    const files = publicSnapshot ? publicSnapshot.files : {
       'README.md': [
         `# ${task.goal}`,
         '',
@@ -153,10 +181,10 @@ export class WorkspaceManager {
       }, null, 2),
       'runtime-manifest.json': JSON.stringify(runtimeManifest, null, 2),
     };
-    if (typeof taskWorkspace.formal_source === 'string' && taskWorkspace.formal_source.length > 0) {
+    if (!publicSnapshot && typeof taskWorkspace.formal_source === 'string' && taskWorkspace.formal_source.length > 0) {
       files[taskWorkspace.problem_file ?? 'problem.lean'] = taskWorkspace.formal_source;
     }
-    const fileManifest = {};
+    const fileManifest = Object.create(null);
     const normalizedFiles = Object.entries(files).map(([inputPath, content]) => [safePath(inputPath), content]);
     for (const [relativePath, content] of normalizedFiles) {
       const target = join(workspaceRef, relativePath);
@@ -167,17 +195,23 @@ export class WorkspaceManager {
       fileManifest[relativePath] = contentEntry(content);
     }
     validateRequiredWorkspaceInputs(fileManifest, workspaceContract);
-    const gitCommit = await this.#initializeGit(workspaceRef);
+    if (publicSnapshot && stableStringify(fileManifest) !== stableStringify(publicSnapshot.manifest)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Initial project bytes do not match the public revision manifest');
+    }
+    const gitCommit = publicSnapshot
+      ? (await new WorkspaceRepository().createInitialTree(workspaceRef, files)).commit
+      : await this.#initializeGit(workspaceRef);
     const metadata = {
       execution_id: executionId,
-      workspace_ref: workspaceRef,
+      workspace_ref: publishedWorkspaceRef,
       fencing_version: fencingVersion,
       workspace_revision: 1,
       content_hash: hash({ revision: 1, files: fileManifest }),
       git_commit: gitCommit,
-      git_worktree: workspaceRef,
+      git_worktree: publishedWorkspaceRef,
       files: fileManifest,
       workspace_contract: workspaceContract,
+      public_workspace_input: publicSnapshot ? Object.fromEntries(Object.entries(publicSnapshot).filter(([key]) => key !== 'files')) : null,
       checkpoint_ref: null,
       checkpoint_hash: null,
       changed_files: Object.keys(fileManifest),
@@ -717,6 +751,7 @@ export class WorkspaceManager {
   #publicMetadata(metadata) {
     return {
       workspace_ref: metadata.workspace_ref,
+      public_workspace_input: metadata.public_workspace_input ?? null,
       execution_id: metadata.execution_id,
       fencing_version: metadata.fencing_version,
       workspace_revision: metadata.workspace_revision,

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -490,7 +490,7 @@ export class OpenSandboxManager {
     return versions;
   }
 
-  async syncWorkspace({ executionId, workspaceRef, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 } = {}) {
+  async syncWorkspace({ executionId, workspaceRef, manifest = null, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 } = {}) {
     const record = this.#record(executionId);
     if (typeof workspaceRef !== 'string' || workspaceRef.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspaceRef is required to initialize the provider Workspace');
     const root = workspaceRef;
@@ -503,16 +503,49 @@ export class OpenSandboxManager {
         else if (entry.isFile()) files.push(source);
       }
     }
-    await walk(root).catch((error) => { throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `could not read initial Workspace: ${error.message}`, undefined, { cause: error }); });
+    if (manifest) {
+      const rootInfo = await lstat(root);
+      if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace input root must be a regular directory');
+      for (const path of Object.keys(manifest)) {
+        const segments = path.split('/');
+        if (segments.some(segment => !segment || ['.', '..', '.git', '.swarm', '.pi', '.env'].includes(segment) || segment.startsWith('.swarm-') || segment.startsWith('.env.')) || path.includes('\\') || path.includes('\0')) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace manifest contains a forbidden path');
+        }
+        let current = root;
+        for (const [index, segment] of segments.entries()) {
+          current = join(current, segment);
+          const info = await lstat(current);
+          if (info.isSymbolicLink() || (index < segments.length - 1 ? !info.isDirectory() : !info.isFile())) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace input must contain regular files without symlinks');
+        }
+        files.push(join(root, path));
+      }
+    } else await walk(root).catch((error) => { throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `could not read initial Workspace: ${error.message}`, undefined, { cause: error }); });
     let total = 0;
     for (const source of files) {
       const content = await readFile(source);
       if (content.length > maxFileBytes || total + content.length > maxTotalBytes) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'initial Workspace exceeds provider sync bounds', { max_file_bytes: maxFileBytes, max_total_bytes: maxTotalBytes });
       total += content.length;
+      const path = relative(root, source).split('\\').join('/');
+      const digest = createHash('sha256').update(content).digest('hex');
+      if (manifest && (manifest[path]?.content_hash !== digest || manifest[path]?.bytes !== content.length)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Public Workspace input bytes differ from the pinned manifest', { path });
       const target = `/workspace/${relative(root, source).split('\\').join('/')}`;
       const encoded = content.toString('base64');
-      const copied = await this.exec({ executionId, command: ['sh', '-lc', `mkdir -p ${shellQuote(join(target, '..'))} && printf %s ${shellQuote(encoded)} | base64 -d > ${shellQuote(target)}`], timeoutMs: this.commandTimeoutMs });
-      if (copied.exit_code !== 0 || copied.timed_out) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'Bot Workspace input copy failed', { execution_id: executionId, path: relative(root, source), exit_code: copied.exit_code });
+      const stage = join(target, '..', `.swarm-input-${randomUUID()}`);
+      // Linux limits each argv string independently of the request body's
+      // size. Keep each base64 segment below that limit, including quoting.
+      const chunks = encoded.match(/.{1,65536}/g) ?? [''];
+      try {
+        for (const [index, chunk] of chunks.entries()) {
+          const first = index === 0;
+          const last = index === chunks.length - 1;
+          const publish = last ? ` && test "$(sha256sum < ${shellQuote(stage)} | cut -d ' ' -f 1)" = ${shellQuote(digest)} && mv -T -- ${shellQuote(stage)} ${shellQuote(target)}` : '';
+          const copied = await this.exec({ executionId, command: ['sh', '-lc', `umask 077; mkdir -p ${shellQuote(join(target, '..'))} && printf %s ${shellQuote(chunk)} | base64 -d ${first ? '>' : '>>'} ${shellQuote(stage)}${publish}`], timeoutMs: this.commandTimeoutMs });
+          if (copied.exit_code !== 0 || copied.timed_out) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'Bot Workspace input copy failed', { execution_id: executionId, path, exit_code: copied.exit_code });
+        }
+      } catch (error) {
+        await this.exec({ executionId, command: ['rm', '-f', '--', stage], timeoutMs: this.commandTimeoutMs }).catch(() => undefined);
+        throw error;
+      }
     }
     this.logger?.({ event: 'sandbox.workspace_initialized', provider: 'opensandbox', execution_id: executionId, file_count: files.length, bytes: total });
     return { execution_id: executionId, file_count: files.length, bytes: total, workspace: '/workspace' };

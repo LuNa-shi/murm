@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { TaskService } from '../src/task/task-service.js';
 import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
+import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
@@ -36,7 +37,7 @@ async function fixture(t, runtimeOptions = {}) {
     session.stop = async () => { session.closed = true; session.emit('close'); };
     return session;
   };
-  return { service, runtime, manager, startSession, calls };
+  return { root, service, runtime, manager, startSession, calls };
 }
 
 test('Runtime starts and cleans an unbound Bot without inventing an Execution', async (t) => {
@@ -435,4 +436,64 @@ test('earlier Task hard deadline automatically stops a registered Bot without an
   assert.equal(session.closed, true);
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
   assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'execution-timebox');
+});
+
+
+test('registered take pins the complete public tree even when main advances during preparation', async t => {
+  const { root, service, runtime, startSession } = await fixture(t);
+  const publicStore = new MissionWorkspace({ rootDir: join(root, 'public-repositories') });
+  const files = Object.fromEntries([['README.md', 'Shared project description'], ['problem.lean', 'locked source'], ['config/settings.json', '{"setting":true}'], ['data/bytes.bin', Buffer.from([0, 255, 128])], ['.gitignore', 'scratch/\n'], ['__proto__', 'ordinary project data']]);
+  await publicStore.create({ missionId: 'mission:bots', workspaceId: 'workspace-bots', initialFiles: files });
+  runtime.missionWorkspace = publicStore;
+  runtime.missionWorkspaceId = 'workspace-bots';
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect the full shared project input', expected_output: 'Note', acceptance_conditions: ['Inputs inspected'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'full-tree-input' });
+  const create = runtime.workspaceManager.createWorkspace.bind(runtime.workspaceManager);
+  runtime.workspaceManager.createWorkspace = async options => {
+    const next = await publicStore.save({ workspaceId: 'workspace-bots', files: { ...files, 'later.txt': 'arrived after input resolution' } });
+    await publicStore.merge({ workspaceId: 'workspace-bots', fromRevision: next.revision });
+    return create(options);
+  };
+  const { workspace } = await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
+  const current = service.getExecution(execution.execution_id);
+  assert.equal(current.workspace_input.revision, '0.1');
+  assert.equal((await publicStore.get({ workspaceId: 'workspace-bots' })).main_revision, '0.3');
+  assert.equal(current.workspace_input.git_commit, workspace.public_workspace_input.git_commit);
+  assert.deepEqual(Object.keys(current.workspace_input.manifest).sort(), Object.keys(files).sort());
+  for (const [path, content] of Object.entries(files)) assert.deepEqual(await readFile(join(workspace.workspace_ref, path)), Buffer.from(content));
+  const names = await readdir(workspace.workspace_ref);
+  for (const absent of ['later.txt', 'runtime-manifest.json', 'workspace-manifest.json', '.pi']) assert.equal(names.includes(absent), false);
+  assert.throws(() => service.dispatch('save_workspace_revision', { workspace_ref: current.workspace_ref, workspace_revision: current.workspace_revision + 1,
+    workspace_content_hash: 'next', workspace_input: { ...current.workspace_input, revision: '0.3' } }, makeEnvelope({ actorRef: 'runtime:test', taskId: task.task_id, executionId: current.execution_id,
+      specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version })), /immutable/);
+  assert.equal(service.getExecution(execution.execution_id).workspace_input.revision, '0.1');
+});
+
+test('a Task cannot materialize another Mission public Workspace', async t => {
+  const { root, service, runtime, startSession } = await fixture(t);
+  runtime.missionWorkspace = new MissionWorkspace({ rootDir: join(root, 'public-repositories') });
+  await runtime.missionWorkspace.create({ missionId: 'mission:other', workspaceId: 'workspace-other', initialFiles: { 'other.txt': 'private to another Mission' } });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Attempt a foreign project input', expected_output: 'Note', acceptance_conditions: ['Note'], workspace: { workspace_id: 'workspace-other' } }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'foreign-input' });
+  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false }), /must belong to the Bot Mission/);
+  assert.equal(service.getExecution(execution.execution_id).workspace_input, null);
+  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
+  assert.equal(session.closed, true);
+});
+
+test('a Task explicit public revision is used instead of the current main', async t => {
+  const { root, service, runtime, startSession } = await fixture(t);
+  runtime.missionWorkspace = new MissionWorkspace({ rootDir: join(root, 'public-repositories') });
+  runtime.missionWorkspaceId = 'workspace-selected';
+  await runtime.missionWorkspace.create({ missionId: 'mission:bots', workspaceId: 'workspace-selected', initialFiles: { 'input.txt': 'main' } });
+  const saved = await runtime.missionWorkspace.save({ workspaceId: 'workspace-selected', files: { 'input.txt': 'selected saved revision' } });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a specific public input revision', expected_output: 'Note', acceptance_conditions: ['Note'],
+    workspace: { workspace_id: 'workspace-selected', revision: saved.revision } }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'selected-input' });
+  const { workspace } = await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
+  assert.equal(service.getExecution(execution.execution_id).workspace_input.revision, saved.revision);
+  assert.equal(await readFile(join(workspace.workspace_ref, 'input.txt'), 'utf8'), 'selected saved revision');
 });

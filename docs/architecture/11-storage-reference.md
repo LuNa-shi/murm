@@ -58,7 +58,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Task and Execution database
 
-Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `5f5e9a388f5c0d6497573f1353194b952ccf9d99c1778bf412780c9467eeeaab`.
+Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `479d3aa7b10a875dee6882218e28ad5e4d13e149b8b51ad4465e5e04c48f7e7c`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -243,6 +243,7 @@ CREATE TABLE IF NOT EXISTS executions (
   workspace_manifest_ref TEXT NOT NULL,
   input_material_refs_json TEXT NOT NULL,
   input_snapshot_hash TEXT NOT NULL,
+  workspace_input_json TEXT,
   workspace_selection_json TEXT NOT NULL DEFAULT '{}',
   workspace_source_id TEXT,
   workspace_ref TEXT,
@@ -656,7 +657,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `7eb851548505cf94ee191000115fdff1b18ea1193b28e9bc8f4215bd00bdd210`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `37d571e5c47ef25cb8127c272f9da4410e2c3592dbc9b48f35a76c76206efc02`.
 
 #### executions_active_core
 

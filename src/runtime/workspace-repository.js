@@ -97,6 +97,14 @@ export class WorkspaceRepository {
 
   async initialize(root) { await git(root, ['init', '--initial-branch=main', '--template=', root]); }
 
+  async createInitialTree(root, files) {
+    await this.initialize(root);
+    const imported = await this.importTree(root, files, [], 'Initial Execution project input');
+    gitSync(root, ['update-ref', 'refs/heads/main', imported.commit, ZERO]);
+    gitSync(root, ['read-tree', '--reset', imported.commit]);
+    return imported;
+  }
+
   async importTree(root, files, parentCommits, message) {
     const stageRoot = join(root, '.swarm-staging');
     await mkdir(stageRoot, { recursive: true });

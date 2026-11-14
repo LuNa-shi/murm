@@ -33,11 +33,11 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "1855125eaf40c20df774389e6e7ca6870de3b76cd2b51f346b630fee96b5d697"
+      "sha256": "50069018f2c9bc2fd83a6c1d9a510743440655a991087fb8c1b1ab3ce99811ad"
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "3b40fee8f290081c9bfba835060df33fe18696ffac06e5dff9f1220269ea9734"
+      "sha256": "396c94c09e8b2bff0ad93b995c9359707bc0fe5180814358521894081367dfc4"
     },
     {
       "path": "src/runtime/identity-task-loop.js",
@@ -77,7 +77,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "7eb851548505cf94ee191000115fdff1b18ea1193b28e9bc8f4215bd00bdd210"
+      "sha256": "37d571e5c47ef25cb8127c272f9da4410e2c3592dbc9b48f35a76c76206efc02"
     },
     {
       "path": "src/task/task-types.js",
@@ -100,25 +100,25 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const modeInstructions = ",
-      "line": 1659,
+      "line": 1660,
       "sha256": "dc33ea53f8ff3c60b8089bbd1df164b41ddae305ae29a9c02ff52cf74f4a7122"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const dependencyInstruction = ",
-      "line": 1662,
+      "line": 1663,
       "sha256": "4d86810c4271542d73bd027ca54072cc2fe2e00670c1b275f7d0f17cfdce0c10"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const taskSpecificInstruction = ",
-      "line": 1663,
+      "line": 1664,
       "sha256": "a5c864d39b6125b61f29029465c2355a561501a2ae0406d9af5fdf09712f67fc"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "    task_instructions: ",
-      "line": 1673,
+      "line": 1674,
       "sha256": "6b92a2c310f719e6beeb2b8e1ec486d1c569f4db969a58e5ed2d7b2c3ccfff08"
     },
     {
@@ -130,7 +130,7 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "      takePrompt: ",
-      "line": 2646,
+      "line": 2648,
       "sha256": "17ed07b6a8e2399ba80eba09cc6bd8d72883f23718e4bfad21c3289b1cb4bd6f"
     },
     {
@@ -142,31 +142,31 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const basePrompt = ",
-      "line": 2637,
+      "line": 2639,
       "sha256": "6be42e0ba4e7c5c99afffc42d9d0a74f4ef9c76f92d2179ae27b94c195b043f4"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #notificationText",
-      "line": 2122,
+      "line": 2132,
       "sha256": "dcb4b6b8cafb3d4f36b9c33aadd300c45924a65c12116ea481515599030f9768"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #recoveryPrompt",
-      "line": 2741,
+      "line": 2751,
       "sha256": "9ba0d06fb75945a5e5e3fd4a5768df5c449818e7f6abbc0b5879feb6941cf61b"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "        const prompt = ",
-      "line": 1457,
+      "line": 1458,
       "sha256": "7324112e1ed5f71238d9bf5ac227047ab65eb0e32c8e609355b9959928503c2f"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "              await active.session.prompt(\n                ",
-      "line": 2574,
+      "line": 2584,
       "sha256": "aa531fc52ff79a137d3465b431a874606d420f627f5d4723998fb1ab0bc8dec6"
     },
     {
@@ -199,22 +199,22 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1462,
+      "line": 1463,
       "expression": "active.promptChain = active.promptChain.catch(() => undefined).then(() => active.session.prompt?.(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' }));"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2108,
+      "line": 2118,
       "expression": "await session.prompt(dynamic.prompt, { timeoutMs: 30_000 });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2173,
+      "line": 2183,
       "expression": "await active.session.prompt?.(this.#notificationText(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2574,
+      "line": 2584,
       "expression": "await active.session.prompt("
     }
   ],
@@ -323,13 +323,13 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1496,
+      "line": 1498,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1707,
+      "line": 1709,
       "field": "action",
       "sha256": "ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8"
     }
@@ -357,7 +357,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "edbfd5617b69a548e2f42a0dbc9431cb936d22adb340049a08f46e73850b3588"
+      "sha256": "8a90e1145d283740657a33fd1745e1d37878431e57b1da30afd2941170ad3d79"
     }
   ]
 }

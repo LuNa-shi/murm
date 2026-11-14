@@ -186,6 +186,7 @@ CREATE TABLE IF NOT EXISTS executions (
   workspace_manifest_ref TEXT NOT NULL,
   input_material_refs_json TEXT NOT NULL,
   input_snapshot_hash TEXT NOT NULL,
+  workspace_input_json TEXT,
   workspace_selection_json TEXT NOT NULL DEFAULT '{}',
   workspace_source_id TEXT,
   workspace_ref TEXT,

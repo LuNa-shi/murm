@@ -1128,6 +1128,7 @@ function projectReport(state, startedAt, deadline) {
       takes: core.takeHistory.map((take) => ({
         ...take,
         workspace_revision_end: state.taskService.getExecution(take.execution_id)?.workspace_revision ?? null,
+        initial_public_workspace_input: state.taskService.getExecution(take.execution_id)?.workspace_input ?? null,
       })),
       latency_samples: core.latencySamples,
       tool_events: [...new Set(core.toolEvents)],
@@ -1792,6 +1793,7 @@ async function createProjectState(problem, config, options) {
       contextService,
       workspaceManager,
       missionWorkspace,
+      missionWorkspaceId: publicWorkspace.workspace_id,
       missionSubmissionStore,
       agentAdapter: adapter,
       runtimeCapabilities,
