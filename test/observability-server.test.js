@@ -139,7 +139,7 @@ test('ObservabilityServer keeps imported lifecycle facts and root-array projecti
   append({ source: 'runtime', kind: 'execution_observed', taskId: 'task-root', executionId: 'exec-root', payload: { task_state: 'WAITING', execution_state: 'WAITING' } });
   append({ source: 'agent', kind: 'agent_turn_started', taskId: 'task-root', executionId: 'exec-root', payload: { state: 'RUNNING' } });
   append({ source: 'workspace', kind: 'workspace_revision_saved', taskId: 'task-root', executionId: 'exec-root', payload: { path: 'README.md', workspace_revision: 2 } });
-  append({ source: 'judge', kind: 'judge_check_finished', taskId: 'task-root', executionId: 'exec-root', payload: { candidate_material_id: 'material-1', verdict: 'FAIL' } });
+  append({ source: 'judge', kind: 'judge_check_finished', taskId: 'task-root', executionId: 'exec-root', payload: { workspace_source_id: 'material-1', verdict: 'FAIL' } });
   append({ source: 'task-service', kind: 'dispatch.complete', taskId: 'task-root', executionId: 'exec-root', payload: { result: [{ task_id: 'task-root', goal: 'Imported task', state: 'WAITING' }, { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note' }] } });
   append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', args: { kind: 'artifact' } } } });
   append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', result: { details: { material: { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note', content: { summary: 'Readable material', proof: 'PROOFSECRET' }, source_task: 'task-root', source_execution: 'exec-root' } } } } } });
@@ -286,4 +286,16 @@ test('ObservabilityServer preserves active Core lanes beyond the recent timeline
     await server.stop();
     store.close();
   }
+});
+
+test('Observer refuses anonymous remote binds and rejects forwarded or cross-site local API requests', async t => {
+  const store = new ObservationStore(':memory:');
+  t.after(() => store.close());
+  assert.throws(() => new ObservabilityServer({ observationStore: store, host: '0.0.0.0' }),
+    /requires explicit operator authentication/);
+  const server = new ObservabilityServer({ observationStore: store });
+  const { url } = await server.start();
+  t.after(() => server.stop());
+  assert.equal((await fetch(`${url}/api/experiments`)).status, 200);
+  assert.equal((await fetch(`${url}/api/experiments`, { headers: { 'x-forwarded-host': 'remote.example' } })).status, 403);
 });

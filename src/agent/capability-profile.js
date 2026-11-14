@@ -16,15 +16,18 @@ const INTERNAL_AUDIENCES = new Set(['runtime', 'daemon', 'internal']);
 // this allowlist keeps the fallback equally aligned with the current Agent
 // contract while callers migrate to a Registry.
 const CURRENT_AGENT_OPERATIONS = new Set([
+  'bot_exit',
   'list_services', 'get_service_metadata', 'list_tools',
-  'list_tasks', 'get_task', 'list_executions',
-  'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_block', 'task_close',
-  'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
-  'publish_material', 'read_materials', 'consume_materials',
-  'context_search_materials', 'context_get_material', 'context_publish_material',
-  'submit_candidate', 'get_check_result', 'get_execution',
+  'list_tasks', 'list_executions',
+  'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
+  'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_cancel', 'task_dependency_replace',
+  'read_materials', 'consume_materials',
+  'context_search_materials', 'context_get_material', 'context_publish_material', 'material_dispute', 'material_supersede', 'material_unsupersede',
+  'workspace_check', 'get_check_result', 'get_execution',
   'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
   'read_workspace_file', 'write_workspace_file', 'workspace_diff',
+  'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_apply',
+  'workspace_save', 'workspace_merge', 'mission_get', 'mission_submit', 'mission_submission_get',
 ]);
 
 function clone(value) {
@@ -77,7 +80,7 @@ function inferredAudience(capability) {
   if (service === 'workspace' || service === 'execution' || service === 'context' || service === 'judge' || capability.runtime_owned === true || operation === 'scheduler_status') {
     return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
-  if (operation === 'list_tasks' || operation === 'task_list' || operation === 'task_view' || operation === 'get_task' || operation === 'task_status') {
+  if (operation === 'list_tasks' || operation === 'task_list' || operation === 'task_view' || operation === 'task_status') {
     return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
   if (scope === 'public-read' && sideEffect === false) {

@@ -9,7 +9,7 @@ test('Service catalog keeps internal ownership metadata and exposes the modern T
   assert.deepEqual(services.map((service) => service.name), ['task', 'execution', 'workspace', 'context', 'judge', 'catalog']);
   const task = getServiceMetadata('task');
   assert.equal(new Set(task.tools.map((tool) => tool.name)).size, task.tools.length);
-  for (const name of ['task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_handoff', 'task_block', 'task_close']) {
+  for (const name of ['task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish']) {
     assert.ok(task.tools.some((tool) => tool.name === name), `missing public semantic tool ${name}`);
   }
   assert.ok(task.tools.some((tool) => tool.name === 'task_list'));
@@ -48,6 +48,6 @@ test('Pi extension registers only the deterministic role profile', async () => {
   assert.deepEqual(names, profile.capabilities.map((tool) => `swarmenv_${tool.tool_name ?? tool.name}`));
   assert.ok(names.length > 0);
   assert.ok(!names.includes('swarmenv_call'));
-  assert.ok(!names.includes('swarmenv_task_claim'));
+  assert.ok(names.includes('swarmenv_task_take'));
   assert.ok(names.includes('swarmenv_task_create') || names.includes('swarmenv_task_create_task'));
 });

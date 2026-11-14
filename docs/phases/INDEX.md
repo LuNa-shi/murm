@@ -6,7 +6,7 @@
 
 | 序号 | 阶段 | 设计与审阅入口 | 与当前代码的关系 |
 |---|---|---|---|
-| 01 | 第三方 Sandbox、独立 Services 与 Bash CLI | [前置阶段边界](0001-sandbox-services-cli.md) · [Issue #119](https://github.com/LuNa-shi/SwarmEnv/issues/119) | `e6f97bc` 已有 OpenSandbox、独立服务部署与 CLI 接入；实现切片不等于完整生命周期和真实环境验收，范围仍以原 Issue 为准 |
+| 01 | 第三方 Sandbox、独立 Services 与 Bash CLI | [前置阶段边界](0001-sandbox-services-cli.md) · [Issue #119](https://github.com/LuNa-shi/SwarmEnv/issues/119) | `1d9be9f` 已有 OpenSandbox、独立服务部署与 CLI 接入；实现切片不等于完整生命周期和真实环境验收，范围仍以原 Issue 为准 |
 | 02 | Task–Material–Workspace 协作模型与 Bot 协议 | [完整设计](0002-task-material-workspace/README.md) · [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · [讨论 #120](https://github.com/LuNa-shi/SwarmEnv/issues/120) | 已确认的目标设计，含整版 merge；在阶段 01 的执行基础上实施，尚不能当作当前运行 API |
 
 ## 如何审阅和维护

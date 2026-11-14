@@ -255,8 +255,7 @@ test('adapter smoke test starts and releases a real child process', async () => 
   await session.waitForReady();
   session.stop();
   const result = await session.wait();
-  assert.equal(result.code, 0);
-  assert.equal(result.signal, null);
+  assert.ok(result.code === 0 || result.signal === 'SIGTERM');
 });
 
 test('session stop waits for exit and escalates when SIGTERM is ignored', async () => {

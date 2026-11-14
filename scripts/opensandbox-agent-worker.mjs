@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { randomUUID, createHash } from 'node:crypto';
+import { spawn, spawnSync } from 'node:child_process';
+import { readFile, writeFile, mkdir, chown, readdir, lstat, realpath, statfs } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { SandboxProject, BOT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.mjs';
 
 const argv = process.argv.slice(2);
 function option(name, fallback = null) {
@@ -15,6 +16,17 @@ const port = Number(option('--port', process.env.SWARMENV_WORKER_PORT ?? 44100))
 const token = option('--token', process.env.SWARMENV_WORKER_TOKEN) ?? randomUUID();
 if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('worker port must be an integer from 1 to 65535');
 
+const project = new SandboxProject();
+const quotaRequired = argv.includes('--require-project-quota');
+const catalogPath = '/opt/swarmenv/pi-agent/models.json';
+const filesystemPolicy = '/opt/swarmenv/bot-filesystem-policy';
+const unprivileged = ['--reuid', String(BOT_UID), '--regid', String(BOT_UID), '--clear-groups', '--no-new-privs',
+  '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all', '--'];
+let initialized = !quotaRequired;
+if (initialized) await project.initialize();
+let everStarted = false;
+let stopping = null;
+let writerGate = Promise.resolve();
 let child = null;
 let stdoutBuffer = '';
 let sequence = 0;
@@ -89,23 +101,72 @@ function processStdout(chunk) {
 }
 
 async function startAgent(input) {
-  if (child) throw new Error('worker Agent is already started');
+  if (everStarted || project.closing) throw new Error('worker Bot cannot start another Agent');
   if (!Array.isArray(input.args) || !input.args.every((value) => typeof value === 'string')) throw new Error('worker args must be a string array');
   if (typeof input.command !== 'string' || !input.command) throw new Error('worker command is required');
-  const cwd = input.cwd ?? '/workspace';
-  if (typeof cwd !== 'string' || !(cwd === '/workspace' || cwd.startsWith('/workspace/')) || cwd.split('/').includes('..')) throw new Error('worker cwd must stay inside /workspace');
-  if (input.system_prompt_path && (typeof input.system_prompt_path !== 'string' || !(input.system_prompt_path === '/workspace' || input.system_prompt_path.startsWith('/workspace/')) || input.system_prompt_path.split('/').includes('..'))) throw new Error('worker system prompt path must stay inside /workspace');
+  const cwd = input.cwd ?? PROJECT_DIR;
+  if (cwd !== PROJECT_DIR) throw new Error('worker project cwd must be /workspace/project');
+  everStarted = true;
+  let projectQuota = null;
+  if (quotaRequired) {
+    const { bytes, inodes } = input.project_quota ?? {};
+    if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(inodes) || bytes <= 0 || inodes <= 0) throw new Error('Bot workspace quota is required');
+    const filesystem = await statfs('/workspace', { bigint: true });
+    const mounts = (await readFile('/proc/self/mountinfo', 'utf8')).trim().split('\n');
+    const mount = mounts.findLast(row => row.split(' ')[4] === '/workspace')?.split(' ');
+    if (mounts.some(row => row.split(' ')[4]?.startsWith('/workspace/')) || filesystem.type !== 0x01021994n || filesystem.blocks * filesystem.bsize !== BigInt(bytes) ||
+        filesystem.files !== BigInt(inodes) || !mount?.[5]?.split(',').includes('nodev') ||
+        !mount[5].split(',').includes('nosuid') || (await readdir('/workspace')).length) throw new Error('Bot workspace quota is absent or mismatched');
+    const probe = spawnSync('setpriv', [...unprivileged, filesystemPolicy, '/usr/bin/true'], { cwd: '/', timeout: 2_000 });
+    if (probe.status !== 0) throw new Error('Bot filesystem policy could not be enforced');
+    if (project.closing) throw new Error('Bot stopped during filesystem validation');
+    await project.initialize();
+    initialized = true;
+    projectQuota = { bytes, inodes };
+  } else if (input.project_quota) throw new Error('Worker must start in quota enforcement mode');
+  const expectedNames = ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
+  if (input.contract_version !== 'swarm-bot-v1-draft.2' || !Array.isArray(input.resources) || input.resources.length !== 5 ||
+      new Set(input.resources.map(resource => resource.path)).size !== 5 ||
+      !expectedNames.every(name => input.resources.some(resource => resource.path === `/opt/swarmenv/src/agent/bot-contract/${name}`))) throw new Error('complete versioned Bot contract resources are required');
+  for (const resource of input.resources) {
+    if (!/^\/opt\/swarmenv\/src\/agent\/bot-contract\/(system\.txt|(?:plan-task|use-material|use-workspace|finish-task)\.md)$/.test(resource.path ?? '')) throw new Error('unsupported Bot contract resource');
+    const info = await lstat(resource.path);
+    if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022) || !(info.mode & 0o004) || await realpath(resource.path) !== resource.path) throw new Error('Bot contract resource must be immutable to the Bot');
+    for (let parent = dirname(resource.path); parent !== '/'; parent = dirname(parent)) {
+      const directory = await lstat(parent);
+      if (!directory.isDirectory() || directory.uid !== 0 || (directory.mode & 0o022) || !(directory.mode & 0o001)) throw new Error('Bot contract parent must be protected and traversable');
+    }
+    const sha256 = createHash('sha256').update(await readFile(resource.path)).digest('hex');
+    if (sha256 !== resource.sha256) throw new Error('Bot contract resource does not match the pinned version');
+  }
+  if (project.closing) throw new Error('Bot stopped during resource validation');
+  for (const path of ['home', 'tmp', 'pi-agent', 'pi-session']) {
+    await mkdir(join(RUNTIME_DIR, path), { recursive: true });
+    await chown(join(RUNTIME_DIR, path), BOT_UID, BOT_UID);
+  }
+  if (input.system_prompt_path && (typeof input.system_prompt_path !== 'string' || !input.system_prompt_path.startsWith(`${RUNTIME_DIR}/`) || input.system_prompt_path.split('/').includes('..'))) throw new Error('worker system prompt path must stay inside /workspace');
   if (input.system_prompt_path && typeof input.system_prompt === 'string') {
     await mkdir(dirname(input.system_prompt_path), { recursive: true });
     await writeFile(input.system_prompt_path, input.system_prompt, { mode: 0o600 });
+    await chown(input.system_prompt_path, BOT_UID, BOT_UID);
   }
-  const childEnv = { ...process.env };
-  delete childEnv.SWARMENV_WORKER_TOKEN;
   const suppliedEnv = { ...(input.env ?? {}), ...(input.secret_env ?? {}) };
   delete suppliedEnv.SWARMENV_WORKER_TOKEN;
-  const agentEnvironment = { ...childEnv, ...suppliedEnv };
+  const agentEnvironment = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', ...suppliedEnv,
+    HOME: join(RUNTIME_DIR, 'home'), TMPDIR: join(RUNTIME_DIR, 'tmp'), PI_CODING_AGENT_DIR: join(RUNTIME_DIR, 'pi-agent') };
+  const catalog = await readFile(catalogPath);
+  let modelCatalogResource = null;
+  if (input.model_catalog_resource) {
+    const sha256 = createHash('sha256').update(catalog).digest('hex');
+    if (input.model_catalog_resource.path !== catalogPath || input.model_catalog_resource.sha256 !== sha256) throw new Error('Pi model catalog does not match the host selection gate');
+    modelCatalogResource = { path: catalogPath, sha256 };
+  }
+  await writeFile(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), catalog, { mode: 0o600 });
   await expandPiModelCatalog(agentEnvironment);
-  child = spawn(input.command, input.args, { cwd, env: agentEnvironment, stdio: ['pipe', 'pipe', 'pipe'] });
+  await chown(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), BOT_UID, BOT_UID);
+  if (project.closing) throw new Error('Bot stopped during startup');
+  child = spawn('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), input.command, ...input.args],
+    { cwd, env: agentEnvironment, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdout.on('data', processStdout);
   child.stderr.on('data', (chunk) => { for (const response of subscribers) response.write(`event: stderr\ndata: ${JSON.stringify({ text: chunk.toString() })}\n\n`); });
   child.on('error', (error) => publish({ type: 'worker_error', message: error.message }));
@@ -115,13 +176,23 @@ async function startAgent(input) {
     subscribers.clear();
     child = null;
   });
-  return { pid: child.pid };
+  return { pid: child.pid, contract: { version: input.contract_version, resources: input.resources },
+    ...(projectQuota ? { project_quota: projectQuota } : {}),
+    ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}) };
 }
 
 async function rpc(input) {
-  if (!child?.stdin?.writable) throw new Error('worker Agent is not running');
   const message = input?.message ?? input;
   if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('worker RPC message must be an object');
+  // Transport recovery asks for the bounded record history that accumulated
+  // while the SSE endpoint was unavailable.  Keep this read local to the
+  // worker so the caller can replay from an explicit sequence without
+  // sending a synthetic command to Pi.
+  if (message.type === 'get_state' && Number.isFinite(Number(message.since))) {
+    const since = Math.max(0, Number(message.since));
+    return { records: records.filter((record) => record.worker_sequence > since) };
+  }
+  if (!child?.stdin?.writable) throw new Error('worker Agent is not running');
   const id = message.id ?? null;
   if (id && rpcResults.has(id)) return rpcResults.get(id);
   const beforeSequence = sequence;
@@ -142,16 +213,109 @@ async function rpc(input) {
   return result;
 }
 
+async function botProcesses() {
+  const pids = [];
+  for (const name of await readdir('/proc')) {
+    if (!/^\d+$/.test(name)) continue;
+    let status;
+    try { status = await readFile(`/proc/${name}/status`, 'utf8'); } catch (error) { if (['ENOENT', 'ESRCH'].includes(error.code)) continue; throw error; }
+    const uid = Number(status.match(/^Uid:\s+(\d+)/m)?.[1]);
+    if (uid === BOT_UID && !/^State:\s+Z/m.test(status)) pids.push(Number(name));
+  }
+  return pids;
+}
+
+const heldWriters = new Set();
+let installHoldTimer = null;
+function withBotPaused(operation) {
+  const pending = writerGate.then(async () => {
+    if (project.closing) throw new Error('Bot is closing');
+    const paused = new Set();
+    let stable = 0;
+    const deadline = Date.now() + 2000;
+    try {
+      while (stable < 2) {
+        if (project.closing) throw new Error('Bot closed while pausing project writers');
+        const pids = await botProcesses();
+        if (child?.pid && !pids.includes(child.pid)) pids.push(child.pid);
+        let changed = false;
+        for (const pid of pids) {
+          if (!paused.has(pid)) {
+            try { process.kill(pid, 'SIGSTOP'); paused.add(pid); changed = true; }
+            catch (error) { if (error.code !== 'ESRCH') throw error; }
+          }
+        }
+        let allStopped = true;
+        for (const pid of pids) {
+          try {
+            const status = await readFile(`/proc/${pid}/status`, 'utf8');
+            if (!/^State:\s+[TtZ]/m.test(status)) allStopped = false;
+          } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
+        }
+        stable = !changed && allStopped ? stable + 1 : 0;
+        if (Date.now() >= deadline) throw Object.assign(new Error('Bot project writers could not be paused'), { code: 'WORKSPACE_BUSY' });
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      const result = await operation([...paused]);
+      if (project.closing) throw new Error('Bot closed during project operation');
+      return { ...result, paused_process_count: paused.size };
+    } finally {
+      if (project.closing) await stopBot();
+      else if (project.installPending) {
+        for (const pid of paused) heldWriters.add(pid);
+        installHoldTimer ??= setTimeout(() => { void stopBot().catch(() => undefined); }, 30_000);
+      } else {
+        clearTimeout(installHoldTimer); installHoldTimer = null;
+        for (const pid of new Set([...paused, ...heldWriters])) {
+          try { process.kill(pid, 'SIGCONT'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+        }
+        heldWriters.clear();
+      }
+    }
+  });
+  writerGate = pending.catch(() => undefined);
+  return pending;
+}
+
+function stopBot() {
+  project.beginClose();
+  clearTimeout(installHoldTimer); installHoldTimer = null;
+  heldWriters.clear();
+  if (stopping) return stopping;
+  stopping = (async () => {
+    if (child?.pid) { try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
+    const deadline = Date.now() + 5_000;
+    while (true) {
+      const pids = await botProcesses();
+      if (!pids.length) break;
+      for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
+      if (Date.now() >= deadline) throw new Error('Bot descendant stop was not confirmed');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    if (!initialized) return { stopped: true, project_installs: [] };
+    await project.close();
+    return { stopped: true, project_installs: await project.installReceipts() };
+  })().catch(error => { stopping = null; throw error; });
+  return stopping;
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
   try {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
     if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request)) }); return; }
+    if (url.pathname.startsWith('/project/') && !initialized) throw new Error('Bot workspace is not initialized');
+    if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.grant(input)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/snapshot') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.snapshot(input)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/install') { const input = await body(request, 32 * 1024 * 1024); send(response, 200, { ok: true, result: await withBotPaused(pids => project.install(input, pids)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/install-result') { const input = await body(request); send(response, 200, { ok: true, result: project.queryInstall(input) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/install-confirm') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.confirmInstall(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/rpc') { send(response, 200, { ok: true, result: await rpc(await body(request)) }); return; }
     if (request.method === 'POST' && url.pathname === '/stop') {
-      if (child) child.kill((await body(request)).signal ?? 'SIGTERM');
-      send(response, 200, { ok: true });
+      await body(request);
+      send(response, 200, { ok: true, result: await stopBot() });
       return;
     }
     if (request.method === 'GET' && url.pathname === '/events') {
@@ -164,10 +328,12 @@ const server = createServer(async (request, response) => {
     }
     send(response, 404, { ok: false, error: 'unknown worker route' });
   } catch (error) {
-    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message });
+    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT'].includes(error.code) ? { code: error.code } : {}),
+      ...(['dirty', 'active_writer'].includes(error.applyBlocker) ? { apply_blocker: error.applyBlocker } : {}) });
   }
 });
 
 server.listen(port, '0.0.0.0');
-process.on('SIGTERM', () => { child?.kill('SIGTERM'); server.close(() => process.exit(0)); });
-process.on('SIGINT', () => { child?.kill('SIGINT'); server.close(() => process.exit(0)); });
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {
+  void stopBot().finally(() => server.close(() => process.exit(0)));
+});

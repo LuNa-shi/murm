@@ -1,6 +1,6 @@
 # 验证与研究：先证明机制可用，再检验协作价值
 
-> 状态：已确认的目标设计与后续验收要求，本章所列完整工程/研究验收尚未完成。范围与批准入口：[Design Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)。实现对照基线：[main `e6f97bc`](https://github.com/LuNa-shi/SwarmEnv/tree/e6f97bc0d56709f94374a5f824c8e2cd9c312cb2)；该基线已有 sandbox/CLI、flat Task 与 direct Judge 接入，不能据此推定本章全部合同已通过。相关工作查阅日期：2026-11-12。
+> 状态：已确认的目标设计与后续验收要求，本章所列完整工程/研究验收尚未完成。范围与批准入口：[Design Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)。实现对照基线：[main `1d9be9f`](https://github.com/LuNa-shi/SwarmEnv/tree/1d9be9f8146a57ba50d769615045c21a03c215bd)；该基线已有 sandbox/CLI、flat Task 与 direct Judge 接入，不能据此推定本章全部合同已通过。相关工作查阅日期：2026-11-12。
 
 ## 阅读目录
 

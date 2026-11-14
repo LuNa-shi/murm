@@ -7,12 +7,39 @@ CREATE TABLE IF NOT EXISTS operations (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS judge_request_aliases (
+  request_key TEXT PRIMARY KEY,
+  request_hash TEXT NOT NULL,
+  check_result_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS judge_mission_check_policies (
+  mission_id TEXT PRIMARY KEY,
+  max_requests INTEGER NOT NULL CHECK(max_requests > 0),
+  max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_requests),
+  process_timeout_ms INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS judge_mission_check_admissions (
+  mission_id TEXT NOT NULL,
+  check_result_id TEXT NOT NULL,
+  admitted_at TEXT NOT NULL,
+  is_retry INTEGER NOT NULL DEFAULT 0,
+  preflight_starts INTEGER NOT NULL DEFAULT 0,
+  source_starts INTEGER NOT NULL DEFAULT 0,
+  settled_at TEXT,
+  PRIMARY KEY (mission_id, check_result_id)
+);
+CREATE INDEX IF NOT EXISTS judge_mission_check_active
+  ON judge_mission_check_admissions(mission_id) WHERE settled_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS check_results (
   check_result_id TEXT PRIMARY KEY,
   request_key TEXT NOT NULL UNIQUE,
   request_hash TEXT NOT NULL,
-  candidate_material_id TEXT NOT NULL,
-  candidate_content_hash TEXT,
+  workspace_source_id TEXT NOT NULL,
+  workspace_content_hash TEXT,
   target_task_id TEXT NOT NULL,
   target_spec_version INTEGER NOT NULL,
   execution_id TEXT,
@@ -57,7 +84,7 @@ export function ensureJudgeSchema(database) {
   database.exec(JUDGE_SCHEMA_SQL);
   const columns = new Set(database.prepare('PRAGMA table_info(check_results)').all().map((column) => column.name));
   for (const [name, definition] of [
-    ['candidate_content_hash', 'TEXT'],
+    ['workspace_content_hash', 'TEXT'],
     ['execution_id', 'TEXT'],
     ['applied_task_state_version', 'INTEGER'],
     ['applied_at', 'TEXT'],

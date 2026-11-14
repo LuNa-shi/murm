@@ -52,9 +52,9 @@ function setup() {
         checker_process_status: 'completed',
         evidence: { input_binding_verified: true, toolchain_version_verified: true, checker_version_verified: true },
       }),
-      check: async ({ candidate }) => {
+      check: async ({ workspace_source }) => {
         checks += 1;
-        return candidate.content.includes('valid-proof')
+        return workspace_source.content.includes('valid-proof')
           ? { verdict: 'PASS', evidence: { checker_started: true, exit_code: 0 } }
           : { verdict: 'FAIL', evidence: { checker_started: true, exit_code: 1, diagnostic: 'type mismatch' } };
       },
@@ -63,7 +63,7 @@ function setup() {
   const taskService = {
     getTask: (taskId) => taskId === task.task_id ? task : null,
     getExecution: (executionId) => executionId === execution.execution_id ? execution : null,
-    dispatch: () => { throw new Error('Task Service must not relay direct Judge submission'); },
+    dispatch: () => { throw new Error('Task Service must not relay direct Workspace check'); },
   };
   const contextService = {};
   const registry = createBuiltinServiceRegistry({ taskService, contextService, judgeService: judge });
@@ -93,16 +93,16 @@ function setup() {
   };
 }
 
-test('direct Judge submission checks a Workspace file and supports same-Execution revision', async () => {
+test('direct Workspace check checks a Workspace file and supports same-Execution revision', async () => {
   const state = setup();
   try {
-    const failed = await state.bridge.call({ operation: 'submit_candidate', payload: { path: 'Candidate.lean', workspace_revision: 1 } });
+    const failed = await state.bridge.call({ operation: 'workspace_check', payload: { path: 'workspace/proof.lean', workspace_revision: 1 } });
     assert.equal(failed.verdict, 'FAIL');
     assert.equal(failed.result_class, 'source_failure');
     assert.match(failed.diagnostic_excerpt, /type mismatch/);
 
     state.setContent('theorem valid-proof : True := by trivial');
-    const passed = await state.bridge.call({ operation: 'submit_candidate', payload: { path: 'Candidate.lean', workspace_revision: 2 } });
+    const passed = await state.bridge.call({ operation: 'workspace_check', payload: { path: 'workspace/proof.lean', workspace_revision: 2 } });
     assert.equal(passed.verdict, 'PASS');
     assert.equal(passed.result_class, 'PASS');
     assert.equal(state.getChecks(), 2);
@@ -112,11 +112,11 @@ test('direct Judge submission checks a Workspace file and supports same-Executio
   }
 });
 
-test('direct Judge submission rejects a stale Workspace revision before checking', async () => {
+test('direct Workspace check rejects a stale Workspace revision before checking', async () => {
   const state = setup();
   try {
     await assert.rejects(
-      () => state.bridge.call({ operation: 'submit_candidate', payload: { path: 'Candidate.lean', workspace_revision: 99 } }),
+      () => state.bridge.call({ operation: 'workspace_check', payload: { path: 'workspace/proof.lean', workspace_revision: 99 } }),
       (error) => error.code === 'STALE_VERSION',
     );
     assert.equal(state.getChecks(), 0);
@@ -130,17 +130,17 @@ test('direct Judge binds a transport request key to the submitted source', async
   const state = setup();
   try {
     const first = await state.bridge.call({
-      operation: 'submit_candidate',
+      operation: 'workspace_check',
       operation_id: 'direct-submit-idempotency',
-      payload: { path: 'Candidate.lean', workspace_revision: 1 },
+      payload: { path: 'workspace/proof.lean', workspace_revision: 1 },
     });
     assert.equal(first.verdict, 'FAIL');
     state.setContent('theorem valid-proof-changed : True := by trivial');
     await assert.rejects(
       () => state.bridge.call({
-        operation: 'submit_candidate',
+        operation: 'workspace_check',
         operation_id: 'direct-submit-idempotency',
-        payload: { path: 'Candidate.lean', workspace_revision: 2 },
+        payload: { path: 'workspace/proof.lean', workspace_revision: 2 },
       }),
       (error) => error.code === 'CONFLICT',
     );
@@ -150,19 +150,19 @@ test('direct Judge binds a transport request key to the submitted source', async
   }
 });
 
-test('direct Judge submission is idempotent and rejects unsafe paths or hashes', async () => {
+test('direct Workspace check is idempotent and rejects unsafe paths or hashes', async () => {
   const state = setup();
   try {
     await assert.rejects(
-      () => state.bridge.call({ operation: 'submit_candidate', payload: { path: '../Candidate.lean' } }),
+      () => state.bridge.call({ operation: 'workspace_check', payload: { path: '../workspace/proof.lean' } }),
       (error) => error.code === 'INVALID_CONTRACT',
     );
     await assert.rejects(
-      () => state.bridge.call({ operation: 'submit_candidate', payload: { path: 'Candidate.lean', content_hash: 'wrong' } }),
+      () => state.bridge.call({ operation: 'workspace_check', payload: { path: 'workspace/proof.lean', content_hash: 'wrong' } }),
       (error) => error.code === 'STALE_VERSION',
     );
-    const first = await state.bridge.call({ operation: 'submit_candidate', payload: { path: 'Candidate.lean', workspace_revision: 1 } });
-    const replay = await state.bridge.call({ operation: 'submit_candidate', payload: { path: 'Candidate.lean', workspace_revision: 1 } });
+    const first = await state.bridge.call({ operation: 'workspace_check', payload: { path: 'workspace/proof.lean', workspace_revision: 1 } });
+    const replay = await state.bridge.call({ operation: 'workspace_check', payload: { path: 'workspace/proof.lean', workspace_revision: 1 } });
     assert.equal(replay.check_result_id, first.check_result_id);
     assert.equal(state.getChecks(), 1);
   } finally {

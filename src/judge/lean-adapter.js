@@ -89,7 +89,7 @@ export class LeanChecker {
     this.logger = logger;
   }
 
-  async preflight({ fixtureManifest }) {
+  async preflight({ fixtureManifest, assertCanStart = () => {}, startProcess = launch => { assertCanStart(); return launch(); } }) {
     validateFixtureManifest(fixtureManifest);
     const identity = checkerIdentity(fixtureManifest);
     const projectRoot = fixtureManifest.project_root;
@@ -158,16 +158,18 @@ export class LeanChecker {
       return result;
     }
     let process;
+    assertCanStart();
     try {
-      // Exercise the same toolchain entrypoint used for a Candidate.  A bare
+      // Exercise the same toolchain entrypoint used for a WorkspaceSource.  A bare
       // `lake --version` can succeed while the project toolchain or Mathlib
       // environment is unusable.
-      process = await this.runner(this.command, ['env', 'lean', '--version'], {
+      process = await startProcess(() => this.runner(this.command, ['env', 'lean', '--version'], {
         cwd: projectRoot,
         timeoutMs: this.timeoutMs,
         maxOutputBytes: this.maxOutputBytes,
-      });
+      }));
     } catch (error) {
+      if ([ERROR_CODES.NOT_ALLOWED, ERROR_CODES.FENCED].includes(error.code)) throw error;
       process = { exit_code: null, signal: null, error: error.message, error_code: error.code, checker_started: false };
     }
     const observedVersion = toolchainVersion([process.stdout, process.stderr].filter(Boolean).join('\n'));
@@ -238,38 +240,39 @@ export class LeanChecker {
     return result;
   }
 
-  async check({ candidate, targetTask, workspace, fixtureManifest }) {
+  async check({ workspace_source, targetTask, workspace, fixtureManifest, assertCanStart = () => {}, startProcess = launch => { assertCanStart(); return launch(); } }) {
     validateFixtureManifest(fixtureManifest);
-    if (!candidate || typeof candidate.content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate content is required');
-    const candidateHash = sha256(candidate.content);
-    if (candidate.content_hash && candidate.content_hash !== candidateHash) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate content_hash does not match content');
+    if (!workspace_source || typeof workspace_source.content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content is required');
+    const workspace_sourceHash = sha256(workspace_source.content);
+    if (workspace_source.content_hash && workspace_source.content_hash !== workspace_sourceHash) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content_hash does not match content');
     const inputSnapshotHash = workspace?.input_snapshot_hash ?? workspace?.manifest?.input_snapshot_hash;
     if (!inputSnapshotHash) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace input_snapshot_hash is required');
     await mkdir(this.workRoot, { recursive: true });
     const directory = this.logger
-      ? join(this.workRoot, `candidate-${candidateHash}-${randomUUID()}`)
+      ? join(this.workRoot, `workspace_source-${workspace_sourceHash}-${randomUUID()}`)
       : await mkdtemp(join(this.workRoot, 'swarmenv-lean-'));
     await mkdir(directory, { recursive: true });
-    const candidatePath = join(directory, 'Candidate.lean');
-    await writeFile(candidatePath, candidate.content, 'utf8');
-    this.logger?.append({ event: 'checker.start', candidate_hash: candidateHash, target_task_id: targetTask?.task_id ?? null, input_snapshot_hash: inputSnapshotHash, candidate_path: candidatePath });
+    const workspace_sourcePath = join(directory, 'WorkspaceSource.lean');
+    await writeFile(workspace_sourcePath, workspace_source.content, 'utf8');
+    this.logger?.append({ event: 'checker.input_prepared', workspace_source_hash: workspace_sourceHash, target_task_id: targetTask?.task_id ?? null, input_snapshot_hash: inputSnapshotHash, workspace_source_path: workspace_sourcePath });
     try {
-      if (this.rejectSorry && /\bsorry\b/.test(candidate.content)) {
+      assertCanStart();
+      if (this.rejectSorry && /\bsorry\b/.test(workspace_source.content)) {
         const result = normalizeCheckerResult({
           verdict: 'FAIL',
           result_class: 'request_failure',
           checker_process_status: 'not_started',
           retryable: false,
-          evidence: { exit_code: null, stdout: '', stderr: 'candidate contains forbidden sorry placeholder', diagnostic: 'sorry is not an accepted proof artifact', forbidden_placeholder: true, candidate_hash: candidateHash, input_snapshot_hash: inputSnapshotHash },
+          evidence: { exit_code: null, stdout: '', stderr: 'workspace_source contains forbidden sorry placeholder', diagnostic: 'sorry is not an accepted proof artifact', forbidden_placeholder: true, workspace_source_hash: workspace_sourceHash, input_snapshot_hash: inputSnapshotHash },
         });
         this.logger?.append({ event: 'checker.complete', verdict: result.verdict, evidence: result.evidence });
         return result;
       }
-      // Preflight and candidate checking must exercise the same locked
-      // project/toolchain cwd.  The per-candidate directory only stores the
-      // candidate file; it is not a substitute for the project root.
+      // Preflight and workspace_source checking must exercise the same locked
+      // project/toolchain cwd.  The per-workspace_source directory only stores the
+      // workspace_source file; it is not a substitute for the project root.
       const projectRoot = fixtureManifest.project_root ?? this.workRoot;
-      const result = await this.runner(this.command, ['env', 'lean', candidatePath], { cwd: projectRoot, timeoutMs: this.timeoutMs, maxOutputBytes: this.maxOutputBytes });
+      const result = await startProcess(() => this.runner(this.command, ['env', 'lean', workspace_sourcePath], { cwd: projectRoot, timeoutMs: this.timeoutMs, maxOutputBytes: this.maxOutputBytes }));
       const processStatus = result.error || result.checker_started === false
         ? 'not_started'
         : result.timed_out
@@ -295,7 +298,7 @@ export class LeanChecker {
           stdout_truncated: Boolean(result.stdout_truncated),
           stderr_truncated: Boolean(result.stderr_truncated),
           diagnostic: diagnosticText,
-          candidate_hash: candidateHash,
+          workspace_source_hash: workspace_sourceHash,
           input_snapshot_hash: inputSnapshotHash,
           target_task_id: targetTask?.task_id ?? null,
           target_spec_version: targetTask?.spec_version ?? null,

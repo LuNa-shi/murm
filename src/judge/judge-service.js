@@ -1,7 +1,8 @@
+import { assertNewExecutionWork } from '../task/execution-budget.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
-import { operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
+import { makeEnvelope, operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
 import { ensureJudgeSchema } from '../storage/judge-schema.js';
 import { validateFixtureManifest } from './fixture.js';
 import { LeanChecker } from './lean-adapter.js';
@@ -32,6 +33,21 @@ function resultFromRow(row) {
   };
 }
 
+function executionRejection(error) {
+  if (![ERROR_CODES.NOT_ALLOWED, ERROR_CODES.FENCED].includes(error.code)) return null;
+  return { verdict: 'ERROR', result_class: 'request_failure', checker_process_status: 'not_started',
+    evidence: { diagnostic: error.message, error: error.name, checker_started: false,
+      diagnostic_code: error.details?.phase === 'soft_closeout' ? 'soft_closeout' : 'execution_closed' } };
+}
+
+export function normalizeJudgeMissionBudget({ maxRequests = 20, maxConcurrent = Math.min(2, maxRequests) } = {}) {
+  if (!Number.isSafeInteger(maxRequests) || maxRequests < 1 || maxRequests > 10_000 ||
+      !Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > maxRequests) {
+    throw new TypeError('Judge Mission budget requires finite positive request and concurrent limits');
+  }
+  return { maxRequests, maxConcurrent };
+}
+
 export class JudgeService {
   constructor(database = ':memory:', {
     checker,
@@ -39,17 +55,58 @@ export class JudgeService {
     maxInfrastructureRetries = 2,
     dependencyEventSink = null,
     fixtureManifest = null,
+    taskService = null,
+    missionBudget,
   } = {}) {
+    this.missionBudget = normalizeJudgeMissionBudget(missionBudget);
+    this.activeChecks = new Set();
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
+    if (!(database instanceof DatabaseSync)) this.db.exec('PRAGMA busy_timeout = 2500');
     ensureJudgeSchema(this.db);
     this.checker = checker ?? new LeanChecker();
+    this.processTimeoutMs = Number.isSafeInteger(this.checker.timeoutMs) && this.checker.timeoutMs > 0 ? this.checker.timeoutMs : null;
     this.logger = logger;
     this.maxInfrastructureRetries = Number.isInteger(maxInfrastructureRetries) && maxInfrastructureRetries >= 0 ? maxInfrastructureRetries : 2;
     this.dependencyEventSink = dependencyEventSink;
     this.fixtureManifest = fixtureManifest;
+    this.taskService = taskService;
   }
 
   close() { this.db.close(); }
+
+  async waitForIdle() {
+    while (this.activeChecks.size) await Promise.allSettled([...this.activeChecks]);
+  }
+
+  getMissionCheckBudget(missionId) {
+    const policy = this.db.prepare('SELECT max_requests, max_concurrent, process_timeout_ms FROM judge_mission_check_policies WHERE mission_id = ?').get(missionId);
+    const usage = this.db.prepare(`SELECT COUNT(*) AS admitted_requests,
+      COUNT(*) FILTER (WHERE settled_at IS NULL) AS active_requests,
+      COALESCE(SUM(is_retry), 0) AS retry_requests,
+      COALESCE(SUM(preflight_starts), 0) AS preflight_process_starts,
+      COALESCE(SUM(source_starts), 0) AS source_process_starts
+      FROM judge_mission_check_admissions WHERE mission_id = ?`).get(missionId);
+    const cached = this.db.prepare(`SELECT COUNT(*) AS cached_request_aliases FROM judge_request_aliases alias
+      JOIN judge_mission_check_admissions admission USING (check_result_id) WHERE admission.mission_id = ?`).get(missionId);
+    const maxRequests = policy?.max_requests ?? this.missionBudget.maxRequests;
+    const processTimeoutMs = policy ? policy.process_timeout_ms : this.processTimeoutMs;
+    return { max_requests: maxRequests, max_concurrent: policy?.max_concurrent ?? this.missionBudget.maxConcurrent,
+      process_timeout_ms: processTimeoutMs, upper_bound_process_ms: processTimeoutMs === null ? null : 2 * maxRequests * processTimeoutMs, ...usage, ...cached };
+  }
+
+  #admitMissionCheck(missionId, checkResultId, isRetry) {
+    const { maxRequests, maxConcurrent } = this.missionBudget;
+    this.db.prepare(`INSERT INTO judge_mission_check_policies VALUES (?, ?, ?, ?)
+      ON CONFLICT(mission_id) DO NOTHING`).run(missionId, maxRequests, maxConcurrent, this.processTimeoutMs);
+    const budget = this.getMissionCheckBudget(missionId);
+    if (budget.max_requests !== maxRequests || budget.max_concurrent !== maxConcurrent || budget.process_timeout_ms !== this.processTimeoutMs) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Judge Mission budget differs from the fixed policy');
+    }
+    if (budget.admitted_requests >= maxRequests) throw new SwarmEnvError('CHECKER_BUDGET_EXHAUSTED', 'Judge Mission request budget is exhausted', budget);
+    if (budget.active_requests >= maxConcurrent) throw new SwarmEnvError('CHECKER_BUSY', 'Judge Mission checker concurrency is full', budget, { retryable: true });
+    this.db.prepare('INSERT INTO judge_mission_check_admissions (mission_id, check_result_id, admitted_at, is_retry) VALUES (?, ?, ?, ?)')
+      .run(missionId, checkResultId, now(), isRetry ? 1 : 0);
+  }
 
   setDependencyEventSink(listener) {
     if (listener !== null && typeof listener !== 'function') throw new TypeError('dependencyEventSink must be a function or null');
@@ -65,7 +122,8 @@ export class JudgeService {
   }
 
   getByRequestKey(requestKey) {
-    return resultFromRow(this.db.prepare('SELECT * FROM check_results WHERE request_key = ?').get(requestKey));
+    return resultFromRow(this.db.prepare('SELECT * FROM check_results WHERE request_key = ?').get(requestKey)
+      ?? this.db.prepare('SELECT r.* FROM check_results r JOIN judge_request_aliases a ON a.check_result_id = r.check_result_id WHERE a.request_key = ?').get(requestKey));
   }
 
   getCheckerPreflight(preflightKey) {
@@ -86,7 +144,7 @@ export class JudgeService {
       if (payload.request_key) return agentCheckResult(this.getByRequestKey(required(payload.request_key, 'request_key')));
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'get_check_result requires check_result_id or request_key');
     }
-    if (operation === 'submit_candidate') return this.submitCandidate(payload, envelope);
+    if (operation === 'workspace_check') return this.checkWorkspaceSource(payload, envelope);
     if (operation !== 'submit_check_result') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Judge operation: ${operation}`);
     return this.#transaction(() => {
       const fingerprint = operationPayload(operation, payload, envelope);
@@ -103,16 +161,41 @@ export class JudgeService {
    * Execution envelope and an internal source descriptor after reading the
    * private Workspace. No Task Service submission relay is involved.
    */
-  async submitCandidate(payload = {}, envelope) {
+  async checkWorkspaceSource(payload = {}, envelope = makeEnvelope({
+    operationId: randomUUID(),
+    actorRef: 'judge:lean',
+    taskId: payload.target_task_id ?? null,
+    executionId: payload.execution_id ?? `direct:${payload.target_task_id ?? 'workspace-check'}`,
+    specVersion: payload.target_spec_version ?? 0,
+    stateVersion: payload.state_version ?? 0,
+  })) {
+    if (envelope && typeof envelope === 'object' && !envelope.actor_ref) {
+      envelope = makeEnvelope({
+        operationId: envelope.operation_id ?? randomUUID(),
+        actorRef: 'judge:lean',
+        taskId: envelope.task_id ?? payload.target_task_id ?? null,
+        executionId: envelope.execution_id ?? payload.execution_id ?? `direct:${payload.target_task_id ?? 'workspace-check'}`,
+        specVersion: envelope.spec_version ?? payload.target_spec_version ?? 0,
+        stateVersion: envelope.state_version ?? payload.state_version ?? 0,
+      });
+    }
     validateEnvelope(envelope);
     if (!envelope.task_id || !envelope.execution_id) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'submit_candidate requires a bound Task and Execution');
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace_check requires a bound Task and Execution');
     }
-    const source = payload.source ?? payload.candidate_source ?? null;
+    const source = payload.source ?? payload.workspace_source ?? null;
     if (!source || typeof source.content !== 'string') {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate requires a Workspace source');
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_check requires a Workspace source');
     }
-    const sourceHash = source.content_hash ?? contentHash(source.content);
+    const workspaceSourceRef = source.workspace_id !== undefined
+      ? {
+        workspace_id: required(source.workspace_id, 'source.workspace_id'),
+        revision: required(String(source.revision), 'source.revision'),
+        path: required(source.path, 'source.path'),
+        ...(source.git_commit ? { git_commit: source.git_commit, git_tree: source.git_tree, tree_content_hash: source.tree_content_hash, content_hash: contentHash(source.content) } : {}),
+      }
+      : null;
+    const sourceHash = contentHash(source.content);
     if (source.content_hash !== undefined && source.content_hash !== sourceHash) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace source content_hash does not match content');
     }
@@ -121,6 +204,8 @@ export class JudgeService {
       if (attestation.task_id !== envelope.task_id || attestation.execution_id !== envelope.execution_id ||
         (attestation.path ?? null) !== (source.path ?? null) ||
         (attestation.workspace_revision ?? null) !== (source.workspace_revision ?? null) ||
+        (attestation.workspace_id ?? null) !== (source.workspace_id ?? null) ||
+        (attestation.revision ?? null) !== (source.revision ?? null) ||
         attestation.content_hash !== sourceHash) {
         throw new SwarmEnvError(ERROR_CODES.FENCED, 'Workspace source attestation does not match the current Execution source');
       }
@@ -131,6 +216,15 @@ export class JudgeService {
     const fixtureManifest = this.fixtureManifest;
     if (!fixtureManifest) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge checker binding is not configured');
+    }
+    if (payload.target_task && (payload.target_task.task_id !== envelope.task_id || payload.target_task.spec_version !== (envelope.spec_version ?? payload.target_spec_version))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'target_task does not match the bound Task envelope');
+    }
+    if (payload.workspace?.input_snapshot_hash !== undefined && payload.workspace.input_snapshot_hash !== (payload.input_snapshot_hash ?? fixtureManifest.input_snapshot_hash)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace does not match input_snapshot_hash');
+    }
+    for (const [field, expected] of [['checker_ref', fixtureManifest.checker_ref], ['checker_version', fixtureManifest.checker_version], ['environment_ref', fixtureManifest.environment_ref]]) {
+      if (payload[field] !== undefined && payload[field] !== expected) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `check request does not match locked ${field}`);
     }
     const targetSpecVersion = Number.isInteger(envelope.spec_version) ? envelope.spec_version : 0;
     const inputSnapshotHash = fixtureManifest.input_snapshot_hash ?? hash({
@@ -151,18 +245,21 @@ export class JudgeService {
       state_version: envelope.state_version,
       input_snapshot_hash: source.input_snapshot_hash ?? inputSnapshotHash,
       workspace_ref: null,
-      workspace_revision: source.workspace_revision ?? null,
+      workspace_revision: source.workspace_revision ?? source.revision ?? null,
     };
-    const sourceId = `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${sourceHash}`;
-    const result = await this.judgeCandidate({
-      request_key: payload.request_key ?? envelope.operation_id ?? hash({
+    const sourceId = workspaceSourceRef
+      ? `workspace:${workspaceSourceRef.workspace_id}:${workspaceSourceRef.revision}:${workspaceSourceRef.path}`
+      : `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${sourceHash}`;
+    const result = await this.#checkWorkspaceSourceRequest({
+      fixture_manifest: fixtureManifest,
+      request_key: payload.request_key ?? hash({
         source_id: sourceId,
         source_hash: sourceHash,
         task_id: envelope.task_id,
         execution_id: envelope.execution_id,
         revision: source.workspace_revision ?? null,
       }),
-      candidate_material_id: sourceId,
+      workspace_source_id: sourceId,
       target_task_id: envelope.task_id,
       target_spec_version: task.spec_version,
       input_snapshot_hash: execution.input_snapshot_hash,
@@ -171,10 +268,11 @@ export class JudgeService {
       environment_ref: fixtureManifest.environment_ref,
       execution_id: envelope.execution_id,
       state_version: execution.state_version ?? envelope.state_version,
-      candidate: {
+      workspace_source: {
         material_id: sourceId,
         content: source.content,
         content_hash: sourceHash,
+        ...(workspaceSourceRef ? { file_ref: workspaceSourceRef } : {}),
       },
       target_task: task,
       workspace: {
@@ -182,23 +280,78 @@ export class JudgeService {
         execution_id: envelope.execution_id,
         task_id: envelope.task_id,
         workspace_ref: execution.workspace_ref ?? null,
-        workspace_revision: source.workspace_revision ?? execution.workspace_revision ?? null,
+        workspace_revision: source.workspace_revision ?? source.revision ?? execution.workspace_revision ?? null,
+        ...(workspaceSourceRef ? { workspace_id: workspaceSourceRef.workspace_id, path: workspaceSourceRef.path, revision: workspaceSourceRef.revision } : {}),
       },
       fixture_manifest: fixtureManifest,
-    }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref });
-    return agentCheckResult(result);
+    }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref, envelope });
+    return envelope.actor_ref?.startsWith('agent:') ? agentCheckResult(result) : result;
   }
 
-  async judgeCandidate(input, { operationId = randomUUID(), actorRef = 'judge:lean' } = {}) {
-    this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: operationId, target_task_id: input?.target_task_id, candidate_material_id: input?.candidate_material_id });
+  async #checkWorkspaceSourceRequest(input, { operationId = randomUUID(), actorRef = 'judge:lean', envelope: requestEnvelope } = {}) {
+    this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: operationId, target_task_id: input?.target_task_id, workspace_source_id: input?.workspace_source_id });
     const normalized = this.#validateRequest(input);
-    const requestHash = hash(normalized);
-    const request = this.#beginRequest(normalized, requestHash);
+    // E state versions can advance while the same immutable check is running
+    // or awaiting a response. They are not part of the scientific input.
+    const requestHash = hash(normalized.workspace_source.file_ref?.git_commit ? { ...normalized, state_version: null } : normalized);
+    const publicInput = Boolean(normalized.workspace_source.file_ref?.git_commit);
+    const registered = Boolean(this.taskService?.getBot(requestEnvelope.actor_ref));
+    const separateLifecycle = (publicInput || registered) && this.taskService?.db !== this.db;
+    if (separateLifecycle && typeof this.taskService?.withServiceLifecycleWrite !== 'function') {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires the local Task lifecycle authority');
+    }
+    const authority = ({ newWork = false } = {}) => {
+      if (!publicInput && !registered) return; // trusted historical source helper
+      if (!this.taskService) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires Task lifecycle authority');
+      const execution = this.taskService.getExecution(requestEnvelope.execution_id);
+      if (!execution || execution.owner_ref !== requestEnvelope.actor_ref || execution.task_id !== requestEnvelope.task_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge request requires its actual Execution owner');
+      if (newWork) {
+        const scope = this.taskService.materialScope({ ...requestEnvelope, state_version: execution.state_version }, { write: true });
+        this.taskService.assertMissionResearchOpen(scope.mission_id);
+        assertNewExecutionWork(execution);
+        return scope.mission_id;
+      }
+    };
+    const begin = () => this.#beginRequest(normalized, requestHash, authority);
+    const request = separateLifecycle ? this.taskService.withServiceLifecycleWrite(begin) : begin();
     if (!request.shouldCheck) return request.result;
-    const requested = request.result;
-    const preflight = await this.#runPreflight(normalized);
+    const work = this.#performWorkspaceCheck(normalized, requestHash, request.result, { operationId, actorRef,
+      authority, publicInput, registered, missionId: request.missionId }).finally(() => {
+      if (request.missionId) this.db.prepare(`UPDATE judge_mission_check_admissions SET settled_at = ?
+        WHERE mission_id = ? AND check_result_id = ? AND settled_at IS NULL`)
+        .run(now(), request.missionId, request.result.check_result_id);
+    });
+    this.activeChecks.add(work);
+    try { return await work; }
+    finally { this.activeChecks.delete(work); }
+  }
+
+  async #performWorkspaceCheck(normalized, requestHash, requested, { operationId, actorRef, authority, publicInput, registered, missionId }) {
+    let admissionFailure = null;
+    const assertCanStart = () => authority({ newWork: true });
+    const startProcess = phase => launch => {
+      const guardedLaunch = () => {
+        assertCanStart();
+        if (missionId) {
+          const column = phase === 'preflight' ? 'preflight_starts' : 'source_starts';
+          const reserved = this.db.prepare(`UPDATE judge_mission_check_admissions SET ${column} = 1
+            WHERE mission_id = ? AND check_result_id = ? AND settled_at IS NULL AND ${column} = 0`)
+            .run(missionId, requested.check_result_id);
+          if (reserved.changes !== 1) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Checker attempted an unreserved process launch');
+        }
+        return launch();
+      };
+      if (!publicInput && !registered) return guardedLaunch();
+      return this.taskService.withServiceLifecycleWrite(guardedLaunch);
+    };
+    const preflight = await this.#runPreflight(normalized, assertCanStart, startProcess('preflight')).catch(error => {
+      admissionFailure = executionRejection(error);
+      if (!admissionFailure) throw error;
+      return { status: 'not_admitted' };
+    });
     let checked;
-    if (preflight.status !== 'healthy') {
+    if (admissionFailure) checked = admissionFailure;
+    else if (preflight.status !== 'healthy') {
       checked = {
         verdict: 'ERROR',
         checker_process_status: preflight.checker_process_status,
@@ -216,16 +369,20 @@ export class JudgeService {
       };
     } else {
       try {
-        checked = await this.checker.check({ candidate: normalized.candidate, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest });
+        // A preflight can finish after the soft/hard boundary. Do not launch
+        // a new scientific calculation merely because preflight was admitted.
+        authority({ newWork: true });
+        checked = await this.checker.check({ workspace_source: normalized.workspace_source, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest, assertCanStart, startProcess: startProcess('source') });
       } catch (error) {
-        checked = { verdict: 'ERROR', evidence: { diagnostic: error.message, error: error.name, checker_started: false } };
+        admissionFailure = executionRejection(error);
+        checked = admissionFailure ?? { verdict: 'ERROR', evidence: { diagnostic: error.message, error: error.name, checker_started: false } };
       }
-      if (typeof normalized.candidate.content === 'string' && /\b(?:sorry|admit|axiom)\b/i.test(normalized.candidate.content)) {
+      if (!admissionFailure && typeof normalized.workspace_source.content === 'string' && /\b(?:sorry|admit|axiom)\b/i.test(normalized.workspace_source.content)) {
         checked = {
           ...(checked ?? {}),
           verdict: 'ERROR',
           result_class: 'request_failure',
-          evidence: { ...(checked?.evidence ?? {}), forbidden_placeholder: true, checker_started: false, diagnostic: 'candidate contains a forbidden placeholder' },
+          evidence: { ...(checked?.evidence ?? {}), forbidden_placeholder: true, checker_started: false, diagnostic: 'workspace_source contains a forbidden placeholder' },
         };
       }
       if (!checked || !['PASS', 'FAIL', 'INCONCLUSIVE', 'ERROR'].includes(checked.verdict)) {
@@ -233,6 +390,7 @@ export class JudgeService {
       }
     }
     checked = normalizeCheckerResult(checked);
+    if (normalized.workspace_source.file_ref) checked.evidence = { ...checked.evidence, workspace_input: normalized.workspace_source.file_ref };
     if (preflight.status === 'healthy' && checked.result_class === 'infrastructure_failure') {
       const health = this.#persistPreflight(checkerIdentity(normalized.fixture_manifest), normalizePreflight({
         status: 'unavailable',
@@ -285,20 +443,20 @@ export class JudgeService {
       retryable: result.retryable,
       diagnostic_code: result.diagnostic_code,
       check_result_id: result.check_result_id,
-      candidate_material_id: result.candidate_material_id,
+      workspace_source_id: result.workspace_source_id,
     });
     return result;
   }
 
   async preflightChecker(input = {}) {
-    const normalized = this.#validateRequest({ ...input, candidate: input.candidate ?? { content: '' } });
+    const normalized = this.#validateRequest({ ...input, workspace_source: input.workspace_source ?? { content: '' } });
     return this.#runPreflight(normalized);
   }
 
   #validateRequest(input) {
     if (!input || typeof input !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'check request is required');
     validateFixtureManifest(input.fixture_manifest);
-    required(input.candidate_material_id, 'candidate_material_id');
+    required(input.workspace_source_id, 'workspace_source_id');
     required(input.target_task_id, 'target_task_id');
     required(input.input_snapshot_hash, 'input_snapshot_hash');
     required(input.checker_ref, 'checker_ref');
@@ -312,19 +470,19 @@ export class JudgeService {
       (input.target_task.task_id !== input.target_task_id || input.target_task.spec_version !== input.target_spec_version)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'target_task does not match target_task_id or target_spec_version');
     }
-    if (!input.candidate || typeof input.candidate.content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate content is required');
-    if (input.candidate.material_id !== undefined && input.candidate.material_id !== input.candidate_material_id) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate material_id does not match candidate_material_id');
+    if (!input.workspace_source || typeof input.workspace_source.content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content is required');
+    if (input.workspace_source.material_id !== undefined && input.workspace_source.material_id !== input.workspace_source_id) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source material_id does not match workspace_source_id');
     }
-    if (input.candidate.content_hash !== undefined && input.candidate.content_hash !== contentHash(input.candidate.content)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'candidate content_hash does not match content');
+    if (input.workspace_source.content_hash !== undefined && input.workspace_source.content_hash !== contentHash(input.workspace_source.content)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content_hash does not match content');
     }
     const workspace = input.workspace ?? null;
     if (workspace?.input_snapshot_hash !== undefined && workspace.input_snapshot_hash !== input.input_snapshot_hash) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace does not match input_snapshot_hash');
     }
     const requestKey = required(input.request_key ?? hash({
-      candidate_material_id: input.candidate_material_id,
+      workspace_source_id: input.workspace_source_id,
       target_task_id: input.target_task_id,
       target_spec_version: input.target_spec_version,
       checker_ref: input.checker_ref,
@@ -334,15 +492,15 @@ export class JudgeService {
     }), 'request_key');
     return {
       request_key: requestKey,
-      candidate_material_id: input.candidate_material_id,
-      candidate_content_hash: contentHash(input.candidate.content),
+      workspace_source_id: input.workspace_source_id,
+      workspace_content_hash: contentHash(input.workspace_source.content),
       target_task_id: input.target_task_id,
       target_spec_version: input.target_spec_version,
       input_snapshot_hash: input.input_snapshot_hash,
       checker_ref: input.checker_ref,
       checker_version: input.checker_version,
       environment_ref: input.environment_ref,
-      candidate: input.candidate,
+      workspace_source: input.workspace_source,
       target_task: input.target_task ?? null,
       workspace,
       fixture_manifest: input.fixture_manifest,
@@ -373,48 +531,63 @@ export class JudgeService {
     const checkResultId = payload.check_result_id ?? randomUUID();
     const createdAt = now();
     this.db.prepare(`INSERT INTO check_results (
-      check_result_id, request_key, request_hash, candidate_material_id, target_task_id, target_spec_version,
+      check_result_id, request_key, request_hash, workspace_source_id, target_task_id, target_spec_version,
       execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict,
       judge_operation_status, checker_process_status, result_class, retryable, diagnostic_code, evidence_json,
       applied_task_state_version, applied_at, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RECEIVED', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`)
-      .run(checkResultId, normalized.request_key, requestHash, normalized.candidate_material_id, normalized.target_task_id, normalized.target_spec_version,
+      .run(checkResultId, normalized.request_key, requestHash, normalized.workspace_source_id, normalized.target_task_id, normalized.target_spec_version,
         normalized.execution_id, normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref,
         checked.verdict, 'persisted', checked.checker_process_status, checked.result_class, checked.retryable ? 1 : 0, checked.diagnostic_code,
         json(checked.evidence), createdAt, createdAt);
     return resultFromRow(this.db.prepare('SELECT * FROM check_results WHERE check_result_id = ?').get(checkResultId));
   }
 
-  #beginRequest(normalized, requestHash) {
+  #beginRequest(normalized, requestHash, authority) {
     return this.#transaction(() => {
+      authority();
+      const alias = this.db.prepare('SELECT * FROM judge_request_aliases WHERE request_key = ?').get(normalized.request_key);
+      if (alias) {
+        if (alias.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
+        return { result: this.getCheckResult(alias.check_result_id), shouldCheck: false };
+      }
       const existing = this.getByRequestKey(normalized.request_key);
       if (existing) {
         if (existing.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
         return { result: existing, shouldCheck: false };
       }
+      const missionId = authority({ newWork: true });
       // request_key is the transport idempotency key, but it is not a license
-      // to rerun an unchanged candidate under a fresh key.  A candidate and
+      // to rerun an unchanged workspace_source under a fresh key.  A workspace_source and
       // its locked checker/input binding define the durable check identity;
       // only retryable infrastructure failures may be checked again after a
       // new request.  This also closes the cross-Core duplicate path where
       // each Agent invents a different request key for the same Material.
+      const publicInput = normalized.workspace_source.file_ref?.git_commit ? normalized.workspace_source.file_ref : null;
+      const sourceClause = publicInput ? `AND workspace_source_id = ?
+        AND json_extract(evidence_json, '$.workspace_input.git_commit') = ?
+        AND json_extract(evidence_json, '$.workspace_input.git_tree') = ?` : `AND json_extract(evidence_json, '$.workspace_input.git_commit') IS NULL`;
       const equivalent = this.db.prepare(`SELECT * FROM check_results
-        WHERE candidate_content_hash = ? AND target_task_id = ? AND target_spec_version = ?
+        WHERE workspace_content_hash = ? AND target_task_id = ? AND target_spec_version = ?
           AND input_snapshot_hash = ? AND checker_ref = ? AND checker_version = ? AND environment_ref = ?
-        ORDER BY created_at, check_result_id LIMIT 1`).get(
-        normalized.candidate_content_hash,
+          ${sourceClause}
+        ORDER BY rowid DESC LIMIT 1`).get(
+        normalized.workspace_content_hash,
         normalized.target_task_id,
         normalized.target_spec_version,
         normalized.input_snapshot_hash,
         normalized.checker_ref,
         normalized.checker_version,
         normalized.environment_ref,
+        ...(publicInput ? [normalized.workspace_source_id, publicInput.git_commit, publicInput.git_tree] : []),
       );
       if (equivalent) {
         const existingResult = resultFromRow(equivalent);
         const retryableInfrastructure = existingResult.result_class === 'infrastructure_failure' &&
           existingResult.retryable && !existingResult.evidence?.retry_exhausted;
         if (!retryableInfrastructure) {
+          this.db.prepare('INSERT INTO judge_request_aliases (request_key, request_hash, check_result_id, created_at) VALUES (?, ?, ?, ?)')
+            .run(normalized.request_key, requestHash, existingResult.check_result_id, now());
           return {
             result: {
               ...existingResult,
@@ -426,27 +599,28 @@ export class JudgeService {
         }
       }
       const checkResultId = randomUUID();
+      if (missionId) this.#admitMissionCheck(missionId, checkResultId, Boolean(equivalent));
       const createdAt = now();
       this.db.prepare(`INSERT INTO check_results (
-        check_result_id, request_key, request_hash, candidate_material_id, candidate_content_hash, target_task_id, target_spec_version,
+        check_result_id, request_key, request_hash, workspace_source_id, workspace_content_hash, target_task_id, target_spec_version,
         execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict,
         judge_operation_status, checker_process_status, result_class, retryable, diagnostic_code, evidence_json,
         applied_task_state_version, applied_at, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', NULL, 'accepted', 'not_started', 'unassessed', 0, NULL, ?, NULL, NULL, ?, ?)`).run(
-        checkResultId, normalized.request_key, requestHash, normalized.candidate_material_id, normalized.candidate_content_hash, normalized.target_task_id, normalized.target_spec_version,
+        checkResultId, normalized.request_key, requestHash, normalized.workspace_source_id, normalized.workspace_content_hash, normalized.target_task_id, normalized.target_spec_version,
           normalized.execution_id, normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref,
-          json({}), createdAt, createdAt);
-      return { result: this.getCheckResult(checkResultId), shouldCheck: true };
+          json(publicInput ? { workspace_input: publicInput } : {}), createdAt, createdAt);
+      return { result: this.getCheckResult(checkResultId), shouldCheck: true, missionId };
     });
   }
 
-  async #runPreflight(normalized) {
+  async #runPreflight(normalized, assertCanStart = () => {}, startProcess = undefined) {
     const identity = checkerIdentity(normalized.fixture_manifest);
     let result;
     if (typeof this.checker.preflight !== 'function') {
       // A checker that cannot prove its executable, toolchain, working
       // directory, and locked input binding is unavailable. Treating an
-      // adapter without this gate as healthy would let a Candidate reach the
+      // adapter without this gate as healthy would let a WorkspaceSource reach the
       // Judge with no evidence that the checker can produce a mathematical
       // result.
       result = normalizePreflight({
@@ -462,8 +636,9 @@ export class JudgeService {
       }, identity);
     } else {
       try {
-        result = normalizePreflight(await this.checker.preflight({ fixtureManifest: normalized.fixture_manifest }), identity);
+        result = normalizePreflight(await this.checker.preflight({ fixtureManifest: normalized.fixture_manifest, assertCanStart, startProcess }), identity);
       } catch (error) {
+        if (executionRejection(error)) throw error;
         result = normalizePreflight({
           status: 'unavailable',
           checker_process_status: 'not_started',

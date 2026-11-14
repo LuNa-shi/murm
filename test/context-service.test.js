@@ -10,7 +10,13 @@ import {
 } from '../src/index.js';
 
 function fixture() {
-  const context = new ContextService(new DatabaseSync(':memory:'));
+  // These content-storage unit tests use a controlled authority double. The
+  // actual Bot/E lifecycle and Mission checks live in material-authority.test.
+  const context = new ContextService(new DatabaseSync(':memory:'), { taskService: {
+    withServiceLifecycleWrite: commit => commit(),
+    materialScope: envelope => ({ mission_id: 'mission:content-fixture', task_id: envelope.task_id, execution_id: envelope.execution_id, bot_id: null }),
+    materialOriginMission: () => 'mission:content-fixture',
+  } });
   const router = new ServicesRouter({ contextService: context, taskService: { dispatch() { throw new Error('task service not needed'); } } });
   const sdk = new ServicesSDK(router, { actorRef: 'agent:one', taskId: 'task-1', executionId: 'execution-1', specVersion: 1, stateVersion: 0, fencingVersion: 1 });
   return { context, sdk };
@@ -33,7 +39,7 @@ test('Agent can publish and another Execution can read immutable Material with s
 test('Material revisions create a new immutable version and preserve supersedes', () => {
   const { context, sdk } = fixture();
   const first = sdk.publishMaterial({ kind: 'conjecture', scope: 'proof_relevant', content: { claim: 'v1' } }, { operationId: 'material-v1' }).material;
-  const second = sdk.publishMaterial({ kind: 'conjecture', scope: 'proof_relevant', content: { claim: 'v2' }, supersedes: first.material_id }, { operationId: 'material-v2' }).material;
+  const second = sdk.publishMaterial({ kind: 'conjecture', scope: 'proof_relevant', content: { claim: 'v2' }, supersedes: first.material_id, expected_version: 0, supersede_reason: 'Complete revised claim' }, { operationId: 'material-v2' }).material;
   assert.notEqual(second.material_id, first.material_id);
   assert.equal(second.version, 2);
   assert.equal(second.supersedes, first.material_id);
@@ -77,7 +83,8 @@ test('Context Service records durable Material consumption and requires it for r
 
 test('Context Service wakes Task reconciliation after a committed Material dependency fact', () => {
   const events = [];
-  const taskService = { notifyDependencyEvent: (event) => events.push(event) };
+  const taskService = { withServiceLifecycleWrite: commit => commit(), notifyDependencyEvent: (event) => events.push(event),
+    materialScope: () => ({ mission_id: 'mission:notification-fixture', task_id: null, execution_id: null, bot_id: null }) };
   const context = new ContextService(new DatabaseSync(':memory:'), { taskService });
   const sdk = new ServicesSDK(context, { actorRef: 'agent:one' });
   const input = { kind: 'fact', scope: 'proof_relevant', content: { observation: 'ready' } };
@@ -96,7 +103,35 @@ test('secret-bearing data is rejected and Context Service has no Task or Workspa
     (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   assert.equal('createWorkspace' in sdk, false);
-  assert.throws(() => context.dispatch('claim', {}, sdk.context), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
+  assert.throws(() => context.dispatch('task_take', {}, sdk.context), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
   assert.throws(() => context.dispatch('apply_check_result', {}, sdk.context), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
+  context.close();
+});
+
+test('Material supports claim-scoped evidence, public terminology aliases, and relation CAS', () => {
+  const { context, sdk } = fixture();
+  const envelope = (operationId) => ({ operation_id: operationId, actor_ref: 'agent:one', task_id: 'task-1', execution_id: 'execution-1', spec_version: 1, state_version: 0, fencing_version: 1 });
+  const first = context.dispatch('material.publish', {
+    material_id: 'material:claim-v1', kind: 'fact', scope: 'mission',
+    content: { claim: 'bounded' },
+    evidence: [{ claim: 'bounded', explanation: 'reproduced with fixture v1' }],
+  }, envelope('claim-v1')).material;
+  assert.equal(first.evidence[0].claim, 'bounded');
+  const second = context.dispatch('material.publish', {
+    material_id: 'material:claim-v2', kind: 'fact', scope: 'mission',
+    content: { claim: 'bounded and checked' },
+    evidence: [{ claim: 'bounded', explanation: 'checker passed' }],
+  }, envelope('claim-v2')).material;
+  const relation = context.dispatch('material.supersede', {
+    material_id: first.material_id, replacement_material_id: second.material_id, expected_version: 0, reason: 'additional check',
+  }, envelope('claim-supersede')).relation;
+  assert.equal(relation.active, true);
+  assert.equal(context.dispatch('material.search', { mission_id: null }, envelope('claim-search')).some((row) => row.material_id === first.material_id), false);
+  assert.equal(context.listMaterialRelations({ material_id: first.material_id })[0].relation_kind, 'supersede');
+  context.dispatch('material.unsupersede', {
+    material_id: first.material_id, replacement_material_id: second.material_id, expected_version: relation.version, reason: 'Restore the original pending verification',
+  }, envelope('claim-unsupersede'));
+  assert.equal(context.listMaterialRelations({ material_id: first.material_id, include_inactive: true })[0].active, false);
+  assert.equal(context.dispatch('material.read', { material_id: first.material_id }, envelope('claim-read'))[0].material_id, first.material_id);
   context.close();
 });

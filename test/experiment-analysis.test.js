@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -36,7 +37,7 @@ async function createProjectDatabase(path) {
     create table executions (
       execution_id text primary key, task_id text, owner_ref text, state text, state_version integer,
       attempt_no integer, fencing_version integer, runtime_generation integer, workspace_ref text,
-      workspace_revision integer, candidate_material_id text, wait_condition_json text,
+      workspace_revision integer, artifact_material_id text, wait_condition_json text,
       wait_deadline text, created_at text, updated_at text
     );
     create table materials (
@@ -44,7 +45,7 @@ async function createProjectDatabase(path) {
       source_task text, source_execution text, version integer, created_at text
     );
     create table check_results (
-      check_result_id text primary key, request_key text, candidate_material_id text,
+      check_result_id text primary key, request_key text, artifact_material_id text,
       target_task_id text, target_spec_version integer, execution_id text, status text,
       verdict text, checker_ref text, checker_version text, environment_ref text,
       created_at text, updated_at text
@@ -67,7 +68,7 @@ async function createProjectDatabase(path) {
     CHECK, 'request-1', MATERIAL, TASK, 1, EXECUTION, 'APPLIED', 'FAIL', 'fixture', '1', 'fixture-env', T3, T4,
   );
   db.prepare('insert into operations values (?, ?, ?, ?)').run(
-    'wait-1', 'request_wait', JSON.stringify({ execution: { execution_id: EXECUTION, task_id: TASK, state: 'WAITING' } }), T4,
+    'wait-1', 'wait_for', JSON.stringify({ execution: { execution_id: EXECUTION, task_id: TASK, state: 'WAITING' } }), T4,
   );
   db.close();
 }
@@ -86,22 +87,22 @@ async function createFixture({ agent = true, service = true, workspace = true, m
   await createProjectDatabase(join(root, 'state', 'projects', project, 'project.sqlite'));
 
   if (agent) await writeNdjson(join(root, 'logs', 'projects', project, 'agents', 'core-1.ndjson'), [
-    { timestamp: T1, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_call', toolName: 'swarmenv_task_claim', args: { task_id: TASK } } },
-    { timestamp: T2, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_result', toolName: 'swarmenv_task_claim', result: { secret: 'must-not-be-copied' }, isError: false } },
+    { timestamp: T1, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_call', toolName: 'swarmenv_task_take', args: { task_id: TASK } } },
+    { timestamp: T2, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_result', toolName: 'swarmenv_task_take', result: { secret: 'must-not-be-copied' }, isError: false } },
   ]);
   await writeNdjson(join(root, 'logs', 'projects', project, 'runtime', 'core-1.ndjson'), [
     { timestamp: T1, scope: 'runtime:core-1', event: 'runtime.bind_execution', execution_id: EXECUTION },
     { timestamp: T2, scope: 'runtime:core-1', event: 'runtime.heartbeat', execution_id: EXECUTION },
-    { timestamp: T4, scope: 'runtime:core-1', event: 'runtime.request_wait', execution_id: EXECUTION, wait_condition: { type: 'check_result_arrived' }, deadline: END },
+    { timestamp: T4, scope: 'runtime:core-1', event: 'runtime.wait_for', execution_id: EXECUTION, wait_condition: { type: 'check_result_arrived' }, deadline: END },
   ]);
   if (service) {
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'task-service.ndjson'), [
-      { timestamp: T1, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'claim', envelope: { operation_id: 'op-claim', task_id: TASK, execution_id: EXECUTION } },
-      { timestamp: T1, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'claim', ok: true, result: { task: { task_id: TASK, state: 'RUNNING' }, execution: { execution_id: EXECUTION, task_id: TASK, state: 'RUNNING' } } },
-      ...(errors ? [{ timestamp: T2, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'claim', ok: false, error: { code: 'CONFLICT', message: 'Task has reached its active Execution quota' } }] : []),
+      { timestamp: T1, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'task_take', envelope: { operation_id: 'op-take', task_id: TASK, execution_id: EXECUTION } },
+      { timestamp: T1, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'task_take', ok: true, result: { task: { task_id: TASK, state: 'RUNNING' }, execution: { execution_id: EXECUTION, task_id: TASK, state: 'RUNNING' } } },
+      ...(errors ? [{ timestamp: T2, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'task_take', ok: false, error: { code: 'CONFLICT', message: 'Task has reached its active Execution quota' } }] : []),
       ...(malformed ? ['{"broken":'] : []),
-      { timestamp: T3, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'submit_candidate', envelope: { operation_id: 'op-submit', task_id: TASK, execution_id: EXECUTION } },
-      { timestamp: T3, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'submit_candidate', ok: true, result: { execution: { execution_id: EXECUTION, task_id: TASK, state: 'WAITING', candidate_material_id: MATERIAL } } },
+      { timestamp: T3, scope: 'task-service', event: 'dispatch.start', service: 'task', operation: 'workspace_check', envelope: { operation_id: 'op-submit', task_id: TASK, execution_id: EXECUTION } },
+      { timestamp: T3, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'workspace_check', ok: true, result: { execution: { execution_id: EXECUTION, task_id: TASK, state: 'WAITING', artifact_material_id: MATERIAL } } },
     ]);
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'context-service.ndjson'), [
       { timestamp: T2, scope: 'context-service', event: 'dispatch.start', service: 'context', operation: 'publish_material', envelope: { operation_id: 'op-publish', task_id: TASK, execution_id: EXECUTION } },
@@ -111,17 +112,17 @@ async function createFixture({ agent = true, service = true, workspace = true, m
     ]);
     if (errors) {
       await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'service-router.ndjson'), [
-        { timestamp: T2, scope: 'service-router', event: 'dispatch.start', service: 'task', operation: 'claim', envelope: { operation_id: 'op-conflict', task_id: TASK, execution_id: EXECUTION } },
-        { timestamp: T2, scope: 'service-router', event: 'dispatch.complete', service: 'task', operation: 'claim', ok: false, error: { code: 'CONFLICT', message: 'Task has reached its active Execution quota' } },
+        { timestamp: T2, scope: 'service-router', event: 'dispatch.start', service: 'task', operation: 'task_take', envelope: { operation_id: 'op-conflict', task_id: TASK, execution_id: EXECUTION } },
+        { timestamp: T2, scope: 'service-router', event: 'dispatch.complete', service: 'task', operation: 'task_take', ok: false, error: { code: 'CONFLICT', message: 'Task has reached its active Execution quota' } },
       ]);
     }
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'judge-service.ndjson'), [
-      { timestamp: T3, scope: 'judge-service', event: 'judge.start', service: 'judge', operation_id: 'op-judge', target_task_id: TASK, candidate_material_id: MATERIAL },
-      { timestamp: T4, scope: 'judge-service', event: 'judge.complete', service: 'judge', operation_id: 'op-judge', ok: true, verdict: 'FAIL', check_result_id: CHECK, candidate_material_id: MATERIAL },
+      { timestamp: T3, scope: 'judge-service', event: 'judge.start', service: 'judge', operation_id: 'op-judge', target_task_id: TASK, artifact_material_id: MATERIAL },
+      { timestamp: T4, scope: 'judge-service', event: 'judge.complete', service: 'judge', operation_id: 'op-judge', ok: true, verdict: 'FAIL', check_result_id: CHECK, artifact_material_id: MATERIAL },
     ]);
     await writeNdjson(join(root, 'logs', 'projects', project, 'bridge', 'core-1.ndjson'), [
-      { timestamp: T1, scope: 'bridge:core-1', event: 'bridge.start', operation: 'claim', task_id: TASK, execution_id: EXECUTION, payload: {} },
-      { timestamp: T1, scope: 'bridge:core-1', event: 'bridge.complete', operation: 'claim', ok: true, result: {} },
+      { timestamp: T1, scope: 'bridge:core-1', event: 'bridge.start', operation: 'task_take', task_id: TASK, execution_id: EXECUTION, payload: {} },
+      { timestamp: T1, scope: 'bridge:core-1', event: 'bridge.complete', operation: 'task_take', ok: true, result: {} },
     ]);
     await writeNdjson(join(root, 'logs', 'projects', project, 'judge', 'lean-checker.ndjson'), [
       { timestamp: T4, scope: 'judge:lean-checker', event: 'checker.complete', verdict: 'FAIL', evidence: { target_task_id: TASK, diagnostic: 'proof error' } },
@@ -152,7 +153,7 @@ test('analyzes a complete fixture into stable per-Execution windows without copy
     assert.equal(first.inventory.evidence.find((entry) => entry.class === 'workspace').status, 'present');
     assert.equal(first.executions.length, 1);
     assert.ok(first.executions[0].windows.length >= 1);
-    assert.ok(first.executions[0].windows.some((window) => window.observed_intent === 'claim a Task'));
+    assert.ok(first.executions[0].windows.some((window) => window.observed_intent === 'take a Task'));
     assert.ok(first.report.includes('### Execution `execution-1`'));
     assert.ok(first.report.includes('Judge FAIL'));
     assert.ok(first.report.includes('## Error analysis'));
@@ -175,11 +176,11 @@ test('deduplicates cross-service error echoes and preserves supporting evidence 
   const root = await createFixture({ errors: true });
   try {
     const analysis = await analyzeExperiment(root);
-    const conflict = analysis.errors.find((error) => error.category === 'claim_active_execution_quota');
+    const conflict = analysis.errors.find((error) => error.category === 'take_active_execution_quota');
     assert.ok(conflict);
     assert.equal(conflict.occurrence_count, 1);
     assert.ok(conflict.supporting_record_count >= 2);
-    assert.match(analysis.report, /claim_active_execution_quota/);
+    assert.match(analysis.report, /take_active_execution_quota/);
     assert.match(analysis.report, /Supporting records/);
   } finally { await cleanup(root); }
 });
@@ -340,7 +341,7 @@ test('classifies repeated pre-checker failures as one infrastructure cause with 
   ]) db.exec(`alter table check_results add column ${name} ${definition}`);
   db.exec("update check_results set judge_operation_status = 'persisted', checker_process_status = 'not_started', result_class = 'infrastructure_failure', retryable = 0, diagnostic_code = 'checker_unavailable'");
   const insert = db.prepare(`insert into check_results (
-    check_result_id, request_key, candidate_material_id, target_task_id, target_spec_version, execution_id, status, verdict,
+    check_result_id, request_key, artifact_material_id, target_task_id, target_spec_version, execution_id, status, verdict,
     checker_ref, checker_version, environment_ref, judge_operation_status, checker_process_status, result_class, retryable, diagnostic_code, created_at, updated_at
   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   for (let index = 2; index <= 8; index += 1) {
@@ -358,5 +359,122 @@ test('classifies repeated pre-checker failures as one infrastructure cause with 
     assert.match(finding.interpretation, /mathematically unassessed/);
     assert.match(analysis.report, /Checker infrastructure failed before a mathematical result was produced/);
     assert.match(analysis.report, /Mathematical outcomes unassessed/);
+  } finally { await cleanup(root); }
+});
+
+test('modern analysis reads split stores and recognizes bounded public operation receipts', async () => {
+  const root = await createFixture();
+  try {
+    const project = 'demo';
+    const projectDatabase = join(root, 'state', 'projects', project, 'project.sqlite');
+    const database = new DatabaseSync(projectDatabase);
+    try {
+      for (const [name, tables] of [['context.sqlite', ['materials']], ['judge.sqlite', ['check_results']]]) {
+        const path = join(dirname(projectDatabase), name);
+        database.prepare('ATTACH DATABASE ? AS split').run(path);
+        for (const table of tables) database.exec(`CREATE TABLE split.${table} AS SELECT * FROM main.${table}; DROP TABLE main.${table}`);
+        database.exec('DETACH DATABASE split');
+      }
+    } finally { database.close(); }
+    const envelope = { task_id: TASK, execution_id: EXECUTION };
+    await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'modern.ndjson'), [
+      { timestamp: T2, event: 'dispatch.complete', operation: 'material_publish', envelope, result: { material: {
+        material_id: 'modern-note', producer_task_id: TASK, producer_execution_id: EXECUTION, content: 'private modern material body',
+      } } },
+      { timestamp: T3, event: 'dispatch.complete', operation: 'read_materials', envelope, result: { materials: [{ material_id: 'modern-note' }], next_cursor: 'opaque' } },
+      { timestamp: T3, event: 'dispatch.complete', operation: 'workspace_save', envelope, result: { workspace_id: 'public-w', revision: '2.1' } },
+      { timestamp: T4, event: 'dispatch.complete', operation: 'finish_task', envelope, result: { execution: { execution_id: EXECUTION, task_id: TASK, state: 'SUCCEEDED' } } },
+    ]);
+    const analysis = await analyzeExperiment(root);
+    assert.ok(analysis.facts.some(fact => fact.kind === 'material_record' && fact.sources.some(source => source.includes('context.sqlite'))));
+    assert.ok(analysis.facts.some(fact => fact.kind === 'judge_check_record' && fact.sources.some(source => source.includes('judge.sqlite'))));
+    assert.ok(analysis.facts.some(fact => fact.kind === 'material_published' && fact.executionId === EXECUTION && fact.summary.material.material_id === 'modern-note'));
+    assert.ok(analysis.facts.some(fact => fact.kind === 'material_read' && fact.summary.material_ids.includes('modern-note')));
+    assert.ok(analysis.facts.some(fact => fact.kind === 'workspace_revision' && fact.summary.workspace_revision === '2.1'));
+    assert.ok(analysis.facts.some(fact => fact.kind === 'execution_terminal' && fact.operation === 'task_finish'));
+    assert.ok(!analysis.report.includes('private modern material body'));
+  } finally { await cleanup(root); }
+});
+
+test('Workspace physical directories and unbound Bots do not create Execution timelines', async () => {
+  const root = await createFixture();
+  try {
+    const project = 'demo';
+    const folder = join(root, 'workspaces', 'projects', project);
+    const physical = join(folder, 'opaque-physical-revision');
+    await mkdir(join(physical, '.swarm', 'revisions'), { recursive: true });
+    await writeFile(join(physical, '.swarm', 'revisions', '2.json'), JSON.stringify({ workspace_revision: 2, created_at: T2 }));
+    const orphan = join(folder, 'unbound-physical-directory', '.swarm', 'revisions');
+    await mkdir(orphan, { recursive: true });
+    await writeFile(join(orphan, '3.json'), JSON.stringify({ workspace_revision: 3, created_at: T3 }));
+    const db = new DatabaseSync(join(root, 'state', 'projects', project, 'project.sqlite'));
+    try {
+      db.prepare('UPDATE executions SET workspace_ref = ? WHERE execution_id = ?').run(physical, EXECUTION);
+      db.exec("CREATE TABLE bots (bot_id TEXT, mission_id TEXT, core_id TEXT, state TEXT, execution_id TEXT);");
+      db.prepare("INSERT INTO bots VALUES ('bound-bot', 'M', 'core-1', 'CLOSED', ?), ('selection-only', 'M', 'core-2', 'CLOSED', NULL)").run(EXECUTION);
+      const obs = new ObservationStore(db);
+      obs.registerExperiment({ experimentId: 'fixture-run' });
+      obs.append({ experimentId: 'fixture-run', source: 'runtime', kind: 'material_read', executionId: EXECUTION, payload: { material_ids: [MATERIAL] } });
+    } finally { db.close(); }
+    const result = await analyzeExperiment(root);
+    assert.deepEqual(result.executions.map(item => item.execution.execution_id), [EXECUTION]);
+    assert.equal(result.facts.find(fact => fact.kind === 'workspace_revision' && fact.summary.workspace_revision === 2)?.executionId, EXECUTION);
+    assert.equal(result.facts.find(fact => fact.kind === 'workspace_revision' && fact.summary.workspace_revision === 3)?.executionId, null);
+    assert.ok(result.inventory.errors.some(item => item.error.includes('no unique durable Execution binding')));
+    assert.equal(result.inventory.evidence.find(item => item.class === 'observation').status, 'present');
+    assert.ok(result.facts.some(fact => fact.kind === 'material_read' && fact.sources.some(source => source.includes('project.sqlite#observation_events'))));
+    assert.match(result.report, /2 Bot\(s\), including 1 without a persisted Execution binding/);
+  } finally { await cleanup(root); }
+});
+
+
+test('analysis identifies actual Pi returned content without substituting structured output or inventing truncation', async () => {
+  const root = await createFixture();
+  try {
+    const content = [{ type: 'text', text: 'private returned tail' }];
+    await writeNdjson(join(root, 'logs', 'projects', 'demo', 'agents', 'core-1.ndjson'), [
+      { timestamp: T1, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_execution_end', toolName: 'bash', toolCallId: 'pi-tail', result: { content, structuredContent: { output: 'different raw output', truncated: false }, details: { truncation: { truncated: true, totalBytes: 50000, outputBytes: 21 } } } } },
+      { timestamp: T2, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_execution_end', toolName: 'read', toolCallId: 'pi-read', result: { content } } },
+    ]);
+    const analysis = await analyzeExperiment(root);
+    const actual = analysis.facts.find(fact => fact.correlationId === 'pi-tail');
+    assert.ok(actual);
+    assert.equal(actual.summary.pi_result_sha256, createHash('sha256').update(JSON.stringify(content)).digest('hex'));
+    assert.equal(actual.summary.pi_result_truncated, true);
+    assert.equal(actual.summary.pi_result_limits.totalBytes, 50000);
+    assert.equal(analysis.facts.find(fact => fact.correlationId === 'pi-read').summary.pi_result_truncated, 'unknown');
+    assert.equal(actual.summary.model_request_delivery, 'not_established_by_tool_event');
+    assert.ok(!analysis.report.includes('private returned tail'));
+    assert.ok(!JSON.stringify(analysis.facts).includes('different raw output'));
+  } finally { await cleanup(root); }
+});
+
+
+test('observation toolCallId correlation preserves raw returned evidence beside a sanitized echo', async () => {
+  const root = await createFixture();
+  try {
+    const db = new DatabaseSync(join(root, 'state', 'projects', 'demo', 'project.sqlite'));
+    const obs = new ObservationStore(db);
+    obs.registerExperiment({ experimentId: 'fixture-run' });
+    for (const [at, type, result] of [[T1, 'tool_execution_start', undefined], [T2, 'tool_execution_end', undefined]]) {
+      obs.append({ experimentId: 'fixture-run', source: 'agent', kind: 'rpc_record', occurredAt: at,
+        taskId: TASK, executionId: EXECUTION, coreId: 'core-1', visibility: 'private',
+        payload: { record: { type, toolName: 'read', toolCallId: 'exact-pi-call', result } } });
+    }
+    obs.append({ experimentId: 'fixture-run', source: 'agent', kind: 'rpc_record', occurredAt: T3,
+      taskId: TASK, executionId: EXECUTION, coreId: 'core-1', visibility: 'private',
+      payload: { record: { type: 'tool_execution_end', toolName: 'read', toolCallId: 'observation-only-call', result: { content: [{ type: 'text', text: 'private skill range' }] } } } });
+    db.close();
+    await writeNdjson(join(root, 'logs', 'projects', 'demo', 'agents', 'core-1.ndjson'), [
+      { timestamp: T2, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_execution_end', toolName: 'read', toolCallId: 'exact-pi-call', result: { content: [{ type: 'text', text: 'private skill range' }] } } },
+    ]);
+    const analysis = await analyzeExperiment(root);
+    const exact = analysis.facts.filter(f => f.correlationId === 'exact-pi-call' && f.summary.outcome === 'finished');
+    assert.equal(exact.length, 1, JSON.stringify(exact));
+    assert.equal(exact[0].sources.length, 2);
+    assert.ok(exact[0].summary.pi_result_sha256);
+    assert.ok(analysis.facts.find(f => f.correlationId === 'exact-pi-call' && f.summary.outcome === 'started'));
+    assert.equal(analysis.facts.find(f => f.correlationId === 'observation-only-call').summary.pi_result_sha256, exact[0].summary.pi_result_sha256);
+    assert.ok(!JSON.stringify(analysis.facts).includes('private skill range'));
   } finally { await cleanup(root); }
 });

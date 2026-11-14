@@ -18,10 +18,11 @@ const EVIDENCE_CLASSES = [
 
 const SENSITIVE_KEYS = /(?:^|_)(?:authorization|content|credential|formal_source|password|private_key|proof|raw_transcript|secret|stderr|stdout|task_instructions|token|api_key|agent_prompt|candidate_source)(?:$|_)/i;
 const SAFE_RESULT_KEYS = new Set([
+  'pi_result', 'pi_result_sha256', 'pi_result_json_bytes', 'pi_result_truncated', 'pi_result_limits', 'model_request_delivery',
   'task_id', 'root_id', 'parent_id', 'execution_id', 'owner_ref', 'task_type',
   'state', 'task_state', 'execution_state', 'state_version', 'attempt_no',
   'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision',
-  'workspace_content_hash', 'candidate_material_id', 'material_id', 'kind',
+  'workspace_content_hash', 'artifact_material_id', 'material_id', 'kind',
   'scope', 'evidence_state', 'source_task', 'source_execution', 'check_result_id',
   'request_key', 'target_task_id', 'target_spec_version', 'status', 'verdict',
   'checker_ref', 'checker_version', 'environment_ref', 'operation_id',
@@ -31,7 +32,7 @@ const SAFE_RESULT_KEYS = new Set([
   'tool', 'operation', 'outcome', 'phase', 'service', 'error', 'stream', 'type',
   'event', 'decision', 'diagnostic', 'session_transport_id', 'file_count',
   'content_hash', 'assignment_basis', 'target_task_id', 'target_execution_id', 'authority_execution_id', 'parent_execution_id', 'parent_task_id', 'result', 'task', 'execution', 'material', 'check_result',
-  'material_ids', 'count', 'candidate_material_id', 'diagnostic_class', 'judge_operation_status',
+  'material_ids', 'count', 'artifact_material_id', 'diagnostic_class', 'judge_operation_status',
   'checker_process_status', 'process_status', 'result_class', 'mathematical_outcome', 'retryable', 'checker_started',
   'checker_ref', 'checker_version', 'environment_ref', 'checker_result_available',
   'diagnostic_code', 'preflight_key', 'preflight_status', 'retry_exhausted', 'infrastructure_attempt_count',
@@ -52,19 +53,19 @@ const INTENT_BY_OPERATION = new Map([
   ['list_workspace_files', 'inspect Workspace files'],
   ['read_workspace_file', 'inspect a Workspace file'],
   ['workspace_diff', 'inspect Workspace changes'],
-  ['claim', 'claim a Task'],
+  ['task_take', 'take a Task'],
+  ['task_create', 'propose a Task'],
+  ['task_finish', 'finish a Task'],
   ['create_child_task', 'decompose the Task'],
   ['save_workspace_revision', 'save a Workspace revision'],
   ['write_workspace_file', 'edit the Workspace'],
   ['publish_material', 'publish a Material'],
   ['read_materials', 'read Materials'],
   ['consume_materials', 'record Material use'],
-  ['submit_candidate', 'submit a Candidate'],
+  ['workspace_check', 'submit a Candidate'],
   ['get_check_result', 'inspect Judge feedback'],
   ['apply_check_result', 'process Judge feedback'],
-  ['request_wait', 'wait for a concrete condition'],
-  ['wake_execution', 'wake an Execution'],
-  ['resume_execution', 'resume an Execution'],
+  ['wait_for', 'wait for a concrete condition'],
   ['accept_task', 'review and accept a Task'],
   ['request_rework', 'review and request rework'],
   ['heartbeat', 'maintain the Execution lease'],
@@ -72,14 +73,31 @@ const INTENT_BY_OPERATION = new Map([
 ]);
 
 const BOUNDARY_KINDS = new Set([
-  'task_created', 'task_claimed', 'task_state_changed', 'execution_assigned',
+  'task_created', 'task_taken', 'task_state_changed', 'execution_assigned',
   'execution_state_changed', 'workspace_revision', 'material_published',
-  'material_read', 'material_consumed', 'candidate_submitted', 'judge_result', 'judge_check',
-  'wait_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
+  'material_read', 'material_consumed', 'workspace_checked', 'judge_result', 'judge_check',
+  'wait_for_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
 ]);
 
 function hash(value) {
   return createHash('sha256').update(String(value)).digest('hex');
+}
+
+// Pi's completed result is a different boundary from the Service response.
+// Hash the actual recorded result content without copying private text to reports.
+function returnedToolEvidence(record) {
+  const result = record?.result;
+  if (!result || !Array.isArray(result.content)) return { pi_result: 'unknown' };
+  const encoded = JSON.stringify(result.content);
+  const truncation = result.details?.truncation;
+  const limits = {};
+  for (const key of ['totalLines', 'totalBytes', 'outputLines', 'outputBytes']) {
+    if (Number.isSafeInteger(truncation?.[key]) && truncation[key] >= 0) limits[key] = truncation[key];
+  }
+  return { pi_result: 'recorded_pi_tool_result', pi_result_sha256: hash(encoded),
+    pi_result_json_bytes: Buffer.byteLength(encoded),
+    pi_result_truncated: typeof truncation?.truncated === 'boolean' ? truncation.truncated : 'unknown',
+    pi_result_limits: limits, model_request_delivery: 'not_established_by_tool_event' };
 }
 
 function jsonParse(value) {
@@ -206,11 +224,11 @@ function safeEntity(value, type) {
   const keys = type === 'task'
     ? ['task_id', 'root_id', 'parent_id', 'owner_ref', 'task_type', 'state', 'state_version', 'goal', 'created_at', 'updated_at', 'block_reason']
     : type === 'execution'
-      ? ['execution_id', 'task_id', 'owner_ref', 'state', 'state_version', 'attempt_no', 'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision', 'candidate_material_id', 'wait_condition', 'wait_deadline', 'created_at', 'updated_at']
+      ? ['execution_id', 'task_id', 'owner_ref', 'state', 'state_version', 'attempt_no', 'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision', 'artifact_material_id', 'wait_condition', 'wait_deadline', 'created_at', 'updated_at']
       : type === 'material'
-        ? ['material_id', 'kind', 'scope', 'evidence_state', 'source_task', 'source_execution', 'version', 'created_at']
+        ? ['material_id', 'kind', 'scope', 'evidence_state', 'source_task', 'source_execution', 'producer_task_id', 'producer_execution_id', 'producer_bot_id', 'version', 'created_at']
         : type === 'check_result'
-          ? ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_process_status', 'result_class', 'retryable', 'diagnostic_code', 'checker_ref', 'checker_version', 'environment_ref', 'diagnostic_class', 'created_at', 'updated_at']
+          ? ['check_result_id', 'request_key', 'artifact_material_id', 'target_task_id', 'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_process_status', 'result_class', 'retryable', 'diagnostic_code', 'checker_ref', 'checker_version', 'environment_ref', 'diagnostic_class', 'created_at', 'updated_at']
           : [...SAFE_RESULT_KEYS];
   for (const key of keys) {
     if (!(key in value) || SENSITIVE_KEYS.test(key)) continue;
@@ -251,7 +269,7 @@ function errorInfo(fact) {
 
 function errorCategory(info, fact) {
   const message = info?.message ?? '';
-  if (info?.code === 'CONFLICT' && /active Execution quota/i.test(message)) return 'claim_active_execution_quota';
+  if (info?.code === 'CONFLICT' && /active Execution quota/i.test(message)) return 'take_active_execution_quota';
   if (info?.code === 'NOT_ALLOWED' && /does not require a CheckResult/i.test(message)) return 'check_result_contract_mismatch';
   if (fact.kind === 'tool_call' && info?.code === 'TOOL_ERROR') return 'agent_tool_error';
   return `${String(info?.code ?? 'UNKNOWN').toLowerCase()}_${fact.operation ?? fact.kind}`;
@@ -269,7 +287,7 @@ function idsFromEntity(entity) {
   return {
     taskId: entity.task_id ?? entity.target_task_id ?? null,
     executionId: entity.execution_id ?? null,
-    materialId: entity.material_id ?? entity.candidate_material_id ?? null,
+    materialId: entity.material_id ?? entity.artifact_material_id ?? null,
     checkResultId: entity.check_result_id ?? null,
   };
 }
@@ -288,8 +306,23 @@ function coreFromScope(scope) {
   return match?.[1]?.startsWith('core-') ? match[1] : null;
 }
 
+const OPERATION_ALIASES = new Map([
+  ['context_publish_material', 'publish_material'], ['material_publish', 'publish_material'],
+  ['workspace_save', 'save_workspace_revision'], ['context_read_materials', 'read_materials'],
+  ['finish_task', 'task_finish'],
+]);
+
+function canonicalOperation(operation) {
+  return OPERATION_ALIASES.get(operation) ?? operation;
+}
+
+function revisionValue(value) {
+  return Number.isInteger(value) || (typeof value === 'string' && /^\d+\.\d+$/.test(value)) ? value : null;
+}
+
 function operationFromTool(toolName) {
-  return text(String(toolName ?? '').replace(/^swarmenv_(?:task|execution|workspace|context|judge|catalog)_/, ''), 100);
+  const operation = text(String(toolName ?? '').replace(/^swarmenv_(?:task|execution|workspace|context|judge|catalog)_/, ''), 100);
+  return operation === 'take' ? 'task_take' : operation;
 }
 
 function intentFor(operation, kind = null) {
@@ -299,8 +332,8 @@ function intentFor(operation, kind = null) {
   if (kind === 'material_published') return 'publish a Material';
   if (kind === 'material_read') return 'read Materials';
   if (kind === 'material_consumed') return 'record Material use';
-  if (kind === 'execution_assigned') return 'claim or resume a Task';
-  if (kind === 'wait_requested') return 'wait for a concrete condition';
+  if (kind === 'execution_assigned') return 'take or resume a Task';
+  if (kind === 'wait_for_requested') return 'wait for a concrete condition';
   if (kind === 'review' || kind === 'rework') return 'review a child result';
   return 'unknown';
 }
@@ -361,7 +394,7 @@ function sourceForObservation(root, path, sequence) {
 
 function serviceFact(root, row, source, payload, result = null) {
   const event = row.kind ?? payload?.event ?? row.event;
-  const operation = row.operation ?? payload?.operation ?? null;
+  const operation = canonicalOperation(row.operation ?? payload?.operation ?? null);
   const envelope = row.envelope ?? payload?.envelope ?? {};
   const owner = envelopeIds(envelope);
   const targetTask = idsFromEntity(result?.task);
@@ -399,7 +432,7 @@ function serviceFact(root, row, source, payload, result = null) {
 }
 
 function domainFactsForService(root, row, source, payload, result = null) {
-  const operation = row.operation ?? payload?.operation ?? null;
+  const operation = canonicalOperation(row.operation ?? payload?.operation ?? null);
   const event = row.kind ?? payload?.event ?? row.event;
   if (!event?.endsWith('.complete') && !event?.endsWith('.finished')) return [];
   const envelope = row.envelope ?? payload?.envelope ?? {};
@@ -427,24 +460,24 @@ function domainFactsForService(root, row, source, payload, result = null) {
     summary,
     priority: 2,
   });
-  if (['propose_task', 'create_child_task'].includes(operation) && task) {
+  if (['task_create', 'propose_task', 'create_child_task'].includes(operation) && task) {
     facts.push(base('task_created', { task: safeEntity(task, 'task'), parent_task_id: owner.taskId, parent_execution_id: owner.executionId }, { taskId: owner.taskId, executionId: owner.executionId }));
   }
-  if (operation === 'claim' && execution) {
-    facts.push(base('task_claimed', { task_id: task?.task_id ?? execution.task_id, execution_id: execution.execution_id, owner_ref: execution.owner_ref, state: execution.state }, { taskId: task?.task_id ?? execution.task_id, executionId: execution.execution_id }));
+  if (operation === 'task_take' && execution) {
+    facts.push(base('task_taken', { task_id: task?.task_id ?? execution.task_id, execution_id: execution.execution_id, owner_ref: execution.owner_ref, state: execution.state }, { taskId: task?.task_id ?? execution.task_id, executionId: execution.execution_id }));
   }
   if (operation === 'save_workspace_revision') {
     facts.push(base('workspace_revision', {
       execution_id: execution?.execution_id ?? ids.executionId,
-      workspace_revision: execution?.workspace_revision ?? result?.workspace_revision ?? null,
+      workspace_revision: revisionValue(result?.revision ?? result?.workspace_revision ?? execution?.workspace_revision),
       workspace_content_hash: execution?.workspace_content_hash ?? null,
     }));
   }
   if (operation === 'publish_material' && material) {
-    facts.push(base('material_published', { material: safeEntity(material, 'material') }, { taskId: material.source_task ?? ids.taskId, executionId: material.source_execution ?? ids.executionId }));
+    facts.push(base('material_published', { material: safeEntity(material, 'material') }, { taskId: material.producer_task_id ?? material.source_task ?? ids.taskId, executionId: material.producer_execution_id ?? material.source_execution ?? ids.executionId }));
   }
-  if (operation === 'read_materials') {
-    const materials = array(result).map((item) => safeEntity(item, 'material') ?? { material_id: item?.material_id ?? item }).filter((item) => item.material_id);
+  if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
+    const materials = array(result?.materials ?? (operation === 'context_get_material' && material ? [material] : result)).map((item) => safeEntity(item, 'material') ?? { material_id: item?.material_id ?? item }).filter((item) => item.material_id);
     facts.push(base('material_read', { material_ids: materials.map((item) => item.material_id), count: materials.length }, {}));
   }
   if (operation === 'consume_materials') {
@@ -457,10 +490,10 @@ function domainFactsForService(root, row, source, payload, result = null) {
       count: materialIds.length,
     }, {}));
   }
-  if (operation === 'submit_candidate') {
-    const candidateId = execution?.candidate_material_id ?? result?.candidate_material_id ?? null;
-    facts.push(base('candidate_submitted', {
-      candidate_material_id: candidateId,
+  if (operation === 'workspace_check') {
+    const candidateId = execution?.artifact_material_id ?? result?.artifact_material_id ?? null;
+    facts.push(base('workspace_checked', {
+      artifact_material_id: candidateId,
       workspace_revision: execution?.workspace_revision ?? null,
       execution_id: execution?.execution_id ?? ids.executionId,
     }, { executionId: execution?.execution_id ?? ids.executionId }));
@@ -468,19 +501,17 @@ function domainFactsForService(root, row, source, payload, result = null) {
   if (operation === 'apply_check_result' && check) {
     facts.push(base('judge_result', { check_result: safeEntity(check, 'check_result') }, { executionId: check.execution_id ?? ids.executionId }));
   }
-  if (operation === 'request_wait') {
+  if (operation === 'wait_for') {
     const condition = execution?.wait_condition ?? result?.wait_condition ?? null;
-    facts.push(base('wait_requested', {
+    facts.push(base('wait_for_requested', {
       execution_id: execution?.execution_id ?? ids.executionId,
       wait_condition: safeEntity({ wait_condition: condition }, 'execution')?.wait_condition ?? null,
       deadline: execution?.wait_deadline ?? null,
     }, { executionId: execution?.execution_id ?? ids.executionId }));
   }
-  if (operation === 'wake_execution') facts.push(base('wake', { execution_id: ids.executionId }, {}));
-  if (operation === 'resume_execution') facts.push(base('resume', { execution_id: ids.executionId }, {}));
   if (operation === 'accept_task') facts.push(base('review', { decision: 'accept', target_task_id: task?.task_id ?? owner.taskId, authority_execution_id: authorityIds.executionId ?? owner.executionId }, { taskId: owner.taskId ?? authorityIds.taskId, executionId: authorityIds.executionId ?? owner.executionId }));
   if (operation === 'request_rework') facts.push(base('rework', { decision: 'request_rework', target_task_id: task?.task_id ?? owner.taskId, parent_execution_id: authorityIds.executionId ?? owner.executionId }, { taskId: owner.taskId ?? authorityIds.taskId, executionId: authorityIds.executionId ?? owner.executionId }));
-  if (operation === 'stop_execution') {
+  if (operation === 'stop_execution' || (operation === 'task_finish' && execution && !['RUNNING', 'CREATED', 'WAITING'].includes(execution.state))) {
     facts.push(base('execution_terminal', { execution: safeEntity(execution, 'execution'), terminal_state: execution?.state ?? result?.terminal_state ?? null }, { executionId: execution?.execution_id ?? ids.executionId }));
   }
   if (task?.state) facts.push(base('task_state_changed', { task_id: task.task_id, state: task.state, state_version: task.state_version }, { taskId: task.task_id, executionId: execution?.execution_id ?? ids.executionId }));
@@ -500,12 +531,12 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     correlationId: row.correlation_id ?? envelope.operation_id ?? null,
   };
   const event = payload?.event ?? row.kind;
-  const operation = payload?.operation ?? null;
+  const operation = canonicalOperation(payload?.operation ?? null);
   const facts = [];
   const base = (kind, summary = {}, extra = {}) => makeFact(root, {
     kind, at: row.occurred_at, source,
     taskId: extra.taskId ?? ids.taskId, executionId: extra.executionId ?? ids.executionId,
-    sessionId: ids.sessionId, coreId: ids.coreId, correlationId: ids.correlationId,
+    sessionId: ids.sessionId, coreId: ids.coreId, correlationId: extra.correlationId ?? ids.correlationId,
     operation: extra.operation ?? operation, summary, priority: 1,
     preserveBoundedOperatorIds: true,
   });
@@ -563,16 +594,24 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
   }
   if (row.kind === 'workspace_revision_saved') {
     facts.push(base('workspace_revision', {
-      workspace_revision: Number.isInteger(payload?.workspace_revision) ? payload.workspace_revision : null,
+      workspace_revision: revisionValue(payload?.revision ?? payload?.workspace_revision),
     }, { operation: 'save_workspace_revision' }));
     return facts;
   }
-  if (row.kind === 'candidate_submitted') {
-    facts.push(base('candidate_submitted', {
-      candidate_material_id: typeof payload?.candidate_material_id === 'string' ? payload.candidate_material_id : null,
+  if (row.kind === 'task_lifecycle_operation' && operation === 'task_finish') {
+    facts.push(base('task_finish_recorded', {
+      disposition: text(payload?.disposition, 80),
+      task_state: text(payload?.task_state, 80),
+      execution_state: text(payload?.execution_state, 80),
+    }, { operation }));
+    return facts;
+  }
+  if (row.kind === 'workspace_checked') {
+    facts.push(base('workspace_checked', {
+      artifact_material_id: typeof payload?.artifact_material_id === 'string' ? payload.artifact_material_id : null,
       check_result_id: typeof payload?.check_result_id === 'string' ? payload.check_result_id : null,
       verdict: typeof payload?.verdict === 'string' ? payload.verdict : null,
-    }, { operation: 'submit_candidate' }));
+    }, { operation: 'workspace_check' }));
     return facts;
   }
   if (row.source === 'agent') {
@@ -580,11 +619,11 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     const recordType = record?.type;
     if (['tool_execution_start', 'tool_call'].includes(recordType)) {
       const tool = record.toolName ?? record.tool_name ?? record.name;
-      facts.push(base('tool_call', { tool: text(tool, 120), operation: operationFromTool(tool), outcome: 'started' }, { operation: operationFromTool(tool) }));
+      facts.push(base('tool_call', { tool: text(tool, 120), operation: operationFromTool(tool), outcome: 'started' }, { operation: operationFromTool(tool), correlationId: record.toolCallId ?? record.id ?? null }));
     } else if (['tool_execution_end', 'tool_result'].includes(recordType)) {
       const tool = record.toolName ?? record.tool_name ?? record.name;
       const failed = Boolean(record.isError || record.error);
-      facts.push(base('tool_call', { tool: text(tool, 120), operation: operationFromTool(tool), outcome: failed ? 'error' : 'finished', error: failed ? 'tool error' : null }, { operation: operationFromTool(tool) }));
+      facts.push(base('tool_call', { tool: text(tool, 120), operation: operationFromTool(tool), outcome: failed ? 'error' : 'finished', error: failed ? 'tool error' : null, ...returnedToolEvidence(record) }, { operation: operationFromTool(tool), correlationId: record.toolCallId ?? record.id ?? null }));
     } else if (recordType === 'turn_start' || recordType === 'turn_end') {
       facts.push(base('agent_turn', { phase: recordType === 'turn_start' ? 'started' : 'finished' }));
     } else if (recordType === 'agent_settled') {
@@ -617,7 +656,7 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     else if (runtimeEvent === 'core_state_changed') kind = 'execution_state_changed';
     else if (runtimeEvent === 'execution_released') kind = 'execution_released';
     else if (runtimeEvent === 'experiment_finished') kind = 'experiment_finished';
-    if (runtimeEvent === 'runtime.request_wait' || runtimeEvent === 'request_wait') kind = 'wait_requested';
+    if (runtimeEvent === 'runtime.wait_for' || runtimeEvent === 'wait_for') kind = 'wait_for_requested';
     if (runtimeEvent === 'runtime.stop_execution' || runtimeEvent === 'stop_execution') kind = 'execution_terminal';
     facts.push(base(kind, runtimeSummary));
     return facts;
@@ -626,7 +665,7 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     const summary = safeResult({
       operation_id: payload?.operation_id,
       target_task_id: payload?.target_task_id,
-      candidate_material_id: payload?.candidate_material_id,
+      artifact_material_id: payload?.artifact_material_id,
       verdict: payload?.verdict,
       check_result_id: payload?.check_result_id,
       ok: payload?.ok,
@@ -645,7 +684,7 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     const summary = safeResult({
       event: payload?.event,
       target_task_id: payload?.target_task_id ?? payload?.evidence?.target_task_id,
-      candidate_material_id: payload?.candidate_hash ? null : payload?.candidate_material_id,
+      artifact_material_id: payload?.candidate_hash ? null : payload?.artifact_material_id,
       verdict: payload?.verdict,
       checker_process_status: payload?.checker_process_status ?? payload?.evidence?.checker_process_status,
       result_class: payload?.result_class ?? payload?.evidence?.result_class,
@@ -694,8 +733,8 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
       const failed = Boolean(nested.isError || nested.error);
       facts.push(makeFact(root, {
         kind: 'tool_call', at, source, coreId, taskId: ids.taskId, executionId: ids.executionId,
-        correlationId: nested.id ?? nested.toolCallId ?? record.correlation_id ?? null,
-        operation, summary: { tool: text(tool, 120), operation, outcome: finished ? (failed ? 'error' : 'finished') : 'started', error: failed ? 'tool error' : null, ...(active ? { assignment_basis: 'timestamp_core_interval' } : {}) }, priority: 2,
+        correlationId: nested.toolCallId ?? nested.id ?? record.correlation_id ?? null,
+        operation, summary: { tool: text(tool, 120), operation, outcome: finished ? (failed ? 'error' : 'finished') : 'started', error: failed ? 'tool error' : null, ...(finished ? returnedToolEvidence(nested) : {}), ...(active ? { assignment_basis: 'timestamp_core_interval' } : {}) }, priority: 2,
       }));
     } else if (['turn_start', 'turn_end', 'agent_settled', 'session_started', 'session_closed'].includes(type) || ['stdout', 'stderr', 'rpc_request'].includes(record.type)) {
       facts.push(makeFact(root, {
@@ -709,7 +748,7 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
   if (sourceClass === 'runtime') {
     const event = record.event ?? record.type;
     const kind = event === 'runtime.bind_execution' ? 'execution_assigned'
-      : event === 'runtime.request_wait' ? 'wait_requested'
+      : event === 'runtime.wait_for' ? 'wait_for_requested'
         : event === 'runtime.stop_execution' ? 'execution_terminal'
           : event === 'runtime.heartbeat' ? 'heartbeat' : 'runtime_event';
     facts.push(makeFact(root, {
@@ -721,7 +760,7 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
   }
   if (sourceClass === 'bridge') {
     const event = record.event ?? record.type;
-    const operation = record.operation ?? null;
+    const operation = canonicalOperation(record.operation ?? null);
     const pending = event === 'bridge.complete' ? context.takePending('bridge', operation) : null;
     const effective = pending?.record ?? record;
     const ids = { taskId: effective.task_id ?? record.task_id ?? null, executionId: effective.execution_id ?? record.execution_id ?? null, correlationId: effective.operation_id ?? record.operation_id ?? null };
@@ -731,11 +770,14 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
       summary: { service: 'bridge', operation, phase: event === 'bridge.start' ? 'started' : 'finished', ok: record.ok ?? null, result: mode === 'full' ? safeResult(result) : null }, priority: 2,
     }));
     if (event === 'bridge.start') context.addPending('bridge', operation, record);
+    if (event === 'bridge.complete' && record.ok === true) facts.push(...domainFactsForService(root, {
+      ...record, operation, envelope: { task_id: ids.taskId, execution_id: ids.executionId, operation_id: ids.correlationId },
+    }, source, null, result));
     return facts;
   }
   if (sourceClass === 'service') {
     const event = record.event ?? record.type;
-    const operation = record.operation ?? null;
+    const operation = canonicalOperation(record.operation ?? null);
     const pending = event === 'dispatch.complete' ? context.takePending('service', operation) : null;
     const start = pending?.record ?? {};
     const envelope = start.envelope ?? record.envelope ?? {};
@@ -751,7 +793,7 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
     facts.push(makeFact(root, {
       kind: event === 'judge.complete' ? 'judge_result' : 'judge_request', at, source,
       taskId: record.target_task_id ?? null, correlationId: record.operation_id ?? null,
-      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, candidate_material_id: record.candidate_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok, judge_operation_status: record.operation_status ?? record.judge_operation_status, checker_process_status: record.checker_process_status, result_class: record.result_class, mathematical_outcome: record.mathematical_outcome, checker_result_available: record.checker_result_available, retryable: record.retryable, diagnostic_code: record.diagnostic_code }), priority: 2,
+      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, artifact_material_id: record.artifact_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok, judge_operation_status: record.operation_status ?? record.judge_operation_status, checker_process_status: record.checker_process_status, result_class: record.result_class, mathematical_outcome: record.mathematical_outcome, checker_result_available: record.checker_result_available, retryable: record.retryable, diagnostic_code: record.diagnostic_code }), priority: 2,
     }));
     return facts;
   }
@@ -760,7 +802,7 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
     facts.push(makeFact(root, {
       kind: event === 'judge.complete' ? 'judge_result' : 'judge_request', at, source,
       taskId: record.target_task_id ?? null, correlationId: record.operation_id ?? null,
-      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, candidate_material_id: record.candidate_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok, judge_operation_status: record.operation_status ?? record.judge_operation_status, checker_process_status: record.checker_process_status, result_class: record.result_class, mathematical_outcome: record.mathematical_outcome, checker_result_available: record.checker_result_available, retryable: record.retryable, diagnostic_code: record.diagnostic_code }), priority: 2,
+      operation: 'judge', summary: safeResult({ event, target_task_id: record.target_task_id, artifact_material_id: record.artifact_material_id, verdict: record.verdict, check_result_id: record.check_result_id, ok: record.ok, judge_operation_status: record.operation_status ?? record.judge_operation_status, checker_process_status: record.checker_process_status, result_class: record.result_class, mathematical_outcome: record.mathematical_outcome, checker_result_available: record.checker_result_available, retryable: record.retryable, diagnostic_code: record.diagnostic_code }), priority: 2,
     }));
     return facts;
   }
@@ -794,7 +836,7 @@ function buildExecutionIntervals(runtimeRecords) {
       if (record.event === 'runtime.bind_execution' && record.execution_id) {
         if (active) entries.push({ ...active, end: record.at });
         active = { coreId, executionId: record.execution_id, taskId: null, start: record.at, end: null };
-      } else if (active && record.execution_id === active.executionId && ['runtime.request_wait', 'runtime.stop_execution'].includes(record.event)) {
+      } else if (active && record.execution_id === active.executionId && ['runtime.wait_for', 'runtime.stop_execution'].includes(record.event)) {
         entries.push({ ...active, end: record.at });
         active = null;
       }
@@ -814,14 +856,24 @@ function dedupeFacts(facts) {
   const map = new Map();
   const semantic = (fact) => [
     fact.kind, fact.at, fact.taskId, fact.executionId, fact.coreId, fact.operation,
-    fact.summary?.material_id, fact.summary?.candidate_material_id, fact.summary?.check_result_id,
+    fact.summary?.material_id, fact.summary?.artifact_material_id, fact.summary?.check_result_id,
     fact.correlationId, fact.summary?.tool, fact.summary?.phase, fact.summary?.outcome, fact.summary?.event,
-    fact.summary?.check_result?.check_result_id, fact.summary?.candidate_material_id,
+    fact.summary?.check_result?.check_result_id, fact.summary?.artifact_material_id,
+    fact.summary?.workspace_revision, fact.summary?.material?.material_id,
   ].map((value) => value ?? '').join('|');
   for (const fact of facts) {
     const key = semantic(fact);
     const existing = map.get(key);
     if (!existing) { map.set(key, fact); continue; }
+    // Prefer the authoritative attribution without losing a recorded raw Pi
+    // boundary when an observation echo deliberately omitted private content.
+    const recorded = fact.summary?.pi_result_sha256 ? fact : existing.summary?.pi_result_sha256 ? existing : null;
+    if (recorded) {
+      const target = fact.priority < existing.priority ? fact : existing;
+      for (const [field, value] of Object.entries(recorded.summary)) {
+        if (field.startsWith('pi_result') || field === 'model_request_delivery') target.summary[field] = value;
+      }
+    }
     if (fact.priority < existing.priority) {
       fact.sources = [...new Set([...fact.sources, ...existing.sources])].sort();
       map.set(key, fact);
@@ -870,10 +922,10 @@ function closeDb(db) {
 }
 
 async function readDomainDatabases(root, dbPaths, errors, mode = 'full') {
-  const model = { tasks: [], executions: [], materials: [], checks: [], preflights: [], operations: [] };
+  const model = { tasks: [], executions: [], bots: [], materials: [], checks: [], preflights: [], operations: [] };
   for (const dbPath of dbPaths) {
     let db;
-    try { db = new DatabaseSync(dbPath); }
+    try { db = new DatabaseSync(dbPath, { readOnly: true }); }
     catch (error) { errors.push({ path: sourcePath(root, dbPath), error: text(error.message, 180) }); continue; }
     try {
       const tables = new Set(databaseTableNames(db));
@@ -882,18 +934,23 @@ async function readDomainDatabases(root, dbPaths, errors, mode = 'full') {
           model.tasks.push({ ...row, project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'tasks', `task_id=${row.task_id}`) });
         }
       }
+      if (tables.has('bots')) {
+        for (const row of selectRows(db, 'bots', ['bot_id', 'mission_id', 'core_id', 'state', 'execution_id'])) {
+          model.bots.push({ ...row, source: sourceForDb(root, dbPath, 'bots', `bot_id=${row.bot_id}`) });
+        }
+      }
       if (tables.has('executions')) {
-        for (const row of selectRows(db, 'executions', ['execution_id', 'task_id', 'owner_ref', 'state', 'state_version', 'attempt_no', 'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision', 'candidate_material_id', 'wait_condition_json', 'wait_deadline', 'created_at', 'updated_at'])) {
+        for (const row of selectRows(db, 'executions', ['execution_id', 'task_id', 'owner_ref', 'state', 'state_version', 'attempt_no', 'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision', 'artifact_material_id', 'wait_condition_json', 'wait_deadline', 'created_at', 'updated_at'])) {
           model.executions.push({ ...row, wait_condition: jsonParse(row.wait_condition_json), project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'executions', `execution_id=${row.execution_id}`) });
         }
       }
       if (tables.has('materials')) {
-        for (const row of selectRows(db, 'materials', ['material_id', 'kind', 'scope', 'evidence_state', 'source_task', 'source_execution', 'version', 'created_at'])) {
+        for (const row of selectRows(db, 'materials', ['material_id', 'kind', 'scope', 'evidence_state', 'source_task', 'source_execution', 'producer_task_id', 'producer_execution_id', 'producer_bot_id', 'version', 'created_at'])) {
           model.materials.push({ ...row, project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'materials', `material_id=${row.material_id}`) });
         }
       }
       if (tables.has('check_results')) {
-        const checkColumns = ['check_result_id', 'request_key', 'candidate_material_id', 'target_task_id', 'target_spec_version', 'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_process_status', 'result_class', 'retryable', 'diagnostic_code', 'checker_ref', 'checker_version', 'environment_ref', ...(mode === 'full' ? ['evidence_json'] : []), 'created_at', 'updated_at'];
+        const checkColumns = ['check_result_id', 'request_key', 'artifact_material_id', 'target_task_id', 'target_spec_version', 'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_process_status', 'result_class', 'retryable', 'diagnostic_code', 'checker_ref', 'checker_version', 'environment_ref', ...(mode === 'full' ? ['evidence_json'] : []), 'created_at', 'updated_at'];
         for (const row of selectRows(db, 'check_results', checkColumns)) {
           const evidence = mode === 'full' ? jsonParse(row.evidence_json) : null;
           const diagnostic = isObject(evidence) ? (evidence.diagnostic ?? evidence.stderr ?? evidence.stdout) : null;
@@ -987,21 +1044,27 @@ async function readWorkspaceFacts(root, projectIds, model, errors) {
   for (const projectId of projectIds) {
     const projectRoot = join(workspaceRoot, projectId);
     if (!(await isDirectory(projectRoot))) continue;
+    const projectExecutions = model.executions.filter(row => row.project === projectId);
+    const knownIds = new Set(projectExecutions.map(row => row.execution_id));
     const executionDirs = await readdir(projectRoot, { withFileTypes: true }).catch(() => []);
     for (const entry of executionDirs.filter((candidate) => candidate.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
-      const executionId = entry.name;
-      const executionRoot = join(projectRoot, executionId);
+      const executionRoot = join(projectRoot, entry.name);
+      const bindings = new Set(projectExecutions.filter(row => row.workspace_ref &&
+        (resolve(root, row.workspace_ref) === executionRoot || resolve(projectRoot, row.workspace_ref) === executionRoot))
+        .map(row => row.execution_id));
       for (const filename of ['workspace-manifest.json', 'runtime-manifest.json', '.swarm/workspace.json']) {
         const path = join(executionRoot, filename);
         if (!(await isRegularFile(path))) continue;
         try {
           const manifest = await readJson(path);
+          if (knownIds.has(manifest.execution_id)) bindings.add(manifest.execution_id);
           const revision = manifest.workspace_revision ?? manifest.revision ?? null;
           facts.push(makeFact(root, { kind: 'workspace_manifest', at: manifest.updated_at ?? manifest.created_at ?? null,
-            source: { ref: sourceRef(root, path) }, executionId: manifest.execution_id ?? executionId,
+            source: { ref: sourceRef(root, path) }, executionId: knownIds.has(manifest.execution_id) ? manifest.execution_id : null,
             taskId: manifest.task_id ?? null, summary: { workspace_revision: revision, content_hash: manifest.content_hash ?? null, file_count: isObject(manifest.files) ? Object.keys(manifest.files).length : null }, priority: 1 }));
         } catch (error) { errors.push({ path: sourcePath(root, path), error: text(error.message, 180) }); }
       }
+      const executionId = bindings.size === 1 ? [...bindings][0] : null;
       const revisionRoot = join(executionRoot, '.swarm', 'revisions');
       const revisionFiles = await listFiles(revisionRoot, '.json');
       for (const path of revisionFiles) {
@@ -1011,6 +1074,7 @@ async function readWorkspaceFacts(root, projectIds, model, errors) {
           facts.push(makeFact(root, { kind: 'workspace_revision', at: revision.created_at ?? revision.updated_at ?? null,
             source: { ref: sourceRef(root, path) }, executionId,
             summary: { workspace_revision: revisionNumber, content_hash: revision.content_hash ?? null, changed_files: array(revision.changed_files).map((item) => text(item, 120)).filter(Boolean) }, priority: 1 }));
+          if (!executionId) errors.push({ path: sourcePath(root, path), kind: 'correlation', error: 'Workspace revision has no unique durable Execution binding' });
         } catch (error) { errors.push({ path: sourcePath(root, path), error: text(error.message, 180) }); }
       }
     }
@@ -1020,7 +1084,7 @@ async function readWorkspaceFacts(root, projectIds, model, errors) {
 
 async function readObservationFacts(root, observationPath, experimentIds, mode, errors) {
   let db;
-  try { db = new DatabaseSync(observationPath); }
+  try { db = new DatabaseSync(observationPath, { readOnly: true }); }
   catch (error) { errors.push({ path: sourcePath(root, observationPath), error: text(error.message, 180) }); return []; }
   try {
     const tables = new Set(databaseTableNames(db));
@@ -1040,7 +1104,7 @@ async function readObservationFacts(root, observationPath, experimentIds, mode, 
       if (mode === 'full') {
         try { payload = JSON.parse(row.payload_json ?? '{}'); }
         catch (error) { errors.push({ path: sourcePath(root, observationPath), sequence: row.sequence, error: text(error.message, 180) }); continue; }
-      } else if (['material_read', 'material_consumed', 'material_published', 'task_review', 'workspace_revision_saved', 'candidate_submitted'].includes(row.kind)) {
+      } else if (['material_read', 'material_consumed', 'material_published', 'task_review', 'task_lifecycle_operation', 'workspace_revision_saved', 'workspace_checked'].includes(row.kind)) {
         // Read only the runner's bounded operator events in sanitized mode.
         // Other observation payloads may contain Agent or checker material and
         // remain intentionally opaque.
@@ -1075,10 +1139,13 @@ async function readObservationFacts(root, observationPath, experimentIds, mode, 
               target_task_id: typeof decoded.target_task_id === 'string' ? decoded.target_task_id : null,
             };
           } else if (row.kind === 'workspace_revision_saved') {
-            payload = { workspace_revision: Number.isInteger(decoded.workspace_revision) ? decoded.workspace_revision : null };
+            payload = { workspace_revision: revisionValue(decoded.revision ?? decoded.workspace_revision) };
+          } else if (row.kind === 'task_lifecycle_operation') {
+            payload = { operation: decoded.operation === 'task_finish' ? 'task_finish' : null,
+              disposition: text(decoded.disposition, 80), task_state: text(decoded.task_state, 80), execution_state: text(decoded.execution_state, 80) };
           } else {
             payload = {
-              candidate_material_id: typeof decoded.candidate_material_id === 'string' ? decoded.candidate_material_id : null,
+              artifact_material_id: typeof decoded.artifact_material_id === 'string' ? decoded.artifact_material_id : null,
               check_result_id: typeof decoded.check_result_id === 'string' ? decoded.check_result_id : null,
               verdict: typeof decoded.verdict === 'string' ? decoded.verdict : null,
             };
@@ -1223,16 +1290,21 @@ async function inventoryExperiment(root, { mode = 'full', metadata = null, proje
     const status = result.malformed ? 'malformed' : result.files.length ? 'present' : result.directories.length ? 'empty' : 'missing';
     add(className, status, result.files, result.malformed ? `${result.malformed} malformed NDJSON record(s)` : null);
   }
-  const dbPaths = [];
-  for (const projectId of ids) {
-    const path = join(root, 'state', 'projects', projectId, 'project.sqlite');
-    if (await isRegularFile(path)) dbPaths.push(path);
-  }
+  const dbPaths = await findProjectDatabases(root, ids);
   add('sqlite', dbPaths.length ? 'present' : 'missing', dbPaths, null);
   const localObservation = join(root, 'observability.sqlite');
   const configuredObservation = actualMetadata.observability?.database_path ? resolve(actualMetadata.observability.database_path) : null;
   const observationPaths = [];
-  for (const path of [...new Set([localObservation, configuredObservation].filter(Boolean))]) if (await isRegularFile(path)) observationPaths.push(path);
+  for (const path of [...new Set([localObservation, configuredObservation, ...dbPaths].filter(Boolean))]) {
+    if (!(await isRegularFile(path))) continue;
+    let db;
+    try {
+      db = new DatabaseSync(path, { readOnly: true });
+      if (databaseTableNames(db).includes('observation_events')) observationPaths.push(path);
+    } catch (error) {
+      errors.push({ path: sourcePath(root, path), error: text(error.message, 180) });
+    } finally { if (db) closeDb(db); }
+  }
   add('observation', observationPaths.length ? 'present' : 'missing', observationPaths, null);
   const workspaceRoot = join(root, 'workspaces', 'projects');
   const workspaceFiles = await listFiles(workspaceRoot);
@@ -1256,12 +1328,6 @@ async function inventoryExperiment(root, { mode = 'full', metadata = null, proje
     metadata: actualMetadata,
     summaryPaths: summaries.map((path) => sourcePath(root, path)),
   };
-}
-
-function resolveConfiguredObservation(root, metadata) {
-  const paths = [join(root, 'observability.sqlite')];
-  if (metadata.observability?.database_path) paths.push(resolve(metadata.observability.database_path));
-  return paths;
 }
 
 async function readRawFacts(root, projectIds, mode, intervals, errors) {
@@ -1299,7 +1365,7 @@ function attachFactReferences(facts, model, intervals) {
   const executionIds = new Set(model.executions.map((row) => row.execution_id));
   const taskIds = new Set(model.tasks.map((row) => row.task_id));
   const materialById = new Map(model.materials.map((row) => [row.material_id, row]));
-  const candidateToExecution = new Map(model.checks.map((row) => [row.candidate_material_id, row.execution_id]).filter(([, value]) => value));
+  const candidateToExecution = new Map(model.checks.map((row) => [row.artifact_material_id, row.execution_id]).filter(([, value]) => value));
   const taskExecutions = new Map();
   for (const execution of model.executions) {
     if (!taskExecutions.has(execution.task_id)) taskExecutions.set(execution.task_id, []);
@@ -1318,7 +1384,7 @@ function attachFactReferences(facts, model, intervals) {
   };
   for (const fact of facts) {
     const summary = fact.summary ?? {};
-    const candidateId = summary.candidate_material_id ?? summary.material_id ?? summary.material?.material_id ?? null;
+    const candidateId = summary.artifact_material_id ?? summary.material_id ?? summary.material?.material_id ?? null;
     if (!fact.executionId && candidateId && candidateToExecution.has(candidateId)) fact.executionId = candidateToExecution.get(candidateId);
     if (!fact.executionId && summary.material_id && materialById.has(summary.material_id)) fact.executionId = materialById.get(summary.material_id).source_execution ?? null;
     if (!fact.executionId && fact.taskId && taskExecutions.has(fact.taskId)) {
@@ -1352,15 +1418,15 @@ function factOperation(fact) {
 function isBoundary(fact) {
   if (BOUNDARY_KINDS.has(fact.kind)) return true;
   const operation = factOperation(fact);
-  return ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'submit_candidate', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
+  return ['task_take', 'task_create', 'task_finish', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
 }
 
 function isSemanticBoundary(fact) {
   return new Set([
-    'task_created', 'task_claimed',
-    'candidate_submitted', 'judge_result', 'judge_check', 'judge_check_record',
-    'wait_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
-  ]).has(fact.kind) || (!['service_call_started', 'service_call_finished', 'database_operation', 'tool_call'].includes(fact.kind) && ['create_child_task', 'submit_candidate', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'].includes(factOperation(fact)));
+    'task_created', 'task_taken',
+    'workspace_checked', 'judge_result', 'judge_check', 'judge_check_record',
+    'wait_for_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
+  ]).has(fact.kind) || (!['service_call_started', 'service_call_finished', 'database_operation', 'tool_call'].includes(fact.kind) && ['create_child_task', 'workspace_check', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'].includes(factOperation(fact)));
 }
 
 function sourceLabels(facts) {
@@ -1375,11 +1441,11 @@ function compactFact(fact) {
   if (fact.kind === 'material_published') return `publish Material ${summary.material?.material_id ?? summary.material_id ?? 'unknown'} [${fact.id}]`;
   if (fact.kind === 'material_read') return `read ${array(summary.material_ids).length} Material(s) [${fact.id}]`;
   if (fact.kind === 'material_consumed') return `consume ${array(summary.material_ids).length} Material(s)${summary.action ? ` for ${summary.action}` : ''} [${fact.id}]`;
-  if (fact.kind === 'candidate_submitted') return `submit Candidate ${summary.candidate_material_id ?? 'unknown'} [${fact.id}]`;
+  if (fact.kind === 'workspace_checked') return `workspace check ${summary.artifact_material_id ?? 'unknown'} [${fact.id}]`;
   if (fact.kind === 'checker_preflight') return `Checker preflight ${summary.status ?? 'unknown'}${summary.diagnostic_code ? `/${summary.diagnostic_code}` : ''} [${fact.id}]`;
   if (fact.kind === 'judge_result' || fact.kind === 'judge_check' || fact.kind === 'judge_check_record') return `Judge ${summary.verdict ?? summary.check_result?.verdict ?? 'result'}${summary.result_class ? `/${summary.result_class}` : ''}${summary.checker_process_status ? ` (${summary.checker_process_status})` : ''} [${fact.id}]`;
   if (fact.kind === 'workspace_revision' || fact.kind === 'workspace_manifest') return `Workspace revision ${summary.workspace_revision ?? 'unknown'} [${fact.id}]`;
-  if (fact.kind === 'wait_requested') return `wait (${summary.wait_condition?.type ?? 'condition unknown'}) [${fact.id}]`;
+  if (fact.kind === 'wait_for_requested') return `wait (${summary.wait_condition?.type ?? 'condition unknown'}) [${fact.id}]`;
   if (fact.kind === 'execution_assigned') return `Execution assigned [${fact.id}]`;
   if (fact.kind === 'execution_terminal') return `Execution terminal: ${summary.terminal_state ?? summary.execution?.state ?? 'unknown'} [${fact.id}]`;
   if (fact.kind === 'review' || fact.kind === 'rework') return `${summary.decision ?? fact.kind} [${fact.id}]`;
@@ -1396,9 +1462,9 @@ function latestState(facts, execution) {
 }
 
 function resultForWindow(facts) {
-  const meaningful = [...facts].reverse().find((fact) => ['judge_result', 'judge_check', 'judge_check_record', 'candidate_submitted', 'wait_requested', 'review', 'rework', 'material_read', 'material_consumed', 'material_published', 'workspace_revision', 'execution_terminal', 'task_state_changed', 'execution_state_changed'].includes(fact.kind));
+  const meaningful = [...facts].reverse().find((fact) => ['judge_result', 'judge_check', 'judge_check_record', 'workspace_checked', 'wait_for_requested', 'review', 'rework', 'material_read', 'material_consumed', 'material_published', 'workspace_revision', 'execution_terminal', 'task_state_changed', 'execution_state_changed'].includes(fact.kind));
   const impactful = meaningful ?? [...facts].reverse().find((fact) => {
-    const durableOperations = ['claim', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'submit_candidate', 'apply_check_result', 'request_wait', 'wake_execution', 'resume_execution', 'accept_task', 'request_rework', 'stop_execution'];
+    const durableOperations = ['task_take', 'task_create', 'task_finish', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'];
     if (['heartbeat', 'agent_turn', 'agent_settled', 'process_event', 'agent_event', 'agent_rpc_request'].includes(fact.kind)) return false;
     if (durableOperations.includes(fact.operation)) return true;
     if (fact.kind === 'service_call_started' || fact.kind === 'service_call_finished') return Boolean(fact.summary?.ok === false || fact.summary?.error);
@@ -1407,11 +1473,11 @@ function resultForWindow(facts) {
   if (!impactful) return 'No state-changing operation observed in this window.';
   const summary = impactful.summary ?? {};
   if (impactful.kind === 'judge_result' || impactful.kind === 'judge_check' || impactful.kind === 'judge_check_record') return `Judge returned ${summary.verdict ?? summary.check_result?.verdict ?? 'an observed result'}.`;
-  if (impactful.kind === 'wait_requested') return `A concrete wait condition was recorded: ${summary.wait_condition?.type ?? 'condition not visible'}.`;
+  if (impactful.kind === 'wait_for_requested') return `A concrete wait condition was recorded: ${summary.wait_condition?.type ?? 'condition not visible'}.`;
   if (impactful.kind === 'material_published') return `Material publication was recorded; semantic usefulness is not inferred.`;
   if (impactful.kind === 'material_read') return `Material read was recorded; durable consumption is checked separately.`;
   if (impactful.kind === 'material_consumed') return `Durable Material consumption was recorded for ${summary.action ?? 'an action'}; downstream effect is checked separately.`;
-  if (impactful.kind === 'candidate_submitted') return 'Candidate submission was recorded.';
+  if (impactful.kind === 'workspace_checked') return 'Workspace check was recorded.';
   if (impactful.kind === 'workspace_revision' || impactful.kind === 'workspace_manifest') return `Workspace revision ${summary.workspace_revision ?? 'unknown'} was recorded.`;
   if (summary.ok === false || summary.error) return `An error was returned by ${summary.service ?? 'a service'}; later activity is checked separately.`;
   return `Observed ${factOperation(impactful) ?? impactful.kind}.`;
@@ -1420,9 +1486,9 @@ function resultForWindow(facts) {
 function handoffForWindow(facts) {
   const material = facts.find((fact) => fact.kind === 'material_published');
   if (material) return `Material published; consumer/effect must be established by later records (${material.id}).`;
-  const wait = facts.find((fact) => fact.kind === 'wait_requested');
+  const wait = facts.find((fact) => fact.kind === 'wait_for_requested');
   if (wait) return `Execution responsibility persisted with wait condition ${wait.summary?.wait_condition?.type ?? 'unknown'} (${wait.id}).`;
-  const candidate = facts.find((fact) => fact.kind === 'candidate_submitted');
+  const candidate = facts.find((fact) => fact.kind === 'workspace_checked');
   if (candidate) return `Candidate handed to Judge path (${candidate.id}).`;
   const review = facts.find((fact) => fact.kind === 'review' || fact.kind === 'rework');
   if (review) return `Parent review decision recorded (${review.id}).`;
@@ -1430,7 +1496,7 @@ function handoffForWindow(facts) {
 }
 
 function windowIntent(facts) {
-  const explicit = facts.find((fact) => fact.operation || ['material_published', 'material_read', 'material_consumed', 'candidate_submitted', 'judge_result', 'wait_requested', 'review', 'rework', 'workspace_revision'].includes(fact.kind));
+  const explicit = facts.find((fact) => fact.operation || ['material_published', 'material_read', 'material_consumed', 'workspace_checked', 'judge_result', 'wait_for_requested', 'review', 'rework', 'workspace_revision'].includes(fact.kind));
   if (!explicit) return { label: 'unknown', confidence: 'unknown', basis: [] };
   return { label: intentFor(factOperation(explicit), explicit.kind), confidence: explicit.operation ? 'high' : 'medium', basis: [explicit.id] };
 }
@@ -1439,12 +1505,12 @@ function semanticPhase(facts) {
   const kinds = new Set(facts.map((fact) => fact.kind));
   const operations = new Set(facts.map(factOperation));
   if (kinds.has('judge_result') || kinds.has('judge_check') || kinds.has('judge_check_record')) return 'candidate checking and feedback';
-  if (kinds.has('candidate_submitted') || operations.has('submit_candidate')) return 'candidate construction and submission';
+  if (kinds.has('workspace_checked') || operations.has('workspace_check')) return 'Workspace editing and checking';
   if (kinds.has('review') || kinds.has('rework')) return 'parent review and rework';
-  if (kinds.has('wait_requested')) return 'coordination and waiting';
+  if (kinds.has('wait_for_requested')) return 'coordination and waiting';
   if (kinds.has('material_published') || kinds.has('material_read') || kinds.has('material_consumed') || operations.has('create_child_task')) return 'research and collaboration handoff';
   if (kinds.has('workspace_revision') || operations.has('write_workspace_file') || operations.has('save_workspace_revision')) return 'Workspace editing';
-  if (operations.has('claim') || kinds.has('execution_assigned')) return 'Task discovery and claim';
+  if (operations.has('task_take') || kinds.has('execution_assigned')) return 'Task discovery and take';
   if (facts.some((fact) => ['agent_turn', 'agent_event', 'agent_rpc_request'].includes(fact.kind))) return 'Agent reasoning activity';
   return 'runtime or lifecycle activity';
 }
@@ -1461,8 +1527,8 @@ function semanticSummary(facts, previousWindow = null) {
   const counts = {};
   for (const fact of facts) counts[fact.kind] = (counts[fact.kind] ?? 0) + 1;
   const phase = semanticPhase(facts);
-  const durable = [...new Set(facts.filter((fact) => ['task_created', 'task_claimed', 'task_state_changed', 'execution_assigned', 'workspace_revision', 'material_published', 'material_read', 'material_consumed', 'candidate_submitted', 'judge_result', 'judge_check', 'judge_check_record', 'review', 'rework', 'wait_requested', 'wake', 'resume', 'execution_terminal'].includes(fact.kind)).map((fact) => compactFact(fact).replace(/ \[F-[A-Za-z0-9_-]+\]$/, '')))].slice(0, 8);
-  const candidate = facts.find((fact) => fact.kind === 'candidate_submitted');
+  const durable = [...new Set(facts.filter((fact) => ['task_created', 'task_taken', 'task_state_changed', 'execution_assigned', 'workspace_revision', 'material_published', 'material_read', 'material_consumed', 'workspace_checked', 'judge_result', 'judge_check', 'judge_check_record', 'review', 'rework', 'wait_for_requested', 'wake', 'resume', 'execution_terminal'].includes(fact.kind)).map((fact) => compactFact(fact).replace(/ \[F-[A-Za-z0-9_-]+\]$/, '')))].slice(0, 8);
+  const candidate = facts.find((fact) => fact.kind === 'workspace_checked');
   const judge = facts.find((fact) => ['judge_result', 'judge_check', 'judge_check_record'].includes(fact.kind));
   const material = facts.find((fact) => ['material_published', 'material_read', 'material_consumed'].includes(fact.kind));
   let summary = `The Agent was primarily engaged in ${phase.toLowerCase()}.`;
@@ -1541,7 +1607,7 @@ function buildWindows(execution, facts, experimentEnd, maxWindowMs = DEFAULT_MAX
 function materialCollaboration(model, facts) {
   const published = facts.filter((fact) => fact.kind === 'material_published');
   const consumed = facts.filter((fact) => fact.kind === 'material_consumed');
-  const downstreamKinds = new Set(['workspace_revision', 'candidate_submitted', 'judge_result', 'judge_check', 'review', 'rework']);
+  const downstreamKinds = new Set(['workspace_revision', 'workspace_checked', 'judge_result', 'judge_check', 'review', 'rework']);
   const rows = [];
   for (const material of model.materials) {
     const materialId = material.material_id;
@@ -1601,7 +1667,7 @@ function executionInventory(model, facts, experimentEnd, maxWindowMs = DEFAULT_M
       coreIds,
       sessionIds,
       workspaceRefs,
-      waitCondition: execution.wait_condition ?? executionFacts.findLast((fact) => fact.kind === 'wait_requested')?.summary?.wait_condition ?? null,
+      waitCondition: execution.wait_condition ?? executionFacts.findLast((fact) => fact.kind === 'wait_for_requested')?.summary?.wait_condition ?? null,
     };
   });
 }
@@ -1630,9 +1696,9 @@ function markEvidenceStatuses(evidence, errors) {
 
 function aggregateSummary(summaries, model, facts, inventory) {
   const run = (summaries.find((summary) => summary.data?.run?.protocol_valid !== null || summary.data?.run?.solved !== null) ?? summaries[0])?.data?.run ?? {};
-  const candidates = model.checks.length ? model.checks : facts.filter((fact) => fact.kind === 'candidate_submitted');
+  const candidates = model.checks.length ? model.checks : facts.filter((fact) => fact.kind === 'workspace_checked');
   const judges = model.checks.length ? model.checks : facts.filter((fact) => ['judge_result', 'judge_check', 'judge_check_record'].includes(fact.kind));
-  const waits = model.operations.filter((operation) => operation.operation === 'request_wait');
+  const waits = model.operations.filter((operation) => operation.operation === 'wait_for');
   const heartbeats = facts.filter((fact) => fact.kind === 'heartbeat');
   return {
     experiment_id: inventory.experimentId,
@@ -1698,10 +1764,10 @@ function buildErrorAnalysis(facts) {
       evidence: [...group.sources],
       confidence: 'high',
     };
-    if (group.category === 'claim_active_execution_quota') return {
+    if (group.category === 'take_active_execution_quota') return {
       ...common,
       severity: 'medium',
-      interpretation: 'Several Agents attempted to claim a Task while its active Execution quota was full. This is contention and retry waste, not evidence of state corruption by itself.',
+      interpretation: 'Several Agents attempted to take a Task while its active Execution quota was full. This is contention and retry waste, not evidence of state corruption by itself.',
       next_optimization: 'Make claimability quota-aware before dispatch, and add bounded per-Core backoff after this conflict.',
     };
     if (group.category === 'check_result_contract_mismatch') return {
@@ -1751,8 +1817,8 @@ function buildSystemFindings(analysis) {
   }
   if (configuredCores > 1 && executionIntervals.length && maxOverlap <= 1) findings.push({
     severity: 'medium', category: 'serial-or-supply-limited', title: 'Configured Core capacity was not reflected in overlapping Executions',
-    interpretation: `The authoritative Execution intervals overlap at most ${maxOverlap} at a time while ${configuredCores} Cores were configured. This is a system-level serialization signal; the trace does not by itself identify whether the cause was insufficient ready work, claim policy, or Agent behavior.`,
-    validation: 'Run with the same workload and record ready-work, claim, and Core assignment intervals; require at least two independent Tasks to overlap before labeling scheduling defective.',
+    interpretation: `The authoritative Execution intervals overlap at most ${maxOverlap} at a time while ${configuredCores} Cores were configured. This is a system-level serialization signal; the trace does not by itself identify whether the cause was insufficient ready work, take policy, or Agent behavior.`,
+    validation: 'Run with the same workload and record ready-work, take, and Core assignment intervals; require at least two independent Tasks to overlap before labeling scheduling defective.',
     ...scopeForExecutions(executionIntervals.map((item) => item.execution.execution_id)),
     evidence: executionIntervals.map((item) => evidenceRef(item.execution.source)).filter(Boolean), confidence: 'medium',
   });
@@ -1861,8 +1927,8 @@ function buildToolAnalysis(analysis) {
 
 function buildCandidateAnalysis(model, facts) {
   const submissions = new Map();
-  for (const fact of facts.filter((candidate) => candidate.kind === 'candidate_submitted')) {
-    const candidateId = fact.summary?.candidate_material_id;
+  for (const fact of facts.filter((candidate) => candidate.kind === 'workspace_checked')) {
+    const candidateId = fact.summary?.artifact_material_id;
     if (!candidateId || !fact.executionId) continue;
     const existing = submissions.get(candidateId);
     if (!existing || (fact.at && (!existing.at || fact.at < existing.at))) submissions.set(candidateId, fact);
@@ -1872,11 +1938,11 @@ function buildCandidateAnalysis(model, facts) {
     const resultClass = check.result_class ?? (check.verdict === 'PASS' ? 'PASS' : check.verdict === 'FAIL' ? 'source_failure' : 'unassessed');
     const checkerProcessStatus = check.checker_process_status ?? (resultClass === 'source_failure' || resultClass === 'PASS' ? 'completed' : 'unknown');
     const mathematicalOutcome = resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed';
-    const submission = submissions.get(check.candidate_material_id);
+    const submission = submissions.get(check.artifact_material_id);
     const start = timeMs(parseTime(check.created_at));
     const end = timeMs(parseTime(check.updated_at));
     const feedbackReads = facts.filter((fact) => fact.executionId === check.execution_id && ['get_check_result', 'apply_check_result'].includes(fact.operation) && timeMs(fact.at) !== null && end !== null && timeMs(fact.at) >= end).length;
-    const laterActions = facts.filter((fact) => fact.executionId === check.execution_id && ['workspace_revision', 'candidate_submitted', 'material_published', 'material_consumed', 'review', 'rework'].includes(fact.kind) && timeMs(fact.at) !== null && end !== null && timeMs(fact.at) >= end).map((fact) => fact.kind);
+    const laterActions = facts.filter((fact) => fact.executionId === check.execution_id && ['workspace_revision', 'workspace_checked', 'material_published', 'material_consumed', 'review', 'rework'].includes(fact.kind) && timeMs(fact.at) !== null && end !== null && timeMs(fact.at) >= end).map((fact) => fact.kind);
     const visibleRevisions = facts.filter((fact) => fact.executionId === check.execution_id && fact.kind === 'workspace_revision' && timeMs(fact.at) !== null && start !== null && timeMs(fact.at) <= start).slice(-3);
     const changedFiles = [...new Set(visibleRevisions.flatMap((fact) => array(fact.summary?.changed_files)))].slice(0, 8);
     const strategySummary = changedFiles.length
@@ -1893,7 +1959,7 @@ function buildCandidateAnalysis(model, facts) {
         ? 'same diagnostic class and same visible Workspace change pattern'
         : 'visible diagnostic or Workspace change pattern differs from the previous Candidate';
     return {
-      candidate_material_id: check.candidate_material_id,
+      artifact_material_id: check.artifact_material_id,
       check_result_id: check.check_result_id,
       task_id: check.target_task_id,
       execution_id: check.execution_id,
@@ -1921,11 +1987,11 @@ function buildCandidateAnalysis(model, facts) {
       evidence: [...new Set([check.source.ref, ...(submission?.sources ?? [])])],
     };
   });
-  const checkedIds = new Set(rows.map((row) => row.candidate_material_id));
+  const checkedIds = new Set(rows.map((row) => row.artifact_material_id));
   for (const submission of submissions.values()) {
-    const candidateId = submission.summary?.candidate_material_id;
+    const candidateId = submission.summary?.artifact_material_id;
     if (candidateId && !checkedIds.has(candidateId)) rows.push({
-      candidate_material_id: candidateId,
+      artifact_material_id: candidateId,
       check_result_id: null,
       task_id: submission.taskId,
       execution_id: submission.executionId,
@@ -1990,9 +2056,9 @@ function buildOptimizationRecommendations(analysis) {
   const recommendations = [];
   const add = (priority, category, action, rationale, validation, evidence) => recommendations.push({ priority, category, action, rationale, validation, evidence: [...new Set(evidence)].slice(0, 12) });
   const categories = new Set(analysis.errors.map((error) => error.category));
-  if (categories.has('claim_active_execution_quota')) {
-    const count = analysis.errors.filter((error) => error.category === 'claim_active_execution_quota').reduce((total, error) => total + error.occurrence_count, 0);
-    add('P1', 'claim contention', 'Make the claimable queue quota-aware; after a conflict, back off and refresh the queue.', `This run produced ${count} unique quota conflict occurrence(s) while active Executions already owned the work.`, 'Count unique quota conflicts per run and require the next retry to occur only after claimability changes.', analysis.errors.filter((error) => error.category === 'claim_active_execution_quota').flatMap((error) => error.evidence));
+  if (categories.has('take_active_execution_quota')) {
+    const count = analysis.errors.filter((error) => error.category === 'take_active_execution_quota').reduce((total, error) => total + error.occurrence_count, 0);
+    add('P1', 'take contention', 'Make the eligible queue quota-aware; after a conflict, back off and refresh the queue.', `This run produced ${count} unique quota conflict occurrence(s) while active Executions already owned the work.`, 'Count unique quota conflicts per run and require the next retry to occur only after claimability changes.', analysis.errors.filter((error) => error.category === 'take_active_execution_quota').flatMap((error) => error.evidence));
   }
   if (categories.has('check_result_contract_mismatch')) {
     const count = analysis.errors.filter((error) => error.category === 'check_result_contract_mismatch').reduce((total, error) => total + error.occurrence_count, 0);
@@ -2025,7 +2091,7 @@ function deriveConclusions(analysis) {
   if (analysis.candidates.infrastructure_failure_count) conclusions.push({ type: 'Interpretation', text: `${analysis.candidates.infrastructure_failure_count} Candidate check(s) were infrastructure failures and produced no mathematical verdict. They are reported as unassessed rather than as proof failures.`, evidence: analysis.candidates.rows.filter((row) => row.result_class === 'infrastructure_failure').flatMap((row) => row.evidence).slice(0, 12) });
   if (analysis.candidates.all_failed) conclusions.push({ type: 'Interpretation', text: `None of the ${analysis.candidates.rows.length} recorded Candidate check(s) returned PASS. Repeated diagnostic classes are reported as route non-convergence, not as proof of a mathematical impossibility.`, evidence: analysis.candidates.rows.flatMap((row) => row.evidence).slice(0, 12) });
   if (analysis.terminal) conclusions.push({ type: 'Interpretation', text: analysis.terminal.interpretation, evidence: analysis.terminal.evidence.slice(0, 8) });
-  conclusions.push({ type: 'Derived metric', text: 'The report treats heartbeat, turn count, Material count, Task acceptance, and report.json made_progress as activity or supporting metrics. None is labeled productive Goal progress by itself.', evidence: ['docs/workflows/experiment.md'] });
+  conclusions.push({ type: 'Derived metric', text: 'The report treats heartbeat, turn count, Material count, Task acceptance, and report.json made_progress as activity or supporting metrics. None is labeled productive Mission progress by itself.', evidence: ['docs/workflows/experiment.md'] });
   return conclusions;
 }
 
@@ -2046,6 +2112,17 @@ export async function resolveExperiment(input, { experimentsRoot = null } = {}) 
   throw new Error(`experiment directory not found: ${input}`);
 }
 
+async function findProjectDatabases(root, ids) {
+  const paths = [];
+  for (const projectId of ids) {
+    for (const filename of ['project.sqlite', 'context.sqlite', 'judge.sqlite']) {
+      const path = join(root, 'state', 'projects', projectId, filename);
+      if (await isRegularFile(path)) paths.push(path);
+    }
+  }
+  return paths;
+}
+
 export async function analyseExperiment(input, { mode = 'full', experimentsRoot = null, outputPath = null, maxWindowMs = DEFAULT_MAX_WINDOW_MS } = {}) {
   if (!['full', 'sanitized'].includes(mode)) throw new TypeError('mode must be full or sanitized');
   const root = await resolveExperiment(input, { experimentsRoot });
@@ -2054,11 +2131,7 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
   const inventory = await inventoryExperiment(root, { mode, metadata });
   inventory.errors = [...metadataErrors, ...inventory.errors].slice(0, MAX_SOURCE_ERRORS);
   const projectIds = inventory.projectIds;
-  const dbPaths = [];
-  for (const projectId of projectIds) {
-    const path = join(root, 'state', 'projects', projectId, 'project.sqlite');
-    if (await isRegularFile(path)) dbPaths.push(path);
-  }
+  const dbPaths = await findProjectDatabases(root, projectIds);
   const modelErrors = [];
   const model = await readDomainDatabases(root, dbPaths, modelErrors, mode);
   const summaries = await readSummaries(root, metadata, modelErrors);
@@ -2078,7 +2151,10 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
   }
   const intervals = buildExecutionIntervals(rawRuntimeRecords);
   const observationCandidates = [];
-  for (const path of resolveConfiguredObservation(root, metadata)) if (await isRegularFile(path)) observationCandidates.push(path);
+  for (const path of inventory.evidence.find(entry => entry.class === 'observation')?.paths ?? []) {
+    const configured = metadata.observability?.database_path;
+    observationCandidates.push(path.startsWith('<external>/') ? resolve(configured) : resolve(root, path));
+  }
   const observationFacts = [];
   const observationErrors = [];
   let observationMatched = false;
@@ -2091,7 +2167,6 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
       if (facts.length) {
         for (const fact of facts) observationFacts.push(fact);
         observationMatched = true;
-        break;
       }
     }
     if (!observationMatched) observationErrors.push({ path: sourcePath(root, observationCandidates[0]), kind: 'correlation', error: 'no observation events matched the resolved experiment/project run IDs' });
@@ -2099,8 +2174,9 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
   const rawErrors = [];
   const rawFacts = await readRawFacts(root, projectIds, mode, intervals, rawErrors);
   const domainFacts = factsFromDomainModel(root, model);
-  const allFacts = dedupeFacts([...observationFacts, ...rawFacts, ...domainFacts, ...workspaceFacts]);
-  const warnings = attachFactReferences(allFacts, model, intervals);
+  const attributedFacts = [...observationFacts, ...rawFacts, ...domainFacts, ...workspaceFacts];
+  const warnings = attachFactReferences(attributedFacts, model, intervals);
+  const allFacts = dedupeFacts(attributedFacts);
   const projectSummary = summaries.find((summary) => summary.data?.run?.protocol_valid !== null || summary.data?.run?.solved !== null) ?? summaries[0];
   const experimentEnd = inventory.metadata.experiment?.ended_at ?? projectSummary?.data?.run?.ended_at ?? new Date().toISOString();
   const executions = executionInventory(model, allFacts, experimentEnd, maxWindowMs);
@@ -2180,6 +2256,15 @@ function executionTable(executions) {
   return rows.length ? ['| Execution attempt | Task | Lifecycle role | Predecessor | Successor | Owner | Core | Session | State | Attempt | Workspace lineage | Evidence |', '|---|---|---|---|---|---|---|---|---|---:|---|---|', ...rows].join('\n') : '_No Execution was discoverable._';
 }
 
+function botTable(bots) {
+  if (!bots.length) return '_No authoritative Bot rows were available._';
+  const visible = [...bots].sort((left, right) => left.bot_id.localeCompare(right.bot_id)).slice(0, 200);
+  const unbound = bots.filter(bot => bot.execution_id === null).length;
+  const rows = visible.map(bot => `| ${md(bot.bot_id)} | ${md(bot.core_id)} | ${md(bot.state)} | ${md(bot.execution_id ?? 'none')} | ${bot.source.ref} |`);
+  return [`${bots.length} Bot(s), including ${unbound} without a persisted Execution binding. Showing ${visible.length}.`,
+    '', '| Bot | Core | State | Execution | Evidence |', '|---|---|---|---|---|', ...rows].join('\n');
+}
+
 function windowTable(item) {
   const rows = item.windows.map((window, index) => {
     const counts = Object.entries(window.event_counts ?? {}).filter(([kind]) => !['heartbeat', 'agent_turn', 'agent_event', 'process_event'].includes(kind)).map(([kind, count]) => `${kind}=${count}`).join(', ') || 'no durable event count';
@@ -2194,7 +2279,7 @@ function renderMarkdown(analysis) {
   const conclusionLines = analysis.conclusions.map((item) => `- **${item.type}:** ${item.text} _(evidence: ${item.evidence.join(', ') || 'none recorded'})_`).join('\n');
   const executionSections = analysis.executions.map((item) => {
     const counts = Object.entries(item.counts).map(([key, value]) => `${key}=${value}`).join(', ') || 'no normalized facts';
-    const artifacts = item.facts.filter((fact) => ['material_published', 'material_read', 'material_consumed', 'candidate_submitted', 'workspace_revision', 'judge_result', 'judge_check'].includes(fact.kind)).slice(0, 40).map((fact) => `- ${compactFact(fact)} — ${fact.sources.join(', ')}`).join('\n') || '- No artifact/check fact was observed for this Execution.';
+    const artifacts = item.facts.filter((fact) => ['material_published', 'material_read', 'material_consumed', 'workspace_checked', 'workspace_revision', 'judge_result', 'judge_check'].includes(fact.kind)).slice(0, 40).map((fact) => `- ${compactFact(fact)} — ${fact.sources.join(', ')}`).join('\n') || '- No artifact/check fact was observed for this Execution.';
     return `### Execution \`${md(item.execution.execution_id)}\` — ${md(item.lifecycle_role)}\n\n- Task: \`${md(item.execution.task_id)}\`\n- Lifecycle role: **${md(item.lifecycle_role)}**\n- Predecessor/rework source: ${md(item.predecessor_execution_id ?? 'none recorded')}\n- Successor/rework target: ${md(item.successor_execution_id ?? 'none recorded')}\n- Owner: ${md(item.execution.owner_ref)}\n- Core(s): ${md(item.coreIds.join(', ') || 'unknown')}\n- Session(s): ${md(item.sessionIds.join(', ') || 'unknown')}\n- Current/terminal state: **${md(item.execution.state)}**\n- Attempt: ${md(item.execution.attempt_no ?? 'unknown')}\n- Workspace lineage: ${md(item.workspaceRefs.map(safeWorkspaceRef).join(', ') || 'unknown')}\n- Wait condition: ${md(item.waitCondition?.type ?? 'none recorded')}\n- Normalized evidence counts: ${counts}\n- Evidence mode: ${analysis.inventory.evidenceMode}\n\n#### ${analysis.windowSizeMinutes}-minute semantic work windows\n\nThe table summarizes observable Agent objectives, Workspace/Material/Judge changes, and lifecycle state. Supporting event counts are included for audit; low-level calls are not the narrative.\n\n${windowTable(item)}\n\n#### Artifacts, Service effects, and errors\n\n${artifacts}\n`;
   }).join('\n');
   const collaborationRows = analysis.collaboration.map((row) => {
@@ -2208,10 +2293,10 @@ function renderMarkdown(analysis) {
   const serviceRows = analysis.serviceAnalysis.map((row) => `| ${md(row.service)} | ${row.started} | ${row.finished} | ${row.failed} | ${row.observed_failure_rate === null ? 'unknown' : `${(row.observed_failure_rate * 100).toFixed(1)}%`} | ${md(row.operations.join(', ') || 'unknown')} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
   const tool = analysis.toolAnalysis;
   const optimizationRows = analysis.optimizations.map((item) => `| ${md(item.priority)} | ${md(item.category)} | ${md(item.action)} | ${md(item.rationale)} | ${md(item.validation)} | ${item.evidence.slice(0, 6).join('<br>')} |`).join('\n');
-  const candidateRows = analysis.candidates.rows.map((row) => `| ${md(row.candidate_material_id)} | ${md(row.task_id)} | ${md(row.execution_id)} | ${md(row.strategy_summary)} | ${md(row.change_from_previous)} | ${md(row.feedback_response)} | ${md(row.check_result_id ?? 'none')} | ${md(row.verdict)} / ${md(row.mathematical_outcome)} / ${md(row.status)} | ${md(row.result_class)} | ${md(row.checker_process_status)} | ${md(row.diagnostic_class)} | ${md(row.submitted_at)} | ${row.feedback_reads} | ${row.later_actions.join(', ') || 'none recorded'} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
+  const candidateRows = analysis.candidates.rows.map((row) => `| ${md(row.artifact_material_id)} | ${md(row.task_id)} | ${md(row.execution_id)} | ${md(row.strategy_summary)} | ${md(row.change_from_previous)} | ${md(row.feedback_response)} | ${md(row.check_result_id ?? 'none')} | ${md(row.verdict)} / ${md(row.mathematical_outcome)} / ${md(row.status)} | ${md(row.result_class)} | ${md(row.checker_process_status)} | ${md(row.diagnostic_class)} | ${md(row.submitted_at)} | ${row.feedback_reads} | ${row.later_actions.join(', ') || 'none recorded'} | ${row.evidence.slice(0, 4).join('<br>')} |`).join('\n');
   const repeatedDiagnosticRows = analysis.candidates.repeated_diagnostics.map((row) => `| ${md(row.task_id)} | ${md(row.diagnostic_class)} | ${row.count} | ${row.evidence.slice(0, 6).join('<br>')} |`).join('\n');
   const healthByCore = {};
-  for (const fact of analysis.facts.filter((candidate) => ['heartbeat', 'execution_assigned', 'wait_requested', 'execution_terminal', 'session_started', 'session_closed'].includes(candidate.kind))) {
+  for (const fact of analysis.facts.filter((candidate) => ['heartbeat', 'execution_assigned', 'wait_for_requested', 'execution_terminal', 'session_started', 'session_closed'].includes(candidate.kind))) {
     const key = fact.coreId ?? 'unknown';
     if (!healthByCore[key]) healthByCore[key] = {};
     healthByCore[key][fact.kind] = (healthByCore[key][fact.kind] ?? 0) + 1;
@@ -2289,6 +2374,10 @@ ${taskTable(analysis.model)}
 
 ${executionTable(analysis.executions)}
 
+### Bots
+
+${botTable(analysis.model.bots)}
+
 ## Execution layer
 
 The authoritative domain model keeps a durable Execution distinct from an Agent Session. This report presents each Execution attempt and its Session/Core segments; a successor Execution is shown only when the durable model records a new ID. A wait/resume, Core handoff, or in-place parent rework remains the same Execution.
@@ -2299,7 +2388,7 @@ ${executionSections || '_No Execution section can be rendered from the available
 
 ### Collaboration review
 
-This section follows the collaboration loop: decompose → claim → independent work → deliver → consumer reads → review/rework → resume. A Material is treated as a delivery artifact; it is not treated as useful merely because it exists.
+This section follows the collaboration loop: decompose → take → independent work → deliver → consumer reads → review/rework → resume. A Material is treated as a delivery artifact; it is not treated as useful merely because it exists.
 
 | Material | Kind/state | Producer | Explicit consumers | Recorded downstream effects | Semantic handoff reading | Assessment |
 |---|---|---|---|---|---|---|
@@ -2315,11 +2404,11 @@ ${healthRows || '| unknown | No Core/session facts available |'}
 
 Heartbeats are lease activity only. Agent turns, process health, Judge time, IDLE, WAITING, scheduler polling, and effective Agent work are not collapsed into one metric. An unexplained interval is reported as an evidence gap, not a scheduler defect.
 
-The efficiency view must distinguish configured capacity from effective work: Core occupancy, concurrency, ready-but-unassigned work, claim contention, capacity release on WAITING, wake/resume, Judge time, scheduler polling, and cleanup are separate measures. When the trace lacks Runtime RUNNING or ready-queue intervals, occupancy is a proxy and the report says so.
+The efficiency view must distinguish configured capacity from effective work: Core occupancy, concurrency, ready-but-unassigned work, take contention, capacity release on WAITING, wake/resume, Judge time, scheduler polling, and cleanup are separate measures. When the trace lacks Runtime RUNNING or ready-queue intervals, occupancy is a proxy and the report says so.
 
 ## Tool layer
 
-This layer evaluates provider/transport failures, tool contract use, response schemas, and error fidelity. Judge/checker results are reviewed for diagnostic quality and whether the Agent could act on the feedback.
+This layer evaluates provider/transport failures, tool contract use, response schemas, and error fidelity. Judge/checker results are reviewed for diagnostic quality and whether the Agent could act on the feedback. Completed raw Pi tool events retain a hash and byte count of the actual returned content in normalized facts, with explicit truncation metadata when present. Missing truncation metadata is unknown; structured programmatic output is not substituted for model-facing content. Tool events alone do not prove delivery in a subsequent model request. Correlated raw call arguments retain read ranges and private Bash commands; skill version must come from that run’s resource manifest, not the analyzer checkout.
 
 | Metric | Observed value | Interpretation | Evidence |
 |---|---:|---|---|
@@ -2336,7 +2425,7 @@ This layer evaluates provider/transport failures, tool contract use, response sc
 
 ## Error analysis
 
-Error Analysis prioritizes failures in the Swarm collaboration loop. Low-level Agent, Bridge, and Service errors are supporting evidence; they are not the main conclusion unless they block claim, handoff, feedback, recovery, or cleanup. 'occurrence_count' is the estimated number of independent failures; source references show supporting records and are not additional failures.
+Error Analysis prioritizes failures in the Swarm collaboration loop. Low-level Agent, Bridge, and Service errors are supporting evidence; they are not the main conclusion unless they block take, handoff, feedback, recovery, or cleanup. 'occurrence_count' is the estimated number of independent failures; source references show supporting records and are not additional failures.
 
 ### System-level findings
 

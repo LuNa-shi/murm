@@ -11,7 +11,10 @@ if (process.argv.slice(2).some((arg) => arg !== '--check')) throw new Error('Usa
 const map = JSON.parse(await readFile(resolve(root, 'docs/architecture/source-map.json'), 'utf8'));
 if (map.schema_version !== 1 || !Array.isArray(map.files)) throw new Error('Unsupported architecture source map');
 const safe = (path) => typeof path === 'string' && path !== '' && !path.startsWith('/') && !path.startsWith('../') && posix.normalize(path) === path && !path.includes('\\');
-const skipRoots = new Set(['.git', 'node_modules', '.codex', 'docs', 'test', 'test-support', 'experiments', 'reports']);
+// Git worktrees and local agent metadata are workspace state, not repository
+// runtime inputs. They can contain dependency symlinks and must never affect
+// the tracked source inventory.
+const skipRoots = new Set(['.git', '.worktrees', '.claude', 'node_modules', '.codex', 'docs', 'test', 'test-support', 'experiments', 'reports']);
 async function walk(directory, prefix = '') {
   const files = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {

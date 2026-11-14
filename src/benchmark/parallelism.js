@@ -69,7 +69,7 @@ function sampleDurations(samples, startedAt, endedAt) {
 }
 
 /**
- * Intervals in which every Core was idle and no claimable work existed. This
+ * Intervals in which every Core was idle and no eligible work existed. This
  * is a stalled Mission, not a quiet scheduler: r12 spent 84 of 120 minutes
  * here while only per-Core idle totals were reported.
  */
@@ -160,8 +160,8 @@ export class CoreParallelismTracker {
     this.openAgentTurns = new Map();
     this.readySamples = [];
     this.schedulerPollMs = 0;
-    this.claimConflictCount = 0;
-    this.claimConflictKeys = new Set();
+    this.takeConflictCount = 0;
+    this.takeConflictKeys = new Set();
     this.judgeTimeMs = 0;
     this.turnOccupancyMs = 0;
     this.workUnits = [];
@@ -235,12 +235,12 @@ export class CoreParallelismTracker {
     this.schedulerPollMs += durationMs;
   }
 
-  recordClaimConflict(key = null) {
+  recordTakeConflict(key = null) {
     if (key !== null) {
-      if (this.claimConflictKeys.has(key)) return false;
-      this.claimConflictKeys.add(key);
+      if (this.takeConflictKeys.has(key)) return false;
+      this.takeConflictKeys.add(key);
     }
-    this.claimConflictCount += 1;
+    this.takeConflictCount += 1;
     return true;
   }
 
@@ -359,14 +359,14 @@ export class CoreParallelismTracker {
       eligible_concurrency_histogram_ms: eligibleConcurrencyHistogram,
       ready_work_ms: samples.readyWorkMs,
       ready_unassigned_ms: samples.readyUnassignedMs,
-      // All Cores idle with zero claimable work (sampled at scheduler polls).
+      // All Cores idle with zero eligible work (sampled at scheduler polls).
       mission_stall_ms: stallMs,
       mission_stall_ratio: elapsedMs === 0 ? 0 : stallMs / elapsedMs,
       mission_stall_intervals: stallIntervals.map((interval) => ({ start: toIso(interval.start_ms), end: toIso(interval.end_ms), duration_ms: interval.end_ms - interval.start_ms })),
       waiting_ms_by_core: waitingMsByCore,
       idle_ms_by_core: idleMsByCore,
       scheduler_poll_ms: this.schedulerPollMs,
-      claim_conflict_count: this.claimConflictCount,
+      take_conflict_count: this.takeConflictCount,
       judge_time_ms: this.judgeTimeMs,
       turn_occupancy_ms: this.turnOccupancyMs,
       turn_occupancy_ratio_v0: this.coreCount * elapsedMs === 0 ? 0 : this.turnOccupancyMs / (this.coreCount * elapsedMs),

@@ -20,10 +20,6 @@ export class ServicesSDK {
     return new ServicesSDK(this.service, { ...this.context, ...overrides });
   }
 
-  getTask(taskId = this.context.taskId) {
-    return this.#read('get_task', { task_id: taskId });
-  }
-
   getExecution(executionId = this.context.executionId) {
     return this.#read('get_execution', { execution_id: executionId });
   }
@@ -32,7 +28,7 @@ export class ServicesSDK {
     return this.#read('list_tasks', filters);
   }
 
-  /** Create the shared Mission scope used by the flat Task Service surface. */
+  /** Create a Mission objective; the Mission itself is never eligible. */
   createMission(mission, options = {}) {
     return this.#write('create_mission', mission, { ...options, taskId: null, executionId: null, fencingVersion: null });
   }
@@ -67,24 +63,8 @@ export class ServicesSDK {
     return this.#read('list_task_materials', { ...filters, task_id: taskId });
   }
 
-  completeTask(payload = {}, options = {}) {
-    return this.#write('task_complete', payload, options);
-  }
-
-  closeTask(payload = {}, options = {}) {
-    return this.#write('task_close', payload, options);
-  }
-
-  handoffTask(payload = {}, options = {}) {
-    return this.#write('task_handoff', payload, options);
-  }
-
-  blockTask(payload = {}, options = {}) {
-    return this.#write('task_block', payload, options);
-  }
-
-  listClaimableTasks(filters = {}) {
-    return this.#read('list_claimable_tasks', filters);
+  finishTask(payload = {}, options = {}) {
+    return this.#write('task_finish', payload, options);
   }
 
   listExecutions(taskId = this.context.taskId, { includeTerminal = true } = {}) {
@@ -132,23 +112,14 @@ export class ServicesSDK {
     return this.#read('get_check_result', requestKey ? { request_key: requestKey } : { check_result_id: checkResultId });
   }
 
-  /** Register one independent responsibility with the current identity provenance. */
-  taskRegister(task, options = {}) {
-    return this.#write('task_register', task, options);
-  }
-
-  claim(payload = {}, options = {}) {
-    return this.#write('claim', payload, options);
-  }
-
   /** Take an existing Mission/ordinary Task through the canonical Agent seam. */
   taskTake(payload = {}, options = {}) {
     const contextCoreId = this.context.coreId ?? this.context.core_id ?? null;
+    if (typeof this.context.actorRef !== 'string' || this.context.actorRef.length === 0) {
+      throw new TypeError('task_take requires the authenticated actor context');
+    }
     return this.#write('task_take', {
       ...payload,
-      // Agent identity and Core lane come from the bound SDK context. Keep
-      // payload fields as a compatibility fallback only for unbound local
-      // callers that have no lane context yet.
       owner_ref: this.context.actorRef,
       ...(contextCoreId !== null ? { core_id: contextCoreId } : {}),
     }, options);
@@ -168,44 +139,8 @@ export class ServicesSDK {
     return this.#write('heartbeat', payload, options);
   }
 
-  requestWait(payload, options = {}) {
-    return this.#write('request_wait', payload, options);
-  }
-
-  submitCandidate(payload, options = {}) {
-    return this.#write('submit_candidate', payload, options);
-  }
-
-  applyCheckResult(payload, options = {}) {
-    return this.#write('apply_check_result', payload, options);
-  }
-
-  wakeExecution(payload = {}, options = {}) {
-    return this.#write('wake_execution', payload, options);
-  }
-
   publishMaterial(material, options = {}) {
     return this.#write('publish_material', material, options);
-  }
-
-  abort(payload = {}, options = {}) {
-    return this.#write('abort', payload, options);
-  }
-
-  startExecution(payload = {}, options = {}) {
-    return this.#write('start_execution', payload, options);
-  }
-
-  resumeExecution(payload = {}, options = {}) {
-    return this.#write('resume_execution', payload, options);
-  }
-
-  stopExecution(payload = {}, options = {}) {
-    return this.#write('stop_execution', payload, options);
-  }
-
-  fenceExecution(payload = {}, options = {}) {
-    return this.#write('fence_execution', payload, options);
   }
 
   #read(operation, payload) {

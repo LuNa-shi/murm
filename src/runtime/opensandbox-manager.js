@@ -1,7 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../agent/bot-contract.js';
+import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { openSandboxBotKey, openSandboxExecutionKey, openSandboxMissionKey } from './opensandbox-metadata.js';
 
 const DEFAULT_EXECd_PORT = 44772;
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -202,6 +204,9 @@ export class OpenSandboxManager {
     this.resourceLimits = structuredClone(resourceLimits);
     if (!Array.isArray(entrypoint) || entrypoint.length === 0 || !entrypoint.every((part) => typeof part === 'string')) throw new TypeError('entrypoint must be a non-empty string array');
     this.entrypoint = [...entrypoint];
+    if (this.entrypoint.length !== 3 || this.entrypoint[0] !== 'tail' || this.entrypoint[1] !== '-f' || this.entrypoint[2] !== '/dev/null') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'OpenSandbox uses the fixed Agent worker entrypoint; custom entrypoints are not supported');
+    }
     this.metadata = { ...metadata };
     this.environment = envs(environment);
     this.volumes = normalizeVolumes(volumes);
@@ -225,6 +230,9 @@ export class OpenSandboxManager {
     this.logger = logger;
     this.now = now;
     this.executions = new Map();
+    this.pendingCreations = new Map();
+    this.reconciliationIds = new Map();
+    this.projectInstallReceipts = new Map();
     this.verified = null;
   }
 
@@ -235,51 +243,212 @@ export class OpenSandboxManager {
     return { ...this.verified, ok: true };
   }
 
-  async reconcileExecutions({ executionIds = [], timeoutMs = 30_000 } = {}) {
+  ownsBotResource(resourceKey) { return this.executions.has(resourceKey) || this.pendingCreations.has(resourceKey); }
+
+  async reconcileExecutions(options = {}) { return this.#reconcileExecutions(options); }
+
+  async #reconcileExecutions({ missionId = null, bots = [], executionIds = [], timeoutMs = 30_000, onSandboxDiscovered = null } = {}, recoveringCreation = null) {
     const allowed = new Set(executionIds.filter((id) => typeof id === 'string' && id.length > 0));
-    const response = await this.#request('/sandboxes?pageSize=100', { method: 'GET', timeoutMs });
-    const value = responseValue(response.body);
-    const sandboxes = Array.isArray(value) ? value : (value?.items ?? value?.sandboxes ?? []);
-    const adopted = [];
-    for (const sandbox of sandboxes) {
-      const metadata = sandbox?.metadata ?? {};
-      const executionId = metadata.execution_id ?? metadata.executionId;
-      if (!allowed.has(executionId) || this.executions.has(executionId)) continue;
-      const sandboxId = sandbox.id ?? sandbox.sandbox_id;
-      if (!sandboxId) continue;
-      const endpointResponse = await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}/endpoints/${this.execdPort}`, { method: 'GET', timeoutMs });
-      const execdUrl = endpointForHost(responseValue(endpointResponse.body), this.endpointHost);
-      if (!execdUrl) continue;
-      const bindingVersion = Number.parseInt(metadata.binding_version ?? metadata.bindingVersion, 10);
-      const record = { executionId, sandboxId, execdUrl: execdUrl.replace(/\/$/, ''), execdHeaders: {}, bindingVersion: Number.isInteger(bindingVersion) ? bindingVersion : null, hostWorkspaceRef: null, createdAt: this.now(), jobs: new Map(), agent: null, reconciled: true };
-      this.executions.set(executionId, record);
-      adopted.push(this.#snapshot(record));
+    const owned = (key) => this.executions.has(key) ||
+      (this.pendingCreations.has(key) && this.pendingCreations.get(key) !== recoveringCreation);
+    const liveSandboxIds = new Set([...this.executions.values()].map((record) => record.sandboxId));
+    const targets = bots.filter((bot) => bot.mission_id === missionId && bot.bot_id && bot.resource_key &&
+      (!bot.provider || bot.provider === 'opensandbox'));
+    const deadline = Date.now() + timeout(timeoutMs);
+    const remaining = () => {
+      const ms = deadline - Date.now();
+      if (ms <= 0) throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'OpenSandbox reconciliation timed out', {}, { retryable: true });
+      return ms;
+    };
+    const sandboxes = await this.#listSandboxes(remaining);
+    const result = { provider: 'opensandbox', adopted: [], quarantined: [], pending: [], confirmed_bot_ids: [], owned_bot_ids: [] };
+    const dispositions = new Map();
+    const quarantine = async (target) => {
+      if (owned(target.resource_key ?? target.execution_id)) return false;
+      let deletion = dispositions.get(target.sandbox_id);
+      if (!deletion) {
+        deletion = this.#confirmSandboxDeletion(target.sandbox_id, remaining);
+        dispositions.set(target.sandbox_id, deletion);
+      }
+      try {
+        await deletion;
+        result.quarantined.push(target);
+        this.logger?.({ event: 'sandbox.quarantined', provider: 'opensandbox', ...target });
+        return true;
+      } catch (error) {
+        result.pending.push({ ...target, reason: 'deletion_unconfirmed', error_class: error?.code ?? error?.name });
+        return false;
+      }
+    };
+    const knownIds = new Set(targets.map((bot) => bot.sandbox_id).filter(Boolean));
+    const missionKey = missionId === null ? null : openSandboxMissionKey(missionId);
+    const executionKeys = new Map([...allowed].map(id => [openSandboxExecutionKey(id), id]));
+    const missionMismatch = metadata => (metadata.mission_id && metadata.mission_id !== missionId) ||
+      (metadata.mission_key && metadata.mission_key !== missionKey);
+    for (const bot of targets) {
+      if (owned(bot.resource_key)) {
+        result.owned_bot_ids.push(bot.bot_id);
+        continue;
+      }
+      const target = { bot_id: bot.bot_id, mission_id: missionId, execution_id: bot.execution_id ?? null, resource_key: bot.resource_key };
+      const botKey = openSandboxBotKey(bot.bot_id);
+      const resourceKey = openSandboxBotKey(bot.resource_key);
+      const matches = new Set(this.reconciliationIds.get(bot.resource_key));
+      if (bot.sandbox_id) matches.add(bot.sandbox_id);
+      let conflict = false;
+      for (const [sandboxId, metadata] of sandboxes) {
+        if (!matches.has(sandboxId) && metadata.bot_key !== botKey && metadata.bot_id !== bot.bot_id &&
+            metadata.resource_key !== bot.resource_key && metadata.resource_key !== resourceKey) continue;
+        const incompatible = missionMismatch(metadata) || (metadata.bot_key && metadata.bot_key !== botKey) ||
+          (metadata.bot_id && metadata.bot_id !== bot.bot_id) ||
+          (metadata.resource_key && metadata.resource_key !== bot.resource_key && metadata.resource_key !== resourceKey) ||
+          (sandboxId !== bot.sandbox_id && knownIds.has(sandboxId)) || liveSandboxIds.has(sandboxId);
+        if (incompatible) {
+          conflict = true;
+          matches.delete(sandboxId);
+          result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'provider_identity_mismatch' });
+        } else matches.add(sandboxId);
+      }
+      for (const sandboxId of matches) {
+        if (!liveSandboxIds.has(sandboxId)) continue;
+        conflict = true;
+        matches.delete(sandboxId);
+        result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'provider_identity_mismatch' });
+      }
+      if (matches.size === 0 && !conflict) {
+        result.pending.push({ ...target, sandbox_id: null, reason: 'creation_unconfirmed' });
+      }
+      if (matches.size > 1) {
+        for (const sandboxId of matches) result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'provider_identity_mismatch' });
+        continue;
+      }
+      if (matches.size > 0) this.reconciliationIds.set(bot.resource_key, matches);
+      else this.reconciliationIds.delete(bot.resource_key);
+      if (conflict || matches.size === 0) continue;
+      const [sandboxId] = matches;
+      if (!bot.sandbox_id && onSandboxDiscovered) {
+        try {
+          await onSandboxDiscovered(bot, sandboxId);
+        } catch (error) {
+          result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'resource_record_unconfirmed', error_class: error?.code ?? error?.name });
+          continue;
+        }
+      }
+      if (await quarantine({ ...target, sandbox_id: sandboxId })) {
+        this.reconciliationIds.delete(bot.resource_key);
+        result.confirmed_bot_ids.push(bot.bot_id);
+      }
     }
-    this.logger?.({ event: 'sandbox.reconciled', provider: 'opensandbox', requested: allowed.size, adopted: adopted.length });
-    return { provider: 'opensandbox', adopted };
+    for (const [sandboxId, metadata] of sandboxes) {
+      const executionId = metadata.execution_key ? executionKeys.get(metadata.execution_key) : metadata.execution_id ?? metadata.executionId;
+      if (metadata.bot_key || metadata.bot_id || metadata.resource_key || knownIds.has(sandboxId) ||
+          (missionId && missionMismatch(metadata)) || liveSandboxIds.has(sandboxId) ||
+          !allowed.has(executionId) || owned(executionId)) continue;
+      await quarantine({ execution_id: executionId, sandbox_id: sandboxId });
+    }
+    this.logger?.({ event: 'sandbox.reconciled', provider: 'opensandbox', quarantined: result.quarantined.length, pending: result.pending.length });
+    return result;
   }
 
-  async ensureExecution({ executionId, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {} } = {}) {
+  async #listSandboxes(remaining) {
+    const sandboxes = new Map();
+    for (let page = 1; ; page += 1) {
+      const response = await this.#request(`/sandboxes?pageSize=100${page === 1 ? '' : `&page=${page}`}`, { timeoutMs: remaining() });
+      const value = responseValue(response.body);
+      const items = Array.isArray(value) ? value : (value?.items ?? value?.sandboxes);
+      const pagination = value?.pagination;
+      if (!Array.isArray(items) || (pagination && pagination.page !== page)) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Invalid OpenSandbox list page', { page });
+      }
+      for (const sandbox of items) {
+        const id = sandbox?.id ?? sandbox?.sandbox_id;
+        if (typeof id !== 'string' || id.length === 0 || sandboxes.has(id)) {
+          throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'OpenSandbox listing changed or contained invalid IDs', { page }, { retryable: true });
+        }
+        sandboxes.set(id, sandbox.metadata ?? {});
+      }
+      if (!pagination) {
+        if (items.length < 100) return sandboxes;
+      } else if (pagination.hasNextPage === false) {
+        return sandboxes;
+      } else if (pagination.hasNextPage !== true || items.length === 0) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Invalid OpenSandbox list continuation', { page });
+      }
+    }
+  }
+
+  async #confirmSandboxDeletion(sandboxId, remaining) {
+    const path = `/sandboxes/${encodeURIComponent(sandboxId)}`;
+    try {
+      const deletion = await this.#request(path, { method: 'DELETE', timeoutMs: remaining(), allowStatuses: [404] });
+      if (deletion.status === 404) return;
+    } catch (error) {
+      if (!error?.retryable && error?.details?.status !== 409) throw error;
+    }
+    const observed = await this.#request(path, { timeoutMs: remaining(), allowStatuses: [404] });
+    if (observed.status !== 404) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox deletion is still pending', { sandbox_id: sandboxId }, { retryable: true });
+    }
+  }
+
+  async ensureExecution({ executionId, botId = null, onCreateDispatch = null, onCreateRejected = null, onCreated = null,
+    timeoutSeconds = 3600, projectQuotaRequired = false, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {} } = {}) {
     const id = required(executionId, 'execution_id');
     const existing = this.executions.get(id);
-    if (existing) return this.#snapshot(existing);
+    if (existing) {
+      if (existing.preparing || existing.stopPromise) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox preparation or cleanup is pending', { execution_id: id }, { retryable: true });
+      return this.#snapshot(existing);
+    }
+    if (this.pendingCreations.has(id)) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE,
+      'Sandbox creation or cleanup is pending', { execution_id: id }, { retryable: true });
+    if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 60) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Sandbox timeout must be at least 60 seconds');
+    }
+    const launchBody = { ...this.environment, ...envs(environment) };
+    const { mission_id: configuredMission = null, mission_key: _missionKey, bot_id: _botId, bot_key: _botKey,
+      resource_key: _resourceKey, execution_id: _executionId, executionId: _legacyExecutionId, execution_key: _executionKey,
+      ...labels } = { ...this.metadata, ...metadata };
+    const creation = botId ? { bot_id: botId, resource_key: id, mission_id: configuredMission, inFlight: true, onCreated } : null;
+    if (creation) this.pendingCreations.set(id, creation);
+    const workerToken = randomUUID();
+    const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort), ...(projectQuotaRequired ? ['--require-project-quota'] : [])];
+    try {
+      await onCreateDispatch?.({ provider: 'opensandbox', timeout_seconds: timeoutSeconds });
+    } catch (error) {
+      if (creation) this.pendingCreations.delete(id);
+      throw error;
+    }
     const response = await this.#request('/sandboxes', {
       method: 'POST',
       body: {
+        timeout: timeoutSeconds,
         image: { uri: this.image },
-        entrypoint: this.entrypoint,
+        entrypoint: workerEntrypoint,
         resourceLimits: this.resourceLimits,
-        env: { ...this.environment, ...envs(environment) },
+        env: { ...launchBody, SWARMENV_WORKER_TOKEN: workerToken },
         ...(this.volumes.length > 0 ? { volumes: this.volumes } : {}),
         metadata: {
-          ...this.metadata,
-          ...metadata,
-          execution_id: id,
+          ...labels,
+          ...(configuredMission ? { mission_key: openSandboxMissionKey(configuredMission) } : {}),
+          ...(botId ? { bot_key: openSandboxBotKey(botId), resource_key: openSandboxBotKey(id) } : { execution_key: openSandboxExecutionKey(id) }),
           ...(bindingVersion === null || bindingVersion === undefined ? {} : { binding_version: String(bindingVersion) }),
         },
       },
       timeoutMs: 60_000,
+    }).catch(async (error) => {
+      if (creation) {
+        try {
+          if ([400, 401, 403, 422].includes(error?.details?.status)) {
+            await onCreateRejected?.();
+            this.pendingCreations.delete(id);
+          }
+        } finally {
+          creation.inFlight = false;
+        }
+      }
+      throw error;
     });
+    if (creation) creation.inFlight = false;
     const created = responseValue(response.body);
     const sandboxId = created?.id ?? created?.sandbox_id;
     if (typeof sandboxId !== 'string' || sandboxId.length === 0) {
@@ -288,7 +457,13 @@ export class OpenSandboxManager {
     const suppliedExecdEndpoint = created?.execd_endpoint ?? created?.endpoint;
     let execdUrl = endpointForHost(suppliedExecdEndpoint, this.endpointHost);
     let execdHeaders = suppliedExecdEndpoint?.headers ?? {};
+    // Retain the resource as soon as its provider ID exists. Endpoint/health
+    // preparation failures must not erase responsibility for deletion.
+    const record = { executionId: id, botId, projectQuotaRequired, boundExecutionId: null, sandboxId, execdUrl: null, execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), jobs: new Map(), workerToken, preparing: true };
+    this.executions.set(id, record);
+    this.pendingCreations.delete(id);
     try {
+      await onCreated?.({ ...this.#snapshot(record), expires_at: created.expiresAt ?? null });
       if (!execdUrl) {
         const endpointResponse = await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}/endpoints/${this.execdPort}`, { method: 'GET', timeoutMs: 30_000 });
         const endpoint = responseValue(endpointResponse.body);
@@ -297,21 +472,39 @@ export class OpenSandboxManager {
       }
       if (!execdUrl) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return an Execd endpoint', { sandbox_id: sandboxId, port: this.execdPort });
     } catch (error) {
-      await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}`, { method: 'DELETE', timeoutMs: 30_000, allowStatuses: [404] }).catch((cleanupError) => {
+      await this.stopExecution(id).catch((cleanupError) => {
         this.logger?.({ event: 'sandbox.prepare_cleanup_error', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, error_class: cleanupError?.code ?? cleanupError?.name });
       });
       throw error;
     }
-    const record = { executionId: id, sandboxId, execdUrl: execdUrl.replace(/\/$/, ''), execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), jobs: new Map() };
-    this.executions.set(id, record);
+    record.execdUrl = execdUrl.replace(/\/$/, '');
+    record.execdHeaders = execdHeaders;
     try {
       if (this.waitForExecdReady) await this.#waitExecd(record);
     } catch (error) {
-      this.executions.delete(id);
-      await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}`, { method: 'DELETE', timeoutMs: 30_000, allowStatuses: [404] }).catch(() => undefined);
+      await this.stopExecution(id).catch(() => undefined);
       throw error;
     }
+    record.preparing = false;
+    if (this.executions.get(id) !== record || record.stopPromise) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox was stopped during preparation', { execution_id: id }, { retryable: true });
     this.logger?.({ event: 'sandbox.started', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, binding_version: bindingVersion });
+    return this.#snapshot(record);
+  }
+
+  bindBotExecution({ botId, executionId, bindingVersion = null, workspaceRef = null }) {
+    const record = this.#record(botId);
+    if (record.botId !== botId || record.preparing || record.stopPromise) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot Sandbox is not ready for binding');
+    }
+    required(executionId, 'execution_id');
+    if ((record.boundExecutionId && record.boundExecutionId !== executionId) ||
+        (this.executions.has(executionId) && this.executions.get(executionId) !== record)) {
+      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot Sandbox is already bound');
+    }
+    record.boundExecutionId = executionId;
+    record.bindingVersion = bindingVersion;
+    record.hostWorkspaceRef = workspaceRef;
+    this.executions.set(executionId, record);
     return this.#snapshot(record);
   }
 
@@ -396,17 +589,22 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ executionId, command: agentCommand, args = [], cwd = '/workspace', env = {}, secretEnvironment = {}, sessionDir = '/workspace/.swarm/pi-session', systemPrompt = null, systemPromptPath = null } = {}) {
+  async startAgent({ executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources = BOT_RESOURCES, projectQuota = null, modelCatalogResource = null } = {}) {
     const record = this.#record(executionId);
+    const signature = values => Array.isArray(values) && values.every(item => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
+      ? JSON.stringify(values.map(({ path, sha256 }) => ({ path, sha256 })).sort((a, b) => a.path.localeCompare(b.path))) : null;
+    if (signature(resources) !== signature(BOT_RESOURCES)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
+    if (!record.botId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
+    if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
     if (record.agent) return { ...record.agent };
-    const workerToken = randomUUID();
-    await this.exec({ executionId, command: [...this.workerCommand, '--port', String(this.workerPort)], cwd: '/workspace', internalEnvironment: { SWARMENV_WORKER_TOKEN: workerToken }, background: true, timeoutMs: 30_000 });
+    const workerToken = record.workerToken;
+    if (typeof workerToken !== 'string' || workerToken.length === 0) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox worker token is unavailable for this Execution');
     let endpoint = endpointForHost((await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}/endpoints/${this.workerPort}`, { method: 'GET', timeoutMs: 30_000 })).body, this.endpointHost);
     if (!endpoint) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return the Agent worker endpoint', { sandbox_id: record.sandboxId, port: this.workerPort });
     endpoint = endpoint.replace(/\/$/, '');
     const workerHeaders = { authorization: `Bearer ${workerToken}` };
     await this.#waitWorker(endpoint, workerHeaders);
-    await this.#request(`${endpoint}/start`, {
+    const startup = await this.#request(`${endpoint}/start`, {
       absolute: true,
       method: 'POST',
       extraHeaders: workerHeaders,
@@ -421,10 +619,26 @@ export class OpenSandboxManager {
         session_dir: sessionDir,
         system_prompt: systemPrompt,
         system_prompt_path: systemPromptPath,
+        resources,
+        contract_version: BOT_PROTOCOL_VERSION,
+        ...(projectQuota ? { project_quota: projectQuota } : {}),
+        ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}),
       },
       timeoutMs: 30_000,
     });
-    record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now() };
+    const receipt = startup.body?.result?.contract;
+    if (receipt?.version !== BOT_PROTOCOL_VERSION || !Array.isArray(receipt.resources) || signature(receipt.resources) !== signature(resources)) {
+      throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'worker did not attest the pinned Bot contract resources');
+    }
+    const quotaReceipt = startup.body?.result?.project_quota;
+    const catalogReceipt = startup.body?.result?.model_catalog_resource;
+    if (projectQuota && (quotaReceipt?.bytes !== projectQuota.bytes || quotaReceipt?.inodes !== projectQuota.inodes)) {
+      throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'worker did not attest Bot workspace quota');
+    }
+    if (modelCatalogResource && signature([catalogReceipt]) !== signature([modelCatalogResource])) {
+      throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'worker did not attest the pinned Pi model catalog');
+    }
+    record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), contract: receipt };
     this.logger?.({ event: 'sandbox.agent_started', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId, worker_port: this.workerPort });
     return { ...record.agent };
   }
@@ -451,7 +665,7 @@ export class OpenSandboxManager {
     return versions;
   }
 
-  async syncWorkspace({ executionId, workspaceRef, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 } = {}) {
+  async syncWorkspace({ executionId, workspaceRef, manifest = null, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 } = {}) {
     const record = this.#record(executionId);
     if (typeof workspaceRef !== 'string' || workspaceRef.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspaceRef is required to initialize the provider Workspace');
     const root = workspaceRef;
@@ -464,24 +678,90 @@ export class OpenSandboxManager {
         else if (entry.isFile()) files.push(source);
       }
     }
-    await walk(root).catch((error) => { throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `could not read initial Workspace: ${error.message}`, undefined, { cause: error }); });
+    if (manifest) {
+      const rootInfo = await lstat(root);
+      if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace input root must be a regular directory');
+      for (const path of Object.keys(manifest)) {
+        const segments = path.split('/');
+        if (segments.some(segment => !segment || ['.', '..', '.git', '.swarm', '.pi', '.env'].includes(segment) || segment.startsWith('.swarm-') || segment.startsWith('.env.')) || path.includes('\\') || path.includes('\0')) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace manifest contains a forbidden path');
+        }
+        let current = root;
+        for (const [index, segment] of segments.entries()) {
+          current = join(current, segment);
+          const info = await lstat(current);
+          if (info.isSymbolicLink() || (index < segments.length - 1 ? !info.isDirectory() : !info.isFile())) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace input must contain regular files without symlinks');
+        }
+        files.push(join(root, path));
+      }
+    } else await walk(root).catch((error) => { throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `could not read initial Workspace: ${error.message}`, undefined, { cause: error }); });
     let total = 0;
     for (const source of files) {
       const content = await readFile(source);
       if (content.length > maxFileBytes || total + content.length > maxTotalBytes) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'initial Workspace exceeds provider sync bounds', { max_file_bytes: maxFileBytes, max_total_bytes: maxTotalBytes });
       total += content.length;
-      const target = `/workspace/${relative(root, source).split('\\').join('/')}`;
+      const path = relative(root, source).split('\\').join('/');
+      const digest = createHash('sha256').update(content).digest('hex');
+      if (manifest && (manifest[path]?.content_hash !== digest || manifest[path]?.bytes !== content.length)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Public Workspace input bytes differ from the pinned manifest', { path });
+      const projectRoot = record.botId ? '/workspace/project' : '/workspace';
+      const target = `${projectRoot}/${relative(root, source).split('\\').join('/')}`;
       const encoded = content.toString('base64');
-      await this.exec({ executionId, command: ['sh', '-lc', `mkdir -p ${shellQuote(join(target, '..'))}; printf %s ${shellQuote(encoded)} | base64 -d > ${shellQuote(target)}`], timeoutMs: this.commandTimeoutMs });
+      const stage = join(target, '..', `.swarm-input-${randomUUID()}`);
+      // Linux limits each argv string independently of the request body's
+      // size. Keep each base64 segment below that limit, including quoting.
+      const chunks = encoded.match(/.{1,65536}/g) ?? [''];
+      try {
+        for (const [index, chunk] of chunks.entries()) {
+          const first = index === 0;
+          const last = index === chunks.length - 1;
+          const publish = last ? ` && test "$(sha256sum < ${shellQuote(stage)} | cut -d ' ' -f 1)" = ${shellQuote(digest)} && mv -T -- ${shellQuote(stage)} ${shellQuote(target)}` : '';
+          const copied = await this.exec({ executionId, command: ['sh', '-lc', `umask 077; mkdir -p ${shellQuote(join(target, '..'))} && printf %s ${shellQuote(chunk)} | base64 -d ${first ? '>' : '>>'} ${shellQuote(stage)}${publish}`], timeoutMs: this.commandTimeoutMs });
+          if (copied.exit_code !== 0 || copied.timed_out) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'Bot Workspace input copy failed', { execution_id: executionId, path, exit_code: copied.exit_code });
+        }
+      } catch (error) {
+        await this.exec({ executionId, command: ['rm', '-f', '--', stage], timeoutMs: this.commandTimeoutMs }).catch(() => undefined);
+        throw error;
+      }
     }
     this.logger?.({ event: 'sandbox.workspace_initialized', provider: 'opensandbox', execution_id: executionId, file_count: files.length, bytes: total });
-    return { execution_id: executionId, file_count: files.length, bytes: total, workspace: '/workspace' };
+    return { execution_id: executionId, file_count: files.length, bytes: total, workspace: record.botId ? '/workspace/project' : '/workspace' };
   }
+
+  async #projectCall(executionId, action, manifest = undefined, input = {}) {
+    const record = this.#record(executionId);
+    if (!record.botId || record.boundExecutionId !== executionId || !record.agent || record.stopPromise) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Project control requires the live bound Bot worker');
+    const body = { ...input, execution_id: executionId, binding_version: record.bindingVersion, ...(manifest ? { manifest } : {}) };
+    const response = await this.#request(`${record.agent.endpoint}/project/${action}`, { absolute: true, method: 'POST',
+      extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body, timeoutMs: action.startsWith('install') ? 5000 : 30_000 });
+    const result = responseValue(response.body);
+    const expected = action === 'prepare' ? 'PREPARED' : 'ACTIVE';
+    if ((!action.startsWith('install') && result?.state !== expected) || result?.execution_id !== executionId || result?.binding_version !== record.bindingVersion) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'Worker did not confirm the expected project permission state');
+    if (record.stopPromise || this.executions.get(executionId) !== record) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during project control');
+    this.logger?.({ event: `sandbox.project_${action === 'prepare' ? 'prepared' : action === 'grant' ? 'granted' : action}`, bot_id: record.botId, execution_id: executionId, binding_version: record.bindingVersion });
+    return result;
+  }
+
+  prepareBotProject({ executionId, manifest }) { return this.#projectCall(executionId, 'prepare', manifest); }
+  grantBotProject({ executionId }) { return this.#projectCall(executionId, 'grant'); }
+  snapshotBotProject({ executionId }) { return this.#projectCall(executionId, 'snapshot'); }
+  installBotProject({ executionId, ...input }) { return this.#projectCall(executionId, 'install', undefined, input); }
+  queryBotProjectInstall({ executionId, request_id }) {
+    const closed = this.projectInstallReceipts.get(executionId);
+    if (closed) return structuredClone(closed.receipts.find(receipt => receipt.request_id === request_id) ?? { execution_id: executionId, binding_version: closed.bindingVersion, request_id, phase: 'not_found' });
+    return this.#projectCall(executionId, 'install-result', undefined, { request_id });
+  }
+  forgetBotProjectInstalls({ executionId }) { this.projectInstallReceipts.delete(executionId); }
+  confirmBotProjectInstall({ executionId, request_id, content_hash }) { return this.#projectCall(executionId, 'install-confirm', undefined, { request_id, content_hash }); }
 
   /** Pull guest files back before Runtime checkpoints or deletes the sandbox. */
   async syncWorkspaceBack({ executionId, workspaceRef, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 } = {}) {
-    this.#record(executionId);
     if (typeof workspaceRef !== 'string' || workspaceRef.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspaceRef is required to persist provider Workspace');
+    // Cleanup paths can race when Runtime handles both a provider transport
+    // failure and the corresponding Session close. Once stopExecution removed
+    // the manager record there is no guest Workspace left to pull, so make the
+    // persistence operation idempotent instead of reporting a second failure.
+    const record = this.executions.get(executionId);
+    if (!record) return { execution_id: executionId, file_count: 0, bytes: 0, workspace: resolve(workspaceRef), skipped: true };
     const listing = await this.exec({ executionId, command: ['sh', '-lc', "find /workspace -type f -not -path '/workspace/.swarm/*' -not -path '/workspace/.git/*' -not -name '.env' -not -name '.env.*' -print0"], timeoutMs: this.commandTimeoutMs });
     if (listing.exit_code !== 0) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'could not list provider Workspace files', { exit_code: listing.exit_code, diagnostic: safeDiagnostic(listing.stderr) }, { retryable: true });
     // NUL delimiters survive Execd's line-oriented JSON stream; newline-only
@@ -543,7 +823,12 @@ export class OpenSandboxManager {
   async stopAgent(executionId, signal = 'SIGTERM') {
     const record = this.executions.get(executionId);
     if (!record?.agent) return false;
-    await this.#request(`${record.agent.endpoint}/stop`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { signal }, timeoutMs: 15_000 }).catch(() => undefined);
+    const response = await this.#request(`${record.agent.endpoint}/stop`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { signal }, timeoutMs: 15_000 });
+    const stopped = responseValue(response.body);
+    if (stopped?.stopped === true && Array.isArray(stopped.project_installs) && record.boundExecutionId) {
+      this.projectInstallReceipts.set(record.boundExecutionId, { bindingVersion: record.bindingVersion,
+        receipts: stopped.project_installs.filter(receipt => receipt.execution_id === record.boundExecutionId && receipt.binding_version === record.bindingVersion) });
+    }
     record.agent = null;
     return true;
   }
@@ -571,23 +856,60 @@ export class OpenSandboxManager {
 
   async stopExecution(executionId) {
     const record = this.executions.get(executionId);
-    if (!record) return false;
+    if (!record) {
+      const creation = this.pendingCreations.get(executionId);
+      if (!creation) return false;
+      if (creation.inFlight) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE,
+        'Sandbox creation is still pending', { execution_id: executionId }, { retryable: true });
+      if (!creation.stopPromise) creation.stopPromise = this.#releaseUnknownCreation(creation).finally(() => { creation.stopPromise = null; });
+      return creation.stopPromise;
+    }
+    if (record.stopPromise) return record.stopPromise;
+    const stopping = this.#deleteExecution(executionId, record).finally(() => { record.stopPromise = null; });
+    record.stopPromise = stopping;
+    return stopping;
+  }
+
+  async #deleteExecution(executionId, record) {
     await this.stopAgent(executionId).catch(() => undefined);
     for (const job of record.jobs.values()) if (job.state === 'running') await this.cancelJob(executionId, job.jobId, { reason: 'execution_released' }).catch(() => undefined);
-    await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}`, { method: 'DELETE', timeoutMs: 30_000, allowStatuses: [404] }).catch((error) => {
-      this.logger?.({ event: 'sandbox.stop_error', provider: 'opensandbox', execution_id: executionId, error_class: error?.code ?? error?.name });
-      throw error;
-    });
-    this.executions.delete(executionId);
+    if (record.botId) {
+      const deadline = Date.now() + 30_000;
+      await this.#confirmSandboxDeletion(record.sandboxId, () => Math.max(1, deadline - Date.now()));
+    } else {
+      const deletion = await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}`, { method: 'DELETE', timeoutMs: 30_000, allowStatuses: [404] }).catch((error) => {
+        this.logger?.({ event: 'sandbox.stop_error', provider: 'opensandbox', execution_id: executionId, error_class: error?.code ?? error?.name });
+        throw error;
+      });
+      if (deletion.status === 202) {
+        const observed = await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}`, { timeoutMs: 15_000, allowStatuses: [404] });
+        if (observed.status !== 404) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox deletion is still pending', { execution_id: executionId, sandbox_id: record.sandboxId }, { retryable: true });
+      }
+    }
+    for (const [key, resource] of this.executions) if (resource === record) this.executions.delete(key);
     this.logger?.({ event: 'sandbox.stopped', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId });
     return true;
   }
 
-  async stopAll() { for (const id of [...this.executions.keys()]) await this.stopExecution(id); }
+  async #releaseUnknownCreation(creation) {
+    const result = await this.#reconcileExecutions({ missionId: creation.mission_id, bots: [creation],
+      onSandboxDiscovered: async (bot, sandboxId) => {
+        await bot.onCreated?.({ provider: 'opensandbox', bot_id: bot.bot_id, resource_key: bot.resource_key, sandbox_id: sandboxId });
+        bot.sandbox_id = sandboxId;
+      } }, creation);
+    if (!result.confirmed_bot_ids.includes(creation.bot_id)) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox creation or deletion cannot be confirmed',
+        { bot_id: creation.bot_id, resource_key: creation.resource_key }, { retryable: true });
+    }
+    this.pendingCreations.delete(creation.resource_key);
+    return true;
+  }
 
-  snapshot() { return { provider: 'opensandbox', lifecycle_url: this.lifecycleBaseUrl, image: this.image, verified: this.verified, executions: [...this.executions.values()].map((record) => this.#snapshot(record)) }; }
+  async stopAll() { for (const id of new Set([...this.executions.keys(), ...this.pendingCreations.keys()])) await this.stopExecution(id); }
 
-  #snapshot(record) { return { execution_id: record.executionId, sandbox_id: record.sandboxId, binding_version: record.bindingVersion, workspace: '/workspace', host_workspace_ref: null, agent_worker: record.agent ? { worker_port: record.agent.worker_port, started_at: record.agent.started_at } : null, jobs: [...record.jobs.values()].map((job) => this.#jobView(job)) }; }
+  snapshot() { return { provider: 'opensandbox', lifecycle_url: this.lifecycleBaseUrl, image: this.image, verified: this.verified, executions: [...new Set(this.executions.values())].map((record) => this.#snapshot(record)) }; }
+
+  #snapshot(record) { return { execution_id: record.botId ? record.boundExecutionId : record.executionId, ...(record.botId ? { bot_id: record.botId, resource_key: record.executionId } : {}), sandbox_id: record.sandboxId, binding_version: record.bindingVersion, workspace: record.botId ? '/workspace/project' : '/workspace', host_workspace_ref: null, agent_worker: record.agent ? { worker_port: record.agent.worker_port, started_at: record.agent.started_at } : null, jobs: [...record.jobs.values()].map((job) => this.#jobView(job)) }; }
   #jobView(job) { return { job_id: job.jobId, execution_id: job.executionId, state: job.state, exit_code: job.exit_code ?? null, timed_out: job.timed_out ?? false, cancel_reason: job.cancel_reason ?? null, started_at: job.started_at ?? null, finished_at: job.finished_at ?? null, command: job.command ?? null }; }
   #record(executionId) { const record = this.executions.get(executionId); if (!record) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'sandbox is not bound to this Execution', { execution_id: executionId }); return record; }
 
@@ -659,7 +981,11 @@ export class OpenSandboxManager {
       const response = await this.fetch(url, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: controller.signal });
       const text = await response.text();
       const parsed = response.headers?.get?.('content-type')?.includes('text/event-stream') ? null : (text ? jsonData(text) : {});
-      if (!response.ok && !allowStatuses.includes(response.status)) throw new SwarmEnvError(response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT, `OpenSandbox request failed with HTTP ${response.status}`, { status: response.status, diagnostic: safeDiagnostic(parsed ?? text) }, { retryable: response.status >= 500 || response.status === 429 });
+      if (!response.ok && !allowStatuses.includes(response.status)) throw new SwarmEnvError(absolute && /\/project\/(snapshot|install|install-result|install-confirm)$/.test(new URL(url).pathname) && [ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED].includes(parsed?.code)
+        ? parsed.code : response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT,
+      `OpenSandbox request failed with HTTP ${response.status}`, { status: response.status, diagnostic: safeDiagnostic(parsed ?? text),
+        ...(absolute && parsed?.code === ERROR_CODES.WORKSPACE_BUSY && ['dirty', 'active_writer'].includes(parsed.apply_blocker) ? { apply_blocker: parsed.apply_blocker } : {}) },
+      { retryable: response.status >= 500 || response.status === 429 || parsed?.code === ERROR_CODES.WORKSPACE_BUSY });
       return { status: response.status, body: parsed, text };
     } catch (error) {
       if (error instanceof SwarmEnvError) throw error;

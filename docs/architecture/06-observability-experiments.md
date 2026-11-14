@@ -63,7 +63,7 @@ The standalone server accepts `--name value` or `--name=value` for these options
 
 Healthy-daemon reuse returns the existing metadata and exits; passing a different bind address to this invocation does not reconfigure that existing process.
 
-The HTTP server accepts GET only; writes return 405. Defaults remain read-only: there is no HTTP action to claim, complete, restart or modify a Task. Static assets are served from `src/observability/public/`, the Vite build output of `client/`. The dev Vite server proxies `/api` to localhost:8787; the production observer serves the built files directly.
+The HTTP server accepts GET only; writes return 405. Defaults remain read-only: there is no HTTP action to take, complete, restart or modify a Task. Static assets are served from `src/observability/public/`, the Vite build output of `client/`. The dev Vite server proxies `/api` to localhost:8787; the production observer serves the built files directly.
 
 ### Routes
 
@@ -93,7 +93,7 @@ Common event filters include `after_sequence`, `execution_id` on the event route
 
 ### Exposure boundary
 
-This observer has no built-in authentication. Generic event/overview/detail routes apply bounded projections, but that is not uniform access control over every endpoint. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, Material detail selectively reads operator events before applying its own filter, and report analysis Markdown is returned as text (capped at 80,000 characters per file). Serving those routes publicly therefore exposes whatever those particular projections contain. The architecture does not label all local/raw evidence safe simply because the HTTP API is read-only.
+Operator admission covers event, detail, report and owner-service routes. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, and report analysis Markdown is capped at 80,000 characters per file. Operator access grants access to those route-specific projections.
 
 Sources: [server](../../src/observability/observability-server.js), [daemon entry/discovery](../../scripts/serve-observability.mjs), [Vite configuration](../../src/observability/vite.config.js), [server tests](../../test/observability-server.test.js), [worktree discovery tests](../../test/observability-worktree-discovery.test.js).
 
@@ -119,7 +119,7 @@ Sources: [server projection](../../src/observability/observability-server.js), [
 
 `FileWorkspaceProvider` follows only a `workspace_ref` already present in the selected Execution's observed assignment/Workspace events. It reads `.swarm/workspace.json` and numeric revision JSON files, returning file metadata and revision/checkpoint lineage. It does not expose an arbitrary path-reading endpoint. Its initial event lookup is one 1000-row page, so an older/sparse projection can fail to find the latest Workspace. A deleted/moved local Workspace cannot be reconstructed from a path string alone.
 
-`importBenchmarkReport` converts an existing sanitized report into synthetic observations: experiment start, Core/turn intervals, assignment/Execution summaries, Workspace writes, checks and finish. Raw Core logs are optionally imported as private events (enabled by default, disabled by `--no-raw-logs`). Import skips an already populated experiment, so rerunning the importer is not incremental reconciliation. Some assignment timestamps use report run start rather than the original claim instant. Synthetic sequence order groups reconstructed sources and must not be mistaken for the complete original interleaving of calls.
+`importBenchmarkReport` converts an existing sanitized report into synthetic observations for experiment start, Core/turn intervals, assignments, Execution, Workspace writes, checks and finish. The Observer CLI imports these report projections. A trusted library caller can explicitly request raw ingestion into an isolated analysis store. Import skips an already populated experiment, so rerunning the importer is not incremental reconciliation. Some assignment timestamps use report run start rather than the original take instant. Synthetic sequence order groups reconstructed sources and must not be mistaken for the complete original interleaving of calls.
 
 Sources: [Workspace provider](../../src/observability/workspace-provider.js), [report importer](../../src/observability/benchmark-report-importer.js), [Workspace observer tests](../../test/observability-workspace.test.js), [importer tests](../../test/benchmark-report-importer.test.js).
 
@@ -129,19 +129,19 @@ The runner finalizes its report from Task/Execution/Material/check data, Core ac
 
 | Report field/family | Current implementation meaning and limit |
 |---|---|
-| `solved` | The runner recorded `solvedAt`, protocol invalidity is false, and `madeProgress` is true. Judge's PASS/application trigger is described in [04](04-services.md); this is not an independent theorem-goal verifier. |
+| `solved` | The Mission submission coordinator has a persisted accepted submission for the fixed public main and input manifest. This scientific outcome is independent of protocol validity or ordinary source diagnostics; pending cleanup still invalidates the run evidence. See [04](04-services.md). |
 | `protocol_valid` | Report/protocol checks passed, including allowed tool surface, placeholder flags and relevant run boundaries. It does not certify research progress. |
-| `made_progress` | Broad activity heuristic: child Task, Workspace write, nonfailure Material, or check can be enough. It is not a measured collaboration benefit. |
-| Task/dynamic/decomposition counts | The project Task query is limited to 100 in this report path; counts can underrepresent a larger run. |
+| `made_progress` | Broad output/activity heuristic: a Workspace write, nonfailure Material, or check can be enough. Proposals alone do not set this flag. It is not a measured collaboration benefit. |
+| `progress_evidence.proposed_task_count` and `parallelism.proposal_evidence.observed_task_count` | Count all observed Mission proposals, including the first; no root/child split or inferred semantic independence. Totals come from Task Service aggregates independently of the Task detail page. The detail/narrative projection remains bounded to 100 Tasks and `project.task_page` records its total, returned size and completeness. |
 | Core occupancy/parallelism | Overlap/interval accounting from recorded states/turns. Production `task_discovery_and_take` also starts an Agent-turn interval, so busy-time metrics can include discovery. |
 | Scheduler metrics | Compatibility reporting from the production identity-loop path; they do not imply a `Scheduler` instance is driving that benchmark. |
 | `audit.prompt_hashes` | Hashes the Core prompt value initialized from the generic prompt; it is not a digest of every fully composed/delivered per-turn prompt. |
 | Judge counts | Separate source failure, infrastructure failure, unassessed and preflight health. A request that never ran Lean is not a failed proof attempt. |
 | Material/read/consume counts | Publication, retrieval and explicit consumption are different facts; useful integration needs additional semantic evidence. |
 
-`CoreParallelismTracker` records states/intervals, Agent turns, work units, wait and Judge time. The report transforms them into overlap and utilization quantities; a populated lane or many tool calls is not proof of productive concurrency. Reports also retain historical naming where compatibility paths remain. Reading the current report schema should not erase the distinction between shared-Mission exploration and independent Task decomposition.
+`CoreParallelismTracker` records states/intervals, Agent turns, work units, wait and Judge time. The report transforms them into overlap and utilization quantities; a populated lane or many tool calls is not proof of productive concurrency. New reports omit root/child take counts and decomposition claims. `take_count` covers every accepted recorded take; proposal counts alone do not establish independent work. Historical imports may still contain old names. The Task-created observation identifies the actual created Task, while any proposing E is recorded separately. The initial-input audit uses the Mission public Workspace metadata rather than treating the first Task as the benchmark input owner.
 
-Sources: [runner report construction](../../src/benchmark/putnam-runner.js), [parallelism tracker](../../src/benchmark/parallelism.js), [parallelism tests](../../test/parallelism.test.js), [report/e2e tests](../../test/e2e.test.js).
+Sources: [runner report construction](../../src/benchmark/putnam-runner.js), [parallelism tracker](../../src/benchmark/parallelism.js), [parallelism tests](../../test/parallelism.test.js).
 
 ## 7. Offline experiment-analysis pipeline
 
@@ -160,6 +160,8 @@ The implementation follows these steps:
 
 Material “downstream effect” inference checks that a later Workspace/candidate/check/review/rework event occurs in the same consuming Execution. It does not prove the Material caused that later operation or that its content was useful. The implementation explicitly labels this as a recorded downstream operation without inferring semantic usefulness. Similar repeated-diagnostic or route-change findings are diagnostic hypotheses, not automatically approved engineering requirements.
 
+Analysis opens each project's available Task, Context and Judge databases read-only. Historical projects can store all three domains in `project.sqlite`. Modern operation receipts provide the public Workspace revision, Material producer IDs and the Material IDs on the returned page, while the bounded Observer lifecycle event records the Task finish disposition separately from Execution termination.
+
 The analyzer caps retained source errors at 20 and bounds many displayed evidence lists. Automated recommendation text can contain compatibility-era concepts; the current approved Issue and architecture remain the review standard. Formal experiment reports should distinguish observed result, explanation and next-step decision, with source code/test/probe/real-Agent evidence identified separately.
 
 Sources: [analysis entry](../../scripts/analyze-experiment.mjs), [analysis engine](../../src/analysis/experiment-analysis.js), [analysis tests](../../test/experiment-analysis.test.js), [formal workflow](../workflows/experiment.md), [report template](../experiments/TEMPLATE.md).
@@ -169,10 +171,85 @@ Sources: [analysis entry](../../scripts/analyze-experiment.mjs), [analysis engin
 | Question | Evidence needed |
 |---|---|
 | What did this Agent actually receive? | Exact source/version/profile plus private prompt-send/RPC records for that Session. The dashboard's initial-prompt card and report hash are insufficient on their own. |
-| Was a Task really claimed/completed? | Task/Execution rows, versions/fences and the successful domain result; UI event text is secondary. |
+| Was a Task really taken/completed? | Task/Execution rows, versions/fences and the successful domain result; UI event text is secondary. |
 | Did a successor reuse prior work? | Material producer/link/consumer identity, saved Workspace/Git lineage, subsequent concrete action and a semantic assessment. |
-| Did Judge check the right candidate/environment? | Candidate source/hash/revision, target Task/spec, input snapshot and locked fixture/preflight identity, result/application facts. |
+| Did Judge check the right candidate/environment? | Workspace artifact source/hash/revision, target Task/spec, input snapshot and locked fixture/preflight identity, result/application facts. |
 | Was a failure mathematical or operational? | Checker process/result class, diagnostic, retry/health state and whether a source-level result exists. |
 | Did the run stop cleanly? | Final durable Execution/Task disposition, process/Core/Workspace cleanup and the report's cleanup errors. |
 
 Missing evidence is `unknown`. Generated docs and schema checks make source changes visible; they cannot create missing historical traces or establish real-Agent acceptance. At a phase/Issue closeout, update the affected implementation chapters and evidence status while retaining the exact experiment baseline. Do not rewrite a past report to appear to have run against the newer implementation.
+
+
+The registered Bot report tool policy now admits exactly Pi `read`, `write`, `edit`, and `bash`. `swarmenv_*` extension tools are not accepted in this path. CLI service evidence remains in Bridge/Service logs; a successful Bash command by itself is not proof of a Workspace save, Material publish or Judge result. `bot_prompt_composed` records the exact dynamic body hash and preview revision before dispatch; raw RPC records establish actual transmission. The adapter version manifest identifies the immutable system/skill resources. Local scripted Pi serialization probes are controlled infrastructure evidence, not scientific or remote-provider results.
+
+Registered public Workspace save/merge now reaches the runner's work observer after the durable result. It records public Workspace/revision identity and changed-path counts, deduplicating by operation/Workspace/revision within the Core. Already-included merges do not add writes; unchanged saves do not add changed-file work units. Observer failure is logged separately and cannot turn a committed Workspace result into a failed contribution. These events request Controller reconciliation, while durable public-state tokens prevent same-ID replay from repeatedly starting discovery. A Workspace write is activity evidence, not Mission acceptance or mathematical correctness.
+
+## Bounded finalization evidence
+
+The runner records `cleanup_elapsed_ms` and typed `cleanup_errors` for every unresolved shutdown component. Any such error sets `audit.invalid`, adds `cleanup_pending`, makes `run.protocol_valid=false`. Scientific `run.solved` is independently projected from persisted trusted Mission acceptance; a cleanup failure cannot erase the acceptance record or make the run protocol valid. The timebox bounds orchestration and a shared cleanup deadline bounds its joins; host scheduling, report serialization and filesystem writes are not a real-time guarantee. Timed-out provider operations retain cleanup responsibility instead of being declared stopped.
+
+Report construction no longer creates an operator submission from every historical Material or calls `finish` using its own `solved` flag as a verdict. It only reads an existing Mission submission, within the remaining cleanup allowance. An unavailable result becomes null with explicit pending/invalid evidence. The production coordinator owns preparation, immutable input, bounded checker, accepted state and stopping signals. An accepted row immediately prevents new research admission even before the runner receives its notification. Absence of an accepted submission is not successful Mission acceptance; passing source diagnostics or healthy infrastructure cannot substitute for it.
+
+The benchmark launcher and standalone Observer default to `127.0.0.1`. Local operator
+mode uses the loopback peer and local Host header, and rejects forwarded and cross-site
+requests. Remote listening requires `SWARMENV_OBSERVABILITY_OPERATOR_PASSWORD` on the
+Observer process. The browser uses HTTP Basic authentication with username `operator`.
+For remote access, protect the connection with a trusted TLS reverse proxy or encrypted
+operator tunnel. Only `GET /health` is anonymous and returns service/access-mode metadata.
+The dashboard, SSE streams, reports, and private Execution Workspace restoration all
+require operator access before the server reads any experiment state. The launcher's
+daemon reuse check verifies the current authentication protocol via health. Daemon
+metadata records the access mode and does not include the password.
+
+### Managed private audit retention
+
+The benchmark launcher exclusively creates a new owner-only experiment directory under
+the selected experiment root and records its device, inode, PID, process start time,
+boot ID and creation time. Timed library runs require the active audit handle for that
+same directory. The launcher applies umask 077, and raw NDJSON opens verify a regular,
+single-link, owner-owned target and enforce mode 0600 without following a leaf symlink.
+Live Service and checker observations carry an event identity and hash in the shared
+Observer database. The original logs and authoritative private state stay below the
+managed directory.
+
+A timeboxed cleanup error is written into the report. The CLI emits a cleanup-pending
+status, waits for real checker, Workspace reconciliation and other tracked work, closes
+the borrowed Observation Store, then records audit closure. An execution that has died
+without recording closure is eligible for removal after seven days from its creation.
+A normally closed execution is eligible seven days after confirmed closure. Active
+owners are protected by boot and process-start identity. The sweep skips unmarked
+historical experiments, unsafe paths, symlinks, and invalid marker identities.
+
+Install and enable this per-user systemd service and timer before formal use. Choose
+the same absolute experiment root passed to the benchmark. The timer checks expiration
+every hour while the user manager is running. Configure a persistent user manager
+where deletion must occur while the operator is logged out.
+
+```ini
+# ~/.config/systemd/user/swarmenv-private-audit.service
+[Service]
+Type=oneshot
+ExecStart=/absolute/path/to/node /absolute/path/to/SwarmEnv/scripts/prune-private-audit.mjs --root /absolute/experiment/root
+```
+
+```ini
+# ~/.config/systemd/user/swarmenv-private-audit.timer
+[Timer]
+OnCalendar=hourly
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Run `systemctl --user daemon-reload`, enable the timer with
+`systemctl --user enable --now swarmenv-private-audit.timer`, run the service once
+with `systemctl --user start swarmenv-private-audit.service`, and verify the next
+scheduled run with `systemctl --user list-timers swarmenv-private-audit.timer`.
+
+Reports describe four independent Core loops per project and the configured number of parallel projects. The registered Task creation event records Mission, Task, producer context and its request outcome without a legacy spawn relationship. The importer leaves a flat or Mission-marked report unrooted, even if an earlier report includes null parent fields on all Tasks. Historical unmarked reports retain their original root import rule.
+
+### Recorded tool output boundary
+
+The analyzer reads raw Pi `tool_execution_end`/`tool_result` events and hashes the JSON encoding of their actual `result.content` array. Normalized facts retain that SHA-256, encoded byte length, tool-call identity and explicit numeric truncation metadata. They do not copy the private output into the report and do not substitute `structuredContent.output`, whose programmatic limit can differ from the model-facing text. An absent truncation flag remains unknown. Raw matching start events preserve read path/offset/limit or the private Bash command; the run's own mounted-resource manifest establishes a skill version, rather than the current analyzer checkout. A completed Pi tool event establishes this local return boundary only. Whether a subsequent provider request included it, transformed it or omitted it requires actual request evidence; the analyzer labels that delivery unestablished by the tool event alone.

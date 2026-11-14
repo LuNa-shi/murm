@@ -124,14 +124,18 @@ function diagnosticLocation(evidence = {}, diagnostic = '') {
  * Project the canonical persisted CheckResult onto the Agent tool boundary.
  *
  * The Judge keeps the full evidence object for local diagnosis and reports,
- * but an Agent only needs bounded feedback that can guide the next candidate.
- * In particular, candidate hashes, raw process streams, and arbitrary evidence
+ * but an Agent only needs bounded feedback that can guide the next workspace_source.
+ * In particular, workspace_source hashes, raw process streams, and arbitrary evidence
  * keys must not cross this boundary. The diagnostic excerpt is deliberately
  * bounded and is the only selected process text exposed to the Agent.
  */
 export function agentCheckResult(result) {
   if (!result) return null;
-  const evidence = result.evidence ?? {};
+  const evidence = result.evidence ?? { ...Object.fromEntries(['preflight_key', 'preflight_status', 'preflight_verified', 'input_binding_verified',
+    'toolchain_version_verified', 'checker_ref_verified', 'checker_version_verified', 'checker_identity_verified', 'health_fingerprint',
+    'infrastructure_attempt_count', 'retry_exhausted'].map(key => [key, result[key]])),
+    ...result.process_evidence, diagnostic: result.diagnostic_excerpt,
+    diagnostic_location: result.diagnostic_location, checker_started: result.checker_started, workspace_input: result.workspace_input };
   const safeEvidence = boundedEvidence(evidence);
   const storedClass = result.result_class ?? evidence.result_class;
   const storedProcessStatus = result.checker_process_status ?? evidence.checker_process_status;
@@ -152,9 +156,11 @@ export function agentCheckResult(result) {
   return {
     check_result_id: result.check_result_id ?? null,
     request_key: result.request_key ?? null,
-    candidate_material_id: result.candidate_material_id ?? null,
+    workspace_source_id: result.workspace_source_id ?? null,
     target_task_id: result.target_task_id ?? null,
     execution_id: result.execution_id ?? null,
+    workspace_input: evidence.workspace_input ? Object.fromEntries(['workspace_id', 'revision', 'path', 'git_commit', 'git_tree', 'tree_content_hash', 'content_hash']
+      .filter(key => typeof evidence.workspace_input[key] === 'string').map(key => [key, evidence.workspace_input[key]])) : null,
     status: result.status ?? null,
     verdict: result.verdict ?? null,
     judge_operation_status: result.judge_operation_status ?? 'persisted',

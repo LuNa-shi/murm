@@ -13,7 +13,11 @@ import { JUDGE_SCHEMA_SQL } from '../src/storage/judge-schema.js';
 import { OBSERVATION_SCHEMA_SQL } from '../src/observability/observation-store.js';
 import { ERROR_CODES } from '../src/errors.js';
 import { DatabaseSync } from 'node:sqlite';
+import { EXECUTION_WORKSPACE_SCHEMA_SQL } from '../src/runtime/execution-workspace.js';
 import { TaskService } from '../src/task/task-service.js';
+import { RESPONSES_BUDGET_SCHEMA_SQL } from '../src/agent/responses-budget-gateway.js';
+import { MANUAL_MISSION_REVIEW_SCHEMA_SQL } from '../src/runtime/manual-mission-review.js';
+import { MISSION_SUBMISSION_SCHEMA_SQL } from '../src/runtime/mission-submission.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const check = process.argv.includes('--check');
@@ -36,13 +40,13 @@ const profiles = [];
 for (const model of ['flat']) for (const sandbox of [false, true]) {
   const runtimeCapabilities = runtimeCapabilityList()
     .filter((capability) => sandbox || !['sandbox_exec', 'sandbox_job'].includes(capability.operation))
-    .filter((capability) => model !== 'flat' || !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
+    ;
   profiles.push({ label: `${model}; Sandbox ${sandbox ? 'on' : 'off'}`, profile: buildCapabilityProfile({ role: 'bound', registry, runtimeCapabilities }) });
 }
 const ids = [...new Set(profiles.flatMap(({profile}) => profile.capabilities.map((capability) => capability.id)))].sort();
 api += `| Capability identity | ${profiles.map(({label}) => label).join(' | ')} |\n|---|${profiles.map(() => '---').join('|')}|\n`;
 for (const id of ids) api += `| \`${id}\` | ${profiles.map(({profile}) => { const cap = profile.capabilities.find((capability) => capability.id === id); return cap ? `\`swarmenv_${cap.tool_name ?? cap.name}\`` : 'Absent'; }).join(' | ')} |\n`;
-api += '\nThe flat Mission Task profile is the only Agent-facing Task model. Retired structural and lease operations may remain in internal catalog definitions for storage/analysis compatibility, but are filtered from the built-in Registry and cannot be called by a bound Agent. The normal handoff tool is `execution_progress` with `kind: "handoff"`.\n';
+api += '\nThe flat Mission Task profile is the only Agent-facing Task model. Retired structural and lease operations may remain in internal catalog definitions for storage/analysis compatibility, but are filtered from the built-in Registry and cannot be called by a bound Agent. Registered Bots use explicit save/publish and `task_finish`; the old `execution_progress` compound path is rejected.\n';
 for (const serviceId of ['catalog', 'task', 'context', 'judge']) {
   const manifest = builtInServiceManifest(serviceId);
   const {capabilities, ...metadata} = manifest;
@@ -82,6 +86,10 @@ for (const owner of ['TASK', 'CONTEXT', 'JUDGE']) {
 api += '\n### Exact shared error-code vocabulary\n' + json(ERROR_CODES);
 
 const schemas = [
+  ['Model budget gateway', 'src/agent/responses-budget-gateway.js', RESPONSES_BUDGET_SCHEMA_SQL],
+  ['Mission submission coordinator', 'src/runtime/mission-submission.js', MISSION_SUBMISSION_SCHEMA_SQL],
+  ['Owner-local manual Mission review', 'src/runtime/manual-mission-review.js', MANUAL_MISSION_REVIEW_SCHEMA_SQL],
+  ['Execution Workspace coordinator', 'src/runtime/execution-workspace.js', EXECUTION_WORKSPACE_SCHEMA_SQL],
   ['Task and Execution database', 'src/storage/schema.js', SCHEMA_SQL],
   ['Context database', 'src/storage/context-schema.js', CONTEXT_SCHEMA_SQL],
   ['Judge database', 'src/storage/judge-schema.js', JUDGE_SCHEMA_SQL],

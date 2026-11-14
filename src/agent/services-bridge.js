@@ -3,10 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { ServicesSDK } from '../sdk/services-sdk.js';
-import { makeEnvelope } from '../protocol/envelope.js';
+import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
+import { agentCheckResult } from '../judge/check-result.js';
 import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
+import { isSoftCloseout } from '../task/execution-budget.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const WORKSPACE_OPERATIONS = new Set([
@@ -14,12 +16,49 @@ const WORKSPACE_OPERATIONS = new Set([
   'read_workspace_file', 'write_workspace_file', 'workspace_diff',
   'sandbox_exec', 'sandbox_job',
 ]);
+// A Bot may inspect Mission-scoped public state and propose work before it
+// owns an Execution. Requiring an Execution for these operations makes a
+// zero-Task Mission impossible to bootstrap.
+const UNBOUND_OPERATIONS = new Set([
+  'bot_exit', 'get_check_result', 'material_unsupersede', 'task_cancel', 'task_dependency_replace',
+  'task_list', 'task_view', 'task_status', 'task_create',
+  'read_materials', 'context_search_materials', 'context_get_material',
+  'material_read', 'material_search', 'material_get',
+  'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history',
+  'mission_get', 'mission_submit', 'mission_submission_get',
+]);
+const COORDINATION_OPERATION_GRANTS = new Map([
+  ['material_unsupersede', 'unsupersede'], ['task_cancel', 'task_cancel'],
+  ['task_dependency_replace', 'task_dependency_replace'], ['mission_submit', 'mission_submit'],
+]);
 
 function usesWorkspace(task) {
   const workspace = task?.workspace;
   const contract = task?.completion_contract ?? {};
   return Boolean((workspace && typeof workspace === 'object' && Object.keys(workspace).length > 0) ||
     contract.requires_workspace === true || contract.required_candidate?.workspace === true);
+}
+
+function botExecutionReceipt(execution) {
+  const { execution_id, task_id, owner_ref, core_id, attempt_no, state, terminal_reason,
+    input_material_refs, input_snapshot_hash, workspace_input, started_at, handoff_deadline,
+    execution_deadline, created_at, updated_at } = execution;
+  return { execution_id, task_id, owner_ref, core_id, attempt_no, state, terminal_reason,
+    input_material_refs, input_snapshot_hash, workspace_input, started_at, handoff_deadline,
+    execution_deadline, created_at, updated_at };
+}
+
+function botReceipt(result) {
+  if (result?.execution?.execution_id) {
+    const { execution, workspace, ...receipt } = result;
+    return { ...receipt, execution: botExecutionReceipt(execution),
+      ...(Object.hasOwn(result, 'workspace') ? { workspace: execution.workspace_input ?? null } : {}) };
+  }
+  if (result?.bot?.bot_id) {
+    const { bot_id, mission_id, core_id, execution_id, state, exit_reason } = result.bot;
+    return { ...result, bot: { bot_id, mission_id, core_id, execution_id, state, exit_reason } };
+  }
+  return result;
 }
 
 function requiredTaskCapabilities(payload = {}) {
@@ -32,7 +71,7 @@ function requiredTaskCapabilities(payload = {}) {
   // These acceptance keys are intentionally narrow, stable Task contract
   // vocabulary. They describe a result that cannot be verified by the
   // generic Task/Workspace surface; admission must fail before creating a
-  // claimable Task when the corresponding registered capability is absent.
+  // eligible Task when the corresponding registered capability is absent.
   if (conditions && typeof conditions === 'object' && !Array.isArray(conditions) &&
     (conditions.requires_exact_declarations === true || conditions.requires_verified_usage === true)) {
     required.push('mathlib_search');
@@ -135,30 +174,11 @@ async function readBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
-// The automatic checkpoint taken before a task_register switch. An Agent may
-// pass its own progress object; otherwise the registration itself is the
-// recorded next step.
-function switchProgress(payload) {
-  const supplied = payload.progress;
-  if (supplied && typeof supplied === 'object' && !Array.isArray(supplied)) {
-    return {
-      completed_work: supplied.completed_work ?? '',
-      findings: supplied.findings ?? '',
-      open_questions: supplied.open_questions ?? '',
-      next_step: supplied.next_step ?? `execute registered Task: ${payload.goal ?? payload.summary ?? ''}`,
-    };
-  }
-  return {
-    completed_work: 'research recorded in this Execution and its Materials',
-    findings: payload.collaboration_reason ?? '',
-    open_questions: '',
-    next_step: `execute registered Task: ${payload.goal ?? payload.summary ?? ''}`,
-  };
-}
-
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onClaim = null, onClaimAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ taskService, contextService, runtime, router, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
+    this.pendingCalls = new Set();
+    this.pendingHandlers = new Set();
     this.taskService = taskService;
     this.contextService = contextService;
     this.runtime = runtime;
@@ -178,8 +198,8 @@ export class ServicesBridge {
     this.runtimeCapabilities = runtimeCapabilities ?? runtimeCapabilityList()
       .filter((capability) => runtime?.sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
     this.taskCreateMutex = taskCreateMutex;
-    this.onClaim = onClaim;
-    this.onClaimAccepted = onClaimAccepted;
+    this.onTake = onTake;
+    this.onTakeAccepted = onTakeAccepted;
     this.onRelease = onRelease;
     this.onWorkspaceWrite = onWorkspaceWrite;
     this.onWorkUnit = onWorkUnit;
@@ -194,28 +214,47 @@ export class ServicesBridge {
     this.token = randomUUID();
     this.server = null;
     this.address = null;
-    // Candidate feedback is returned synchronously. A normal-flow checker
+    // Workspace source feedback is returned synchronously. A normal-flow checker
     // failure may then stage a typed Task block, which is applied only after
     // the HTTP response has been handed to the Agent.
     this.deferredLifecycle = null;
     this.deferredLifecyclePromise = null;
     // The most recent task_take attempt made through this identity, used by
-    // the Core loop to distinguish "invalid choice" from "lost a claim race".
+    // the Core loop to distinguish "invalid choice" from "lost a take race".
     // It is reset by the Runner at the start of each discovery turn.
     this.lastTakeOutcome = null;
+    this.bindingPending = false;
+    this.acceptedTake = null;
   }
 
   beginTakeAttempt() {
     this.lastTakeOutcome = null;
   }
 
+  startBotIdentity(botId) {
+    const bot = this.taskService.getBot(botId);
+    const previous = this.taskService.getBot(this.actorRef);
+    if (!bot || bot.state !== 'STARTING' || bot.core_id !== this.coreId ||
+        this.executionId || this.bindingPending || (previous && previous.state !== 'CLOSED')) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge cannot replace an occupied Bot');
+    }
+    this.acceptedTake = null;
+    this.actorRef = botId;
+    this.token = randomUUID();
+    this.lastTakeOutcome = null;
+    this.capabilityProfile = null;
+    this.capabilityProfileRegistryRevision = null;
+    return this.environment();
+  }
+
 
   /** Bind the durable task_take result before Runtime activates the Execution. */
-  async bindClaim(result) {
+  async bindTake(result) {
     if (!result?.task?.task_id || !result?.execution?.execution_id) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bindClaim requires a Task and Execution result');
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bindTake requires a Task and Execution result');
     }
-    if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'bridge already has a claimed binding');
+    if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'bridge already has a taken binding');
+    this.bindingPending = true;
     this.taskId = result.task.task_id;
     this.executionId = result.execution.execution_id;
     this.coreId = this.coreId ?? result.execution.core_id ?? null;
@@ -223,20 +262,20 @@ export class ServicesBridge {
     this.capabilityProfile = null;
     this.capabilityProfileRegistryRevision = null;
     try {
-      await this.onClaimAccepted?.(result);
-      await this.onClaim?.(result);
+      await this.onTakeAccepted?.(result);
+      await this.onTake?.(result);
     } catch (error) {
       const released = { taskId: this.taskId, executionId: this.executionId, result: null };
       // task_take activation is a prepare/commit boundary. If the Runtime
       // cannot bind the already-created Execution, fence the provisional
       // owner before clearing the in-memory identity so it cannot remain
-      // claimable through a stale bridge.
+      // eligible through a stale bridge.
       try {
         let rolledBack = false;
         // releaseExecution only removes a process/Workspace for an Execution
         // that is already terminal. A provisional task_take binding is still
         // CREATED/RUNNING, so it must be stopped durably; otherwise the Task
-        // stays RUNNING with no valid owner and becomes unclaimable.
+        // stays RUNNING with no valid owner and becomes uneligible.
         if (typeof this.runtime?.stopExecution === 'function') {
           await this.runtime.stopExecution(this.executionId, 'FAILED', 'task_take_bind_failed');
           rolledBack = true;
@@ -263,23 +302,41 @@ export class ServicesBridge {
       this.role = AGENT_ROLES.BOUND;
       this.capabilityProfile = null;
       this.capabilityProfileRegistryRevision = null;
-      // A failed handoff still owns a durable claim until the caller fences it.
+      // A failed handoff still owns a durable take until the caller fences it.
       // Deliver the original binding to the release hook before surfacing the
       // handoff error, so a Core cannot retain a stale Execution identity.
       try { await this.onRelease?.(released); } catch { /* preserve handoff failure */ }
       throw error;
-    }
+    } finally { this.bindingPending = false; }
     return result;
   }
 
+  #track(pending, operation) {
+    const promise = Promise.resolve().then(operation);
+    pending.add(promise);
+    promise.then(() => pending.delete(promise), () => pending.delete(promise));
+    return promise;
+  }
+
   async start({ port = 0 } = {}) {
+    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Stopped Bridge cannot restart; create a new Bridge');
     if (this.server) return this.environment();
     this.server = createServer((request, response) => {
-      void this.#handle(request, response);
+      void this.#track(this.pendingHandlers, () => this.#handle(request, response)).catch(error => {
+        this.logger?.append({ event: 'bridge.handler_failed', code: error.code ?? 'HANDLER_ERROR' });
+      });
     });
-    this.server.listen(port, this.host);
-    await once(this.server, 'listening');
-    const address = this.server.address();
+    const server = this.server;
+    await new Promise((resolve, reject) => {
+      const cleanup = () => { server.off('listening', listening); server.off('close', closed); server.off('error', failed); };
+      const listening = () => { cleanup(); resolve(); };
+      const failed = error => { cleanup(); reject(error); };
+      const closed = () => failed(new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge stopped before listening'));
+      server.once('listening', listening); server.once('close', closed); server.once('error', failed);
+      try { server.listen(port, this.host); } catch (error) { failed(error); }
+    });
+    if (this.stopping || this.server !== server) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge stopped during startup');
+    const address = server.address();
     if (!address || typeof address === 'string') throw new Error('bridge did not receive a loopback address');
     this.address = address;
     return this.environment();
@@ -318,30 +375,6 @@ export class ServicesBridge {
       if (serviceId && candidate.service_id !== serviceId) return false;
       return candidate.operation === operation || candidate.name === operation || (capabilityId && (candidate.id ?? candidate.capability_id) === capabilityId);
     });
-    // Keep the old bridge operation available while the Agent-facing Registry
-    // advertises the semantic Task name.  The transport alias is resolved to
-    // the registered task_view capability, so the implementation still goes
-    // through the current Services boundary and does not reintroduce a
-    // generic service call surface.
-    if (matches.length === 0 && operation === 'get_task') {
-      matches.push(...profile.capabilities.filter((candidate) => {
-        if (capabilityId && (candidate.id ?? candidate.capability_id) !== capabilityId) return false;
-        if (serviceId && candidate.service_id !== serviceId) return false;
-        return candidate.operation === 'task_view' || candidate.name === 'task_view';
-      }));
-    }
-    if (matches.length > 1 && operation === 'task_block') {
-      // The legacy Runtime typed block and the modern Task Service semantic
-      // block intentionally share the Agent operation. Resolve the boundary
-      // from the bound Task contract: Mission Tasks use the Service contract
-      // (which carries Handoff Material), while legacy records retain the
-      // Runtime checkpoint/block contract.
-      const boundTask = this.taskId ? this.taskService?.getTask?.(this.taskId) : null;
-      const preferred = boundTask?.mission_id
-        ? matches.find((candidate) => candidate.service_id === 'task')
-        : matches.find((candidate) => candidate.runtime_owned === true || candidate.service_id === 'runtime');
-      if (preferred) return preferred;
-    }
     if (matches.length > 1) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `ambiguous Agent capability: ${operation}`, {
         operation,
@@ -351,69 +384,6 @@ export class ServicesBridge {
       });
     }
     return matches[0] ?? null;
-  }
-
-  /**
-   * Convert the Agent's path/reference into an authenticated, immutable
-   * Workspace source before crossing the Judge Service boundary. The Judge
-   * never receives a host path or a caller-selected Task/Execution object.
-   */
-  async #prepareJudgeSubmission(payload, execution, task, operationId = null) {
-    if (!execution || !task) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'submit_candidate requires a current Task and Execution');
-    const path = payload.path ?? payload.workspace_file?.path ?? null;
-    if ((typeof path !== 'string' || path.length === 0) && payload.candidate_material_id) {
-      const material = this.contextService?.getMaterial?.(payload.candidate_material_id);
-      if (!material) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown candidate Material: ${payload.candidate_material_id}`);
-      if (typeof material.content === 'string') {
-        return {
-          ...payload,
-          source: { content: material.content, content_hash: null, input_snapshot_hash: execution.input_snapshot_hash },
-          request_key: payload.request_key ?? operationId,
-          target_task: task,
-          execution,
-        };
-      }
-      const materialPath = material.content?.path;
-      if (typeof materialPath === 'string' && materialPath.length > 0) {
-        return this.#prepareJudgeSubmission({ ...payload, path: materialPath, workspace_revision: material.content.workspace_revision, content_hash: material.content.content_hash }, execution, task, operationId);
-      }
-    }
-    if (typeof path !== 'string' || path.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate.path is required');
-    if (path.startsWith('/') || path.startsWith('\\') || path.split(/[\\/]+/).includes('..')) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'submit_candidate.path must stay within the Execution Workspace');
-    }
-    if (typeof this.runtime?.readWorkspaceFile !== 'function') {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Runtime does not expose Workspace file reads');
-    }
-    const file = await this.runtime.readWorkspaceFile(execution.execution_id, { path });
-    const requestedRevision = payload.workspace_revision ?? payload.workspace_file?.workspace_revision;
-    if (requestedRevision !== undefined && requestedRevision !== file.workspace_revision) {
-      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Workspace revision is stale', { expected_revision: file.workspace_revision, supplied_revision: requestedRevision });
-    }
-    const requestedHash = payload.content_hash ?? payload.workspace_file?.content_hash;
-    if (requestedHash !== undefined && requestedHash !== file.content_hash) {
-      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Workspace file hash is stale', { expected_hash: file.content_hash, supplied_hash: requestedHash });
-    }
-    return {
-      ...payload,
-      source: {
-        path,
-        content: file.content,
-        content_hash: file.content_hash,
-        workspace_revision: file.workspace_revision,
-        input_snapshot_hash: execution.input_snapshot_hash,
-      },
-      request_key: payload.request_key ?? operationId,
-      source_attestation: {
-        task_id: task.task_id,
-        execution_id: execution.execution_id,
-        path,
-        workspace_revision: file.workspace_revision,
-        content_hash: file.content_hash,
-      },
-      target_task: task,
-      execution,
-    };
   }
 
   async #invokeRegistered(capability, payload, operationId, context = {}) {
@@ -444,7 +414,30 @@ export class ServicesBridge {
     });
   }
 
-  async releaseClaim({ result = null } = {}) {
+  async #afterAcceptedFinish(result, payload) {
+    const executionId = result.execution.execution_id;
+    const taskId = result.execution.task_id;
+    try {
+      await this.onWorkUnit?.({ operation: 'task_finish', taskId, executionId, payload, result });
+    } catch (error) {
+      this.logger?.append({ event: 'bridge.finish_observer_error', execution_id: executionId, error_class: error?.code ?? error?.name });
+    }
+    let released;
+    try {
+      if (typeof this.runtime.releaseExecution !== 'function') throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'finish cleanup Runtime is unavailable');
+      released = await this.runtime.releaseExecution(executionId);
+    } catch (error) {
+      this.logger?.append({ event: 'bridge.finish_cleanup_pending', execution_id: executionId, error_class: error?.code ?? error?.name });
+      return { ...result, cleanup_pending: true };
+    }
+    if (this.executionId === executionId && this.taskId === taskId) {
+      try { await this.releaseTake({ result: { ...result, ...released } }); }
+      catch (error) { this.logger?.append({ event: 'bridge.finish_release_observer_error', execution_id: executionId, error_class: error?.code ?? error?.name }); }
+    }
+    return result;
+  }
+
+  async releaseTake({ result = null } = {}) {
     const released = { taskId: this.taskId, executionId: this.executionId, result };
     this.taskId = null;
     this.executionId = null;
@@ -461,7 +454,7 @@ export class ServicesBridge {
     this.deferredLifecycle = null;
     const settled = await this.runtime.blockExecution(deferred.executionId, deferred.block);
     if (this.taskId === deferred.taskId && this.executionId === deferred.executionId) {
-      await this.releaseClaim({
+      await this.releaseTake({
         result: {
           ...deferred.result,
           applied: {
@@ -475,7 +468,22 @@ export class ServicesBridge {
     return settled;
   }
 
-  async stop() {
+  stop() {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopping = true;
+    this.stopPromise = this.#stop();
+    return this.stopPromise;
+  }
+
+  async #stop() {
+    // Stop admission and transport first; accepted lifecycle operations drain
+    // concurrently with Runtime shutdown, never ahead of it.
+    const server = this.server;
+    this.server = null;
+    this.address = null;
+    const closed = server ? once(server, 'close').catch(() => undefined) : Promise.resolve();
+    if (server) { server.close(); server.closeAllConnections?.(); }
+    await Promise.allSettled([...this.pendingHandlers, ...this.pendingCalls]);
     // A synchronous Judge response may stage a typed block to run after the
     // HTTP response is sent. Drain that lifecycle work before the caller
     // tears down Runtime/log directories; otherwise the setImmediate
@@ -489,15 +497,11 @@ export class ServicesBridge {
       }
     }
     if (this.deferredLifecyclePromise) await this.deferredLifecyclePromise.catch(() => undefined);
-    if (!this.server) return;
-    const server = this.server;
-    this.server = null;
-    this.address = null;
-    server.close();
-    await once(server, 'close').catch(() => undefined);
+    await closed;
   }
 
   async #handle(request, response) {
+    if (this.stopping) { send(response, 503, { ok: false, error: { code: 'NOT_ALLOWED', message: 'Bridge is stopping' } }); return; }
     if (request.method === 'GET' && request.url === '/health') {
       send(response, 200, { ok: true, service: 'swarmenv-agent-bridge' });
       return;
@@ -518,10 +522,22 @@ export class ServicesBridge {
       send(response, 401, { ok: false, error: { code: 'UNAUTHORIZED', message: 'invalid bridge token' } });
       return;
     }
+    const authenticatedToken = this.token;
+    let input;
     try {
-      const input = await readBody(request);
+      input = await readBody(request);
+      if (authenticatedToken !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed while reading the request');
+      const registeredBot = Boolean(this.taskService?.getBot?.(this.actorRef));
       const result = await this.call(input);
-      send(response, 200, { ok: true, result });
+      const receipt = registeredBot ? botReceipt(result) : result;
+      if (registeredBot && input.operation === 'workspace_public_apply' && result?.conflicts?.length) {
+        const paths = [...new Set(result.conflicts.flatMap(item => item.paths ?? (item.path ? [item.path] : [])))];
+        receipt.notice = `来源 ${result.source_revision} 与当前工作状态存在冲突，main 未改变。冲突文件为 ${paths.join(', ')}；可在当前 E 解决并 save --resolved，初始输入记录不变。`;
+      }
+      if (registeredBot && input.operation === 'bot_exit' && result?.bot?.exit_reason === 'no-work') {
+        receipt.notice = '当前无已知可推进责任：no-work。可正常 bot exit --reason no-work；Runtime 按状态变化或退避安排后续发现。';
+      }
+      send(response, 200, { ok: true, result: receipt });
       this.logger?.append({ event: 'bridge.response_sent', operation: input.operation });
       if (this.deferredLifecycle && !this.deferredLifecyclePromise) {
         const deferredPromise = Promise.resolve().then(() => this.flushDeferredLifecycle()).catch((error) => {
@@ -532,13 +548,93 @@ export class ServicesBridge {
         this.deferredLifecyclePromise = deferredPromise;
       }
     } catch (error) {
-      if (!response.writableEnded) send(response, 400, { ok: false, error: errorBody(error) });
+      if (!response.writableEnded) {
+        const body = errorBody(error);
+        if (input && authenticatedToken === this.token && this.taskService.getBot?.(this.actorRef)) {
+          const details = body.details ?? {};
+          const operation = input.operation;
+          let notice;
+          if (operation === 'workspace_save' && !['NOT_ALLOWED', 'WORKSPACE_RESULT_UNKNOWN'].includes(body.code) && !details.phase) {
+            notice = `工作目录未成功保存：${details.cause_code ?? body.code}。不得把私有文件声明为交付；在有效 E 和剩余重试额度内处理。`;
+          } else if (operation === 'workspace_public_apply' && ['dirty', 'active_writer'].includes(details.apply_blocker)) {
+            notice = '当前目录仍有未保存修改或写进程，未替换文件。先 save 并停止相关写入，再按返回条件重试 apply。';
+          } else if (operation === 'workspace_merge' && details.check && details.checked_tree) {
+            notice = `固定 main ${details.main_revision} 与来源 ${details.source_revision} 的最终合成树未通过 ${details.check.checker?.checker_version ?? '未知版本'}：${details.check.verdict ?? body.code}。main、源版本和当前 E 保持不变。先核对当前目录是否包含来源版本；若没有，先 save 自己的进度、apply 来源并处理/保存，再 apply 固定或最新 main，依据诊断修复/save 后重试。`;
+          } else if (operation === 'workspace_merge' && body.code === 'MAIN_MOVED' && details.observed_revision) {
+            notice = `检查后 main 已从 ${details.observed_revision} 前进到 ${details.actual_revision}；本请求未覆盖 main。可在剩余额度内重新合成并检查；若转到当前目录修复，先确认来源 ${details.source_revision} 已通过 apply 接入并保存，再跟进 main，不能丢掉待合入来源。`;
+          } else if (details.phase === 'hard_stop') {
+            notice = '已达到硬上限或发生强制停止，当前 E 不再有发布机会。此前未保存/发布的内容不视为已交接。';
+          } else if (details.phase === 'selection_budget') {
+            notice = '选工额度已到时间上限。尚未绑定 E 时使用 bot exit --reason selection-budget；不能为保持运行制造任务。';
+          } else if (operation === 'task_take' && body.code === 'CONFLICT' && details.parallel_quota !== undefined) {
+            notice = `Task ${input.payload?.task_id} 当前由其他 Execution 占有。本请求未建立 E；仍在选工阶段，可在剩余预算内选择其他责任。`;
+          } else if (body.code === 'NOT_ALLOWED') {
+            const bot = this.taskService.getBot(this.actorRef);
+            const execution = bot.execution_id && this.taskService.getExecution(bot.execution_id);
+            const phase = details.phase ?? (bot.state === 'ACTIVE' && isSoftCloseout(execution) ? 'soft_closeout' : bot.state.toLowerCase());
+            const allowed = phase === 'soft_closeout' ? ['workspace_save', 'publish_material', 'task_finish']
+              : ['active', 'unbound'].includes(phase)
+              ? this.getCapabilityProfile().capabilities.map(item => item.operation).filter(item =>
+                typeof item === 'string' && (phase !== 'unbound' || item === 'task_take' || UNBOUND_OPERATIONS.has(item)) &&
+                (!COORDINATION_OPERATION_GRANTS.has(item) || bot.coordination_permissions.includes(COORDINATION_OPERATION_GRANTS.get(item))))
+              : [];
+            const allowedOperations = [...new Set(allowed)];
+            body.details = { ...details, phase, allowed_operations: allowedOperations };
+            notice = `操作 ${operation} 在阶段 ${phase} 未获授权。可用范围为 ${allowedOperations.join(', ') || '无'}，不能通过另一接口绕过。`;
+          }
+          if (notice) body.details = { ...body.details, request_id: input.operation_id ?? null, notice };
+        }
+        send(response, 400, { ok: false, error: body });
+      }
       else this.logger?.append({ event: 'bridge.error_after_response', operation: input?.operation ?? null, ok: false, error: { name: error.name, code: error.code, message: error.message } });
     }
   }
 
-  async call({ operation, payload = {}, operation_id: operationId = null, service_id: serviceId = null, capability_id: capabilityId = null } = {}) {
-    this.logger?.append({ event: 'bridge.start', operation, operation_id: operationId, task_id: this.taskId, execution_id: this.executionId, payload });
+  async call(request = {}) {
+    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
+    return this.#track(this.pendingCalls, () => this.#admittedCall(request));
+  }
+
+  async #admittedCall(request) {
+    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
+    // Coalesce only an explicit take request, for this live credential. A lost
+    // CLI response must not turn in-flight preparation into a second take.
+    const key = request.operation === 'task_take' && request.operation_id;
+    const capability = key ? this.#profileCapability(this.getCapabilityProfile(), request.operation, { serviceId: request.service_id, capabilityId: request.capability_id }) : null;
+    if (key && !capability) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task take capability is not available for this request');
+    const fingerprint = key ? stableStringify({ capability: capability.id, payload: request.payload ?? {} }) : null;
+    if (key && this.pendingTake?.operation_id === key) {
+      const pending = this.pendingTake;
+      if (pending.token !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before retry');
+      if (pending.fingerprint !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'take request ID was reused with another payload');
+      if (this.taskService.getBot?.(this.actorRef)) this.taskService.assertBotDeadline(this.actorRef);
+      const result = await pending.promise;
+      if (pending.token !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before retry completed');
+      return structuredClone(result);
+    }
+    const promise = this.#call(request);
+    if (!key || this.pendingTake) return promise;
+    const pending = { operation_id: key, token: this.token, fingerprint, promise };
+    this.pendingTake = pending;
+    try { return await promise; }
+    finally { if (this.pendingTake === pending) this.pendingTake = null; }
+  }
+
+  async #call({ operation, payload = {}, operation_id: operationId = null, service_id: serviceId = null, capability_id: capabilityId = null } = {}) {
+    if (this.bindingPending) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
+    const identityToken = this.token;
+    const assertIdentity = (beforeDispatch = false) => {
+      if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
+      if (this.bindingPending) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
+      if (this.token !== identityToken) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before dispatch');
+      const bot = beforeDispatch ? this.taskService.getBot?.(this.actorRef) : null;
+      if (bot && !['bot_exit', 'task_finish'].includes(operation)) this.taskService.assertBotDeadline(this.actorRef);
+      if (bot && !['UNBOUND', 'ACTIVE'].includes(bot.state) && !['bot_exit', 'task_finish'].includes(operation)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped before dispatch');
+      }
+    };
+    const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
+    this.logger?.append({ event: 'bridge.start', operation, operation_id: bridgeOperationId, task_id: this.taskId, execution_id: this.executionId, payload });
     try {
       const profile = this.getCapabilityProfile();
       const capability = this.#profileCapability(profile, operation, { serviceId, capabilityId });
@@ -557,15 +653,106 @@ export class ServicesBridge {
         });
       }
       const boundTask = this.taskId ? this.taskService.getTask(this.taskId) : null;
+      const bot = this.taskService.getBot?.(this.actorRef);
+      if (bot && !['bot_exit', 'task_finish', 'mission_submission_get'].includes(operation)) {
+        const execution = bot.execution_id && this.taskService.getExecution(bot.execution_id);
+        if (execution && (Date.parse(bot.hard_deadline) <= Date.now() || Date.parse(execution.execution_deadline) <= Date.now() ||
+            (['CLOSING', 'CLOSED'].includes(bot.state) && !this.taskService.getExecutionFinish(execution.execution_id)))) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot contribution is closed', { phase: 'hard_stop' });
+        }
+        if (bot.state === 'UNBOUND' && Date.parse(bot.selection_deadline) <= Date.now()) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot selection deadline elapsed', { phase: 'selection_budget' });
+        }
+      }
+      if (bot && !['bot_exit', 'task_finish'].includes(operation)) this.taskService.assertBotDeadline(this.actorRef);
+      if (bot && !['UNBOUND', 'ACTIVE'].includes(bot.state) && !['bot_exit', 'task_finish'].includes(operation)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot is not authorized to contribute in its current state', { bot_state: bot.state });
+      }
+      // Scope is established by Runtime's durable Bot binding, never by CLI
+      // flags. Only add fields supported by each public request schema.
+      if (bot) {
+        if (['workspace_save', 'workspace_status', 'workspace_current_diff', 'workspace_public_apply'].includes(operation)) {
+          assertIdentity(true);
+          const execution = this.executionId && this.taskService.getExecution(this.executionId);
+          if (!execution) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace operation requires an active E');
+          const result = await this.runtime.dispatchExecutionWorkspace(({ workspace_save: 'save', workspace_status: 'status', workspace_current_diff: 'diff', workspace_public_apply: 'apply' })[operation], payload,
+            { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution.fencing_version, requestId: bridgeOperationId });
+          if (operation === 'workspace_save') {
+            try { await this.onWorkUnit?.({ operation, taskId: execution.task_id, executionId: execution.execution_id, payload, result }); }
+            catch (error) { this.logger?.append({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
+          }
+          this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
+          return { ...result, request_id: bridgeOperationId };
+        }
+        if (operation === 'workspace_merge') {
+          const execution = this.executionId && this.taskService.getExecution(this.executionId);
+          const result = await this.runtime.mergeExecutionWorkspace(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution?.fencing_version, requestId: bridgeOperationId });
+          assertIdentity();
+          try { await this.onWorkUnit?.({ operation, taskId: execution.task_id, executionId: execution.execution_id, payload, result }); }
+          catch (error) { this.logger?.append({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
+          this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
+          return { ...result, request_id: bridgeOperationId };
+        }
+        if (WORKSPACE_OPERATIONS.has(operation) || operation === 'execution_progress') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Legacy private Workspace and Execution APIs are unavailable to registered Bots');
+        if (operation === 'mission_submit') {
+          if (Object.keys(payload).some(key => key !== 'material_ids') || !Array.isArray(payload.material_ids)) {
+            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Mission submit accepts only an explicit material_ids selection');
+          }
+          const result = await this.runtime.submitMission({ missionId: bot.mission_id, workspaceId: this.runtime.missionWorkspaceId,
+            actorRef: bot.bot_id, taskId: this.taskId ?? null, executionId: this.executionId ?? null,
+            materialIds: payload.material_ids, requestId: bridgeOperationId,
+            fencingVersion: this.executionId ? this.taskService.getExecution(this.executionId)?.fencing_version : null });
+          this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
+          const observed = await this.runtime.describeMissionSubmission({ missionId: bot.mission_id, submissionId: result.submission_id });
+          assertIdentity();
+          return observed ?? result;
+        }
+        if (payload.mission_id !== undefined && payload.mission_id !== bot.mission_id) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'request must stay within the Bot Mission');
+        }
+        if (operation === 'mission_submission_get') {
+          const result = await this.runtime.describeMissionSubmission({ missionId: bot.mission_id, submissionId: payload.submission_id ?? null });
+          assertIdentity();
+          return result;
+        }
+        if (['mission_get', 'mission_submit', 'mission_submission_get', 'task_create', 'task_list', 'task_status', 'list_tasks', 'read_materials', 'context_search_materials'].includes(operation)) {
+          payload = { ...payload, mission_id: bot.mission_id };
+        }
+        if (['task_view', 'task_take', 'list_executions', 'task_cancel', 'task_dependency_replace'].includes(operation) && payload.task_id !== undefined) {
+          const target = this.taskService.getTask(payload.task_id);
+          if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task is not readable in the Bot Mission');
+        }
+        if (operation === 'context_get_material') {
+          const target = this.contextService.getMaterial(payload.material_id);
+          if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material is not readable in the Bot Mission');
+        }
+        if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history'].includes(operation)) {
+          const workspaceId = this.runtime?.missionWorkspaceId;
+          if (!workspaceId || (payload.workspace_id !== undefined && payload.workspace_id !== workspaceId)) {
+            throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace must match the configured Mission Workspace');
+          }
+          const workspace = await this.runtime.missionWorkspace.get({ workspaceId });
+          assertIdentity(true);
+          if (workspace.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace belongs to another Mission');
+          payload = { ...payload, workspace_id: workspaceId };
+        }
+      }
+      if (operation === 'task_take' && this.acceptedTake?.operation_id === bridgeOperationId) {
+        if (this.acceptedTake.fingerprint !== stableStringify({ capability: capability.id, payload })) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'take request ID was reused with another payload');
+        this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, replayed: true, result: this.acceptedTake.result });
+        return structuredClone(this.acceptedTake.result);
+      }
+      if (operation === 'bot_exit') {
+        return this.taskService.dispatch('bot_exit', payload, makeEnvelope({ actorRef: this.actorRef, operationId: bridgeOperationId }));
+      }
       const modernBoundTask = boundTask?.mission_id ? boundTask : null;
       if (modernBoundTask && WORKSPACE_OPERATIONS.has(operation) && !usesWorkspace(modernBoundTask)) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
       }
       const service = this.router ?? { dispatch: (name, body, envelope) => {
-        if (['get_task', 'get_execution', 'list_tasks', 'list_executions', 'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress'].includes(name)) return this.taskService.dispatch(name, body, envelope);
+        if (['get_execution', 'list_tasks', 'list_executions', 'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish', 'task_status', 'task_take', 'task_feedback', 'execution_progress'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
       } };
-      const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
       if (operation === 'execution_progress') {
         if (!this.taskId || !this.executionId || ![AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY].includes(this.role)) {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'execution_progress requires a bound Task Execution', { role: this.role });
@@ -575,13 +762,13 @@ export class ServicesBridge {
         }
         const result = await this.runtime.executionProgress(this.executionId, { ...payload, actorRef: this.actorRef });
         await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
-        if (payload.kind === 'handoff') await this.releaseClaim({ result });
+        if (payload.kind === 'handoff') await this.releaseTake({ result });
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
       const isCatalogDiscovery = capability.service_id === 'catalog' && ['list_services', 'get_service_metadata', 'list_tools'].includes(operation);
       const isTaskDiscovery = capability.service_id === 'task' && [
-        'list_tasks', 'get_task', 'list_executions',
+        'list_tasks', 'list_executions',
         'task_view', 'task_status',
       ].includes(operation);
       if (isCatalogDiscovery || isTaskDiscovery || (capability.service_id === 'task' && operation === 'scheduler_status')) {
@@ -596,49 +783,16 @@ export class ServicesBridge {
           ? { ...payload, mission_id: modernBoundTask.mission_id }
           : operation === 'list_tasks' && this.taskId === null && payload.available_only !== false
           ? { ...payload, states: ['OPEN', 'RUNNING', 'WAITING'] }
-          : ((operation === 'get_task' || operation === 'task_view') && payload.task_id === undefined && this.taskId
+          : (operation === 'task_view' && payload.task_id === undefined && this.taskId
             ? { ...payload, task_id: this.taskId }
             : payload);
-        // Legacy Task records predate Mission metadata and therefore cannot
-        // be read through the semantic task_view projection. Keep the
-        // compatibility read on the local Task Service boundary; modern
-        // task_view calls continue through the Registry above.
-        const result = operation === 'get_task' && typeof this.taskService?.dispatch === 'function'
-          ? this.taskService.dispatch('get_task', discoveryPayload, makeEnvelope({
-            operationId: bridgeOperationId,
-            actorRef: this.actorRef,
-            taskId: discoveryPayload.task_id ?? this.taskId ?? null,
-            executionId: this.executionId,
-          }))
-          : this.registry?.invoke
+        const result = this.registry?.invoke
             ? await this.#invokeRegistered(capability, discoveryPayload, bridgeOperationId)
             : service.dispatch(operation, discoveryPayload, makeEnvelope({
             operationId: bridgeOperationId,
             actorRef: this.actorRef,
           }));
         this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
-        return result;
-      }
-      // Semantic handoff and typed block are Runtime lifecycle boundaries even
-      // when the Task Service is reached through the Registry. Route them
-      // through Runtime first so the durable Task transition and the physical
-      // Session/Core/Workspace release happen as one Agent-visible action.
-      if (this.registry?.invoke && capability.service_id === 'task' && (operation === 'task_handoff' || operation === 'task_block')) {
-        if (!this.taskId || !this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
-        const execution = this.taskService.getExecution(this.executionId);
-        if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${this.executionId}`, { execution_id: this.executionId });
-        if (execution.task_id !== this.taskId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'bridge execution does not match task', { task_id: this.taskId, execution_id: this.executionId });
-        const boundTaskId = this.taskId;
-        const boundExecutionId = this.executionId;
-        if (operation === 'task_block') assertCapabilityBlockIsUnavailable(payload, this.getCapabilityProfile());
-        const method = operation === 'task_handoff' ? 'handoffTask' : 'blockTask';
-        if (typeof this.runtime?.[method] !== 'function') {
-          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime does not expose semantic ${operation} boundary`);
-        }
-        const result = await this.runtime[method](boundExecutionId, payload);
-        await this.onWorkUnit?.({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
-        await this.releaseClaim({ result });
-        this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
         return result;
       }
       let registeredService = null;
@@ -652,75 +806,108 @@ export class ServicesBridge {
         if (operation === 'task_take' && (this.taskId || this.executionId)) {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_take requires the current Execution binding to be released', { task_id: this.taskId, execution_id: this.executionId });
         }
-        const requiresBinding = operation !== 'task_take' && Array.isArray(capability.context) && capability.context.length > 0;
-        if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
+        const requiresBinding = operation !== 'task_take' && !UNBOUND_OPERATIONS.has(operation) && Array.isArray(capability.context) && capability.context.length > 0;
+        if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a taken Task and Execution`, { operation });
         const currentExecution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
-        const invocationPayload = operation === 'submit_candidate'
-          ? await this.#prepareJudgeSubmission(payload, currentExecution, this.taskService.getTask(this.taskId), bridgeOperationId)
-          : operation === 'task_take'
+        const invocationPayload = operation === 'task_take'
           ? {
             // Caller-supplied owner/prompt fields are not trusted identity
             // claims. Runtime supplies the stable prompt and authenticated
             // actor; only task choice and workspace lineage come from the
             // request.
             ...Object.fromEntries(Object.entries(payload).filter(([key]) => !['owner_ref', 'agent_prompt', 'initial_prompt'].includes(key))),
+            ...(this.taskService.isModernTask?.(payload.task_id)
+              ? {
+                workspace_mode: 'clean',
+                workspace_revision: undefined,
+                workspace_source_execution_id: undefined,
+                workspace_source_ref: undefined,
+              }
+              : {}),
             owner_ref: this.actorRef,
             agent_prompt: this.agentPrompt,
             // The lane is authenticated runtime state, never a model choice.
             core_id: this.coreId ?? currentExecution?.core_id ?? null,
           }
           : payload;
-        const switching = operation === 'task_register' && payload.take === true;
-        let switchPreviousFence = null;
-        if (switching) {
-          if (!this.taskId || !this.executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_register take requires a bound Execution to switch from');
-          // Contract §1: save the current Execution first, then the Task
-          // Service ends it and claims the new Task in one transaction.
-          await this.runtime?.executionProgress?.(this.executionId, {
-            kind: 'checkpoint',
-            progress: switchProgress(payload),
-            actorRef: this.actorRef,
-          });
-          switchPreviousFence = this.taskService.getExecution(this.executionId)?.fencing_version ?? null;
-        }
         const invoke = async () => {
-          if (operation === 'task_create' || operation === 'task_register') {
+          assertIdentity(true);
+          if (operation === 'task_create') {
             const guard = this.onTaskCreate?.({ taskId: this.taskId, executionId: this.executionId, payload });
             if (guard && typeof guard.then === 'function') await guard;
+            assertIdentity(true);
             assertTaskCapabilityAdmission(payload, profile);
           }
           if (operation === 'task_take') this.lastTakeOutcome = { attempted: true, ok: false, task_id: invocationPayload.task_id ?? null };
-          const registeredPayload = operation === 'task_create' || operation === 'task_register'
+          let registeredPayload = operation === 'task_create'
             ? (({ progress: _progress, ...rest }) => ({ ...rest, required_capabilities: requiredTaskCapabilities(payload) }))(invocationPayload)
             : invocationPayload;
+          if (operation === 'workspace_check') {
+            const source = bot
+              ? await this.runtime.readWorkspaceCheckSource(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: currentExecution?.fencing_version })
+              : await this.runtime.readWorkspaceFile(this.executionId, { path: payload.path, maxBytes: payload.max_bytes });
+            if (typeof payload.path !== 'string' || payload.path.length === 0 || payload.path.startsWith('/') || payload.path.split('/').includes('..')) {
+              throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_check.path must stay within the Execution Workspace');
+            }
+            if (payload.workspace_revision !== undefined && Number(payload.workspace_revision) !== Number(source.workspace_revision ?? source.revision)) {
+              throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'workspace_check revision is stale', {
+                expected: source.workspace_revision ?? source.revision,
+                actual: payload.workspace_revision,
+              });
+            }
+            if (payload.content_hash !== undefined && payload.content_hash !== source.content_hash) {
+              throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'workspace_check content_hash does not match the Workspace file');
+            }
+            registeredPayload = {
+              ...payload,
+              ...(bot ? { request_key: payload.request_key ?? bridgeOperationId } : {}),
+              source: {
+                ...(bot ? source : {}),
+                revision: source.revision ?? source.workspace_revision,
+                path: payload.path,
+                content: source.content,
+                content_hash: source.content_hash,
+                workspace_revision: source.workspace_revision ?? source.revision,
+                input_snapshot_hash: source.input_snapshot_hash ?? null,
+                ...((source.workspace_id ?? source.workspace_ref) ? { workspace_id: source.workspace_id ?? source.workspace_ref } : {}),
+              },
+              source_attestation: {
+                task_id: this.taskId,
+                execution_id: this.executionId,
+                path: payload.path,
+                workspace_revision: source.workspace_revision ?? source.revision,
+                revision: source.revision ?? source.workspace_revision,
+                content_hash: source.content_hash,
+                ...((source.workspace_id ?? source.workspace_ref) ? { workspace_id: source.workspace_id ?? source.workspace_ref } : {}),
+              },
+            };
+          }
+          assertIdentity(true);
           return this.#invokeRegistered(capability, registeredPayload, bridgeOperationId);
         };
         let result = operation === 'task_create' && this.taskCreateMutex
           ? await this.taskCreateMutex.run(invoke)
           : await invoke();
-        if (switching && result?.switched_from?.execution?.execution_id && result?.execution?.execution_id) {
-          const previous = result.switched_from.execution;
-          await this.runtime?.detachSwitchedExecution?.(previous.execution_id, { previousFencingVersion: switchPreviousFence });
-          await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
-          await this.releaseClaim({ result: { ...result, switching: true } });
-          await this.bindClaim(result);
-          this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
-          return result;
+        assertIdentity();
+        if (bot && ['workspace_check', 'get_check_result'].includes(operation) && result) {
+          const target = this.taskService.getTask(result.target_task_id);
+          if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge result is not readable in the Bot Mission');
+          result = agentCheckResult(result);
         }
         if (operation === 'task_take') {
-          await this.bindClaim(result);
+          await this.bindTake(result);
+          this.acceptedTake = { operation_id: bridgeOperationId, fingerprint: stableStringify({ capability: capability.id, payload }), result: structuredClone(result) };
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
         }
-        if (operation === 'task_complete') {
-          await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
-          // The Task Service commits the semantic completion; Runtime owns the
-          // physical Session/Core/Workspace release that follows it.
-          await this.runtime.releaseExecution?.(this.executionId);
-          await this.releaseClaim({ result });
+        if (operation === 'task_finish') {
+          const finish = result.disposition === 'closing'
+            ? { request_id: bridgeOperationId, notice: `结束请求 ${bridgeOperationId} 已持久受理，E ${result.execution.execution_id} 正在 closing。不得再 save/publish；Runtime 停止全部进程，连接可能断开。` } : {};
+          result = await this.#afterAcceptedFinish(result, payload);
+          result = { ...result, ...finish };
           this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
           return result;
         }
-        if (this.onWorkUnit && (operation !== 'submit_candidate' || capability.service_id === 'judge') && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_register', 'task_take', 'task_link_material', 'task_handoff', 'task_block', 'submit_candidate'].includes(operation)) {
+        if (this.onWorkUnit && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_take', 'task_link_material', 'task_finish'].includes(operation)) {
           await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
         }
         this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
@@ -728,28 +915,12 @@ export class ServicesBridge {
       }
 
       const unboundCanonicalTake = operation === 'task_take' && !this.taskId && !this.executionId;
-      if ((!this.taskId || !this.executionId) && !unboundCanonicalTake) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a claimed Task and Execution`, { operation });
+      if ((!this.taskId || !this.executionId) && !unboundCanonicalTake) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a taken Task and Execution`, { operation });
       const execution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
       if (!unboundCanonicalTake && !execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${this.executionId}`, { execution_id: this.executionId });
       if (!unboundCanonicalTake && execution.task_id !== this.taskId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'bridge execution does not match task', { task_id: this.taskId, execution_id: this.executionId });
       const boundTaskId = this.taskId;
       const boundExecutionId = this.executionId;
-      if (operation === 'task_handoff' || operation === 'task_block') {
-        // `task_block` is the semantic Mission operation for modern Tasks.
-        // Legacy Tasks retain the historical typed block contract, which has
-        // no Handoff Material requirement and is still routed through the
-        // Runtime/Task Service boundary for compatibility fixtures.
-        if (operation === 'task_block') assertCapabilityBlockIsUnavailable(payload, this.getCapabilityProfile());
-        const method = operation === 'task_handoff' ? 'handoffTask' : 'blockTask';
-        if (typeof this.runtime?.[method] !== 'function') {
-          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime does not expose semantic ${operation} boundary`);
-        }
-        const result = await this.runtime[method](boundExecutionId, payload);
-        await this.onWorkUnit?.({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
-        await this.releaseClaim({ result });
-        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
-        return result;
-      }
       const sdk = new ServicesSDK(service, {
         actorRef: this.actorRef,
         coreId: this.coreId ?? execution?.core_id ?? null,
@@ -763,11 +934,6 @@ export class ServicesBridge {
       const options = { operationId: bridgeOperationId };
       let result;
       switch (operation) {
-        case 'get_task':
-          result = modernBoundTask
-            ? sdk.viewTask(payload.task_id ?? this.taskId).task
-            : sdk.getTask(payload.task_id ?? this.taskId);
-          break;
         case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
         case 'task_list': result = sdk.listMissionTasks(payload); break;
         case 'task_status': result = sdk.taskStatus(payload); break;
@@ -775,8 +941,10 @@ export class ServicesBridge {
         case 'task_create':
           {
             const createTask = async () => {
+              assertIdentity(true);
               const guard = this.onTaskCreate?.({ taskId: boundTaskId, executionId: boundExecutionId, payload });
               if (guard && typeof guard.then === 'function') await guard;
+              assertIdentity(true);
               assertTaskCapabilityAdmission(payload, profile);
               return sdk.createTask(payload, options);
             };
@@ -785,36 +953,31 @@ export class ServicesBridge {
               : await createTask();
           }
           break;
-        case 'task_register': result = sdk.taskRegister(payload, options); break;
         case 'task_take':
           this.lastTakeOutcome = { attempted: true, ok: false, task_id: payload.task_id ?? null };
-          result = sdk.taskTake(payload, options);
-          await this.bindClaim(result);
+          {
+            // Task Service owns the canonical clean Workspace admission. Do
+            // not rewrite a caller's Workspace mode or lineage at the Bridge.
+            result = sdk.taskTake(payload, options);
+          }
+          await this.bindTake(result);
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
           break;
+        case 'task_cancel':
+        case 'task_dependency_replace': result = service.dispatch(operation, payload, { ...sdk.context, operation_id: bridgeOperationId }); break;
         case 'task_link_material': result = sdk.linkMaterial(payload, options); break;
-        case 'task_complete':
-          result = sdk.completeTask(payload, options);
-          await this.onWorkUnit?.({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
-          // Task Service records the semantic DONE/SUCCEEDED transition first.
-          // Runtime then releases the live Session/Core/Workspace without
-          // attempting a second Task transition.  Test doubles that do not
-          // materialize a Runtime process may omit this optional seam.
-          if (typeof this.runtime.releaseExecution === 'function') {
-            await this.runtime.releaseExecution(boundExecutionId);
-          }
-          await this.releaseClaim({ result });
+        case 'task_finish':
+          result = await this.#afterAcceptedFinish(sdk.finishTask(payload, options), payload);
           break;
-        case 'task_close': result = sdk.closeTask(payload, options); break;
         case 'context_search_materials': result = sdk.searchMaterials(payload); break;
         case 'context_get_material': result = sdk.getMaterial(payload.material_id ?? payload.materialId); break;
+        case 'material_dispute':
+        case 'material_supersede':
+        case 'material_unsupersede': result = service.dispatch(operation, payload, { ...sdk.context, operation_id: bridgeOperationId }); break;
         case 'context_publish_material': result = sdk.publishCollaborationMaterial(payload, options); break;
         case 'read_materials': result = sdk.readMaterials(payload); break;
         case 'consume_materials': result = sdk.consumeMaterials(payload, options); break;
         case 'publish_material': result = sdk.publishMaterial(payload, options); break;
-        case 'submit_candidate':
-          result = await this.#invokeRegistered(capability, await this.#prepareJudgeSubmission(payload, execution, this.taskService.getTask(boundTaskId), bridgeOperationId), bridgeOperationId);
-          break;
         case 'heartbeat': result = sdk.heartbeat(payload, options); break;
         case 'get_workspace': result = await this.runtime.getWorkspace(this.executionId); break;
         case 'list_workspace_revisions': result = (await this.runtime.getWorkspace(this.executionId)).revisions; break;
@@ -842,19 +1005,53 @@ export class ServicesBridge {
           job_id: payload.job_id,
         }); break;
         case 'get_check_result': result = sdk.getCheckResult(payload.check_result_id); break;
+        case 'workspace_check': {
+          const source = await this.runtime.readWorkspaceFile(this.executionId, {
+            path: payload.path,
+            maxBytes: payload.max_bytes,
+          });
+          result = await this.#invokeRegistered(capability, {
+            ...payload,
+            source: {
+              revision: source.revision ?? source.workspace_revision,
+              path: payload.path,
+              content: source.content,
+              content_hash: source.content_hash,
+              workspace_revision: source.workspace_revision ?? source.revision,
+              input_snapshot_hash: source.input_snapshot_hash ?? null,
+              ...((source.workspace_id ?? source.workspace_ref) ? { workspace_id: source.workspace_id ?? source.workspace_ref } : {}),
+            },
+            source_attestation: {
+              task_id: boundTaskId,
+              execution_id: boundExecutionId,
+              path: payload.path,
+              workspace_revision: source.workspace_revision ?? source.revision,
+              revision: source.revision ?? source.workspace_revision,
+              content_hash: source.content_hash,
+              ...((source.workspace_id ?? source.workspace_ref) ? { workspace_id: source.workspace_id ?? source.workspace_ref } : {}),
+            },
+          }, bridgeOperationId);
+          break;
+        }
         default: throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `unsupported Agent operation: ${operation}`, { operation });
       }
       if (operation === 'write_workspace_file' && this.onWorkspaceWrite) {
         await this.onWorkspaceWrite({ taskId: boundTaskId, executionId: boundExecutionId, result });
       }
-      if (this.onWorkUnit && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_link_material', 'submit_candidate'].includes(operation)) {
+      if (this.onWorkUnit && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_link_material'].includes(operation)) {
         await this.onWorkUnit({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
       }
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
       return result;
     } catch (error) {
+      if (operation === 'task_take' && this.token === identityToken) {
+        this.lastTakeOutcome = {
+          attempted: true, ok: false, task_id: payload?.task_id ?? null, operation_id: bridgeOperationId,
+          code: error.code ?? 'SERVICE_UNAVAILABLE', message: error.message,
+        };
+      }
       try {
-        await this.onError?.({ operation, operationId, error });
+        await this.onError?.({ operation, operationId: bridgeOperationId, error });
       } catch {
         // Preserve the original Agent-visible Service error if audit delivery
         // itself fails.

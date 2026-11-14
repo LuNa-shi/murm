@@ -15,26 +15,6 @@ const revision = { type: 'integer', minimum: 1 };
 
 export const RUNTIME_CAPABILITIES = Object.freeze([
   {
-    id: 'runtime.task_complete', name: 'task_complete', operation: 'task_complete', service_id: 'runtime',
-    service_title: 'SwarmEnv Runtime', service_purpose: 'Task-scoped completion and dependency actions',
-    description: 'Complete the current Task after its own contract and result references are satisfied.',
-    audience: ['bound', 'recovery'], side_effect: 'write', idempotent: true, runtime_owned: true,
-    context: ['task', 'execution', 'fencing'],
-    help: { when: 'Use after the current Task completion contract is satisfied and evidence is persisted.', ref: 'runtime://task_complete' },
-    input_schema: objectSchema({ target_task_id: id, target_state_version: { type: 'integer', minimum: 0 } }, ['target_task_id']),
-    output_schema: objectSchema(),
-  },
-  {
-    id: 'runtime.task_block', name: 'task_block', operation: 'task_block', service_id: 'runtime',
-    service_title: 'SwarmEnv Runtime', service_purpose: 'Task-scoped completion and dependency actions',
-    description: 'Save a useful checkpoint, declare a typed dependency, and release this Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable.',
-    audience: ['bound', 'recovery'], side_effect: 'write', idempotent: true, runtime_owned: true,
-    context: ['task', 'execution', 'fencing'],
-    help: { when: 'Use only when the current Task cannot progress without a concrete typed dependency.', ref: 'runtime://task_block' },
-    input_schema: objectSchema({ reason: { type: 'string', minLength: 1 }, dependency: { type: 'object', minProperties: 1 }, checkpoint: { type: 'object' }, files: { type: 'object', additionalProperties: { type: 'string' } } }, ['reason', 'dependency']),
-    output_schema: objectSchema(),
-  },
-  {
     id: 'runtime.execution_get', name: 'execution_get', operation: 'get_execution', service_id: 'runtime',
     service_title: 'SwarmEnv Runtime', service_purpose: 'Task-scoped Execution projection',
     description: 'Read the current Execution identity and Workspace revision.',

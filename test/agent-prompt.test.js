@@ -23,21 +23,21 @@ const profile = (role) => buildCapabilityProfile({
 test('static prompts describe bounded decomposition without fixed fanout', () => {
   const prompt = `${GENERIC_AGENT_PROMPT}\n${BOUND_AGENT_PROMPT}\n${IDLE_AGENT_PROMPT}\n${RECOVERY_AGENT_PROMPT}`;
   assert.match(prompt, /genuinely independent|bounded/i);
-  assert.match(prompt, /task\.complete/);
-  assert.match(prompt, /task\.block/);
-  assert.match(prompt, /task\.create/);
-  assert.match(prompt, /task\.handoff/);
-  assert.match(prompt, /task\.close/);
+  assert.match(prompt, /task_finish/);
+  assert.match(prompt, /wait_for|task_finish/);
+  assert.match(prompt, /task_create/);
+  assert.match(prompt, /incomplete/);
+  assert.match(prompt, /task_finish/);
   assert.match(prompt, /exact ID.*operation.*tool name/i);
   assert.match(prompt, /available_capabilities/);
   assert.match(prompt, /never invent conceptual names/i);
   assert.doesNotMatch(prompt, /four reusable|two child|three child|select_task|swarmenv_call|request_wait|execution_wait/i);
 });
 
-test('prompt states shared Mission block, Judge iteration, and capability semantics without quantity targets (r12)', () => {
+test('prompt states Mission-is-not-taken, Bot boundaries, Judge iteration, and capability semantics', () => {
   const prompt = BOUND_AGENT_PROMPT;
-  assert.match(prompt, /task\.block ends only your own branch/);
-  assert.match(prompt, /Mission stays claimable/);
+  assert.match(prompt, /Mission itself is never taken/);
+  assert.match(prompt, /fresh Bot/);
   assert.match(prompt, /Registering a Task does not end your Execution/);
   assert.match(prompt, /Judge FAIL is not a reason to hand off/);
   assert.match(prompt, /Callable capability directory is never an external blocker/);
@@ -48,9 +48,9 @@ test('prompt states shared Mission block, Judge iteration, and capability semant
 test('all prompt aliases describe one reusable identity contract', () => {
   for (const prompt of [GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT]) {
     assert.match(prompt, /task_take/);
-    assert.match(prompt, /same Session/i);
-    assert.match(prompt, /cannot claim or select/);
-    assert.doesNotMatch(prompt, /Selection Agent|Selection Session|task\.claim/i);
+    assert.match(prompt, /Session/);
+  assert.match(prompt, /cannot take or select/);
+    assert.doesNotMatch(prompt, /Selection Agent|Selection Session/i);
   }
 });
 
@@ -68,7 +68,7 @@ test('initial bundle separates the system identity contract from dynamic context
     task: { task_id: 'task-system-1', goal: 'prove the locked theorem' },
   });
   assert.equal(snapshot.system_prompt, SYSTEM_IDENTITY_PROMPT);
-  assert.match(snapshot.system_prompt, /continuous SwarmEnv research identity/);
+  assert.match(snapshot.system_prompt, /SwarmEnv Bot lifecycle/);
   assert.match(snapshot.system_prompt, /task_take/);
   assert.ok(snapshot.system_prompt_hash.length === 64);
   assert.ok(snapshot.prompt_hash.length === 64);
@@ -166,20 +166,24 @@ test('task loop guide names one exact registered tool per identity step (r12)', 
   try {
     const registry = createBuiltinServiceRegistry({ taskService, contextService, judgeService: {} });
     // Flat Mission deployments omit the Runtime lifecycle aliases (putnam-runner).
-    const flatRuntime = runtimeCapabilityList().filter((capability) => !['runtime.task_block', 'runtime.task_complete'].includes(capability.id));
+    const flatRuntime = runtimeCapabilityList().filter((capability) => !['runtime.task_finish'].includes(capability.id));
     const bound = buildCapabilityProfile({ role: AGENT_ROLES.BOUND, registry, runtimeCapabilities: flatRuntime });
     const toolNames = bound.capabilities.map((capability) => `swarmenv_${capability.tool_name ?? capability.name}`);
     // One action, one tool: the Runtime alias must not shadow the registered Task capability.
-    assert.deepEqual(toolNames.filter((name) => /task_block$/.test(name)), ['swarmenv_task_block']);
-    assert.deepEqual(toolNames.filter((name) => /task_complete$/.test(name)), ['swarmenv_task_complete']);
+    assert.deepEqual(toolNames.filter((name) => /task_finish$/.test(name)), ['swarmenv_task_finish']);
+    assert.deepEqual(toolNames.filter((name) => /task_finish$/.test(name)), ['swarmenv_task_finish']);
 
     const guide = taskLoopGuide(bound);
-    for (const step of ['Look:', 'Take:', 'Work:', 'Check:', 'Share:', 'Save:', 'End this Execution', 'Next:']) assert.match(guide, new RegExp(step));
+    for (const step of ['Look:', 'Choose:', 'Work:', 'Check:', 'Share:', 'Save:', 'End this Execution', 'Next:']) assert.match(guide, new RegExp(step));
     const mentioned = guide.match(/swarmenv_[a-z_]+/g);
     for (const name of mentioned) assert.ok(toolNames.includes(name), `${name} must be a registered tool`);
     assert.match(guide, /swarmenv_task_take/);
-    assert.match(guide, /swarmenv_judge_submit_candidate with its relative path/);
-    assert.match(guide, /swarmenv_task_block with a published and linked handoff_material_id/);
+    assert.ok(guide.indexOf('propose it with swarmenv_task_create') < guide.indexOf('3. Work:'));
+    assert.match(guide, /prefer suitable existing responsibilities/);
+    assert.doesNotMatch(guide, /one task_id from the Task view/);
+    assert.match(guide, /swarmenv_judge_workspace_check with its relative path/);
+    assert.match(guide, /swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled/);
+    assert.match(guide, /fresh Bot reads public/);
     assert.doesNotMatch(guide, /at least \d|minimum of \d|\d+ (Tasks|checks|Judge calls)/i);
     // The guide is part of the profile-bound prompt.
     assert.match(composeAgentPrompt({ role: AGENT_ROLES.BOUND, profile: bound }), /Task loop \(exact tool names in this Session\)/);
@@ -188,11 +192,12 @@ test('task loop guide names one exact registered tool per identity step (r12)', 
   }
 });
 
-test('prompt keeps an Execution until a lifecycle boundary and offers register-and-take (r15)', () => {
+test('prompt keeps one Bot Execution until a lifecycle boundary', () => {
   const prompt = BOUND_AGENT_PROMPT;
   assert.match(prompt, /read-only research phase .* is normal work/);
   assert.match(prompt, /Do not hand off on your own initiative/);
-  assert.match(prompt, /task_register with take: true/);
+  assert.match(prompt, /task_create proposes a separate responsibility/);
+  assert.match(prompt, /fresh Bot may continue/);
   assert.doesNotMatch(prompt, /voluntary handoff|bounded attempt|substantive increment/i);
   assert.doesNotMatch(prompt, /at least \d|minimum of \d|\d+ (Tasks|checks|Judge calls)/i);
 });

@@ -28,7 +28,7 @@ export const TASKS_TABLE_DEFINITION = `(
   retry_policy_json TEXT NOT NULL,
   root_deadline TEXT,
   cancelled_at TEXT,
-  claimable_at TEXT,
+  eligible_at TEXT,
   responsibility_key TEXT,
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS missions (
   mission_id TEXT PRIMARY KEY,
   goal TEXT NOT NULL,
   acceptance_conditions_json TEXT NOT NULL DEFAULT '{}',
+  merge_required_check_json TEXT,
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -65,6 +66,10 @@ CREATE TABLE IF NOT EXISTS modern_task_records (
 
 CREATE INDEX IF NOT EXISTS modern_task_records_mission
   ON modern_task_records(mission_id, created_at, task_id);
+
+-- SQLite indexes carry rowid as their tie breaker: this supports bounded
+-- Mission creation-window scans without sorting every Mission record.
+CREATE INDEX IF NOT EXISTS modern_task_records_mission_scan ON modern_task_records(mission_id);
 
 CREATE TABLE IF NOT EXISTS task_relations (
   relation_id TEXT PRIMARY KEY,
@@ -84,6 +89,27 @@ CREATE INDEX IF NOT EXISTS task_relations_task
 
 CREATE INDEX IF NOT EXISTS task_relations_related
   ON task_relations(related_task_id, relation_kind, created_at);
+
+CREATE TABLE IF NOT EXISTS task_dependency_replacements (
+  operation_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  original_relation_json TEXT NOT NULL,
+  replacement_relation_id TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  execution_id TEXT REFERENCES executions(execution_id),
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_cancellations (
+  task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+  operation_id TEXT NOT NULL UNIQUE,
+  replacement_task_id TEXT REFERENCES tasks(task_id),
+  actor_ref TEXT NOT NULL,
+  execution_id TEXT REFERENCES executions(execution_id),
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 
 -- Notifications are durable, keyed lifecycle facts rather than a general
 -- Agent-to-Agent chat channel.  A delivery key makes retries idempotent while
@@ -168,7 +194,7 @@ CREATE TABLE IF NOT EXISTS executions (
   execution_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   owner_ref TEXT NOT NULL,
-  state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED')),
+  state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'CLOSING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED')),
   state_version INTEGER NOT NULL DEFAULT 0,
   attempt_no INTEGER NOT NULL,
   -- A Core binding is immutable for the lifetime of an Execution.  Legacy
@@ -186,8 +212,9 @@ CREATE TABLE IF NOT EXISTS executions (
   workspace_manifest_ref TEXT NOT NULL,
   input_material_refs_json TEXT NOT NULL,
   input_snapshot_hash TEXT NOT NULL,
+  workspace_input_json TEXT,
   workspace_selection_json TEXT NOT NULL DEFAULT '{}',
-  candidate_material_id TEXT,
+  workspace_source_id TEXT,
   workspace_ref TEXT,
   workspace_revision INTEGER,
   workspace_content_hash TEXT,
@@ -207,6 +234,49 @@ CREATE TABLE IF NOT EXISTS executions (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS execution_finish_intents (
+  execution_id TEXT PRIMARY KEY REFERENCES executions(execution_id),
+  request_id TEXT NOT NULL UNIQUE,
+  outcome TEXT NOT NULL CHECK (outcome IN ('done', 'incomplete', 'blocked', 'cancelled')),
+  payload_json TEXT NOT NULL,
+  terminal_state TEXT NOT NULL,
+  reason TEXT,
+  wait_for_task_id TEXT REFERENCES tasks(task_id),
+  replacement_task_id TEXT REFERENCES tasks(task_id),
+  accepted_at TEXT NOT NULL,
+  closed_at TEXT
+);
+
+-- Runtime creates Bot identities before there is any Task take. The Task
+-- coordinator stores them here so take and lifecycle guards share a transaction.
+CREATE TABLE IF NOT EXISTS bots (
+  bot_id TEXT PRIMARY KEY,
+  mission_id TEXT NOT NULL REFERENCES missions(mission_id),
+  core_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('STARTING', 'UNBOUND', 'PREPARING', 'ACTIVE', 'CLOSING', 'CLOSED')),
+  execution_id TEXT UNIQUE REFERENCES executions(execution_id),
+  state_version INTEGER NOT NULL DEFAULT 0,
+  selection_deadline TEXT NOT NULL,
+  hard_deadline TEXT NOT NULL,
+  coordination_permissions_json TEXT NOT NULL DEFAULT '[]',
+  resource_key TEXT NOT NULL UNIQUE,
+  provider TEXT,
+  sandbox_id TEXT,
+  sandbox_create_state TEXT NOT NULL DEFAULT 'NOT_DISPATCHED',
+  sandbox_timeout_seconds INTEGER,
+  sandbox_expires_at TEXT,
+  exit_request_id TEXT UNIQUE,
+  exit_reason TEXT,
+  stop_terminal_state TEXT,
+  started_at TEXT NOT NULL,
+  ready_at TEXT,
+  closed_at TEXT,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS bots_occupied_core
+  ON bots(mission_id, core_id) WHERE state <> 'CLOSED';
 
 CREATE TABLE IF NOT EXISTS operations (
   operation_id TEXT PRIMARY KEY,
@@ -322,7 +392,7 @@ CREATE TABLE IF NOT EXISTS task_rework_links (
   created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS claim_keys (
+CREATE TABLE IF NOT EXISTS take_keys (
   request_key TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   fingerprint TEXT NOT NULL,
@@ -370,3 +440,34 @@ CREATE TABLE IF NOT EXISTS wake_keys (
   created_at TEXT NOT NULL
 );
 `;
+
+export const MISSION_SUBMISSION_SCHEMA_SQL = `
+      CREATE TABLE IF NOT EXISTS mission_final_check_policies (
+        mission_id TEXT PRIMARY KEY,
+        max_checks INTEGER NOT NULL CHECK(max_checks > 0),
+        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
+      );
+      CREATE TABLE IF NOT EXISTS mission_final_check_admissions (
+        mission_id TEXT NOT NULL,
+        submission_id TEXT NOT NULL,
+        admitted_at TEXT NOT NULL,
+        settled_at TEXT,
+        PRIMARY KEY (mission_id, submission_id)
+      );
+      CREATE INDEX IF NOT EXISTS mission_final_check_active
+        ON mission_final_check_admissions(mission_id) WHERE settled_at IS NULL;
+      CREATE TABLE IF NOT EXISTS mission_submissions (
+        mission_id TEXT NOT NULL,
+        submission_id TEXT NOT NULL,
+        request_fingerprint TEXT NOT NULL,
+        snapshot_fingerprint TEXT NOT NULL,
+        state TEXT NOT NULL,
+        document TEXT NOT NULL,
+        PRIMARY KEY (mission_id, submission_id)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS mission_submission_inflight
+        ON mission_submissions (mission_id) WHERE state IN ('preparing', 'pending');
+      CREATE TABLE IF NOT EXISTS mission_submission_audit (
+        mission_id TEXT NOT NULL, submission_id TEXT NOT NULL, event TEXT NOT NULL, observed_at TEXT NOT NULL, details_json TEXT
+      );
+    `;

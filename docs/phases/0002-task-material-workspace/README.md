@@ -38,6 +38,8 @@
 
 Prompt/Skills 只把模块合同转成可执行指导，不另创权限；Validation 检验这些合同与真实行为；Migration 说明如何从现状实施，旧代码差距不充当新设计缺陷。
 
+实现对照附件：[完整设计与实现一致性审计](09-implementation-audit.md) 固定 PR #124 的 `36b0cf3`，逐章记录缺口、源码证据和 V01–V32 验收边界；它不是新增目标设计，也不改变 Issue 批准的要求。已有运行的逐 Bot 证据见 [formal24 分析](../../experiments/issue122-formal24-gap-analysis.md)。
+
 ## 3. 已确认的跨模块合同
 
 ### 3.1 Task 与 Bot 生命周期
@@ -81,3 +83,5 @@ v1 的 Workspace 与 Task/Mission 位于同一协调进程和一致性域；Cont
 设计判据是：假设所有组件忠实实现合同，四个 Bot 是否仍因规则冲突、缺操作或不合理限制无法推进。当前代码中的旧循环、Session 复用或私有恢复只属于 08 的迁移背景，不作为本轮目标设计缺陷。
 
 用户决定与采纳版本记录在 #122/PR；本目录是可审阅的版本化附件。任何合同修订同步相关模块、Prompt、Validation 和 Migration；实现 PR 再据实际行为更新 Architecture。本次修订设计与对应文档，不改变运行代码，也不启动付费实验；文档 PR 的合入按用户已给出的授权执行。
+
+[固定实现对账与验证边界](10-implementation-reconciliation.md)记录 `9172e04` 的修复与分层证据。它与 [原始缺口审计](09-implementation-audit.md) 分属不同版本，均不改变 Issue 批准的 01–08 设计。

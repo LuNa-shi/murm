@@ -4,41 +4,31 @@ import { ServiceRegistry } from './service-registry.js';
 import { listTools } from './service-catalog.js';
 
 const SERVICE_INFO = Object.freeze({
-  task: { title: 'Task Service', purpose: 'Durable Task goals, claims, structure, and completion evidence.' },
+  task: { title: 'Task Service', purpose: 'Durable Task goals, takes, structure, and completion evidence.' },
   context: { title: 'Context Service', purpose: 'Versioned shared Materials and provenance.' },
-  judge: { title: 'Judge Service', purpose: 'Candidate checking and structured CheckResults.' },
+  judge: { title: 'Judge Service', purpose: 'Workspace source checking and structured CheckResults.' },
   catalog: { title: 'Service Catalog', purpose: 'Role-scoped Service and capability discovery.' },
 });
 
 const ALL_ROLES = Object.freeze(['bound', 'recovery']);
-const SHARED_READ_OPERATIONS = new Set(['get_task', 'task_status']);
+const SHARED_READ_OPERATIONS = new Set(['task_status']);
 const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
-    'list_tasks', 'get_task', 'list_executions',
-    'task_list', 'task_view', 'task_create', 'task_link_material', 'task_complete', 'task_block', 'task_close',
-    'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
+    'bot_exit',
+    'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
+    'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_cancel', 'task_dependency_replace',
+    'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'workspace_public_apply',
+    'workspace_status', 'workspace_current_diff', 'workspace_save', 'workspace_merge', 'mission_get', 'mission_submit', 'mission_submission_get',
   ]),
-  context: new Set(['publish_material', 'read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material']),
-  judge: new Set(['submit_candidate', 'get_check_result']),
+  context: new Set(['read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material', 'material_dispute', 'material_supersede', 'material_unsupersede']),
+  judge: new Set(['workspace_check', 'get_check_result']),
   catalog: new Set(['list_services', 'get_service_metadata', 'list_tools']),
 });
 
-const TOOL_OVERRIDES = Object.freeze({
-  list_tasks: { name: 'task_discover', description: 'Discover the bounded Mission Task view and relevant shared work.' },
-  get_task: { name: 'task_view', description: 'Read one Task contract, current state, provenance, and result references.' },
-});
-
 function publicTools(serviceId) {
-  const selected = listTools(serviceId)
-    .filter((tool) => EXPOSED_OPERATIONS[serviceId]?.has(tool.operation));
-  const modernNames = new Set(selected.filter((tool) => tool.operation === tool.name).map((tool) => tool.name));
   const seen = new Set();
-  return selected.map((tool) => {
-    const override = TOOL_OVERRIDES[tool.operation] ?? {};
-    if (override.name && modernNames.has(override.name) && tool.operation !== override.name) return null;
-    return { ...tool, ...override };
-  }).filter((tool) => {
-    if (!tool || seen.has(tool.name) || seen.has(tool.operation)) return false;
+  return listTools(serviceId).filter(tool => {
+    if (!EXPOSED_OPERATIONS[serviceId]?.has(tool.operation) || seen.has(tool.name) || seen.has(tool.operation)) return false;
     seen.add(tool.name);
     seen.add(tool.operation);
     return true;
@@ -61,6 +51,7 @@ function strictInputSchema(parameters) {
 }
 
 function audienceFor(tool) {
+  if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'mission_submission_get'].includes(tool.operation)) return ALL_ROLES;
   if (['list_tasks', 'task_list', 'task_view'].includes(tool.operation)) return ALL_ROLES;
   if (SHARED_READ_OPERATIONS.has(tool.operation)) return ALL_ROLES;
   if (tool.service === 'catalog' && tool.scope === 'public-read' && tool.side_effect === false) return ALL_ROLES;
@@ -115,7 +106,7 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
       audience: audienceFor(tool),
       side_effect: tool.side_effect ? 'write' : 'read',
       idempotent: !tool.side_effect,
-      context: serviceId === 'catalog' ? [] : ['task', 'execution'],
+      context: serviceId === 'catalog' || ['bot_exit', 'get_check_result', 'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'mission_get', 'mission_submit', 'mission_submission_get'].includes(tool.operation) ? [] : ['task', 'execution'],
       help: {
         when: tool.description,
         ref: `service://${serviceId}/${tool.operation}`,
@@ -128,8 +119,31 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
       path: `/v1/${tool.operation}`,
       errors: [],
       scope: tool.scope ?? null,
+      capability: tool.capability ?? null,
     })),
   }, { allowOpenObjects: true });
+}
+
+export const MISSION_WORKSPACE_READS = Object.freeze({
+  workspace_public_view: (workspace, input) => workspace.get({ workspaceId: input.workspace_id }),
+  workspace_public_history: (workspace, input) => workspace.history({ workspaceId: input.workspace_id, all: input.all,
+    sourceTask: input.source_task, sourceExecution: input.source_execution, materialId: input.material_id, path: input.path, limit: input.limit, cursor: input.cursor }),
+  workspace_public_diff: (workspace, input) => workspace.diff({ workspaceId: input.workspace_id, from: input.from, to: input.to,
+    prefix: input.path, limit: input.limit, cursor: input.cursor }),
+  workspace_public_files: (workspace, input) => workspace.files({ workspaceId: input.workspace_id, revision: input.revision,
+    prefix: input.path, limit: input.limit, cursor: input.cursor }),
+  workspace_public_read: (workspace, input) => workspace.read({ workspaceId: input.workspace_id, revision: input.revision,
+    path: input.path, maxBytes: input.max_bytes }),
+  workspace_public_search: (workspace, input) => workspace.search({ workspaceId: input.workspace_id, revision: input.revision,
+    prefix: input.path, query: input.query, maxResults: input.max_results, cursor: input.cursor }),
+});
+
+export async function dispatchMissionWorkspaceRead({ taskService, task, missionWorkspace }, operation, input = {}, envelope) {
+  const bot = (taskService ?? task)?.getBot?.(envelope?.actor_ref);
+  if (bot && (await missionWorkspace.get({ workspaceId: input.workspace_id })).mission_id !== bot.mission_id) {
+    throw Object.assign(new Error('Workspace belongs to another Mission'), { code: 'NOT_ALLOWED' });
+  }
+  return MISSION_WORKSPACE_READS[operation](missionWorkspace, input);
 }
 
 function serviceDispatch(serviceId, services, registry) {
@@ -146,6 +160,26 @@ function serviceDispatch(serviceId, services, registry) {
       if (capability.operation === 'list_tools') {
         return { tools: registry.listTools(input?.service ?? null).filter(allowed) };
       }
+    }
+    if (serviceId === 'task' && ['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'workspace_public_apply', 'workspace_save', 'workspace_merge'].includes(capability.operation)) {
+      if (!services.missionWorkspace) {
+        const error = new Error('Mission Workspace is unavailable');
+        error.code = 'SERVICE_UNAVAILABLE';
+        throw error;
+      }
+      if (capability.scope === 'mission-read') return dispatchMissionWorkspaceRead(services, capability.operation, input, envelope);
+      if (capability.operation === 'workspace_public_apply') throw Object.assign(new Error('Workspace apply requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
+      if (capability.operation === 'workspace_save') throw Object.assign(new Error('Workspace save requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
+      if (capability.operation === 'workspace_merge') throw Object.assign(new Error('Workspace merge requires authenticated Runtime integration'), { code: 'NOT_ALLOWED' });
+    }
+    if (serviceId === 'task' && ['mission_submit', 'mission_submission_get'].includes(capability.operation)) {
+      if (!services.missionSubmissionStore) {
+        const error = new Error('Mission submission is unavailable');
+        error.code = 'SERVICE_UNAVAILABLE';
+        throw error;
+      }
+      if (capability.operation === 'mission_submit') throw Object.assign(new Error('Mission submit requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
+      return services.missionSubmissionStore.get({ missionId: input?.mission_id, submissionId: input?.submission_id ?? null });
     }
     const service = services[serviceId];
     if (!service || typeof service.dispatch !== 'function') {
@@ -166,6 +200,8 @@ export function createBuiltinServiceRegistry({
   taskService,
   contextService,
   judgeService = null,
+  missionWorkspace = null,
+  missionSubmissionStore = null,
   customServices = [],
   // A configured endpoint replaces the local provider for that Service. Each
   // value may be a URL, `{ url, token }`, or `{ endpoint, manifest, adapter }`.
@@ -176,7 +212,7 @@ export function createBuiltinServiceRegistry({
   logger = null,
 } = {}) {
   const registry = new ServiceRegistry({ logger });
-  const services = { task: taskService, context: contextService, judge: judgeService };
+  const services = { task: taskService, context: contextService, judge: judgeService, missionWorkspace, missionSubmissionStore };
   for (const serviceId of ['task', 'context', 'judge']) {
     const tools = publicTools(serviceId);
     if (tools.length === 0) continue;

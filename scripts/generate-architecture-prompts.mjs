@@ -9,6 +9,7 @@ import vm from 'node:vm';
 import { SYSTEM_IDENTITY_PROMPT, BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, PROMPT_VERSION, SYSTEM_PROMPT_VERSION, buildPromptSnapshot, composeAgentPrompt, composeDynamicAgentPrompt, taskLoopGuide } from '../src/agent/agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile, capabilityDirectory } from '../src/agent/capability-profile.js';
 import swarmenvExtension from '../src/agent/swarmenv-extension.mjs';
+import { BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION, buildBotStartupMessage } from '../src/agent/bot-contract.js';
 import { IDENTITY_TAKE_PROMPT } from '../src/runtime/identity-task-loop.js';
 import { runtimeCapabilityList } from '../src/runtime/runtime-capabilities.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
@@ -21,10 +22,12 @@ assert.ok(args.length === 0 || (args.length === 1 && args[0] === '--check'), 'Us
 const check = args[0] === '--check';
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
+  'src/agent/bot-contract.js', 'src/agent/bot-contract/system.txt',
+  ...BOT_SKILLS.map(skill => `src/agent/bot-contract/${skill.name}.md`),
   'src/agent/agent-prompt.js', 'src/agent/capability-profile.js', 'src/agent/pi-adapter.js',
   'src/agent/services-bridge.js', 'src/agent/swarmenv-extension.mjs', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
-  'src/runtime/runtime-capabilities.js', 'src/runtime/workspace-contract.js', 'src/e2e/real-agent-path.js', 'src/e2e/script-executor.js',
+  'src/runtime/runtime-capabilities.js', 'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
   'src/sdk/service-registry.js', 'src/sdk/service-manifest.js', 'src/protocol/envelope.js',
   'src/task/task-service.js', 'src/task/task-types.js',
@@ -62,7 +65,7 @@ const outputs = new Map();
 function output(file, text) { outputs.set(`${outputDir}/${file}`, `${text.trimEnd()}\n`); }
 
 const registry = createBuiltinServiceRegistry();
-const runtimeCaps = runtimeCapabilityList().filter((c) => !['runtime.task_block', 'runtime.task_complete'].includes(c.id));
+const runtimeCaps = runtimeCapabilityList();
 const flatCaps = runtimeCaps.filter((c) => !['sandbox_exec', 'sandbox_job'].includes(c.operation));
 const profile = buildCapabilityProfile({ registry, role: AGENT_ROLES.BOUND, runtimeCapabilities: flatCaps });
 const recoveryProfile = buildCapabilityProfile({ registry, role: AGENT_ROLES.RECOVERY, runtimeCapabilities: flatCaps });
@@ -72,8 +75,9 @@ const extendedRegistry = createBuiltinServiceRegistry();
 extendedRegistry.registerService({ manifest: mathlibBundle.manifest, bundle: mathlibBundle, adapter: { invoke() { throw new Error('documentation never invokes services'); } } });
 const extendedProfile = buildCapabilityProfile({ registry: extendedRegistry, role: AGENT_ROLES.BOUND, runtimeCapabilities: runtimeCaps });
 
-output('01-system-identity.md', header('Complete stable identity instructions', 'Source: [agent-prompt.js](../../../src/agent/agent-prompt.js). The same body is exported as SYSTEM_IDENTITY_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT and RECOVERY_AGENT_PROMPT. The aliases do not create distinct selection Agents or research strategies.')
-  + block(`System addendum (system version ${SYSTEM_PROMPT_VERSION}; composition version ${PROMPT_VERSION})`, SYSTEM_IDENTITY_PROMPT, 'AgentCoreAdapter writes this body to identity-system-prompt.md and passes that file through Pi --append-system-prompt. It is an addendum to Pi-owned system instructions; it is not the whole upstream model request.'));
+output('01-system-identity.md', header('Complete stable identity instructions', 'Source: [agent-prompt.js](../../../src/agent/agent-prompt.js). The normal registered Bot body is bot-contract/system.txt. The older compatibility SDK body is exported as SYSTEM_IDENTITY_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT and RECOVERY_AGENT_PROMPT. The aliases do not create distinct selection Agents or research strategies.')
+  + block(`Registered Bot system addendum (${BOT_PROTOCOL_VERSION})`, BOT_SYSTEM_PROMPT, 'Normal OpenSandbox Bots load the immutable image resource through --append-system-prompt. The worker verifies its hash and permissions before spawning Pi.')
+  + block(`Compatibility SDK system addendum (system version ${SYSTEM_PROMPT_VERSION}; composition version ${PROMPT_VERSION})`, SYSTEM_IDENTITY_PROMPT, 'AgentCoreAdapter writes this body to identity-system-prompt.md and passes that file through Pi --append-system-prompt. It is an addendum to Pi-owned system instructions; it is not the whole upstream model request.'));
 
 let toolsDoc = header('Task-loop guide and tool-visible instructions', 'The first profile below is the benchmark flat Task model with built-in Services and no Sandbox or optional provider. Later profiles show the optional Sandbox/Mathlib additions. Exact schemas and exposure conditions are in [the API reference](../10-service-api-reference.md). The directory/help blocks exist as composer output; [the prompt path table](../08-prompts.md) states when they are actually delivered.');
 for (const [title, p] of [['Flat built-ins, no Sandbox', profile], ['Flat built-ins with Sandbox', sandboxProfile], ['Flat built-ins with Sandbox and Mathlib Search', extendedProfile]]) {
@@ -93,56 +97,45 @@ output('02-task-loop-and-tools.md', toolsDoc);
 
 const runnerPath = 'src/benchmark/putnam-runner.js';
 const runtimePath = 'src/runtime/runtime.js';
-const modeExpression = between(runnerPath, '  const modeInstructions = ', ';\n  const dependencyInstruction');
-const dependencyExpression = between(runnerPath, '  const dependencyInstruction = ', ';\n  const taskSpecificInstruction');
-const taskSpecificExpression = between(runnerPath, '  const taskSpecificInstruction = ', ';\n  const taskPayload');
-const taskInstructionsExpression = between(runnerPath, '    task_instructions: ', ',\n    completion_contract:', '  const taskPayload =');
-function benchmarkInstructions(selectedTaskModel, selectedParallelMode, normalFlow) {
-  const context = { selectedTaskModel, selectedParallelMode, normalFlow };
-  return evaluate(taskInstructionsExpression, {
-    modeInstructions: evaluate(modeExpression, context),
-    dependencyInstruction: evaluate(dependencyExpression, context),
-    taskSpecificInstruction: evaluate(taskSpecificExpression, context),
-  });
-}
 const selectionExpression = between(runnerPath, 'function selectionView(candidates) {\n  return ', ';\n}', 'function selectionView');
 const syntheticTask = {
   task_id: '<TASK_ID>', mission_id: '<MISSION_ID>', summary: '<TASK_SUMMARY>', relations: [],
   task_type: 'proof', parent_id: null, goal: '<TASK_GOAL>', expected_output: '<EXPECTED_OUTPUT>',
-  task_instructions: benchmarkInstructions('flat', 'direct', true),
+  task_instructions: '<TASK_LOCAL_INSTRUCTIONS>',
   acceptance_conditions: { example: '<ACCEPTANCE_CONDITIONS>' },
   completion_contract: { final_candidate: true, required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: '<CHECKER_REF>', checker_version: '<CHECKER_VERSION>' } },
   priority: 110, state: 'OPEN', age_ms: 0, fairness_protected: false, selection_rank: 0,
 };
-const takeExpression = between(runnerPath, '      takePrompt: ', ',\n      shortlistLimit:');
-const takePrompt = evaluate(takeExpression, { BOUND_AGENT_PROMPT, state: { agentTaskLoopGuide: taskLoopGuide(profile) } });
-const discoveryExpression = between(runnerPath, '  const message = ', ';\n  try {', 'async function takeTaskWithAgent');
-const discoveryPrompt = evaluate(discoveryExpression, { prompt: takePrompt, candidates: [syntheticTask], selectionView: (candidates) => evaluate(selectionExpression, { candidates }) });
-// The flat-only benchmark no longer has the old modePrompt helper. Keep the
-// generated continuation example anchored to the literal underlying body
-// supplied by the current runner rather than resurrecting a retired wrapper.
-const modePrompt = (_mode, underlyingPrompt) => underlyingPrompt;
-const baseExpression = between(runnerPath, '  const basePrompt = ', ';\n  state.identityLoopEvents');
-const basePrompt = evaluate(baseExpression, { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, state: { agentTaskLoopGuide: taskLoopGuide(profile) } });
-let benchmarkDoc = header('Complete benchmark task and turn messages', 'Sources: [putnam-runner.js](../../../src/benchmark/putnam-runner.js) and [identity-task-loop.js](../../../src/runtime/identity-task-loop.js). The main benchmark overrides IdentityTaskLoop’s short default prompt. A fresh Session also receives the stable system addendum; the texts below are the user-turn bodies or Task instructions, as labeled.');
-benchmarkDoc += block('IdentityTaskLoop default, when a caller does not override takePrompt', IDENTITY_TAKE_PROMPT);
-benchmarkDoc += block('Normal flat discovery turn, one complete synthetic candidate', discoveryPrompt, 'The example contains the entire candidate set for this synthetic invocation: one Task. Real candidate fields are inserted with JSON.stringify(selectionView(candidates)); no real Mission text or proof is embedded here.');
-benchmarkDoc += block('Bound continuation from the onClaim continuation loop', modePrompt('direct', BOUND_AGENT_PROMPT, 'flat'), 'This is the shorter continuation used by onClaim after the previous turn settles. It repeats the identity SOP; it does not automatically append a fresh Mission/Material dump.');
-benchmarkDoc += block('Bound continuation from the outer benchmark loop', basePrompt({ taskId: '<TASK_ID>' }), 'This is the separate basePrompt(core) bound branch. It includes the exact tool guide and a final continuation paragraph.');
-for (const mode of ['direct', 'root-only']) {
-  benchmarkDoc += block(`Flat benchmark Task instructions: ${mode}`, benchmarkInstructions('flat', mode, true), 'This body is stored as task_instructions and appears in the discovery Task view. The treatment controls only whether the Agent may register independent work; it does not select a second Task model.');
-}
+const sampleBot = { bot_id: '<BOT_ID>', mission_id: '<MISSION_ID>', core_id: '<CORE_ID>', sandbox_id: '<SANDBOX_ID>', state: 'UNBOUND', execution_id: null,
+  selection_deadline: '2026-11-14T00:05:00.000Z', hard_deadline: '2026-11-14T00:10:00.000Z' };
+const discoveryPrompt = buildBotStartupMessage({
+  mission: { mission_id: '<MISSION_ID>', goal: '<MISSION_GOAL>', acceptance_conditions: ['<MISSION_ACCEPTANCE>'] }, bot: sampleBot,
+  workspace: { workspace_id: '<WORKSPACE_ID>', mission_id: '<MISSION_ID>', main_revision: '0.1' }, sessionId: '<PI_SESSION_ID>',
+  budget: { run_deadline: '2026-11-14T00:30:00.000Z', execution_max_ms: 600000, soft_closeout_lead_ms: 60000, supervisor_max_take_attempts: 3, compaction_max: 3, context_closeout_fraction: 0.8 },
+  services: botServiceDirectory(profile),
+  project: { project_id: '<PROJECT_ID>', problem_file: '<PROBLEM_FILE>', source_hash: '<SOURCE_HASH>', input_policy: 'locked unsolved formalization only; no external answers or solution-derived candidates' },
+  eligibleTasks: evaluate(selectionExpression, { candidates: [syntheticTask] }), observedAt: '2026-11-14T00:00:00.000Z',
+});
+let benchmarkDoc = header('Complete benchmark turn messages', 'The registered Bot path loads the stable system contract from the image, then dispatches buildBotStartupMessage using current durable Bot identity/deadlines and the resolved Workspace main. The values below are synthetic, not an experiment transcript. Retry turns refresh the state and identify themselves as continued selection.');
+benchmarkDoc += block('IdentityTaskLoop default for compatibility callers', IDENTITY_TAKE_PROMPT);
+benchmarkDoc += block('Registered Bot discovery: complete synthetic example', discoveryPrompt);
+benchmarkDoc += block('Current bound continuation', BOT_CONTINUATION_MESSAGE, 'Both bound continuation send paths reread durable Execution state after Session readiness. Before soft closeout they use this ordinary message; after the deadline or an early reminder they send the closeout body below. Closing or expired identities do not receive another research turn.');
+benchmarkDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
+benchmarkDoc += block('Registered Bot compaction follow-up', BOT_COMPACTION_MESSAGE, 'If the current E has reached soft closeout, the closeout body replaces this ordinary follow-up.');
+for (const notification_type of ['handoff_warning', 'material_available', 'dependency_updated']) benchmarkDoc += block(`Registered Bot notification: ${notification_type}`, buildBotNotification({ notification_type, notification_id: '<NOTIFICATION_ID>', recipient_task_id: '<TASK_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', material_id: '<MATERIAL_ID>', payload: { execution_id: '<EXECUTION_ID>', deadline: '2099-01-01T00:00:00.000Z' } }, { at: Date.parse('2098-12-31T23:59:30.000Z') }));
 output('03-benchmark-turns.md', benchmarkDoc);
+let skillDoc = header('Complete registered Bot skills', 'Root-owned immutable image files. Pi receives explicit --skill paths with ambient discovery disabled; the four metadata entries are included in system context, and actual read-tool results carry the loaded bodies into subsequent model input. The worker verifies bytes and permissions before startup.');
+for (const skill of BOT_SKILLS) skillDoc += block(`${skill.name} (${skill.version})`, sources.get(`src/agent/bot-contract/${skill.name}.md`), `Guest path: ${skill.path}; file SHA-256: ${skill.sha256}`);
+output('08-bot-skills.md', skillDoc);
 
 const notificationFunction = between(runtimePath, '  #notificationText', '\n\n  #onNotification');
-const notificationText = evaluate(`function notificationText${notificationFunction}`);
+const notificationText = evaluate(`function notificationText${notificationFunction}`, { buildBotSoftCloseoutNotice })
+  .bind({ clock: () => Date.parse('2026-01-01T00:00:30.000Z') });
 const recoveryFunction = between(runtimePath, '  #recoveryPrompt', '\n\n  #executionEnvelope');
 const recoveryText = evaluate(`function recoveryPrompt${recoveryFunction}`);
 const legacyReminder = evaluate(between(runtimePath, '        const prompt = ', ';\n        active.promptChain', "} else if (active) {\n        const prompt ="));
 const compactionReminder = evaluate(between(runtimePath, '              await active.session.prompt(\n                ', ',\n                { timeoutMs:', 'if (this.compactionCheckpointReminder'));
-const repairFunction = between('src/e2e/real-agent-path.js', 'function promptForCandidates', '\n\n// A real-Agent report');
-const repairPrompt = evaluate(`function promptForCandidates${repairFunction}`);
-let runtimeDoc = header('Complete notification, recovery and probe messages', 'Sources: [runtime.js](../../../src/runtime/runtime.js) and [real-agent-path.js](../../../src/e2e/real-agent-path.js). Runtime-generated values below are synthetic placeholders. These messages do not include Pi’s own compaction summary or provider retry messages, whose implementation is outside this repository.');
+let runtimeDoc = header('Complete notification and recovery messages', 'Sources: [runtime.js](../../../src/runtime/runtime.js). Runtime-generated values below are synthetic placeholders. These messages do not include Pi’s own compaction summary or provider retry messages, whose implementation is outside this repository.');
 for (const [label, type] of [['Execution deadline notification', 'handoff_warning'], ['Response Material notification', 'material_available'], ['Typed dependency satisfied notification', 'dependency_satisfied']]) {
   runtimeDoc += block(label, notificationText({ notification_type: type, notification_id: '<NOTIFICATION_ID>', material_id: '<MATERIAL_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', recipient_task_id: '<RECIPIENT_TASK_ID>', payload: {} }));
 }
@@ -151,7 +144,6 @@ runtimeDoc += block('Legacy/non-Mission deadline reminder', legacyReminder);
 runtimeDoc += block('After-compaction substantive checkpoint reminder', compactionReminder);
 runtimeDoc += block('Session failure recovery instructions', recoveryText({ goal: '<TASK_GOAL>', expected_output: '<EXPECTED_OUTPUT>' }, { workspace_revision: '<WORKSPACE_REVISION>', checkpoint_ref: '<CHECKPOINT_REF>' }, '<FAILURE_CLASS>', '<RECOVERY_ATTEMPT>'));
 runtimeDoc += block('Session failure recovery without saved revision/checkpoint', recoveryText({ goal: '<TASK_GOAL>', expected_output: '<EXPECTED_OUTPUT>' }, {}, '<FAILURE_CLASS>', '<RECOVERY_ATTEMPT>'));
-runtimeDoc += block('Controlled real-Agent repair probe Task instructions', repairPrompt({ firstCandidate: '<COMPLETE_CONTROLLED_FIRST_CANDIDATE_SOURCE>' }), 'This is an E2E probe with an intentionally invalid first candidate. It is not the production benchmark’s research instruction. The complete candidate source is a runtime input and is not a static prompt constant.');
 output('04-runtime-messages.md', runtimeDoc);
 
 const sampleExecution = { execution_id: '<EXECUTION_ID>', task_id: '<TASK_ID>', workspace_revision: 1, started_at: '<STARTED_AT>', handoff_deadline: '<HANDOFF_DEADLINE>', execution_deadline: '<EXECUTION_DEADLINE>' };
@@ -193,7 +185,7 @@ const instructionActions = new Set([
   'inspect_material_and_record_task_feedback', 'use_dependency_kind_TASK_or_CAPABILITY',
 ]);
 let guidanceDoc = header('Complete fixed guidance in tool results and notification data', 'This appendix records complete literal hint, remediation and guidance fields in executable sources, plus instructional action values. These are individual response fields, not fabricated full error responses or actual run transcripts. Dynamic IDs, versions, paths, provider diagnostics and complete error envelopes follow the contracts in [Services](../04-services.md) and [the API reference](../10-service-api-reference.md).');
-guidanceDoc += '\n## Delivery conditions\n\n| Source | When the fixed field can be visible |\n|---|---|\n| services-bridge.js | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the extension renders the error response |\n| putnam-runner.js | Candidate Material does not contain source text/a path reference, or its saved Workspace revision/hash no longer matches |\n| workspace-contract.js remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |\n| workspace-contract.js guidance | Exported workspaceCapabilityDescriptor helper. No production benchmark call site uses this helper; this is retained repository text, not an automatically delivered tool instruction. |\n| task-service.js action | Material-available notification payload, or invalid typed dependency error. Runtime renders a separate notification user message; the payload action is visible when the notification data itself is read/composed. |\n\nThe action value integration is a consumption/contract enum, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.\n';
+guidanceDoc += '\n## Delivery conditions\n\n| Source | When the fixed field can be visible |\n|---|---|\n| services-bridge.js | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the extension renders the error response |\n| putnam-runner.js | Candidate Material does not contain source text/a path reference, or its saved Workspace revision/hash no longer matches |\n| mission-workspace.js guidance | Written into ordinary conflict alternatives README during apply; available to the model only when its native file tools actually read that artifact. It is not a proactive prompt. |\n| workspace-contract.js remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |\n| workspace-contract.js guidance | Exported workspaceCapabilityDescriptor helper. No production benchmark call site uses this helper; this is retained repository text, not an automatically delivered tool instruction. |\n| task-service.js action | Material-available notification payload, or invalid typed dependency error. Runtime renders a separate notification user message; the payload action is visible when the notification data itself is read/composed. |\n\nThe action value integration is a consumption/contract enum, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.\n';
 for (const path of await listSourceFiles('src')) {
   const source = await readFile(resolve(root, path), 'utf8');
   for (const [i, line] of source.split('\n').entries()) {

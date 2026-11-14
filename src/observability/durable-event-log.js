@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, closeSync, constants, fchmodSync, fstatSync, mkdirSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 
@@ -32,7 +32,7 @@ export class DurableEventLog {
     this.filePath = filePath;
     this.raw = raw;
     this.scope = scope;
-    mkdirSync(dirname(filePath), { recursive: true });
+    mkdirSync(dirname(filePath), { recursive: true, mode: raw ? 0o700 : 0o755 });
   }
 
   append(event = {}) {
@@ -41,6 +41,17 @@ export class DurableEventLog {
       ...(this.scope ? { scope: this.scope } : {}),
       ...(this.raw ? event : redactEvent(event)),
     };
-    appendFileSync(this.filePath, `${JSON.stringify(record)}\n`, 'utf8');
+    const line = `${JSON.stringify(record)}\n`;
+    if (!this.raw) {
+      appendFileSync(this.filePath, line, 'utf8');
+      return;
+    }
+    const fd = openSync(this.filePath, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600);
+    try {
+      const state = fstatSync(fd);
+      if (!state.isFile() || state.uid !== process.getuid() || state.nlink !== 1) throw new Error('Unsafe private audit log');
+      if ((state.mode & 0o777) !== 0o600) fchmodSync(fd, 0o600);
+      appendFileSync(fd, line, 'utf8');
+    } finally { closeSync(fd); }
   }
 }

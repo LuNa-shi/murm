@@ -3,7 +3,7 @@ import { readdirSync, statSync } from 'node:fs';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { ObservationStore, ObservationStoreCollection } from '../src/observability/observation-store.js';
-import { ObservabilityServer } from '../src/observability/observability-server.js';
+import { OBSERVABILITY_AUTH_VERSION, ObservabilityServer, observabilityAccessMode } from '../src/observability/observability-server.js';
 import { importBenchmarkReport } from '../src/observability/benchmark-report-importer.js';
 import { FileWorkspaceProvider } from '../src/observability/workspace-provider.js';
 
@@ -17,14 +17,13 @@ function optionsFromArgs(argv) {
     host: '127.0.0.1',
     advertiseHost: null,
     port: 8787,
-    includeRawLogs: true,
     additionalRoots: [],
     scanRoots: [],
   };
   let rootWasExplicit = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === '--no-raw-logs') { options.includeRawLogs = false; continue; }
+    if (arg === '--no-raw-logs') continue;
     const [key, inline] = arg.split('=', 2);
     const value = inline ?? argv[++index];
     if (key === '--root') {
@@ -114,6 +113,8 @@ async function writeMetadata(path, metadata) {
 }
 
 const options = optionsFromArgs(process.argv.slice(2));
+const operatorPassword = process.env.SWARMENV_OBSERVABILITY_OPERATOR_PASSWORD ?? null;
+const accessMode = observabilityAccessMode({ host: options.host, operatorPassword });
 options.scanRoots = inferRepositoryWorktreeRoots(options);
 const experimentRoots = discoverExperimentRoots(options);
 const experimentRoot = experimentRoots[0];
@@ -128,11 +129,13 @@ async function readServerMetadata(path) {
 }
 
 async function serverIsHealthy(metadata) {
-  if (!metadata?.port || !metadata.host) return false;
+  if (!metadata?.port || !metadata.host || metadata.host !== options.host || metadata.access_mode !== accessMode) return false;
   const host = metadata.host === '0.0.0.0' || metadata.host === '::' ? '127.0.0.1' : metadata.host;
   try {
-    const response = await fetch(`http://${host}:${metadata.port}/health`, { signal: AbortSignal.timeout(1_000) });
-    return response.ok;
+    const response = await fetch(`http://${host.includes(':') ? `[${host}]` : host}:${metadata.port}/health`, { signal: AbortSignal.timeout(1_000) });
+    if (!response.ok) return false;
+    const health = await response.json();
+    return health.auth_version === OBSERVABILITY_AUTH_VERSION && health.access_mode === accessMode;
   } catch {
     return false;
   }
@@ -147,7 +150,6 @@ if (existingServer && existingServer.pid !== process.pid && await serverIsHealth
       observationStore: existingStore,
       reportPath: options.reportPath,
       experimentDir,
-      includeRawLogs: options.includeRawLogs,
     });
     imported = {
       imported_events: importedReport.imported_events,
@@ -167,7 +169,6 @@ const imported = options.reportPath
     observationStore: primaryStore,
     reportPath: options.reportPath,
     experimentDir,
-    includeRawLogs: options.includeRawLogs,
   })
   : { experiment: null, imported_events: 0, raw_event_count: 0, report_path: null };
 const observationStore = new ObservationStoreCollection({
@@ -181,10 +182,12 @@ const server = new ObservabilityServer({
   workspaceProvider: new FileWorkspaceProvider({ observationStore }),
   host: options.host,
   advertiseHost: options.advertiseHost,
+  operatorPassword,
 });
 const address = await server.start({ port: options.port });
 const metadata = {
-  schema_version: 1,
+  schema_version: 2,
+  access_mode: address.access_mode,
   pid: process.pid,
   persistent: true,
   experiment_root: experimentRoot,

@@ -9,8 +9,19 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
 | `EXP-20261111-01` | Historical R16; no newly approved Issue | **Retrospective example, not preregistered** | `93176b7` | [R16 example](EXP-20261111-01-r16-example.md) |
+| `EXP-20261112-01` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **Aborted compatibility-path preflight · BLOCKED** | `f43a722` | [Issue #122 partial report](EXP-20261112-01-issue122-1h.md) |
+| `EXP-20261112-02` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **Aborted multi-project setup diagnostic · BLOCKED** | `148e37f` | [Issue #122 batch diagnostic](EXP-20261112-02-issue122-1h.md) |
+| `EXP-20261112-03` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **1h single-problem public Workspace/Mission acceptance run · REGISTERED** | `8bfc101` | [Issue #122 single-problem report](EXP-20261112-03-single-problem-1h.md) |
+| `EXP-20261112-04` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **1h single-problem acceptance rerun with fixed provider/image · REGISTERED** | `d3e2a9e` | [Issue #122 acceptance rerun](EXP-20261112-04-single-problem-1h.md) |
+| `EXP-20261112-05` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **1h single-problem acceptance rerun with clean Execution Workspace · REGISTERED** | `be3d1d5` | [Issue #122 clean-workspace rerun](EXP-20261112-05-single-problem-1h.md) |
+| `EXP-20261112-06` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **1h single-problem acceptance rerun with normalized modern claim boundary · REGISTERED** | `9ac4012` | [Issue #122 normalized-claim rerun](EXP-20261112-06-single-problem-1h.md) |
+| `EXP-20261112-07` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **Single-problem run stopped early · BLOCKED** | `7ceda2f` | [Issue #122 blocked run](EXP-20261112-07-single-problem-1h.md) |
 
 Use [TEMPLATE.md](TEMPLATE.md) for each new formal study. An approved Issue may delegate a bounded matrix and repeated runs, so a separate human approval is not needed for every execution. The human decides the value/importance of research hypotheses and any material scope change.
+
+## Retrospective diagnostics
+
+- [Issue #122 formal24 gap analysis](issue122-formal24-gap-analysis.md) records the one-hour run at `7c5836f`, reconstructs each Bot lifecycle, and compares observed behavior with Phase 02.
 
 ## Retention and interpretation
 

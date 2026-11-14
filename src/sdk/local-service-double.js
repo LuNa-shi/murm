@@ -3,13 +3,10 @@ import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { operationPayload, validateEnvelope } from '../protocol/envelope.js';
 
 const MUTATING_OPERATIONS = new Set([
-  'abort',
-  'claim',
   'heartbeat',
   'consume_materials',
   'publish_material',
-  'request_wait',
-  'submit_candidate',
+  'workspace_check',
 ]);
 
 function clone(value) {
@@ -45,7 +42,7 @@ export class LocalServiceDouble {
   }
 
   dispatch(operation, payload = {}, envelope) {
-    validateEnvelope(envelope, { executionWrite: MUTATING_OPERATIONS.has(operation) && operation !== 'claim' && operation !== 'publish_material' });
+    validateEnvelope(envelope, { executionWrite: MUTATING_OPERATIONS.has(operation) && operation !== 'publish_material' });
     const call = { operation, payload: clone(payload), envelope: clone(envelope) };
     this.calls.push(call);
 
@@ -62,9 +59,6 @@ export class LocalServiceDouble {
     this.#checkVersions(envelope, operation);
     let result;
     switch (operation) {
-      case 'get_task':
-        result = this.#getTask(payload.task_id ?? envelope.task_id);
-        break;
       case 'get_execution':
         result = this.#getExecution(payload.execution_id ?? envelope.execution_id);
         break;
@@ -95,11 +89,8 @@ export class LocalServiceDouble {
       case 'publish_material':
         result = this.#publishMaterial(payload, envelope);
         break;
-      case 'claim':
       case 'heartbeat':
-      case 'request_wait':
-      case 'submit_candidate':
-      case 'abort':
+      case 'workspace_check':
         result = { accepted: true, operation, operation_id: key };
         break;
       default:
@@ -145,7 +136,7 @@ export class LocalServiceDouble {
     }
     if (envelope.state_version !== null && envelope.state_version !== undefined &&
       envelope.state_version !== execution.state_version &&
-      ['heartbeat', 'request_wait', 'submit_candidate', 'abort'].includes(operation)) {
+      ['heartbeat', 'workspace_check'].includes(operation)) {
       throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'execution state_version is stale', {
         expected: execution.state_version,
         received: envelope.state_version,
@@ -187,8 +178,8 @@ export class LocalServiceDouble {
     if (uniqueMaterialIds.length !== materialIds.length) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must not contain duplicates');
     }
-    if (!['route', 'task', 'candidate', 'integration'].includes(payload.action)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action must be route, task, candidate, or integration');
+    if (!['route', 'task', 'workspace', 'integration'].includes(payload.action)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action must be route, task, workspace, or integration');
     }
     if (payload.action_ref !== undefined && payload.action_ref !== null && (typeof payload.action_ref !== 'string' || payload.action_ref.length === 0)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action_ref must be a non-empty string or null');

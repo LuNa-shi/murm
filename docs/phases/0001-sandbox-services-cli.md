@@ -2,7 +2,7 @@
 
 > 来源与批准入口：[Issue #119](https://github.com/LuNa-shi/SwarmEnv/issues/119)。本页是前置阶段的范围索引，不替代 Issue，不增加新的业务验收要求。
 >
-> 本次现状对照为 main [`e6f97bc0d56709f94374a5f824c8e2cd9c312cb2`](https://github.com/LuNa-shi/SwarmEnv/commit/e6f97bc0d56709f94374a5f824c8e2cd9c312cb2)。该版本已包含 OpenSandbox provider / worker、独立服务部署和 Bash CLI 的实现切片；这不等于本页全部生命周期目标或真实环境验收已完成。原设计基线 `008ecdb9ab64adcd8135042ff2160ec1db704952` 的“尚未接入”只描述历史版本。
+> 本次现状对照为 main [`1d9be9f8146a57ba50d769615045c21a03c215bd`](https://github.com/LuNa-shi/SwarmEnv/commit/1d9be9f8146a57ba50d769615045c21a03c215bd)。该版本已包含 OpenSandbox provider / worker、独立服务部署和 Bash CLI 的实现切片；这不等于本页全部生命周期目标或真实环境验收已完成。原设计基线 `008ecdb9ab64adcd8135042ff2160ec1db704952` 的“尚未接入”只描述历史版本。
 
 ## 本阶段的目标基础
 

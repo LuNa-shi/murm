@@ -19,7 +19,7 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'task_list', service: 'task', operation: 'list_tasks', version: '1.0',
-    description: 'List the highest-priority claimable Tasks in a root Task tree.',
+    description: 'List the highest-priority eligible Tasks in a Mission.',
     scope: 'public-read', side_effect: false,
     parameters: { type: 'object', properties: { root_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, task_type: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, available_only: { type: 'boolean' } }, additionalProperties: false },
   },
@@ -67,20 +67,23 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'context_read', service: 'context', operation: 'read_materials', version: '1.0',
-    description: 'Read immutable shared Materials published by other Executions.',
+    description: 'List one page of shared Material summaries. Use an exact Material ID to read its complete content.',
     scope: 'public-read', side_effect: false,
-    parameters: { type: 'object', additionalProperties: true },
+    parameters: { type: 'object', properties: { mission_id: { type: 'string' }, material_id: { type: 'string' }, task_id: { type: 'string' },
+      source_task: { type: 'string' }, source_execution: { type: 'string' }, include_history: { type: 'boolean' },
+      limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'context_consume', service: 'context', operation: 'consume_materials', version: '1.0',
-    description: 'Record which bounded shared Material IDs this Execution used for a route, task, candidate, or integration action.',
+    description: 'Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.',
     scope: 'execution-write', side_effect: true,
     parameters: {
       type: 'object',
-      required: ['material_ids', 'action'],
+      required: ['material_ids', 'action', 'impact'],
       properties: {
         material_ids: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', minLength: 1 } },
-        action: { type: 'string', enum: ['route', 'task', 'candidate', 'integration'] },
+        action: { type: 'string', enum: ['route', 'task', 'workspace', 'integration'] },
+        impact: { type: 'string', minLength: 1, maxLength: 2000 },
         action_ref: { type: ['string', 'null'] },
       },
       additionalProperties: false,
@@ -93,10 +96,10 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', required: ['kind', 'scope', 'content'], properties: { kind: { type: 'string', enum: ['assumption', 'fact', 'conjecture', 'experience', 'failure', 'artifact', 'steer', 'check_result'] }, scope: { type: 'string' }, content: {}, evidence_state: { type: 'string', enum: ['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale'] } }, additionalProperties: true },
   },
   {
-    name: 'judge_submit_candidate', service: 'judge', operation: 'submit_candidate', version: '1.0',
-    description: 'Submit a Workspace answer file to Judge for compilation and checking. The returned CheckResult separates source-level PASS/FAIL from checker infrastructure_failure and unassessed outcomes.',
+    name: 'judge_workspace_check', service: 'judge', operation: 'workspace_check', version: '1.0',
+    description: 'Check a Workspace file reference against the configured checker and return a durable CheckResult.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['path'], properties: { path: { type: 'string', minLength: 1 }, workspace_revision: { type: 'integer', minimum: 1 }, content_hash: { type: 'string', minLength: 1 }, request_key: { type: 'string', minLength: 1 } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['revision', 'path'], properties: { workspace_id: { type: 'string', minLength: 1 }, revision: { type: 'string', pattern: '^\\d+\\.\\d+$' }, path: { type: 'string', minLength: 1 }, request_key: { type: 'string', minLength: 1 } }, additionalProperties: false },
   },
   {
     name: 'judge_get_check_result', service: 'judge', operation: 'get_check_result', version: '1.0',
@@ -113,22 +116,22 @@ const TOOL_DEFINITIONS = Object.freeze([
 // name even when an adapter temporarily maps them to an older implementation.
 const publicTaskTools = [
   {
-    name: 'task_status', service: 'task', operation: 'task_status', version: '1.0',
-    description: 'Read the authoritative Mission, Task counts, claimable work, and observation timestamp.',
-    scope: 'task-read', side_effect: false,
-    parameters: { type: 'object', required: ['mission_id'], properties: { mission_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false },
+    name: 'bot_exit', service: 'task', operation: 'bot_exit', version: '1.0',
+    description: 'End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['reason'], properties: { reason: { type: 'string', enum: ['no-work', 'selection-budget'] } }, additionalProperties: false },
   },
   {
-    name: 'task_register', service: 'task', operation: 'task_register', version: '1.0',
-    description: 'Register one independent Task with a goal, output, acceptance condition, and collaboration reason. With take: true the current Execution is checkpointed and ended and the new Task is taken on the same Core lane in one operation, so no other Agent can take it first; without take the Task is left open for others.',
-    scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['mission_id', 'goal', 'expected_output', 'acceptance_conditions'], properties: { mission_id: { type: 'string' }, task_id: { type: 'string' }, summary: { type: 'string' }, goal: { type: 'string' }, task_type: { type: 'string' }, task_instructions: { type: 'string' }, expected_output: { type: 'string' }, acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] }, required_capabilities: { type: 'array', items: { type: 'string', minLength: 1 } }, collaboration_reason: { type: 'string' }, responsibility_key: { type: 'string' }, spawned_from: { type: 'string' }, depends_on: { type: 'array', items: { type: 'string' } }, timebox_ms: { type: 'integer', minimum: 1 }, take: { type: 'boolean' }, progress: { type: 'object' } }, additionalProperties: false },
+    name: 'task_status', service: 'task', operation: 'task_status', version: '1.0',
+    description: 'Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery.',
+    scope: 'task-read', side_effect: false,
+    parameters: { type: 'object', required: ['mission_id'], properties: { mission_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, additionalProperties: false },
   },
   {
     name: 'task_take', service: 'task', operation: 'task_take', version: '1.0',
-    description: 'Take an existing Mission or ordinary Task using the caller identity and Core lane.',
+    description: 'Take an existing Task in this Mission using the caller Bot and Core.',
     scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' }, claim_key: { type: 'string' }, workspace_mode: { type: 'string', enum: ['resume', 'clean'] }, workspace_revision: { type: 'integer', minimum: 1 }, workspace_source_execution_id: { type: 'string' }, workspace_source_ref: { type: 'string' }, input_material_refs: { type: 'array', items: { type: 'string' } } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' }, take_key: { type: 'string' }, input_material_refs: { type: 'array', items: { type: 'string' } } }, additionalProperties: false },
   },
   {
     name: 'task_feedback', service: 'task', operation: 'task_feedback', version: '1.0',
@@ -151,19 +154,19 @@ const publicTaskTools = [
   },
   {
     name: 'task_list', service: 'task', operation: 'task_list', version: '1.0',
-    description: 'List Mission Tasks and search their short summaries before proposing new work.',
+    description: 'Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.',
     scope: 'task-read', side_effect: false,
-    parameters: { type: 'object', properties: { mission_id: { type: 'string' }, query: { type: 'string' }, state: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, additionalProperties: false },
+    parameters: { type: 'object', properties: { mission_id: { type: 'string' }, query: { type: 'string' }, state: { type: 'string' }, states: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 16 }, available_only: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'task_view', service: 'task', operation: 'task_view', version: '1.0',
-    description: 'Read one Task, its two relations, state, current Execution, and linked Materials.',
+    description: 'Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.',
     scope: 'task-read', side_effect: false,
     parameters: { type: 'object', properties: { task_id: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'task_create', service: 'task', operation: 'task_create', version: '1.0',
-    description: 'Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.',
+    description: 'Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.',
     scope: 'task-write', side_effect: true,
     parameters: {
       type: 'object',
@@ -178,10 +181,11 @@ const publicTaskTools = [
         acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] },
         required_capabilities: { type: 'array', items: { type: 'string', minLength: 1 } },
         completion_contract: { type: 'object' },
-        input_material_refs: { type: 'array', items: { type: 'string' } },
+        workspace: { type: 'object', description: 'Compatibility input. If both workspace.revision and base_revision are supplied, they must match.' },
+        base_revision: { type: 'string', pattern: '^[0-9]+[.][0-9]+$' },
+        input_material_refs: { type: 'array', items: { type: 'string', minLength: 1 }, maxItems: 100 },
         responsibility_key: { type: 'string', minLength: 1, maxLength: 256 },
         priority: { type: 'integer', minimum: 0 },
-        spawned_from: { type: 'string' },
         depends_on: { type: 'array', items: { type: 'string' } },
         timebox_ms: { type: 'integer', minimum: 1 },
       },
@@ -195,72 +199,82 @@ const publicTaskTools = [
     parameters: { type: 'object', required: ['task_id', 'material_id', 'role'], properties: { task_id: { type: 'string' }, material_id: { type: 'string' }, role: { type: 'string', enum: ['input', 'response', 'handoff', 'experience'] }, receiving_task_id: { type: 'string' } }, additionalProperties: false },
   },
   {
-    name: 'task_complete', service: 'task', operation: 'task_complete', version: '1.0',
-    description: 'Complete the current Task when its own contract and required Material or Judge evidence are satisfied.',
+    name: 'task_finish', service: 'task', operation: 'task_finish', version: '1.0',
+    description: 'Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.',
     scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', properties: { material_ids: { type: 'array', items: { type: 'string' } }, check_result_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['outcome'], properties: {
+      outcome: { type: 'string', enum: ['done', 'incomplete', 'blocked', 'cancelled'] },
+      material_ids: { type: 'array', items: { type: 'string' } }, workspace_revision: { type: 'string' }, check_result_id: { type: 'string' },
+      handoff_material_id: { type: 'string' }, blocker: { type: 'object' }, dependency: { type: 'object' }, wait_for: { type: ['string', 'object'] }, replacement_task_id: { type: 'string' }, reason: { type: 'string' },
+    }, additionalProperties: false },
   },
+
   {
-    name: 'task_handoff', service: 'task', operation: 'task_handoff', version: '1.0',
-    description: 'Publish and link Handoff Material, then return unfinished work to the Mission queue.',
-    scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['handoff_material_id'], properties: { handoff_material_id: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'task_block', service: 'task', operation: 'task_block', version: '1.0',
-    description: 'Publish and link Handoff Material, record a typed Task or capability dependency, and end the current Execution. An ordinary Task becomes BLOCKED; the shared Mission Task stays claimable and only this Execution ends.',
-    scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['blocker', 'dependency', 'handoff_material_id'], properties: {
-      blocker: { type: 'object' },
-      dependency: {
-        type: 'object', minProperties: 1,
-        description: 'Use dependency_kind TASK with prerequisite_task_id for a Task prerequisite, or CAPABILITY with capability_id for a missing runtime/external capability. On an ordinary Task, capability blockers remain durably BLOCKED until an explicit reopen after the recovery condition is met. A capability listed among this Session tools is callable and is rejected as a blocker.',
-        properties: {
-          dependency_kind: { type: 'string', enum: ['TASK', 'CAPABILITY'] },
-          prerequisite_task_id: { type: 'string' },
-          capability_id: { type: 'string' },
-          scope: { type: 'string' },
-          retryable: { type: 'boolean' },
-          recovery_condition: { type: 'string' },
-        },
-      },
-      handoff_material_id: { type: 'string' },
+    name: 'task_cancel', service: 'task', operation: 'task_cancel', version: '1.0',
+    description: 'Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.',
+    scope: 'mission-write', side_effect: true,
+    parameters: { type: 'object', required: ['task_id', 'expected_spec_version', 'expected_state_version', 'reason'], properties: {
+      task_id: { type: 'string' }, expected_spec_version: { type: 'integer', minimum: 1 }, expected_state_version: { type: 'integer', minimum: 0 },
+      reason: { type: 'string' }, replacement_task_id: { type: 'string' },
     }, additionalProperties: false },
   },
   {
-    name: 'task_close', service: 'task', operation: 'task_close', version: '1.0',
-    description: 'Accept a linked Response Material from another Task and close its producer.',
-    scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['producer_task_id', 'material_id'], properties: { producer_task_id: { type: 'string' }, material_id: { type: 'string' } }, additionalProperties: false },
+    name: 'task_dependency_replace', service: 'task', operation: 'task_dependency_replace', version: '1.0',
+    description: 'Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge.',
+    scope: 'mission-write', side_effect: true,
+    parameters: { type: 'object', required: ['task_id', 'from_task_id', 'to_task_id', 'expected_spec_version', 'expected_state_version', 'reason'], properties: {
+      task_id: { type: 'string' }, from_task_id: { type: 'string' }, to_task_id: { type: 'string' },
+      expected_spec_version: { type: 'integer', minimum: 1 }, expected_state_version: { type: 'integer', minimum: 0 }, reason: { type: 'string' },
+    }, additionalProperties: false },
   },
+
 ];
 
 const publicContextTools = [
+  ...['dispute', 'supersede', 'unsupersede'].map(action => ({
+    name: `material_${action}`, service: 'context', operation: `material_${action}`, version: '1.0',
+    description: action === 'dispute' ? 'Record a specific claim or section and the reason it needs correction; keep the Material visible.'
+      : action === 'supersede' ? 'Replace an entire Material with a complete successor using its observed relation_version.'
+        : 'Revoke only the matching successor using the observed relation_version and a reason; preserve all history.',
+    scope: 'context-write', side_effect: true,
+    parameters: { type: 'object', required: action === 'dispute' ? ['material_id', 'claim', 'reason']
+      : ['material_id', 'replacement_material_id', 'expected_version', 'reason'], properties: {
+      material_id: { type: 'string' }, reason: { type: 'string' },
+      ...(action === 'dispute' ? { claim: { type: 'string' } } : {
+        replacement_material_id: { type: 'string' }, expected_version: { type: 'integer', minimum: 0 },
+      }),
+    }, additionalProperties: false },
+  })),
+
   {
     name: 'context_search_materials', service: 'context', operation: 'context_search_materials', version: '1.0',
-    description: 'Search shared immutable Materials by summary, role, Task, producer, or Mission.',
+    description: 'Search immutable Material summaries by keyword, Task, producer, or Mission. Follow continuation cursors and read exact IDs for full content.',
     scope: 'context-read', side_effect: false,
-    parameters: { type: 'object', properties: { mission_id: { type: 'string' }, query: { type: 'string' }, role: { type: 'string' }, task_id: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, additionalProperties: false },
+    parameters: { type: 'object', properties: { mission_id: { type: 'string' }, query: { type: 'string' }, task_id: { type: 'string' },
+      source_task: { type: 'string' }, source_execution: { type: 'string' }, include_history: { type: 'boolean' },
+      relation_kind: { type: 'string', enum: ['supersede', 'dispute'] }, related_material_id: { type: 'string' },
+      limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'context_get_material', service: 'context', operation: 'context_get_material', version: '1.0',
     description: 'Read one immutable Material and its producer Task/Execution provenance.',
     scope: 'context-read', side_effect: false,
-    parameters: { type: 'object', required: ['material_id'], properties: { material_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['material_id'], properties: { material_id: { type: 'string' }, attachment_name: { type: 'string' },
+      usage_limit: { type: 'integer', minimum: 1, maximum: 100 }, usage_cursor: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'context_publish_material', service: 'context', operation: 'context_publish_material', version: '1.0',
-    description: 'Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.',
+    description: 'Publish immutable research content and optional attachments with current Task/Execution provenance. Explain evidence in the body where applicable.',
     scope: 'context-write', side_effect: true,
-    parameters: { type: 'object', required: ['role', 'content'], properties: {
-      role: { type: 'string', enum: ['response', 'handoff', 'experience'] },
-      kind: { type: 'string', description: 'Material kind, for example fact, experience, failure, or artifact.' },
-      scope: { type: 'string', description: 'The bounded collaboration or proof scope for the Material.' },
-      evidence_state: { type: 'string', enum: ['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale'] },
-      content: {}, summary: { type: 'string' }, receiving_task_id: { type: 'string' },
-      // A revised artifact must be able to identify the failed candidate it
-      // replaces; without this field the Agent cannot record repair lineage.
-      supersedes: { type: 'string' },
+    parameters: { type: 'object', required: ['content'], properties: {
+      content: {}, title: { type: 'string', maxLength: 120 }, summary: { type: 'string', maxLength: 500 },
+      media_type: { type: 'string' }, receiving_task_id: { type: 'string' },
+      used_material_ids: { type: 'array', maxItems: 100, items: { type: 'string' } },
+      attachments: { type: 'array', maxItems: 16, items: { type: 'object', required: ['name'],
+        properties: { name: { type: 'string' }, media_type: { type: 'string' }, content_base64: { type: 'string' },
+          content_hash: { type: 'string' }, source: { type: 'object', required: ['material_id', 'attachment_name'],
+            properties: { material_id: { type: 'string' }, attachment_name: { type: 'string' } }, additionalProperties: false } }, additionalProperties: false } },
+      supersedes: { type: 'string' }, expected_version: { type: 'integer', minimum: 0 }, supersede_reason: { type: 'string' },
     }, additionalProperties: false },
   },
 ];
@@ -272,6 +286,78 @@ const publicContextTools = [
 const publicWorkspaceTools = TOOL_DEFINITIONS
   .filter((tool) => tool.service === 'workspace')
   .map((tool) => ({ ...tool, service: 'task', capability: 'workspace' }));
+const publicMissionWorkspaceTools = [
+  { name: 'workspace_public_view', service: 'task', operation: 'workspace_public_view', version: '1.0',
+    description: 'Read the public Mission Workspace and current main.', scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id'], properties: { workspace_id: { type: 'string' } }, additionalProperties: false } },
+  { name: 'workspace_public_history', service: 'task', operation: 'workspace_public_history', version: '1.0',
+    description: 'Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.', scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id'], properties: { workspace_id: { type: 'string' }, all: { type: 'boolean' }, source_task: { type: 'string' }, source_execution: { type: 'string' }, material_id: { type: 'string' }, path: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false } },
+  { name: 'workspace_public_diff', service: 'task', operation: 'workspace_public_diff', version: '1.0',
+    description: 'Compare any two published Mission Workspace revisions, including unmerged saves. Pages pin both revisions.',
+    scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id', 'from', 'to'], properties: { workspace_id: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' }, path: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false } },
+  { name: 'workspace_status', service: 'task', operation: 'workspace_status', version: '1.0',
+    description: 'Inspect the current E tree, initial revision and saved lineage.', scope: 'execution-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: [], properties: {  }, additionalProperties: false } },
+  { name: 'workspace_current_diff', service: 'task', operation: 'workspace_current_diff', version: '1.0',
+    description: 'Compare the current E tree with its last saved revision.', scope: 'execution-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: [], properties: {  }, additionalProperties: false } },
+  {
+    name: 'mission_get', service: 'task', operation: 'mission_get', version: '1.0',
+    description: 'Read the current Mission goal and acceptance conditions.',
+    scope: 'mission-read', side_effect: false,
+    parameters: { type: 'object', required: ['mission_id'], properties: { mission_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_public_files', service: 'task', operation: 'workspace_public_files', version: '1.0',
+    description: 'List files in the immutable Mission Workspace revision before a Task is taken.',
+    scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, path: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_public_read', service: 'task', operation: 'workspace_public_read', version: '1.0',
+    description: 'Read one file from an immutable Mission Workspace revision before a Task is taken.',
+    scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id', 'path'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, path: { type: 'string' }, max_bytes: { type: 'integer', minimum: 1, maximum: 10000000 } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_public_search', service: 'task', operation: 'workspace_public_search', version: '1.0',
+    description: 'Search text in an immutable Mission Workspace revision before a Task is taken.',
+    scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id', 'query'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, path: { type: 'string' }, query: { type: 'string', maxLength: 1024 }, max_results: { type: 'integer', minimum: 1, maximum: 500 }, cursor: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_public_apply', service: 'task', operation: 'workspace_public_apply', version: '1.0',
+    description: 'Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.',
+    scope: 'execution-write', side_effect: true, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['from'], properties: { from: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_save', service: 'task', operation: 'workspace_save', version: '1.0',
+    description: 'Save a complete public Mission Workspace file tree as an immutable revision without advancing main.',
+    scope: 'execution-write', side_effect: true, capability: 'mission-workspace',
+    parameters: { type: 'object', properties: { resolved: { type: 'boolean' }, material_ids: { type: 'array', maxItems: 20, uniqueItems: true, items: { type: 'string' } } }, additionalProperties: false },
+  },
+  {
+    name: 'workspace_merge', service: 'task', operation: 'workspace_merge', version: '1.0',
+    description: 'Conditionally merge one complete public Workspace revision into main after conflict and check validation.',
+    scope: 'execution-write', side_effect: true, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['from'], properties: { from: { type: 'string', pattern: '^\\d+\\.\\d+$' } }, additionalProperties: false },
+  },
+  {
+    name: 'mission_submit', service: 'task', operation: 'mission_submit', version: '1.0',
+    description: 'Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.',
+    scope: 'mission-write', side_effect: true, capability: 'mission-coordination',
+    parameters: { type: 'object', required: ['material_ids'], properties: { material_ids: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string' } } }, additionalProperties: false },
+  },
+  {
+    name: 'mission_submission_get', service: 'task', operation: 'mission_submission_get', version: '1.0',
+    description: 'Read the durable Mission submission state and its immutable acceptance snapshot.',
+    scope: 'mission-read', side_effect: false, capability: 'mission-coordination',
+    parameters: { type: 'object', required: ['mission_id'], properties: { mission_id: { type: 'string' }, submission_id: { type: 'string' } }, additionalProperties: false },
+  },
+];
 const publicJudgeTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge');
 const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'catalog');
 
@@ -279,25 +365,12 @@ const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'c
 // but they are not part of the Agent-facing fallback projection. Runtime owns
 // the Execution lease/liveness controls; modern Mission Tasks use the semantic
 // entries above and the Registry-backed profile.
-const LEGACY_AGENT_OPERATIONS = new Set([
-  'abort', 'apply_check_result', 'block_execution',
-  'claim', 'list_claimable_tasks', 'select_task',
-  'fence_execution', 'heartbeat',
-  'request_wait', 'resume_execution', 'start_execution', 'stop_execution',
-  'wake', 'wake_execution',
-]);
-
-const LEGACY_AGENT_TOOL_NAMES = new Set([
-  'execution_wait',
-  'service_call', 'swarmenv_call',
-]);
-
 const SERVICE_DEFINITIONS = Object.freeze([
   {
     name: 'task',
     version: '1.0',
     description: 'Task goals, Mission-scoped Material links, semantic completion, explicit dependencies, and canonical task_take.',
-    tools: [...TOOL_DEFINITIONS.filter((tool) => tool.service === 'task'), ...publicTaskTools, ...publicWorkspaceTools],
+    tools: [...publicTaskTools, ...publicWorkspaceTools, ...publicMissionWorkspaceTools],
   },
   { name: 'execution', version: '1.0', description: 'Internal Execution lease, heartbeat, wait, and lifecycle metadata.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'execution') },
   { name: 'workspace', version: '1.0', description: 'Runtime-owned Workspace materialization, revisions, and checkpoint lineage.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace') },
@@ -307,7 +380,7 @@ const SERVICE_DEFINITIONS = Object.freeze([
     description: 'Shared immutable Materials with producer provenance and semantic collaboration roles.',
     tools: [...TOOL_DEFINITIONS.filter((tool) => tool.service === 'context'), ...publicContextTools],
   },
-  { name: 'judge', version: '1.0', description: 'Candidate submission and independent completion checks.', tools: publicJudgeTools },
+  { name: 'judge', version: '1.0', description: 'Workspace file checks and independent completion results.', tools: publicJudgeTools },
   { name: 'catalog', version: '1.0', description: 'Service and named tool discovery metadata.', tools: publicCatalogTools },
 ]);
 
@@ -316,10 +389,7 @@ function clone(value) {
 }
 
 export function isLegacyAgentSurface(tool, { runtimeOwned = false } = {}) {
-  if (!tool || typeof tool !== 'object') return false;
-  const operation = tool.operation ?? null;
-  const name = tool.name ?? tool.tool_name ?? tool.toolName ?? null;
-  return LEGACY_AGENT_OPERATIONS.has(operation) || LEGACY_AGENT_TOOL_NAMES.has(name);
+  return false;
 }
 
 function normalizeCatalogOptions(options) {

@@ -212,7 +212,7 @@ test('Registry refuses a remote provider whose advertised manifest differs from 
   }
 });
 
-test('built-in Task, Context, Judge, and Catalog providers can all be replaced by independent HTTP hosts', async () => {
+test('independent HTTP providers support discovery while an unconfigured Context authority rejects data access', async () => {
   const domain = [
     { id: 'task', token: 'task-token' },
     { id: 'context', token: 'context-token' },
@@ -257,7 +257,7 @@ test('built-in Task, Context, Judge, and Catalog providers can all be replaced b
     const registry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, serviceEndpoints: endpoints });
     assert.deepEqual(registry.listServices().map((service) => service.service_id), ['catalog', 'context', 'judge', 'task']);
     const boundProfile = registry.getCapabilityProfile('bound');
-    assert.ok(boundProfile.capabilities.some((capability) => capability.service_id === 'task' && capability.operation === 'task_block'));
+    assert.ok(boundProfile.capabilities.some((capability) => capability.service_id === 'task' && capability.operation === 'task_finish'));
     for (const id of ['task', 'context', 'judge', 'catalog']) {
       assert.equal(registry.getService(id).adapter.kind, 'http-json');
       assert.equal((await registry.checkHealth(id)).ok, true);
@@ -267,12 +267,11 @@ test('built-in Task, Context, Judge, and Catalog providers can all be replaced b
       serviceId: 'task', capability: 'task_list', input: { limit: 1 },
       envelope: makeEnvelope({ operationId: 'remote-task-list', actorRef: 'agent:bound' }), role: 'bound',
     });
-    assert.ok(Array.isArray(taskResult));
-    const contextResult = await registry.invoke({
+    assert.ok(Array.isArray(taskResult.tasks));
+    await assert.rejects(registry.invoke({
       serviceId: 'context', capability: 'read_materials', input: {},
       envelope: makeEnvelope({ operationId: 'remote-context-read', actorRef: 'agent:bound', taskId: 'task-1', executionId: 'exec-1' }), role: 'bound',
-    });
-    assert.ok(Array.isArray(contextResult.materials ?? contextResult));
+    }), { code: 'SERVICE_NOT_READY' });
     const judgeResult = await registry.invoke({
       serviceId: 'judge', capability: 'get_check_result', input: { check_result_id: 'missing-check' },
       envelope: makeEnvelope({ operationId: 'remote-judge-read', actorRef: 'agent:bound', taskId: 'task-1', executionId: 'exec-1' }), role: 'bound',
@@ -314,7 +313,7 @@ test('hosted Judge accepts the same direct Workspace source contract as in-proce
   try {
     const result = await registry.invoke({
       serviceId: 'judge',
-      capability: 'judge_submit_candidate',
+      capability: 'judge_workspace_check',
       input: { source: { path: 'Candidate.lean', workspace_revision: 1, content: 'theorem direct : True := by trivial' } },
       envelope: makeEnvelope({ operationId: 'direct-judge-http-submit', actorRef: 'agent:bound', taskId: 'task:http', executionId: 'execution:http', specVersion: 1, stateVersion: 1, fencingVersion: 1 }),
       role: 'bound',

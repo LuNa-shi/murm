@@ -12,12 +12,13 @@ These are repository-owned texts and deterministic examples, not transcripts of 
 |---|---|
 | services-bridge.js | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the extension renders the error response |
 | putnam-runner.js | Candidate Material does not contain source text/a path reference, or its saved Workspace revision/hash no longer matches |
+| mission-workspace.js guidance | Written into ordinary conflict alternatives README during apply; available to the model only when its native file tools actually read that artifact. It is not a proactive prompt. |
 | workspace-contract.js remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |
 | workspace-contract.js guidance | Exported workspaceCapabilityDescriptor helper. No production benchmark call site uses this helper; this is retained repository text, not an automatically delivered tool instruction. |
 | task-service.js action | Material-available notification payload, or invalid typed dependency error. Runtime renders a separate notification user message; the payload action is visible when the notification data itself is read/composed. |
 
 The action value integration is a consumption/contract enum, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.
-## action — src/agent/services-bridge.js:67
+## action — src/agent/services-bridge.js:106
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -26,7 +27,7 @@ Body SHA-256: `a5e4874eff88bd459015734cb36e2d7e5cbb7a9312337c2df58750686d29a4f3`
 ````text
 modify_task_contract_or_register_capability
 ````
-## hint — src/agent/services-bridge.js:68
+## hint — src/agent/services-bridge.js:107
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the hint field, without JSON quoting. See delivery conditions above.
 
@@ -35,7 +36,7 @@ Body SHA-256: `78b0d192a0cf7b1c85211b38fdcc05b704665f974c6108666838d664cfa210c7`
 ````text
 Use exact capability IDs or operation names from available_capabilities; do not invent conceptual names. Register and verify the required Service before creating the Task if no listed capability is suitable.
 ````
-## action — src/agent/services-bridge.js:98
+## action — src/agent/services-bridge.js:137
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -44,7 +45,7 @@ Body SHA-256: `db7537154d8f0502c90a002ac7beb7277abf6956a1eb41f091912c0ee5ddd35a`
 ````text
 call_the_capability_or_block_on_a_real_dependency
 ````
-## hint — src/agent/services-bridge.js:99
+## hint — src/agent/services-bridge.js:138
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the hint field, without JSON quoting. See delivery conditions above.
 
@@ -53,7 +54,7 @@ Body SHA-256: `673e95051277d00105789af93b179d303c03fa05c6f4059045488ca6619bbdbd`
 ````text
 Call the listed tool directly. If it returned an error, treat that structured error as feedback; block only on a capability absent from the Callable capability directory or on a prerequisite Task.
 ````
-## action — src/agent/services-bridge.js:549
+## action — src/agent/services-bridge.js:645
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -62,7 +63,7 @@ Body SHA-256: `a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd`
 ````text
 call_list_tools_or_get_service_metadata
 ````
-## action — src/agent/services-bridge.js:556
+## action — src/agent/services-bridge.js:652
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -70,6 +71,19 @@ Body SHA-256: `7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e`
 
 ````text
 retry_with_the_registered_input_schema
+````
+## guidance — src/runtime/mission-workspace.js:10
+
+Source: [src/runtime/mission-workspace.js](../../../src/runtime/mission-workspace.js). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
+
+Body SHA-256: `18cebaa7bc8bb2d860f6fbfb457f2ff28866d9c9935ea78da8ef4c317c3e32db`
+
+````text
+Workspace apply has unresolved conflicts. The ordinary project tree contains Git's editable merge result.
+The base/current/incoming files here preserve the exact alternatives, including binary, rename and deletion conflicts.
+Resolve the intended ordinary project paths, remove this alternatives directory, then call swarm workspace save --resolved.
+Resolution records your decision; it does not establish correctness or replace a required check.
+
 ````
 ## remediation — src/runtime/workspace-contract.js:36
 
@@ -170,7 +184,16 @@ Body SHA-256: `510f8ad7edbb8964875921dfd292cd680e99a32f1d473f35364b43b29c984b4a`
 ````text
 Use workspace_list_files as the authoritative existing-file index; write only declared allowed_outputs.
 ````
-## action — src/task/task-service.js:1388
+## guidance — src/task/task-service.js:1739
+
+Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
+
+Body SHA-256: `2331ed3898810daacce352f5433d670aae5a8e9127527d6f6dbdd13c314fa95e`
+
+````text
+Read relevant continuation pages and Task detail before proposing or taking. New Tasks after this scan began require a fresh query.
+````
+## action — src/task/task-service.js:1855
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -179,7 +202,7 @@ Body SHA-256: `70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f`
 ````text
 inspect_material_and_record_task_feedback
 ````
-## action — src/task/task-service.js:1626
+## action — src/task/task-service.js:2067
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -187,4 +210,13 @@ Body SHA-256: `ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8`
 
 ````text
 use_dependency_kind_TASK_or_CAPABILITY
+````
+## guidance — src/task/task-service.js:2160
+
+Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
+
+Body SHA-256: `0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b`
+
+````text
+Use task list for continued discovery. Status summarizes the first bounded window.
 ````

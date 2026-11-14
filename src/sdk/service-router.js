@@ -1,13 +1,11 @@
-import { createBuiltinServiceRegistry } from './builtin-registry.js';
+import { createBuiltinServiceRegistry, dispatchMissionWorkspaceRead, MISSION_WORKSPACE_READS } from './builtin-registry.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 const TASK_OPERATIONS = new Set([
-  'abort', 'claim', 'fence_execution', 'get_execution', 'get_task', 'heartbeat', 'list_tasks', 'list_claimable_tasks', 'list_executions',
-  'request_wait', 'resume_execution', 'start_execution', 'stop_execution', 'submit_candidate',
-  'apply_check_result', 'wake_execution',
+  'get_execution', 'list_tasks', 'list_executions',
   'create_mission', 'get_mission', 'create_task', 'list_task', 'view_task', 'task_list', 'task_view', 'task_create',
-  'task_status', 'task_register', 'task_take', 'task_feedback', 'execution_progress',
-  'link_material', 'task_link_material', 'list_task_materials', 'task_materials', 'complete_task', 'task_complete', 'close_task', 'task_close', 'handoff_task', 'task_handoff', 'block_task_semantic', 'task_block',
+  'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_cancel', 'task_dependency_replace',
+  'link_material', 'task_link_material', 'list_task_materials', 'task_materials', 'finish_task', 'task_finish',
 ]);
 const CONTEXT_OPERATIONS = new Set([
   'publish_material', 'context.publish_material', 'context_publish_material',
@@ -15,15 +13,24 @@ const CONTEXT_OPERATIONS = new Set([
   'search_materials', 'context.search_materials', 'context_search_materials',
   'get_material', 'context.get_material', 'context_get_material',
   'consume_materials', 'list_material_consumptions',
+  'material.publish', 'material_publish', 'material.read', 'material_read',
+  'material.search', 'material_search', 'material.get', 'material_get', 'material_dispute', 'material.dispute',
+  'material_supersede', 'material.supersede', 'material_unsupersede', 'material.unsupersede',
 ]);
-const JUDGE_OPERATIONS = new Set(['get_check_result']);
+const JUDGE_OPERATIONS = new Set(['workspace_check', 'get_check_result']);
+const PUBLIC_WORKSPACE_OPERATIONS = new Set([
+  ...Object.keys(MISSION_WORKSPACE_READS),
+  'workspace_public_apply', 'workspace_save', 'workspace_merge', 'mission_submit', 'mission_submission_finish', 'mission_submission_get',
+]);
 
 export class ServicesRouter {
-  constructor({ taskService, contextService, judgeService = null, registry = null, serviceEndpoints = {}, customServices = [], logger = null } = {}) {
+  constructor({ taskService, contextService, judgeService = null, missionWorkspace = null, missionSubmissionStore = null, registry = null, serviceEndpoints = {}, customServices = [], logger = null } = {}) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.judgeService = judgeService;
-    this.registry = registry ?? createBuiltinServiceRegistry({ taskService, contextService, judgeService, serviceEndpoints, customServices });
+    this.missionWorkspace = missionWorkspace;
+    this.missionSubmissionStore = missionSubmissionStore;
+    this.registry = registry ?? createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore, serviceEndpoints, customServices });
     this.logger = logger;
   }
 
@@ -68,6 +75,8 @@ export class ServicesRouter {
           }
           return localResult;
         })()
+        : PUBLIC_WORKSPACE_OPERATIONS.has(operation)
+          ? (() => { throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `${operation} is asynchronous; use dispatchAsync`, { operation }, { retryable: true }); })()
         : TASK_OPERATIONS.has(operation)
           ? this.taskService.dispatch(operation, payload, envelope)
           : CONTEXT_OPERATIONS.has(operation)
@@ -104,13 +113,28 @@ export class ServicesRouter {
         this.logger?.append({ event: 'route.complete', operation, ok: true });
         return result;
       }
-      const result = this.dispatch(operation, payload, envelope);
+      const result = PUBLIC_WORKSPACE_OPERATIONS.has(operation)
+        ? await this.#dispatchPublic(operation, payload, envelope)
+        : this.dispatch(operation, payload, envelope);
       this.logger?.append({ event: 'route.complete', operation, ok: true });
       return result;
     } catch (error) {
       this.logger?.append({ event: 'route.complete', operation, ok: false, error: { name: error.name, code: error.code, message: error.message } });
       throw error;
     }
+  }
+
+  async #dispatchPublic(operation, payload = {}, envelope = {}) {
+    if (operation.startsWith('workspace_') && !this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not configured');
+    if (operation.startsWith('mission_') && !this.missionSubmissionStore) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not configured');
+    if (Object.hasOwn(MISSION_WORKSPACE_READS, operation)) return dispatchMissionWorkspaceRead(this, operation, payload, envelope);
+    if (operation === 'workspace_public_apply') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace apply requires the authenticated Runtime Bridge');
+    if (operation === 'workspace_save') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace save requires the authenticated Runtime Bridge');
+    if (operation === 'workspace_merge') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace merge requires authenticated Runtime integration');
+    if (operation === 'mission_submit') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission submit requires the authenticated Runtime Bridge');
+    if (operation === 'mission_submission_finish') return this.missionSubmissionStore.finish(payload);
+    if (operation === 'mission_submission_get') return this.missionSubmissionStore.get({ missionId: payload.mission_id, submissionId: payload.submission_id ?? null });
+    throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `${operation} is not configured`, { operation });
   }
 }
 

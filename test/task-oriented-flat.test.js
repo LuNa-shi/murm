@@ -37,16 +37,15 @@ test('Mission creates a flat Task pool with explicit proposal and dependency rel
   const mission = createMission(service);
   const first = createTask(service, mission.mission_id, 'task:first');
   const second = createTask(service, mission.mission_id, 'task:second', {
-    spawned_from: first.task_id,
     depends_on: [first.task_id],
   });
 
   assert.equal(first.mission_id, mission.mission_id);
   assert.equal(first.parent_id, null);
   assert.equal(first.summary.includes('task:first'), true);
-  assert.deepEqual(second.relations.spawned_from.map((row) => row.related_task_id), [first.task_id]);
+  assert.deepEqual(second.relations.spawned_from, []);
   assert.deepEqual(second.relations.depends_on.map((row) => row.related_task_id), [first.task_id]);
-  assert.deepEqual(service.dispatch('task.list', { mission_id: mission.mission_id, available_only: false }, op('task:list', 'agent:test')).map((task) => task.task_id), [first.task_id, second.task_id]);
+  assert.deepEqual(service.dispatch('task.list', { mission_id: mission.mission_id, available_only: false }, op('task:list', 'agent:test')).tasks.map((task) => task.task_id), [first.task_id, second.task_id]);
   assert.equal(service.dispatch('task.view', { task_id: second.task_id }, op('task:view', 'agent:test')).task.relations.depends_on[0].related_task_id, first.task_id);
   service.close();
 });
@@ -61,7 +60,7 @@ test('ServicesSDK exposes the Mission-scoped Task seam without parent-specific m
     expected_output: 'A route note',
     acceptance_conditions: ['note exists'],
   }, { operationId: 'sdk:task' }).task;
-  assert.equal(sdk.listMissionTasks({ mission_id: mission.mission_id }).length, 1);
+  assert.equal(sdk.listMissionTasks({ mission_id: mission.mission_id }).tasks.length, 1);
   assert.equal(sdk.viewTask(task.task_id).task.summary, 'Find one independent route');
   for (const method of ['proposeTask', 'createChildTask', 'createBranchGroup', 'addRequiredSubtask', 'getTaskStructure', 'createReworkTask']) {
     assert.equal(typeof sdk[method], 'undefined', `retired SDK method ${method} must not be reachable`);
@@ -70,7 +69,7 @@ test('ServicesSDK exposes the Mission-scoped Task seam without parent-specific m
   service.close();
 });
 
-test('canonical task supply seam reports status, registers work, and takes it', () => {
+test('canonical task supply seam proposes work and takes it', () => {
   const { service } = env();
   const sdk = new ServicesSDK(service, { actorRef: 'agent:canonical', coreId: 'core:canonical' });
   const mission = sdk.createMission({ mission_id: 'mission:canonical', goal: 'canonical task supply' }, { operationId: 'canonical:mission' }).mission;
@@ -80,25 +79,25 @@ test('canonical task supply seam reports status, registers work, and takes it', 
   assert.equal(initial.counts.total, 0);
   assert.deepEqual(initial.tasks, []);
 
-  const registered = sdk.taskRegister({
+  const registered = sdk.createTask({
     mission_id: mission.mission_id,
     task_id: 'task:canonical',
+    summary: 'Find one independent route',
     goal: 'find one independent route',
     expected_output: 'a route note',
     acceptance_conditions: ['note exists'],
     collaboration_reason: 'another identity can verify this route',
   }, { operationId: 'canonical:register' });
   assert.equal(registered.task.task_id, 'task:canonical');
-  assert.equal(registered.provenance.actor_ref, 'agent:canonical');
 
   const status = sdk.taskStatus({ mission_id: mission.mission_id });
   assert.equal(status.counts.total, 1);
-  assert.equal(status.counts.claimable, 1);
+  assert.equal(status.counts.eligible, 1);
   assert.equal(status.tasks[0].task_id, 'task:canonical');
 
   const taken = sdk.taskTake({
     task_id: registered.task.task_id,
-    claim_key: 'canonical:take',
+    take_key: 'canonical:take',
     core_id: 'core:canonical',
   }, { operationId: 'canonical:take' });
   assert.equal(taken.task.task_id, registered.task.task_id);
@@ -107,25 +106,24 @@ test('canonical task supply seam reports status, registers work, and takes it', 
   service.close();
 });
 
-test('the first Mission Task is a shared entry and may have multiple Core-bound Executions', () => {
+test('every Mission Task is exclusive and the Mission has no shared take entry', () => {
   const { service } = env();
   const mission = createMission(service, 'mission:shared-entry');
   const shared = createTask(service, mission.mission_id, 'task:shared-entry');
   const first = service.dispatch('task_take', {
-    task_id: shared.task_id, claim_key: 'shared:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
+    task_id: shared.task_id, take_key: 'shared:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
   }, op('shared:one', 'agent:one', { taskId: shared.task_id, specVersion: shared.spec_version, stateVersion: shared.state_version })).execution;
   const current = service.getTask(shared.task_id);
-  const second = service.dispatch('task_take', {
-    task_id: shared.task_id, claim_key: 'shared:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
-  }, op('shared:two', 'agent:two', { taskId: shared.task_id, specVersion: current.spec_version, stateVersion: current.state_version })).execution;
+  assert.throws(() => service.dispatch('task_take', {
+    task_id: shared.task_id, take_key: 'shared:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
+  }, op('shared:two', 'agent:two', { taskId: shared.task_id, specVersion: current.spec_version, stateVersion: current.state_version })), /active Execution quota/);
 
-  assert.notEqual(first.execution_id, second.execution_id);
-  assert.equal(service.listExecutions(shared.task_id, { includeTerminal: false }).length, 2);
+  assert.equal(service.listExecutions(shared.task_id, { includeTerminal: false }).length, 1);
   const status = service.taskStatus({ mission_id: mission.mission_id, limit: 1 });
   assert.equal(status.counts.total, 1);
   assert.equal(status.counts.running, 1);
-  assert.equal(status.counts.claimable, 1);
-  assert.equal(status.claimable_tasks[0].task_id, shared.task_id);
+  assert.equal(status.counts.eligible, 0);
+  assert.deepEqual(status.eligible_tasks, []);
   service.close();
 });
 
@@ -135,21 +133,21 @@ test('ordinary Mission Tasks stay exclusive while registration has no queue-size
   const first = createTask(service, mission.mission_id, 'task:first-ordinary');
   const second = createTask(service, mission.mission_id, 'task:second-ordinary');
   const taken = service.dispatch('task_take', {
-    task_id: second.task_id, claim_key: 'ordinary:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
+    task_id: second.task_id, take_key: 'ordinary:one', owner_ref: 'agent:one', core_id: 'core:one', workspace_mode: 'clean',
   }, op('ordinary:one', 'agent:one', { taskId: second.task_id, specVersion: second.spec_version, stateVersion: second.state_version }));
   const current = service.getTask(second.task_id);
   assert.throws(() => service.dispatch('task_take', {
-    task_id: second.task_id, claim_key: 'ordinary:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
+    task_id: second.task_id, take_key: 'ordinary:two', owner_ref: 'agent:two', core_id: 'core:two', workspace_mode: 'clean',
   }, op('ordinary:two', 'agent:two', { taskId: second.task_id, specVersion: current.spec_version, stateVersion: current.state_version })), /active Execution quota/);
   for (let index = 0; index < 12; index += 1) {
-    const registered = service.taskRegister({
+    const registered = service.createTask({
       mission_id: mission.mission_id,
       task_id: `task:unbounded-${index}`,
       summary: `Register independent responsibility ${index} without a queue quota.`,
       goal: `Explore route ${index}`,
       expected_output: 'a bounded note',
       acceptance_conditions: ['the note is durable'],
-    }, op(`register:unbounded:${index}`, 'agent:one', { taskId: second.task_id, executionId: taken.execution.execution_id, specVersion: taken.execution.spec_version, stateVersion: taken.execution.state_version, fencingVersion: taken.execution.fencing_version }));
+    }, op(`create:unbounded:${index}`, 'agent:one'));
     assert.equal(registered.task.owner_ref, 'agent:one');
   }
   assert.equal(service.taskStatus({ mission_id: mission.mission_id }).counts.total, 14);
@@ -192,16 +190,42 @@ test('Mission Task creation carries a bounded dynamic contract and deduplicates 
   service.close();
 });
 
-test('only depends_on gates the flat claimable view and cycles are rejected', () => {
+test('Task responsibility deduplication requires matching Workspace and Material inputs', t => {
   const { service } = env();
-  const mission = createMission(service, 'mission:claimability');
+  t.after(() => service.close());
+  const mission = createMission(service);
+  const proposal = { mission_id: mission.mission_id, summary: 'Investigate a domain boundary with fixed input',
+    expected_output: 'Reproducible boundary result', acceptance_conditions: ['Explain the case'],
+    base_revision: '0.2', input_material_refs: ['material:a', 'material:b'], responsibility_key: 'fixed-inputs' };
+  const submit = (input, key) => service.dispatch('task.create', input, op(key, 'agent:test'));
+  const created = submit(proposal, 'original-proposal');
+  const { base_revision: revision, ...legacyInput } = proposal;
+  const compatible = { ...legacyInput, workspace: { revision }, input_material_refs: ['material:b', 'material:a'] };
+  assert.equal(submit(compatible, 'compatible-inputs').task.task_id, created.task.task_id);
+  assert.throws(() => submit({ ...proposal, workspace: { revision: '0.3' } }, 'aliases-conflict'), { code: 'INVALID_CONTRACT' });
+  assert.throws(() => submit({ ...proposal, base_revision: 'main' }, 'mutable-revision'), { code: 'INVALID_CONTRACT' });
+  for (const legacy of [false, true]) {
+    if (legacy) service.db.prepare('UPDATE modern_task_records SET registration_hash = NULL WHERE task_id = ?').run(created.task.task_id);
+    assert.equal(submit(compatible, `repeat-${legacy}`).deduplicated, true);
+    assert.throws(() => submit({ ...proposal, base_revision: '0.3' }, `different-workspace-${legacy}`), { code: 'CONFLICT' });
+    assert.throws(() => submit({ ...proposal, input_material_refs: ['material:c'] }, `different-material-${legacy}`), { code: 'CONFLICT' });
+  }
+  assert.equal(submit(proposal, 'original-proposal').task.task_id, created.task.task_id);
+});
+
+test('only depends_on gates the flat eligible view and cycles are rejected', () => {
+  const { service } = env();
+  const mission = createMission(service, 'mission:takeability');
   const prerequisite = createTask(service, mission.mission_id, 'task:prerequisite');
   const dependent = createTask(service, mission.mission_id, 'task:dependent', { depends_on: [prerequisite.task_id] });
-  const spawnedOnly = createTask(service, mission.mission_id, 'task:spawned-only', { spawned_from: prerequisite.task_id });
+  const spawnedOnly = createTask(service, mission.mission_id, 'task:spawned-only');
+  service.db.prepare(`INSERT INTO task_relations (relation_id, mission_id, task_id, relation_kind, related_task_id, created_by, created_at)
+    VALUES (?, ?, ?, 'spawned_from', ?, ?, ?)`).run('historical-spawn', mission.mission_id, spawnedOnly.task_id, prerequisite.task_id, 'agent:test', spawnedOnly.created_at);
+  assert.equal(service.getTask(spawnedOnly.task_id).relations.spawned_from[0].related_task_id, prerequisite.task_id);
 
   const available = service.dispatch('task.list', { mission_id: mission.mission_id, available_only: true }, op('task:available:one', 'agent:test'));
-  assert.deepEqual(available.map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
-  assert.deepEqual(service.listClaimableTasks({ missionId: mission.mission_id, limit: 10 }).map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
+  assert.deepEqual(available.tasks.map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
+  assert.deepEqual(service.listEligibleTasks({ missionId: mission.mission_id, limit: 10 }).map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
 
   assert.throws(() => service.dispatch('task.create', {
     mission_id: mission.mission_id,
@@ -209,46 +233,5 @@ test('only depends_on gates the flat claimable view and cycles are rejected', ()
     summary: 'cycle', goal: 'cycle', expected_output: 'cycle', acceptance_conditions: [],
     depends_on: ['task:cycle'],
   }, op('task:cycle', 'agent:test')), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
-  service.close();
-});
-
-test('creating a Task from a running Execution leaves the current work running', () => {
-  const { service } = env();
-  const mission = createMission(service, 'mission:running');
-  const current = createTask(service, mission.mission_id, 'task:current');
-  const claimed = service.dispatch('claim', { claim_key: 'claim:current', owner_ref: 'agent:test' }, op('claim:current', 'agent:test', {
-    taskId: current.task_id,
-    specVersion: current.spec_version,
-    stateVersion: current.state_version,
-  }));
-  const created = createTask(service, mission.mission_id, 'task:new', { spawned_from: current.task_id }, op('task:new:bound', 'agent:test', {
-    taskId: current.task_id,
-    executionId: claimed.execution.execution_id,
-    specVersion: claimed.execution.spec_version,
-    stateVersion: claimed.execution.state_version,
-    fencingVersion: claimed.execution.fencing_version,
-  }));
-
-  assert.equal(created.state, 'OPEN');
-  assert.equal(service.getTask(current.task_id).state, 'RUNNING');
-  assert.equal(service.getExecution(claimed.execution.execution_id).state, 'CREATED');
-  assert.equal(service.getTask(current.task_id).state_version, claimed.task.state_version);
-  service.close();
-});
-
-test('a modern Task with no specialized contract still needs a linked durable result', () => {
-  const { service } = env();
-  const mission = createMission(service, 'mission:completion');
-  const task = createTask(service, mission.mission_id, 'task:completion');
-  const claimed = service.dispatch('claim', {
-    claim_key: 'claim:completion', owner_ref: 'agent:test',
-  }, op('claim:completion', 'agent:test', {
-    taskId: task.task_id, specVersion: task.spec_version, stateVersion: task.state_version,
-  }));
-  assert.throws(() => service.dispatch('task.complete', {}, op('complete:empty', 'agent:test', {
-    taskId: task.task_id, executionId: claimed.execution.execution_id,
-    specVersion: claimed.execution.spec_version, stateVersion: claimed.execution.state_version,
-    fencingVersion: claimed.execution.fencing_version,
-  })), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
   service.close();
 });

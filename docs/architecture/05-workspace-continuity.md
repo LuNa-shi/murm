@@ -7,15 +7,102 @@ explains durable ownership; [Mission and Task](03-mission-task.md) explains how 
 successor obtains responsibility. This chapter explains which files, commits,
 checkpoints, process state and feedback survive that transition.
 
+## 0. Mission Workspace repository (public revision path)
+
+`MissionWorkspace` owns the Mission's public versions; `WorkspaceRepository` owns Git object creation, exclusion, commit intent and recovery. This is separate from the Execution-local `WorkspaceManager` described below. New repositories have `format_version:2`. Creation imports the supplied complete initial tree into Git and publishes `0.1` with a real `main` ref. Saved versions have their own complete commit/tree and actual Git parents; saving leaves main unchanged. Internal `refs/swarm/revisions/<revision>` protect every published commit from becoming unreachable. These are neither Bot branches nor tags.
+
+`save` accepts an actual complete tree from its trusted caller, validates paths and byte types, and defaults its parent to the supplied base or current main. Explicit multiple parents must include the base. It creates raw blobs with Git filters disabled and assembles an isolated temporary index, so `.gitattributes` cannot change stored bytes; project files never include repository metadata. Limits match the current provider copy boundary: 2 MiB per file and 16 MiB per tree. Dot/traversal/empty path segments, `.git`, `.pi`, `.swarm`, `.swarm-*`, `.env*` and `node_modules` are rejected. Binary Buffers retain their bytes. Reads return UTF-8 text or explicitly base64-encoded binary bytes, hash, byte count and truncation. Historical format repositories retain read access but cannot save/merge/freeze through the new writer.
+
+`merge` fixes source R and current main M, uses Git ancestry and `merge-tree` to construct the final combined tree, and gives that tree to an optional trusted checker. An ancestor already included in main returns a no-op without another checker charge. Conflicts preserve main and identify paths. A checker must return literal true or verdict PASS; a truthy failed result is insufficient. The checker runs outside the writer critical section. On return, the writer checks freeze, its synchronous authorization callback and the same M, creates a commit with M/R parents, then checks authorization again immediately before the synchronous commit boundary. `MAIN_MOVED` means a new attempt must merge/check against the new main; `MISSION_SUBMITTING` rejects a merge while frozen. An unconfigured checker does not invent a scientific gate.
+
+Public reads and materialization snapshot selection, as well as writes, pass through a per-repository in-process queue and an OS `flock` held by a helper whose stdin belongs to the coordinator. A second coordinator receives `WORKSPACE_BUSY`; process loss closes the pipe and releases the OS lock. The built-in service image installs `util-linux` for this dependency. Each entry first recovers any pending journal. main/index disagreement closes the operation with `WORKSPACE_RECONCILIATION_REQUIRED` instead of guessing which version won.
+
+The final commit boundary is synchronous: write/fsync/rename the intent, conditionally update main with its old commit, retain the revision ref, atomically publish revision/index metadata and the request receipt, then remove the journal. No checker runs here. Recovery uses actual refs: a merge still at the old main is explicitly aborted and its original request returns `WORKSPACE_REQUEST_ABORTED`; a ref already at the new main completes metadata and the original receipt. Neither old nor new closes the write path for reconciliation. An interrupted save can complete its retained immutable version without advancing main. The tests cover injected boundaries and actual coordinator SIGKILL after the ref update; this is process-crash evidence, not a machine-power-loss claim.
+
+Request IDs are Workspace-scoped. Same-ID concurrent operations join one in-process promise. A per-request OS lock excludes another coordinator throughout checking; it receives retryable `WORKSPACE_BUSY`. Before checker execution, the request fingerprint, source and fixed main are persisted. If that process disappears before a result, a later owner aborts the old attempt with `WORKSPACE_REQUEST_ABORTED` rather than checking again or selecting a newer main. Changed input is rejected, and persisted success or definitive rejection is replayed without another checker attempt. An I/O failure after durable intent returns retryable `WORKSPACE_RESULT_UNKNOWN`; recovery decides the original request rather than recording a false rejection. If a live checker fails before commit, the initial caller and replay receive the same recorded canonical outcome. Failure to record that outcome returns retryable `WORKSPACE_RESULT_UNKNOWN`, which instructs the caller to query or retry the original ID. Revision numbers are allocation order; ancestry comes from Git parents. `get` omits the repository's private path. `candidateFileRef` remains only `(workspace_id, revision, path)`.
+
+Registered Bot merge admission is implemented below. The benchmark connects the independent final-tree checker through the Mission submission coordinator. The internal `materialize` initialization helper rejects repository descendants, symlink traversal and nonempty targets, stages a complete tree and renames it over a still-empty target under a target lock. Normal Bot apply uses the separate active-project installation path below; caller-selected host `target_dir` routes reject. Standalone Service authority and complete stage acceptance are not established by these Workspace integrations.
+
+[MissionWorkspace](../../src/runtime/mission-workspace.js), [WorkspaceRepository](../../src/runtime/workspace-repository.js).
+
+## Public browsing and comparison
+
+A Mission has one Workspace repository within its configured storage root. Create serializes on the root lock, recovers any journaled repository it inspects, and rejects a different Workspace ID already owned by that Mission. Retrying the same Mission and Workspace ID returns the existing record. A Workspace ID already owned by another Mission rejects.
+
+An unbound Bot may use `workspace files --at R [path]`, `workspace read path --at R`, `workspace search query --at R`, `workspace diff --from R1 --to R2`, and `workspace history --all`. Bridge pins the configured Workspace ID and checks its Mission against the authenticated Bot; registry and Router also check Mission ownership for a registered Bot. Workspace paths use the same relative public-tree restrictions as saved revisions.
+
+Files returns lexical paths, directory entries and file sizes and hashes, with a default and maximum page size of 100. Search returns literal, case-sensitive path hits and UTF-8 text hits with line numbers and text excerpts, up to 100 by default and 500 per page. The response counts binary files skipped for text matching. Exact read returns bytes or UTF-8 according to its encoding field, with total size, hash and truncation. Public pair diff returns fixed from/to revisions, Git commit and source metadata, main reachability at the first page, and up to 100 paths with added/deleted/modified indications and before/after hash and size. It covers unmerged published revisions. Use `workspace read` for the contents of a change.
+
+The first request resolves each omitted or `main` revision under the repository lock. Files, search and pair diff return `next_cursor` when more matching rows exist. The cursor retains the selected revision(s), comparison main, position and a fingerprint of the operation, Workspace and normalized filters. Follow it with the same query or prefix and an omitted/`main` selector or the fixed revision already returned. Switching to a different Workspace, operation, query, prefix or explicit revision rejects. Main changes between requests do not change the selected snapshots. The cursor carries no permissions. Search currently traverses the bounded immutable tree and page responses do not imply an index.
+
+## 0.1. Current Bot project snapshot and public save
+
+Registered Bots invoke `swarm workspace status`, `diff` without a revision pair, or `save` through their protected Bridge. Status and diff inspect the current guest project; save takes no file/tree, parent, path, source or identity arguments. The Bridge resolves the capability first and derives Bot/Task/E/fence from the durable binding, then calls `Runtime.dispatchExecutionWorkspace`. Caller-supplied project trees are rejected. Standalone Registry/Router save requests cannot supply a trusted guest export and return `NOT_ALLOWED`. Public `view`, `history`, `files`, `read` and `search` remain available before take within the configured Mission Workspace. Registered Bots cannot use the legacy host Workspace read/write/diff, root sandbox or private Execution-progress APIs.
+
+Runtime requires the current durable Bot to be ACTIVE, its E to be RUNNING with the expected fence, its original live Session and Core binding, and an unexpired Bot/E deadline. The E's immutable `workspace_input` must reference Runtime's configured public Workspace. These checks run before and after the guest read and synchronously immediately before Git publication. The final guard and Git intent/publication execute under one SQLite `BEGIN IMMEDIATE` writer transaction, so a second Task Service process cannot accept finish between authorization and publication. SQLite writer contention returns `WORKSPACE_BUSY` with the original captured request retained for retry. A short per-E OS lock excludes concurrent status/diff/save and cleanup reconciliation across processes. A competing operation receives `WORKSPACE_BUSY`; the caller can retry.
+
+The manager sends an authenticated `/project/snapshot` to the original bound worker with E and fence. The worker shares its writer gate with project grant. It enumerates the Bot UID and current Pi PID, stops each process with SIGSTOP, and requires two stable passes in which all processes are stopped. This includes detached descendants and writers with pre-opened descriptors. The pause attempt is bounded to two seconds. With writers stopped, the project helper checks ACTIVE identity and traverses only `/workspace/project`, reading complete bytes. It refuses symlinks, hardlinks, special files, ambiguous decoded filenames (including invalid UTF-8 aliases), forbidden configuration/repository paths, files over 2 MiB and trees over 16 MiB. Traversal is limited to 10,000 entries per pass and a ten-second capture window. It compares two canonical manifests while processes remain stopped. The pause establishes the stable window; two hashes alone do not. Numeric filenames use the same lexical canonical encoding as the controller. A successful response contains full base64 files, hashes/sizes, total bytes and E/fence; deletion is represented by absence from the complete tree.
+
+The worker resumes stopped processes after export or a recoverable error. If closure began, it stops the Bot instead. A pause/window failure returns structured `WORKSPACE_BUSY` through the manager; no revision is claimed. HTTP timeout is 30 seconds, and losing the HTTP response does not authorize another snapshot for an already captured save. The manager rechecks the original live binding after the response. Runtime independently validates identity, canonical hash, strict base64, paths, sizes and entry bounds before accepting the capture.
+
+`ExecutionWorkspace` owns two private SQLite tables, separate from public Git storage. `execution_workspace_state` retains immutable initial revision plus last saved revision, baseline manifest, parents, applied/conflict metadata and a CAS version. The latter two lists derive from the actual initial revision and subsequent explicit apply operations. A pending-apply flag distinguishes unsaved source/parent changes even if file bytes happen to be unchanged. Status compares a fresh authenticated snapshot against the saved baseline, returning dirty, changed paths and actual lineage. Current-E diff adds before/after hash and size metadata for each changed path; it is not a textual patch or public revision-pair diff.
+
+`execution_workspace_requests` keys saves by E/request ID with a payload fingerprint and phases `capturing`, `captured`, `done` or `failed`. A completed request replays its exact result without rereading a changed guest tree. Reuse for a different operation/payload rejects. Before capture, the request is recorded as capturing; after a validated export its exact bytes, parents, source and E-state version are persisted as captured. Git save receives this immutable input with a derived internal request ID. Only after Git's result is durable does one SQLite transaction advance E's saved head/manifest/parents and store the completed receipt. The initial input never changes; consecutive saves parent the last saved revision and leave main unchanged.
+
+If capture fails, the first response and replay return the same terminal error, asking for a new request ID. Busy retains its typed error; a lost capture owner becomes `WORKSPACE_REQUEST_ABORTED`. A captured request with a known definitive rejection is failed, allowing later operations to proceed. Unknown Git/I/O outcomes retain the exact capture and block unsafe replacement until receipt reconciliation. Cleanup, hard stop, fencing and registered-Bot lease expiry stop resources, then reconcile before the E terminal transition or Task/Core release. Reconciliation failure retains ownership for cleanup retry. Lease expiry records an EXPIRED stop intent in the same SQLite transaction that rechecks the lease cutoff; a renewal committed before that check leaves the Bot active. A persisted expiry intent cannot be changed by a later cleanup retry. A committed Git receipt can be acknowledged even after E closes; that path can only read/reconcile an existing save. If no receipt exists, the ordinary active authorization is still required for publication, so closure first prevents a new revision. SQL CAS failure leaves reconciliation required; other post-Git SQL acknowledgement failures return retryable `WORKSPACE_RESULT_UNKNOWN` while retaining the capture. Neither retry nor cleanup substitutes newer guest bytes for a captured request.
+
+`save --resolved` checks the recorded conflict alternatives and generated markers as described below. Ordinary save preserves unresolved conflict metadata. Save receipts include canonical content hash, Git tree, changed paths and captured Task/E/Bot/fence source, identically on replay. Public history defaults to revisions reachable from its pinned main; `--all` includes unmerged revisions. It exposes source, changed paths, parents and reachability, supports `--task`, `--execution` and `--path` filters, and returns 25 items by default (1–100 configurable) plus a cursor. The cursor pins the history horizon, main and filters so later saves or merges do not shift a page. History does not emit complete file manifests, and retains at most eight metadata trees while traversing. The returned page is bounded even when filtered ancestor scanning requires more reads; raw capture contents remain in the private database only while reconciliation is pending and are removed when the request finishes. This path does not save Pi sessions, runtime logs, credentials or the private host support directory. The CLI/Bridge/Runtime/Git tests cover binary content, numeric filenames, deletions, parent continuity, replay and close/commit races. The network-disabled container probe additionally exercises actual UID process pausing, a detached writer with a pre-opened descriptor, rejection/recovery and worker cleanup; it is not a provider/model experiment.
+
+[Coordinator](../../src/runtime/execution-workspace.js), [worker](../../scripts/opensandbox-agent-worker.mjs), [project helper](../../scripts/sandbox-project.mjs), [integration tests](../../test/bot-runtime.test.js), [container probe](../../test-support/sandbox-project-probe.mjs).
+
+## 0.2. Same-E apply, held installation and conflict resolution
+
+`swarm workspace apply --from R/main` is an execution-bound Bridge operation with no caller-selected Workspace, host directory, source identity or file map. Runtime takes the same E operation lock used by save. A stable guest capture must match the last saved revision and have no unsaved apply metadata; otherwise the request returns `WORKSPACE_BUSY` and asks the Bot to save first. Under the public repository lock, `planApply` pins a requested `main` to its actual revision, checks Git ancestry and computes a three-way merge of the saved base and incoming revision. The immutable plan records exact files, before/after hashes, parents, changed paths and conflict provenance in the private request capture. It neither publishes a revision nor changes main.
+
+Git planning uses the structured NUL-delimited `merge-tree` output, including stage objects and typed multi-path messages. It explicitly reads attributes from the current input commit with `--attr-source`, so conflict marker widths and binary classifications come from that pinned project. This requires a controller Git with that option and modern `merge-tree --write-tree`; unsupported Git fails planning rather than silently changing semantics. Files remain raw bytes when imported/saved, with filters disabled. See [Git merge-tree](https://git-scm.com/docs/git-merge-tree) and [Git attribute source](https://git-scm.com/docs/git#Documentation/git.txt---attr-sourcetree-ish).
+
+An already-included source does not add a spurious parent or mark an unchanged tree dirty. A new input records both saved base and incoming revision as actual parents, even if the content merge is empty. Text conflicts retain Git's editable marker-bearing ordinary files. A collision-safe `workspace-conflicts-<id>` project directory contains exact base/current/incoming stage bytes, including binary and rename/delete alternatives, plus a short Runtime-authored README. Conflict records retain involved paths, stages, types/messages, original labels and exact generated marker lines. This is ordinary project content, not a private candidate store. If all alternatives exceed existing tree byte bounds, planning rejects before installation. Full README text and its actual read condition are catalogued in [prompt guidance](prompts/06-tool-return-guidance.md).
+
+Before sending installation, one SQLite transaction rechecks the current E and records the request as `installing`. Task Service checks this same table inside its finish transaction: `installing` or `installed` returns retryable `WORKSPACE_BUSY`, with no accepted finish side effects. A finish accepted before this intent prevents installation; an installation intent accepted first must settle before normal finish. Hard-stop intent still rejects new contributions immediately and proceeds to physical process termination; `CLOSING` is a durable intent, not a claim that a networked worker has already stopped. The owner/Core are not released until physical stop and reconciliation finish.
+
+The worker's authenticated `/project/install` shares the writer gate and all-Bot-process pause with snapshot. Payload size is bounded to 32 MiB; decoded files retain the snapshot file/tree bounds. It checks its active E/fence, request fingerprint, exact current preimage hash and file/directory collisions. A fixed immutable helper runs as the Bot UID with a clean environment, no capabilities and no model-controlled program text. Its bounded JSON input travels over stdin, avoiding per-argument operating-system size limits. This permits `/proc` inspection without granting `CAP_SYS_PTRACE`: it verifies paused PIDs, cwd, open descriptors and mapped files. A replaced file pinned by an FD or mapping, a cwd inside a replaced directory, or an inconclusive inspection returns `WORKSPACE_BUSY`. Both literal and kernel-decorated ` (deleted)` names are checked. Unchanged file/directory inodes stay usable; `/workspace/project` itself is never renamed.
+
+`ProjectInstaller` persists a root-only write-ahead capture and receipt outside the project before mutation. The immutable capture contains complete preimage/target bytes, file modes and original directory topology/ownership/modes; the receipt contains identity, hashes and phase. It changes only affected files, removes directories only where a target file requires that replacement, fsyncs changed files/parents and verifies the complete target. The write pass is bounded to 15 seconds. Failure restores changed bytes and modes plus directory topology, including empty directories, then checks both tree hash and topology before allowing resume. If restoration cannot be verified, writers remain held and the Bot stops; a partial tree is never reported as a completed apply. Tests inject partial and complete write failures in both file-to-directory and directory-to-file transitions.
+
+The large target/preimage capture is written once in root-private storage; subsequent phase transitions atomically replace only a small receipt. Committed or verified failed operations delete the capture. Two 16 MiB trees are exercised in a 64 MiB project/control filesystem; exhaustion before mutation rejects without claiming installation.
+
+A verified install is durably recorded as `installed`, but the worker keeps all Bot writers paused. It returns metadata only. Runtime acknowledges the exact plan in one SQL transaction: applied-source history, parents, conflicts, pending-apply flag, E state CAS version and a draft operation result are committed together. It then sends `/project/install-confirm` with the same request and target hash. The worker records and directory-fsyncs `committed` before releasing writers. If rename succeeds but directory fsync fails, the held receipt still queries as `installed`; the same confirmation retries persistence before clearing the hold. Runtime finally marks the request done and clears its private capture. Confirmation and an actual worker `beginClose` are ordered in the worker event loop: close first forbids resume; confirm first may complete an already-authorized operation, but subsequent hard-stop completion still requires killing every Bot process and revoking the project before releasing the Task/Core. Normal accepted Task finish cannot fall into this window because of the durable install interlock.
+
+Install/result/confirm HTTP requests have five-second timeouts. An unknown response preserves the same plan; `/project/install-result` is a receipt query that does not inspect or reinstall a newer guest tree. Runtime schedules one-second reconciliation retries independently of the paused CLI, up to eleven scheduled attempts, then attempts a hard stop. The worker also stops the Bot if a held install lacks acknowledgement for 30 seconds. These are separate controls; HTTP timeout does not itself resume a held Bot. A stopped worker returns its private install receipt summaries with `/stop`; the manager retains them through Sandbox deletion and drops that cache only after E reconciliation/release. If confirmation committed but its response was lost, closed-E reconciliation preserves the original result while this manager retains the stop receipt. This cache is process-local: losing the stop response or crashing the controller after Sandbox deletion can leave the final worker outcome unknown; the interrupted operation exposes that uncertainty rather than claiming a verified rollback. Cross-process durable stop receipt recovery remains a stage gap. Otherwise closure records a terminal interrupted operation with the known installation phase and any already-recorded lineage; it does not claim a verified rollback or a surviving worktree. It never confirms/resumes a closed E.
+
+Existing changed files retain their private mode bits on successful installation; newly introduced files default to 0644. Public snapshots and Git imports currently version bytes and paths as regular files, not executable bits; modes do not survive transfer to a fresh E. This is a current limitation, not complete Git mode preservation.
+
+Successful apply does not save or complete the Task. Status keeps the immutable take revision, last saved revision and applied source records separate; unsaved apply changes remain dirty until save. The next save uses the recorded real parents and conflict metadata. Public revision export and new-E initial input retain unresolved conflicts; changing Bots does not clear them. Merge rejects an unresolved saved revision. `save --resolved` requires removal of the recorded alternatives directory and actual generated conflict markers at the involved ordinary paths, including non-default marker widths and separators left after removing the labeled borders. Marker provenance records the preexisting count of identical ordinary lines, so legitimate separators already present in the input are allowed. Deleting a conflicted path or selecting one binary side is permitted as an explicit Bot resolution. Clearing this tracked state is an acknowledgement of the Bot's decision, not a scientific PASS; a required check remains independent.
+
+[Plan and public metadata](../../src/runtime/mission-workspace.js), [E coordinator](../../src/runtime/execution-workspace.js), [worker installer](../../scripts/project-install.mjs), [process inspection](../../scripts/project-processes.mjs), [Git cases](../../test/workspace-apply.test.js), [rollback probe](../../test-support/project-install-rollback-probe.mjs).
+
+## 0.3. Registered Bot merge admission and final publication
+
+`swarm workspace merge --from R --request-id ID` accepts only a fixed public revision. Bridge supplies the current Bot/Task/E/fence and invokes `Runtime.mergeExecutionWorkspace`; callers supply no Workspace, main version, source identity, checker or verdict. Standalone Registry/Router merge calls reject because they lack this Runtime authorization. The original request is namespaced by E; its persisted Workspace fingerprint includes the chosen source, trusted contribution identity and check policy. The repository pins current main under its writer lock, then uses actual ancestry to construct the final combined tree. A changed main at final commit produces `MAIN_MOVED`, without changing the saved source or current E worktree.
+
+Before planning and again at final publication, Runtime requires a live bound Bot/E and rejects merge after a durable soft-closeout reminder or handoff deadline. Successful publication, including a no-op receipt, runs the final guard and synchronous Git journal/ref/index/receipt writes inside the Task Service SQLite write transaction. A different process cannot accept finish between that guard and main publication. Finish or freeze accepted during checking prevents later main advancement. Every newly acquired freeze increments a durable epoch (legacy records start at zero); final publication compares the pinned epoch even if that submission has already released its freeze. Repeating the same active freeze does not increment it. The shared `publishWorkspace` helper protects both save and merge. Lock contention is `WORKSPACE_BUSY`; if Git publication completed but SQLite confirmation fails, `WORKSPACE_RESULT_UNKNOWN` requires the original ID, whose durable Git receipt resolves the result. Rollback failure never masks the original error. The source metadata records the actual Mission/Task/E/Bot/fence and `operation: merge`; history can attribute the merged revision to its contributor.
+
+Runtime accepts an operator-configured `workspaceMergeChecker` with fixed `checker_ref`, `checker_version`, `environment_ref`, positive `timeoutMs` and `check(plan)` callback. The callback receives the combined file tree, actual Git tree, fixed source/main revisions, trusted source identity, an AbortSignal and deadline. The configured checker must satisfy the Mission's persisted `merge_required_check` and any Task delivery check explicitly required for main. Missing or incompatible required checker configuration rejects with `SERVICE_NOT_READY`. Mission final acceptance and ordinary Task completion checks are evaluated at their respective submission and finish boundaries. With no explicitly configured merge check, the merge still verifies authorization, file integrity, conflict state, freeze and main CAS, and its check receipt is null. The Putnam runner sets no additional semantic merge policy, so independent files can advance main while the theorem is still unresolved. Mission submit keeps the locked final theorem checker. An already-included source produces a no-op without checker work.
+
+Checking runs outside the repository and SQL publication locks. Its deadline is the smaller of the configured timeout and remaining pre-closeout execution time. Timeout rejects before signaling cancellation, and the result is time-checked again, so an abort handler resolving a late PASS cannot win the race. The adapter contract requires its promise to settle only after owned resources have stopped. Timeout returns durable `SERVICE_TIMEOUT` on the first call and same-ID replay, requests abort, and retains the Runtime-wide checker slot until that promise settles; new IDs cannot accumulate checks behind an uncooperative checker. Shutdown also requests abort. This process-local slot is not restart reconciliation or evidence that an external resource stopped; a production adapter still needs durable operation/cleanup integration. The returned public check summary contains verdict, bounded CheckResult ID and diagnostic (256/2048 characters), checked Git tree, checker identity and policy. A failed verdict returns these with pinned source/main revisions so the Bot can repair a specific tree. Final authorization/CAS remains independent of that verdict. A success advances only public main; the Bot synchronizes its own worktree with explicit apply/save.
+
+Focused CLI/Git tests cover disjoint contributions in the actual checked combined tree, replay/no-op without duplicate checking, unchanged private worktree, contribution history, Task-only/conflicting/absent check policies, failed-check feedback, freeze-then-release, cross-process lifecycle exclusion, post-Git SQLite failure, retained timeout occupancy, and finish/soft-closeout/late-PASS races. This is controlled checker integration evidence, not validation of a benchmark theorem or whole-stage acceptance.
+
 ## 1. What a Workspace represents
 
 Every `Runtime.startExecution` or `bindAgentExecution` prepares a private
 Workspace before starting the durable Execution. A Task need not expose file or
 Sandbox tools to its Agent for that support directory to exist: capability
 selection and materialization are separate decisions. Independent participants
-in the shared Mission Task receive independent writable directories. Neither
-the shared Mission nor a Core has one mutable project checkout that all
-Executions write.
+in the compatibility Task path receive independent writable directories. In
+the Issue #122 path Mission has no owner and the persistent Mission Workspace
+repository is separate from each Execution directory; no Core or Bot receives
+a shared mutable checkout.
 
 The default location is `<workspaceRoot>/<execution_id>`. The generated path
 segment must match `[A-Za-z0-9][A-Za-z0-9._-]*`; an explicitly provided Workspace
@@ -96,77 +183,18 @@ file; only `.pi/settings.json` has an explicit internal-output exemption.
 Required-input validation uses the supplied file manifest; it is not a
 continuous monitor that prevents later shell writes.
 
-## 3. Clean creation, existing binding and resume
+## 3. Clean creation and existing binding
 
-Preparation has three branches:
+For a registered Bot with a public Mission Workspace, the benchmark passes a trusted `missionWorkspaceId` into Runtime. During take preparation, `exportRevision` resolves the fixed Task `workspace.revision`, or main when omitted, once under the repository recovery barrier and exports every file plus immutable revision/commit/tree/content and per-file hashes. Runtime verifies the Mission and rejects a conflicting Task Workspace ID. A concurrent main advance does not change the selected input. If no trusted Workspace ID is configured, an explicit Task Workspace ID is required and its Mission is still checked.
 
-1. **The Execution already has a Workspace.** Read its current metadata using
-   Execution ID and fence. `restoreWorkspace` does not check out a saved Git
-   commit or roll live files back. Ensure Pi settings if absent.
-2. **The claim selected resume with a source path.** Clone the selected source
-   revision into a new writable path and return it. This branch does not call
-   the Pi-settings helper; settings normally arrive through the cloned files,
-   but an older source lacking them does not gain them at this step.
-3. **Clean claim.** Create support directories/files, optional formal source,
-   validate required inputs, initialize Git, record revision 1, then ensure Pi
-   settings.
+The host Execution directory receives those exact project files, including binary data and the existing `.gitignore`/README. This path adds no Task README, runtime manifest, workspace manifest or `.pi` settings to project files. Host bookkeeping stays in private `.swarm` and `.git`. Creation holds a target lock, builds a sibling staging directory, verifies every file against the public manifest, imports raw Git blobs without ignore/attribute conversion, and publishes the completed directory by rename. Exact matching retries reuse its original input; a different input/fence or a nonempty partial target is rejected, never overlaid. The initial local Git tree therefore matches the public Git tree. The OpenSandbox transfer receives the trusted manifest, copies exactly those paths using base64 chunks of at most 65,536 characters into a per-file guest temporary path, verifies the complete received file with SHA-256, then renames it into place. This stays below Linux single-argument limits even for the 2 MiB maximum file. Failed copies best-effort remove their temporary file and fail preparation; `.environment` and other allowed names are not silently omitted by the legacy traversal filter. It rejects source symlinks and bytes differing from the pinned manifest. This per-file verification is not yet a writer-pause or protected-directory guarantee. The initial public input identity is recorded in both private Workspace metadata and `executions.workspace_input_json` before activation, and cannot be changed by later local revision saves. Reports include this initial public reference separately from the older local integer revision/commit fields. This establishes complete input selection/transport and audit identity; protected guest preparation/grant follows the flow below; same-E apply uses the captured guest transaction and confirmation protocol described above.
 
-The initial README contains the goal, expected output, acceptance-condition
-JSON and Task instructions. The workspace manifest contains Task ID/root/type,
-goal, output, original and normalized Workspace contract, immutable selection
-manifest and input Material snapshot. A nonempty `workspace.formal_source`
-is written at `problem_file` or `problem.lean`; other arbitrary required
-inputs are not fetched or materialized automatically by this method.
+Unregistered compatibility Executions retain the older formal-source and generated-manifest creation path. A take cannot select another Execution's private revision, source path, checkpoint or directory.
 
-Git initialization creates branch `main`, stages all nonignored contents and
-makes an allowed-empty initial commit with author
-`SwarmEnv Runtime <runtime@swarmenv.invalid>`. The generated ignore list is
-`.swarm/`, `.env`, `.env.*`, `*.sqlite`, `*.sqlite3`, `*.db`,
-`experiments/`, `logs/`, `node_modules/`, `.lake/`, `dist/`, `build/`.
-It is a Git exclusion list, not a read or write policy. `.gitignore` itself is
-tracked by Git but is not inserted into the initial file metadata index.
+If an Execution already has its own Workspace, Runtime reads its current metadata under the current fence and continues from that binding. Matching retries are idempotent; a different owner, fence, revision, or content hash is rejected. Workspace saves advance exactly one revision and persist the file manifest and content hash before the corresponding Execution reference is recorded.
 
-The initial `content_hash` is SHA-256 of stable JSON
-`{revision: 1, files: fileManifest}`; each indexed file has its own byte hash
-and byte length. Current metadata is written through temporary-file rename,
-then revision metadata and indexed file copies are saved. Existing matching
-Execution/fence metadata makes creation idempotent; a different owner/fence is
-rejected. These writes are not one filesystem/database transaction.
+The initial README, manifest, ignore rules, Pi settings and runtime manifest are generated by Runtime. These writes may create successive revisions, so revision one is the materialization boundary rather than a promise about the first model turn.
 
-Pi project settings enable compaction and retries, with `maxRetries: 15`,
-`baseDelayMs: 2000`, `maxAgentDelayMs: 60000`. Adding settings creates another
-Workspace revision. Runtime-created Session launch then saves the adapter's
-actual manifest into `runtime-manifest.json`, creating another revision.
-Thus “new Workspace” does not imply the first Agent turn sees revision 1.
-[Runtime preparation and launch](../../src/runtime/runtime.js).
-
-### Resume is an independent checkout
-
-The claim records `workspace_selection`, source Execution/path/revision and
-input snapshot. The Task Service verifies a source Execution belongs to the
-same Task when that source ID is supplied. For the shared Mission Task,
-default resume selects a terminal predecessor, not another live participant's
-working directory. See the exact claim rules in [03](03-mission-task.md).
-
-WorkspaceManager requires a source inside its root and a selected revision
-between 1 and the source's current revision. With a recorded Git commit it
-runs `git clone --no-local` followed by detached checkout of that commit.
-If an indexed support file is absent from the commit, it can be supplied from
-that pinned revision's file snapshot. The source Workspace is not reassigned.
-Inherited revision metadata/snapshots before the selected tip are copied to
-the target and rewritten for the target's owner/path/fence.
-
-For pre-Git Workspaces, the manager copies the selected revision snapshot. Only
-a request for the source's latest revision may fall back to live source files
-when its snapshot is unavailable; historical missing content is rejected.
-A Git repository is then initialized for that legacy restore.
-
-The target starts at the selected revision number and content hash, rather
-than resetting to revision 1. It records `parent_workspace_ref` and
-`parent_workspace_revision`, keeps the selected commit, clears checkpoint
-reference/hash and release state, and records new Task/input/runtime lineage.
-A source checkpoint is therefore evidence to interpret alongside the selected
-revision, not a checkpoint file automatically re-owned by the successor.
 
 ## 4. File operations, revisions and their precise limits
 
@@ -221,13 +249,7 @@ separate steps with separately observable failure.
 
 ### Direct Judge reads of a Workspace file
 
-`swarmenv_judge_submit_candidate` requires a relative `path` in the current
-Execution Workspace. Its optional `workspace_revision` and `content_hash`
-are expected-value guards. Bridge reads through `Runtime.readWorkspaceFile`,
-rejects mismatched supplied values as `STALE_VERSION`, and sends the returned
-content, revision and hash with an authenticated Task/Execution/path
-attestation to Judge. This call does not save a revision, export an old Git
-commit, require a Candidate Material, or route submission through Task Service.
+For a registered Bot, `swarm judge check --revision R --path P` exports exactly R from the public Mission Workspace and checks the complete file. Runtime revalidates its E before and after export, and rejects path traversal, foreign Workspaces, binary content, missing files and moving `main` references. The response exposes the actual public revision, file hash and Git commit/tree. Unsaved guest changes and the host support Workspace do not affect this input. The historical unregistered Bridge route still reads its current private Workspace with optional stale-value guards. Neither path saves files or creates a Material implicitly.
 Judge uses its own configured fixture/checker and persists the resulting check;
 Task completion is separate. See [the direct submission contract](04-services.md#the-as-built-submission-route)
 and [ADR 0019](../adr/0019-direct-judge-workspace-submission.md).
@@ -308,16 +330,18 @@ Two boundaries matter when interpreting a saved revision:
   Sandbox stop in generic handoff does not precede this path's snapshot.
   Compaction checkpointing also does not stop shell jobs. A running background
   writer can therefore overlap those saves.
-- Semantic `task_handoff`/`task_block` validate and optionally link their
+- Semantic `execution_progress`/`task_finish(outcome=blocked)` validate and optionally link their
   referenced handoff Material, then release ownership. They do not
   automatically create a fresh disk checkpoint. The Bridge's
-  `task_register(take: true)` performs a separate progress checkpoint before
+  `task_create followed by task_take` performs a separate progress checkpoint before
   the atomic Task switch, and post-switch Runtime binding is another step.
+
+Runtime's common physical-release path retains a `CLOSING` Core and resource binding when Session, provider deletion, or Workspace release fails. It reconciles an older Workspace fence against the durable Execution fence before retrying release. Concurrent provider deletes share one pending deletion; HTTP 202 requires a follow-up GET confirming absence before the resource record can be discarded. [02](02-execution.md) distinguishes this retry behavior from the durable closing protocol and Bot-initiated finish ordering.
 
 ## 6. Fence, release, restart and retained state
 
 A normal Workspace write requires the same Execution ID, current fence and no
-`released_at`. `releaseWorkspace` records a release timestamp without
+`released_at`. `releaseWorkspace` verifies owner/fence and idempotently retries both metadata writes, retaining the original release timestamp after a partial write failure. It records a release timestamp without
 deleting data. `reopenWorkspace` permits that same owner and fence to clear
 the release flag when a waiting Execution wakes. `fenceWorkspace` requires
 the current owner/fence and a strictly larger integer new fence, records it and
@@ -336,7 +360,7 @@ the in-memory Core, advances the Workspace and durable Execution fences via
 recovery, and starts another Session on the existing Workspace. Recovery
 increments session/attempt generations and recalculates attempt timing while
 retaining any global run deadline. That path does not create a new independent
-checkout. A Task handoff followed by another claim does.
+checkout. A Task handoff followed by another take does.
 [Execution restart and recovery](02-execution.md).
 
 Feedback also survives through durable Task/notification records rather than
@@ -372,7 +396,7 @@ when available and uses a valid measured value.
 | At/above max after successful compaction, known ratio at/above 0.8 | Rotate with `compaction_window_threshold`. |
 | At/above max, later `turn_end` with ratio at/above threshold | Rotate. |
 | At/above max, later `turn_end` with unknown usage | Log `continue_until_boundary`; this particular event does not immediately rotate. |
-| Successful compaction below both stopping conditions | Continue the same identity. |
+| Successful compaction below both stopping conditions | Continue the current Bot only while its Execution remains active; after a lifecycle boundary a fresh Bot reads public state. |
 | Failed/nonaborted compaction without result | Enter the session-failure/recovery path described in [02](02-execution.md). |
 
 When available, `estimatedTokensAfter` /
@@ -394,7 +418,7 @@ tokens after. No Workspace or a no-longer-active Execution makes the save
 all later saves or stranding the lifecycle.
 
 With reminders enabled and no closing/rotation in progress, Runtime queues a
-follow-up prompt asking the same identity to write substantive
+follow-up prompt asking the current Bot to write substantive
 `execution_progress`; the prompt has a 30-second timeout. Compaction metadata
 alone is not converted into invented findings. The full reminder and exact
 send path appear in [08](08-prompts.md).
@@ -410,114 +434,19 @@ therefore an identity/Session replacement, not a Task handoff.
 
 ## 8. Sandbox provisioning and execution
 
-The optional `ContainerSandboxManager` owns one Docker container per bound
-Execution. Runtime requires an active, nonclosing `CREATED/RUNNING`
-Execution with a materialized Workspace before `sandbox_exec` or job
-operations. Absence of the manager is `SERVICE_UNAVAILABLE`.
-The manager is not a general host-shell tool.
-[SandboxManager](../../src/runtime/sandbox-manager.js),
-[Runtime Sandbox binding](../../src/runtime/runtime.js).
+The benchmark uses `OpenSandboxManager` for every Agent Execution. Runtime creates one provider sandbox with the fixed worker entrypoint, authenticates the worker with a per-Execution token, copies bounded Workspace files into guest `/workspace`, and deletes the sandbox at release. `sandbox_exec` and `sandbox_job` are bound Runtime capabilities; they cannot address host paths or an unbound Execution. The worker event stream is sequence-based; retryable SSE failures switch to bounded history polling and replay deduplication. Controller restart reconciliation never revives an old Pi or shell: a sandbox whose worker token cannot be recovered is recorded as unrecoverable, quarantined/deleted, and replaced by a fresh Bot/Execution that resumes from public Workspace and Material state.
 
-| Setting | Manager default / requirement |
-| --- | --- |
-| Docker command | `docker` |
-| Image | Required; optional expected image digest |
-| Workspace root | Required |
-| Extra read-only roots | Empty list |
-| Network | `none`; accepts `bridge`, `host` or a named network when configured |
-| User | `1000:1000` |
-| Memory / CPUs / process limit | `2g` / `2` / `256` |
-| Temporary filesystem | `/tmp`, size `256m`, `rw,noexec,nosuid,nodev` |
-| Command timeout | 120,000 ms; per-call positive finite value up to 3,600,000 ms |
-| Output limit | `maxOutputBytes = 1,048,576` (implementation qualification below) |
-| Command size | At most 32 Ki characters |
-| Image preflight | Local `docker image inspect`, default 20 seconds; no image pull |
-
-Preflight records image ID/time and optionally compares the configured digest.
-Provisioning checks the Workspace is a directory within the configured root,
-removes a previous deterministic container name best effort, then runs a
-detached idle shell. It labels Execution/fence, mounts the whole Workspace
-read/write at `/workspace`, uses the configured user/resources/network,
-drops all capabilities, enables `no-new-privileges` and makes the container
-root filesystem read-only. Optional read-only mounts must originate within an
-approved root and target `/inputs/`; the normal Runtime ensure call does
-not supply extra mounts. Docker startup has a 60-second bound.
-
-An already cached container record is returned without comparing a newly
-requested binding version. Correct lifecycle therefore depends on Runtime
-stopping the old container on release/recovery before rebinding; the cache is
-not itself a fence-version validator. Container/job records are in memory,
-not durable rows.
-
-### Command and job results
-
-A command is either a nonempty bounded shell string or a nonempty array of
-strings. String commands run through `sh -lc`; argv elements are shell-quoted.
-Default working directory is `/workspace`. The current check is a lexical
-`startsWith('/workspace')` plus rejection of `..` segments; it does not
-canonicalize the path or require a slash boundary, so a path such as
-`/workspace-other` passes this specific validation if it exists.
-
-The environment contains `HOME=/tmp`, the host process's PATH (or a fallback
-PATH), plus explicit validated entries. It does not copy the entire host
-environment. Keys must be uppercase environment identifiers; values must be
-strings at most 4096 characters. Names matching token/secret/password/API-key/
-credential/private-key patterns are rejected, except the safe names
-`PATH`, `HOME`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR`. This is a key-name
-filter, not inspection of every value for secret content.
-
-Each command receives a UUID job ID. A `setsid` wrapper writes a process
-group ID under `/tmp/swarmenv-jobs` and writes the child's exit status into a
-job-specific `.exit` file.
-
-| Operation | Result / timing |
-| --- | --- |
-| Foreground exec | Execution/job/binding IDs, exit code, `timed_out`, `truncated`, duration, stdout and stderr. On timeout the Docker client is killed, then process-group cancellation is attempted. |
-| Background exec | Starts `docker exec --detach`; bounds the launch call by the lesser of requested timeout and 30 seconds, then returns a running job view. |
-| Job status | For running/cancelled jobs reads the `.exit` file, marks completed when an integer appears and returns IDs, state, exit code, times, cancellation reason and command. |
-| Cancel | Attempts TERM on the recorded process group, marks cancelled and records reason/time; does not wait for a proven process exit. |
-| Release/stop | Cancels recorded running jobs, attempts `docker rm -f`, removes the in-memory container entry and logs stop. |
-
-There are three material limits to the current command implementation:
-
-1. The wrapper writes the child's exit status to `.exit` but does not end
-   with `exit $code`. Foreground `exit_code` comes from the Docker wrapper
-   process and can be zero even when the child failed. Background status reads
-   the stored child code. A completed foreground job is returned from memory,
-   so querying it does not automatically correct that wrapper status.
-2. A background call's timeout bounds launch, not the detached job's lifetime.
-   There is no per-job timer after launch; the job runs until it exits, is
-   cancelled or its Execution/container is stopped. Background stdout/stderr
-   are not returned by the job-status view.
-3. Although named `maxOutputBytes`, output collection compares JavaScript
-   string lengths and applies the limit separately to stdout and stderr.
-   It is not one exact byte budget shared by both streams.
-
-### What the Sandbox does and does not enforce
-
-The Docker options restrict the container environment and mounted host scope.
-They do not apply Workspace file contracts to shell filesystem operations.
-Because the entire Workspace is mounted writable, shell code can modify a
-required input, Git metadata or Runtime's `.swarm` files within that mount;
-the file API's read-only-input and metadata-path checks do not intercept those
-writes. Git ignore rules likewise do not prevent access. Deployment must
-provide a compatible image/user and writable mount permissions; this code does
-not repair ownership automatically.
-
-Runtime logs Sandbox-stop errors and continues durable release. The manager
-also suppresses several Docker removal/cancel errors. Consequently, “Execution
-fenced” is durable authority evidence, whereas “container physically gone”
-requires its own observed cleanup evidence.
+[OpenSandbox manager](../../src/runtime/opensandbox-manager.js), [OpenSandbox Agent adapter](../../src/agent/opensandbox-agent-adapter.js), and [Runtime Sandbox binding](../../src/runtime/runtime.js) define the provider boundary. The shipped image is the only trusted worker entrypoint; ordinary callers cannot provide a custom entrypoint.
 
 ## 9. Evidence needed to assess continuity
 
-A continuity claim should join the records below, rather than rely on the
+A continuity take should join the records below, rather than rely on the
 presence of the word “resume”, “checkpoint” or “handoff” in a log:
 
 | Question | Evidence |
 | --- | --- |
 | What did the predecessor actually save? | Save result/status/loss, durable Workspace and checkpoint pointers, Git commit, selected revision metadata and relevant file bytes. |
-| What did the successor start from? | Claim `workspace_selection`, source Execution/path/revision, target parent lineage and target commit. |
+| What did the successor start from? | Take `workspace_selection`, source Execution/path/revision, target parent lineage and target commit. |
 | Did old authority end? | Execution terminal/fencing transition, operation/CAS outcome, Core release and physical cleanup logs. |
 | Was substantive work preserved? | Linked progress/handoff Material and its provenance; a token-count checkpoint alone is insufficient. |
 | Was feedback carried forward? | Notification recipient/delivery/read/handling rows and consumption/response links, not only a prompt-delivery event. |
@@ -527,11 +456,9 @@ presence of the word “resume”, “checkpoint” or “handoff” in a log:
 Relevant focused tests are
 [Workspace contracts](../../test/workspace-contract.test.js),
 [Workspace contract](../../test/workspace-contract.test.js),
-[progress and bounded save failure](../../test/phase1-progress.test.js),
-[feedback, compaction and rotation](../../test/task-handoff-notifications.test.js), and
 [SandboxManager](../../test/sandbox-manager.test.js). They cover public seams
 and use controlled/mock collaborators in several paths; their existence is
-not a claim that this documentation change reran a live Docker/provider run.
+not a take that this documentation change reran a live Docker/provider run.
 For persisted field definitions, see [storage reference](11-storage-reference.md).
 
 ## Source ownership
@@ -543,3 +470,33 @@ For persisted field definitions, see [storage reference](11-storage-reference.md
 | [sandbox-manager.js](../../src/runtime/sandbox-manager.js) | Container/image setup, mount/env/command validation, foreground/background jobs, cancellation and cleanup. |
 | [runtime.js](../../src/runtime/runtime.js) | Preparation order, file/Sandbox façade, progress/handoff persistence, compaction queue, rotation and lifecycle cleanup. |
 | [task-service.js](../../src/task/task-service.js) | Durable Workspace/checkpoint references, resume selection, Execution fences and successor authority. |
+
+
+## Protected guest preparation and grant
+
+Registered Bot transfers target `/workspace/project`; trusted unregistered diagnostic transport retains `/workspace`, but cannot start a research Agent. Runtime refuses Bot preparation without a pinned public snapshot. The worker starts the project empty and unwritable by UID 10001. `/project/prepare` accepts Execution/fence plus the trusted manifest, rejects unsafe paths, symlinks and special files, enforces 2 MiB/file and 16 MiB/tree bounds, reads and hashes every actual file, and compares the complete set before recording PREPARED. Identical prepare replay is allowed while PREPARED; changed binding/input and preparation after ACTIVE/closing are rejected. Directories/files remain root-owned 0555/0444. `/project/grant` matches the exact prepared Execution/fence, first pauses all Bot processes and closes root traversal, changes ordinary files/directories to UID 10001 with 0644/0755, opens the root last, and records ACTIVE only if no closing flag arrived. The worker resumes paused writers only after successful completion; partial grant failure closes and stops them. The parent directory remains root-owned so writable scratch or the project itself cannot replace it. Runtime owns the authority to call grant only after Task Service activation; the worker bearer never goes to Pi.
+
+Guest scratch, expanded model catalog, Session history and system prompt now live under `/workspace/runtime`. Worker stop kills the dedicated UID's full process population before revoking project directory permissions; changing modes alone is not used as proof that open writer descriptors are stopped. The network-disabled local container probe is `node test-support/sandbox-project-probe.mjs`. It validates this image/worker behavior without a model call, including a detached writer that retains a pre-opened descriptor during grant. `--grant-failure` injects a guest filesystem fault to verify fail-closed stopping and root ownership restoration. This is distinct from live OpenSandbox management-plane isolation or stable save/apply export acceptance.
+
+### Explicit delivery and Material use
+
+A Task proposal may declare `completion_contract.workspace_delivery` with one to twenty distinct
+project paths, optional `require_main`, and optionally the precise checker reference, version and
+environment in `check`. A `task finish --outcome done --workspace-revision R` resolves that fixed
+revision from trusted Workspace metadata during the Task lifecycle write. The revision must be
+published by the current Task Execution under its current fence, contain the declared paths,
+and carry no unresolved conflicts. When `require_main` is true, the revision must be produced
+by a successful main merge. A requested final-tree check must be the recorded PASS for that
+merge's exact tree. For a saved, unmerged delivery, a declared check applies to one declared
+path and the caller supplies `--check-result-id`; Task checks the actual file hash, commit,
+tree, and checker/environment before accepting finish. The accepted intent records the
+verified delivery metadata. Tasks with no such declaration retain their existing completion
+contract. Missing delivery blocks only the done outcome.
+
+To link a Material's actual use to a file tree, record `material consume --action workspace`
+with a concrete impact, then supply the relevant IDs to `workspace save --material-ids`.
+Runtime resolves them to this Execution's exact consumption records before completing the
+stable capture. The published revision source records the immutable content identity and
+recorded impact. A merge records the source revision’s explicit uses, while parents preserve broader lineage. A later correction does not edit the revision. Query potentially affected
+direct revisions with `workspace history --all --material-id ID`, and inspect Material
+corrections and the affected files before deciding whether they require revalidation.
