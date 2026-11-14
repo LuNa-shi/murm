@@ -68,17 +68,26 @@ function rejectSecrets(value, path = 'payload') {
 export class ContextService {
   constructor(database = ':memory:', { trustedActorPrefixes = TRUSTED_ACTOR_PREFIXES, taskService = null, logger = null } = {}) {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
-    this.db.exec(CONTEXT_SCHEMA_SQL);
-    const materialColumns = new Set(this.db.prepare('PRAGMA table_info(materials)').all().map((column) => column.name));
-    if (!materialColumns.has('role')) {
-      this.db.exec("ALTER TABLE materials ADD COLUMN role TEXT NOT NULL DEFAULT 'experience'");
-    }
-    if (!materialColumns.has('mission_id')) {
-      this.db.exec('ALTER TABLE materials ADD COLUMN mission_id TEXT');
-    }
-    if (!materialColumns.has('evidence_json')) {
-      this.db.exec("ALTER TABLE materials ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '[]'");
-    }
+    const busyTimeout = this.db.prepare('PRAGMA busy_timeout').get().timeout;
+    this.db.exec(`PRAGMA busy_timeout = ${Math.max(busyTimeout, 1000)}`);
+    try {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        this.db.exec(CONTEXT_SCHEMA_SQL);
+        const materialColumns = new Set(this.db.prepare('PRAGMA table_info(materials)').all().map((column) => column.name));
+        if (!materialColumns.has('role')) {
+          this.db.exec("ALTER TABLE materials ADD COLUMN role TEXT NOT NULL DEFAULT 'experience'");
+        }
+        if (!materialColumns.has('mission_id')) {
+          this.db.exec('ALTER TABLE materials ADD COLUMN mission_id TEXT');
+        }
+        if (!materialColumns.has('evidence_json')) {
+          this.db.exec("ALTER TABLE materials ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '[]'");
+        }
+        if (!materialColumns.has('producer_bot_id')) this.db.exec('ALTER TABLE materials ADD COLUMN producer_bot_id TEXT');
+        this.db.exec('COMMIT');
+      } catch (error) { try { this.db.exec('ROLLBACK'); } catch {} throw error; }
+    } finally { this.db.exec(`PRAGMA busy_timeout = ${busyTimeout}`); }
     this.trustedActorPrefixes = trustedActorPrefixes;
     this.taskService = taskService;
     this.logger = logger;
@@ -126,20 +135,25 @@ export class ContextService {
       : payload;
     this.logger?.append({ event: 'dispatch.start', service: 'context', operation: normalizedOperation, requested_operation: operation, envelope });
     try {
+      if (typeof this.taskService?.materialScope !== 'function') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Material requests require Task-owned Mission authority');
       const executionWrite = ['publish_material', 'consume_materials', 'dispute_material', 'supersede_material', 'unsupersede_material'].includes(normalizedOperation) && envelope?.execution_id !== null;
       validateEnvelope(envelope, { executionWrite });
+      const read = ['read_materials', 'search_materials', 'list_material_relations', 'get_material', 'list_material_consumptions'].includes(normalizedOperation);
+      const scopedPayload = read ? this.#scopeRead(payload, envelope) : normalizedPayload;
       let replayed = false;
       const result = normalizedOperation === 'read_materials' || normalizedOperation === 'search_materials'
-        ? this.#readMaterials(payload)
+        ? this.#readMaterials(scopedPayload)
         : normalizedOperation === 'list_material_relations'
-          ? this.listMaterialRelations(payload)
+          ? this.listMaterialRelations(scopedPayload)
         : normalizedOperation === 'get_material'
-          ? { material: this.getMaterial(requireString(payload.material_id ?? payload.materialId, 'material_id')) }
+          ? { material: this.getMaterial(requireString(scopedPayload.material_id ?? scopedPayload.materialId, 'material_id')) }
         : normalizedOperation === 'list_material_consumptions'
-          ? this.listMaterialConsumptions(payload)
+          ? this.listMaterialConsumptions(scopedPayload)
         : this.#transaction(() => {
-        const fingerprint = operationPayload(normalizedOperation, normalizedPayload, envelope);
-        const replay = this.#replay(envelope.operation_id, fingerprint);
+        const originalFingerprint = operationPayload(normalizedOperation, normalizedPayload, envelope);
+        const fingerprint = operationPayload(normalizedOperation, normalizedPayload,
+          this.taskService?.getBot?.(envelope.actor_ref) ? { ...envelope, state_version: null } : envelope);
+        const replay = this.#replay(envelope.operation_id, fingerprint, originalFingerprint);
         if (replay) {
           replayed = true;
           return replay;
@@ -187,11 +201,14 @@ export class ContextService {
     return this.db.prepare(`SELECT operation_id, material_id, reader_task, reader_execution, action, action_ref, created_at
       FROM material_consumptions
       WHERE (? IS NULL OR material_id = ?)
+        AND (? IS NULL OR material_id IN (SELECT material_id FROM materials WHERE mission_id = ?))
         AND (? IS NULL OR reader_task = ?)
         AND (? IS NULL OR reader_execution = ?)
         AND (? IS NULL OR action = ?)
       ORDER BY created_at, operation_id, material_id`)
-      .all(materialId, materialId, readerTask, readerTask, readerExecution, readerExecution, action, action)
+      .all(materialId, materialId, filters.mission_id ?? null, filters.mission_id ?? null, readerTask, readerTask, readerExecution, readerExecution, action, action)
+      .filter(row => !filters.mission_id || this.taskService?.materialOriginMission?.(row.reader_task, row.reader_execution) === filters.mission_id)
+      .filter(row => !filters.mission_id || this.#materialInScope(this.getMaterial(row.material_id), filters))
       .map((row) => ({
         operation_id: row.operation_id,
         material_id: row.material_id,
@@ -208,9 +225,14 @@ export class ContextService {
     const includeInactive = filters.include_inactive === true || filters.includeInactive === true;
     return this.db.prepare(`SELECT * FROM material_relations
       WHERE (? IS NULL OR material_id = ? OR replacement_material_id = ?)
+        AND (? IS NULL OR material_id IN (SELECT material_id FROM materials WHERE mission_id = ?))
+        AND (? IS NULL OR replacement_material_id IS NULL OR replacement_material_id IN (SELECT material_id FROM materials WHERE mission_id = ?))
         AND (? = 1 OR active = 1)
       ORDER BY created_at, relation_id`)
-      .all(materialId, materialId, materialId, includeInactive ? 1 : 0)
+      .all(materialId, materialId, materialId, filters.mission_id ?? null, filters.mission_id ?? null, filters.mission_id ?? null, filters.mission_id ?? null, includeInactive ? 1 : 0)
+      .filter(row => !filters.mission_id || this.taskService?.materialOriginMission?.(row.source_task, row.source_execution, row.actor_ref) === filters.mission_id)
+      .filter(row => !filters.mission_id || (this.#materialInScope(this.getMaterial(row.material_id), filters) &&
+        (!row.replacement_material_id || this.#materialInScope(this.getMaterial(row.replacement_material_id), filters))))
       .map((row) => this.#relationView(row));
   }
 
@@ -261,8 +283,13 @@ export class ContextService {
       .all(materialId, materialId, kind, kind, scope, scope, sourceTask, sourceTask, sourceExecution, sourceExecution,
         role, role, missionId, missionId, query, query, query);
     if (!includeHistory) {
-      const hidden = new Set(this.db.prepare(`SELECT material_id FROM material_relations
-        WHERE relation_kind = 'supersede' AND active = 1`).all().map((row) => row.material_id));
+      const hidden = new Set(this.db.prepare(`SELECT relation.* FROM material_relations relation
+        JOIN materials origin ON origin.material_id = relation.material_id
+        JOIN materials replacement ON replacement.material_id = relation.replacement_material_id
+        WHERE relation.relation_kind = 'supersede' AND relation.active = 1 AND replacement.mission_id IS origin.mission_id`).all()
+        .filter(row => !missionId || this.taskService?.materialOriginMission?.(row.source_task, row.source_execution, row.actor_ref) === missionId)
+        .filter(row => !missionId || this.#materialInScope(this.getMaterial(row.replacement_material_id), { mission_id: missionId }))
+        .map(row => row.material_id));
       rows = rows.filter((row) => !hidden.has(row.material_id));
     }
     if (taskId !== null && this.taskService && explicitSourceTask === null) {
@@ -272,11 +299,11 @@ export class ContextService {
     // Mission is represented by Task Service rather than duplicated into
     // Context rows.  The optional Task filter above joins producer and
     // consumer links without giving Context Service Task authority.
-    return rows.map(cloneMaterial);
+    return rows.filter(row => !missionId || this.#materialInScope(row, { mission_id: missionId })).map(cloneMaterial);
   }
 
   #consumeMaterials(payload, envelope) {
-    this.#assertExecutionFence(envelope);
+    const scope = this.#assertExecutionFence(envelope);
     if (!envelope.task_id || !envelope.execution_id) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'consume_materials requires a bound Task and Execution');
     }
@@ -299,6 +326,7 @@ export class ContextService {
     if (missing.length > 0) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Material IDs: ${missing.join(',')}`);
     }
+    for (const materialId of uniqueMaterialIds) this.#assertMaterialScope(this.getMaterial(materialId), scope);
     const createdAt = now();
     const statement = this.db.prepare(`INSERT OR IGNORE INTO material_consumptions
       (operation_id, material_id, reader_task, reader_execution, action, action_ref, created_at)
@@ -316,7 +344,7 @@ export class ContextService {
   }
 
   #publishMaterial(payload, envelope) {
-    this.#assertExecutionFence(envelope);
+    const caller = this.#assertExecutionFence(envelope);
     rejectSecrets(payload);
     for (const field of ['kind', 'scope']) requireString(payload[field], field);
     const role = payload.role ?? 'experience';
@@ -332,10 +360,12 @@ export class ContextService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'evidence must contain claim-scoped {claim, explanation} records');
     }
     const provenance = payload.provenance ? { ...payload.provenance } : { actor_ref: envelope.actor_ref };
+    provenance.actor_ref = envelope.actor_ref;
+    if (caller) Object.assign(provenance, { mission_id: caller.mission_id, task_id: caller.task_id, execution_id: caller.execution_id, bot_id: caller.bot_id });
     provenance.role ??= role;
-    const boundMissionId = envelope.task_id && typeof this.taskService?.getTask === 'function'
+    const boundMissionId = caller?.mission_id ?? (envelope.task_id && typeof this.taskService?.getTask === 'function'
       ? this.taskService.getTask(envelope.task_id)?.mission_id ?? null
-      : null;
+      : null);
     const requestedMissionId = payload.mission_id ?? payload.missionId ?? null;
     if (boundMissionId && requestedMissionId && requestedMissionId !== boundMissionId) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material mission_id must match the current Task Mission', {
@@ -380,9 +410,10 @@ export class ContextService {
     if (supersedes) {
       const previous = this.getMaterial(supersedes);
       if (!previous) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `superseded material does not exist: ${supersedes}`);
+      this.#assertMaterialScope(previous, caller);
       version = previous.version + 1;
     }
-    const trusted = this.trustedActorPrefixes.some((prefix) => envelope.actor_ref.startsWith(prefix));
+    const trusted = !caller?.bot_id && this.trustedActorPrefixes.some((prefix) => envelope.actor_ref.startsWith(prefix));
     const requestedEvidence = payload.evidence_state ?? 'proposed';
     const evidenceState = trusted ? requestedEvidence : ['checked', 'accepted'].includes(requestedEvidence) ? 'proposed' : requestedEvidence;
     const material = {
@@ -398,6 +429,7 @@ export class ContextService {
       version,
       source_task: envelope.task_id,
       source_execution: envelope.execution_id,
+      producer_bot_id: caller?.bot_id ?? null,
       provenance,
       evidence,
       supersedes,
@@ -405,17 +437,18 @@ export class ContextService {
     };
     const existing = this.getMaterial(materialId);
     if (existing) {
-      if (existing.content_hash !== contentHash || existing.kind !== material.kind || existing.role !== material.role || existing.mission_id !== material.mission_id || existing.scope !== material.scope || existing.supersedes !== material.supersedes) {
+      if (existing.content_hash !== contentHash || existing.kind !== material.kind || existing.role !== material.role || existing.mission_id !== material.mission_id || existing.scope !== material.scope || existing.supersedes !== material.supersedes ||
+          existing.source_task !== material.source_task || existing.source_execution !== material.source_execution || (existing.producer_bot_id ?? null) !== material.producer_bot_id) {
         throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'material_id already contains a different immutable record');
       }
       return { material: existing };
     }
     this.db.prepare(`INSERT INTO materials (
       material_id, kind, role, mission_id, scope, evidence_state, content_ref, content_hash, content_json, version,
-      source_task, source_execution, provenance_json, supersedes, evidence_json, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      source_task, source_execution, producer_bot_id, provenance_json, supersedes, evidence_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(material.material_id, material.kind, material.role, material.mission_id, material.scope, material.evidence_state, material.content_ref, material.content_hash,
-        json(material.content), material.version, material.source_task, material.source_execution, json(material.provenance), material.supersedes, json(material.evidence), material.created_at);
+        json(material.content), material.version, material.source_task, material.source_execution, material.producer_bot_id, json(material.provenance), material.supersedes, json(material.evidence), material.created_at);
     if (supersedes) {
       this.#insertRelation({ materialId: supersedes, replacementMaterialId: materialId, relationKind: 'supersede', envelope, reason: payload.supersede_reason ?? null });
     }
@@ -463,10 +496,11 @@ export class ContextService {
   }
 
   #disputeMaterial(payload, envelope) {
-    this.#assertExecutionFence(envelope);
+    const scope = this.#assertExecutionFence(envelope);
     const materialId = requireString(payload.material_id ?? payload.materialId, 'material_id');
     const material = this.getMaterial(materialId);
     if (!material) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Material: ${materialId}`);
+    this.#assertMaterialScope(material, scope);
     const relation = this.#insertRelation({
       materialId,
       relationKind: 'dispute',
@@ -477,19 +511,23 @@ export class ContextService {
   }
 
   #supersedeMaterial(payload, envelope) {
-    this.#assertExecutionFence(envelope);
+    const scope = this.#assertExecutionFence(envelope);
     const materialId = requireString(payload.material_id ?? payload.materialId, 'material_id');
     const replacementMaterialId = requireString(payload.replacement_material_id ?? payload.replacementMaterialId, 'replacement_material_id');
     if (materialId === replacementMaterialId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'a Material cannot supersede itself');
     if (!this.getMaterial(materialId) || !this.getMaterial(replacementMaterialId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'supersede relation requires both Materials');
+    this.#assertMaterialScope(this.getMaterial(materialId), scope);
+    this.#assertMaterialScope(this.getMaterial(replacementMaterialId), scope);
     const relation = this.#insertRelation({ materialId, replacementMaterialId, relationKind: 'supersede', envelope, reason: payload.reason ?? null });
     return { material: this.getMaterial(materialId), replacement: this.getMaterial(replacementMaterialId), relation: this.#relationView(relation) };
   }
 
   #unsupersedeMaterial(payload, envelope) {
-    this.#assertExecutionFence(envelope);
+    const scope = this.#assertExecutionFence(envelope);
     const materialId = requireString(payload.material_id ?? payload.materialId, 'material_id');
     const replacementMaterialId = requireString(payload.replacement_material_id ?? payload.replacementMaterialId, 'replacement_material_id');
+    this.#assertMaterialScope(this.getMaterial(materialId), scope);
+    this.#assertMaterialScope(this.getMaterial(replacementMaterialId), scope);
     const current = this.db.prepare(`SELECT * FROM material_relations
       WHERE material_id = ? AND replacement_material_id = ? AND relation_kind = 'supersede' AND active = 1
       ORDER BY version DESC LIMIT 1`).get(materialId, replacementMaterialId);
@@ -506,22 +544,35 @@ export class ContextService {
   }
 
   #assertExecutionFence(envelope) {
-    this.taskService?.assertBotDeadline?.(envelope.actor_ref);
-    if (!this.taskService || envelope.execution_id === null) return;
-    const execution = this.taskService.getExecution(envelope.execution_id);
-    if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material source execution does not exist');
-    if (execution.task_id !== envelope.task_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material source task does not match execution');
-    if (execution.spec_version !== envelope.spec_version) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'material source spec_version is stale');
-    if (execution.fencing_version !== envelope.fencing_version) throw new SwarmEnvError(ERROR_CODES.FENCED, 'material source fencing_version is stale', { expected: execution.fencing_version });
-    if (execution.state_version !== envelope.state_version) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'material source state_version is stale', { expected: execution.state_version });
-    if (!['CREATED', 'RUNNING'].includes(execution.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material contributions require an active Execution');
-    if (execution.owner_ref !== envelope.actor_ref) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material contributions require the Execution owner');
+    if (typeof this.taskService?.materialScope !== 'function') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Material writes require Task-owned Mission authority');
+    const scope = this.taskService.materialScope(envelope, { write: true });
+    if (scope.bot_id && this.taskService.db !== this.db) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Registered Material writes require the shared lifecycle commit boundary');
+    return scope;
   }
 
-  #replay(operationId, fingerprint) {
+  #assertMaterialScope(material, scope) {
+    if (material && scope && !this.#materialInScope(material, scope)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material or its recorded producer belongs to another Mission');
+  }
+
+  #materialInScope(material, scope) {
+    if (!material || material.mission_id !== scope.mission_id) return false;
+    if (!material.source_task && !material.source_execution) return true;
+    return this.taskService?.materialOriginMission?.(material.source_task, material.source_execution, material.producer_bot_id) === scope.mission_id;
+  }
+
+  #scopeRead(payload, envelope) {
+    const scope = this.taskService.materialScope(envelope);
+    const requested = payload.mission_id ?? payload.missionId;
+    if (requested && requested !== scope.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material query belongs to another Mission');
+    const materialId = payload.material_id ?? payload.materialId;
+    if (materialId) this.#assertMaterialScope(this.getMaterial(materialId), scope);
+    return { ...payload, mission_id: scope.mission_id };
+  }
+
+  #replay(operationId, fingerprint, originalFingerprint = null) {
     const row = this.db.prepare('SELECT fingerprint, result_json FROM operations WHERE operation_id = ?').get(operationId);
     if (!row) return null;
-    if (row.fingerprint !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'operation_id was reused with another payload');
+    if (row.fingerprint !== fingerprint && row.fingerprint !== originalFingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'operation_id was reused with another payload');
     return parse(row.result_json);
   }
 

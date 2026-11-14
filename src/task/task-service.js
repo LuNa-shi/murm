@@ -314,6 +314,7 @@ export class TaskService {
     ensureJudgeSchema(this.db);
     this.#backfillStructureRecords();
     this.contextService = contextService;
+    if (contextService?.db === this.db && !contextService.taskService) contextService.taskService = this;
     this.checkerHealthReader = null;
     this.setCheckerHealthReader(checkerHealthReader);
     this.logger = logger;
@@ -698,6 +699,41 @@ export class TaskService {
   getBot(botId) {
     const row = this.db.prepare('SELECT * FROM bots WHERE bot_id = ?').get(requireString(botId, 'bot_id'));
     return row ? { ...row } : null;
+  }
+
+  /** Synchronous Context authority seam; reads only Task-owned rows. */
+  materialScope(envelope, { write = false } = {}) {
+    validateEnvelope(envelope);
+    const bot = this.getBot(envelope.actor_ref);
+    this.assertBotDeadline(envelope.actor_ref);
+    if (bot) {
+      if (!['UNBOUND', 'ACTIVE'].includes(bot.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot cannot access Materials in its current state');
+      if (bot.state === 'UNBOUND') {
+        if (write || envelope.execution_id || envelope.task_id || bot.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material contributions require a bound active Bot');
+        if (Date.parse(bot.selection_deadline) <= Date.now()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot discovery deadline elapsed');
+        return { mission_id: bot.mission_id, bot_id: bot.bot_id, task_id: null, execution_id: null };
+      }
+      if (!envelope.execution_id || bot.execution_id !== envelope.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material request does not match the Bot binding');
+    }
+    if (write) validateEnvelope(envelope, { executionWrite: true });
+    const execution = write ? this.#executionForWrite(envelope) : this.getExecution(envelope.execution_id);
+    if (!execution || execution.owner_ref !== envelope.actor_ref || execution.task_id !== envelope.task_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material request requires its actual Execution owner');
+    if (write && !['CREATED', 'RUNNING'].includes(execution.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material contributions require an active Execution');
+    if (bot && execution.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material contributions require a running Execution');
+    if (bot && execution.lease_expires_at && Date.parse(execution.lease_expires_at) <= Date.now()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material Execution lease has expired');
+    if (bot) {
+      const task = this.db.prepare('SELECT state, spec_version FROM tasks WHERE task_id = ?').get(execution.task_id);
+      if (!task || task.state !== 'RUNNING' || task.spec_version !== execution.spec_version) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material Execution no longer matches its current Task');
+    }
+    const missionId = this.#taskMissionId(execution.task_id);
+    if (!missionId || (bot && bot.mission_id !== missionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material binding has no matching Mission');
+    return { mission_id: missionId, bot_id: bot?.bot_id ?? null, task_id: execution.task_id, execution_id: execution.execution_id };
+  }
+
+  /** Historical provenance lookup; terminal E records remain readable. */
+  materialOriginMission(taskId, executionId, actorRef = null) {
+    const execution = this.getExecution(executionId);
+    return execution?.task_id === taskId && (!actorRef || execution.owner_ref === actorRef) ? this.#taskMissionId(taskId) : null;
   }
 
   // Read the durable clock boundary on the synchronous write path. A delayed
@@ -1123,7 +1159,17 @@ export class TaskService {
         AND (? IS NULL OR role = ?)
         AND (? IS NULL OR material_id = ?)
       ORDER BY created_at, link_id`).all(taskId, role, role, materialId, materialId);
-    return rows.map((row) => rowToMaterialLink(row, this.contextService?.getMaterial(row.material_id) ?? null));
+    return rows.map(row => this.#scopedMaterialLink(row, this.#taskMissionId(taskId))).filter(Boolean);
+  }
+
+  #scopedMaterialLink(row, missionId) {
+    const material = this.contextService?.getMaterial(row.material_id);
+    if (!material || material.mission_id !== missionId || this.#taskMissionId(row.task_id) !== missionId ||
+        this.#taskMissionId(row.producer_task_id) !== missionId ||
+        this.materialOriginMission(row.producer_task_id, row.producer_execution_id, material.producer_bot_id) !== missionId ||
+        this.materialOriginMission(row.created_by_task_id, row.created_by_execution_id) !== missionId ||
+        material.source_task !== row.producer_task_id || material.source_execution !== row.producer_execution_id) return null;
+    return rowToMaterialLink(row, material);
   }
 
   /** Context Service asks Task Service for link IDs without reading its table. */
@@ -1409,10 +1455,12 @@ export class TaskService {
   }
 
   #linkMaterial(payload, envelope) {
+    const caller = this.materialScope(envelope, { write: true });
     const materialId = requireString(payload.material_id ?? payload.materialId, 'material_id');
     if (!this.contextService) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Context Service is required for Task Material links');
     const material = this.contextService.getMaterial(materialId);
     if (!material) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Material: ${materialId}`);
+    if (material.mission_id !== caller.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material belongs to another Mission');
     const role = payload.role ?? material.role ?? 'experience';
     if (!['input', 'response', 'handoff', 'experience'].includes(role)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'role must be input, response, handoff, or experience');
@@ -1439,6 +1487,9 @@ export class TaskService {
       (role === 'handoff' ? producerTaskId : ['input', 'experience'].includes(role) ? currentTaskId : null);
     const targetTask = this.getTask(requireString(targetTaskId, 'task_id'));
     if (!targetTask) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown receiving Task: ${targetTaskId}`);
+    if (caller.mission_id !== this.#taskMissionId(targetTaskId) || caller.mission_id !== this.#taskMissionId(producerTaskId)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material links must stay within the caller Mission');
+    }
     if (this.#taskMissionId(targetTaskId) !== this.#taskMissionId(producerTaskId)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'linked Tasks must belong to the same Mission');
     }
@@ -1525,7 +1576,7 @@ export class TaskService {
     const producedResponseLinks = this.db.prepare(`SELECT * FROM task_material_links
       WHERE producer_task_id = ? AND role = 'response'
       ORDER BY created_at, link_id`).all(task.task_id)
-      .map((row) => rowToMaterialLink(row, this.contextService?.getMaterial(row.material_id) ?? null));
+      .map(row => this.#scopedMaterialLink(row, task.mission_id)).filter(Boolean);
     const completionLinks = [...linked, ...producedResponseLinks].filter((link, index, links) =>
       links.findIndex((candidate) => candidate.link_id === link.link_id) === index);
     const linkedIds = new Set(completionLinks.map((link) => link.material_id));
@@ -3081,7 +3132,7 @@ export class TaskService {
       const responseLinks = this.db.prepare(`SELECT * FROM task_material_links
         WHERE producer_task_id = ? AND role = 'response'
         ORDER BY created_at, link_id`).all(task.task_id)
-        .map((row) => rowToMaterialLink(row, this.contextService?.getMaterial(row.material_id) ?? null));
+        .map(row => this.#scopedMaterialLink(row, task.mission_id)).filter(Boolean);
       for (const requirement of requirements) {
         const targetTaskId = typeof requirement === 'string' ? requirement : requirement?.receiving_task_id ?? requirement?.task_id ?? null;
         const matches = responseLinks.filter((link) => !targetTaskId || link.receiving_task_id === targetTaskId);

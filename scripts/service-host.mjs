@@ -10,6 +10,7 @@ import { TaskService } from '../src/task/task-service.js';
 import { createServiceHost } from '../src/sdk/service-host.js';
 import { builtInServiceManifest, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { createHttpDomainProxy } from '../src/sdk/http-domain-proxy.js';
+import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
 
 const SERVICE_IDS = new Set(['task', 'context', 'judge', 'catalog']);
 const serviceId = process.env.SWARMENV_SERVICE_ID ?? '';
@@ -95,13 +96,16 @@ function dispatch(capability, input, envelope, role = null) {
   }
   const service = serviceId === 'task' ? taskService : serviceId === 'context' ? contextService : judgeService;
   if (!service) throw new Error(`isolated ${serviceId} Service is not available in this process`);
+  if (serviceId === 'context' && typeof contextService.taskService?.materialScope !== 'function') {
+    throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Context requires an authenticated Mission authority and lifecycle commit boundary');
+  }
   return service.dispatch(capability.operation, input, envelope);
 }
 
 const serviceHost = createServiceHost({
   manifest,
   handler: ({ capability, input, envelope, role }) => dispatch(capability, input, envelope, role),
-  readiness: async () => true,
+  readiness: async () => serviceId !== 'context' || typeof contextService.taskService?.materialScope === 'function',
   token: process.env.SWARMENV_SERVICE_TOKEN ?? null,
   host,
   advertiseHost,

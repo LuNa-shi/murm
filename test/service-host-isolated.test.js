@@ -120,7 +120,7 @@ test('service-host isolated mode owns one service database and HTTP manifest', a
   }
 });
 
-test('isolated Task, Context, Judge and Catalog hosts are independently reachable and Context state survives restart', async () => {
+test('isolated hosts remain discoverable while Context fails closed without Mission authority, including after restart', async () => {
   const root = await mkdtemp('/tmp/swarmenv-isolated-services-');
   const ports = { task: await freePort(), context: await freePort(), judge: await freePort(), catalog: await freePort() };
   const urls = Object.fromEntries(Object.entries(ports).map(([id, port]) => [id, `http://127.0.0.1:${port}`]));
@@ -145,16 +145,18 @@ test('isolated Task, Context, Judge and Catalog hosts are independently reachabl
     const inputPath = join(root, 'material.json');
     await writeFile(inputPath, JSON.stringify({ kind: 'fact', scope: 'mission', role: 'experience', content: { marker: 'persisted-material' }, evidence_state: 'observed' }));
     const published = await runCli(['material', 'publish', '--input', inputPath, '--json'], cliEnv);
-    assert.equal(published.code, 0);
-    const materialId = JSON.parse(published.stdout).material.material_id;
+    assert.notEqual(published.code, 0);
+    assert.match(published.stderr, /SERVICE_NOT_READY|authenticated Mission authority/);
+    const ready = await fetch(`${urls.context}/readyz`);
+    assert.equal(ready.ok, false);
 
     const context = services.find((service) => service.manifest.service_id === 'context');
     await stopServiceProcess(context.child);
-    const restarted = await startService('context', ports.context, root);
+    const restarted = await startService('context', ports.context, root, { task: urls.task });
     services.push(restarted);
-    const read = await runCli(['material', 'get', '--material-id', materialId, '--json'], cliEnv);
-    assert.equal(read.code, 0);
-    assert.equal(JSON.parse(read.stdout).material.content.marker, 'persisted-material');
+    const read = await runCli(['material', 'get', '--material-id', 'arbitrary-public-id', '--json'], cliEnv);
+    assert.notEqual(read.code, 0);
+    assert.match(read.stderr, /SERVICE_NOT_READY|authenticated Mission authority/);
   } finally {
     await Promise.all(services.map(({ child }) => stopServiceProcess(child)));
     await rm(root, { recursive: true, force: true });

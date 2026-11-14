@@ -15,7 +15,7 @@ import { makeEnvelope } from '../src/protocol/envelope.js';
 
 async function fixture(t, options = {}) {
   const service = new TaskService();
-  const context = new ContextService(service.db);
+  const context = new ContextService(service.db, { taskService: service });
   service.createMission({ mission_id: 'mission:auth', goal: 'Inspect authenticated Bot lifecycle' }, makeEnvelope({ actorRef: 'operator:test' }));
   const registry = createBuiltinServiceRegistry({ taskService: service, contextService: context, missionWorkspace: options.runtime?.missionWorkspace });
   const bridge = new ServicesBridge({ taskService: service, contextService: context, runtime: {}, coreId: 'core-1', registry, ...options });
@@ -159,11 +159,21 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
   await assert.rejects(run('task', 'take', task.task_id, '--request-id', 'cli-take', '--take-key', 'changed'), /another payload/);
   await assert.rejects(run('task', 'view', task.task_id, '--actor-ref', 'operator:fake'), /identity overrides/);
   await assert.rejects(run('workspace', 'read', 'notes.txt', '--workspace-id', 'W-foreign'), /configured Mission Workspace/);
+  const materialPath = join(root, 'material.json');
+  await writeFile(materialPath, JSON.stringify({ role: 'experience', content: 'A public research note with its assumptions' }));
+  const published = await run('material', 'publish', '--input', materialPath, '--request-id', 'cli-material');
+  assert.equal(published.material.producer_bot_id, 'bot:cli-flow');
+  const current = service.getExecution(taken.execution.execution_id);
+  service.dispatch('heartbeat', {}, makeEnvelope({ actorRef: current.owner_ref, taskId: current.task_id, executionId: current.execution_id,
+    specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version }));
+  assert.deepEqual(await run('material', 'publish', '--input', materialPath, '--request-id', 'cli-material'), published);
+  assert.equal((await run('material', 'view', published.material.material_id)).material.content, published.material.content);
   await writeFile(proposalPath, JSON.stringify({ summary: 'Inspect the replacement responsibility and its boundary', expected_output: 'A new bounded result', acceptance_conditions: ['Result is readable'] }));
   const replacement = (await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-replacement')).task;
   const finished = await run('task', 'finish', '--outcome', 'cancelled', '--reason', 'responsibility replaced', '--replacement', replacement.task_id, '--request-id', 'cli-finish');
   assert.equal(service.getExecutionFinish(taken.execution.execution_id).replacement_task_id, replacement.task_id);
   assert.equal(finished.execution.state, 'CLOSING');
+  await assert.rejects(run('material', 'publish', '--input', materialPath, '--request-id', 'after-finish'));
 });
 
 test('Bot public discovery refuses foreign Mission/Task identities and does not drop equals in flags', async t => {

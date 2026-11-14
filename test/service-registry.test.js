@@ -212,7 +212,7 @@ test('Registry refuses a remote provider whose advertised manifest differs from 
   }
 });
 
-test('built-in Task, Context, Judge, and Catalog providers can all be replaced by independent HTTP hosts', async () => {
+test('independent HTTP providers support discovery while an unconfigured Context authority rejects data access', async () => {
   const domain = [
     { id: 'task', token: 'task-token' },
     { id: 'context', token: 'context-token' },
@@ -268,11 +268,10 @@ test('built-in Task, Context, Judge, and Catalog providers can all be replaced b
       envelope: makeEnvelope({ operationId: 'remote-task-list', actorRef: 'agent:bound' }), role: 'bound',
     });
     assert.ok(Array.isArray(taskResult));
-    const contextResult = await registry.invoke({
+    await assert.rejects(registry.invoke({
       serviceId: 'context', capability: 'read_materials', input: {},
       envelope: makeEnvelope({ operationId: 'remote-context-read', actorRef: 'agent:bound', taskId: 'task-1', executionId: 'exec-1' }), role: 'bound',
-    });
-    assert.ok(Array.isArray(contextResult.materials ?? contextResult));
+    }), { code: 'SERVICE_NOT_READY' });
     const judgeResult = await registry.invoke({
       serviceId: 'judge', capability: 'get_check_result', input: { check_result_id: 'missing-check' },
       envelope: makeEnvelope({ operationId: 'remote-judge-read', actorRef: 'agent:bound', taskId: 'task-1', executionId: 'exec-1' }), role: 'bound',

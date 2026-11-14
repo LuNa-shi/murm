@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS materials (
   version INTEGER NOT NULL,
   source_task TEXT,
   source_execution TEXT,
+  producer_bot_id TEXT,
   provenance_json TEXT NOT NULL,
   supersedes TEXT REFERENCES materials(material_id),
   evidence_json TEXT NOT NULL DEFAULT '[]',

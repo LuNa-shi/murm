@@ -575,7 +575,7 @@ async function workspaceFixture(t, options = {}) {
   const f = await fixture(t, options.runtimeOptions ?? {}, options);
   let session;
   let env;
-  const context = new ContextService(f.service.db);
+  const context = new ContextService(f.service.db, { taskService: f.service });
   const bridge = new ServicesBridge({ taskService: f.service, contextService: context, runtime: f.runtime, coreId: 'core-1',
     registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace, judgeService: options.judgeService }),
     onTake: result => f.runtime.bindAgentExecution(result.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }) });

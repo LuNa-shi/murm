@@ -488,7 +488,7 @@ CREATE TABLE IF NOT EXISTS wake_keys (
 
 ### Context database
 
-Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `9d62453ff43ade0decb6aff14ee6eb71a4038d747023b25296362f77874be360`.
+Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `f7af6355a0313194bb5b318fc15d8259b76555d0f72ff350bf85612c0dca923a`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -514,6 +514,7 @@ CREATE TABLE IF NOT EXISTS materials (
   version INTEGER NOT NULL,
   source_task TEXT,
   source_execution TEXT,
+  producer_bot_id TEXT,
   provenance_json TEXT NOT NULL,
   supersedes TEXT REFERENCES materials(material_id),
   evidence_json TEXT NOT NULL DEFAULT '[]',
@@ -682,7 +683,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `cdd05580040b8f2894544b1c977da8c038dbb8c807d4db90159c6e7507fa2324`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `528357d2424f1a5dbb42a6bce92c885df4a8ae0c667a638aee7dd17b5c9d5d06`.
 
 #### executions_active_core
 

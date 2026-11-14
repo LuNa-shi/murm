@@ -10,7 +10,12 @@ import {
 } from '../src/index.js';
 
 function fixture() {
-  const context = new ContextService(new DatabaseSync(':memory:'));
+  // These content-storage unit tests use a controlled authority double. The
+  // actual Bot/E lifecycle and Mission checks live in material-authority.test.
+  const context = new ContextService(new DatabaseSync(':memory:'), { taskService: {
+    materialScope: envelope => ({ mission_id: 'mission:content-fixture', task_id: envelope.task_id, execution_id: envelope.execution_id, bot_id: null }),
+    materialOriginMission: () => 'mission:content-fixture',
+  } });
   const router = new ServicesRouter({ contextService: context, taskService: { dispatch() { throw new Error('task service not needed'); } } });
   const sdk = new ServicesSDK(router, { actorRef: 'agent:one', taskId: 'task-1', executionId: 'execution-1', specVersion: 1, stateVersion: 0, fencingVersion: 1 });
   return { context, sdk };
@@ -77,7 +82,8 @@ test('Context Service records durable Material consumption and requires it for r
 
 test('Context Service wakes Task reconciliation after a committed Material dependency fact', () => {
   const events = [];
-  const taskService = { notifyDependencyEvent: (event) => events.push(event) };
+  const taskService = { notifyDependencyEvent: (event) => events.push(event),
+    materialScope: () => ({ mission_id: 'mission:notification-fixture', task_id: null, execution_id: null, bot_id: null }) };
   const context = new ContextService(new DatabaseSync(':memory:'), { taskService });
   const sdk = new ServicesSDK(context, { actorRef: 'agent:one' });
   const input = { kind: 'fact', scope: 'proof_relevant', content: { observation: 'ready' } };

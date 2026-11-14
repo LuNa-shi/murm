@@ -105,7 +105,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "cdd05580040b8f2894544b1c977da8c038dbb8c807d4db90159c6e7507fa2324"
+      "sha256": "528357d2424f1a5dbb42a6bce92c885df4a8ae0c667a638aee7dd17b5c9d5d06"
     },
     {
       "path": "src/task/task-types.js",
@@ -320,13 +320,13 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1503,
+      "line": 1554,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1714,
+      "line": 1765,
       "field": "action",
       "sha256": "ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8"
     }
@@ -358,7 +358,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "165a0c7287cc699e8f054e4448b93c3ba1fa1ee0675f63fffeb3006768904867"
+      "sha256": "ec4a8399741dba7457fb00e751477b2ae181829acd9bc4de87c5d5317f8fc4ef"
     }
   ]
 }
