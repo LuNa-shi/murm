@@ -30,12 +30,12 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `eb616dc2ff3039aec448ec7ef421358bff4f90dfe3dadfa64913c192eeb20c85` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `8a8e1c712bab0eae88553557074fb529bea9324985f9f539c5311f1efd93939d` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `2dc8434190fe4370796518cfc6535d307fff85b1b5c222be369bbd1ce7c99329` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `a15e1707796192d206c74e0d6efa5e30f38422ee916f7eddedba14cbec53b39c` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fcfbf9ed0efad34f9998a273a419715974c61e3572e76a67a91ee8c3cab4a988` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `b1c53350b16044d165154058e955795bef66845b0b746fb0aba2f168dae70402` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fc537d04cb0471d1496d82c1866b5fde81986f790768eea9e720bd7391ecdabd` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `e66f992a2c2fc387413b911fec5302d7fb258eedc406c1e982ce71b6c495a82c` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `1b75bcdc0833c4690709f0120d01c3e71cf0c4f4d61ffe6125f5202110055bbd` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
@@ -70,6 +70,7 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `runtime.workspace_write_file` | `swarmenv_workspace_write_file` | `swarmenv_workspace_write_file` |
 | `task.bot_exit` | `swarmenv_bot_exit` | `swarmenv_bot_exit` |
 | `task.execution_progress` | `swarmenv_execution_progress` | `swarmenv_execution_progress` |
+| `task.mission_get` | `swarmenv_mission_get` | `swarmenv_mission_get` |
 | `task.mission_submission_get` | `swarmenv_mission_submission_get` | `swarmenv_mission_submission_get` |
 | `task.mission_submit` | `swarmenv_mission_submit` | `swarmenv_mission_submit` |
 | `task.task_create` | `swarmenv_task_create` | `swarmenv_task_create` |
@@ -259,7 +260,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 18 registered capabilities
+### Task Service: 19 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -282,7 +283,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "117a840e11288c114d2fe3a25aa91ad8f1e8456aa35e9b8c9905642b4946e3db"
+  "manifest_hash": "28a4e4216701ee08797e6291558d147954d8a878226199b525fc5c746fe092a0"
 }
 ```
 
@@ -1007,6 +1008,57 @@ Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup close
   },
   "method": "POST",
   "path": "/v1/task_finish",
+  "errors": []
+}
+```
+
+#### task.mission_get
+
+Read the current Mission goal and acceptance conditions.
+
+```json
+{
+  "name": "mission_get",
+  "operation": "mission_get",
+  "description": "Read the current Mission goal and acceptance conditions.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "mission_id"
+    ],
+    "properties": {
+      "mission_id": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "read",
+  "idempotent": true,
+  "context": [],
+  "requires_binding": false,
+  "scope": "mission-read",
+  "help": {
+    "when": "Read the current Mission goal and acceptance conditions.",
+    "ref": "service://task/mission_get",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the current Mission goal and acceptance conditions.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/mission_get",
   "errors": []
 }
 ```

@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `caad76f4e4f43407871f84b4c077baa80223ec46cbbf47769a9172f24eadbdbf`
+Body SHA-256: `8d97c2be8e86164a1b54bbdad592908d44a38e5d99d3d3f1bc6dbe2530247fc2`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -82,6 +82,7 @@ Body SHA-256: `caad76f4e4f43407871f84b4c077baa80223ec46cbbf47769a9172f24eadbdbf`
 - Task Service — Durable Task goals, takes, structure, and completion evidence.
   - swarmenv_bot_exit: End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup. (logical operation task.bot_exit; writes state; inputs required=[reason] fields=[reason]; End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.)
   - swarmenv_execution_progress: Save a bounded Progress Material and either continue the current Execution or hand it off. (logical operation task.execution_progress; writes state; inputs required=[kind,progress] fields=[checkpoint,files,kind,progress,reason,summary]; Save a bounded Progress Material and either continue the current Execution or hand it off.)
+  - swarmenv_mission_get: Read the current Mission goal and acceptance conditions. (logical operation task.mission_get; read-only; inputs required=[mission_id] fields=[mission_id]; Read the current Mission goal and acceptance conditions.)
   - swarmenv_mission_submission_get: Read the durable Mission submission state and its immutable acceptance snapshot. (logical operation task.mission_submission_get; read-only; inputs required=[mission_id] fields=[mission_id,submission_id]; Read the durable Mission submission state and its immutable acceptance snapshot.)
   - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[mission_id,workspace_id,main_revision,actor_ref] fields=[acceptance,actor_ref,checker,environment,main_revision,material_ids,mission_id,request_id,workspace_id]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
   - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,spawned_from,summary,task_instructions,task_type,timebox_ms,workspace]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.)
@@ -408,6 +409,20 @@ Body SHA-256: `46e3ac3fe1ab773301e2a18ba82104fc52b279be6ba895f12379128dd93cb1dd`
   "promptGuidelines": [
     "Save a bounded Progress Material and either continue the current Execution or hand it off.",
     "Help: service://task/execution_progress"
+  ]
+}
+````
+## swarmenv_mission_get
+
+Body SHA-256: `c9df70aee61855cc7a6e8bec27d2ad8e8b25bc40aaa160a5043c32acc9887887`
+
+````text
+{
+  "description": "Read the current Mission goal and acceptance conditions.",
+  "promptSnippet": "Task Service: Read the current Mission goal and acceptance conditions.",
+  "promptGuidelines": [
+    "Read the current Mission goal and acceptance conditions.",
+    "Help: service://task/mission_get"
   ]
 }
 ````

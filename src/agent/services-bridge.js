@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { ServicesSDK } from '../sdk/services-sdk.js';
-import { makeEnvelope } from '../protocol/envelope.js';
+import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
 import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
@@ -23,7 +23,7 @@ const UNBOUND_OPERATIONS = new Set([
   'read_materials', 'context_search_materials', 'context_get_material',
   'material_read', 'material_search', 'material_get',
   'workspace_public_files', 'workspace_public_read', 'workspace_public_search',
-  'mission_submit', 'mission_submission_get',
+  'mission_get', 'mission_submit', 'mission_submission_get',
 ]);
 
 function usesWorkspace(task) {
@@ -194,6 +194,7 @@ export class ServicesBridge {
     // It is reset by the Runner at the start of each discovery turn.
     this.lastTakeOutcome = null;
     this.bindingPending = false;
+    this.acceptedTake = null;
   }
 
   beginTakeAttempt() {
@@ -207,6 +208,7 @@ export class ServicesBridge {
         this.executionId || this.bindingPending || (previous && previous.state !== 'CLOSED')) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge cannot replace an occupied Bot');
     }
+    this.acceptedTake = null;
     this.actorRef = botId;
     this.token = randomUUID();
     this.lastTakeOutcome = null;
@@ -482,7 +484,31 @@ export class ServicesBridge {
     }
   }
 
-  async call({ operation, payload = {}, operation_id: operationId = null, service_id: serviceId = null, capability_id: capabilityId = null } = {}) {
+  async call(request = {}) {
+    // Coalesce only an explicit take request, for this live credential. A lost
+    // CLI response must not turn in-flight preparation into a second take.
+    const key = request.operation === 'task_take' && request.operation_id;
+    const capability = key ? this.#profileCapability(this.getCapabilityProfile(), request.operation, { serviceId: request.service_id, capabilityId: request.capability_id }) : null;
+    if (key && !capability) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task take capability is not available for this request');
+    const fingerprint = key ? stableStringify({ capability: capability.id, payload: request.payload ?? {} }) : null;
+    if (key && this.pendingTake?.operation_id === key) {
+      const pending = this.pendingTake;
+      if (pending.token !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before retry');
+      if (pending.fingerprint !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'take request ID was reused with another payload');
+      if (this.taskService.getBot?.(this.actorRef)) this.taskService.assertBotDeadline(this.actorRef);
+      const result = await pending.promise;
+      if (pending.token !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before retry completed');
+      return structuredClone(result);
+    }
+    const promise = this.#call(request);
+    if (!key || this.pendingTake) return promise;
+    const pending = { operation_id: key, token: this.token, fingerprint, promise };
+    this.pendingTake = pending;
+    try { return await promise; }
+    finally { if (this.pendingTake === pending) this.pendingTake = null; }
+  }
+
+  async #call({ operation, payload = {}, operation_id: operationId = null, service_id: serviceId = null, capability_id: capabilityId = null } = {}) {
     if (this.bindingPending) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
     const identityToken = this.token;
     const assertIdentity = (beforeDispatch = false) => {
@@ -518,6 +544,40 @@ export class ServicesBridge {
       if (bot && !['bot_exit', 'task_finish'].includes(operation)) this.taskService.assertBotDeadline(this.actorRef);
       if (bot && !['UNBOUND', 'ACTIVE'].includes(bot.state) && !['bot_exit', 'task_finish'].includes(operation)) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot is not authorized to contribute in its current state', { bot_state: bot.state });
+      }
+      // Scope is established by Runtime's durable Bot binding, never by CLI
+      // flags. Only add fields supported by each public request schema.
+      if (bot) {
+        if (operation === 'mission_submit') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission submission integration is not ready for Bot requests');
+        if (payload.mission_id !== undefined && payload.mission_id !== bot.mission_id) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'request must stay within the Bot Mission');
+        }
+        if (['mission_get', 'mission_submit', 'mission_submission_get', 'task_create', 'task_list', 'task_status', 'list_tasks', 'read_materials', 'context_search_materials'].includes(operation)) {
+          payload = { ...payload, mission_id: bot.mission_id };
+        }
+        if (['task_view', 'task_take', 'list_executions'].includes(operation) && payload.task_id !== undefined) {
+          const target = this.taskService.getTask(payload.task_id);
+          if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task is not readable in the Bot Mission');
+        }
+        if (operation === 'context_get_material') {
+          const target = this.contextService.getMaterial(payload.material_id);
+          if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material is not readable in the Bot Mission');
+        }
+        if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search'].includes(operation)) {
+          const workspaceId = this.runtime?.missionWorkspaceId;
+          if (!workspaceId || (payload.workspace_id !== undefined && payload.workspace_id !== workspaceId)) {
+            throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace must match the configured Mission Workspace');
+          }
+          const workspace = await this.runtime.missionWorkspace.get({ workspaceId });
+          assertIdentity(true);
+          if (workspace.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace belongs to another Mission');
+          payload = { ...payload, workspace_id: workspaceId };
+        }
+      }
+      if (operation === 'task_take' && this.acceptedTake?.operation_id === bridgeOperationId) {
+        if (this.acceptedTake.fingerprint !== stableStringify({ capability: capability.id, payload })) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'take request ID was reused with another payload');
+        this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, replayed: true, result: this.acceptedTake.result });
+        return structuredClone(this.acceptedTake.result);
       }
       if (operation === 'bot_exit') {
         return this.taskService.dispatch('bot_exit', payload, makeEnvelope({ actorRef: this.actorRef, operationId: bridgeOperationId }));
@@ -664,6 +724,7 @@ export class ServicesBridge {
         assertIdentity();
         if (operation === 'task_take') {
           await this.bindTake(result);
+          this.acceptedTake = { operation_id: bridgeOperationId, fingerprint: stableStringify({ capability: capability.id, payload }), result: structuredClone(result) };
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
         }
         if (operation === 'task_finish') {

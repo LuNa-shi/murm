@@ -8,18 +8,19 @@ const ALIASES = Object.freeze({
   bot: { exit: 'bot_exit' },
   // complete/block/close remain transport aliases for old clients; finish is
   // the single public Task lifecycle command.
-  task: { list: 'list_task', discover: 'task_list', view: 'task_view', create: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status' },
-  material: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials' },
+  task: { list: 'task_list', discover: 'task_list', view: 'task_view', create: 'task_create', propose: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status' },
+  material: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', view: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials' },
   workspace: { files: 'workspace_public_files', list: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
-  mission: { submit: 'mission_submit', status: 'mission_submission_get', finish: 'mission_submission_finish' },
+  mission: { view: 'mission_get', submit: 'mission_submit', status: 'mission_submission_get', finish: 'mission_submission_finish' },
   judge: { check: 'workspace_check', submit: 'workspace_check', result: 'get_check_result', get: 'get_check_result' },
 });
-const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'operation-id', 'timeout-ms']);
+const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'operation-id', 'request-id', 'timeout-ms']);
 const COMMAND_HELP = Object.freeze({
   bot: { exit: 'End an unbound Bot. Required: --reason no-work or selection-budget. The Core is released after cleanup.' },
   task: {
     list: 'Discover Mission Tasks. Input: filters such as --mission-id, --state, --limit. Output: bounded task list.',
-    view: 'Read one Task. Required: --task-id. Output: authoritative Task, state, relations and Material links.',
+    view: 'Read one Task. Required: <task-id> (or --task-id). Output: authoritative Task, state, relations and Material links.',
+    propose: 'Propose a Task with a bounded goal, deliverable and completion conditions. Use --input file or --stdin. Creator and Mission come from the Bot binding.',
     create: 'Create a Task. Use --input or --stdin for the complete Task contract. Output: created Task.',
     take: 'Take an eligible Task. Use --input or --stdin for the task request. Output: Execution binding.',
     finish: 'Finish the current Task with outcome done, incomplete, blocked, or cancelled. Use --input or --stdin for the outcome contract.',
@@ -28,7 +29,8 @@ const COMMAND_HELP = Object.freeze({
   context: {
     list: 'Read bounded Materials. Input: filters such as --mission-id, --kind and --limit.',
     read: 'Read Materials. Use --input or --stdin for the read filter.',
-    get: 'Read one Material. Required: --material-id.',
+    get: 'Read one Material. Required: <material-id> (or --material-id).',
+    view: 'Read one immutable Material including provenance and corrections. Required: <material-id>.',
     search: 'Search Materials. Input: --query and explicit scope filters.',
     publish: 'Publish immutable Material. Use --input or --stdin for content and provenance.',
     consume: 'Record Material consumption. Use --input or --stdin for Material IDs and action.',
@@ -36,7 +38,8 @@ const COMMAND_HELP = Object.freeze({
   material: {
     list: 'Read bounded Materials. Input: filters such as --mission-id, --kind and --limit.',
     read: 'Read Materials. Use --input or --stdin for the read filter.',
-    get: 'Read one Material. Required: --material-id.',
+    get: 'Read one Material. Required: <material-id> (or --material-id).',
+    view: 'Read one immutable Material including provenance and corrections. Required: <material-id>.',
     search: 'Search Materials. Input: --query and explicit scope filters.',
     publish: 'Publish immutable Material. The service binds producer Task/Execution from the trusted request context.',
     consume: 'Record a meaningful Material use. Use --input or --stdin for Material IDs and action.',
@@ -50,7 +53,8 @@ const COMMAND_HELP = Object.freeze({
     merge: 'Conditionally merge a complete public Workspace revision into main.',
   },
   mission: {
-    submit: 'Submit a Mission snapshot of main, Materials, checker and environment for final acceptance.',
+    view: 'Read the current Mission goal and acceptance conditions through the trusted Bot binding.',
+    submit: 'Mission snapshot submission is pending Runtime integration; registered Bot requests return SERVICE_NOT_READY.',
     status: 'Read Mission submission state and immutable snapshots.',
     finish: 'Record the result of a durable Mission submission.',
   },
@@ -61,24 +65,28 @@ const COMMAND_HELP = Object.freeze({
 });
 
 function usage(scope = 'top', commandName = null) {
-  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|create|take|finish|feedback\n  material list|read|get|search|publish|consume\n  workspace files|read|search|save|merge\n  mission submit|status|finish\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --actor-ref <id>           Actor identity (default: cli:<user>)\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nService endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
-  if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest. No network is required for --help.';
-  if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${DEFAULT_REQUEST_TIMEOUT_MS})\n  --help                     Show this command help`;
-  return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Scalar flags such as\n--task-id and --execution-id are converted to the service input contract.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;
+  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|take|finish|feedback\n  material list|view|search|publish|consume\n  workspace files|read|search|save|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
+  if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest through the Bot Bridge. No network is required for --help.';
+  if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${DEFAULT_REQUEST_TIMEOUT_MS})\n  --help                     Show this command help`;
+  return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Task and Material IDs and file paths use the documented positional arguments.\nBot identity always comes from the protected Bridge binding.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;
 }
 
 function parseArgs(argv) {
+  const booleanFlags = new Set(['help', 'json', 'stdin', 'all', 'resolved']);
   const positionals = [];
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === '--') { positionals.push(...argv.slice(index + 1)); break; }
     if (!token.startsWith('--')) { positionals.push(token); continue; }
-    const [rawKey, inline] = token.slice(2).split('=', 2);
+    const separator = token.indexOf('=');
+    const rawKey = token.slice(2, separator < 0 ? undefined : separator);
+    const inline = separator < 0 ? undefined : token.slice(separator + 1);
     const key = rawKey.replaceAll('_', '-');
     if (inline !== undefined) options[key] = inline;
+    else if (booleanFlags.has(key)) options[key] = true;
     else if (argv[index + 1] && !argv[index + 1].startsWith('--')) options[key] = argv[++index];
-    else options[key] = true;
+    else throw new Error(`--${key} requires a value`);
   }
   return { positionals, options };
 }
@@ -121,9 +129,14 @@ function parseScalar(value) {
 
 async function inputFrom(options) {
   if (options.input && options.stdin) throw new Error('--input and --stdin are mutually exclusive');
-  if (options.input) return JSON.parse(await readFile(String(options.input), 'utf8'));
-  if (options.stdin) return JSON.parse(await new Promise((resolve, reject) => { let data = ''; process.stdin.setEncoding('utf8'); process.stdin.on('data', (chunk) => { data += chunk; }); process.stdin.on('end', () => resolve(data)); process.stdin.on('error', reject); }));
+  if (options.input) return requireObject(JSON.parse(await readFile(String(options.input), 'utf8')));
+  if (options.stdin) return requireObject(JSON.parse(await new Promise((resolve, reject) => { let data = ''; process.stdin.setEncoding('utf8'); process.stdin.on('data', (chunk) => { data += chunk; }); process.stdin.on('end', () => resolve(data)); process.stdin.on('error', reject); })));
   return {};
+}
+
+function requireObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('input must be a JSON object');
+  return value;
 }
 
 function flagInput(options) {
@@ -140,7 +153,7 @@ function flagInput(options) {
 
 function envelope(options, service) {
   return {
-    operation_id: String(options['operation-id'] ?? `cli:${service}:${randomUUID()}`),
+    operation_id: String(options['request-id'] ?? options['operation-id'] ?? `cli:${service}:${randomUUID()}`),
     actor_ref: String(options['actor-ref'] ?? `cli:${process.env.USER ?? 'local'}`),
     task_id: options['task-id'] ?? null,
     execution_id: options['execution-id'] ?? null,
@@ -185,6 +198,7 @@ async function request(url, { method = 'GET', token = null, body = undefined, ti
 }
 
 async function manifest(service) {
+  if (process.env.SWARMENV_BRIDGE_URL) return bridgeCall('get_service_metadata', { service: transportService(service) });
   service = transportService(service);
   const endpoint = configuredEndpoint(service);
   if (!endpoint?.url) throw new Error(`no endpoint configured for ${service}; set ${envName(service)}`);
@@ -192,6 +206,7 @@ async function manifest(service) {
 }
 
 async function listServices() {
+  if (process.env.SWARMENV_BRIDGE_URL) return bridgeCall('list_services', {});
   const configured = process.env.SWARMENV_SERVICE_ENDPOINTS ? JSON.parse(process.env.SWARMENV_SERVICE_ENDPOINTS) : {};
   const services = [...new Set([...SERVICE_NAMES, ...Object.keys(configured)])];
   const result = [];
@@ -205,23 +220,58 @@ async function listServices() {
   return { services: result };
 }
 
-async function invoke(service, commandName, options) {
-  const operation = ALIASES[service]?.[commandName] ?? commandName;
+async function bridgeCall(operation, payload, options = {}, serviceId = undefined) {
+  const token = process.env.SWARMENV_BRIDGE_TOKEN;
+  if (!token) throw new Error('SWARMENV_BRIDGE_TOKEN is required for Bot operations');
+  return request(`${process.env.SWARMENV_BRIDGE_URL.replace(/\/$/, '')}/call`, {
+    method: 'POST', token, timeoutMs: parseScalar(options['timeout-ms']) ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    body: { operation, service_id: serviceId, operation_id: options['request-id'] ?? options['operation-id'] ?? undefined, payload },
+  });
+}
+
+function commandInput(service, command, options, args, input) {
+  const fields = {
+    task: { view: 'task_id', take: 'task_id' },
+    material: { view: 'material_id', read: 'material_id', get: 'material_id', search: 'query' },
+    workspace: { read: 'path', search: 'query' },
+    judge: { result: 'check_result_id', get: 'check_result_id' },
+    mission: { status: 'submission_id' },
+  };
+  const field = fields[service]?.[command];
+  if (args.length > (field ? 1 : 0)) throw new Error('unexpected positional arguments');
+  if (args.length) {
+    if (input[field] !== undefined && input[field] !== args[0]) throw new Error(`conflicting ${field}`);
+    input[field] = args[0];
+  }
+  const rename = (from, to) => {
+    if (input[from] === undefined) return;
+    if (input[to] !== undefined && input[to] !== input[from]) throw new Error(`conflicting ${to}`);
+    input[to] = input[from]; delete input[from];
+  };
+  if (service === 'workspace') rename('at', 'revision');
+  if (service === 'task' && command === 'finish') rename('replacement', 'replacement_task_id');
+  if (options['request-id'] !== undefined && options['operation-id'] !== undefined && options['request-id'] !== options['operation-id']) throw new Error('request-id and operation-id must match');
   if (process.env.SWARMENV_BRIDGE_URL) {
-    const bridgeUrl = process.env.SWARMENV_BRIDGE_URL.replace(/\/$/, '');
-    const token = process.env.SWARMENV_BRIDGE_TOKEN;
-    if (!token) throw new Error('SWARMENV_BRIDGE_TOKEN is required for Bot operations');
-    const operationName = operation === 'list_task' ? 'task_list' : operation;
-    return request(`${bridgeUrl}/call`, {
-      method: 'POST', token, timeoutMs: parseScalar(options['timeout-ms']) ?? DEFAULT_REQUEST_TIMEOUT_MS,
-      body: { operation: operationName, operation_id: options['operation-id'] ?? undefined,
-        payload: { ...(await inputFrom(options)), ...flagInput(options) } },
-    });
+    const forbidden = ['actor_ref', 'owner_ref', 'bot_id', 'bot', 'core_id', 'execution_id', 'execution', 'task_owner', 'fencing_version', 'spec_version', 'state_version'];
+    if (options['actor-ref'] !== undefined || forbidden.some(key => input[key] !== undefined)) throw new Error('Bot identity comes from the protected Bridge; identity overrides are not allowed');
+  }
+  return input;
+}
+
+async function invoke(service, commandName, options, args = []) {
+  const operation = ALIASES[service]?.[commandName] ?? commandName;
+  const input = commandInput(service, commandName, options, args, { ...(await inputFrom(options)), ...flagInput(options) });
+  if (process.env.SWARMENV_BRIDGE_URL) {
+    if (!ALIASES[service]) {
+      const metadata = await manifest(service);
+      if (!metadata.capabilities?.some(item => item.operation === operation || item.name === operation)) throw new Error(`service ${service} does not advertise capability ${operation}`);
+      return bridgeCall(operation, input, options, transportService(service));
+    }
+    return bridgeCall(operation, input, options);
   }
   const provider = await manifest(service);
   const capability = provider.capabilities?.find((candidate) => candidate.operation === operation || candidate.name === operation);
   if (!capability) throw new Error(`service ${service} does not advertise capability ${operation}`);
-  const input = { ...(await inputFrom(options)), ...flagInput(options) };
   const endpoint = configuredEndpoint(service);
   const invocationBase = endpoint?.url ?? provider.endpoint.url;
   return request(`${invocationBase.replace(/\/$/, '')}${capability.path}`, {
@@ -233,20 +283,31 @@ async function invoke(service, commandName, options) {
 export async function runSwarmCli(argv = process.argv.slice(2), { stdout = process.stdout } = {}) {
   const { positionals, options } = parseArgs(argv);
   if (options.help) {
-    const scope = positionals[0] === 'service' ? 'service' : (configuredService(positionals[0]) ? positionals[0] : 'top');
+    if (positionals[0] === 'mission' && positionals[1] === 'submission') {
+      stdout.write('Usage: swarm mission submission view <id> [--json]\nRead the persistent submission and its fixed inputs.\n');
+      return 0;
+    }
+    const scope = positionals[0] === 'service' ? 'service' : (positionals[0] ?? 'top');
     stdout.write(`${usage(scope, positionals[1] ?? null)}\n`);
     return 0;
   }
   if (positionals.length === 0) { stdout.write(`${usage('top')}\n`); return 0; }
-  const [service, commandName, serviceId] = positionals;
+  const [service, rawCommand, serviceId] = positionals;
+  let commandName = rawCommand;
+  let args = positionals.slice(2);
+  if (service === 'mission' && commandName === 'submission') {
+    if (args[0] !== 'view') throw new Error('mission submission requires view <id>');
+    commandName = 'status'; args = args.slice(1);
+  }
   if (service === 'service') {
+    if (positionals.length > (commandName === 'view' ? 3 : 2)) throw new Error('unexpected service arguments');
     if (!commandName || commandName === 'list') return writeResult(await listServices(), options, stdout);
     if (commandName === 'view') { if (!serviceId) throw new Error('service view requires a service id'); return writeResult(await manifest(serviceId), options, stdout); }
     throw new Error(`unknown service command: ${commandName}`);
   }
-  if (!configuredService(service)) throw new Error(`unknown service: ${service}; configure ${envName(service)} or SWARMENV_SERVICE_ENDPOINTS`);
+  if (!configuredService(service) && !process.env.SWARMENV_BRIDGE_URL) throw new Error(`unknown service: ${service}; configure ${envName(service)} or SWARMENV_SERVICE_ENDPOINTS`);
   if (!commandName || options.help) { stdout.write(`${usage(service, commandName)}\n`); return 0; }
-  return writeResult(await invoke(service, commandName, options), options, stdout);
+  return writeResult(await invoke(service, commandName, options, args), options, stdout);
 }
 
 // A checker can complete its request successfully while deciding that the

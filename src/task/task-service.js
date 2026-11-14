@@ -1765,9 +1765,10 @@ export class TaskService {
       SUM(CASE WHEN t.state IN ('DONE', 'CLOSED', 'CANCELED', 'CANCELLED', 'SATISFIED') THEN 1 ELSE 0 END) AS terminal,
       0 AS eligible
       FROM tasks t JOIN modern_task_records m ON m.task_id = t.task_id WHERE m.mission_id = ?`).get(missionId);
-    const lanes = this.db.prepare(`SELECT core_id, task_id, execution_id, state, owner_ref, updated_at
-      FROM executions WHERE core_id IS NOT NULL AND state IN ('CREATED', 'RUNNING', 'CLOSING', 'WAITING')
-      ORDER BY core_id, updated_at, execution_id`).all().reduce((byCore, row) => {
+    const lanes = this.db.prepare(`SELECT e.core_id, e.task_id, e.execution_id, e.state, e.owner_ref, e.updated_at
+      FROM executions e JOIN modern_task_records m ON m.task_id = e.task_id
+      WHERE m.mission_id = ? AND e.core_id IS NOT NULL AND e.state IN ('CREATED', 'RUNNING', 'CLOSING', 'WAITING')
+      ORDER BY e.core_id, e.updated_at, e.execution_id`).all(missionId).reduce((byCore, row) => {
       const lane = byCore.get(row.core_id) ?? { core_id: row.core_id, state: 'IDLE', task_id: null, execution_id: null, owner_ref: null, updated_at: null };
       if (lane.state === 'IDLE' || row.state === 'RUNNING' || (row.state === 'CREATED' && lane.state !== 'RUNNING')) {
         lane.state = row.state;

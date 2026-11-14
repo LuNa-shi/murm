@@ -9,7 +9,7 @@
     },
     {
       "path": "src/agent/capability-profile.js",
-      "sha256": "fcfbf9ed0efad34f9998a273a419715974c61e3572e76a67a91ee8c3cab4a988"
+      "sha256": "fc537d04cb0471d1496d82c1866b5fde81986f790768eea9e720bd7391ecdabd"
     },
     {
       "path": "src/agent/pi-adapter.js",
@@ -17,7 +17,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "b1c53350b16044d165154058e955795bef66845b0b746fb0aba2f168dae70402"
+      "sha256": "e66f992a2c2fc387413b911fec5302d7fb258eedc406c1e982ce71b6c495a82c"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -53,11 +53,11 @@
     },
     {
       "path": "src/sdk/service-catalog.js",
-      "sha256": "eb616dc2ff3039aec448ec7ef421358bff4f90dfe3dadfa64913c192eeb20c85"
+      "sha256": "2dc8434190fe4370796518cfc6535d307fff85b1b5c222be369bbd1ce7c99329"
     },
     {
       "path": "src/sdk/builtin-registry.js",
-      "sha256": "8a8e1c712bab0eae88553557074fb529bea9324985f9f539c5311f1efd93939d"
+      "sha256": "a15e1707796192d206c74e0d6efa5e30f38422ee916f7eddedba14cbec53b39c"
     },
     {
       "path": "src/sdk/service-bundle.js",
@@ -77,7 +77,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "37d571e5c47ef25cb8127c272f9da4410e2c3592dbc9b48f35a76c76206efc02"
+      "sha256": "e0a1616fa78c70f055429b83f4b4b0bcb0aed27e1305d644ee9ca215b0cbc538"
     },
     {
       "path": "src/task/task-types.js",
@@ -245,13 +245,13 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 506,
+      "line": 532,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 513,
+      "line": 539,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -341,7 +341,7 @@
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "6e16bc6aace32836f3aaf897eebcc8d980b7e83df516e56f14b3d0ce8f704736"
+      "sha256": "5c7f319c74d2fe3628cb9de16ea3040524afec4c943f5489247c3dc48a2b0892"
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
@@ -353,11 +353,11 @@
     },
     {
       "path": "docs/architecture/prompts/05-composed-context-examples.md",
-      "sha256": "2ab599867be6712c6862b2b5029df0480d56f923906cff1583cc695a50095e1f"
+      "sha256": "ead43989fb93d2dfc6d4b3ae71c3740ffc0f9acac10582d2a36840deae93b533"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "8a1bd8293f80c8b3e32e10273f3eb1da9eb46b1545b315205701faa50409b77c"
+      "sha256": "81fd43f515f6973ac2c6ff43b1fd265d405409e580b5b0a557e893cc7e998d30"
     }
   ]
 }

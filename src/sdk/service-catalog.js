@@ -247,6 +247,12 @@ const publicWorkspaceTools = TOOL_DEFINITIONS
   .map((tool) => ({ ...tool, service: 'task', capability: 'workspace' }));
 const publicMissionWorkspaceTools = [
   {
+    name: 'mission_get', service: 'task', operation: 'mission_get', version: '1.0',
+    description: 'Read the current Mission goal and acceptance conditions.',
+    scope: 'mission-read', side_effect: false,
+    parameters: { type: 'object', required: ['mission_id'], properties: { mission_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
     name: 'workspace_public_files', service: 'task', operation: 'workspace_public_files', version: '1.0',
     description: 'List files in the immutable Mission Workspace revision before a Task is taken.',
     scope: 'mission-read', side_effect: false, capability: 'mission-workspace',

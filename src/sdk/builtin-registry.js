@@ -19,7 +19,7 @@ const EXPOSED_OPERATIONS = Object.freeze({
     'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
     'task_status', 'task_take', 'task_feedback', 'execution_progress',
     'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_apply',
-    'workspace_save', 'workspace_merge', 'mission_submit', 'mission_submission_get',
+    'workspace_save', 'workspace_merge', 'mission_get', 'mission_submit', 'mission_submission_get',
   ]),
   context: new Set(['publish_material', 'read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material']),
   judge: new Set(['workspace_check', 'get_check_result']),
@@ -118,7 +118,7 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
       audience: audienceFor(tool),
       side_effect: tool.side_effect ? 'write' : 'read',
       idempotent: !tool.side_effect,
-      context: serviceId === 'catalog' || ['bot_exit', 'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'mission_submit', 'mission_submission_get'].includes(tool.operation) ? [] : ['task', 'execution'],
+      context: serviceId === 'catalog' || ['bot_exit', 'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'mission_get', 'mission_submit', 'mission_submission_get'].includes(tool.operation) ? [] : ['task', 'execution'],
       help: {
         when: tool.description,
         ref: `service://${serviceId}/${tool.operation}`,
