@@ -56,7 +56,7 @@ Task Service independently persists `core_id`. A non-null binding is immutable f
 
 The normal loop is `IDLE → DISCOVERING → TAKING → RUNNING → IDLE`. `STOPPING` is explicit shutdown. `FAILED` is in the exported vocabulary and TaskController treats it as unhealthy. There is no semantic `BLOCKED` Core state: blocking research work releases capacity.
 
-Snapshots include discovery/take/take counts, conflicts/rescans, selector failures/retry deadline, idle generation, last error/timestamp and state history. These counters describe coordination activity, not useful research progress.
+Snapshots include discovery/take/take counts, conflicts/rescans, selector failures/retry deadline, `waiting_for_work`, idle generation, last error/timestamp and state history. These counters describe coordination activity, not useful research progress.
 
 ## 3. How work reaches a Core
 
@@ -64,19 +64,18 @@ Snapshots include discovery/take/take counts, conflicts/rescans, selector failur
 
 One `runOnce` is serialized; concurrent calls share its promise.
 
-1. Re-arm an exhausted selector only after cooldown. Otherwise return `take_exhausted`.
-2. Read eligible work, then bound it to `shortlistLimit` (default 8; accepted 1–100).
-3. If empty, return `idle` without invoking selection or creating a take.
-4. Give `takeTask` the frozen bounded view, Core ID, take prompt, reason and rescan count. The callback may return a Task ID or a complete `{task, execution}` take produced through the Bridge.
-5. `take_deferred` denotes an in-flight binding/handoff race and returns idle without a failed selection attempt. `take_failed` denotes a lost take race and follows bounded rescan.
-6. Reject a selected ID outside the view. A thrown selector error or invalid choice consumes its attempt budget; take conflicts do not.
-7. If not already taken, call Task Service with this Core, owner `identity:<coreId>`, and a fresh key `<coreId>:<taskId>:<sequence>`. The sequence is initialized from persisted take keys so a later take does not replay an old Execution.
-8. Hand the taken Execution to Runtime. If Runtime supplies `waitForExecutionRelease`, wait for both live process ownership and durable `CREATED`/`RUNNING` state to end.
-9. Clear local pointers and return idle. A Runtime handoff error triggers an injected release or fence attempt (`runtime_handoff_failed` / `handoff_timeout`), records its result, then returns idle.
+1. An explicit `no_work` callback result parks discovery until a controller/public-state signal. Timer wakeups alone do not call the model again. Otherwise re-arm an exhausted selector only after cooldown, or return `take_exhausted`.
+2. Read eligible work and bound the supplied page to `shortlistLimit` (default 8; accepted 1–100). An empty page still enters discovery on every Core. There is no one-time bootstrap privilege or Core-1 exception.
+3. Give `takeTask` the frozen page, Core ID, prompt, reason and rescan count. The Bot can inspect other public work, prefer a suitable existing Task or propose a local responsibility. The page is context, not an admission allowlist.
+4. The callback may return a Task ID, an already accepted `{task, execution}`, `take_deferred`, a structured `take_failed`, or explicit `no_work`. Deferred binding does not consume a failed selection attempt. Conflict codes cause a bounded rescan; infrastructure/invalid results consume the retry budget. The Bridge preserves its actual take error code even when Pi handles the error as an ordinary tool result.
+5. An already accepted take is handed to Runtime even when its Task was proposed after the page was read. For an ID-only result, resolve the Task from the page or Task Service, then let Task Service enforce admission. The default fallback owner is still `identity:<coreId>`; this is not yet the durable Bot identity migration.
+6. If not already taken, use a fresh key `<coreId>:<taskId>:<sequence>`. The sequence is initialized from persisted take keys so a later take does not replay an old Execution.
+7. Hand the accepted Execution to Runtime. If it supplies `waitForExecutionRelease`, wait for process ownership and durable active state to end. Runtime cleanup ordering remains an independently documented migration gap.
+8. Clear local pointers and return idle. A Runtime handoff error triggers an injected release or fence attempt, records its result and returns idle.
 
-Defaults are one conflict rescan, three selector failures before a 30-second cooldown, a 5-second idle backoff, 25-ms release polling and an infinite handoff wait deadline. Callers can override these or inject a custom waiter.
+Defaults remain one conflict rescan, three selector failures before a 30-second cooldown, a 5-second idle backoff, 25-ms release polling and an infinite handoff wait deadline; the benchmark sets a finite run deadline. Signals interrupt waits, and a signal version prevents a public change during discovery from being lost when a callback returns no work. `notifyPublicChange` accepts public Task transitions and Material/Workspace mutations, while filtering private checkpoint, local Workspace revision and feedback bookkeeping. The runner feeds committed Task Service events through this filter; its controller separately wakes eligible work. Stop aborts handoff waits, requests a fence for an owned Execution and wakes sleepers.
 
-Signals interrupt idle waits. A pending-wake bit covers a signal arriving before waiter installation; signals during cooldown cannot cause a busy loop. `idle_generation` advances after a completed retryable attempt even if the controller missed its intermediate state, but not for an untouched empty queue, deferred take or still-exhausted selector. Stop aborts handoff waits, requests a fence for the owned Execution and wakes sleepers.
+The benchmark currently does **not** infer `no_work` from a settled turn without a take. That outcome is `DISCOVERY_INCOMPLETE` and follows bounded failure/cooldown handling; prompt acknowledgements, provider errors and failed tool calls are not evidence that no useful work exists. A durable Bot exit operation and the full selection-budget lifecycle remain pending. The structured no-work callback is tested at the supervisor boundary, not claimed as a completed production Bot exit path. Public Workspace/correction notifications across all independent deployments also remain part of that integration work.
 
 ### 3.2 TaskController
 

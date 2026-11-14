@@ -2,16 +2,16 @@ import { createHash } from 'node:crypto';
 import { stableStringify } from '../protocol/envelope.js';
 import { AGENT_ROLES, capabilityDirectory, profileSnapshot } from './capability-profile.js';
 
-const PROMPT_VERSION = '5';
+const PROMPT_VERSION = '6';
 // The stable identity contract is delivered through the model's system role
 // (Pi 1.3.0 `--append-system-prompt`). Dynamic Mission/Task/Execution context
 // stays in the user turn. Keep these versions independent so evidence can
 // distinguish a changed runtime contract from a changed task binding.
-const SYSTEM_PROMPT_VERSION = '3';
+const SYSTEM_PROMPT_VERSION = '4';
 
 const BOUND_SOP = [
   'You are one SwarmEnv Bot lifecycle working with other Bots toward the supplied Mission; never lower its original acceptance requirements or treat one local Task as Mission completion.',
-  'Every research tool call must belong to the current valid Execution. Before an Execution, inspect Mission, related Task state, Materials, and permitted public Workspace revisions. Then call canonical task_take for one eligible Task. If no useful Task exists, use bot exit; Mission itself is never taken. A failed take is not success.',
+  'Every research tool call must belong to the current valid Execution. Before an Execution, inspect Mission, related Task state, Materials, and permitted public Workspace revisions. Prefer suitable existing work; if a useful independent responsibility is missing, propose it with task_create, then call canonical task_take for the chosen Task. If no useful work can be advanced, end discovery without inventing a Task; Mission itself is never taken. A failed take is not success.',
   'A successful task_take binds this Bot, Core lane, Sandbox, and Session to one Execution. Continue in this Session until the Task lifecycle boundary; do not start a replacement Session or take another Task.',
   'This Bot cannot take or select another existing Task while an Execution is active. task_create proposes a separate responsibility; a later Bot takes it in a fresh Execution. Scope changes require a new Task.',
   'Use only the capabilities shown in the current directory. Service documentation explains purpose, parameters, real outputs, errors, retries, and limits; it does not grant authority. Runtime owns leases, fencing, process control, and identity rotation.',
@@ -191,11 +191,11 @@ export function taskLoopGuide(profile, { toolPrefix = 'swarmenv_' } = {}) {
     .map((capability) => `${toolPrefix}${capability.tool_name ?? capability.name}`);
   const steps = [
     line('1. Look:', `without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use ${view} and ${materials} to read Task state and existing Materials.`, view, materials),
-    line('2. Take:', `call ${take} with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.`, take),
+    line('2. Choose:', `prefer suitable existing responsibilities; when independent work is missing, propose it with ${register}. The bounded Task page is not a complete search or an allowlist. Call ${take} for the chosen Task; only after it succeeds may you execute that responsibility.`, take, register),
     line('3. Work:', `read and edit the Workspace with ${files}${aids.length > 0 ? `; use ${aids.join(', ')} as service aids` : ''}.`, files),
     line('4. Check:', `write the answer file in the Workspace, then call ${submit} with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics${checkResult ? ` (re-read with ${checkResult})` : ''}. On FAIL, revise the file and call ${submit} again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.`, submit),
     line('5. Share:', `publish a distinct finding with ${publish}, attach it with ${link}, record an explicit integration of another Task's Material with ${tool('consume_materials') ?? 'the consume tool'}, and answer a delivered notification with ${feedback}.`, publish, link),
-    line('6. Propose a direction:', 'when research reveals a separable responsibility, call swarmenv_task_create so a fresh Bot can inspect and take it.', tool('task_create')),
+    line('6. Identify further work:', `while executing, use ${register} for a separable responsibility that another Bot can take. Keep the current Task contract stable.`, register),
     line('7. Save:', `call ${progress} with kind "checkpoint" to save progress and keep working.`, progress),
     line('8. End this Execution with exactly one of:', `${finish ?? complete} with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary.`, finish ?? complete),
     line('9. Next:', `after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling ${take} for one Task. Mission itself is never eligible.`, take),

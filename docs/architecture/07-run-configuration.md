@@ -48,7 +48,7 @@ Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is
 
 Unknown options throw. Numeric flags are converted with `Number`; only the explicit validations above and downstream constructors apply. The CLI has no Sandbox flags: it builds its required OpenSandbox configuration from `SWARMENV_SANDBOX_ENABLED` (the literal string `true` enables it), `SWARMENV_SANDBOX_PROVIDER` (default `opensandbox`), `SWARMENV_SANDBOX_IMAGE`, `SWARMENV_OPENSANDBOX_URL`, optional endpoint/Bridge host variables and the selected provider settings. A disabled or non-OpenSandbox deployment is rejected. Stop-on-solve, custom adapters and the remaining Runtime timers are programmatic options.
 
-The exported runner and CLI both construct the flat Mission Task model. `parallelMode` remains a treatment choice (`direct`, `semantic` or `root-only`); it does not select a second Task model. Removed `taskModel` and `normalFlow` options are rejected by the CLI. Record the actual treatment and resource options rather than inferring them from historical names.
+The exported runner and CLI both construct the flat Mission Task model. `parallelMode` retains the historical labels `direct`, `semantic` and `root-only`; these currently do not establish distinct interventions, as explained under Phase 02 migration below. They do not select a second Task model. Removed `taskModel` and `normalFlow` options are rejected by the CLI. Record the actual treatment and resource options rather than inferring them from historical names.
 
 ## 3. Locked input and environment
 
@@ -104,7 +104,7 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `controllerShortlistLimit` | `16`; bounded eligible list passed to Controller/identity loops |
 | `controllerSweepIntervalMs` | `0`; avoid a second Controller timer because the outer loop already repairs |
 | `maxStartupAttempts` | `3`; identity-loop take/startup attempt budget |
-| `maxTakeRescans` | Runner passes this key with default `1`, but `IdentityTaskLoop` consumes `maxClaimRescans`; this option is currently ineffective and the loop keeps its own default of one rescan. |
+| `maxTakeRescans` | Runner and IdentityTaskLoop both use this key; default `1`, accepted range 0–10. It bounds immediate rescans after a structured take conflict. |
 | `identityLoopIdleBackoffMs` | `5000`; fallback wake when no durable event arrives |
 | `heartbeatMs`, `watchdogIntervalMs`, `executionTimeoutSweepMs` | Each `10000`; independent timers |
 | `watchdogTimeoutMs` | Runtime default `120000`; productivity/recovery interpretation in [02](02-execution.md) |
@@ -188,3 +188,7 @@ The dashboard's maintained source is `src/observability/client/`; Vite builds it
 Sources: [benchmark CLI](../../scripts/run-putnambench-benchmark.mjs), [runner](../../src/benchmark/putnam-runner.js), [locked config](../../config/putnambench-12.json), [parallelism tracker](../../src/benchmark/parallelism.js), [observer launcher](../../scripts/serve-observability.mjs), [service launcher](../../scripts/service-host.mjs), [search launcher](../../scripts/mathlib-search-service.mjs), [Vite config](../../src/observability/vite.config.js), [package scripts](../../package.json).
 
 Relevant deterministic tests: [flat benchmark CLI](../../test/flat-only-cli.test.js), [orchestration](../../test/orchestration-roles.test.js), [parallelism](../../test/parallelism.test.js), [observation server](../../test/observability-server.test.js). Real provider/Lean acceptance still requires separate version-bound evidence.
+
+### Phase 02 migration and comparison labels
+
+The repaired discovery path gives every Core the same autonomous local-Task selection instructions. The `direct`, `semantic` and `root-only` option values remain accepted for historical report/configuration compatibility, but the old treatment-specific `taskPayload` instructions are not the new discovery sender. These labels currently do not establish distinct experimental interventions. Do not use them as comparative research conditions until treatment delivery and actual behavior are separately implemented and verified. This limitation does not authorize a new comparison or alter the approved fixture/checker.

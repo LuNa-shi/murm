@@ -174,10 +174,13 @@ test('task loop guide names one exact registered tool per identity step (r12)', 
     assert.deepEqual(toolNames.filter((name) => /task_finish$/.test(name)), ['swarmenv_task_finish']);
 
     const guide = taskLoopGuide(bound);
-    for (const step of ['Look:', 'Take:', 'Work:', 'Check:', 'Share:', 'Save:', 'End this Execution', 'Next:']) assert.match(guide, new RegExp(step));
+    for (const step of ['Look:', 'Choose:', 'Work:', 'Check:', 'Share:', 'Save:', 'End this Execution', 'Next:']) assert.match(guide, new RegExp(step));
     const mentioned = guide.match(/swarmenv_[a-z_]+/g);
     for (const name of mentioned) assert.ok(toolNames.includes(name), `${name} must be a registered tool`);
     assert.match(guide, /swarmenv_task_take/);
+    assert.ok(guide.indexOf('propose it with swarmenv_task_create') < guide.indexOf('3. Work:'));
+    assert.match(guide, /prefer suitable existing responsibilities/);
+    assert.doesNotMatch(guide, /one task_id from the Task view/);
     assert.match(guide, /swarmenv_judge_workspace_check with its relative path/);
     assert.match(guide, /swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled/);
     assert.match(guide, /fresh Bot reads public/);

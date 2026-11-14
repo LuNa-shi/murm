@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { IdentityTaskLoop, IDENTITY_LOOP_STATES } from '../src/runtime/identity-task-loop.js';
 import { TaskController } from '../src/runtime/task-controller.js';
+import { ServicesBridge } from '../src/agent/services-bridge.js';
+import { TaskService } from '../src/task/task-service.js';
+import { makeEnvelope } from '../src/protocol/envelope.js';
 
 function deferred() {
   let resolve;
@@ -366,20 +369,20 @@ test('IdentityTaskLoop uses a fresh take key when the same Task is retaken later
   assert.deepEqual(takeKeys, ['core-retake:task-retake:0', 'core-retake:task-retake:1']);
 });
 
-test('IdentityTaskLoop does not select or take when discovery is empty', async () => {
+test('IdentityTaskLoop discovers an empty queue without manufacturing a take', async () => {
   let selections = 0;
   let takes = 0;
   const daemon = new IdentityTaskLoop({
     coreId: 'core-empty',
     listEligibleTasks: () => [],
-    takeTask: async () => { selections += 1; return 'unused'; },
+    takeTask: async () => { selections += 1; return { no_work: true }; },
     takeSelectedTask: async () => { takes += 1; },
   });
 
   const result = await daemon.runOnce({ reason: 'empty' });
 
   assert.equal(result.disposition, 'idle');
-  assert.equal(selections, 0);
+  assert.equal(selections, 1);
   assert.equal(takes, 0);
   assert.equal(daemon.snapshot().state, IDENTITY_LOOP_STATES.IDLE);
 });
@@ -393,7 +396,7 @@ test('IdentityTaskLoop run loop waits for wake signals and stops cleanly', async
       discoveries += 1;
       return discoveries === 1 ? [] : [{ task_id: 'task-loop' }];
     },
-    takeTask: async () => 'task-loop',
+    takeTask: async ({ candidates }) => candidates.length ? 'task-loop' : { no_work: true },
     takeSelectedTask: async () => ({ execution: { execution_id: 'execution-loop', task_id: 'task-loop', state: 'CREATED' } }),
     runExecution: async () => ({ execution: { state: 'SUCCEEDED' } }),
     waitForSignal: () => wake.promise,
@@ -401,6 +404,7 @@ test('IdentityTaskLoop run loop waits for wake signals and stops cleanly', async
 
   const running = daemon.run({ maxTurns: 2 });
   await new Promise((resolve) => setImmediate(resolve));
+  daemon.notify('task-created');
   wake.resolve('task-created');
   const result = await running;
 
@@ -418,7 +422,7 @@ test('IdentityTaskLoop notify wakes a custom waitForSignal path', async () => {
       discoveries += 1;
       return discoveries === 1 ? [] : [{ task_id: 'task-custom-wake' }];
     },
-    takeTask: async () => 'task-custom-wake',
+    takeTask: async ({ candidates }) => candidates.length ? 'task-custom-wake' : { no_work: true },
     takeSelectedTask: async () => ({ execution: { execution_id: 'execution-custom-wake', task_id: 'task-custom-wake', state: 'CREATED' } }),
     runExecution: async () => ({ execution: { state: 'SUCCEEDED' } }),
     waitForSignal: () => new Promise(() => {}),
@@ -444,7 +448,7 @@ test('IdentityTaskLoop default idle wait is interruptible by notify', async () =
       discoveries += 1;
       return discoveries === 1 ? [] : [{ task_id: 'task-woken' }];
     },
-    takeTask: async () => 'task-woken',
+    takeTask: async ({ candidates }) => candidates.length ? 'task-woken' : { no_work: true },
     takeSelectedTask: async () => ({ execution: { execution_id: 'execution-woken', task_id: 'task-woken', state: 'CREATED' } }),
     runExecution: async () => {
       calls.push('run');
@@ -487,4 +491,184 @@ test('IdentityTaskLoop stop aborts a taken Runtime handoff and fences the take',
   assert.equal(events.filter((event) => event.kind === 'identity_loop_execution_released').length, 1);
   assert.equal(events.find((event) => event.kind === 'identity_loop_execution_released').execution_state, 'FENCED');
   assert.equal(daemon.snapshot().state, 'STOPPING');
+});
+
+test('a Bot that loses a tool-level take race can rescan and execute other work', async () => {
+  let selections = 0;
+  const loop = new IdentityTaskLoop({
+    coreId: 'core-conflict',
+    listEligibleTasks: () => [{ task_id: 'remaining-work' }],
+    takeTask: async () => ++selections === 1
+      ? { take_failed: true, error: { code: 'CONFLICT', message: 'another Bot owns this Task' } }
+      : { task: { task_id: 'remaining-work' }, execution: { execution_id: 'next-execution', task_id: 'remaining-work' } },
+    takeSelectedTask: () => { throw new Error('the Bot already took its Task'); },
+    runExecution: async (take) => ({ execution: { ...take.execution, state: 'SUCCEEDED' } }),
+  });
+  const result = await loop.runOnce();
+  assert.equal(result.disposition, 'completed');
+  assert.equal(result.take.execution.execution_id, 'next-execution');
+  assert.equal(loop.snapshot().take_conflict_count, 1);
+  assert.equal(loop.snapshot().take_failure_count, 0);
+});
+
+
+test('four Cores discover a zero-Task Mission and hold distinct proposed Tasks concurrently', async () => {
+  const service = new TaskService();
+  const mission = service.dispatch('mission.create', { mission_id: 'mission-discovery', goal: 'Build a CSV tool' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+  const discoveryGate = deferred();
+  const executionGate = deferred();
+  const entered = [];
+  const active = [];
+  const responsibilities = ['filter rows', 'group statistics', 'JSON output', 'verify sample data'];
+  const loops = responsibilities.map((responsibility, index) => new IdentityTaskLoop({
+    coreId: `core-${index + 1}`,
+    taskService: service,
+    listEligibleTasks: () => service.listEligibleTasks({ missionId: mission.mission_id }),
+    takeTask: async ({ candidates }) => {
+      entered.push({ index, candidates });
+      await discoveryGate.promise;
+      const actorRef = `bot-discovery-${index}`;
+      const task = service.dispatch('task.create', {
+        mission_id: mission.mission_id, summary: `Implement ${responsibility} independently of other CSV features.`, goal: responsibility,
+        expected_output: `Reusable ${responsibility} result`, acceptance_conditions: ['Documented independently testable result'],
+      }, makeEnvelope({ actorRef })).task;
+      return service.takeTask(task.task_id, { owner_ref: actorRef, core_id: `core-${index + 1}`, take_key: `take-${index}`, workspace_mode: 'clean' });
+    },
+    runExecution: async (take) => {
+      active.push(take);
+      await executionGate.promise;
+      return { execution: take.execution };
+    },
+  }));
+  const running = loops.map(loop => loop.runOnce());
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(entered.length, 4, 'every Core enters discovery even before the first Task exists');
+    assert.ok(entered.every(item => item.candidates.length === 0));
+    discoveryGate.resolve();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(active.length, 4, JSON.stringify(loops.map(loop => loop.snapshot().last_error)));
+    assert.equal(new Set(active.map(take => take.task.task_id)).size, 4);
+    assert.equal(active.flatMap(take => service.listExecutions(take.task.task_id, { includeTerminal: false })).length, 4);
+  } finally {
+    discoveryGate.resolve(); executionGate.resolve();
+    await Promise.allSettled(running);
+    service.close();
+  }
+  assert.ok((await Promise.all(running)).every(result => result.disposition === 'completed'));
+});
+
+test('a bounded discovery page does not reject a newly proposed Task already accepted by Task Service', async () => {
+  const service = new TaskService();
+  const mission = service.dispatch('mission.create', { mission_id: 'mission-other-work', goal: 'Independent CSV features' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+  const create = (summary) => service.dispatch('task.create', { mission_id: mission.mission_id, summary, goal: summary, expected_output: 'Independent reusable result', acceptance_conditions: ['Verify the stated result'] }, makeEnvelope({ actorRef: 'bot:discover' })).task;
+  create('Review the CSV output while other work identifies input edge cases');
+  let chosen;
+  const loop = new IdentityTaskLoop({
+    coreId: 'core-discover', taskService: service,
+    listEligibleTasks: () => service.listEligibleTasks({ missionId: mission.mission_id, limit: 1 }),
+    takeTask: () => {
+      chosen = create('Investigate malformed CSV inputs without duplicating output review');
+      return service.takeTask(chosen.task_id, { owner_ref: 'bot:discover', core_id: 'core-discover', take_key: 'new-local-work', workspace_mode: 'clean' });
+    },
+    runExecution: async (take) => ({ execution: take.execution }),
+  });
+  try {
+    const result = await loop.runOnce();
+    assert.equal(result.disposition, 'completed');
+    assert.equal(result.take.task.task_id, chosen.task_id);
+    assert.equal(loop.snapshot().take_count, 1);
+  } finally { service.close(); }
+});
+
+test('no-work discovery waits for a public-state signal and permits a later empty-queue discovery', async () => {
+  let discoveries = 0;
+  const loop = new IdentityTaskLoop({
+    coreId: 'core-no-work',
+    listEligibleTasks: () => [],
+    takeTask: async () => { discoveries += 1; return { no_work: true }; },
+    takeSelectedTask: () => { throw new Error('no-work must not manufacture an Execution'); },
+  });
+  assert.equal((await loop.runOnce()).disposition, 'idle');
+  assert.equal(loop.snapshot().take_failure_count, 0);
+  await loop.runOnce({ reason: 'fallback-timer' });
+  assert.equal(discoveries, 1, 'a timer alone must not restart model discovery');
+  loop.notify('material_published');
+  assert.equal((await loop.runOnce()).disposition, 'idle');
+  assert.equal(discoveries, 2, 'new public information allows discovery even with no eligible Task');
+});
+
+test('a public change during discovery is not lost when the Bot reports no work', async () => {
+  let discoveries = 0;
+  const loop = new IdentityTaskLoop({
+    coreId: 'core-discovery-signal', listEligibleTasks: () => [],
+    takeTask: async () => {
+      discoveries += 1;
+      if (discoveries === 1) loop.notify('material_published');
+      return { no_work: true };
+    },
+    takeSelectedTask: () => { throw new Error('no Task was selected'); },
+  });
+  await loop.runOnce();
+  await loop.runOnce();
+  assert.equal(discoveries, 2);
+});
+
+
+test('a real Bridge tool rejection preserves the take conflict for Core rescan', async () => {
+  const service = new TaskService();
+  const mission = service.dispatch('mission.create', { mission_id: 'mission-bridge-race', goal: 'Compare independent routes' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+  const task = service.dispatch('task.create', { mission_id: mission.mission_id, summary: 'Verify one existing route without duplicating another responsibility', expected_output: 'Verified route', acceptance_conditions: ['Evidence is published'] }, makeEnvelope({ actorRef: 'bot:first' })).task;
+  service.takeTask(task.task_id, { owner_ref: 'bot:winner', core_id: 'core-winner', take_key: 'winner', workspace_mode: 'clean' });
+  const bridge = new ServicesBridge({ taskService: service, contextService: {}, runtime: {}, actorRef: 'bot:loser', coreId: 'core-loser' });
+  const loop = new IdentityTaskLoop({
+    coreId: 'core-loser', taskService: service, maxTakeRescans: 0,
+    listEligibleTasks: () => [task],
+    takeTask: async () => {
+      bridge.beginTakeAttempt();
+      await assert.rejects(bridge.call({ operation: 'task_take', operation_id: 'loser-tool-call', payload: { task_id: task.task_id, take_key: 'loser' } }), { code: 'CONFLICT' });
+      return { take_failed: true, error: bridge.lastTakeOutcome };
+    },
+  });
+  try {
+    assert.equal((await loop.runOnce()).disposition, 'take_conflict');
+    assert.equal(loop.snapshot().take_failure_count, 0);
+    assert.equal(bridge.lastTakeOutcome.operation_id, 'loser-tool-call');
+    assert.equal(service.listExecutions(task.task_id, { includeTerminal: false }).length, 1);
+  } finally { service.close(); }
+});
+
+test('private checkpoints do not wake no-work discovery but public Materials do', async () => {
+  let discoveries = 0;
+  const loop = new IdentityTaskLoop({
+    coreId: 'core-public-changes', listEligibleTasks: () => [],
+    takeTask: async () => { discoveries += 1; return { no_work: true }; },
+    takeSelectedTask: () => { throw new Error('no Task was selected'); },
+  });
+  await loop.runOnce();
+  for (const operation of ['save_checkpoint', 'save_workspace_revision', 'execution_progress', 'task_feedback']) {
+    loop.notifyPublicChange({ operation, changed: true });
+    await loop.runOnce();
+  }
+  assert.equal(discoveries, 1);
+  loop.notifyPublicChange({ kind: 'material_published', operation: 'publish_material', changed: true });
+  await loop.runOnce();
+  assert.equal(discoveries, 2);
+});
+
+test('a failed Runtime binding remains a failed take and releases the provisional Task ownership', async () => {
+  const service = new TaskService();
+  const mission = service.dispatch('mission.create', { mission_id: 'mission-bind-failure', goal: 'Investigate a route' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+  const task = service.dispatch('task.create', { mission_id: mission.mission_id, summary: 'Investigate an independent route with a reproducible written result', expected_output: 'Route note', acceptance_conditions: ['Evidence is published'] }, makeEnvelope({ actorRef: 'bot:test' })).task;
+  const bridge = new ServicesBridge({
+    taskService: service, contextService: {}, runtime: {}, actorRef: 'bot:test', coreId: 'core-bind',
+    onTake: async () => { const error = new Error('provider preparation failed'); error.code = 'SERVICE_UNAVAILABLE'; throw error; },
+  });
+  try {
+    await assert.rejects(bridge.call({ operation: 'task_take', payload: { task_id: task.task_id, take_key: 'bind-failure' } }), { code: 'SERVICE_UNAVAILABLE' });
+    assert.equal(bridge.lastTakeOutcome.ok, false);
+    assert.equal(bridge.lastTakeOutcome.code, 'SERVICE_UNAVAILABLE');
+    assert.equal(bridge.executionId, null);
+    assert.equal(service.listExecutions(task.task_id, { includeTerminal: false }).length, 0);
+  } finally { service.close(); }
 });

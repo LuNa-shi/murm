@@ -7,48 +7,48 @@ The first profile below is the benchmark flat Task model with built-in Services 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Flat built-ins, no Sandbox: exact task-loop guide
 
-Body SHA-256: `507265c7e6a58ba1e44af4165d7a0768446b44853bc6d1cb66eaafb5f9708539`
+Body SHA-256: `429f60016d4e09475561778ab6cf74fe5e08f638cd808d333f1b5ca241165dde`
 
 ````text
 Task loop (exact tool names in this Session):
 1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
-2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
+2. Choose: prefer suitable existing responsibilities; when independent work is missing, propose it with swarmenv_task_create. The bounded Task page is not a complete search or an allowlist. Call swarmenv_task_take for the chosen Task; only after it succeeds may you execute that responsibility.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_workspace_check with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_workspace_check again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback.
-6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_create so a fresh Bot can inspect and take it.
+6. Identify further work: while executing, use swarmenv_task_create for a separable responsibility that another Bot can take. Keep the current Task contract stable.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
 8. End this Execution with exactly one of: swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary.
 9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never eligible.
 ````
 ## Flat built-ins with Sandbox: exact task-loop guide
 
-Body SHA-256: `507265c7e6a58ba1e44af4165d7a0768446b44853bc6d1cb66eaafb5f9708539`
+Body SHA-256: `429f60016d4e09475561778ab6cf74fe5e08f638cd808d333f1b5ca241165dde`
 
 ````text
 Task loop (exact tool names in this Session):
 1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
-2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
+2. Choose: prefer suitable existing responsibilities; when independent work is missing, propose it with swarmenv_task_create. The bounded Task page is not a complete search or an allowlist. Call swarmenv_task_take for the chosen Task; only after it succeeds may you execute that responsibility.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_workspace_check with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_workspace_check again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback.
-6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_create so a fresh Bot can inspect and take it.
+6. Identify further work: while executing, use swarmenv_task_create for a separable responsibility that another Bot can take. Keep the current Task contract stable.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
 8. End this Execution with exactly one of: swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary.
 9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never eligible.
 ````
 ## Flat built-ins with Sandbox and Mathlib Search: exact task-loop guide
 
-Body SHA-256: `23cf4d128a2fb639015be4a13fe84534890dc5831dc965b87f4c3a27fe65f322`
+Body SHA-256: `3340ad83c16f054ae19825865c398c9c64b942a4330801a3a9c2f70da7a5b7d9`
 
 ````text
 Task loop (exact tool names in this Session):
 1. Look: without an Execution, read the Mission, Task view, public Workspace revisions, and Materials supplied in this turn. With an Execution, use swarmenv_task_view, swarmenv_task_list, swarmenv_task_status and swarmenv_context_search_materials, swarmenv_context_get_material to read Task state and existing Materials.
-2. Take: call swarmenv_task_take with one task_id from the Task view. Only after it succeeds do the Execution-bound tools below work.
+2. Choose: prefer suitable existing responsibilities; when independent work is missing, propose it with swarmenv_task_create. The bounded Task page is not a complete search or an allowlist. Call swarmenv_task_take for the chosen Task; only after it succeeds may you execute that responsibility.
 3. Work: read and edit the Workspace with swarmenv_workspace_list_files, swarmenv_workspace_read_file, swarmenv_workspace_write_file, swarmenv_workspace_diff; use swarmenv_mathlib_search as service aids.
 4. Check: write the answer file in the Workspace, then call swarmenv_judge_workspace_check with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics (re-read with swarmenv_judge_get_check_result). On FAIL, revise the file and call swarmenv_judge_workspace_check again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.
 5. Share: publish a distinct finding with swarmenv_context_publish_material, attach it with swarmenv_task_link_material, record an explicit integration of another Task's Material with swarmenv_context_consume, and answer a delivered notification with swarmenv_task_feedback.
-6. Propose a direction: when research reveals a separable responsibility, call swarmenv_task_create so a fresh Bot can inspect and take it.
+6. Identify further work: while executing, use swarmenv_task_create for a separable responsibility that another Bot can take. Keep the current Task contract stable.
 7. Save: call swarmenv_execution_progress with kind "checkpoint" to save progress and keep working.
 8. End this Execution with exactly one of: swarmenv_task_finish with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary.
 9. Next: after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling swarmenv_task_take for one Task. Mission itself is never eligible.

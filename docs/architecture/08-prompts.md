@@ -8,7 +8,7 @@ A research Agent does not receive one fixed paragraph called “the prompt.” I
 
 | Appendix | Complete content |
 |---|---|
-| [01 Stable identity](prompts/01-system-identity.md) | The entire system addendum, shared by all five exported prompt aliases; current system version `3`, composition version `5` |
+| [01 Stable identity](prompts/01-system-identity.md) | The entire system addendum, shared by all five exported prompt aliases; current system version `4`, composition version `6` |
 | [02 Tool instructions](prompts/02-task-loop-and-tools.md) | Exact Task-loop guides for built-ins, Sandbox, and Sandbox plus Mathlib; full built-in capability-directory text; all extension description/snippet/guidance fields; full Mathlib `SKILL.md` and reference text |
 | [03 Benchmark turns](prompts/03-benchmark-turns.md) | Default take prompt, complete synthetic discovery turn, flat continuation body and the current direct/root-only treatment instructions |
 | [04 Runtime messages](prompts/04-runtime-messages.md) | Deadline, Material, dependency, compaction, recovery and controlled E2E repair messages, including fallback text |
@@ -27,8 +27,8 @@ This table is the key to interpreting the catalog. A function that can compose a
 
 | Path/event | System addendum | User-turn body actually selected | Other context and important distinction |
 |---|---|---|---|
-| Normal benchmark reusable Session start | `SYSTEM_IDENTITY_PROMPT`, passed as Pi file addendum | No user message is sent by `adapter.start` because `agentPrompt` is absent | Extension loads its profile and registers tool metadata; runner waits for readiness |
-| First or later unbound discovery | Existing Session's system addendum | SOP + exact Task-loop guide + same-identity take instructions + bounded candidate JSON | `takeTaskWithAgent` is the sender; it does not call `composeAgentPrompt` |
+| Normal benchmark reusable Session start | OpenSandbox defaults to no addendum; explicit `sandbox.systemPrompt` supplies one | No user message is sent by `adapter.start` because `agentPrompt` is absent | Extension loads its profile and registers tool metadata; runner waits for readiness |
+| First or later unbound discovery | Existing Session's system addendum | SOP + Task-loop guide + Mission/input context + autonomous discovery instructions + partial eligible Task JSON | `takeTaskWithAgent` is the sender; it does not call `composeAgentPrompt` |
 | Successful `task_take` during discovery | Unchanged | No second initial user prompt | `bindAgentExecution(..., sendInitialPrompt:false)` activates the existing Session, but Bridge returns the original Task Service take snapshot, not the refreshed Runtime binding/Workspace object; a composed snapshot can still be logged |
 | Bound continuation inside the `onTake` loop | Unchanged | The bound SOP plus the current flat Task-loop guide | Treatment choice changes research guidance only; there is no legacy Task-model wrapper |
 | Bound continuation from the outer benchmark loop | Unchanged | `basePrompt(core)`: SOP + Task-loop guide + continuation paragraph, passed through treatment selection where called | Distinct from the shorter `onTake` continuation; it does not automatically append all Materials |
@@ -54,29 +54,19 @@ The full Service-document block is generated and can be sent by Runtime-managed 
 
 Its rules cover Mission acceptance, valid Execution authority, same-Session `task_take`, independent Task creation, register-and-take, exact capability naming, Workspace boundaries, decomposition decisions, Judge iteration, shared-Mission blocking, evidence/notification feedback, Progress, Runtime-requested handoff and honest error/completion reporting. The [full 16 paragraphs](prompts/01-system-identity.md) are the authoritative text record; this list is navigation, not a replacement for the text.
 
-`PROMPT_VERSION='5'` and `SYSTEM_PROMPT_VERSION='3'` are manually declared version identifiers. Content hashes detect wording changes even if a developer forgets to increment a label. The adapter writes the system string to a file and uses `--append-system-prompt`; the upstream Pi base system text remains separate. [Sources: agent-prompt](../../src/agent/agent-prompt.js), [adapter](../../src/agent/pi-adapter.js).
+`PROMPT_VERSION='6'` and `SYSTEM_PROMPT_VERSION='4' are manually declared version identifiers. Content hashes detect wording changes even if a developer forgets to increment a label. The adapter writes the system string to a file and uses `--append-system-prompt`; the upstream Pi base system text remains separate. [Sources: agent-prompt](../../src/agent/agent-prompt.js), [adapter](../../src/agent/pi-adapter.js).
 
 ## 4. Discovery and benchmark Task instructions
 
 ### 4.1 Discovery assembly order
 
-The benchmark constructs `takePrompt` from the stable SOP, a Task-loop guide when nonempty, and the instruction to use `task_take` on the same Core identity without delegation. `takeTaskWithAgent` then joins these five components with blank lines:
+The benchmark constructs `takePrompt` from the stable SOP, profile-derived Task-loop guide, the shared Mission object, public Workspace ID and project input coordinates. Mission acceptance is explicitly separate from each Task's Goal, Deliverable and Completion condition. The guide places choosing or proposing work before execution; it still names current Bridge capabilities while the full CLI/skills migration is pending.
 
-1. The complete `takePrompt`.
-2. A sentence identifying this as the reusable identity for the Core and requiring the same Session.
-3. Instructions to inspect the bounded view and call `task_take` once for one listed ID, then continue that Task in the Session.
-4. Instructions to end the turn without claiming if the list is empty.
-5. `Bounded Task view (complete candidate set):` followed by compact JSON.
+`takeTaskWithAgent` sends that prompt, identifies the unbound Bot, asks it to inspect related Tasks/Materials/files within budget and prefer suitable existing responsibilities, and supplies an explicitly partial eligible Task page. Every Core follows this same path, including when the page is empty. There is no fixed whole-proof bootstrap Task, forced follow-up proposal, or retry message forbidding further reads. A Task successfully taken after a new proposal need not be in the old page.
 
-The candidate set is bounded by the queue/identity-loop selection. “Complete” in the label means the whole candidate list supplied to this invocation, not every Task ever created in the Mission. The benchmark's default shortlist limit is 16. Each candidate is projected through `selectionView`:
+The default page limit is 16. `selectionView` includes `task_id`, `mission_id`, summary and relations; goal, expected output, Task instructions, acceptance and completion contract; and priority/state/age/fairness/rank. It omits the retired tree projection fields `task_type` and `parent_id`. Missing optional fields follow normal JSON omission/default rules. The full synthetic sent body is in [03](prompts/03-benchmark-turns.md).
 
-| Field group | Fields included |
-|---|---|
-| Identity/relations | `task_id`, `mission_id`, `summary`, `relations`, `task_type`, `parent_id` |
-| Work contract | `goal`, `expected_output`, `task_instructions`, `acceptance_conditions`, `completion_contract` |
-| Scheduling projection | `priority`, `state`, `age_ms`, `fairness_protected`, `selection_rank` |
-
-Missing optional values follow the source projection's null/default behavior; `JSON.stringify` omits undefined properties. The generated discovery example includes a full synthetic Task and complete Task instructions, so the reader can see the actual shape without a real problem statement or proof.
+The sender waits for settlement where the adapter supports it, then distinguishes an accepted take, a deferred binding and a structured take failure. A settled turn without an accepted take is `DISCOVERY_INCOMPLETE`, not proof of no useful work; it follows bounded retries. The supervisor's explicit no-work callback waits for public state change, but the durable Bot exit/selection-budget protocol has not yet been connected to the benchmark. The sender preserves Bridge take error codes through normal tool-error settlement and RPC failure.
 
 ### 4.2 What creates the benchmark Task text
 

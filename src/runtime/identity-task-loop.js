@@ -10,7 +10,7 @@ export const IDENTITY_LOOP_STATES = Object.freeze({
   FAILED: 'FAILED',
 });
 
-export const IDENTITY_TAKE_PROMPT = 'Use the bounded task view and call canonical task_take on this same Core identity. Continue in the same Session after a successful take.';
+export const IDENTITY_TAKE_PROMPT = 'Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work; propose an independent Task when a useful responsibility is missing. Call canonical task_take for the chosen Task and continue in the same Bot Session after success. If no useful work is available, report no work.';
 
 const CONFLICT_CODE = ERROR_CODES.CONFLICT ?? 'CONFLICT';
 
@@ -75,8 +75,6 @@ export class IdentityTaskLoop {
     handoffTimeoutMs = Number.POSITIVE_INFINITY,
     handoffPollMs = 25,
     idleBackoffMs = 5_000,
-    allowEmptyDiscovery = false,
-    bootstrapPrompt = null,
     waitForSignal = null,
     now = () => Date.now(),
     onEvent = null,
@@ -119,9 +117,8 @@ export class IdentityTaskLoop {
     this.handoffTimeoutMs = handoffTimeoutMs;
     this.handoffPollMs = handoffPollMs;
     this.idleBackoffMs = idleBackoffMs;
-    this.allowEmptyDiscovery = allowEmptyDiscovery;
-    this.bootstrapPrompt = bootstrapPrompt;
-    this.bootstrapUsed = false;
+    this.waitingForWork = false;
+    this.workSignalVersion = 0;
     this.waitForSignal = waitForSignal;
     this.now = now;
     this.onEvent = onEvent;
@@ -171,7 +168,7 @@ export class IdentityTaskLoop {
       take_exhausted: this.takeExhausted,
       take_retry_at: this.takeRetryAt,
       idle_backoff_ms: this.idleBackoffMs,
-      bootstrap_used: this.bootstrapUsed,
+      waiting_for_work: this.waitingForWork,
       idle_generation: this.idleGeneration,
       last_error: this.lastError,
       last_event_at: this.lastEventAt,
@@ -181,7 +178,16 @@ export class IdentityTaskLoop {
   }
 
   /** Wake an idle identity loop after Task Controller observes new eligible work. */
+  notifyPublicChange(event = {}) {
+    const publicOperations = ['create_task', 'finish_task', 'stop_execution', 'fence_execution', 'expire_execution', 'reopen_task', 'handoff_execution', 'link_material', 'publish_material', 'dispute_material', 'supersede_material', 'unsupersede_material', 'workspace_save', 'workspace_merge'];
+    if (event.changed === false || (!publicOperations.includes(event.operation) && event.kind !== 'material_published')) return this.snapshot();
+    return this.notify(event.kind ?? event.operation);
+  }
+
+  /** A controller signal permits another bounded discovery turn. */
   notify(reason = 'event') {
+    this.waitingForWork = false;
+    this.workSignalVersion += 1;
     this.#rearmTakeIfDue(reason);
     // A bounded take retry cooldown is an intentional backoff.  A wake
     // delivered after the final failed attempt must not turn that cooldown
@@ -281,6 +287,7 @@ export class IdentityTaskLoop {
   }
 
   async #runOnce(reason) {
+    if (this.waitingForWork) return { disposition: 'idle', reason: 'awaiting_public_change', snapshot: this.snapshot() };
     this.#rearmTakeIfDue(reason);
     if (this.takeExhausted) {
       this.#setIdle({ reason: 'take_attempts_exhausted' });
@@ -288,17 +295,12 @@ export class IdentityTaskLoop {
     }
     let rescans = 0;
     while (!this.stopped) {
+      const discoverySignalVersion = this.workSignalVersion;
       this.#setState(IDENTITY_LOOP_STATES.DISCOVERING, { reason });
       this.discoveryCount += 1;
       const discovered = asArray(await this.listEligibleTasks({ core_id: this.coreId, limit: this.shortlistLimit, reason }), ['eligible_tasks', 'ready_tasks', 'tasks']);
       const candidates = discovered.slice(0, this.shortlistLimit);
       this.#emit({ kind: 'identity_loop_discovery', core_id: this.coreId, reason, candidate_count: candidates.length, task_ids: candidates.map(taskId).filter(Boolean), timestamp: this.now() });
-      const bootstrap = candidates.length === 0 && this.allowEmptyDiscovery && !this.bootstrapUsed;
-      if (bootstrap) this.bootstrapUsed = true;
-      if (candidates.length === 0 && !bootstrap) {
-        this.#setIdle({ reason: 'no_eligible_task' });
-        return { disposition: 'idle', reason, candidates: [], snapshot: this.snapshot() };
-      }
       this.#setState(IDENTITY_LOOP_STATES.TAKING, { reason });
       this.takeTurnCount += 1;
       const candidateView = candidates.map((candidate) => Object.freeze({ ...candidate }));
@@ -307,8 +309,7 @@ export class IdentityTaskLoop {
         selection = await this.takeTask({
           core_id: this.coreId,
           candidates: Object.freeze(candidateView),
-          prompt: bootstrap ? (this.bootstrapPrompt ?? this.takePrompt) : this.takePrompt,
-          bootstrap,
+          prompt: this.takePrompt,
           reason,
           rescan: rescans,
         });
@@ -325,6 +326,11 @@ export class IdentityTaskLoop {
       }
       const taken = directTake(selection);
       const selectedId = taken?.task?.task_id ?? normalizeTake(selection);
+      if (!taken && selection?.no_work === true) {
+        this.waitingForWork = discoverySignalVersion === this.workSignalVersion;
+        this.#setIdle({ reason: 'no_work' });
+        return { disposition: 'idle', reason: 'no_work', snapshot: this.snapshot() };
+      }
       if (selection && typeof selection === 'object' && selection.take_deferred === true) {
         this.#setIdle({ reason: 'take_deferred' });
         return { disposition: 'take_deferred', snapshot: this.snapshot() };
@@ -351,7 +357,7 @@ export class IdentityTaskLoop {
           return { disposition: 'take_failed', error: this.lastError, snapshot: this.snapshot() };
         }
         this.takeConflictCount += 1;
-        this.#emit({ kind: 'identity_loop_take_conflict', core_id: this.coreId, reason, rescan: rescans, error: errorView(take.error) });
+        this.#emit({ kind: 'identity_loop_take_conflict', core_id: this.coreId, reason, rescan: rescans, operation_id: takeError.operation_id ?? null, error: errorView(takeError), timestamp: this.now() });
         if (rescans >= this.maxTakeRescans) {
           this.#setIdle({ reason: 'take_conflict' });
           return { disposition: 'take_conflict', rescans, snapshot: this.snapshot() };
@@ -360,11 +366,16 @@ export class IdentityTaskLoop {
         this.rescanCount += 1;
         continue;
       }
-      const selected = candidates.find((candidate) => String(taskId(candidate)) === String(selectedId))
-        ?? (bootstrap && taken?.task ? taken.task : null);
+      // The page is discovery context, not an admission allowlist. A Bot can
+      // find or propose other work through the public services during its turn.
+      // A take returned by the trusted tool transport already has Task Service
+      // authority; do not abandon its live Execution because the page is stale.
+      const selected = taken?.task
+        ?? candidates.find((candidate) => String(taskId(candidate)) === String(selectedId))
+        ?? (selectedId ? this.taskService?.getTask?.(selectedId) : null);
       if (!selected) {
         this.takeFailureCount += 1;
-        const error = new SwarmEnvError('TAKE_INVALID', 'take must choose one task_id from the bounded shortlist', { task_id: selectedId, candidate_task_ids: candidates.map(taskId) });
+        const error = new SwarmEnvError('TAKE_INVALID', 'take must identify an existing Task or return an accepted Task Service take', { task_id: selectedId });
         this.lastError = errorView(error);
         this.#emit({ kind: 'identity_loop_take_invalid', core_id: this.coreId, reason, error: this.lastError, timestamp: this.now() });
         this.#setIdle({ reason: 'take_invalid' });
@@ -584,7 +595,7 @@ export class IdentityTaskLoop {
     this.taskId = null;
     this.executionId = null;
     if (!this.stopped) {
-      if (!['take_deferred', 'take_attempts_exhausted', 'no_eligible_task', 'stopped'].includes(reason)) this.idleGeneration += 1;
+      if (!['take_deferred', 'take_attempts_exhausted', 'no_work', 'stopped'].includes(reason)) this.idleGeneration += 1;
       this.#setState(IDENTITY_LOOP_STATES.IDLE, { reason });
     }
   }

@@ -115,12 +115,11 @@ const syntheticTask = {
   priority: 110, state: 'OPEN', age_ms: 0, fairness_protected: false, selection_rank: 0,
 };
 const takeExpression = between(runnerPath, '      takePrompt: ', ',\n      shortlistLimit:');
-const takePrompt = evaluate(takeExpression, { BOUND_AGENT_PROMPT, state: { agentTaskLoopGuide: taskLoopGuide(profile) } });
+const takePrompt = evaluate(takeExpression, { BOUND_AGENT_PROMPT, state: { agentTaskLoopGuide: taskLoopGuide(profile), mission: { mission_id: '<MISSION_ID>', goal: '<MISSION_GOAL>', acceptance_conditions: ['<MISSION_ACCEPTANCE>'] }, publicWorkspace: { workspace_id: '<WORKSPACE_ID>' }, problem: { id: '<PROJECT_ID>', problem_file: '<PROBLEM_FILE>', source_hash: '<SOURCE_HASH>' } } });
 const discoveryExpression = between(runnerPath, '  const message = ', ';\n  try {', 'async function takeTaskWithAgent');
 const discoveryPrompt = evaluate(discoveryExpression, {
   prompt: takePrompt,
   candidates: [syntheticTask],
-  bootstrap: false,
   selectionView: (candidates) => evaluate(selectionExpression, { candidates }),
 });
 // The flat-only benchmark no longer has the old modePrompt helper. Keep the
@@ -129,9 +128,9 @@ const discoveryPrompt = evaluate(discoveryExpression, {
 const modePrompt = (_mode, underlyingPrompt) => underlyingPrompt;
 const baseExpression = between(runnerPath, '  const basePrompt = ', ';\n  state.identityLoopEvents');
 const basePrompt = evaluate(baseExpression, { BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, state: { agentTaskLoopGuide: taskLoopGuide(profile) } });
-let benchmarkDoc = header('Complete benchmark task and turn messages', 'Sources: [putnam-runner.js](../../../src/benchmark/putnam-runner.js) and [identity-task-loop.js](../../../src/runtime/identity-task-loop.js). The main benchmark overrides IdentityTaskLoop’s short default prompt. A fresh Session also receives the stable system addendum; the texts below are the user-turn bodies or Task instructions, as labeled.');
+let benchmarkDoc = header('Complete benchmark task and turn messages', 'Sources: [putnam-runner.js](../../../src/benchmark/putnam-runner.js) and [identity-task-loop.js](../../../src/runtime/identity-task-loop.js). The main benchmark overrides IdentityTaskLoop’s short default prompt. The OpenSandbox system addendum is conditional on configuration; the texts below are the user-turn bodies or Task instructions, as labeled.');
 benchmarkDoc += block('IdentityTaskLoop default, when a caller does not override takePrompt', IDENTITY_TAKE_PROMPT);
-benchmarkDoc += block('Normal flat discovery turn, one complete synthetic candidate', discoveryPrompt, 'The example contains the entire candidate set for this synthetic invocation: one Task. Real candidate fields are inserted with JSON.stringify(selectionView(candidates)); no real Mission text or proof is embedded here.');
+benchmarkDoc += block('Normal flat discovery turn, one complete synthetic candidate', discoveryPrompt, 'The example contains one eligible Task; the message explicitly identifies the view as a bounded page, not a complete search or admission allowlist. Real candidate fields are inserted with JSON.stringify(selectionView(candidates)); no real Mission text or proof is embedded here.');
 benchmarkDoc += block('Bound continuation from the onTake continuation loop', modePrompt('direct', BOUND_AGENT_PROMPT, 'flat'), 'This is the shorter continuation used by onTake after the previous turn settles. It repeats the identity SOP; it does not automatically append a fresh Mission/Material dump.');
 benchmarkDoc += block('Bound continuation from the outer benchmark loop', basePrompt({ taskId: '<TASK_ID>' }), 'This is the separate basePrompt(core) bound branch. It includes the exact tool guide and a final continuation paragraph.');
 for (const mode of ['direct', 'root-only']) {

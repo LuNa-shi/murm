@@ -7,11 +7,10 @@ These are properties of the [reviewed runtime](INDEX.md), not proposed fixes or 
 | Current boundary | Effect on interpretation | Detailed explanation |
 |---|---|---|
 | Flat-only normal entry points and retained compatibility are different scopes | CLI and exported runner use flat Mission Tasks and reject removed model selectors. Inspect Runtime, fixture and historical-data entry points separately; neither a historical legacy label nor the flat-only CLI proves which compatibility operations remain callable. | [07 Launch](07-run-configuration.md), [03 Tasks](03-mission-task.md) |
-| Shared Mission Task is identified by creation order | The earliest Task in the Mission gets shared semantics; this is not a persisted `shared` type flag that callers can freely assign. | [03 Tasks](03-mission-task.md) |
+| Historical root projection is not shared Task authority | The runner still records its first proposal as `rootTaskId` for old reports, but current Mission Tasks are exclusive; all Cores now enter discovery and may propose local work. The remaining report vocabulary needs migration. | [03 Tasks](03-mission-task.md) |
 | Take ordering and take enforcement have different scopes | Mission-wide listing can age/sort Tasks, while take-time fairness uses a Task's root scope. Modern Tasks have their own roots, so this is not a global Mission fairness guarantee. | [03 Tasks](03-mission-task.md) |
 | Retained dependency interpretations have different terminal predicates | Modern `depends_on` handling can accept `DONE`/`CLOSED`, while the historical structural-dependency helper uses `DONE`/`SATISFIED`. A closed prerequisite can leave a blocker in that lower-level or historical-data path; this does not make legacy a selectable benchmark model. | [03 Tasks](03-mission-task.md) |
 | Session replacement normally preserves Execution identity | A recovery/rotation count is not a count of new research responsibilities. Re-starting durable execution also updates timing/version fields; inspect the path rather than inferring it from the Session count. | [02 Execution](02-execution.md), [05 Continuity](05-workspace-continuity.md) |
-| Runner rescan option is not wired to the consumed constructor field | The runner passes `maxTakeRescans`, while IdentityTaskLoop consumes `maxClaimRescans`. Setting the former does not alter that constructor's effective default of one rescan. | [07 Launch](07-run-configuration.md), [02 Execution](02-execution.md) |
 
 ## Judge and completion
 
@@ -26,7 +25,7 @@ A direct Judge result does not automatically block or complete a Task, complete 
 | Current boundary | Effect |
 |---|---|
 | Composed initial snapshot versus actual send | Normal benchmark `task_take` binds with `sendInitialPrompt: false`; the snapshot event/hash is not evidence that this body was delivered. |
-| Discovery versus full composed service documentation | Discovery sends SOP, tool guide and bounded candidate view. Pi registration carries schema/description/short help, while the composer's full authorized Service documentation is path dependent. |
+| Discovery versus full composed service documentation | Discovery sends SOP, tool guide, Mission/input context and an explicitly partial eligible Task view. Pi registration carries schema/description/short help, while the composer's full authorized Service documentation is path dependent. |
 | Two-stage Runtime composition | Runtime can use an already-composed snapshot as the static prefix of another bound composition. Recovery profile/context can therefore appear inside a second wrapper. |
 | Session tool registration versus refreshed Bridge profile | The Pi extension registers once per Session, while Bridge can refresh its cached Registry profile. A Registry change does not by itself re-register Pi tools in the current Session. |
 | Task instruction versus optional Sandbox profile | The benchmark Task text forbids shell, while an explicitly enabled Sandbox exposes bounded `sandbox_exec` and its help. The manual preserves both actual surfaces instead of inventing a reconciled prompt. |

@@ -5,15 +5,15 @@
 Source: [agent-prompt.js](../../../src/agent/agent-prompt.js). The same body is exported as SYSTEM_IDENTITY_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT and RECOVERY_AGENT_PROMPT. The aliases do not create distinct selection Agents or research strategies.
 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
-## System addendum (system version 3; composition version 5)
+## System addendum (system version 4; composition version 6)
 
 AgentCoreAdapter writes this body to identity-system-prompt.md and passes that file through Pi --append-system-prompt. It is an addendum to Pi-owned system instructions; it is not the whole upstream model request.
 
-Body SHA-256: `d1675dd3098378ff40e7d1d4ad9184113e288d91175dad0ed37cb23d5cc6d327`
+Body SHA-256: `c28d9f75592f76330e674713af109ef336643f47b195102578615701634f198e`
 
 ````text
 You are one SwarmEnv Bot lifecycle working with other Bots toward the supplied Mission; never lower its original acceptance requirements or treat one local Task as Mission completion.
-Every research tool call must belong to the current valid Execution. Before an Execution, inspect Mission, related Task state, Materials, and permitted public Workspace revisions. Then call canonical task_take for one eligible Task. If no useful Task exists, use bot exit; Mission itself is never taken. A failed take is not success.
+Every research tool call must belong to the current valid Execution. Before an Execution, inspect Mission, related Task state, Materials, and permitted public Workspace revisions. Prefer suitable existing work; if a useful independent responsibility is missing, propose it with task_create, then call canonical task_take for the chosen Task. If no useful work can be advanced, end discovery without inventing a Task; Mission itself is never taken. A failed take is not success.
 A successful task_take binds this Bot, Core lane, Sandbox, and Session to one Execution. Continue in this Session until the Task lifecycle boundary; do not start a replacement Session or take another Task.
 This Bot cannot take or select another existing Task while an Execution is active. task_create proposes a separate responsibility; a later Bot takes it in a fresh Execution. Scope changes require a new Task.
 Use only the capabilities shown in the current directory. Service documentation explains purpose, parameters, real outputs, errors, retries, and limits; it does not grant authority. Runtime owns leases, fencing, process control, and identity rotation.

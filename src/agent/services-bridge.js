@@ -440,7 +440,8 @@ export class ServicesBridge {
   }
 
   async call({ operation, payload = {}, operation_id: operationId = null, service_id: serviceId = null, capability_id: capabilityId = null } = {}) {
-    this.logger?.append({ event: 'bridge.start', operation, operation_id: operationId, task_id: this.taskId, execution_id: this.executionId, payload });
+    const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
+    this.logger?.append({ event: 'bridge.start', operation, operation_id: bridgeOperationId, task_id: this.taskId, execution_id: this.executionId, payload });
     try {
       const profile = this.getCapabilityProfile();
       const capability = this.#profileCapability(profile, operation, { serviceId, capabilityId });
@@ -467,7 +468,6 @@ export class ServicesBridge {
         if (['get_execution', 'list_tasks', 'list_executions', 'task_status', 'task_take', 'task_feedback', 'execution_progress'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
       } };
-      const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
       if (operation === 'execution_progress') {
         if (!this.taskId || !this.executionId || ![AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY].includes(this.role)) {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'execution_progress requires a bound Task Execution', { role: this.role });
@@ -748,8 +748,14 @@ export class ServicesBridge {
       this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
       return result;
     } catch (error) {
+      if (operation === 'task_take') {
+        this.lastTakeOutcome = {
+          attempted: true, ok: false, task_id: payload?.task_id ?? null, operation_id: bridgeOperationId,
+          code: error.code ?? 'SERVICE_UNAVAILABLE', message: error.message,
+        };
+      }
       try {
-        await this.onError?.({ operation, operationId, error });
+        await this.onError?.({ operation, operationId: bridgeOperationId, error });
       } catch {
         // Preserve the original Agent-visible Service error if audit delivery
         // itself fails.

@@ -624,8 +624,6 @@ function selectionView(candidates) {
     mission_id: candidate.mission_id ?? null,
     summary: candidate.summary ?? null,
     relations: candidate.relations ?? null,
-    task_type: candidate.task_type,
-    parent_id: candidate.parent_id,
     goal: candidate.goal,
     expected_output: candidate.expected_output,
     task_instructions: candidate.task_instructions,
@@ -647,13 +645,13 @@ function selectionView(candidates) {
  * already-created take from this same identity and never asks another
  * process to choose on its behalf.
  */
-async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false } = {}) {
+async function takeTaskWithAgent(core, candidates, prompt) {
   // An active Execution owns the identity. Never open a parallel discovery
   // turn or ask the model to take a second responsibility.
   if (core.taskId || core.executionId) return { take_deferred: true };
   core.bridge.beginTakeAttempt?.();
   const session = await ensureAgentSession(core);
-  if (!session) return core.turnInFlight ? { take_deferred: true } : null;
+  if (!session) return core.turnInFlight ? { take_deferred: true } : { take_failed: true, error: { code: 'SERVICE_UNAVAILABLE', message: 'Bot session could not start' } };
   const sequence = session.rpcRecords?.length ?? 0;
   core.takeResult = null;
   core.takeActive = true;
@@ -669,72 +667,30 @@ async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false }
   core.takeTurnCount = (core.takeTurnCount ?? 0) + 1;
   const message = [
     prompt,
-    'You are the reusable identity for this Core. Continue on this same Session; do not delegate Task selection to another Agent/session.',
-    bootstrap
-      ? 'The Mission has no Task yet. Read the public Mission Workspace and Mission status, propose one valuable Task with task_create, then call task_take exactly once for the returned task_id. Continue the Task in this Session after it succeeds.'
-      : 'Inspect the bounded Task view below and call task_take exactly once for one listed task_id. The task_take result binds this same Core lane to the Task; after it succeeds, continue the Task in this Session.',
-    ...(bootstrap ? [] : ['If the list is empty, end this turn without taking work.']),
-    `Bounded Task view (complete candidate set):\n${JSON.stringify(selectionView(candidates))}`,
+    'You are an unbound Bot on this Core. Discover and choose work in this Session; a successful task_take binds this Bot to one Execution.',
+    'Prefer suitable existing responsibilities. Read related Tasks in all relevant states, Materials, and public Workspace files within your selection budget. If a useful independent responsibility is missing, propose it with task_create and you may take that new Task. Do not duplicate work merely to occupy a Core.',
+    'The view below is a bounded page of eligible Tasks, not the complete Mission history or an admission allowlist. Use public queries to inspect related work beyond this page. An empty page does not mean the Mission is complete. If no useful work is available, finish discovery without taking a Task.',
+    `Eligible Task page (other Tasks and states may exist):\n${JSON.stringify(selectionView(candidates))}`,
   ].join('\n\n');
   try {
     const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });
-    if (!bootstrap && response?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
+    if (response?.data?.disposition !== 'handled' && typeof session.waitForSettled === 'function') {
       await session.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: sequence });
-    }
-    if (bootstrap && !core.takeResult?.task?.task_id && !core.stopping) {
-      // Pi may still be finalizing the discovery turn when prompt() returns.
-      // Wait only for the short settled boundary, then enqueue the required
-      // proposal as a real follow-up. A plain prompt while streaming is an RPC
-      // protocol error and silently prevents the zero-Task bootstrap proposal.
-      if (typeof session.waitForSettled === 'function') {
-        await session.waitForSettled({ timeoutMs: 10_000, afterSequence: sequence }).catch(() => undefined);
-      }
-      const followUpSequence = session.rpcRecords?.length ?? 0;
-      await session.prompt('The public Workspace inspection is complete. Call swarmenv_task_create now with the exact Mission, proof Task contract, completion contract, and workspace object supplied above. Do not call another read tool and do not call task_take until task_create returns.', {
-        timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000),
-        streamingBehavior: 'followUp',
-      });
-      if (typeof session.waitForSettled === 'function') {
-        await session.waitForSettled({ timeoutMs: 30_000, afterSequence: followUpSequence }).catch(() => undefined);
-      }
-      if (!core.takeResult?.task?.task_id && !core.stopping) {
-        // Some provider streams accept the follow-up but never emit a second
-        // settled boundary. Rotate that unproductive unbound session once so
-        // bootstrap cannot consume the whole experiment deadline.
-        await Promise.race([
-          Promise.resolve(session.stop?.()),
-          sleep(5_000),
-        ]).catch(() => undefined);
-        if (core.session === session) core.session = null;
-        core.turnInFlight = false;
-        core.dispatchReserved = false;
-        const retrySession = await ensureAgentSession(core);
-        if (retrySession) {
-          const retrySequence = retrySession.rpcRecords?.length ?? 0;
-          const retryPrompt = prompt
-            .replace('Read the public Workspace and task_status once. Your next tool call after those reads must be swarmenv_task_create. Do not call swarmenv_task_take until task_create has returned the new task_id. Then call swarmenv_task_take exactly once for that returned task_id. ', '')
-            .concat('\nThe previous proposal stream did not complete. Do not call any read tool. Call swarmenv_task_create immediately with the exact Mission, proof Task contract, completion contract, and workspace object above. Then call swarmenv_task_take exactly once for its returned task_id.');
-          await retrySession.prompt(retryPrompt, {
-            timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000),
-          });
-          await retrySession.waitForSettled?.({ timeoutMs: 30_000, afterSequence: retrySequence }).catch(() => undefined);
-        }
-      }
     }
     if (core.takeResult?.task?.task_id) return core.takeResult;
     if (core.bridge.lastTakeOutcome?.attempted && !core.bridge.lastTakeOutcome.ok) {
       return { take_failed: true, error: core.bridge.lastTakeOutcome };
     }
     if (core.taskId || core.executionId) return { take_deferred: true };
-    return null;
+    return { take_failed: true, error: { code: 'DISCOVERY_INCOMPLETE', message: 'Discovery settled without an accepted take or an explicit no-work outcome' } };
   } catch (error) {
     if (core.bridge.lastTakeOutcome?.attempted && !core.bridge.lastTakeOutcome.ok) {
-      return { take_failed: true, error: { code: error.code ?? null, message: error.message } };
+      return { take_failed: true, error: core.bridge.lastTakeOutcome };
     }
     if (core.taskId || core.executionId) return { take_deferred: true };
     core.sessionStartFailures = (core.sessionStartFailures ?? 0) + 1;
     if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'take_turn_error' });
-    return null;
+    return { take_failed: true, error: { code: error.code ?? 'RPC_ERROR', message: error.message } };
   } finally {
     collectToolEvents(core, session.rpcRecords?.slice(sequence) ?? []);
     core.takeActive = false;
@@ -750,8 +706,7 @@ async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false }
     // Keep the Core reserved across the take and Runtime handoff. Invalid or
     // empty selections do not reserve the Core.
     const selectedTaskId = core.takeResult?.task?.task_id ?? null;
-    const handoffPending = !handedOff && typeof selectedTaskId === 'string' &&
-      candidates.some((candidate) => String(candidate.task_id ?? candidate.taskId ?? candidate.id) === selectedTaskId) || (bootstrap && selectedTaskId !== null);
+    const handoffPending = !handedOff && selectedTaskId !== null;
     if (!handedOff && !handoffPending) {
       core.turnInFlight = false;
       core.dispatchReserved = false;
@@ -765,7 +720,7 @@ async function takeTaskWithAgent(core, candidates, prompt, { bootstrap = false }
     // An empty or failed take turn does not retire the identity. Keep the
     // Session for the next wake; only explicit recovery/rotation replaces it.
     // A valid take stays reserved until Runtime finishes the handoff.
-    core.stateRef?.requestIdentityWake?.();
+
   }
 }
 
@@ -1937,7 +1892,6 @@ async function createProjectState(problem, config, options) {
         // task_take is invoked by this Core's reusable identity. Keep the
         // durable result available to IdentityTaskLoop so it does not issue a
         // second take or manufacture a separate selection handoff.
-        core.takeResult = take;
         core.dispatchReserved = false;
         const takenAt = Date.now();
         const priorWaitingExecutionId = core.waitingExecutionId;
@@ -1982,6 +1936,8 @@ async function createProjectState(problem, config, options) {
           sendInitialPrompt: false,
           agentPrompt: BOUND_AGENT_PROMPT,
         });
+        // Publish a usable receipt only after Runtime binding succeeds.
+        core.takeResult = take;
         const boundSession = core.session;
         const boundExecutionId = take.execution.execution_id;
         core.parallelism.transition(core.index, 'RUNNING', {
@@ -2613,7 +2569,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       coreId: `core-${core.index}`,
       // This is a bounded discovery prompt for the reusable identity, not a
       // old selection transport SOP.  The identity must call task_take itself.
-      takePrompt: `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nUse the Task view in this turn and task_take on this same Core identity; do not call task_take or delegate selection to another Session.`,
+      takePrompt: `${BOUND_AGENT_PROMPT}${state.agentTaskLoopGuide ? `\n${state.agentTaskLoopGuide}` : ''}\nMission (shared objective and final acceptance, not a Task contract):\n${JSON.stringify(state.mission)}\nPublic Workspace: ${state.publicWorkspace.workspace_id}. Query its current main and read actual files before choosing local work.\nProject input coordinates for proposed Tasks: ${JSON.stringify({ project: state.problem.id, problem_file: state.problem.problem_file, source_hash: state.problem.source_hash, workspace_id: state.publicWorkspace.workspace_id })}. Keep Mission acceptance separate from each local Task's Goal, Deliverable, and Completion condition.`,
       shortlistLimit: options.controllerShortlistLimit ?? 16,
       maxTakeAttempts: options.maxStartupAttempts ?? 3,
       maxTakeRescans: options.maxTakeRescans ?? 1,
@@ -2623,9 +2579,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
       idleBackoffMs: options.identityLoopIdleBackoffMs ?? 5_000,
       taskService: state.taskService,
       listEligibleTasks: () => projectEligibleTasks(state, { limit: options.controllerShortlistLimit ?? 16 }),
-      takeTask: ({ candidates, prompt, bootstrap = false }) => takeTaskWithAgent(core, candidates, prompt, { bootstrap }),
-      allowEmptyDiscovery: core.index === 1,
-      bootstrapPrompt: `Mission ${state.mission.mission_id} starts with zero Tasks. Public Workspace is ${state.publicWorkspace.workspace_id} at revision 0.1. Read the public Workspace and task_status once. Your next tool call after those reads must be swarmenv_task_create. Do not call swarmenv_task_take until task_create has returned the new task_id. Then call swarmenv_task_take exactly once for that returned task_id. Create one independent proof Task for ${state.problem.id}. The proposal must use mission_id ${state.mission.mission_id}, summary "Prove ${state.problem.id} with an independently checked candidate and a clear boundary from other Mission work.", goal "Prove ${state.problem.id}", expected_output "A verified Lean proof for the locked PutnamBench problem", acceptance_conditions {"project":"${state.problem.id}","source_hash":"${state.problem.source_hash}"}, completion_contract {"normal_flow":true,"required_materials":[{"kinds":["fact","experience","conjecture","artifact","failure"],"scope":"proof_relevant","min_count":1,"requires_consumption":true,"cross_task":true,"action":"integration"}],"final_candidate":true,"required_candidate":{"kind":"artifact","scope":"proof_relevant"},"required_check":{"checker_ref":"lean","checker_version":"${state.fixtureManifest.checker_version}","environment_ref":"${state.fixtureManifest.environment_ref}"}}, and workspace {"project":"${state.problem.id}","problem_file":"${state.problem.problem_file}","source_hash":"${state.problem.source_hash}","workspace_id":"${state.publicWorkspace.workspace_id}"}.`,
+      takeTask: ({ candidates, prompt }) => takeTaskWithAgent(core, candidates, prompt),
       takeSelectedTask: async (selectedTaskId, context) => {
         // The old selection transport may already have taken the Task. Reuse that
         // durable result rather than creating a second Execution.
@@ -2645,9 +2599,8 @@ export async function runBenchmarkProject(problem, config, options = {}) {
             owner_ref: core.actorRef,
             core_id: `core-${core.index}`,
             agent_prompt: selectedTask.task_instructions ?? BOUND_AGENT_PROMPT,
-            // Modern Mission Tasks start from the public Mission Workspace and
-            // receive a fresh Execution materialization. Resume is reserved
-            // for explicit recovery takes carrying a source revision.
+            // Mission Tasks use public inputs and a fresh Execution directory.
+            // Private resume is not a valid selection mode.
             workspace_mode: 'clean',
           });
         } catch (error) {
@@ -2701,6 +2654,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           execution_state: event.execution_state ?? null,
           changed: event.changed ?? null,
           reason: event.reason ?? null,
+          operation_id: event.operation_id ?? null,
           check_count: event.check_count ?? null,
           task_ids: event.task_ids ?? null,
           timestamp: event.timestamp ?? Date.now(),
@@ -2714,7 +2668,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
             sanitized.rescan,
             sanitized.timestamp,
           ].join(':');
-          state.parallelism.recordTakeConflict(`identity:${conflictKey}`);
+          state.parallelism.recordTakeConflict(event.operation_id ? `bridge:${event.operation_id}` : `identity:${conflictKey}`);
         }
         state.observationStore.append({
           experimentId: state.runId,
@@ -2727,7 +2681,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
           payload: sanitized,
         });
         if (sanitized.kind === 'identity_loop_state_changed' && sanitized.changed === true && sanitized.state === 'IDLE' &&
-          ['execution_released', 'runtime_failed', 'take_failed', 'take_invalid', 'take_conflict', 'take_failed', 'take_invalid'].includes(sanitized.reason)) {
+          ['execution_released', 'runtime_failed', 'take_conflict'].includes(sanitized.reason)) {
           // The release event can arrive while IdentityTaskLoop is still inside its
           // handoff. Wake this identity loop once it has actually returned to IDLE,
           // then reconcile for durable projections. The direct wake avoids a
@@ -2752,6 +2706,7 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     // Task Service emits only after its mutation transaction commits. This is
     // the low-latency path; the Controller's periodic sweep remains the
     // repair path for missed notifications or a restarted process.
+    for (const loop of state.identityLoops) loop.notifyPublicChange(event);
     state.requestIdentityWake(event?.kind ?? 'task_event');
   });
   // Compatibility metrics keep the old report field readable while the
@@ -2769,9 +2724,8 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     stopped: state.identityLoops.every((loop) => loop.snapshot().stopped),
   }) };
   try {
-    // Demand-driven startup observes the queue before touching Pi/provider
-    // capacity. A root-only queue starts one unbound session; an empty queue
-    // starts none.
+    // Every configured Core enters discovery, including a zero-Task Mission.
+    // Readiness is context for the Bot, not permission to start discovery.
     await state.controller.reconcile({ reason: 'initial' });
     // Each physical Core owns one long-lived identity loop supervisor. The
     // Controller only reconciles durable readiness and wakes these loops; it

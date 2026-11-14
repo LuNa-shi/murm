@@ -1,11 +1,11 @@
 {
   "description": "Offline source fingerprints and prompt extraction anchors; no actual run data. A hash match establishes source alignment, not delivery to an Agent.",
-  "prompt_version": "5",
-  "system_prompt_version": "3",
+  "prompt_version": "6",
+  "system_prompt_version": "4",
   "sources": [
     {
       "path": "src/agent/agent-prompt.js",
-      "sha256": "620ff3500692079da01aed50afed59d0eb848d219330d4ba29f7209c8bd842d9"
+      "sha256": "f2cbddce9e4b64ee0fdf80d11771cbbf547c09f4a15c2927233b1462c809cac2"
     },
     {
       "path": "src/agent/capability-profile.js",
@@ -17,7 +17,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "c5664127e5a77ceba74bc9ad80c467f735d12823b56fe1febe1fd4b7805925e7"
+      "sha256": "86cf9a2116959cc695adde2279422fe173d025eead265165331163f6f3b3911d"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -33,7 +33,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "828aa10596f79df623328775b37ebe985358b7169ab3b47f2a785a25c85ddcdb"
+      "sha256": "6b8c97a5d1b8c41aff45037a9ea354fd9d14a52d983c9ee0aafc4d27fe057489"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -41,7 +41,7 @@
     },
     {
       "path": "src/runtime/identity-task-loop.js",
-      "sha256": "59b84a4246585f51941ef9cf4afd40ed88a29cc377d10061954db218b63babd5"
+      "sha256": "5913eb7030f0601a90cbcf5b62bd1a8f399f2bb08362cac43a1de3b5d6d748d1"
     },
     {
       "path": "src/runtime/runtime-capabilities.js",
@@ -100,49 +100,49 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const modeInstructions = ",
-      "line": 1632,
+      "line": 1587,
       "sha256": "dc33ea53f8ff3c60b8089bbd1df164b41ddae305ae29a9c02ff52cf74f4a7122"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const dependencyInstruction = ",
-      "line": 1635,
+      "line": 1590,
       "sha256": "4d86810c4271542d73bd027ca54072cc2fe2e00670c1b275f7d0f17cfdce0c10"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const taskSpecificInstruction = ",
-      "line": 1636,
+      "line": 1591,
       "sha256": "a5c864d39b6125b61f29029465c2355a561501a2ae0406d9af5fdf09712f67fc"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "    task_instructions: ",
-      "line": 1646,
+      "line": 1601,
       "sha256": "6b92a2c310f719e6beeb2b8e1ec486d1c569f4db969a58e5ed2d7b2c3ccfff08"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "function selectionView(candidates) {\n  return ",
       "line": 621,
-      "sha256": "effea448619569d91a147989248427c95b573da2d88fc5fca4774927f0e6c825"
+      "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "      takePrompt: ",
-      "line": 2616,
-      "sha256": "7ed09af4862880a2d8821fd60ab5cfaf84ea3de83bb960b321ad36768da54731"
+      "line": 2572,
+      "sha256": "17ed07b6a8e2399ba80eba09cc6bd8d72883f23718e4bfad21c3289b1cb4bd6f"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const message = ",
-      "line": 670,
-      "sha256": "ced08f9010e28246359ba55474a5fb9f6e6e3d4997d5beccbca0da5a3fe50886"
+      "line": 668,
+      "sha256": "3a91c1b3940f6cf36d42ce10a8e71196116487e8bb748ebb8bc9206b69da9c9d"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "  const basePrompt = ",
-      "line": 2607,
+      "line": 2563,
       "sha256": "6be42e0ba4e7c5c99afffc42d9d0a74f4ef9c76f92d2179ae27b94c195b043f4"
     },
     {
@@ -194,18 +194,8 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 680,
+      "line": 676,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
-    },
-    {
-      "path": "src/benchmark/putnam-runner.js",
-      "line": 693,
-      "expression": "await session.prompt('The public Workspace inspection is complete. Call swarmenv_task_create now with the exact Mission, proof Task contract, completion contract, and workspace object supplied above. Do not call another read tool and do not call task_take until task_create returns.', {"
-    },
-    {
-      "path": "src/benchmark/putnam-runner.js",
-      "line": 717,
-      "expression": "await retrySession.prompt(retryPrompt, {"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -255,13 +245,13 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 451,
+      "line": 452,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 458,
+      "line": 459,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -347,15 +337,15 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "2a669cc90dd82b3363305a071634063030e6c2a8d676df4536c53ed998bfe84a"
+      "sha256": "2bc96cf809044e15eb53e00f8a166d08c523ab096fe1ad5cff7c76e170fa5df6"
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "b87c195739b535463c754c2f3249636a92daf51950b20d8f10fc1930f56bfddc"
+      "sha256": "5bfb9cb2cd9411db1472b8b59d3587caaa98d51a27cffaaf04bd4b4177d0b635"
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "1414c87a0c67b26a702457233adac5d44b0f73ca5e8b5fd03d318c1ebe5beb02"
+      "sha256": "0cae8b9af5bb85c70be1c125b0785f03c9a126fa47301510c0b09881464fce71"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
@@ -363,11 +353,11 @@
     },
     {
       "path": "docs/architecture/prompts/05-composed-context-examples.md",
-      "sha256": "e73ae85284a4fe8bfe80ef42f1e4e334f111c2026339e192f2502c2bf573c50f"
+      "sha256": "cd1707d6b94b77584fee2afe5d6b4ee821a882ea24c460bb5d76b0a60a74ccdb"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "ab6c3f66916ecd67b5ca19cb9c767f6ba9dd243c5d531b90f9462dbf694b6119"
+      "sha256": "0a4bdace87e10ed3e7e5ebd3873fd6621963ff99a431ca783543e261eb979285"
     }
   ]
 }
