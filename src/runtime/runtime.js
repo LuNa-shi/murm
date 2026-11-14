@@ -6,6 +6,7 @@ import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile
 import { BOT_COMPACTION_MESSAGE, buildBotNotification } from '../agent/bot-contract.js';
 import { BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT, buildPromptSnapshot, composeAgentPrompt } from '../agent/agent-prompt.js';
 import { runtimeCapabilityList } from './runtime-capabilities.js';
+import { ExecutionWorkspace } from './execution-workspace.js';
 import { listServices, listTools } from '../sdk/service-catalog.js';
 
 function requireString(value, field) {
@@ -147,6 +148,8 @@ export class Runtime {
     this.missionSubmissionStore = missionSubmissionStore;
     this.agentAdapter = agentAdapter;
     this.sandboxManager = sandboxManager;
+    this.executionWorkspace = missionWorkspace && sandboxManager ? new ExecutionWorkspace({ taskService, workspace: missionWorkspace, sandboxManager,
+      guard: (identity, options) => this.#guardExecutionWorkspace(identity, options) }) : null;
     this.cleanExecutionWorkspaces = cleanExecutionWorkspaces === true;
     this.freshBotPerExecution = freshBotPerExecution === true;
     this.maxWorkers = maxWorkers;
@@ -554,6 +557,31 @@ export class Runtime {
   async savePublicWorkspaceRevision(input = {}) {
     if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
     return this.missionWorkspace.save(input);
+  }
+
+  #guardExecutionWorkspace({ actorRef, taskId, executionId, fencingVersion }, { receiptOnly = false } = {}) {
+    const execution = this.taskService.getExecution(executionId);
+    const bot = this.taskService.getBot(actorRef);
+    const task = execution && this.taskService.getTask(execution.task_id);
+    if (!bot || !execution || execution.owner_ref !== actorRef || execution.task_id !== taskId ||
+        bot.mission_id !== task?.mission_id || execution.workspace_input?.workspace_id !== this.missionWorkspaceId) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace request must match its durable Bot, Task and Mission');
+    }
+    if (receiptOnly) return execution;
+    const binding = this.botBindings.get(actorRef);
+    const active = this.activeProcesses.get(executionId);
+    if (this.stopping || bot.state !== 'ACTIVE' || bot.execution_id !== executionId || execution.state !== 'RUNNING' ||
+        execution.fencing_version !== fencingVersion || !binding || binding.closing || !binding.session || binding.session.closed ||
+        !active || active.closing || active.session !== binding.session || execution.core_id !== bot.core_id) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace contribution requires the current active Bot binding');
+    }
+    this.taskService.assertBotDeadline(actorRef);
+    return execution;
+  }
+
+  async dispatchExecutionWorkspace(operation, input, identity) {
+    if (!this.executionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Execution Workspace control is unavailable');
+    return this.executionWorkspace.dispatch(operation, input, identity);
   }
 
   async mergePublicWorkspaceRevision(input = {}) {
@@ -1528,11 +1556,12 @@ export class Runtime {
     return result;
   }
 
-  #prepareBotExecutionStop(executionId, terminalState, reason) {
+  #prepareBotExecutionStop(executionId, terminalState, reason, { leaseExpiredAt = null } = {}) {
     const execution = this.#getExecution(executionId);
     const bot = this.taskService.getBot(execution.owner_ref);
     if (!bot) return;
-    const intent = this.taskService.requestBotStop(bot.bot_id, reason, { terminalState });
+    const intent = this.taskService.requestBotStop(bot.bot_id, reason, { terminalState, leaseExpiredAt });
+    if (!intent) return null;
     const binding = this.botBindings.get(bot.bot_id);
     if (binding) {
       binding.closing = true;
@@ -1563,6 +1592,7 @@ export class Runtime {
       execution = this.#getExecution(executionId);
     }
     await this.#stopExecutionResources(executionId);
+    await this.executionWorkspace?.reconcile(executionId);
     execution = this.#getExecution(executionId);
     const result = ['CREATED', 'RUNNING', 'WAITING'].includes(execution.state) ? this.taskService.dispatch('stop_execution', {
       terminal_state: terminalState,
@@ -1616,6 +1646,7 @@ export class Runtime {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
     }
     await this.#stopExecutionResources(id, { forceSessionStop: before.state === 'CLOSING' });
+    await this.executionWorkspace?.reconcile(id);
     if (this.#getExecution(id).state === 'CLOSING') {
       if (!this.activeProcesses.has(id)) {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
@@ -1697,6 +1728,7 @@ export class Runtime {
   async fenceExecution(executionId, { reason = 'fenced' } = {}) {
     this.logger?.append({ event: 'runtime.fence_execution', execution_id: executionId, terminal_reason: reason });
     let execution = this.#getExecution(executionId);
+    this.#prepareBotExecutionStop(executionId, 'FAILED', reason);
     const activeBeforeFence = this.activeProcesses.get(executionId);
     if (activeBeforeFence) {
       activeBeforeFence.closing = true;
@@ -1704,6 +1736,7 @@ export class Runtime {
     }
     await this.#drainCompactionCheckpoint(activeBeforeFence);
     await this.#stopExecutionResources(executionId);
+    await this.executionWorkspace?.reconcile(executionId);
     execution = this.#getExecution(executionId);
     if (!['CREATED', 'RUNNING', 'WAITING'].includes(execution.state)) return this.releaseExecution(executionId);
     const result = this.taskService.dispatch('fence_execution', {
@@ -1739,6 +1772,11 @@ export class Runtime {
     }
     for (const execution of this.taskService.listActiveExecutions()) {
       if (!['CREATED', 'RUNNING'].includes(execution.state) || Date.parse(execution.lease_expires_at) > at.getTime()) continue;
+      if (this.taskService.getBot(execution.owner_ref)) {
+        const intent = this.#prepareBotExecutionStop(execution.execution_id, 'EXPIRED', 'lease_expired', { leaseExpiredAt: at.toISOString() });
+        if (intent) expired.push(await this.stopExecution(execution.execution_id, 'EXPIRED', 'lease_expired'));
+        continue;
+      }
       await this.#stopExecutionResources(execution.execution_id);
       const current = this.#getExecution(execution.execution_id);
       if (!['CREATED', 'RUNNING'].includes(current.state)) {

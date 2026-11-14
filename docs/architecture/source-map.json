@@ -783,6 +783,15 @@
       "role": "Identity/version envelope validation and stable serialization"
     },
     {
+      "path": "src/runtime/execution-workspace.js",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Authenticated guest snapshot, durable E save lineage and request reconciliation"
+    },
+    {
       "path": "src/runtime/identity-task-loop.js",
       "category": "Execution and control",
       "chapters": [

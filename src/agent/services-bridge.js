@@ -22,7 +22,7 @@ const UNBOUND_OPERATIONS = new Set([
   'task_list', 'task_view', 'task_status', 'task_create',
   'read_materials', 'context_search_materials', 'context_get_material',
   'material_read', 'material_search', 'material_get',
-  'workspace_public_files', 'workspace_public_read', 'workspace_public_search',
+  'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_view', 'workspace_public_history',
   'mission_get', 'mission_submit', 'mission_submission_get',
 ]);
 
@@ -548,6 +548,17 @@ export class ServicesBridge {
       // Scope is established by Runtime's durable Bot binding, never by CLI
       // flags. Only add fields supported by each public request schema.
       if (bot) {
+        if (['workspace_save', 'workspace_status', 'workspace_current_diff'].includes(operation)) {
+          assertIdentity(true);
+          const execution = this.executionId && this.taskService.getExecution(this.executionId);
+          if (!execution) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace operation requires an active E');
+          const result = await this.runtime.dispatchExecutionWorkspace(({ workspace_save: 'save', workspace_status: 'status', workspace_current_diff: 'diff' })[operation], payload,
+            { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution.fencing_version, requestId: bridgeOperationId });
+          this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
+          return result;
+        }
+        if (['workspace_public_apply', 'workspace_merge'].includes(operation)) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Workspace apply/merge requires Runtime integration');
+        if (WORKSPACE_OPERATIONS.has(operation) || operation === 'execution_progress') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Legacy private Workspace and Execution APIs are unavailable to registered Bots');
         if (operation === 'mission_submit') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission submission integration is not ready for Bot requests');
         if (payload.mission_id !== undefined && payload.mission_id !== bot.mission_id) {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'request must stay within the Bot Mission');
@@ -563,7 +574,7 @@ export class ServicesBridge {
           const target = this.contextService.getMaterial(payload.material_id);
           if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material is not readable in the Bot Mission');
         }
-        if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search'].includes(operation)) {
+        if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_view', 'workspace_public_history'].includes(operation)) {
           const workspaceId = this.runtime?.missionWorkspaceId;
           if (!workspaceId || (payload.workspace_id !== undefined && payload.workspace_id !== workspaceId)) {
             throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace must match the configured Mission Workspace');

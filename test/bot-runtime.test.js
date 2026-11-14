@@ -11,10 +11,18 @@ import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { BOT_RESOURCES, BOT_PROTOCOL_VERSION, BOT_COMPACTION_MESSAGE } from '../src/agent/bot-contract.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
+import { stableStringify } from '../src/protocol/envelope.js';
+import { createHash } from 'node:crypto';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
+import { ServicesBridge } from '../src/agent/services-bridge.js';
+import { ContextService } from '../src/context/context-service.js';
+import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
+import { SwarmEnvError, ERROR_CODES } from '../src/errors.js';
 
-async function fixture(t, runtimeOptions = {}) {
+async function fixture(t, runtimeOptions = {}, { persistent = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarm-bot-'));
-  const service = new TaskService();
+  const service = new TaskService(persistent ? join(root, 'state.sqlite') : ':memory:');
   service.createMission({ mission_id: 'mission:bots', goal: 'Inspect independent questions' }, makeEnvelope({ actorRef: 'operator:test' }));
   const calls = [];
   let sandboxNumber = 0;
@@ -561,4 +569,265 @@ test('registered Bot compaction sends CLI guidance without saving the controller
   assert.deepEqual(messages, [BOT_COMPACTION_MESSAGE]);
   assert.equal(service.getExecution(execution.execution_id).workspace_revision, before.workspace_revision);
   assert.equal(service.getExecution(execution.execution_id).checkpoint_ref, before.checkpoint_ref);
+});
+
+async function workspaceFixture(t, options = {}) {
+  const f = await fixture(t, {}, options);
+  let session;
+  let env;
+  const context = new ContextService(f.service.db);
+  const bridge = new ServicesBridge({ taskService: f.service, contextService: context, runtime: f.runtime, coreId: 'core-1',
+    registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace }),
+    onTake: result => f.runtime.bindAgentExecution(result.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }) });
+  await bridge.start();
+  t.after(() => bridge.stop());
+  const { bot } = await f.runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession: async input => {
+    env = bridge.startBotIdentity(input.bot.bot_id);
+    session = await f.startSession(input);
+    return session;
+  } });
+  const task = f.service.createTask({ mission_id: bot.mission_id, summary: 'Produce a reusable project artifact', expected_output: 'Public files', acceptance_conditions: ['Artifact saved'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  await bridge.call({ operation: 'task_take', payload: { task_id: task.task_id }, operationId: 'workspace-take' });
+  const execution = f.service.getExecution(bridge.executionId);
+  const identity = { actorRef: bot.bot_id, taskId: task.task_id, executionId: execution.execution_id, fencingVersion: execution.fencing_version };
+  const guest = { files: { 'input.txt': Buffer.from('public project input') }, captures: 0, before: null };
+  f.manager.snapshotBotProject = async () => {
+    guest.captures += 1;
+    await guest.before?.();
+    const manifest = Object.fromEntries(Object.entries(guest.files).map(([path, bytes]) => [path, { bytes: bytes.length, content_hash: createHash('sha256').update(bytes).digest('hex') }]));
+    return { state: 'ACTIVE', execution_id: execution.execution_id, binding_version: execution.fencing_version, manifest,
+      files: Object.fromEntries(Object.entries(guest.files).map(([path, bytes]) => [path, bytes.toString('base64')])), content_hash: createHash('sha256').update(stableStringify(manifest)).digest('hex') };
+  };
+  const command = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], { env: { PATH: process.env.PATH, ...env }, timeout: 15_000 })).stdout);
+  const dispatch = (operation, requestId, input = {}) => f.runtime.dispatchExecutionWorkspace(operation, input, { ...identity, requestId });
+  return { ...f, bot, bridge, execution, identity, guest, command, dispatch };
+}
+
+test('real CLI saves guest additions/deletions/binary files and chains immutable public revisions', async t => {
+  const { runtime, command, dispatch, guest, execution, bridge } = await workspaceFixture(t);
+  assert.equal((await command('workspace', 'status')).dirty, false);
+  guest.files = { '2': Buffer.from([0, 255, 128]), '10': Buffer.from('ten'), 'nested/note.md': Buffer.from('first') };
+  assert.deepEqual((await command('workspace', 'diff')).changed_paths, ['10', '2', 'input.txt', 'nested/note.md']);
+  const saved = await command('workspace', 'save', '--request-id', 'save-one');
+  assert.equal(saved.revision, '0.2');
+  assert.deepEqual(saved.parents, ['0.1']);
+  assert.equal((await command('workspace', 'view')).main_revision, '0.1');
+  const exported = await runtime.missionWorkspace.exportRevision({ workspaceId: saved.workspace_id, revision: saved.revision });
+  assert.deepEqual(exported.files['2'], Buffer.from([0, 255, 128]));
+  assert.equal(exported.files['input.txt'], undefined);
+  const captures = guest.captures;
+  guest.files['nested/note.md'] = Buffer.from('second');
+  assert.deepEqual(await command('workspace', 'save', '--request-id', 'save-one'), saved);
+  assert.equal(guest.captures, captures);
+  assert.equal((await command('workspace', 'status')).dirty, true);
+  const next = await command('workspace', 'save', '--request-id', 'save-two');
+  assert.deepEqual(next.parents, [saved.revision]);
+  const status = await command('workspace', 'status');
+  assert.equal(status.initial_revision, '0.1');
+  assert.equal(status.last_saved_revision, next.revision);
+  assert.equal(status.dirty, false);
+  assert.equal((await command('workspace', 'history')).items.length, 1);
+  const allHistory = await command('workspace', 'history', '--all');
+  assert.equal(allHistory.items.length, 3);
+  assert.equal(allHistory.items[0].reachable_from_main, false);
+  assert.equal((await command('workspace', 'history', '--all', '--execution', execution.execution_id)).items.length, 2);
+  assert.equal((await command('workspace', 'history', '--all', '--path', 'nested')).items.length, 2);
+  const page = await command('workspace', 'history', '--all', '--limit', '1');
+  assert.equal(page.items[0].revision, next.revision);
+  assert.equal((await command('workspace', 'history', '--all', '--limit', '1', '--cursor', page.next_cursor)).items[0].revision, saved.revision);
+  assert.equal(saved.source.execution_id, execution.execution_id);
+  assert.equal(saved.source.task_id, execution.task_id);
+  assert.equal(saved.content_hash, exported.content_hash);
+  assert.equal((await command('workspace', 'read', 'nested/note.md', '--at', next.revision)).content, 'second');
+  await assert.rejects(dispatch('status', 'save-one'), error => error.code === 'CONFLICT');
+  await assert.rejects(bridge.call({ operation: 'workspace_save', payload: { files: { injected: 'bad' } } }), /cannot supply/);
+  await assert.rejects(bridge.call({ operation: 'write_workspace_file', payload: { path: 'injected', content: 'bad' } }), /Legacy private/);
+  assert.equal(runtime.taskService.getExecution(execution.execution_id).workspace_input.revision, '0.1');
+});
+
+test('snapshot busy errors replay identically and do not poison subsequent save or status', async t => {
+  const { guest, dispatch } = await workspaceFixture(t);
+  guest.before = () => { throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'controlled writer busy'); };
+  let initial;
+  await assert.rejects(dispatch('save', 'busy'), error => { initial = { code: error.code, message: error.message, details: error.details }; return error.code === 'WORKSPACE_BUSY'; });
+  const captures = guest.captures;
+  guest.before = null;
+  await assert.rejects(dispatch('save', 'busy'), error => { assert.deepEqual({ code: error.code, message: error.message, details: error.details }, initial); return true; });
+  assert.equal(guest.captures, captures);
+  assert.equal((await dispatch('status', 'status-after-busy')).dirty, false);
+  assert.equal((await dispatch('save', 'fresh')).revision, '0.2');
+});
+
+test('snapshot finishing after E closes cannot publish a new revision', async t => {
+  const { guest, service, dispatch, bot, runtime } = await workspaceFixture(t);
+  guest.before = () => { service.requestBotStop(bot.bot_id, 'controlled-close', { terminalState: 'FAILED' }); };
+  await assert.rejects(dispatch('save', 'close-first'), error => error.code === 'WORKSPACE_REQUEST_ABORTED');
+  assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 1);
+});
+
+test('Git commit lost before SQL acknowledgement reconciles after E closes without recapturing', async t => {
+  const { runtime, dispatch, service, bot, guest, execution } = await workspaceFixture(t);
+  guest.files = { 'saved.txt': Buffer.from('persisted before close') };
+  let faulted = false;
+  runtime.missionWorkspace.repository.fault = point => { if (point === 'after_receipt' && !faulted) { faulted = true; throw new Error('controlled process loss after Git receipt'); } };
+  await assert.rejects(dispatch('save', 'commit-first'), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
+  assert.equal(service.db.prepare('SELECT phase FROM execution_workspace_requests WHERE request_id = ?').get('commit-first').phase, 'captured');
+  runtime.missionWorkspace.repository.fault = null;
+  guest.files = { 'different.txt': Buffer.from('must not recapture') };
+  service.requestBotStop(bot.bot_id, 'controlled-close', { terminalState: 'FAILED' });
+  await runtime.executionWorkspace.reconcile(execution.execution_id);
+  const result = await dispatch('save', 'commit-first');
+  assert.equal(result.revision, '0.2');
+  assert.equal(guest.captures, 1);
+  assert.equal((await runtime.missionWorkspace.read({ workspaceId: 'workspace-default', revision: result.revision, path: 'saved.txt' })).content, 'persisted before close');
+  assert.equal(service.db.prepare('SELECT phase FROM execution_workspace_requests WHERE request_id = ?').get('commit-first').phase, 'done');
+});
+
+test('a captured save with a definitive Git rejection fails once without poisoning later requests', async t => {
+  const { runtime, dispatch, guest, service } = await workspaceFixture(t);
+  const importTree = runtime.missionWorkspace.repository.importTree.bind(runtime.missionWorkspace.repository);
+  let reject = true;
+  runtime.missionWorkspace.repository.importTree = async (...args) => {
+    if (reject) { reject = false; throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'controlled publication rejection'); }
+    return importTree(...args);
+  };
+  await assert.rejects(dispatch('save', 'rejected'), /controlled publication rejection/);
+  assert.equal(service.db.prepare('SELECT phase FROM execution_workspace_requests WHERE request_id = ?').get('rejected').phase, 'failed');
+  const captures = guest.captures;
+  await assert.rejects(dispatch('save', 'rejected'), /controlled publication rejection/);
+  assert.equal(guest.captures, captures);
+  assert.equal((await dispatch('status', 'after-rejection')).dirty, false);
+  assert.equal((await dispatch('save', 'new-request')).revision, '0.2');
+});
+
+test('unknown publication preserves captured bytes across coordinator replacement and changed guest files', async t => {
+  const { runtime, dispatch, guest, service } = await workspaceFixture(t);
+  const importTree = runtime.missionWorkspace.repository.importTree.bind(runtime.missionWorkspace.repository);
+  let reject = true;
+  runtime.missionWorkspace.repository.importTree = async (...args) => {
+    if (reject) { reject = false; throw new Error('controlled transient import loss'); }
+    return importTree(...args);
+  };
+  guest.files = { 'exact.txt': Buffer.from('captured') };
+  await assert.rejects(dispatch('save', 'unknown'), /controlled transient import loss/);
+  const { ExecutionWorkspace } = await import('../src/runtime/execution-workspace.js');
+  runtime.executionWorkspace = new ExecutionWorkspace({ taskService: service, workspace: runtime.missionWorkspace, sandboxManager: runtime.sandboxManager, guard: runtime.executionWorkspace.guard });
+  guest.files = { 'new.txt': Buffer.from('newer unsaved bytes') };
+  // A different payload cannot complete the pending write as a side effect.
+  await assert.rejects(dispatch('status', 'unknown'), error => error.code === 'CONFLICT');
+  assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 1);
+  const result = await dispatch('save', 'unknown');
+  assert.equal(guest.captures, 1);
+  assert.deepEqual(Object.keys(result.files), ['exact.txt']);
+  assert.deepEqual((await dispatch('status', 'newer-status')).changed_paths, ['exact.txt', 'new.txt']);
+});
+
+test('Workspace contributions reject foreign identity, stale fence and closed Session before capture', async t => {
+  const { runtime, identity, guest, service, bot, dispatch } = await workspaceFixture(t);
+  const call = overrides => runtime.dispatchExecutionWorkspace('save', {}, { ...identity, requestId: 'unauthorized', ...overrides });
+  await assert.rejects(call({ actorRef: 'bot:foreign' }), error => error.code === 'NOT_ALLOWED');
+  await assert.rejects(call({ fencingVersion: identity.fencingVersion + 1 }), error => error.code === 'NOT_ALLOWED');
+  const binding = runtime.botBindings.get(bot.bot_id);
+  binding.session.closed = true;
+  await assert.rejects(dispatch('save', 'closed-session'), error => error.code === 'NOT_ALLOWED');
+  binding.session.closed = false;
+  service.db.prepare('UPDATE bots SET hard_deadline = ? WHERE bot_id = ?').run(new Date(Date.now() - 1).toISOString(), bot.bot_id);
+  await assert.rejects(dispatch('save', 'expired'), error => error.code === 'NOT_ALLOWED');
+  assert.equal(guest.captures, 0);
+});
+
+test('post-Git SQLite acknowledgement failure returns unknown and replays the original save', async t => {
+  const { service, dispatch, guest } = await workspaceFixture(t);
+  service.db.exec("CREATE TRIGGER reject_save_ack BEFORE UPDATE ON execution_workspace_state BEGIN SELECT RAISE(ABORT, 'controlled SQL ack failure'); END;");
+  await assert.rejects(dispatch('save', 'sql-ack'), error => error.code === 'WORKSPACE_RESULT_UNKNOWN' && error.retryable);
+  service.db.exec('DROP TRIGGER reject_save_ack');
+  guest.files = { later: Buffer.from('unsaved') };
+  const result = await dispatch('save', 'sql-ack');
+  assert.deepEqual(Object.keys(result.files), ['input.txt']);
+  assert.equal(guest.captures, 1);
+});
+
+for (const method of ['stopExecution', 'fenceExecution']) test(`${method} retains Task ownership when pending save reconciliation fails`, async t => {
+  const { service, runtime, execution, dispatch } = await workspaceFixture(t);
+  await dispatch('save', 'before-stop');
+  const reconcile = runtime.executionWorkspace.reconcile.bind(runtime.executionWorkspace);
+  runtime.executionWorkspace.reconcile = async () => { throw new SwarmEnvError(ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED, 'controlled unresolved receipt'); };
+  await assert.rejects(runtime[method](execution.execution_id), error => error.code === 'WORKSPACE_RECONCILIATION_REQUIRED');
+  assert.equal(service.getExecution(execution.execution_id).state, 'RUNNING');
+  assert.equal(service.getTask(execution.task_id).state, 'RUNNING');
+  runtime.executionWorkspace.reconcile = reconcile;
+  await runtime[method](execution.execution_id);
+  assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
+});
+
+const closeFromAnotherProcess = async (root, botId) => promisify(execFile)(process.execPath, ['--input-type=module', '-e', `
+  import { TaskService } from './src/task/task-service.js';
+  const service = new TaskService(process.argv[1]);
+  service.requestBotStop(process.argv[2], 'external-close', { terminalState: 'FAILED' });
+  service.close();
+`, join(root, 'state.sqlite'), botId], { timeout: 10_000 });
+
+test('another TaskService process closing before publication prevents the saved revision', async t => {
+  const { root, bot, runtime, dispatch } = await workspaceFixture(t, { persistent: true });
+  const importTree = runtime.missionWorkspace.repository.importTree.bind(runtime.missionWorkspace.repository);
+  runtime.missionWorkspace.repository.importTree = async (...args) => {
+    await closeFromAnotherProcess(root, bot.bot_id);
+    return importTree(...args);
+  };
+  await assert.rejects(dispatch('save', 'external-close-first'), error => error.code === 'NOT_ALLOWED');
+  assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 1);
+});
+
+test('SQLite publication lock excludes another process closing between final guard and Git commit', async t => {
+  const { root, bot, runtime, dispatch } = await workspaceFixture(t, { persistent: true });
+  let attempted = false;
+  runtime.missionWorkspace.repository.fault = point => {
+    if (point !== 'after_intent') return;
+    attempted = true;
+    const result = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import { DatabaseSync } from 'node:sqlite';
+      const db = new DatabaseSync(process.argv[1]);
+      db.exec('PRAGMA busy_timeout = 40');
+      try { db.exec('BEGIN IMMEDIATE'); console.log('incorrectly acquired'); db.exec('ROLLBACK'); }
+      catch (error) { console.log(error.errcode === 5 ? 'blocked' : error.message); }
+      db.close();
+    `, join(root, 'state.sqlite')], { encoding: 'utf8', timeout: 5000 });
+    assert.equal(result.trim(), 'blocked');
+  };
+  const result = await dispatch('save', 'publication-first');
+  assert.equal(attempted, true);
+  runtime.missionWorkspace.repository.fault = null;
+  await closeFromAnotherProcess(root, bot.bot_id);
+  assert.deepEqual(await dispatch('save', 'publication-first'), result);
+});
+
+test('lease expiry keeps its durable intent and Task owner until Workspace receipts reconcile', async t => {
+  const { service, runtime, execution, bot } = await workspaceFixture(t);
+  service.db.prepare('UPDATE executions SET lease_expires_at = ? WHERE execution_id = ?').run(new Date(Date.now() - 1000).toISOString(), execution.execution_id);
+  const reconcile = runtime.executionWorkspace.reconcile.bind(runtime.executionWorkspace);
+  runtime.executionWorkspace.reconcile = async () => { throw new SwarmEnvError(ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED, 'controlled lease receipt failure'); };
+  await assert.rejects(runtime.sweepExpired(), error => error.code === 'WORKSPACE_RECONCILIATION_REQUIRED');
+  assert.equal(service.getBot(bot.bot_id).state, 'CLOSING');
+  assert.equal(service.getBot(bot.bot_id).stop_terminal_state, 'EXPIRED');
+  assert.equal(service.getTask(execution.task_id).state, 'RUNNING');
+  assert.equal(service.listEligibleTasks().length, 0);
+  runtime.executionWorkspace.reconcile = reconcile;
+  await runtime.sweepExpired();
+  assert.equal(service.getExecution(execution.execution_id).state, 'EXPIRED');
+  assert.equal(service.getTask(execution.task_id).state, 'OPEN');
+});
+
+test('lease renewal before atomic expiry intent keeps the Bot active', async t => {
+  const { service, runtime, execution, bot } = await workspaceFixture(t);
+  const cutoff = new Date();
+  const original = service.listActiveExecutions.bind(service);
+  service.db.prepare('UPDATE executions SET lease_expires_at = ? WHERE execution_id = ?').run(new Date(cutoff.getTime() - 1000).toISOString(), execution.execution_id);
+  service.listActiveExecutions = () => {
+    const rows = original();
+    service.db.prepare('UPDATE executions SET lease_expires_at = ? WHERE execution_id = ?').run(new Date(cutoff.getTime() + 60_000).toISOString(), execution.execution_id);
+    return rows;
+  };
+  assert.deepEqual(await runtime.sweepExpired(cutoff), []);
+  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+  assert.equal(service.getExecution(execution.execution_id).state, 'RUNNING');
 });

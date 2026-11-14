@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `8d97c2be8e86164a1b54bbdad592908d44a38e5d99d3d3f1bc6dbe2530247fc2`
+Body SHA-256: `441f0aff0c8bcd2e73916188316fff82c4d59edf1591a050c83ca869d3a54e11`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -93,12 +93,16 @@ Body SHA-256: `8d97c2be8e86164a1b54bbdad592908d44a38e5d99d3d3f1bc6dbe2530247fc2`
   - swarmenv_task_status: Read the authoritative Mission, Task counts, eligible work, and observation timestamp. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read the authoritative Mission, Task counts, eligible work, and observation timestamp.)
   - swarmenv_task_take: Take an existing Mission or ordinary Task using the caller identity and Core lane. (logical operation task.task_take; writes state; inputs required=[task_id] fields=[input_material_refs,take_key,task_id]; Take an existing Mission or ordinary Task using the caller identity and Core lane.)
   - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
+  - swarmenv_workspace_current_diff: Compare the current E tree with its last saved revision. (logical operation task.workspace_current_diff; read-only; inputs required=[none] fields=[none]; Compare the current E tree with its last saved revision.)
   - swarmenv_workspace_merge: Conditionally merge one complete public Workspace revision into main after conflict and check validation. (logical operation task.workspace_merge; writes state; inputs required=[workspace_id,from_revision,expected_main_revision] fields=[expected_main_revision,from_revision,workspace_id]; Conditionally merge one complete public Workspace revision into main after conflict and check validation.)
   - swarmenv_workspace_public_apply: Materialize a selected public Mission Workspace revision into the current Execution directory. (logical operation task.workspace_public_apply; writes state; inputs required=[workspace_id,target_dir] fields=[revision,target_dir,workspace_id]; Materialize a selected public Mission Workspace revision into the current Execution directory.)
   - swarmenv_workspace_public_files: List files in the immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_files; read-only; inputs required=[workspace_id] fields=[path,revision,workspace_id]; List files in the immutable Mission Workspace revision before a Task is taken.)
+  - swarmenv_workspace_public_history: Read main history by default or all saved revisions, with provenance and bounded snapshot pagination. (logical operation task.workspace_public_history; read-only; inputs required=[workspace_id] fields=[all,cursor,limit,path,source_execution,source_task,workspace_id]; Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.)
   - swarmenv_workspace_public_read: Read one file from an immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_read; read-only; inputs required=[workspace_id,path] fields=[max_bytes,path,revision,workspace_id]; Read one file from an immutable Mission Workspace revision before a Task is taken.)
   - swarmenv_workspace_public_search: Search text in an immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_search; read-only; inputs required=[workspace_id,query] fields=[max_results,path,query,revision,workspace_id]; Search text in an immutable Mission Workspace revision before a Task is taken.)
-  - swarmenv_workspace_save: Save a complete public Mission Workspace file tree as an immutable revision without advancing main. (logical operation task.workspace_save; writes state; inputs required=[workspace_id,base_revision,files] fields=[base_revision,files,source,workspace_id]; Save a complete public Mission Workspace file tree as an immutable revision without advancing main.)
+  - swarmenv_workspace_public_view: Read the public Mission Workspace and current main. (logical operation task.workspace_public_view; read-only; inputs required=[workspace_id] fields=[workspace_id]; Read the public Mission Workspace and current main.)
+  - swarmenv_workspace_save: Save a complete public Mission Workspace file tree as an immutable revision without advancing main. (logical operation task.workspace_save; writes state; inputs required=[none] fields=[none]; Save a complete public Mission Workspace file tree as an immutable revision without advancing main.)
+  - swarmenv_workspace_status: Inspect the current E tree, initial revision and saved lineage. (logical operation task.workspace_status; read-only; inputs required=[none] fields=[none]; Inspect the current E tree, initial revision and saved lineage.)
 ````
 
 ## Pi tool registrations: all instruction fields
@@ -566,6 +570,20 @@ Body SHA-256: `fffae822ee01243ff0d4f1f9c5e0014f0c1610b58ef6bce8756b3658e78a0a7b`
   ]
 }
 ````
+## swarmenv_workspace_current_diff
+
+Body SHA-256: `882ffcff438466e4d92b5a8b9ea0d21a8c99c013b434c32c1b439ef3de02ea9e`
+
+````text
+{
+  "description": "Compare the current E tree with its last saved revision.",
+  "promptSnippet": "Task Service: Compare the current E tree with its last saved revision.",
+  "promptGuidelines": [
+    "Compare the current E tree with its last saved revision.",
+    "Help: service://task/workspace_current_diff"
+  ]
+}
+````
 ## swarmenv_workspace_merge
 
 Body SHA-256: `50c35db47cdc008653485c598bc1fed6ec8cd9fbc691206f282054920bd0015d`
@@ -608,6 +626,20 @@ Body SHA-256: `b634097cdbb5b34d1e33bc2325ce833d2ad1fdaa53ad90cb581ed93911453d08`
   ]
 }
 ````
+## swarmenv_workspace_public_history
+
+Body SHA-256: `67fc078cc947533965dc63aa79af900a7583eb34eef5065f231beff2c793e528`
+
+````text
+{
+  "description": "Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.",
+  "promptSnippet": "Task Service: Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.",
+  "promptGuidelines": [
+    "Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.",
+    "Help: service://task/workspace_public_history"
+  ]
+}
+````
 ## swarmenv_workspace_public_read
 
 Body SHA-256: `04adab3d6dc0c3e4464ed56561125a6ea757af62923fd18c9783f9957b539645`
@@ -636,6 +668,20 @@ Body SHA-256: `5c184f3c270a8ee1e679a31c6cb215d5b1accccee0fc947baa2acc408bef9fba`
   ]
 }
 ````
+## swarmenv_workspace_public_view
+
+Body SHA-256: `6b49a3454f4daaf75f46bc31a0b4bad11b1f89aeb3e20aabfc5acd6fa29f639a`
+
+````text
+{
+  "description": "Read the public Mission Workspace and current main.",
+  "promptSnippet": "Task Service: Read the public Mission Workspace and current main.",
+  "promptGuidelines": [
+    "Read the public Mission Workspace and current main.",
+    "Help: service://task/workspace_public_view"
+  ]
+}
+````
 ## swarmenv_workspace_save
 
 Body SHA-256: `2fc01b69a90a6f4baa7f85fadbbc2fe214d0657c3ba9c45f70a0df2706a5d477`
@@ -647,6 +693,20 @@ Body SHA-256: `2fc01b69a90a6f4baa7f85fadbbc2fe214d0657c3ba9c45f70a0df2706a5d477`
   "promptGuidelines": [
     "Save a complete public Mission Workspace file tree as an immutable revision without advancing main.",
     "Help: service://task/workspace_save"
+  ]
+}
+````
+## swarmenv_workspace_status
+
+Body SHA-256: `952f34791d0e37b4715aa6404b644fcf30a2497e6dac502aca421816e9ec1df4`
+
+````text
+{
+  "description": "Inspect the current E tree, initial revision and saved lineage.",
+  "promptSnippet": "Task Service: Inspect the current E tree, initial revision and saved lineage.",
+  "promptGuidelines": [
+    "Inspect the current E tree, initial revision and saved lineage.",
+    "Help: service://task/workspace_status"
   ]
 }
 ````

@@ -221,7 +221,7 @@ function withBotPaused(operation) {
           } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
         }
         stable = !changed && allStopped ? stable + 1 : 0;
-        if (Date.now() >= deadline) throw new Error('Bot project writers could not be paused');
+        if (Date.now() >= deadline) throw Object.assign(new Error('Bot project writers could not be paused'), { code: 'WORKSPACE_BUSY' });
         await new Promise(resolve => setTimeout(resolve, 5));
       }
       const result = await operation();
@@ -265,6 +265,7 @@ const server = createServer(async (request, response) => {
     if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.grant(input)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/snapshot') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.snapshot(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/rpc') { send(response, 200, { ok: true, result: await rpc(await body(request)) }); return; }
     if (request.method === 'POST' && url.pathname === '/stop') {
       await body(request);
@@ -281,7 +282,7 @@ const server = createServer(async (request, response) => {
     }
     send(response, 404, { ok: false, error: 'unknown worker route' });
   } catch (error) {
-    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message });
+    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(error.code === 'WORKSPACE_BUSY' ? { code: error.code } : {}) });
   }
 });
 

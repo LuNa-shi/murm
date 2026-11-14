@@ -5,6 +5,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { stableStringify } from '../src/protocol/envelope.js';
 const run = promisify(execFile);
 const name = `swarm-project-probe-${randomUUID()}`;
 const token = 'controlled-worker-test-token';
@@ -37,7 +38,9 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       data = { uid: process.getuid(), cwd: process.cwd(), home: process.env.HOME, pi: process.env.PI_CODING_AGENT_DIR,
         workerToken: process.env.SWARMENV_WORKER_TOKEN ?? null, rootSecret: process.env.ROOT_ONLY_TEST_SECRET ?? null,
         rootEnvironment, status: fs.readFileSync('/proc/self/status', 'utf8') };
-    } else if (message.type === 'write') { fs.writeFileSync(message.path, message.content); data = { written: true }; }
+    } else if (message.type === 'write') { fs.writeFileSync(message.path, message.base64 ? Buffer.from(message.base64, 'base64') : message.content); data = { written: true }; }
+    else if (message.type === 'remove') { fs.unlinkSync(message.path); data = { removed: true }; }
+    else if (message.type === 'link') { fs.symlinkSync('/etc/passwd', message.path); data = { linked: true }; }
     else if (message.type === 'watch') {
       const watcher = spawn('/usr/local/bin/node', ['-e', ${JSON.stringify(watcherCode)}], { detached: true, stdio: 'ignore' });
       watcher.unref(); data = { pid: watcher.pid };
@@ -108,6 +111,29 @@ try {
     assert.ok(writes.length > 0);
     assert.ok(writes.every(at => at >= granted.granted_at));
     assert.equal((await rpc({ type: 'write', path: '/workspace/project/input.txt', content: 'active write' })).written, true);
+    await rpc({ type: 'write', path: '/workspace/project/2', base64: Buffer.from([0, 255, 128]).toString('base64') });
+    await rpc({ type: 'write', path: '/workspace/project/10', content: 'ten' });
+    assert.equal((await call('/project/snapshot', { execution_id: 'e', binding_version: 2 })).status, 400);
+    assert.equal((await call('/project/snapshot', { execution_id: 'e', binding_version: 1 }, false)).status, 401);
+    const snapshot = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
+    assert.ok(snapshot.paused_process_count >= 2, 'pause both Pi and its detached pre-opened-FD writer');
+    assert.equal(snapshot.content_hash, createHash('sha256').update(stableStringify(snapshot.manifest)).digest('hex'));
+    for (const [path, bytes] of Object.entries(snapshot.files)) {
+      const content = Buffer.from(bytes, 'base64');
+      assert.equal(snapshot.manifest[path].content_hash, createHash('sha256').update(content).digest('hex'));
+      assert.equal(snapshot.manifest[path].bytes, content.length);
+    }
+    assert.deepEqual(Buffer.from(snapshot.files['2'], 'base64'), Buffer.from([0, 255, 128]));
+    await rpc({ type: 'remove', path: '/workspace/project/10' });
+    assert.equal((await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 })).files['10'], undefined);
+    await rpc({ type: 'link', path: '/workspace/project/unsafe-link' });
+    assert.match((await call('/project/snapshot', { execution_id: 'e', binding_version: 1 })).body.error, /symlink/);
+    await rpc({ type: 'remove', path: '/workspace/project/unsafe-link' });
+    assert.ok((await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 })).files['2']);
+    await docker(['exec', name, 'node', '-e', "const fs=require('fs'); fs.writeFileSync(Buffer.concat([Buffer.from('/workspace/project/x'),Buffer.from([255])]),'invalid byte name'); fs.writeFileSync('/workspace/project/x\ufffd','valid replacement character');"]);
+    assert.match((await call('/project/snapshot', { execution_id: 'e', binding_version: 1 })).body.error, /ambiguous decoded filenames/);
+    await docker(['exec', name, 'node', '-e', "const fs=require('fs'); fs.unlinkSync(Buffer.concat([Buffer.from('/workspace/project/x'),Buffer.from([255])])); fs.unlinkSync('/workspace/project/x\ufffd');"]);
+    assert.ok((await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 })).files['2']);
     const background = await rpc({ type: 'background' });
     await rpc({ type: 'exit' });
     await new Promise(resolve => setTimeout(resolve, 200));
@@ -121,7 +147,7 @@ try {
     assert.match(processState, /ENOENT|State:\s+Z/);
     assert.equal((await call('/project/grant', { execution_id: 'e', binding_version: 1 })).status, 400);
     assert.equal((await call('/start', { command: 'node', args: [] })).status, 400);
-    console.log('PASS: non-root fixed project, protected parent, active grant, clean environment, atomic grant with paused pre-opened-FD writer, detached descendant stop, late grant/start rejection');
+    console.log('PASS: protected project, atomic grant, authenticated stable snapshot with paused background writers, numeric paths, binary bytes, deletion and symlink rejection, detached descendant stop, late grant/start rejection');
   }
 } finally {
   await docker(['rm', '--force', name]).catch(() => undefined);

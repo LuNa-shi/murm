@@ -18,8 +18,8 @@ const EXPOSED_OPERATIONS = Object.freeze({
     'list_tasks', 'list_executions',
     'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
     'task_status', 'task_take', 'task_feedback', 'execution_progress',
-    'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_apply',
-    'workspace_save', 'workspace_merge', 'mission_get', 'mission_submit', 'mission_submission_get',
+    'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_view', 'workspace_public_history', 'workspace_public_apply',
+    'workspace_status', 'workspace_current_diff', 'workspace_save', 'workspace_merge', 'mission_get', 'mission_submit', 'mission_submission_get',
   ]),
   context: new Set(['publish_material', 'read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material']),
   judge: new Set(['workspace_check', 'get_check_result']),
@@ -63,7 +63,7 @@ function strictInputSchema(parameters) {
 }
 
 function audienceFor(tool) {
-  if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'mission_submission_get'].includes(tool.operation)) return ALL_ROLES;
+  if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_view', 'workspace_public_history', 'mission_submission_get'].includes(tool.operation)) return ALL_ROLES;
   if (['list_tasks', 'task_list', 'task_view'].includes(tool.operation)) return ALL_ROLES;
   if (SHARED_READ_OPERATIONS.has(tool.operation)) return ALL_ROLES;
   if (tool.service === 'catalog' && tool.scope === 'public-read' && tool.side_effect === false) return ALL_ROLES;
@@ -118,7 +118,7 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
       audience: audienceFor(tool),
       side_effect: tool.side_effect ? 'write' : 'read',
       idempotent: !tool.side_effect,
-      context: serviceId === 'catalog' || ['bot_exit', 'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'mission_get', 'mission_submit', 'mission_submission_get'].includes(tool.operation) ? [] : ['task', 'execution'],
+      context: serviceId === 'catalog' || ['bot_exit', 'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_view', 'workspace_public_history', 'mission_get', 'mission_submit', 'mission_submission_get'].includes(tool.operation) ? [] : ['task', 'execution'],
       help: {
         when: tool.description,
         ref: `service://${serviceId}/${tool.operation}`,
@@ -151,17 +151,19 @@ function serviceDispatch(serviceId, services, registry) {
         return { tools: registry.listTools(input?.service ?? null).filter(allowed) };
       }
     }
-    if (serviceId === 'task' && ['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_apply', 'workspace_save', 'workspace_merge'].includes(capability.operation)) {
+    if (serviceId === 'task' && ['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_view', 'workspace_public_history', 'workspace_public_apply', 'workspace_save', 'workspace_merge'].includes(capability.operation)) {
       if (!services.missionWorkspace) {
         const error = new Error('Mission Workspace is unavailable');
         error.code = 'SERVICE_UNAVAILABLE';
         throw error;
       }
+      if (capability.operation === 'workspace_public_view') return services.missionWorkspace.get({ workspaceId: input?.workspace_id });
+      if (capability.operation === 'workspace_public_history') return services.missionWorkspace.history({ workspaceId: input?.workspace_id, all: input?.all, sourceTask: input?.source_task, sourceExecution: input?.source_execution, path: input?.path, limit: input?.limit, cursor: input?.cursor });
       if (capability.operation === 'workspace_public_files') return services.missionWorkspace.files({ workspaceId: input?.workspace_id, revision: input?.revision, prefix: input?.path ?? '' });
       if (capability.operation === 'workspace_public_read') return services.missionWorkspace.read({ workspaceId: input?.workspace_id, revision: input?.revision, path: input?.path, maxBytes: input?.max_bytes });
       if (capability.operation === 'workspace_public_search') return services.missionWorkspace.search({ workspaceId: input?.workspace_id, revision: input?.revision, prefix: input?.path ?? '', query: input?.query, maxResults: input?.max_results });
       if (capability.operation === 'workspace_public_apply') return services.missionWorkspace.apply({ workspaceId: input?.workspace_id, revision: input?.revision, targetDir: input?.target_dir });
-      if (capability.operation === 'workspace_save') return services.missionWorkspace.save(input ?? {});
+      if (capability.operation === 'workspace_save') throw Object.assign(new Error('Workspace save requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
       if (capability.operation === 'workspace_merge') return services.missionWorkspace.merge(input ?? {});
     }
     if (serviceId === 'task' && ['mission_submit', 'mission_submission_get'].includes(capability.operation)) {

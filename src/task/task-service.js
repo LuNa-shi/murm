@@ -765,15 +765,20 @@ export class TaskService {
   }
 
   /** Runtime-only stop; a taken Task must already have reached a terminal state. */
-  requestBotStop(botId, reason, { terminalState = null } = {}) {
+  requestBotStop(botId, reason, { terminalState = null, leaseExpiredAt = null } = {}) {
     requireString(reason, 'reason');
     if (terminalState !== null && !TERMINAL_EXECUTION_STATES.includes(terminalState)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot stop requires a terminal Execution state');
+    if (leaseExpiredAt !== null && (terminalState !== 'EXPIRED' || !Number.isFinite(Date.parse(leaseExpiredAt)))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Lease expiry requires an EXPIRED stop and a valid cutoff');
     return this.#transaction(() => {
       const bot = this.getBot(botId);
       if (!bot || (bot.execution_id && !terminalState && !TERMINAL_EXECUTION_STATES.includes(this.getExecution(bot.execution_id)?.state))) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bound Bot must close through its Execution');
       }
       if (['CLOSING', 'CLOSED'].includes(bot.state)) return bot;
+      if (leaseExpiredAt !== null) {
+        const execution = this.getExecution(bot.execution_id);
+        if (!execution || !['CREATED', 'RUNNING'].includes(execution.state) || Date.parse(execution.lease_expires_at) > Date.parse(leaseExpiredAt)) return null;
+      }
       this.db.prepare("UPDATE bots SET state = 'CLOSING', exit_request_id = ?, exit_reason = ?, stop_terminal_state = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
         .run(`runtime:${randomUUID()}`, reason, terminalState, now(), botId);
       return this.getBot(botId);

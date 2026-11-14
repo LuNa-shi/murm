@@ -30,14 +30,14 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `2dc8434190fe4370796518cfc6535d307fff85b1b5c222be369bbd1ce7c99329` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `a15e1707796192d206c74e0d6efa5e30f38422ee916f7eddedba14cbec53b39c` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `8ecaae2d57d9e19359d8302f82d26f19c07b858baccee0e2a1eab583d6aba24f` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `86acf983948ce1653b08f2429fe6715ea69fa18b3134e042398dbf1d4e873652` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fc537d04cb0471d1496d82c1866b5fde81986f790768eea9e720bd7391ecdabd` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `e66f992a2c2fc387413b911fec5302d7fb258eedc406c1e982ce71b6c495a82c` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `ae805bbcaca1e2cd741d4ecf84e049b6f101602c8139738231369f61af6fc42f` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `1b75bcdc0833c4690709f0120d01c3e71cf0c4f4d61ffe6125f5202110055bbd` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `036b18cf09085b4e485a5ba478437bafd0af2c8c7fef0c36827f6eda72691f94` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `78d4043bf8198335e4f9e868d0cb3a417e39067134e80faefd2ea30a95e27f9e` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
@@ -81,12 +81,16 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `task.task_status` | `swarmenv_task_status` | `swarmenv_task_status` |
 | `task.task_take` | `swarmenv_task_take` | `swarmenv_task_take` |
 | `task.task_view` | `swarmenv_task_view` | `swarmenv_task_view` |
+| `task.workspace_current_diff` | `swarmenv_workspace_current_diff` | `swarmenv_workspace_current_diff` |
 | `task.workspace_merge` | `swarmenv_workspace_merge` | `swarmenv_workspace_merge` |
 | `task.workspace_public_apply` | `swarmenv_workspace_public_apply` | `swarmenv_workspace_public_apply` |
 | `task.workspace_public_files` | `swarmenv_workspace_public_files` | `swarmenv_workspace_public_files` |
+| `task.workspace_public_history` | `swarmenv_workspace_public_history` | `swarmenv_workspace_public_history` |
 | `task.workspace_public_read` | `swarmenv_workspace_public_read` | `swarmenv_workspace_public_read` |
 | `task.workspace_public_search` | `swarmenv_workspace_public_search` | `swarmenv_workspace_public_search` |
+| `task.workspace_public_view` | `swarmenv_workspace_public_view` | `swarmenv_workspace_public_view` |
 | `task.workspace_save` | `swarmenv_workspace_save` | `swarmenv_workspace_save` |
+| `task.workspace_status` | `swarmenv_workspace_status` | `swarmenv_workspace_status` |
 
 The flat Mission Task profile is the only Agent-facing Task model. Retired structural and lease operations may remain in internal catalog definitions for storage/analysis compatibility, but are filtered from the built-in Registry and cannot be called by a bound Agent. The normal handoff tool is `execution_progress` with `kind: "handoff"`.
 
@@ -260,7 +264,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 19 registered capabilities
+### Task Service: 23 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -283,7 +287,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "28a4e4216701ee08797e6291558d147954d8a878226199b525fc5c746fe092a0"
+  "manifest_hash": "fa074c7acb9bd3f3b1d9ac20f16bdef409ce17329e05a015f00b23e7a37f42fe"
 }
 ```
 
@@ -1012,6 +1016,224 @@ Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup close
 }
 ```
 
+#### task.workspace_public_view
+
+Read the public Mission Workspace and current main.
+
+```json
+{
+  "name": "workspace_public_view",
+  "operation": "workspace_public_view",
+  "description": "Read the public Mission Workspace and current main.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "workspace_id"
+    ],
+    "properties": {
+      "workspace_id": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "read",
+  "idempotent": true,
+  "context": [],
+  "requires_binding": false,
+  "scope": "mission-read",
+  "help": {
+    "when": "Read the public Mission Workspace and current main.",
+    "ref": "service://task/workspace_public_view",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the public Mission Workspace and current main.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_public_view",
+  "errors": []
+}
+```
+
+#### task.workspace_public_history
+
+Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.
+
+```json
+{
+  "name": "workspace_public_history",
+  "operation": "workspace_public_history",
+  "description": "Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "workspace_id"
+    ],
+    "properties": {
+      "workspace_id": {
+        "type": "string"
+      },
+      "all": {
+        "type": "boolean"
+      },
+      "source_task": {
+        "type": "string"
+      },
+      "source_execution": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "cursor": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "read",
+  "idempotent": true,
+  "context": [],
+  "requires_binding": false,
+  "scope": "mission-read",
+  "help": {
+    "when": "Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.",
+    "ref": "service://task/workspace_public_history",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_public_history",
+  "errors": []
+}
+```
+
+#### task.workspace_status
+
+Inspect the current E tree, initial revision and saved lineage.
+
+```json
+{
+  "name": "workspace_status",
+  "operation": "workspace_status",
+  "description": "Inspect the current E tree, initial revision and saved lineage.",
+  "input_schema": {
+    "type": "object",
+    "required": [],
+    "properties": {},
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "read",
+  "idempotent": true,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "execution-read",
+  "help": {
+    "when": "Inspect the current E tree, initial revision and saved lineage.",
+    "ref": "service://task/workspace_status",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Inspect the current E tree, initial revision and saved lineage.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_status",
+  "errors": []
+}
+```
+
+#### task.workspace_current_diff
+
+Compare the current E tree with its last saved revision.
+
+```json
+{
+  "name": "workspace_current_diff",
+  "operation": "workspace_current_diff",
+  "description": "Compare the current E tree with its last saved revision.",
+  "input_schema": {
+    "type": "object",
+    "required": [],
+    "properties": {},
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "read",
+  "idempotent": true,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "execution-read",
+  "help": {
+    "when": "Compare the current E tree with its last saved revision.",
+    "ref": "service://task/workspace_current_diff",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Compare the current E tree with its last saved revision.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_current_diff",
+  "errors": []
+}
+```
+
 #### task.mission_get
 
 Read the current Mission goal and acceptance conditions.
@@ -1321,25 +1543,7 @@ Save a complete public Mission Workspace file tree as an immutable revision with
   "description": "Save a complete public Mission Workspace file tree as an immutable revision without advancing main.",
   "input_schema": {
     "type": "object",
-    "required": [
-      "workspace_id",
-      "base_revision",
-      "files"
-    ],
-    "properties": {
-      "workspace_id": {
-        "type": "string"
-      },
-      "base_revision": {
-        "type": "string"
-      },
-      "files": {
-        "type": "object"
-      },
-      "source": {
-        "type": "string"
-      }
-    },
+    "properties": {},
     "additionalProperties": false
   },
   "output_schema": {

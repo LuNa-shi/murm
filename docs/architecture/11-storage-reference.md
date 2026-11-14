@@ -56,6 +56,24 @@ Durable state can outlive a Session, but runtime recovery still has to validate 
 
 The SQL below is the complete exported create-schema text, including checks, keys and indexes. It is schema text, not an export of a user database. The `tasks` interpolation is expanded. Constructors also migrate older databases as described above. Shared `operations` declarations intentionally appear in several owners because the services can share a SQLite connection.
 
+### Execution Workspace coordinator
+
+Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `702123467d3ba9aa5fc653cb2107b96cc5f01189d7427684b0b70e98cfe5d490`.
+
+```sql
+CREATE TABLE IF NOT EXISTS execution_workspace_state (
+      execution_id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, initial_revision TEXT NOT NULL,
+      last_saved_revision TEXT, manifest_json TEXT NOT NULL, parents_json TEXT NOT NULL,
+      applied_json TEXT NOT NULL DEFAULT '[]', conflicts_json TEXT NOT NULL DEFAULT '[]',
+      version INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS execution_workspace_requests (
+      execution_id TEXT NOT NULL, request_id TEXT NOT NULL, fingerprint TEXT NOT NULL,
+      phase TEXT NOT NULL, captured_json TEXT, result_json TEXT, error_json TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(execution_id, request_id)
+    );
+```
+
 ### Task and Execution database
 
 Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `479d3aa7b10a875dee6882218e28ad5e4d13e149b8b51ad4465e5e04c48f7e7c`.
@@ -657,7 +675,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `e0a1616fa78c70f055429b83f4b4b0bcb0aed27e1305d644ee9ca215b0cbc538`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `ce30bd1cd7c48e316632fb9494d36f0e197cd7fc681fed9c744a2c7a547be627`.
 
 #### executions_active_core
 

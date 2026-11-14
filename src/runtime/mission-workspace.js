@@ -109,6 +109,60 @@ export class MissionWorkspace {
     });
   }
 
+  async history({ workspaceId, all = false, sourceTask = null, sourceExecution = null, path = null, limit = 25, cursor = null }) {
+    if (typeof all !== 'boolean' || !Number.isInteger(limit) || limit < 1 || limit > 100) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'History requires boolean all and limit 1..100');
+    for (const value of [sourceTask, sourceExecution]) if (value !== null) required(value, 'history source filter');
+    const prefix = path === null ? null : safePath(path);
+    const filter = textHash(stableStringify({ workspaceId, all, sourceTask, sourceExecution, path: prefix }));
+    let continuation = null;
+    if (cursor !== null) {
+      try { continuation = JSON.parse(Buffer.from(required(cursor, 'cursor'), 'base64url').toString('utf8')); } catch { throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Invalid history cursor'); }
+      if (continuation?.filter !== filter || !Number.isInteger(continuation.offset) || continuation.offset < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'History cursor does not match its filters');
+    }
+    const root = this.workspacePath(workspaceId);
+    return this.repository.locked(root, async () => {
+      const record = await this.#read(root);
+      const asOf = continuation?.as_of_revision ?? record.revisions.at(-1);
+      const main = continuation?.main_revision ?? record.main_revision;
+      const end = record.revisions.indexOf(asOf);
+      if (end < 0 || !record.revisions.slice(0, end + 1).includes(main)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'History cursor references an unavailable snapshot');
+      const revisions = record.revisions.slice(0, end + 1);
+      const cache = new Map();
+      const metadata = async revision => {
+        if (!cache.has(revision)) {
+          if (cache.size >= 8) cache.delete(cache.keys().next().value);
+          cache.set(revision, await this.#revisionMetadata(root, revision));
+        }
+        return cache.get(revision);
+      };
+      const reachable = new Set(), pending = [main];
+      while (pending.length) {
+        const revision = pending.pop();
+        if (reachable.has(revision)) continue;
+        reachable.add(revision);
+        pending.push(...(await metadata(revision)).parents);
+      }
+      const offset = continuation?.offset ?? 0;
+      const items = [];
+      let matched = 0, more = false;
+      for (const revision of [...revisions].reverse()) {
+        if (!all && !reachable.has(revision)) continue;
+        const item = await metadata(revision);
+        if (sourceTask && item.source?.task_id !== sourceTask || sourceExecution && item.source?.execution_id !== sourceExecution) continue;
+        const before = item.parents.length ? (await metadata(item.parents[0])).files : {};
+        const paths = this.#changed(before, item.files);
+        if (prefix && !paths.some(changed => changed === prefix || changed.startsWith(`${prefix}/`))) continue;
+        if (matched++ < offset) continue;
+        if (items.length === limit) { more = true; break; }
+        items.push({ revision, parents: item.parents, source: item.source, created_at: item.created_at,
+          git_commit: item.git_commit, content_hash: item.content_hash, reachable_from_main: reachable.has(revision), changed_paths: paths });
+      }
+      if (offset > matched) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'History cursor is outside the snapshot');
+      return { workspace_id: workspaceId, main_revision: main, as_of_revision: asOf, all, items,
+        next_cursor: more ? Buffer.from(JSON.stringify({ filter, main_revision: main, as_of_revision: asOf, offset: offset + items.length })).toString('base64url') : null };
+    });
+  }
+
   async read({ workspaceId, revision = undefined, path, maxBytes = 1_000_000 }) {
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {
@@ -191,6 +245,16 @@ export class MissionWorkspace {
     return this.#runRequest(this.workspacePath(workspaceId), request, () => this.#save(normalized));
   }
 
+  // Reconcile an already-published save without granting permission to create
+  // one. In particular, an E may have closed since Git committed its receipt.
+  async replaySave(options) {
+    const { workspaceId, baseRevision, parentRevisions = null, source = 'execution', requestId } = options;
+    const tree = this.#normalizeTree(options.files);
+    const request = this.#request(required(requestId, 'request_id'), { operation: 'save', workspaceId, baseRevision, parentRevisions, files: fileEntries(tree), source });
+    const root = this.workspacePath(workspaceId);
+    return this.repository.locked(root, () => this.#replay(root, request));
+  }
+
   async merge(options) {
     const normalized = { ...options, requestId: options.requestId ?? randomUUID() };
     const { workspaceId, fromRevision, expectedMainRevision, requestId } = normalized;
@@ -236,7 +300,7 @@ export class MissionWorkspace {
     return promise;
   }
 
-  async #save({ workspaceId, baseRevision, parentRevisions = null, files, source = 'execution', requestId = randomUUID(), guard = null }) {
+  async #save({ workspaceId, baseRevision, parentRevisions = null, files, source = 'execution', requestId = randomUUID(), guard = null, withPublication = publish => publish() }) {
     const root = this.workspacePath(workspaceId);
     const tree = this.#normalizeTree(files);
     const request = this.#request(requestId, { operation: 'save', workspaceId, baseRevision, parentRevisions, files: fileEntries(tree), source });
@@ -254,10 +318,13 @@ export class MissionWorkspace {
       const imported = await this.repository.importTree(root, tree, parentMetadata.map(parent => parent.git_commit), `Workspace revision ${revision}`);
       const metadata = this.#revision(revision, parents, tree, source, imported, requestId);
       const result = { workspace_id: workspaceId, revision, base_revision: base, parents, git_commit: imported.commit,
-        files: metadata.files, changed_files: this.#changed(before, metadata.files) };
+        files: metadata.files, changed_files: this.#changed(before, metadata.files), content_hash: metadata.content_hash, git_tree: imported.tree, source };
       record.revisions.push(revision); record.next_revision = nextRevision(revision); record.updated_at = now();
-      this.#guard(guard);
-      this.repository.commit(root, { kind: 'save', oldMain: record.main_commit, newMain: record.main_commit, record, revision: metadata, receipt: { ...request, result } });
+      const published = withPublication(() => {
+        this.#guard(guard);
+        this.repository.commit(root, { kind: 'save', oldMain: record.main_commit, newMain: record.main_commit, record, revision: metadata, receipt: { ...request, result } });
+      });
+      if (published?.then) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace publication must be synchronous');
       return result;
     });
   }

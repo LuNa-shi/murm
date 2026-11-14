@@ -246,6 +246,18 @@ const publicWorkspaceTools = TOOL_DEFINITIONS
   .filter((tool) => tool.service === 'workspace')
   .map((tool) => ({ ...tool, service: 'task', capability: 'workspace' }));
 const publicMissionWorkspaceTools = [
+  { name: 'workspace_public_view', service: 'task', operation: 'workspace_public_view', version: '1.0',
+    description: 'Read the public Mission Workspace and current main.', scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id'], properties: { workspace_id: { type: 'string' } }, additionalProperties: false } },
+  { name: 'workspace_public_history', service: 'task', operation: 'workspace_public_history', version: '1.0',
+    description: 'Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.', scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: ['workspace_id'], properties: { workspace_id: { type: 'string' }, all: { type: 'boolean' }, source_task: { type: 'string' }, source_execution: { type: 'string' }, path: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false } },
+  { name: 'workspace_status', service: 'task', operation: 'workspace_status', version: '1.0',
+    description: 'Inspect the current E tree, initial revision and saved lineage.', scope: 'execution-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: [], properties: {  }, additionalProperties: false } },
+  { name: 'workspace_current_diff', service: 'task', operation: 'workspace_current_diff', version: '1.0',
+    description: 'Compare the current E tree with its last saved revision.', scope: 'execution-read', side_effect: false, capability: 'mission-workspace',
+    parameters: { type: 'object', required: [], properties: {  }, additionalProperties: false } },
   {
     name: 'mission_get', service: 'task', operation: 'mission_get', version: '1.0',
     description: 'Read the current Mission goal and acceptance conditions.',
@@ -280,7 +292,7 @@ const publicMissionWorkspaceTools = [
     name: 'workspace_save', service: 'task', operation: 'workspace_save', version: '1.0',
     description: 'Save a complete public Mission Workspace file tree as an immutable revision without advancing main.',
     scope: 'execution-write', side_effect: true, capability: 'mission-workspace',
-    parameters: { type: 'object', required: ['workspace_id', 'base_revision', 'files'], properties: { workspace_id: { type: 'string' }, base_revision: { type: 'string' }, files: { type: 'object' }, source: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'workspace_merge', service: 'task', operation: 'workspace_merge', version: '1.0',

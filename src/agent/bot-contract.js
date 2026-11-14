@@ -54,7 +54,7 @@ export function botServiceDirectory(profile) {
     for (const name of namespaces) entries.push({ name, provider_service: id, provider_version: service.provider_version ?? null, manifest_hash: service.manifest_hash ?? null,
       help: `swarm ${name} --help`, manifest_help: `swarm service view ${id} --json`,
       documentation: service.documentation ?? [],
-      permission: ({ mission: 'read; submission temporarily unavailable (SERVICE_NOT_READY)', task: 'Mission reads, propose and take; finish and feedback require current E', workspace: 'public files/read/search before take; save/apply integration pending', material: 'Mission reads/search; publish and consume require current E', judge: 'checks and result reads require current active E', bot: 'exit only when unbound with no pending take', service: 'configured service metadata only' })[name] ?? 'consult registered operation metadata; Bridge enforces current binding',
+      permission: ({ mission: 'read; submission temporarily unavailable (SERVICE_NOT_READY)', task: 'Mission reads, propose and take; finish and feedback require current E', workspace: 'public view/history/files/read/search before take; status/diff/save require current E; apply/merge integration pending', material: 'Mission reads/search; publish and consume require current E', judge: 'checks and result reads require current active E', bot: 'exit only when unbound with no pending take', service: 'configured service metadata only' })[name] ?? 'consult registered operation metadata; Bridge enforces current binding',
     });
   }
   return entries;

@@ -573,12 +573,13 @@ export class OpenSandboxManager {
     const expected = action === 'prepare' ? 'PREPARED' : 'ACTIVE';
     if (result?.state !== expected || result.execution_id !== executionId || result.binding_version !== record.bindingVersion) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'Worker did not confirm the expected project permission state');
     if (record.stopPromise || this.executions.get(executionId) !== record) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during project control');
-    this.logger?.({ event: `sandbox.project_${action === 'prepare' ? 'prepared' : 'granted'}`, bot_id: record.botId, execution_id: executionId, binding_version: record.bindingVersion });
+    this.logger?.({ event: `sandbox.project_${action === 'prepare' ? 'prepared' : action === 'grant' ? 'granted' : 'snapshot'}`, bot_id: record.botId, execution_id: executionId, binding_version: record.bindingVersion });
     return result;
   }
 
   prepareBotProject({ executionId, manifest }) { return this.#projectCall(executionId, 'prepare', manifest); }
   grantBotProject({ executionId }) { return this.#projectCall(executionId, 'grant'); }
+  snapshotBotProject({ executionId }) { return this.#projectCall(executionId, 'snapshot'); }
 
   /** Pull guest files back before Runtime checkpoints or deletes the sandbox. */
   async syncWorkspaceBack({ executionId, workspaceRef, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 } = {}) {
@@ -777,7 +778,9 @@ export class OpenSandboxManager {
       const response = await this.fetch(url, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: controller.signal });
       const text = await response.text();
       const parsed = response.headers?.get?.('content-type')?.includes('text/event-stream') ? null : (text ? jsonData(text) : {});
-      if (!response.ok && !allowStatuses.includes(response.status)) throw new SwarmEnvError(response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT, `OpenSandbox request failed with HTTP ${response.status}`, { status: response.status, diagnostic: safeDiagnostic(parsed ?? text) }, { retryable: response.status >= 500 || response.status === 429 });
+      if (!response.ok && !allowStatuses.includes(response.status)) throw new SwarmEnvError(absolute && new URL(url).pathname === '/project/snapshot' && parsed?.code === ERROR_CODES.WORKSPACE_BUSY
+        ? ERROR_CODES.WORKSPACE_BUSY : response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT,
+      `OpenSandbox request failed with HTTP ${response.status}`, { status: response.status, diagnostic: safeDiagnostic(parsed ?? text) }, { retryable: response.status >= 500 || response.status === 429 || parsed?.code === ERROR_CODES.WORKSPACE_BUSY });
       return { status: response.status, body: parsed, text };
     } catch (error) {
       if (error instanceof SwarmEnvError) throw error;

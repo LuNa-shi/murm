@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
-import { chmod, chown, lstat, mkdir, readFile, readdir } from 'node:fs/promises';
+import { chmod, chown, lstat, mkdir, opendir, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export const BOT_UID = 10001;
 export const PROJECT_DIR = '/workspace/project';
 export const RUNTIME_DIR = '/workspace/runtime';
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+const busy = message => Object.assign(new Error(message), { code: 'WORKSPACE_BUSY' });
 
 function projectPath(path) {
   if (typeof path !== 'string' || path.includes('\\') || path.includes('\0') || path.split('/').some(part => !part || ['.', '..', '.git', '.pi', '.swarm', '.env', 'node_modules'].includes(part) || part.startsWith('.swarm-') || part.startsWith('.env.'))) throw new Error('invalid project path');
@@ -106,7 +107,7 @@ export class SandboxProject {
         await chmod(PROJECT_DIR, 0o500);
         this.#open();
         const grantDirectory = async directory => {
-          for (const entry of await readdir(directory, { withFileTypes: true })) {
+          for await (const entry of await opendir(directory)) {
             this.#open();
             const target = join(directory, entry.name);
             if (entry.isDirectory()) await grantDirectory(target);
@@ -127,6 +128,54 @@ export class SandboxProject {
         this.binding.granted_at = Date.now();
         return { state: this.state, ...identity, granted_at: this.binding.granted_at };
       } catch (error) { this.beginClose(); throw error; }
+    });
+  }
+
+  snapshot(input) {
+    return this.#locked(async () => {
+      this.#open();
+      const identity = this.#identity(input);
+      if (this.state !== 'ACTIVE' || this.binding?.execution_id !== identity.execution_id || this.binding?.binding_version !== identity.binding_version) throw new Error('snapshot requires the active project binding');
+      const deadline = Date.now() + 10_000;
+      const collect = async includeFiles => {
+        const files = Object.create(null);
+        const manifest = Object.create(null);
+        let totalBytes = 0;
+        let entries = 0;
+        const visit = async (directory, prefix = '') => {
+          const names = new Set();
+          for await (const entry of await opendir(directory)) {
+            this.#open();
+            if (++entries > 10_000 || Date.now() >= deadline) throw busy('project exceeds the bounded snapshot window');
+            // An invalid-byte POSIX filename can decode to the same string as
+            // a legitimate U+FFFD name. Never silently drop the colliding file.
+            if (names.has(entry.name)) throw new Error('snapshot rejects ambiguous decoded filenames');
+            names.add(entry.name);
+            const path = projectPath(prefix ? `${prefix}/${entry.name}` : entry.name);
+            const absolute = join(PROJECT_DIR, path);
+            const info = await lstat(absolute);
+            if (info.isDirectory()) await visit(absolute, path);
+            else if (info.isFile() && info.nlink === 1) {
+              totalBytes += info.size;
+              if (info.size > 2 * 1024 * 1024 || totalBytes > 16 * 1024 * 1024) throw new Error('project exceeds snapshot byte bounds');
+              const bytes = await readFile(absolute);
+              if (bytes.length !== info.size) throw busy('project changed during snapshot');
+              manifest[path] = { bytes: bytes.length, content_hash: digest(bytes) };
+              if (includeFiles) files[path] = bytes.toString('base64');
+            } else throw new Error('snapshot rejects symlinks, hardlinks and special files');
+          }
+        };
+        await visit(PROJECT_DIR);
+        // Same canonical key order as the controller's stableStringify.
+        const ordered = Object.fromEntries(Object.keys(manifest).sort().map(path => [path, manifest[path]]));
+        const canonical = `{${Object.keys(ordered).sort().map(path => `${JSON.stringify(path)}:${JSON.stringify(ordered[path])}`).join(',')}}`;
+        return { files, manifest: ordered, content_hash: digest(canonical), bytes: totalBytes };
+      };
+      const captured = await collect(true);
+      const checked = await collect(false);
+      this.#open();
+      if (captured.content_hash !== checked.content_hash || Date.now() >= deadline) throw busy('project changed or exceeded the stable snapshot window');
+      return { state: this.state, ...identity, ...captured };
     });
   }
 

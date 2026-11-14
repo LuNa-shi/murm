@@ -13,6 +13,7 @@ import { JUDGE_SCHEMA_SQL } from '../src/storage/judge-schema.js';
 import { OBSERVATION_SCHEMA_SQL } from '../src/observability/observation-store.js';
 import { ERROR_CODES } from '../src/errors.js';
 import { DatabaseSync } from 'node:sqlite';
+import { EXECUTION_WORKSPACE_SCHEMA_SQL } from '../src/runtime/execution-workspace.js';
 import { TaskService } from '../src/task/task-service.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -82,6 +83,7 @@ for (const owner of ['TASK', 'CONTEXT', 'JUDGE']) {
 api += '\n### Exact shared error-code vocabulary\n' + json(ERROR_CODES);
 
 const schemas = [
+  ['Execution Workspace coordinator', 'src/runtime/execution-workspace.js', EXECUTION_WORKSPACE_SCHEMA_SQL],
   ['Task and Execution database', 'src/storage/schema.js', SCHEMA_SQL],
   ['Context database', 'src/storage/context-schema.js', CONTEXT_SCHEMA_SQL],
   ['Judge database', 'src/storage/judge-schema.js', JUDGE_SCHEMA_SQL],

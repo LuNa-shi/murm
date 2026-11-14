@@ -10,7 +10,7 @@ const ALIASES = Object.freeze({
   // the single public Task lifecycle command.
   task: { list: 'task_list', discover: 'task_list', view: 'task_view', create: 'task_create', propose: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status' },
   material: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', view: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials' },
-  workspace: { files: 'workspace_public_files', list: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
+  workspace: { view: 'workspace_public_view', history: 'workspace_public_history', status: 'workspace_status', diff: 'workspace_current_diff', files: 'workspace_public_files', list: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
   mission: { view: 'mission_get', submit: 'mission_submit', status: 'mission_submission_get', finish: 'mission_submission_finish' },
   judge: { check: 'workspace_check', submit: 'workspace_check', result: 'get_check_result', get: 'get_check_result' },
 });
@@ -45,11 +45,15 @@ const COMMAND_HELP = Object.freeze({
     consume: 'Record a meaningful Material use. Use --input or --stdin for Material IDs and action.',
   },
   workspace: {
+    view: 'Read the current public Workspace and main.',
+    history: 'Read main history; --all includes unmerged saves. Filter --task, --execution, --path; paginate with --limit and --cursor.',
+    status: 'Inspect current E initial input, saved revision, dirty paths and conflicts.',
+    diff: 'Compare the current E project with its last saved revision.',
     files: 'Read files from a fixed public Workspace revision before take.',
     list: 'List files from a fixed public Workspace revision before take.',
     read: 'Read one file from a fixed public Workspace revision.',
     search: 'Search text in a fixed public Workspace revision.',
-    save: 'Save a complete file tree as an immutable public Workspace revision.',
+    save: 'Save the actual current E project as a stable public revision. No file, identity or lineage arguments. Reuse --request-id after an unknown response.',
     merge: 'Conditionally merge a complete public Workspace revision into main.',
   },
   mission: {
@@ -65,7 +69,7 @@ const COMMAND_HELP = Object.freeze({
 });
 
 function usage(scope = 'top', commandName = null) {
-  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|take|finish|feedback\n  material list|view|search|publish|consume\n  workspace files|read|search|save|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
+  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|take|finish|feedback\n  material list|view|search|publish|consume\n  workspace view|history|status|diff|files|read|search|save|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
   if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest through the Bot Bridge. No network is required for --help.';
   if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${DEFAULT_REQUEST_TIMEOUT_MS})\n  --help                     Show this command help`;
   return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Task and Material IDs and file paths use the documented positional arguments.\nBot identity always comes from the protected Bridge binding.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;
@@ -249,6 +253,7 @@ function commandInput(service, command, options, args, input) {
     input[to] = input[from]; delete input[from];
   };
   if (service === 'workspace') rename('at', 'revision');
+  if (service === 'workspace' && command === 'history') { rename('task', 'source_task'); rename('execution', 'source_execution'); }
   if (service === 'task' && command === 'finish') rename('replacement', 'replacement_task_id');
   if (options['request-id'] !== undefined && options['operation-id'] !== undefined && options['request-id'] !== options['operation-id']) throw new Error('request-id and operation-id must match');
   if (process.env.SWARMENV_BRIDGE_URL) {
