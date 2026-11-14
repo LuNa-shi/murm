@@ -2,6 +2,8 @@
 
 本文复盘 `issue122-formal24`，以 [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) 采纳的 [Phase 02 设计](../phases/0002-task-material-workspace/README.md) 为对照。实现审查对象为 [PR #124](https://github.com/LuNa-shi/SwarmEnv/pull/124)。缺口和验证项引用现有合同，实施范围和验收状态以 Issue/PR 为准。
 
+后续完整核对见 [设计与实现一致性审计](../phases/0002-task-material-workspace/09-implementation-audit.md)：覆盖全部设计章节、实际入口与兼容路径，并将 V01–V32 逐项映射到缺口和验证要求。本页保留实验观察，两者共同解释当前模型偏差。
+
 ## Setup
 
 | 项目 | 固定记录 |

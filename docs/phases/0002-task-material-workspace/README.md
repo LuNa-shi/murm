@@ -38,6 +38,8 @@
 
 Prompt/Skills 只把模块合同转成可执行指导，不另创权限；Validation 检验这些合同与真实行为；Migration 说明如何从现状实施，旧代码差距不充当新设计缺陷。
 
+实现对照附件：[完整设计与实现一致性审计](09-implementation-audit.md) 固定 PR #124 的 `36b0cf3`，逐章记录缺口、源码证据和 V01–V32 验收边界；它不是新增目标设计，也不改变 Issue 批准的要求。已有运行的逐 Bot 证据见 [formal24 分析](../../experiments/issue122-formal24-gap-analysis.md)。
+
 ## 3. 已确认的跨模块合同
 
 ### 3.1 Task 与 Bot 生命周期
