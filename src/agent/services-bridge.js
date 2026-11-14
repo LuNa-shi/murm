@@ -6,6 +6,7 @@ import { ServicesSDK } from '../sdk/services-sdk.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
+import { agentCheckResult } from '../judge/check-result.js';
 import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -18,7 +19,7 @@ const WORKSPACE_OPERATIONS = new Set([
 // owns an Execution. Requiring an Execution for these operations makes a
 // zero-Task Mission impossible to bootstrap.
 const UNBOUND_OPERATIONS = new Set([
-  'bot_exit',
+  'bot_exit', 'get_check_result',
   'task_list', 'task_view', 'task_status', 'task_create',
   'read_materials', 'context_search_materials', 'context_get_material',
   'material_read', 'material_search', 'material_get',
@@ -691,7 +692,9 @@ export class ServicesBridge {
             ? (({ progress: _progress, ...rest }) => ({ ...rest, required_capabilities: requiredTaskCapabilities(payload) }))(invocationPayload)
             : invocationPayload;
           if (operation === 'workspace_check') {
-            const source = await this.runtime.readWorkspaceFile(this.executionId, { path: payload.path, maxBytes: payload.max_bytes });
+            const source = bot
+              ? await this.runtime.readWorkspaceCheckSource(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: currentExecution?.fencing_version })
+              : await this.runtime.readWorkspaceFile(this.executionId, { path: payload.path, maxBytes: payload.max_bytes });
             if (typeof payload.path !== 'string' || payload.path.length === 0 || payload.path.startsWith('/') || payload.path.split('/').includes('..')) {
               throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_check.path must stay within the Execution Workspace');
             }
@@ -706,7 +709,9 @@ export class ServicesBridge {
             }
             registeredPayload = {
               ...payload,
+              ...(bot ? { request_key: payload.request_key ?? bridgeOperationId } : {}),
               source: {
+                ...(bot ? source : {}),
                 revision: source.revision ?? source.workspace_revision,
                 path: payload.path,
                 content: source.content,
@@ -733,6 +738,11 @@ export class ServicesBridge {
           ? await this.taskCreateMutex.run(invoke)
           : await invoke();
         assertIdentity();
+        if (bot && ['workspace_check', 'get_check_result'].includes(operation) && result) {
+          const target = this.taskService.getTask(result.target_task_id);
+          if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge result is not readable in the Bot Mission');
+          result = agentCheckResult(result);
+        }
         if (operation === 'task_take') {
           await this.bindTake(result);
           this.acceptedTake = { operation_id: bridgeOperationId, fingerprint: stableStringify({ capability: capability.id, payload }), result: structuredClone(result) };

@@ -30,12 +30,12 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `748557769ac24a09daed33613b481a33a6bb68fcbbca222499456c4b60d10c25` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `c523fe3c91695603ac7e6aa6c6ff5b7dbf2229ccbc2ad6c13c1d4e320a1ef8ed` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `a2ea43efa380b7731557524d6084e3e138f5f2b43fa64494adf03c6279643a20` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `67189324940ba90f9d010d3e0792de2768babbcef779e3cbadcd8792b7dc6379` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fc537d04cb0471d1496d82c1866b5fde81986f790768eea9e720bd7391ecdabd` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `6b7a7267dcfa205d42787750b5dfaf31d2f0f3e85f32702f5692db576b2f4a4c` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `151f99ae6fa903c93f99fec6ce63dc7cf6120cfe62476361840aee970e6057d3` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `79ba27b66c7f2fb6cc60acea4ee4a13564f4de2ea3e622d0afaad42cb0136ef1` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
@@ -2241,7 +2241,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe"
+  "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e"
 }
 ```
 
@@ -2257,6 +2257,7 @@ Check a Workspace file reference against the configured checker and return a dur
   "input_schema": {
     "type": "object",
     "required": [
+      "revision",
       "path"
     ],
     "properties": {
@@ -2269,14 +2270,6 @@ Check a Workspace file reference against the configured checker and return a dur
         "pattern": "^\\d+\\.\\d+$"
       },
       "path": {
-        "type": "string",
-        "minLength": 1
-      },
-      "workspace_revision": {
-        "type": "integer",
-        "minimum": 1
-      },
-      "content_hash": {
         "type": "string",
         "minLength": 1
       },
@@ -2357,10 +2350,7 @@ Read a Judge CheckResult, checker process status, result class, retryability, an
   ],
   "side_effect": "read",
   "idempotent": true,
-  "context": [
-    "task",
-    "execution"
-  ],
+  "context": [],
   "requires_binding": false,
   "scope": "execution-read",
   "help": {

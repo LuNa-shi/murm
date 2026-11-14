@@ -7,7 +7,7 @@ These examples reproduce both composition stages of the current Mission Runtime 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Runtime Mission start/restart: exact two-stage composed body for synthetic inputs
 
-Body SHA-256: `ad543af7b5b4d20562dacd815e687a5ea0664a256dab66703cd36c61b6a47326`
+Body SHA-256: `2940d1f0136036fdda63c5c46f5b3c14fc2776082a32765e7ca87f870e8741b5`
 
 ````text
 You are one SwarmEnv Bot lifecycle working with other Bots toward the supplied Mission; never lower its original acceptance requirements or treat one local Task as Mission completion.
@@ -30,7 +30,7 @@ Treat structured tool errors, missing context, and save failures as observable o
 
 Current role: bound
 
-Profile: registry:e15ec4061ed0b430 / e15ec4061ed0b430800a4781da61305b1081e30cc23a6bc356b006a59dd72ca2
+Profile: registry:babd04ae41535dcf / babd04ae41535dcf5d90c2c8b213fc43a6419f3e368e225169d483bd349ea10b
 
 Callable capability directory:
 
@@ -47,7 +47,7 @@ Callable capability directory:
   - swarmenv_context_search_materials: Search shared immutable Materials by summary, role, Task, producer, or Mission. (logical operation context.context_search_materials; read-only; inputs required=[none] fields=[limit,mission_id,query,role,task_id]; Search shared immutable Materials by summary, role, Task, producer, or Mission.)
 - Judge Service — Workspace source checking and structured CheckResults.
   - swarmenv_judge_get_check_result: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback. (logical operation judge.get_check_result; read-only; inputs required=[none] fields=[check_result_id,request_key]; Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.)
-  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[path] fields=[content_hash,path,request_key,revision,workspace_id,workspace_revision]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
+  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[revision,path] fields=[path,request_key,revision,workspace_id]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
 - SwarmEnv Runtime — Task-scoped Execution projection
   - swarmenv_execution_get: Read the current Execution identity and Workspace revision. (logical operation runtime.get_execution; read-only; inputs required=[execution_id] fields=[execution_id]; Read the current Execution before acting on its Task.)
   - swarmenv_workspace_diff: Compare two revisions in the current task-scoped Workspace. (logical operation runtime.workspace_diff; read-only; inputs required=[none] fields=[from_revision,to_revision]; Inspect the auditable file changes between revisions.)
@@ -197,14 +197,14 @@ Recovery: none.
     "service_id": "judge",
     "service_version": "builtin-1",
     "capability": "judge_get_check_result",
-    "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe",
+    "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e",
     "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "judge",
     "service_version": "builtin-1",
     "capability": "judge_workspace_check",
-    "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe",
+    "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e",
     "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Check a Workspace file reference against the configured checker and return a durable CheckResult.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
@@ -373,7 +373,7 @@ Recovery: none.
 
 Current role: bound
 
-Profile: registry:e15ec4061ed0b430 / e15ec4061ed0b430800a4781da61305b1081e30cc23a6bc356b006a59dd72ca2
+Profile: registry:babd04ae41535dcf / babd04ae41535dcf5d90c2c8b213fc43a6419f3e368e225169d483bd349ea10b
 
 Callable capability directory:
 
@@ -390,7 +390,7 @@ Callable capability directory:
   - swarmenv_context_search_materials: Search shared immutable Materials by summary, role, Task, producer, or Mission. (logical operation context.context_search_materials; read-only; inputs required=[none] fields=[limit,mission_id,query,role,task_id]; Search shared immutable Materials by summary, role, Task, producer, or Mission.)
 - Judge Service — Workspace source checking and structured CheckResults.
   - swarmenv_judge_get_check_result: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback. (logical operation judge.get_check_result; read-only; inputs required=[none] fields=[check_result_id,request_key]; Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.)
-  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[path] fields=[content_hash,path,request_key,revision,workspace_id,workspace_revision]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
+  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[revision,path] fields=[path,request_key,revision,workspace_id]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
 - SwarmEnv Runtime — Task-scoped Execution projection
   - swarmenv_execution_get: Read the current Execution identity and Workspace revision. (logical operation runtime.get_execution; read-only; inputs required=[execution_id] fields=[execution_id]; Read the current Execution before acting on its Task.)
   - swarmenv_workspace_diff: Compare two revisions in the current task-scoped Workspace. (logical operation runtime.workspace_diff; read-only; inputs required=[none] fields=[from_revision,to_revision]; Inspect the auditable file changes between revisions.)
@@ -546,7 +546,7 @@ Recovery: none.
     "purpose": "Workspace source checking and structured CheckResults.",
     "provider_version": "builtin-1",
     "contract_version": "1",
-    "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe",
+    "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e",
     "documentation": [],
     "capabilities": [
       "judge_get_check_result",
@@ -679,14 +679,14 @@ Recovery: none.
     "service_id": "judge",
     "service_version": "builtin-1",
     "capability": "judge_get_check_result",
-    "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe",
+    "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e",
     "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "judge",
     "service_version": "builtin-1",
     "capability": "judge_workspace_check",
-    "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe",
+    "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e",
     "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Check a Workspace file reference against the configured checker and return a durable CheckResult.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
@@ -854,7 +854,7 @@ Recovery: none.
 ````
 ## Runtime Mission recovery: exact two-stage composed body for synthetic inputs
 
-Body SHA-256: `df638a186e8352f90f8713e69fc5aa98e47950e9cb05459415f1bb41daddf671`
+Body SHA-256: `9a0881a876776b9f8ebc8e15a008afb00cdd0b4649c3745df9b7f6e32607ae37`
 
 ````text
 Resume the taken Task from its durable Workspace and checkpoint.
@@ -868,7 +868,7 @@ Do not assume the interrupted turn completed. Inspect the current Task, Executio
 
 Current role: recovery
 
-Profile: registry:04e0e7647c6fb27f / 04e0e7647c6fb27f2cbb29e4fedbf0254e93aee72cd8206c9714379d76839705
+Profile: registry:6e0bd123ab53fc79 / 6e0bd123ab53fc797a17b1e50f9795c5498cb355c76cfa6313d30db765770148
 
 Callable capability directory:
 
@@ -885,7 +885,7 @@ Callable capability directory:
   - swarmenv_context_search_materials: Search shared immutable Materials by summary, role, Task, producer, or Mission. (logical operation context.context_search_materials; read-only; inputs required=[none] fields=[limit,mission_id,query,role,task_id]; Search shared immutable Materials by summary, role, Task, producer, or Mission.)
 - Judge Service — Workspace source checking and structured CheckResults.
   - swarmenv_judge_get_check_result: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback. (logical operation judge.get_check_result; read-only; inputs required=[none] fields=[check_result_id,request_key]; Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.)
-  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[path] fields=[content_hash,path,request_key,revision,workspace_id,workspace_revision]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
+  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[revision,path] fields=[path,request_key,revision,workspace_id]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
 - SwarmEnv Runtime — Task-scoped Execution projection
   - swarmenv_execution_get: Read the current Execution identity and Workspace revision. (logical operation runtime.get_execution; read-only; inputs required=[execution_id] fields=[execution_id]; Read the current Execution before acting on its Task.)
   - swarmenv_workspace_diff: Compare two revisions in the current task-scoped Workspace. (logical operation runtime.workspace_diff; read-only; inputs required=[none] fields=[from_revision,to_revision]; Inspect the auditable file changes between revisions.)
@@ -1037,14 +1037,14 @@ Dependency: none
     "service_id": "judge",
     "service_version": "builtin-1",
     "capability": "judge_get_check_result",
-    "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe",
+    "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e",
     "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "judge",
     "service_version": "builtin-1",
     "capability": "judge_workspace_check",
-    "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe",
+    "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e",
     "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Check a Workspace file reference against the configured checker and return a durable CheckResult.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
@@ -1213,7 +1213,7 @@ Dependency: none
 
 Current role: bound
 
-Profile: registry:e15ec4061ed0b430 / e15ec4061ed0b430800a4781da61305b1081e30cc23a6bc356b006a59dd72ca2
+Profile: registry:babd04ae41535dcf / babd04ae41535dcf5d90c2c8b213fc43a6419f3e368e225169d483bd349ea10b
 
 Callable capability directory:
 
@@ -1230,7 +1230,7 @@ Callable capability directory:
   - swarmenv_context_search_materials: Search shared immutable Materials by summary, role, Task, producer, or Mission. (logical operation context.context_search_materials; read-only; inputs required=[none] fields=[limit,mission_id,query,role,task_id]; Search shared immutable Materials by summary, role, Task, producer, or Mission.)
 - Judge Service — Workspace source checking and structured CheckResults.
   - swarmenv_judge_get_check_result: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback. (logical operation judge.get_check_result; read-only; inputs required=[none] fields=[check_result_id,request_key]; Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.)
-  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[path] fields=[content_hash,path,request_key,revision,workspace_id,workspace_revision]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
+  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[revision,path] fields=[path,request_key,revision,workspace_id]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
 - SwarmEnv Runtime — Task-scoped Execution projection
   - swarmenv_execution_get: Read the current Execution identity and Workspace revision. (logical operation runtime.get_execution; read-only; inputs required=[execution_id] fields=[execution_id]; Read the current Execution before acting on its Task.)
   - swarmenv_workspace_diff: Compare two revisions in the current task-scoped Workspace. (logical operation runtime.workspace_diff; read-only; inputs required=[none] fields=[from_revision,to_revision]; Inspect the auditable file changes between revisions.)
@@ -1386,7 +1386,7 @@ Recovery: none.
     "purpose": "Workspace source checking and structured CheckResults.",
     "provider_version": "builtin-1",
     "contract_version": "1",
-    "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe",
+    "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e",
     "documentation": [],
     "capabilities": [
       "judge_get_check_result",
@@ -1519,14 +1519,14 @@ Recovery: none.
     "service_id": "judge",
     "service_version": "builtin-1",
     "capability": "judge_get_check_result",
-    "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe",
+    "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e",
     "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {
     "service_id": "judge",
     "service_version": "builtin-1",
     "capability": "judge_workspace_check",
-    "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe",
+    "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e",
     "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Check a Workspace file reference against the configured checker and return a durable CheckResult.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   {

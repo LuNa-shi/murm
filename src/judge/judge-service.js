@@ -65,7 +65,8 @@ export class JudgeService {
   }
 
   getByRequestKey(requestKey) {
-    return resultFromRow(this.db.prepare('SELECT * FROM check_results WHERE request_key = ?').get(requestKey));
+    return resultFromRow(this.db.prepare('SELECT * FROM check_results WHERE request_key = ?').get(requestKey)
+      ?? this.db.prepare('SELECT r.* FROM check_results r JOIN judge_request_aliases a ON a.check_result_id = r.check_result_id WHERE a.request_key = ?').get(requestKey));
   }
 
   getCheckerPreflight(preflightKey) {
@@ -134,9 +135,10 @@ export class JudgeService {
         workspace_id: required(source.workspace_id, 'source.workspace_id'),
         revision: required(String(source.revision), 'source.revision'),
         path: required(source.path, 'source.path'),
+        ...(source.git_commit ? { git_commit: source.git_commit, git_tree: source.git_tree, tree_content_hash: source.tree_content_hash, content_hash: contentHash(source.content) } : {}),
       }
       : null;
-    const sourceHash = source.content_hash ?? contentHash(source.content);
+    const sourceHash = contentHash(source.content);
     if (source.content_hash !== undefined && source.content_hash !== sourceHash) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace source content_hash does not match content');
     }
@@ -232,7 +234,9 @@ export class JudgeService {
   async #checkWorkspaceSourceRequest(input, { operationId = randomUUID(), actorRef = 'judge:lean' } = {}) {
     this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: operationId, target_task_id: input?.target_task_id, workspace_source_id: input?.workspace_source_id });
     const normalized = this.#validateRequest(input);
-    const requestHash = hash(normalized);
+    // E state versions can advance while the same immutable check is running
+    // or awaiting a response. They are not part of the scientific input.
+    const requestHash = hash(normalized.workspace_source.file_ref?.git_commit ? { ...normalized, state_version: null } : normalized);
     const request = this.#beginRequest(normalized, requestHash);
     if (!request.shouldCheck) return request.result;
     const requested = request.result;
@@ -273,6 +277,7 @@ export class JudgeService {
       }
     }
     checked = normalizeCheckerResult(checked);
+    if (normalized.workspace_source.file_ref) checked.evidence = { ...checked.evidence, workspace_input: normalized.workspace_source.file_ref };
     if (preflight.status === 'healthy' && checked.result_class === 'infrastructure_failure') {
       const health = this.#persistPreflight(checkerIdentity(normalized.fixture_manifest), normalizePreflight({
         status: 'unavailable',
@@ -427,6 +432,11 @@ export class JudgeService {
 
   #beginRequest(normalized, requestHash) {
     return this.#transaction(() => {
+      const alias = this.db.prepare('SELECT * FROM judge_request_aliases WHERE request_key = ?').get(normalized.request_key);
+      if (alias) {
+        if (alias.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
+        return { result: this.getCheckResult(alias.check_result_id), shouldCheck: false };
+      }
       const existing = this.getByRequestKey(normalized.request_key);
       if (existing) {
         if (existing.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
@@ -438,9 +448,14 @@ export class JudgeService {
       // only retryable infrastructure failures may be checked again after a
       // new request.  This also closes the cross-Core duplicate path where
       // each Agent invents a different request key for the same Material.
+      const publicInput = normalized.workspace_source.file_ref?.git_commit ? normalized.workspace_source.file_ref : null;
+      const sourceClause = publicInput ? `AND workspace_source_id = ?
+        AND json_extract(evidence_json, '$.workspace_input.git_commit') = ?
+        AND json_extract(evidence_json, '$.workspace_input.git_tree') = ?` : `AND json_extract(evidence_json, '$.workspace_input.git_commit') IS NULL`;
       const equivalent = this.db.prepare(`SELECT * FROM check_results
         WHERE workspace_content_hash = ? AND target_task_id = ? AND target_spec_version = ?
           AND input_snapshot_hash = ? AND checker_ref = ? AND checker_version = ? AND environment_ref = ?
+          ${sourceClause}
         ORDER BY created_at, check_result_id LIMIT 1`).get(
         normalized.workspace_content_hash,
         normalized.target_task_id,
@@ -449,12 +464,15 @@ export class JudgeService {
         normalized.checker_ref,
         normalized.checker_version,
         normalized.environment_ref,
+        ...(publicInput ? [normalized.workspace_source_id, publicInput.git_commit, publicInput.git_tree] : []),
       );
       if (equivalent) {
         const existingResult = resultFromRow(equivalent);
         const retryableInfrastructure = existingResult.result_class === 'infrastructure_failure' &&
           existingResult.retryable && !existingResult.evidence?.retry_exhausted;
         if (!retryableInfrastructure) {
+          this.db.prepare('INSERT INTO judge_request_aliases (request_key, request_hash, check_result_id, created_at) VALUES (?, ?, ?, ?)')
+            .run(normalized.request_key, requestHash, existingResult.check_result_id, now());
           return {
             result: {
               ...existingResult,
@@ -475,7 +493,7 @@ export class JudgeService {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', NULL, 'accepted', 'not_started', 'unassessed', 0, NULL, ?, NULL, NULL, ?, ?)`).run(
         checkResultId, normalized.request_key, requestHash, normalized.workspace_source_id, normalized.workspace_content_hash, normalized.target_task_id, normalized.target_spec_version,
           normalized.execution_id, normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref,
-          json({}), createdAt, createdAt);
+          json(publicInput ? { workspace_input: publicInput } : {}), createdAt, createdAt);
       return { result: this.getCheckResult(checkResultId), shouldCheck: true };
     });
   }

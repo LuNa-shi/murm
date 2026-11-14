@@ -118,7 +118,7 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
       audience: audienceFor(tool),
       side_effect: tool.side_effect ? 'write' : 'read',
       idempotent: !tool.side_effect,
-      context: serviceId === 'catalog' || ['bot_exit', 'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_view', 'workspace_public_history', 'mission_get', 'mission_submit', 'mission_submission_get'].includes(tool.operation) ? [] : ['task', 'execution'],
+      context: serviceId === 'catalog' || ['bot_exit', 'get_check_result', 'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_view', 'workspace_public_history', 'mission_get', 'mission_submit', 'mission_submission_get'].includes(tool.operation) ? [] : ['task', 'execution'],
       help: {
         when: tool.description,
         ref: `service://${serviceId}/${tool.operation}`,

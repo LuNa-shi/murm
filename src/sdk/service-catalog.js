@@ -96,7 +96,7 @@ const TOOL_DEFINITIONS = Object.freeze([
     name: 'judge_workspace_check', service: 'judge', operation: 'workspace_check', version: '1.0',
     description: 'Check a Workspace file reference against the configured checker and return a durable CheckResult.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['path'], properties: { workspace_id: { type: 'string', minLength: 1 }, revision: { type: 'string', pattern: '^\\d+\\.\\d+$' }, path: { type: 'string', minLength: 1 }, workspace_revision: { type: 'integer', minimum: 1 }, content_hash: { type: 'string', minLength: 1 }, request_key: { type: 'string', minLength: 1 } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['revision', 'path'], properties: { workspace_id: { type: 'string', minLength: 1 }, revision: { type: 'string', pattern: '^\\d+\\.\\d+$' }, path: { type: 'string', minLength: 1 }, request_key: { type: 'string', minLength: 1 } }, additionalProperties: false },
   },
   {
     name: 'judge_get_check_result', service: 'judge', operation: 'get_check_result', version: '1.0',

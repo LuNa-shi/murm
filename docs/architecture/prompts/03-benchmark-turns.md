@@ -14,7 +14,7 @@ Read the Mission and relevant public Tasks, Materials, and Workspace files withi
 ````
 ## Registered Bot discovery: complete synthetic example
 
-Body SHA-256: `b9f11290ca1458882fa5151230070d16b0a26aacd4af6f4c4b1dec396b0c02e1`
+Body SHA-256: `41e153375061002308b4a1cb6a577cb13d41dfe33d7cac71f3e8478e35ff11d6`
 
 ````text
 你已在全新的 sandbox/Pi Session 启动，尚无 Execution。通过 swarm CLI 读取相关公开工作，在预算内自主选择已有 Task，或先提出缺失的局部 Task 再 take。下方只是当前可领取任务的一页，不代表全部历史；空页不表示 Mission 完成。
@@ -86,7 +86,7 @@ Body SHA-256: `b9f11290ca1458882fa5151230070d16b0a26aacd4af6f4c4b1dec396b0c02e1`
       "name": "judge",
       "provider_service": "judge",
       "provider_version": "builtin-1",
-      "manifest_hash": "25c33bdbbbe2f8d40cdbcd6a69ce01eae6be2fe99a69042f34008dd90fafb9fe",
+      "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e",
       "help": "swarm judge --help",
       "manifest_help": "swarm service view judge --json",
       "documentation": [],

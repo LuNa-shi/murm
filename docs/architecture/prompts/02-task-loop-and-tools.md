@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `6489c9798b74a993c3a02efbf66af6717bc2a13c8078050b02c96dbb61cf6bd8`
+Body SHA-256: `a6b8475ca5bd5c5addebba23c0cd2eb550a2c73b826bc48abfc0e782507a24ce`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -71,7 +71,7 @@ Body SHA-256: `6489c9798b74a993c3a02efbf66af6717bc2a13c8078050b02c96dbb61cf6bd8`
   - swarmenv_context_search_materials: Search shared immutable Materials by summary, role, Task, producer, or Mission. (logical operation context.context_search_materials; read-only; inputs required=[none] fields=[limit,mission_id,query,role,task_id]; Search shared immutable Materials by summary, role, Task, producer, or Mission.)
 - Judge Service — Workspace source checking and structured CheckResults.
   - swarmenv_judge_get_check_result: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback. (logical operation judge.get_check_result; read-only; inputs required=[none] fields=[check_result_id,request_key]; Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.)
-  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[path] fields=[content_hash,path,request_key,revision,workspace_id,workspace_revision]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
+  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[revision,path] fields=[path,request_key,revision,workspace_id]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
 - SwarmEnv Runtime — Task-scoped Execution projection
   - swarmenv_execution_get: Read the current Execution identity and Workspace revision. (logical operation runtime.get_execution; read-only; inputs required=[execution_id] fields=[execution_id]; Read the current Execution before acting on its Task.)
   - swarmenv_workspace_diff: Compare two revisions in the current task-scoped Workspace. (logical operation runtime.workspace_diff; read-only; inputs required=[none] fields=[from_revision,to_revision]; Inspect the auditable file changes between revisions.)

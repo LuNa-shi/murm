@@ -599,3 +599,16 @@ test('Judge operation replay and mismatched fixture bindings are explicit', asyn
   );
   judge.close();
 });
+
+test('Agent Judge projection preserves public input and preflight feedback when applied twice', () => {
+  const original = { verdict: 'ERROR', status: 'RECEIVED', retryable: true, result_class: 'infrastructure_failure', checker_process_status: 'timeout', evidence: {
+    diagnostic: 'checking timed out', exit_code: null, timed_out: true, checker_started: true, preflight_key: 'preflight-test', preflight_status: 'healthy',
+    preflight_verified: true, input_binding_verified: true, checker_version_verified: true, health_fingerprint: 'health-test', infrastructure_attempt_count: 2,
+    workspace_input: { workspace_id: 'W1', revision: '0.2', path: 'proof.lean', git_tree: 'a'.repeat(40), private_field: 'must not escape' },
+    private_field: 'must not escape',
+  } };
+  const projected = agentCheckResult(original);
+  assert.deepEqual(agentCheckResult(projected), projected);
+  assert.equal(projected.workspace_input.private_field, undefined);
+  assert.equal(projected.evidence, undefined);
+});

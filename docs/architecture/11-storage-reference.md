@@ -560,7 +560,7 @@ CREATE INDEX IF NOT EXISTS material_consumptions_material
 
 ### Judge database
 
-Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `e55141cfdcf3dfdd86e9080a212269277b171c7c7389a4267e0a0e47d7f7cc1b`.
+Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `7ef05fdf3f9c4c2ff5618a433a911514723055f7c4f08ad80f94078b290218b6`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -568,6 +568,13 @@ CREATE TABLE IF NOT EXISTS operations (
   operation TEXT NOT NULL,
   fingerprint TEXT NOT NULL,
   result_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS judge_request_aliases (
+  request_key TEXT PRIMARY KEY,
+  request_hash TEXT NOT NULL,
+  check_result_id TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
 

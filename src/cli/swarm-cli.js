@@ -64,7 +64,7 @@ const COMMAND_HELP = Object.freeze({
     finish: 'Record the result of a durable Mission submission.',
   },
   judge: {
-    check: 'Check a Workspace source file. Use --input or --stdin for the Workspace source contract.',
+    check: 'Check a saved public Workspace file with --revision and --path. Save first; the checker reads that fixed revision, not unsaved local edits. Use --request-id for response recovery.',
     result: 'Read one CheckResult. Use --check-result-id or --request-key; request-key lookup survives a lost submit response.',
   },
 });
@@ -253,7 +253,7 @@ function commandInput(service, command, options, args, input) {
     if (input[to] !== undefined && input[to] !== input[from]) throw new Error(`conflicting ${to}`);
     input[to] = input[from]; delete input[from];
   };
-  if (service === 'workspace') rename('at', 'revision');
+  if (service === 'workspace' || service === 'judge') rename('at', 'revision');
   if (service === 'workspace' && command === 'history') { rename('task', 'source_task'); rename('execution', 'source_execution'); }
   if (service === 'task' && command === 'finish') rename('replacement', 'replacement_task_id');
   if (options['request-id'] !== undefined && options['operation-id'] !== undefined && options['request-id'] !== options['operation-id']) throw new Error('request-id and operation-id must match');

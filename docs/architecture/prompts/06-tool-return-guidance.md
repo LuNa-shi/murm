@@ -18,7 +18,7 @@ These are repository-owned texts and deterministic examples, not transcripts of 
 | task-service.js action | Material-available notification payload, or invalid typed dependency error. Runtime renders a separate notification user message; the payload action is visible when the notification data itself is read/composed. |
 
 The action value integration is a consumption/contract enum, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.
-## action — src/agent/services-bridge.js:78
+## action — src/agent/services-bridge.js:79
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -27,7 +27,7 @@ Body SHA-256: `a5e4874eff88bd459015734cb36e2d7e5cbb7a9312337c2df58750686d29a4f3`
 ````text
 modify_task_contract_or_register_capability
 ````
-## hint — src/agent/services-bridge.js:79
+## hint — src/agent/services-bridge.js:80
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the hint field, without JSON quoting. See delivery conditions above.
 
@@ -36,7 +36,7 @@ Body SHA-256: `78b0d192a0cf7b1c85211b38fdcc05b704665f974c6108666838d664cfa210c7`
 ````text
 Use exact capability IDs or operation names from available_capabilities; do not invent conceptual names. Register and verify the required Service before creating the Task if no listed capability is suitable.
 ````
-## action — src/agent/services-bridge.js:109
+## action — src/agent/services-bridge.js:110
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -45,7 +45,7 @@ Body SHA-256: `db7537154d8f0502c90a002ac7beb7277abf6956a1eb41f091912c0ee5ddd35a`
 ````text
 call_the_capability_or_block_on_a_real_dependency
 ````
-## hint — src/agent/services-bridge.js:110
+## hint — src/agent/services-bridge.js:111
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the hint field, without JSON quoting. See delivery conditions above.
 
@@ -54,7 +54,7 @@ Body SHA-256: `673e95051277d00105789af93b179d303c03fa05c6f4059045488ca6619bbdbd`
 ````text
 Call the listed tool directly. If it returned an error, treat that structured error as feedback; block only on a capability absent from the Callable capability directory or on a prerequisite Task.
 ````
-## action — src/agent/services-bridge.js:532
+## action — src/agent/services-bridge.js:533
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -63,7 +63,7 @@ Body SHA-256: `a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd`
 ````text
 call_list_tools_or_get_service_metadata
 ````
-## action — src/agent/services-bridge.js:539
+## action — src/agent/services-bridge.js:540
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 

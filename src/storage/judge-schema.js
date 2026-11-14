@@ -7,6 +7,13 @@ CREATE TABLE IF NOT EXISTS operations (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS judge_request_aliases (
+  request_key TEXT PRIMARY KEY,
+  request_hash TEXT NOT NULL,
+  check_result_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS check_results (
   check_result_id TEXT PRIMARY KEY,
   request_key TEXT NOT NULL UNIQUE,

@@ -388,7 +388,7 @@ test('prepare rollback joins the original stop and preserves its terminal reason
 
 test('Bot lifetime is fixed before take and caps the active Execution deadline', async t => {
   const { service, runtime, startSession } = await fixture(t, { executionTimeoutMs: 60_000, handoffReminderMs: 50_000 });
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', maxLifetimeMs: 350, startSession });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', maxLifetimeMs: 5000, startSession });
   const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a bounded independent research question', expected_output: 'Note', acceptance_conditions: ['Note written'], timebox_ms: 60_000 }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'bounded-take' });
   await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
@@ -577,7 +577,7 @@ async function workspaceFixture(t, options = {}) {
   let env;
   const context = new ContextService(f.service.db);
   const bridge = new ServicesBridge({ taskService: f.service, contextService: context, runtime: f.runtime, coreId: 'core-1',
-    registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace }),
+    registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace, judgeService: options.judgeService }),
     onTake: result => f.runtime.bindAgentExecution(result.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }) });
   await bridge.start();
   t.after(() => bridge.stop());
@@ -1014,4 +1014,77 @@ test('Task finish accepted before apply intent prevents any guest installation',
   await assert.rejects(dispatch('apply', 'finish-first', { from: incoming.revision }), error => error.code === 'WORKSPACE_REQUEST_ABORTED');
   assert.equal(guest.installs, 0);
   assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 2);
+});
+
+test('registered Judge CLI checks only a fixed public file and scopes durable results to its Mission', async t => {
+  const { JudgeService } = await import('../src/judge/judge-service.js');
+  const checked = [];
+  const judge = new JudgeService(':memory:', { fixtureManifest: { fixture_id: 'public-source', putnambench_commit: 'a'.repeat(40), problem_file: 'input.txt', problem_file_hash: 'b'.repeat(64), lean_toolchain: 'leanprover/lean4:v4.33.1', mathlib_version: 'test', checker_ref: 'lean', checker_version: 'test', environment_ref: 'test' }, checker: {
+    preflight: async () => ({ status: 'healthy', checker_process_status: 'completed', evidence: { input_binding_verified: true, toolchain_version_verified: true, checker_version_verified: true } }),
+    check: async input => { checked.push(input); return { verdict: 'PASS', evidence: { checker_started: true, exit_code: 0, private_internal_field: 'private checker stream', diagnostic: 'verified input' } }; },
+  } });
+  t.after(() => judge.close());
+  const { runtime, command, dispatch, guest, bridge, service, bot } = await workspaceFixture(t, { judgeService: judge });
+  guest.files['proof.lean'] = Buffer.from('theorem local : True := by trivial');
+  const saved = await dispatch('save', 'check-source-save');
+  guest.files['proof.lean'] = Buffer.from('unsaved private edit');
+  runtime.readWorkspaceFile = async () => { throw new Error('legacy host read must not occur'); };
+  const current = service.getExecution(bridge.executionId);
+  const legacyInput = { request_key: 'legacy-source-check', source: { workspace_id: 'workspace-default', revision: saved.revision, path: 'proof.lean', content: 'theorem local : True := by trivial' } };
+  const legacyEnvelope = makeEnvelope({ actorRef: 'runtime:legacy', operationId: 'legacy-source-check', taskId: bridge.taskId, executionId: bridge.executionId, specVersion: current.spec_version, stateVersion: current.state_version });
+  const legacy = await judge.checkWorkspaceSource(legacyInput, legacyEnvelope);
+  assert.equal((await judge.checkWorkspaceSource(legacyInput, legacyEnvelope)).check_result_id, legacy.check_result_id);
+  assert.equal(checked.length, 1);
+  const result = await command('judge', 'check', '--at', saved.revision, '--path', 'proof.lean', '--request-id', 'public-source-check');
+  assert.equal(result.verdict, 'PASS');
+  assert.equal(checked.length, 2);
+  assert.equal(checked[1].workspace_source.content, 'theorem local : True := by trivial');
+  assert.equal(result.workspace_input.revision, saved.revision);
+  assert.equal(result.workspace_input.git_tree, saved.git_tree);
+  assert.equal(result.workspace_input.content_hash, createHash('sha256').update(checked[1].workspace_source.content).digest('hex'));
+  assert.equal(result.evidence, undefined);
+  assert.doesNotMatch(JSON.stringify(result), /private checker stream/);
+  service.db.prepare('UPDATE executions SET state_version = state_version + 1 WHERE execution_id = ?').run(bridge.executionId);
+  const replay = await command('judge', 'check', '--revision', saved.revision, '--path', 'proof.lean', '--request-id', 'public-source-check');
+  assert.deepEqual(replay, result);
+  assert.equal(checked.length, 2);
+  const read = await command('judge', 'result', '--check-result-id', result.check_result_id);
+  assert.equal(read.workspace_input.revision, saved.revision);
+  assert.equal(read.diagnostic_excerpt, result.diagnostic_excerpt);
+  for (const payload of [{ path: 'proof.lean' }, { revision: saved.revision, path: 'proof.lean', source: { content: 'forged' } }, { revision: 'main', path: 'proof.lean' }]) {
+    await assert.rejects(bridge.call({ operation: 'workspace_check', payload }), { code: 'INVALID_CONTRACT' });
+  }
+  await assert.rejects(bridge.call({ operation: 'workspace_check', payload: { revision: saved.revision, path: 'proof.lean', workspace_id: 'other-mission' } }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(bridge.call({ operation: 'workspace_check', operation_id: 'public-source-check', payload: { revision: saved.revision, path: 'input.txt' } }), { code: 'CONFLICT' });
+  assert.equal(checked.length, 2);
+  guest.files['proof.lean'] = Buffer.from('theorem local : True := by trivial');
+  guest.files['other.txt'] = Buffer.from('a changed surrounding tree');
+  const later = await dispatch('save', 'check-later-tree');
+  const laterResult = await command('judge', 'check', '--revision', later.revision, '--path', 'proof.lean', '--request-id', 'later-public-check');
+  assert.equal(checked.length, 3);
+  assert.equal(laterResult.workspace_input.revision, later.revision);
+  assert.equal(laterResult.workspace_input.git_tree, later.git_tree);
+  assert.notEqual(laterResult.check_result_id, result.check_result_id);
+  const alias = await command('judge', 'check', '--revision', later.revision, '--path', 'proof.lean', '--request-id', 'public-check-alias');
+  assert.equal(alias.check_result_id, laterResult.check_result_id);
+  assert.equal(checked.length, 3);
+  const aliasQuery = await command('judge', 'result', '--request-key', 'public-check-alias');
+  assert.equal(aliasQuery.check_result_id, laterResult.check_result_id);
+  await assert.rejects(bridge.call({ operation: 'workspace_check', operation_id: 'public-check-alias', payload: { revision: saved.revision, path: 'proof.lean' } }), { code: 'CONFLICT' });
+  assert.equal(checked.length, 3);
+  const foreignMission = service.createMission({ mission_id: 'foreign-judge', goal: 'Other research' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+  const foreignTask = service.createTask({ mission_id: foreignMission.mission_id, summary: 'Investigate an unrelated responsibility', expected_output: 'Other result', acceptance_conditions: ['Other evidence'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
+  judge.db.prepare('UPDATE check_results SET target_task_id = ? WHERE check_result_id = ?').run(foreignTask.task_id, result.check_result_id);
+  await assert.rejects(bridge.call({ operation: 'get_check_result', payload: { check_result_id: result.check_result_id } }), { code: 'NOT_ALLOWED' });
+  judge.db.prepare('UPDATE check_results SET target_task_id = ? WHERE check_result_id = ?').run(bridge.taskId, result.check_result_id);
+  const reader = service.registerBot({ missionId: bot.mission_id, coreId: 'core-2', selectionDeadline: new Date(Date.now() + 60000).toISOString() });
+  const readerBridge = new ServicesBridge({ taskService: service, contextService: {}, runtime, coreId: 'core-2',
+    registry: createBuiltinServiceRegistry({ taskService: service, judgeService: judge }) });
+  await readerBridge.start(); t.after(() => readerBridge.stop());
+  readerBridge.startBotIdentity(reader.bot_id);
+  service.recordBotSandbox(reader.bot_id, { provider: 'controlled', sandboxId: 'reader-sandbox' }); service.markBotReady(reader.bot_id);
+  const publicResult = await readerBridge.call({ operation: 'get_check_result', payload: { check_result_id: result.check_result_id } });
+  assert.equal(publicResult.workspace_input.revision, saved.revision);
+  assert.equal(service.getBot(reader.bot_id).execution_id, null);
+  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
 });

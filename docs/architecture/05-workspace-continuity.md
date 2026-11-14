@@ -227,13 +227,7 @@ separate steps with separately observable failure.
 
 ### Direct Judge reads of a Workspace file
 
-`swarmenv_judge_submit_candidate` requires a relative `path` in the current
-Execution Workspace. Its optional `workspace_revision` and `content_hash`
-are expected-value guards. Bridge reads through `Runtime.readWorkspaceFile`,
-rejects mismatched supplied values as `STALE_VERSION`, and sends the returned
-content, revision and hash with an authenticated Task/Execution/path
-attestation to Judge. This call does not save a revision, export an old Git
-commit, require a Workspace artifact Material, or route submission through Task Service.
+For a registered Bot, `swarm judge check --revision R --path P` exports exactly R from the public Mission Workspace and checks the complete file. Runtime revalidates its E before and after export, and rejects path traversal, foreign Workspaces, binary content, missing files and moving `main` references. The response exposes the actual public revision, file hash and Git commit/tree. Unsaved guest changes and the host support Workspace do not affect this input. The historical unregistered Bridge route still reads its current private Workspace with optional stale-value guards. Neither path saves files or creates a Material implicitly.
 Judge uses its own configured fixture/checker and persists the resulting check;
 Task completion is separate. See [the direct submission contract](04-services.md#the-as-built-submission-route)
 and [ADR 0019](../adr/0019-direct-judge-workspace-submission.md).

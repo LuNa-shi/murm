@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
@@ -585,6 +585,25 @@ export class Runtime {
   async dispatchExecutionWorkspace(operation, input, identity) {
     if (!this.executionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Execution Workspace control is unavailable');
     return this.executionWorkspace.dispatch(operation, input, identity);
+  }
+
+  async readWorkspaceCheckSource(input, identity) {
+    this.#guardExecutionWorkspace(identity);
+    const allowed = new Set(['workspace_id', 'revision', 'path', 'request_key']);
+    if (!input || Object.keys(input).some(key => !allowed.has(key)) || !/^\d+\.\d+$/.test(input.revision ?? '') ||
+        typeof input.path !== 'string' || !input.path || input.path.startsWith('/') || input.path.includes('\\') || input.path.split('/').some(part => !part || part === '.' || part === '..')) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge check requires a fixed public revision and path; save the project first');
+    }
+    if (input.workspace_id !== undefined && input.workspace_id !== this.missionWorkspaceId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge input must belong to the Bot Mission Workspace');
+    const snapshot = await this.missionWorkspace.exportRevision({ workspaceId: this.missionWorkspaceId, revision: input.revision });
+    this.#guardExecutionWorkspace(identity);
+    if (!Object.hasOwn(snapshot.files, input.path)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge file is unavailable at the fixed public revision');
+    const bytes = Buffer.from(snapshot.files[input.path]);
+    const content = bytes.toString('utf8');
+    if (!Buffer.from(content).equals(bytes) || bytes.includes(0)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Configured source checker requires a complete UTF-8 text file');
+    return { workspace_id: snapshot.workspace_id, revision: snapshot.revision, workspace_revision: snapshot.revision,
+      path: input.path, content, content_hash: createHash('sha256').update(bytes).digest('hex'),
+      git_commit: snapshot.git_commit, git_tree: snapshot.git_tree, tree_content_hash: snapshot.content_hash };
   }
 
   #scheduleWorkspaceReconcile(executionId, attempt = 0) {
