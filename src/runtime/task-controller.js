@@ -245,19 +245,18 @@ export class TaskController {
         continue;
       }
       if (isIdle(view) && !takeRetryDeferred(view, reconciledAt)) idle.push({ loop, view, id });
-      else this.loopSignals.delete(id);
+      // Reading can end with no useful work. Seeing that read in flight must
+      // not erase its wake receipt and immediately start the same read again.
+      // Execution completion and bounded retry cooldowns may rearm discovery.
+      else if (!['DISCOVERING', 'TAKING'].includes(String(view.state ?? '').toUpperCase())) this.loopSignals.delete(id);
     }
     const signature = taskSignature(eligible);
     let signaled = 0;
-    if (eligible.length > 0 && typeof this.signalIdleIdentity === 'function') {
-      // A single eligible Task needs one selector. Waking every idle Core for
-      // that same shortlist creates a thundering-herd of valid but losing
-      // take attempts. Keep one wake slot per distinct eligible Task so
-      // multiple independent Tasks can still use the available Cores.
-      let signalBudget = eligible.length;
+    if (typeof this.signalIdleIdentity === 'function') {
+      // The shortlist is context, not a limit on concurrent discovery. Each
+      // idle Bot can inspect existing responsibility or propose distinct work;
+      // Task Service, rather than a wake quota, arbitrates exclusive takes.
       for (const { loop, view, id } of idle) {
-        if (signalBudget <= 0) break;
-        signalBudget -= 1;
         // Include the identity loop's idle epoch so a completed failed/invalid
         // take attempt can be woken again even when the Controller never saw a
         // non-IDLE snapshot between attempts.  The task signature and state
@@ -270,7 +269,6 @@ export class TaskController {
         this.#emit({ kind: 'controller_loop_signaled', core_id: id, reason, eligible_count: eligible.length, timestamp: this.now() });
       }
     }
-    for (const { id } of idle) if (eligible.length === 0) this.loopSignals.delete(id);
     const snapshot = {
       reason,
       eligible_count: eligible.length,

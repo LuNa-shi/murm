@@ -215,13 +215,57 @@ export class OpenSandboxAgentAdapter {
     return args;
   }
 
-  async start({ executionId, sessionDir = this.config.sessionDir, cwd = null, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = executionId } = {}) {
+  async start(options = {}) {
+    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent adapter is stopping');
+    if (this.startPromise) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Agent startup is already in progress');
+    const starting = this.#startTracked(options).finally(() => { this.startPromise = null; });
+    this.startPromise = starting;
+    return starting;
+  }
+
+  async #startTracked({ executionId, sessionDir = this.config.sessionDir, cwd = null, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = executionId } = {}) {
+    await this.#cleanupFailedStarts();
+    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent adapter is stopping');
+    this.pendingStartupCleanup ??= new Set();
+    required(executionId, 'execution_id');
+    try {
+      const session = await this.#startSession({ executionId, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId });
+      if (this.stopping) {
+        await session.stop();
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent startup was stopped');
+      }
+      return session;
+    } catch (error) {
+      // Before a Session exists, the adapter still owns the sandbox. Keep
+      // that responsibility if deletion fails and refuse another startup.
+      this.pendingStartupCleanup.add(executionId);
+      await this.sandboxManager.stopExecution(executionId);
+      this.pendingStartupCleanup.delete(executionId);
+      throw error;
+    }
+  }
+
+  async cleanupPendingStarts({ shutdown = false } = {}) {
+    if (shutdown) this.stopping = true;
+    await this.startPromise?.catch(() => undefined);
+    await this.#cleanupFailedStarts();
+  }
+
+  async #cleanupFailedStarts() {
+    for (const pending of this.pendingStartupCleanup ?? []) {
+      await this.sandboxManager.stopExecution(pending);
+      this.pendingStartupCleanup.delete(pending);
+    }
+  }
+
+  async #startSession({ executionId, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId }) {
     // Runtime passes its host-side session directory to every adapter. The
     // remote worker has one fixed guest work surface and must never receive a
     // host path as an argv or filesystem target.
     const guestSessionDir = '/workspace/.swarm/pi-session';
     const launchArgs = this.buildLaunchArgs({ executionId, sessionId, sessionDir: guestSessionDir });
     await this.sandboxManager.ensureExecution({ executionId, bindingVersion: observationContext.fencingVersion ?? null });
+    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent startup was stopped');
     if (cwd) await this.sandboxManager.syncWorkspace({ executionId, workspaceRef: cwd });
     const workerEnvironment = publicAgentEnvironment(this.config.env, this.config.agentEnvironment);
     // Runtime creates the bridge token when each Core's bridge starts. The
@@ -263,6 +307,15 @@ export class OpenSandboxAgentAdapter {
       nodeVersion: explicitVersions.nodeVersion ?? guestVersions?.nodeVersion,
     });
     const session = new AgentCoreSession(child, { executionId: observationContext.executionId ?? executionId, sessionId, launchArgs, manifest, logger, observation, coreId: observationContext.coreId ?? null, taskId: observationContext.taskId ?? null });
+    const stopProcess = session.stop.bind(session);
+    session.stop = async (...args) => {
+      const result = await stopProcess(...args);
+      // A worker exit (or a failed best-effort kill) only closes the RPC
+      // transport. Retain and retry cleanup of the original worker sandbox,
+      // whose key may differ from the subsequently bound Task Execution.
+      await this.sandboxManager.stopExecution(executionId);
+      return result;
+    };
     observation?.({ source: 'agent', kind: 'session_started', visibility: 'operator', payload: { launch_args: launchArgs, manifest, transport: 'opensandbox-worker' }, sessionId, executionId: observationContext.executionId ?? executionId, taskId: observationContext.taskId ?? null, coreId: observationContext.coreId ?? null });
     if (agentPrompt) {
       await session.waitForReady({ timeoutMs: 30_000 });

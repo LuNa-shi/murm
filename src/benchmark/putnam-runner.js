@@ -513,6 +513,13 @@ async function startAgentSession(core) {
     observation: core.observe,
     observationContext: { coreId: `core-${core.index}`, taskId: null, executionId: null },
   });
+  if (core.stopping) {
+    core.releasedSession = session;
+    await session.stop();
+    if (session.closed === false) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Late Bot stop is unconfirmed');
+    core.releasedSession = null;
+    throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core stopped during Bot startup');
+  }
   // This Session is the durable identity for the Core lane. It survives
   // ordinary Execution completion/handoff and is replaced only by explicit
   // recovery or identity rotation.
@@ -587,12 +594,23 @@ function attachRecoveredSession(core, { execution, session }) {
   })();
 }
 
-async function ensureAgentSession(core) {
-  if (core.releasedSession) {
-    if (!core.releasedSession.closed) await Promise.resolve(core.releasedSession.stop?.()).catch(() => undefined);
-    core.releasedSession = null;
+export async function ensureAgentSession(core) {
+  try {
+    if (core.releasedSession) {
+      await core.releasedSession.stop?.();
+      if (core.releasedSession.closed === false) throw new Error('Released Bot stop is unconfirmed');
+      core.releasedSession = null;
+    }
+    if (core.session && (core.session.closed || core.sessionCleanupPending)) {
+      await core.session.stop?.();
+      if (core.session.closed === false) throw new Error('Bot stop is unconfirmed');
+      core.session = null;
+      core.sessionCleanupPending = false;
+    }
+  } catch (error) {
+    core.errors.push({ code: error?.code ?? 'SESSION_CLEANUP_PENDING', class: 'session_cleanup_pending' });
+    return false;
   }
-  if (core.session?.closed) core.session = null;
   // A failed retired take can clear the bridge binding after the transport
   // Session has already been replaced. Repair the stale local occupancy when
   // no Session, Task, Execution, recovery, or handoff promise remains.
@@ -601,20 +619,31 @@ async function ensureAgentSession(core) {
   }
   if (core.stopping || core.turnInFlight) return false;
   if (core.session) return core.session;
+  if (core.sessionStartPromise) return false;
   core.sessionStartAttempts = (core.sessionStartAttempts ?? 0) + 1;
   try {
-    await startAgentSession(core);
+    core.sessionStartPromise = startAgentSession(core);
+    await core.sessionStartPromise;
     return core.session ?? null;
   } catch (error) {
     core.sessionStartFailures = (core.sessionStartFailures ?? 0) + 1;
     if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_session_error' });
-    await Promise.resolve(core.session?.stop?.()).catch(() => undefined);
-    core.session = null;
+    core.sessionCleanupPending = Boolean(core.session);
+    try {
+      await core.session?.stop?.();
+      if (core.session?.closed === false) throw new Error('Bot stop is unconfirmed');
+      core.session = null;
+      core.sessionCleanupPending = false;
+    } catch (cleanupError) {
+      core.errors.push({ code: cleanupError?.code ?? 'SESSION_CLEANUP_PENDING', class: 'startup_cleanup_pending' });
+    }
     core.turnInFlight = false;
     core.initialTurnPromise = null;
     core.nextTurnAt = Date.now();
     core.dispatchReserved = false;
     return false;
+  } finally {
+    core.sessionStartPromise = null;
   }
 }
 
@@ -651,6 +680,7 @@ async function takeTaskWithAgent(core, candidates, prompt) {
   if (core.taskId || core.executionId) return { take_deferred: true };
   core.bridge.beginTakeAttempt?.();
   const session = await ensureAgentSession(core);
+  if (core.stopping) return { take_deferred: true };
   if (!session) return core.turnInFlight ? { take_deferred: true } : { take_failed: true, error: { code: 'SERVICE_UNAVAILABLE', message: 'Bot session could not start' } };
   const sequence = session.rpcRecords?.length ?? 0;
   core.takeResult = null;
@@ -724,19 +754,24 @@ async function takeTaskWithAgent(core, candidates, prompt) {
   }
 }
 
-async function releaseTerminalExecution(core) {
+export async function releaseTerminalExecution(core) {
   if (!core.executionId) return;
   const execution = core.runtime.taskService.getExecution(core.executionId);
   if (!execution || !['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(execution.state)) return;
   const activeWorkspace = core.runtime.activeProcesses?.get?.(core.executionId)?.workspace;
   const latestTake = core.latencyByExecution?.get?.(core.executionId);
   if (latestTake && activeWorkspace?.git_commit) latestTake.workspace_git_commit_end = activeWorkspace.git_commit;
+  try {
+    await core.runtime.releaseExecution(core.executionId);
+  } catch (error) {
+    core.errors.push({ code: error?.code ?? 'CLEANUP_PENDING', class: 'execution_cleanup_pending' });
+    return { cleanup_pending: true, execution_id: core.executionId };
+  }
   core.parallelism.transition(core.index, 'IDLE', {
     task_id: execution.task_id,
     execution_id: execution.execution_id,
     reason: `terminal:${execution.state.toLowerCase()}`,
   });
-  await core.runtime.releaseExecution(core.executionId).catch(() => undefined);
   await core.bridge.releaseTake({ result: { execution } });
 }
 
@@ -828,15 +863,32 @@ function resourceSnapshot() {
   };
 }
 
-async function stopCore(state, core) {
+export async function stopCore(state, core, { cleanupGraceMs = 30_000 } = {}) {
+  let cleanupFailed = false;
+  const recordCleanupError = (error) => { cleanupFailed = true; state.cleanupErrors.push(error); };
+  const cleanupDeadline = Date.now() + cleanupGraceMs;
+  const waitForCleanup = async (promise) => {
+    let timer;
+    try {
+      return await Promise.race([Promise.resolve(promise).then(() => true), new Promise(resolve => { timer = setTimeout(() => resolve(false), Math.max(0, cleanupDeadline - Date.now())); })]);
+    } finally { clearTimeout(timer); }
+  };
   core.stopping = true;
-  if (core.taskId && core.executionId) {
-    core.parallelism.transition(core.index, 'STOPPING', {
-      task_id: core.taskId,
-      execution_id: core.executionId,
-      reason: 'benchmark_cleanup',
-    });
-  }
+  if (core.parallelism) core.parallelism.transition(core.index, 'STOPPING', {
+    task_id: core.taskId ?? null, execution_id: core.executionId ?? null, reason: 'benchmark_cleanup',
+  });
+  // Stop a visible unbound Session immediately so its readiness wait can
+  // settle. Join startup within the same grace as Runtime/provider cleanup;
+  // timeout retains the tracked promises and late-start stop guards.
+  const startupCleanup = Promise.all([
+    core.adapter?.cleanupPendingStarts?.({ shutdown: true }),
+    core.sessionStartPromise?.catch(() => undefined),
+    !core.executionId ? core.session?.stop?.() : undefined,
+  ]).catch(error => {
+    recordCleanupError({ code: error?.code ?? 'STARTUP_CLEANUP_PENDING', class: 'startup_cleanup_pending' });
+  });
+  const startupSettled = await waitForCleanup(startupCleanup);
+  if (!startupSettled) recordCleanupError({ code: 'STARTUP_CLEANUP_TIMEOUT', class: 'startup_cleanup_timeout' });
   const sessions = new Set([
     ...core.sessionHistory,
     core.session,
@@ -852,22 +904,33 @@ async function stopCore(state, core) {
   const shutdownPromise = Promise.resolve(core.runtime.shutdown({ terminalState: 'FAILED', terminalReason: 'benchmark_deadline_cleanup' }));
   shutdownPromise.catch(() => undefined);
   let shutdownSettled = false;
-  await Promise.race([
-    shutdownPromise.then(() => { shutdownSettled = true; }),
-    sleep(30_000),
-  ]);
+  let cleanupComplete = false;
+  await waitForCleanup(
+    shutdownPromise.then((result) => {
+      shutdownSettled = true;
+      cleanupComplete = result.active_process_count === 0 && (result.cleanup_pending_session_count ?? 0) === 0;
+      if (!cleanupComplete) recordCleanupError({ code: 'RUNTIME_CLEANUP_PENDING', class: 'runtime_cleanup_pending' });
+    }).catch(error => {
+      recordCleanupError({ code: error?.code ?? 'RUNTIME_CLEANUP_PENDING', class: 'runtime_cleanup_pending' });
+    }),
+  );
   if (!shutdownSettled) {
-    state.cleanupErrors.push({ code: 'RUNTIME_SHUTDOWN_TIMEOUT', class: 'runtime_shutdown_timeout' });
+    recordCleanupError({ code: 'RUNTIME_SHUTDOWN_TIMEOUT', class: 'runtime_shutdown_timeout' });
     forceFenceCoreExecutions(state, core, 'benchmark_cleanup_shutdown_timeout');
   }
-  await Promise.all([...sessions].map(async (session) => {
+  const sessionsSettled = await waitForCleanup(Promise.all([...sessions].map(async (session) => {
     try {
       await session.stop?.();
-    } catch {
+      if (session.closed === false) throw new Error('Bot process stop was not confirmed');
+    } catch (error) {
       // Cleanup must continue so the remaining Core sessions and Services are
       // released even when one Agent process exits with an error.
+      cleanupComplete = false;
+      recordCleanupError({ code: error?.code ?? 'SESSION_CLEANUP_PENDING', class: 'session_cleanup_pending' });
     }
-  }));
+  })));
+  if (!sessionsSettled) recordCleanupError({ code: 'SESSION_CLEANUP_TIMEOUT', class: 'session_cleanup_timeout' });
+  cleanupComplete = cleanupComplete && startupSettled && sessionsSettled && !cleanupFailed;
   // Runtime shutdown above owns the durable fence/release boundary. Agent
   // turns are transport cleanup and may be stuck in a provider wait; drain
   // each with a bounded grace period so one Pi session cannot prevent the
@@ -891,7 +954,7 @@ async function stopCore(state, core) {
     sleep(10_000),
   ]);
   const current = core.executionId ? state.taskService.getExecution(core.executionId) : null;
-  if (core.parallelism) core.parallelism.transition(core.index, 'IDLE', {
+  if (core.parallelism && cleanupComplete && !cleanupFailed) core.parallelism.transition(core.index, 'IDLE', {
     task_id: current?.task_id ?? null,
     execution_id: current?.execution_id ?? null,
     reason: 'benchmark_cleanup_complete',

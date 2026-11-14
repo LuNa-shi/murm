@@ -273,7 +273,10 @@ export class OpenSandboxManager {
   async ensureExecution({ executionId, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {} } = {}) {
     const id = required(executionId, 'execution_id');
     const existing = this.executions.get(id);
-    if (existing) return this.#snapshot(existing);
+    if (existing) {
+      if (existing.preparing || existing.stopPromise) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox preparation or cleanup is pending', { execution_id: id }, { retryable: true });
+      return this.#snapshot(existing);
+    }
     const workerToken = randomUUID();
     const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort)];
     const response = await this.#request('/sandboxes', {
@@ -301,6 +304,10 @@ export class OpenSandboxManager {
     const suppliedExecdEndpoint = created?.execd_endpoint ?? created?.endpoint;
     let execdUrl = endpointForHost(suppliedExecdEndpoint, this.endpointHost);
     let execdHeaders = suppliedExecdEndpoint?.headers ?? {};
+    // Retain the resource as soon as its provider ID exists. Endpoint/health
+    // preparation failures must not erase responsibility for deletion.
+    const record = { executionId: id, sandboxId, execdUrl: null, execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), jobs: new Map(), workerToken, preparing: true };
+    this.executions.set(id, record);
     try {
       if (!execdUrl) {
         const endpointResponse = await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}/endpoints/${this.execdPort}`, { method: 'GET', timeoutMs: 30_000 });
@@ -310,20 +317,21 @@ export class OpenSandboxManager {
       }
       if (!execdUrl) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return an Execd endpoint', { sandbox_id: sandboxId, port: this.execdPort });
     } catch (error) {
-      await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}`, { method: 'DELETE', timeoutMs: 30_000, allowStatuses: [404] }).catch((cleanupError) => {
+      await this.stopExecution(id).catch((cleanupError) => {
         this.logger?.({ event: 'sandbox.prepare_cleanup_error', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, error_class: cleanupError?.code ?? cleanupError?.name });
       });
       throw error;
     }
-    const record = { executionId: id, sandboxId, execdUrl: execdUrl.replace(/\/$/, ''), execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), jobs: new Map(), workerToken };
-    this.executions.set(id, record);
+    record.execdUrl = execdUrl.replace(/\/$/, '');
+    record.execdHeaders = execdHeaders;
     try {
       if (this.waitForExecdReady) await this.#waitExecd(record);
     } catch (error) {
-      this.executions.delete(id);
-      await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}`, { method: 'DELETE', timeoutMs: 30_000, allowStatuses: [404] }).catch(() => undefined);
+      await this.stopExecution(id).catch(() => undefined);
       throw error;
     }
+    record.preparing = false;
+    if (this.executions.get(id) !== record || record.stopPromise) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox was stopped during preparation', { execution_id: id }, { retryable: true });
     this.logger?.({ event: 'sandbox.started', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, binding_version: bindingVersion });
     return this.#snapshot(record);
   }
@@ -590,12 +598,23 @@ export class OpenSandboxManager {
   async stopExecution(executionId) {
     const record = this.executions.get(executionId);
     if (!record) return false;
+    if (record.stopPromise) return record.stopPromise;
+    const stopping = this.#deleteExecution(executionId, record).finally(() => { record.stopPromise = null; });
+    record.stopPromise = stopping;
+    return stopping;
+  }
+
+  async #deleteExecution(executionId, record) {
     await this.stopAgent(executionId).catch(() => undefined);
     for (const job of record.jobs.values()) if (job.state === 'running') await this.cancelJob(executionId, job.jobId, { reason: 'execution_released' }).catch(() => undefined);
-    await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}`, { method: 'DELETE', timeoutMs: 30_000, allowStatuses: [404] }).catch((error) => {
+    const deletion = await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}`, { method: 'DELETE', timeoutMs: 30_000, allowStatuses: [404] }).catch((error) => {
       this.logger?.({ event: 'sandbox.stop_error', provider: 'opensandbox', execution_id: executionId, error_class: error?.code ?? error?.name });
       throw error;
     });
+    if (deletion.status === 202) {
+      const observed = await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}`, { timeoutMs: 15_000, allowStatuses: [404] });
+      if (observed.status !== 404) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox deletion is still pending', { execution_id: executionId, sandbox_id: record.sandboxId }, { retryable: true });
+    }
     this.executions.delete(executionId);
     this.logger?.({ event: 'sandbox.stopped', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId });
     return true;

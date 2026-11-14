@@ -41,9 +41,9 @@ test('TaskController reconciles takeability and signals each idle daemon once pe
   assert.equal(events.some((event) => event.kind === 'controller_task_eligible'), true);
 });
 
-test('TaskController reserves one idle daemon per eligible Task', async () => {
+test('TaskController wakes every idle Core to discover work even with only one existing Task', async () => {
   const signals = [];
-  const daemons = [1, 2, 3].map((index) => ({ core_id: `core-${index}`, state: 'IDLE', healthy: true }));
+  const daemons = [1, 2, 3, 4].map((index) => ({ core_id: `core-${index}`, state: 'IDLE', healthy: true }));
   const controller = new TaskController({
     taskService: {
       listTasks: ({ states, availableOnly }) => states.includes('OPEN') && availableOnly
@@ -59,9 +59,9 @@ test('TaskController reserves one idle daemon per eligible Task', async () => {
 
   const result = await controller.reconcile({ reason: 'single-task' });
 
-  assert.equal(result.idle_loop_count, 3);
-  assert.equal(result.signaled_loop_count, 1);
-  assert.deepEqual(signals, ['core-1']);
+  assert.equal(result.idle_loop_count, 4);
+  assert.equal(result.signaled_loop_count, 4);
+  assert.deepEqual(signals, ['core-1', 'core-2', 'core-3', 'core-4']);
 });
 
 test('TaskController re-arms an idle signal after an unseen completed attempt', async () => {
@@ -90,6 +90,58 @@ test('TaskController re-arms an idle signal after an unseen completed attempt', 
   await controller.reconcile({ reason: 'duplicate-after-retry' });
 
   assert.deepEqual(signals, ['initial', 'take_invalid']);
+});
+
+test('TaskController permits empty-queue discovery on every Core without repeatedly waking an unchanged queue', async () => {
+  let discoveries = 0;
+  const loops = [1, 2, 3, 4].map((index) => new IdentityTaskLoop({
+    coreId: `core-${index}`,
+    listEligibleTasks: () => [],
+    takeTask: async () => { discoveries += 1; return { no_work: true }; },
+    takeSelectedTask: () => { throw new Error('no-work must not create an Execution'); },
+  }));
+  const controller = new TaskController({
+    listEligibleTasks: () => [],
+    listIdentityLoops: () => loops,
+    signalIdleIdentity: (loop) => { loop.notify('controller'); },
+  });
+  assert.equal((await controller.reconcile({ reason: 'initial' })).signaled_loop_count, 4);
+  await Promise.all(loops.map((loop) => loop.runOnce()));
+  assert.equal(discoveries, 4);
+  assert.equal((await controller.reconcile({ reason: 'periodic_sweep' })).signaled_loop_count, 0);
+  await Promise.all(loops.map((loop) => loop.runOnce()));
+  assert.equal(discoveries, 4);
+});
+
+test('observing discovery in flight does not rearm a no-work Bot on the next controller sweep', async () => {
+  const reading = deferred();
+  const finishReading = deferred();
+  let discoveries = 0;
+  const loop = new IdentityTaskLoop({
+    coreId: 'core-1',
+    listEligibleTasks: () => [],
+    takeTask: async () => {
+      discoveries += 1;
+      reading.resolve();
+      await finishReading.promise;
+      return { no_work: true };
+    },
+    takeSelectedTask: () => { throw new Error('no-work must not create an Execution'); },
+  });
+  const controller = new TaskController({
+    listEligibleTasks: () => [],
+    listIdentityLoops: () => [loop],
+    signalIdleIdentity: (target) => { target.notify('controller'); },
+  });
+  await controller.reconcile();
+  const discovery = loop.runOnce();
+  await reading.promise;
+  await controller.reconcile();
+  finishReading.resolve();
+  await discovery;
+  assert.equal((await controller.reconcile()).signaled_loop_count, 0);
+  await loop.runOnce();
+  assert.equal(discoveries, 1);
 });
 
 test('TaskController does not wake an identity loop during take retry cooldown', async () => {

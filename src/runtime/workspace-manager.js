@@ -557,8 +557,12 @@ export class WorkspaceManager {
   }
 
   async releaseWorkspace({ workspaceRef, executionId, fencingVersion }) {
-    const metadata = await this.#assertWritable(workspaceRef, executionId, fencingVersion);
-    const next = { ...metadata, released_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const metadata = await this.#readMetadata(workspaceRef);
+    if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
+    if (metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace fence is stale');
+    // Retry both writes: the previous call may have persisted the primary
+    // release before failing to update revision metadata.
+    const next = metadata.released_at ? metadata : { ...metadata, released_at: new Date().toISOString(), updated_at: new Date().toISOString() };
     await this.#writeMetadata(workspaceRef, next);
     await this.#writeRevisionMetadata(workspaceRef, next);
     return this.#publicMetadata(next);

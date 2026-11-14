@@ -107,6 +107,26 @@ test('OpenSandbox compensates a created sandbox when Execd endpoint resolution f
   assert.equal(manager.snapshot().executions.length, 0);
 });
 
+test('failed preparation retains the provider resource when compensation deletion also fails', async () => {
+  let cleanupFails = true;
+  let creates = 0;
+  const manager = createOpenSandboxManager({
+    lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',
+    fetchImpl: async (_url, options) => {
+      if (options.method === 'POST') { creates += 1; return response({ id: 'partial-start' }, { status: 202 }); }
+      if (options.method === 'DELETE') return response({}, { status: cleanupFails ? 503 : 404 });
+      return response({}, { status: 503 });
+    },
+  });
+  await assert.rejects(manager.ensureExecution({ executionId: 'pending-start' }));
+  assert.equal(manager.snapshot().executions[0].sandbox_id, 'partial-start');
+  await assert.rejects(manager.ensureExecution({ executionId: 'pending-start' }), /pending/);
+  assert.equal(creates, 1);
+  cleanupFails = false;
+  await manager.stopExecution('pending-start');
+  assert.equal(manager.snapshot().executions.length, 0);
+});
+
 test('OpenSandbox starts an authenticated Agent worker through Execd', async () => {
   const calls = [];
   const manager = createOpenSandboxManager({

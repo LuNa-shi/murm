@@ -38,9 +38,9 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 |---|---|---|---|
 | [src/runtime/identity-task-loop.js](../../src/runtime/identity-task-loop.js) | Per-Core discovery/take supervisor, rescans, waiting and wake events | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `5913eb7030f0601a90cbcf5b62bd1a8f399f2bb08362cac43a1de3b5d6d748d1` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | Exact local Workspace/Sandbox/progress/lifecycle tool declarations | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/runtime/runtime.js](../../src/runtime/runtime.js) | Binding, physical process/capacity ownership, fencing, recovery and rotation | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `a53a5c578e89e27abca52297e3af32279045427e5496118d90651d39067b9e13` |
+| [src/runtime/runtime.js](../../src/runtime/runtime.js) | Binding, physical process/capacity ownership, fencing, recovery and rotation | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `7e87ff90954f4f0dd48f9fe5837ba235cdfa943860f4a341f01143c0a059ffa3` |
 | [src/runtime/scheduler.js](../../src/runtime/scheduler.js) | Retained standalone scheduler API and compatibility tests; not benchmark selector | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `44ef0a8da30523e93746148715fcff9920d171547362d94057d5d0af13834940` |
-| [src/runtime/task-controller.js](../../src/runtime/task-controller.js) | Durable readiness reconciliation and idle-identity wake signals | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `7748873d0d4822e1b165cfd6e40602a596e929012a1a7122fe31cb497e1ef580` |
+| [src/runtime/task-controller.js](../../src/runtime/task-controller.js) | Durable readiness reconciliation and idle-identity wake signals | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `dad6dca7cf92b1e8a6406549e180cd092c07c3238ece3228cd15ba7365d3dfd0` |
 
 ### Mission and Task (4)
 
@@ -57,13 +57,13 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 |---|---|---|---|
 | [src/runtime/sandbox-manager.js](../../src/runtime/sandbox-manager.js) | Docker image/container lifecycle, bounded command transport and job registry | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `4a8696ab95623b33cd07d9bff224669f4ef8fe894df3642f073b4f28ee6b98dc` |
 | [src/runtime/workspace-contract.js](../../src/runtime/workspace-contract.js) | Workspace path normalization, input/output contracts and required-input validation | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `42421da24558f4c6e161bc0af07718768d61d99b58a13c68f7f40ebcef23be61` |
-| [src/runtime/workspace-manager.js](../../src/runtime/workspace-manager.js) | Execution-owned filesystem, manifests, revisions, local Git and snapshots | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `ae94f5146a9d0c51edd91899f9e1a4474a9666e4b6c8f27fa297a8ed2795804c` |
+| [src/runtime/workspace-manager.js](../../src/runtime/workspace-manager.js) | Execution-owned filesystem, manifests, revisions, local Git and snapshots | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `e0c67926d916c524886990cbc36749d55253c23a3e7857d3b17b185bb9cda15f` |
 
 ### agent core and transport (1)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/agent/opensandbox-agent-adapter.js](../../src/agent/opensandbox-agent-adapter.js) | Pi/NuRouter RPC adapter over an OpenSandbox worker endpoint | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `7401d66a7ce35a30fa9909b6607a5ae3df2fa935c1a19f5b770772cb4de23453` |
+| [src/agent/opensandbox-agent-adapter.js](../../src/agent/opensandbox-agent-adapter.js) | Pi/NuRouter RPC adapter over an OpenSandbox worker endpoint | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `8a82a6f6a479211c7d122ab541198631d2dd5cf5455a27dab8927d86a0fc6ca4` |
 
 ### controlled verification data (4)
 
@@ -133,7 +133,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 | [scripts/service-host.mjs](../../scripts/service-host.mjs) | Built-in HTTP service process composition and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `78632fab24e499ae78dd6e41fa0d05e08241de99a3c67df686aa39564de62967` |
 | [services/opensandbox-agent/Dockerfile](../../services/opensandbox-agent/Dockerfile) | OpenSandbox agent image recipe containing the worker, Pi package and native shell tools | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `ed0b909ffae15ff18a056fe50a610761eca45292eff59af35f21a0c2486aa2f2` |
 | [services/opensandbox-agent/pi-models.json](../../services/opensandbox-agent/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `2f7af32c853568f358b7c7fabb66d6992df5fbc727eac777130e1650ed124070` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `6b8c97a5d1b8c41aff45037a9ea354fd9d14a52d983c9ee0aafc4d27fe057489` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `5a1856f090fc8b26847d2021bc31dca80d9c8eed18699087a68018de4d567510` |
 | [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `5dedc41b1cbc4954918b23135ecf7b1369972ce011b42b6b96352673c5437a72` |
 
 ### observation and analysis (9)
@@ -168,7 +168,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/opensandbox-agent-worker.mjs](../../scripts/opensandbox-agent-worker.mjs) | Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `3491e0d92da8b2a8868e82943e082f317086bac18ba9582d04cd7ddf4843059c` |
-| [src/runtime/opensandbox-manager.js](../../src/runtime/opensandbox-manager.js) | OpenSandbox lifecycle and Execd provider boundary for one Execution | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `427b22fb02bbc4b74d3d1a8de5cf550fa20d75d5afb11c5c53f1adbd52d1b27e` |
+| [src/runtime/opensandbox-manager.js](../../src/runtime/opensandbox-manager.js) | OpenSandbox lifecycle and Execd provider boundary for one Execution | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `d1bd246d6d5dc4de93f6d41e35ea5c308477dc76199aa620064644c5fca53001` |
 
 ### service and Agent integration (3)
 

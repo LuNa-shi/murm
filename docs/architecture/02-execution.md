@@ -2,7 +2,7 @@
 
 > As built: runtime code at the source baseline named in [INDEX](INDEX.md), including the flat-only benchmark and OpenSandbox provider changes. This describes implementation, including compatibility paths and limits; it does not take a new real-Agent acceptance run.
 
-An Execution is a durable authorization for a Bot to work on a Task. Runtime binds that authorization to a Core, a Workspace and a model Session. The compatibility default still permits a reusable Session to take successive Tasks, but the Issue #122 migration seam `Runtime({ freshBotPerExecution: true })` removes the Session from Runtime's reusable set and stops it with the Sandbox when the Execution releases. A later Execution then requires a fresh Bot/Session. Neither a model reply nor the end of a turn automatically completes an Execution or Task.
+An Execution is a durable authorization for a Bot to work on a Task. Runtime binds that authorization to a Core, a Workspace and a model Session. The default `Runtime({ freshBotPerExecution: true })` removes the Session from Runtime's reusable set and stops it with the Sandbox when the Execution releases. A later Execution then requires a fresh Bot/Session. Neither a model reply nor the end of a turn automatically completes an Execution or Task.
 
 Read [07 Run configuration](07-run-configuration.md) for deployment/runner composition and whole-run termination, [03 Mission and Task](03-mission-task.md) for responsibility transitions, [05 Workspace and continuity](05-workspace-continuity.md) for files and compaction, and [01 Agent Core](01-agent-core.md) for prompt and Bridge behavior.
 
@@ -48,7 +48,7 @@ records and compatibility imports.
 
 ### 2.2 Runtime Core occupancy
 
-Runtime's in-memory `coreStates` map holds `core_id`, `state` (`IDLE` or `RUNNING`), `execution_id`, `task_id`, `session_id` and `updated_at`. Its `activeProcesses` map holds live Session/Workspace and health bookkeeping by Execution ID.
+Runtime's in-memory `coreStates` map holds `core_id`, `state` (`IDLE`, `RUNNING` or `CLOSING`), `execution_id`, `task_id`, `session_id` and `updated_at`. Its `activeProcesses` map holds live Session/Workspace and health bookkeeping by Execution ID.
 
 Task Service independently persists `core_id`. A non-null binding is immutable for an Execution's lifetime. Take/start reject another `CREATED`/`RUNNING` Execution on the Core. Legacy `WAITING` records do not occupy that database active-Core query; their resume still respects their original binding.
 
@@ -83,10 +83,15 @@ The controller defaults to a 5-second sweep and 16-Task shortlist. Event/timer r
 
 A pass reads up to 100 `OPEN`/`BLOCKED` Tasks through the default adapter, asks Task Service to reconcile them, then reads updated blocked/eligible views and identity-loop health. Healthy idle loops in selector cooldown are excluded. Unhealthy loops can invoke an optional recovery callback.
 
-The controller signals at most one idle loop per distinct eligible Task in its
-view. The sorted Task IDs, loop state and idle generation form a
-duplicate-suppression key. Mission is not inserted into this view and no
-shared-Mission parallel slot exists in the current implementation.
+The controller signals every healthy idle loop outside retry cooldown, including
+when the eligible view is empty. Task count does not cap discovery capacity: Bots
+can inspect existing responsibilities and propose distinct local work. Task
+Service still arbitrates exclusive takes. The sorted Task IDs, loop state and
+idle generation form a duplicate-suppression key. Observing discovery/take in
+flight preserves that receipt, so a subsequent `no_work` result does not cause
+the periodic sweep to restart the same read. Execution completion and cooldown
+rearm discovery; public mutations also signal loops through the runner's event
+path. Mission is not inserted into this view.
 
 It publishes readiness/health snapshots, suppresses stable blocked/no-op noise,
 and keeps observer errors from changing ownership. Normal reconciliation
@@ -193,9 +198,9 @@ This remains the current Runtime recovery path, including when the OpenSandbox a
 
 | Boundary | Durable effect | Physical effect |
 |---|---|---|
-| `releaseExecution` | None; a service already reached terminal state | Drain queued compaction saves; detach/stop binding; stop sandbox; release Workspace; Core idle |
-| `stopExecution` | Requested terminal state/reason; cancellation can cancel an idle Task projection | Same physical release |
-| `fenceExecution` | `FENCED`, fence increment, generation/reason | Stop sandbox, best-effort Workspace fence, release binding/Core |
+| `releaseExecution` | None; a service already reached terminal state | Mark Core CLOSING; drain saves; confirm Session and sandbox stop; reconcile/release Workspace; only then mark Core IDLE |
+| `stopExecution` | After confirmed process/sandbox stop, record terminal state/reason; retries preserve an existing terminal result | Same physical release |
+| `fenceExecution` | `FENCED`, fence increment, generation/reason | Confirm worker and sandbox stop, commit fence, reconcile Workspace fence and release binding/Core |
 | `detachSwitchedExecution` | None; old fence/new take already committed | Use previous fence to revoke old Workspace, detach old binding for same-Session rebind |
 | Runtime `restart` | Runtime generation +1; fence active `CREATED`/`RUNNING` attempts | Stop all owned Sessions, including released reusable Sessions; preserve legacy `WAITING` responsibilities |
 | Runtime `shutdown` | Default `FAILED/runtime_shutdown`, configurable by caller | Set stopping, unsubscribe callbacks, release live bindings, stop all owned Sessions, await recovery/release work |
@@ -205,6 +210,12 @@ only in compatibility mode. With `freshBotPerExecution=true`, Runtime clears
 the binding, removes the Session from `identitySessions`, and stops it before
 the next Bot starts. Shutdown owns both active and temporarily unbound
 Sessions.
+
+`releaseExecution` serializes concurrent cleanup for one Execution. Stop failures propagate and retain the in-memory active binding and `CLOSING` Core; a later call retries cleanup. A closed Pi transport alone is insufficient: the OpenSandbox adapter's `session.stop` also confirms deletion of its original worker sandbox, which may have a different key from the Task Execution sandbox. HTTP 202 from deletion triggers a bounded GET; if the resource still exists, cleanup remains pending. A failed Workspace fence is reconciled from current owned metadata to the durable Execution fence before release. Release is idempotent for the same owner/fence, including a failure between primary and revision metadata writes.
+
+Explicit stop, lease expiry and timebox handoff stop both resource bindings before ending durable ownership. Closing bindings reject Runtime heartbeats and skip productive watchdog/notification handling; health views report `phase: closing`, with nullable timestamps for failed prelaunch bindings. Lease expiry refreshes durable state after cleanup. If a direct Service heartbeat renewed the lease during local closing, the now-stopped attempt records `FAILED/lease_changed_during_cleanup` instead of falsely recording lease expiry; durable closing must eventually reject that race at the Service boundary. Startup rollback, process exit, restart and sibling fencing retain cleanup ownership on failure. Runtime tracks in-flight start/bind promises; shutdown rejects new startup, joins existing preparation and stops a late Session before it can become available. Shutdown continues across failures and returns `cleanup_pending_execution_ids`, `cleanup_pending_session_count` and `active_process_count`; a successful function return is not itself proof of cleanup. The benchmark's terminal-release sweep preserves its Bridge/Core binding on failure so a later sweep can retry. Its shutdown records unresolved cleanup as errors and emits `benchmark_cleanup_complete` only when cleanup is confirmed. Tests in [runtime-cleanup.test.js](../../test/runtime-cleanup.test.js) exercise the real Task Service, Runtime, Workspace, Bridge and benchmark cleanup functions with model/provider boundaries controlled locally.
+
+This is not yet the target persistent closing protocol. Core occupancy and pending cleanup survive retries in the same Runtime instance, not process loss. Bot-initiated `task_finish` still commits its Task Service result before physical cleanup; that path can expose a Task to another Core too early. Persistent Bot identity, closing ownership, bounded retry/reconciliation across restarts, and a unified worker/Execution sandbox remain required migrations. Retained compatibility methods and the runner's force-fence-on-shutdown-timeout path also need that protocol; the local Core guard does not prove complete Task-owner fencing.
 
 One listener set is attached per Session; event handlers read its current Execution binding, preventing handler multiplication on rebind. Closing/absent bindings ignore late events. Sibling fencing uses tracked pending-release promises and updates occupancy after cleanup reaches release.
 
@@ -221,9 +232,9 @@ Runtime cleanup is ordered around durable ownership: Workspace and Execution wri
 | Source | Covered behavior | Existing tests |
 |---|---|---|
 | [identity-task-loop.js](../../src/runtime/identity-task-loop.js) | Discover/take/take, cooldown, signal races and failed handoff | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
-| [task-controller.js](../../src/runtime/task-controller.js) | Reconciliation, wake budget/deduplication and health callbacks | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
+| [task-controller.js](../../src/runtime/task-controller.js) | Reconciliation, discovery wake deduplication and health callbacks | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
 | [scheduler.js](../../src/runtime/scheduler.js) | Generic startup budget and signature suppression | [scheduler.test.js](../../test/scheduler.test.js) |
-| [runtime.js](../../src/runtime/runtime.js) | Binding, events, deadlines, recovery and cleanup | [Workspace contract](../../test/workspace-contract.test.js),  |
+| [runtime.js](../../src/runtime/runtime.js) | Binding, events, deadlines, recovery and cleanup | [Workspace contract](../../test/workspace-contract.test.js), [cleanup integration](../../test/runtime-cleanup.test.js) |
 | [task-service.js](../../src/task/task-service.js), [task-types.js](../../src/task/task-types.js), [schema.js](../../src/storage/schema.js) | Durable state/version/Core/lease transitions and replay | [flat Task behavior](../../test/task-oriented-flat.test.js),  |
 | [services-bridge.js](../../src/agent/services-bridge.js) | Identity, same-lane bind/switch and compensation | [profile/Bridge](../../test/capability-profile-bridge.test.js), [direct Judge](../../test/judge-direct-submit.test.js) |
 

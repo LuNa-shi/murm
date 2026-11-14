@@ -30,6 +30,62 @@ test('OpenSandbox Agent adapter keeps Pi RPC inside the provider worker', async 
   assert.equal(manager.executionStopped, true);
 });
 
+test('remote Session stop reports sandbox deletion failure and retries even after worker exit', async () => {
+  const manager = new FakeSandboxManager();
+  let fail = true;
+  manager.stopExecution = async () => {
+    if (fail) throw new Error('provider deletion unconfirmed');
+    manager.executionStopped = true;
+  };
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
+  const session = await adapter.start({ executionId: 'worker-cleanup' });
+  try {
+    await assert.rejects(session.stop(), /provider deletion unconfirmed/);
+    assert.equal(manager.executionStopped, false);
+  } finally { fail = false; }
+  await session.stop();
+  assert.equal(manager.executionStopped, true);
+});
+
+test('failed unbound startup blocks a replacement until its sandbox cleanup succeeds', async () => {
+  const manager = new FakeSandboxManager();
+  let starts = 0;
+  let failCleanup = true;
+  manager.startAgent = async () => { starts += 1; throw new Error('worker startup failed'); };
+  manager.stopExecution = async () => { if (failCleanup) throw new Error('cleanup pending'); };
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
+  await assert.rejects(adapter.start({ executionId: 'first-worker' }), /cleanup pending/);
+  await assert.rejects(adapter.start({ executionId: 'second-worker' }), /cleanup pending/);
+  assert.equal(starts, 1);
+  failCleanup = false;
+  await adapter.cleanupPendingStarts();
+  await assert.rejects(adapter.start({ executionId: 'second-worker' }), /worker startup failed/);
+  assert.equal(starts, 2);
+});
+
+test('adapter shutdown joins an in-flight provider creation and prevents a late worker launch', async () => {
+  const manager = new FakeSandboxManager();
+  let entered;
+  const started = new Promise(resolve => { entered = resolve; });
+  let finish;
+  const pendingCreate = new Promise(resolve => { finish = resolve; });
+  manager.ensureExecution = async () => { entered(); await pendingCreate; };
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
+  const start = adapter.start({ executionId: 'slow-start' });
+  const rejected = assert.rejects(start, /stopped/);
+  await started;
+  await assert.rejects(adapter.start({ executionId: 'second-start' }), (error) => error.code === 'CONFLICT');
+  let cleanupFinished = false;
+  const cleanup = adapter.cleanupPendingStarts({ shutdown: true }).then(() => { cleanupFinished = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cleanupFinished, false);
+  finish();
+  await Promise.all([rejected, cleanup]);
+  assert.equal(manager.started, null);
+  assert.equal(manager.executionStopped, true);
+  await assert.rejects(adapter.start({ executionId: 'after-shutdown' }), /stopping/);
+});
+
 test('OpenSandbox Agent adapter passes the guest extension path to Pi', () => {
   const adapter = createOpenSandboxAgentAdapter({
     sandboxManager: new FakeSandboxManager(),

@@ -276,10 +276,12 @@ Two boundaries matter when interpreting a saved revision:
   `task_create followed by task_take` performs a separate progress checkpoint before
   the atomic Task switch, and post-switch Runtime binding is another step.
 
+Runtime's common physical-release path retains a `CLOSING` Core and resource binding when Session, provider deletion, or Workspace release fails. It reconciles an older Workspace fence against the durable Execution fence before retrying release. Concurrent provider deletes share one pending deletion; HTTP 202 requires a follow-up GET confirming absence before the resource record can be discarded. [02](02-execution.md) distinguishes this retry behavior from the still-pending durable closing protocol and Bot-initiated finish ordering.
+
 ## 6. Fence, release, restart and retained state
 
 A normal Workspace write requires the same Execution ID, current fence and no
-`released_at`. `releaseWorkspace` records a release timestamp without
+`released_at`. `releaseWorkspace` verifies owner/fence and idempotently retries both metadata writes, retaining the original release timestamp after a partial write failure. It records a release timestamp without
 deleting data. `reopenWorkspace` permits that same owner and fence to clear
 the release flag when a waiting Execution wakes. `fenceWorkspace` requires
 the current owner/fence and a strictly larger integer new fence, records it and
