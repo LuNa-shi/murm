@@ -370,6 +370,21 @@ test('benchmark startup join shares cleanup grace and reports a still-pending la
   } finally { startup.resolve(); }
 });
 
+test('a rejected startup during benchmark shutdown leaves cleanup reporting to the resource owners', async (t) => {
+  const setup = await fixture(t);
+  const core = benchmarkCore(setup);
+  const startup = deferred();
+  core.sessionStartPromise = startup.promise;
+  core.adapter = { cleanupPendingStarts: async () => startup.resolve(Promise.reject(Object.assign(new Error('Agent startup was stopped'), { code: 'NOT_ALLOWED' }))) };
+  const state = { taskService: setup.service, cleanupErrors: [] };
+  assert.deepEqual(await stopCore(state, core), { complete: true });
+  assert.deepEqual(state.cleanupErrors, []);
+
+  core.adapter = { cleanupPendingStarts: async () => { throw Object.assign(new Error('Delete is unconfirmed'), { code: 'SERVICE_UNAVAILABLE' }); } };
+  assert.deepEqual(await stopCore(state, core), { complete: false });
+  assert.deepEqual(state.cleanupErrors, [{ code: 'SERVICE_UNAVAILABLE', class: 'startup_cleanup_pending', core_id: `core-${core.index}` }]);
+});
+
 test('accepted incomplete finish keeps the Task occupied through failed cleanup and closes exactly once after retry', async (t) => {
   let fail = true;
   const { service, runtime, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });

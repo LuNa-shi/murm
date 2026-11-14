@@ -929,7 +929,12 @@ export async function stopCore(state, core, { cleanupGraceMs = 30_000, cleanupDe
   // Start all termination paths before joining any of them. In particular a
   // Bridge client or startup wait may need Runtime shutdown in order to end.
   const jobs = [
-    ['STARTUP_CLEANUP', () => joinCleanup([core.adapter?.cleanupPendingStarts?.({ shutdown: true }), core.sessionStartPromise])],
+    ['STARTUP_CLEANUP', () => joinCleanup([
+      core.adapter?.cleanupPendingStarts?.({ shutdown: true }),
+      // A rejected launch also settles the startup. Adapter and Runtime
+      // shutdown independently confirm that any resources were removed.
+      Promise.allSettled([core.sessionStartPromise]),
+    ])],
     ['RUNTIME_SHUTDOWN', () => core.runtime.shutdown({ terminalState: 'FAILED', terminalReason: 'benchmark_deadline_cleanup' })],
     ['BRIDGE_CLEANUP', () => core.bridge.stop()],
     ['SESSION_CLEANUP', () => joinCleanup([...sessions].map(async session => {
