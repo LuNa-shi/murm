@@ -40,6 +40,14 @@ function executionRejection(error) {
       diagnostic_code: error.details?.phase === 'soft_closeout' ? 'soft_closeout' : 'execution_closed' } };
 }
 
+export function normalizeJudgeMissionBudget({ maxRequests = 20, maxConcurrent = Math.min(2, maxRequests) } = {}) {
+  if (!Number.isSafeInteger(maxRequests) || maxRequests < 1 || maxRequests > 10_000 ||
+      !Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > maxRequests) {
+    throw new TypeError('Judge Mission budget requires finite positive request and concurrent limits');
+  }
+  return { maxRequests, maxConcurrent };
+}
+
 export class JudgeService {
   constructor(database = ':memory:', {
     checker,
@@ -48,10 +56,15 @@ export class JudgeService {
     dependencyEventSink = null,
     fixtureManifest = null,
     taskService = null,
+    missionBudget,
   } = {}) {
+    this.missionBudget = normalizeJudgeMissionBudget(missionBudget);
+    this.activeChecks = new Set();
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
+    if (!(database instanceof DatabaseSync)) this.db.exec('PRAGMA busy_timeout = 2500');
     ensureJudgeSchema(this.db);
     this.checker = checker ?? new LeanChecker();
+    this.processTimeoutMs = Number.isSafeInteger(this.checker.timeoutMs) && this.checker.timeoutMs > 0 ? this.checker.timeoutMs : null;
     this.logger = logger;
     this.maxInfrastructureRetries = Number.isInteger(maxInfrastructureRetries) && maxInfrastructureRetries >= 0 ? maxInfrastructureRetries : 2;
     this.dependencyEventSink = dependencyEventSink;
@@ -60,6 +73,40 @@ export class JudgeService {
   }
 
   close() { this.db.close(); }
+
+  async waitForIdle() {
+    while (this.activeChecks.size) await Promise.allSettled([...this.activeChecks]);
+  }
+
+  getMissionCheckBudget(missionId) {
+    const policy = this.db.prepare('SELECT max_requests, max_concurrent, process_timeout_ms FROM judge_mission_check_policies WHERE mission_id = ?').get(missionId);
+    const usage = this.db.prepare(`SELECT COUNT(*) AS admitted_requests,
+      COUNT(*) FILTER (WHERE settled_at IS NULL) AS active_requests,
+      COALESCE(SUM(is_retry), 0) AS retry_requests,
+      COALESCE(SUM(preflight_starts), 0) AS preflight_process_starts,
+      COALESCE(SUM(source_starts), 0) AS source_process_starts
+      FROM judge_mission_check_admissions WHERE mission_id = ?`).get(missionId);
+    const cached = this.db.prepare(`SELECT COUNT(*) AS cached_request_aliases FROM judge_request_aliases alias
+      JOIN judge_mission_check_admissions admission USING (check_result_id) WHERE admission.mission_id = ?`).get(missionId);
+    const maxRequests = policy?.max_requests ?? this.missionBudget.maxRequests;
+    const processTimeoutMs = policy ? policy.process_timeout_ms : this.processTimeoutMs;
+    return { max_requests: maxRequests, max_concurrent: policy?.max_concurrent ?? this.missionBudget.maxConcurrent,
+      process_timeout_ms: processTimeoutMs, upper_bound_process_ms: processTimeoutMs === null ? null : 2 * maxRequests * processTimeoutMs, ...usage, ...cached };
+  }
+
+  #admitMissionCheck(missionId, checkResultId, isRetry) {
+    const { maxRequests, maxConcurrent } = this.missionBudget;
+    this.db.prepare(`INSERT INTO judge_mission_check_policies VALUES (?, ?, ?, ?)
+      ON CONFLICT(mission_id) DO NOTHING`).run(missionId, maxRequests, maxConcurrent, this.processTimeoutMs);
+    const budget = this.getMissionCheckBudget(missionId);
+    if (budget.max_requests !== maxRequests || budget.max_concurrent !== maxConcurrent || budget.process_timeout_ms !== this.processTimeoutMs) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Judge Mission budget differs from the fixed policy');
+    }
+    if (budget.admitted_requests >= maxRequests) throw new SwarmEnvError('CHECKER_BUDGET_EXHAUSTED', 'Judge Mission request budget is exhausted', budget);
+    if (budget.active_requests >= maxConcurrent) throw new SwarmEnvError('CHECKER_BUSY', 'Judge Mission checker concurrency is full', budget, { retryable: true });
+    this.db.prepare('INSERT INTO judge_mission_check_admissions (mission_id, check_result_id, admitted_at, is_retry) VALUES (?, ?, ?, ?)')
+      .run(missionId, checkResultId, now(), isRetry ? 1 : 0);
+  }
 
   setDependencyEventSink(listener) {
     if (listener !== null && typeof listener !== 'function') throw new TypeError('dependencyEventSink must be a function or null');
@@ -249,22 +296,55 @@ export class JudgeService {
     const requestHash = hash(normalized.workspace_source.file_ref?.git_commit ? { ...normalized, state_version: null } : normalized);
     const publicInput = Boolean(normalized.workspace_source.file_ref?.git_commit);
     const registered = Boolean(this.taskService?.getBot(requestEnvelope.actor_ref));
+    const separateLifecycle = (publicInput || registered) && this.taskService?.db !== this.db;
+    if (separateLifecycle && typeof this.taskService?.withServiceLifecycleWrite !== 'function') {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires the local Task lifecycle authority');
+    }
     const authority = ({ newWork = false } = {}) => {
       if (!publicInput && !registered) return; // trusted historical source helper
-      if (!this.taskService || this.taskService.db !== this.db) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires the shared Task lifecycle authority');
+      if (!this.taskService) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires Task lifecycle authority');
       const execution = this.taskService.getExecution(requestEnvelope.execution_id);
       if (!execution || execution.owner_ref !== requestEnvelope.actor_ref || execution.task_id !== requestEnvelope.task_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge request requires its actual Execution owner');
       if (newWork) {
-        this.taskService.materialScope({ ...requestEnvelope, state_version: execution.state_version }, { write: true });
+        const scope = this.taskService.materialScope({ ...requestEnvelope, state_version: execution.state_version }, { write: true });
+        this.taskService.assertMissionResearchOpen(scope.mission_id);
         assertNewExecutionWork(execution);
+        return scope.mission_id;
       }
     };
-    const request = this.#beginRequest(normalized, requestHash, authority);
+    const begin = () => this.#beginRequest(normalized, requestHash, authority);
+    const request = separateLifecycle ? this.taskService.withServiceLifecycleWrite(begin) : begin();
     if (!request.shouldCheck) return request.result;
-    const requested = request.result;
+    const work = this.#performWorkspaceCheck(normalized, requestHash, request.result, { operationId, actorRef,
+      authority, publicInput, registered, missionId: request.missionId }).finally(() => {
+      if (request.missionId) this.db.prepare(`UPDATE judge_mission_check_admissions SET settled_at = ?
+        WHERE mission_id = ? AND check_result_id = ? AND settled_at IS NULL`)
+        .run(now(), request.missionId, request.result.check_result_id);
+    });
+    this.activeChecks.add(work);
+    try { return await work; }
+    finally { this.activeChecks.delete(work); }
+  }
+
+  async #performWorkspaceCheck(normalized, requestHash, requested, { operationId, actorRef, authority, publicInput, registered, missionId }) {
     let admissionFailure = null;
     const assertCanStart = () => authority({ newWork: true });
-    const preflight = await this.#runPreflight(normalized, assertCanStart).catch(error => {
+    const startProcess = phase => launch => {
+      const guardedLaunch = () => {
+        assertCanStart();
+        if (missionId) {
+          const column = phase === 'preflight' ? 'preflight_starts' : 'source_starts';
+          const reserved = this.db.prepare(`UPDATE judge_mission_check_admissions SET ${column} = 1
+            WHERE mission_id = ? AND check_result_id = ? AND settled_at IS NULL AND ${column} = 0`)
+            .run(missionId, requested.check_result_id);
+          if (reserved.changes !== 1) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Checker attempted an unreserved process launch');
+        }
+        return launch();
+      };
+      if (!publicInput && !registered) return guardedLaunch();
+      return this.taskService.withServiceLifecycleWrite(guardedLaunch);
+    };
+    const preflight = await this.#runPreflight(normalized, assertCanStart, startProcess('preflight')).catch(error => {
       admissionFailure = executionRejection(error);
       if (!admissionFailure) throw error;
       return { status: 'not_admitted' };
@@ -292,7 +372,7 @@ export class JudgeService {
         // A preflight can finish after the soft/hard boundary. Do not launch
         // a new scientific calculation merely because preflight was admitted.
         authority({ newWork: true });
-        checked = await this.checker.check({ workspace_source: normalized.workspace_source, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest, assertCanStart });
+        checked = await this.checker.check({ workspace_source: normalized.workspace_source, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest, assertCanStart, startProcess: startProcess('source') });
       } catch (error) {
         admissionFailure = executionRejection(error);
         checked = admissionFailure ?? { verdict: 'ERROR', evidence: { diagnostic: error.message, error: error.name, checker_started: false } };
@@ -476,7 +556,7 @@ export class JudgeService {
         if (existing.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
         return { result: existing, shouldCheck: false };
       }
-      authority({ newWork: true });
+      const missionId = authority({ newWork: true });
       // request_key is the transport idempotency key, but it is not a license
       // to rerun an unchanged workspace_source under a fresh key.  A workspace_source and
       // its locked checker/input binding define the durable check identity;
@@ -491,7 +571,7 @@ export class JudgeService {
         WHERE workspace_content_hash = ? AND target_task_id = ? AND target_spec_version = ?
           AND input_snapshot_hash = ? AND checker_ref = ? AND checker_version = ? AND environment_ref = ?
           ${sourceClause}
-        ORDER BY created_at, check_result_id LIMIT 1`).get(
+        ORDER BY rowid DESC LIMIT 1`).get(
         normalized.workspace_content_hash,
         normalized.target_task_id,
         normalized.target_spec_version,
@@ -519,6 +599,7 @@ export class JudgeService {
         }
       }
       const checkResultId = randomUUID();
+      if (missionId) this.#admitMissionCheck(missionId, checkResultId, Boolean(equivalent));
       const createdAt = now();
       this.db.prepare(`INSERT INTO check_results (
         check_result_id, request_key, request_hash, workspace_source_id, workspace_content_hash, target_task_id, target_spec_version,
@@ -529,11 +610,11 @@ export class JudgeService {
         checkResultId, normalized.request_key, requestHash, normalized.workspace_source_id, normalized.workspace_content_hash, normalized.target_task_id, normalized.target_spec_version,
           normalized.execution_id, normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref,
           json(publicInput ? { workspace_input: publicInput } : {}), createdAt, createdAt);
-      return { result: this.getCheckResult(checkResultId), shouldCheck: true };
+      return { result: this.getCheckResult(checkResultId), shouldCheck: true, missionId };
     });
   }
 
-  async #runPreflight(normalized, assertCanStart = () => {}) {
+  async #runPreflight(normalized, assertCanStart = () => {}, startProcess = undefined) {
     const identity = checkerIdentity(normalized.fixture_manifest);
     let result;
     if (typeof this.checker.preflight !== 'function') {
@@ -555,7 +636,7 @@ export class JudgeService {
       }, identity);
     } else {
       try {
-        result = normalizePreflight(await this.checker.preflight({ fixtureManifest: normalized.fixture_manifest, assertCanStart }), identity);
+        result = normalizePreflight(await this.checker.preflight({ fixtureManifest: normalized.fixture_manifest, assertCanStart, startProcess }), identity);
       } catch (error) {
         if (executionRejection(error)) throw error;
         result = normalizePreflight({

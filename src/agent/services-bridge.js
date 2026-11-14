@@ -8,6 +8,7 @@ import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
 import { agentCheckResult } from '../judge/check-result.js';
 import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
+import { isSoftCloseout } from '../task/execution-budget.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const WORKSPACE_OPERATIONS = new Set([
@@ -19,12 +20,16 @@ const WORKSPACE_OPERATIONS = new Set([
 // owns an Execution. Requiring an Execution for these operations makes a
 // zero-Task Mission impossible to bootstrap.
 const UNBOUND_OPERATIONS = new Set([
-  'bot_exit', 'get_check_result',
+  'bot_exit', 'get_check_result', 'material_unsupersede', 'task_cancel', 'task_dependency_replace',
   'task_list', 'task_view', 'task_status', 'task_create',
   'read_materials', 'context_search_materials', 'context_get_material',
   'material_read', 'material_search', 'material_get',
-  'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_view', 'workspace_public_history',
+  'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history',
   'mission_get', 'mission_submit', 'mission_submission_get',
+]);
+const COORDINATION_OPERATION_GRANTS = new Map([
+  ['material_unsupersede', 'unsupersede'], ['task_cancel', 'task_cancel'],
+  ['task_dependency_replace', 'task_dependency_replace'], ['mission_submit', 'mission_submit'],
 ]);
 
 function usesWorkspace(task) {
@@ -32,6 +37,28 @@ function usesWorkspace(task) {
   const contract = task?.completion_contract ?? {};
   return Boolean((workspace && typeof workspace === 'object' && Object.keys(workspace).length > 0) ||
     contract.requires_workspace === true || contract.required_candidate?.workspace === true);
+}
+
+function botExecutionReceipt(execution) {
+  const { execution_id, task_id, owner_ref, core_id, attempt_no, state, terminal_reason,
+    input_material_refs, input_snapshot_hash, workspace_input, started_at, handoff_deadline,
+    execution_deadline, created_at, updated_at } = execution;
+  return { execution_id, task_id, owner_ref, core_id, attempt_no, state, terminal_reason,
+    input_material_refs, input_snapshot_hash, workspace_input, started_at, handoff_deadline,
+    execution_deadline, created_at, updated_at };
+}
+
+function botReceipt(result) {
+  if (result?.execution?.execution_id) {
+    const { execution, workspace, ...receipt } = result;
+    return { ...receipt, execution: botExecutionReceipt(execution),
+      ...(Object.hasOwn(result, 'workspace') ? { workspace: execution.workspace_input ?? null } : {}) };
+  }
+  if (result?.bot?.bot_id) {
+    const { bot_id, mission_id, core_id, execution_id, state, exit_reason } = result.bot;
+    return { ...result, bot: { bot_id, mission_id, core_id, execution_id, state, exit_reason } };
+  }
+  return result;
 }
 
 function requiredTaskCapabilities(payload = {}) {
@@ -500,8 +527,17 @@ export class ServicesBridge {
     try {
       input = await readBody(request);
       if (authenticatedToken !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed while reading the request');
+      const registeredBot = Boolean(this.taskService?.getBot?.(this.actorRef));
       const result = await this.call(input);
-      send(response, 200, { ok: true, result });
+      const receipt = registeredBot ? botReceipt(result) : result;
+      if (registeredBot && input.operation === 'workspace_public_apply' && result?.conflicts?.length) {
+        const paths = [...new Set(result.conflicts.flatMap(item => item.paths ?? (item.path ? [item.path] : [])))];
+        receipt.notice = `来源 ${result.source_revision} 与当前工作状态存在冲突，main 未改变。冲突文件为 ${paths.join(', ')}；可在当前 E 解决并 save --resolved，初始输入记录不变。`;
+      }
+      if (registeredBot && input.operation === 'bot_exit' && result?.bot?.exit_reason === 'no-work') {
+        receipt.notice = '当前无已知可推进责任：no-work。可正常 bot exit --reason no-work；Runtime 按状态变化或退避安排后续发现。';
+      }
+      send(response, 200, { ok: true, result: receipt });
       this.logger?.append({ event: 'bridge.response_sent', operation: input.operation });
       if (this.deferredLifecycle && !this.deferredLifecyclePromise) {
         const deferredPromise = Promise.resolve().then(() => this.flushDeferredLifecycle()).catch((error) => {
@@ -512,7 +548,44 @@ export class ServicesBridge {
         this.deferredLifecyclePromise = deferredPromise;
       }
     } catch (error) {
-      if (!response.writableEnded) send(response, 400, { ok: false, error: errorBody(error) });
+      if (!response.writableEnded) {
+        const body = errorBody(error);
+        if (input && authenticatedToken === this.token && this.taskService.getBot?.(this.actorRef)) {
+          const details = body.details ?? {};
+          const operation = input.operation;
+          let notice;
+          if (operation === 'workspace_save' && !['NOT_ALLOWED', 'WORKSPACE_RESULT_UNKNOWN'].includes(body.code) && !details.phase) {
+            notice = `工作目录未成功保存：${details.cause_code ?? body.code}。不得把私有文件声明为交付；在有效 E 和剩余重试额度内处理。`;
+          } else if (operation === 'workspace_public_apply' && ['dirty', 'active_writer'].includes(details.apply_blocker)) {
+            notice = '当前目录仍有未保存修改或写进程，未替换文件。先 save 并停止相关写入，再按返回条件重试 apply。';
+          } else if (operation === 'workspace_merge' && details.check && details.checked_tree) {
+            notice = `固定 main ${details.main_revision} 与来源 ${details.source_revision} 的最终合成树未通过 ${details.check.checker?.checker_version ?? '未知版本'}：${details.check.verdict ?? body.code}。main、源版本和当前 E 保持不变。先核对当前目录是否包含来源版本；若没有，先 save 自己的进度、apply 来源并处理/保存，再 apply 固定或最新 main，依据诊断修复/save 后重试。`;
+          } else if (operation === 'workspace_merge' && body.code === 'MAIN_MOVED' && details.observed_revision) {
+            notice = `检查后 main 已从 ${details.observed_revision} 前进到 ${details.actual_revision}；本请求未覆盖 main。可在剩余额度内重新合成并检查；若转到当前目录修复，先确认来源 ${details.source_revision} 已通过 apply 接入并保存，再跟进 main，不能丢掉待合入来源。`;
+          } else if (details.phase === 'hard_stop') {
+            notice = '已达到硬上限或发生强制停止，当前 E 不再有发布机会。此前未保存/发布的内容不视为已交接。';
+          } else if (details.phase === 'selection_budget') {
+            notice = '选工额度已到时间上限。尚未绑定 E 时使用 bot exit --reason selection-budget；不能为保持运行制造任务。';
+          } else if (operation === 'task_take' && body.code === 'CONFLICT' && details.parallel_quota !== undefined) {
+            notice = `Task ${input.payload?.task_id} 当前由其他 Execution 占有。本请求未建立 E；仍在选工阶段，可在剩余预算内选择其他责任。`;
+          } else if (body.code === 'NOT_ALLOWED') {
+            const bot = this.taskService.getBot(this.actorRef);
+            const execution = bot.execution_id && this.taskService.getExecution(bot.execution_id);
+            const phase = details.phase ?? (bot.state === 'ACTIVE' && isSoftCloseout(execution) ? 'soft_closeout' : bot.state.toLowerCase());
+            const allowed = phase === 'soft_closeout' ? ['workspace_save', 'publish_material', 'task_finish']
+              : ['active', 'unbound'].includes(phase)
+              ? this.getCapabilityProfile().capabilities.map(item => item.operation).filter(item =>
+                typeof item === 'string' && (phase !== 'unbound' || item === 'task_take' || UNBOUND_OPERATIONS.has(item)) &&
+                (!COORDINATION_OPERATION_GRANTS.has(item) || bot.coordination_permissions.includes(COORDINATION_OPERATION_GRANTS.get(item))))
+              : [];
+            const allowedOperations = [...new Set(allowed)];
+            body.details = { ...details, phase, allowed_operations: allowedOperations };
+            notice = `操作 ${operation} 在阶段 ${phase} 未获授权。可用范围为 ${allowedOperations.join(', ') || '无'}，不能通过另一接口绕过。`;
+          }
+          if (notice) body.details = { ...body.details, request_id: input.operation_id ?? null, notice };
+        }
+        send(response, 400, { ok: false, error: body });
+      }
       else this.logger?.append({ event: 'bridge.error_after_response', operation: input?.operation ?? null, ok: false, error: { name: error.name, code: error.code, message: error.message } });
     }
   }
@@ -581,6 +654,16 @@ export class ServicesBridge {
       }
       const boundTask = this.taskId ? this.taskService.getTask(this.taskId) : null;
       const bot = this.taskService.getBot?.(this.actorRef);
+      if (bot && !['bot_exit', 'task_finish', 'mission_submission_get'].includes(operation)) {
+        const execution = bot.execution_id && this.taskService.getExecution(bot.execution_id);
+        if (execution && (Date.parse(bot.hard_deadline) <= Date.now() || Date.parse(execution.execution_deadline) <= Date.now() ||
+            (['CLOSING', 'CLOSED'].includes(bot.state) && !this.taskService.getExecutionFinish(execution.execution_id)))) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot contribution is closed', { phase: 'hard_stop' });
+        }
+        if (bot.state === 'UNBOUND' && Date.parse(bot.selection_deadline) <= Date.now()) {
+          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot selection deadline elapsed', { phase: 'selection_budget' });
+        }
+      }
       if (bot && !['bot_exit', 'task_finish'].includes(operation)) this.taskService.assertBotDeadline(this.actorRef);
       if (bot && !['UNBOUND', 'ACTIVE'].includes(bot.state) && !['bot_exit', 'task_finish'].includes(operation)) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot is not authorized to contribute in its current state', { bot_state: bot.state });
@@ -599,7 +682,7 @@ export class ServicesBridge {
             catch (error) { this.logger?.append({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
           }
           this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
-          return result;
+          return { ...result, request_id: bridgeOperationId };
         }
         if (operation === 'workspace_merge') {
           const execution = this.executionId && this.taskService.getExecution(this.executionId);
@@ -608,17 +691,34 @@ export class ServicesBridge {
           try { await this.onWorkUnit?.({ operation, taskId: execution.task_id, executionId: execution.execution_id, payload, result }); }
           catch (error) { this.logger?.append({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
           this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
-          return result;
+          return { ...result, request_id: bridgeOperationId };
         }
         if (WORKSPACE_OPERATIONS.has(operation) || operation === 'execution_progress') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Legacy private Workspace and Execution APIs are unavailable to registered Bots');
-        if (operation === 'mission_submit') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission submission integration is not ready for Bot requests');
+        if (operation === 'mission_submit') {
+          if (Object.keys(payload).some(key => key !== 'material_ids') || !Array.isArray(payload.material_ids)) {
+            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Mission submit accepts only an explicit material_ids selection');
+          }
+          const result = await this.runtime.submitMission({ missionId: bot.mission_id, workspaceId: this.runtime.missionWorkspaceId,
+            actorRef: bot.bot_id, taskId: this.taskId ?? null, executionId: this.executionId ?? null,
+            materialIds: payload.material_ids, requestId: bridgeOperationId,
+            fencingVersion: this.executionId ? this.taskService.getExecution(this.executionId)?.fencing_version : null });
+          this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
+          const observed = await this.runtime.describeMissionSubmission({ missionId: bot.mission_id, submissionId: result.submission_id });
+          assertIdentity();
+          return observed ?? result;
+        }
         if (payload.mission_id !== undefined && payload.mission_id !== bot.mission_id) {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'request must stay within the Bot Mission');
+        }
+        if (operation === 'mission_submission_get') {
+          const result = await this.runtime.describeMissionSubmission({ missionId: bot.mission_id, submissionId: payload.submission_id ?? null });
+          assertIdentity();
+          return result;
         }
         if (['mission_get', 'mission_submit', 'mission_submission_get', 'task_create', 'task_list', 'task_status', 'list_tasks', 'read_materials', 'context_search_materials'].includes(operation)) {
           payload = { ...payload, mission_id: bot.mission_id };
         }
-        if (['task_view', 'task_take', 'list_executions'].includes(operation) && payload.task_id !== undefined) {
+        if (['task_view', 'task_take', 'list_executions', 'task_cancel', 'task_dependency_replace'].includes(operation) && payload.task_id !== undefined) {
           const target = this.taskService.getTask(payload.task_id);
           if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task is not readable in the Bot Mission');
         }
@@ -626,7 +726,7 @@ export class ServicesBridge {
           const target = this.contextService.getMaterial(payload.material_id);
           if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material is not readable in the Bot Mission');
         }
-        if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_view', 'workspace_public_history'].includes(operation)) {
+        if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history'].includes(operation)) {
           const workspaceId = this.runtime?.missionWorkspaceId;
           if (!workspaceId || (payload.workspace_id !== undefined && payload.workspace_id !== workspaceId)) {
             throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace must match the configured Mission Workspace');
@@ -800,7 +900,10 @@ export class ServicesBridge {
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
         }
         if (operation === 'task_finish') {
+          const finish = result.disposition === 'closing'
+            ? { request_id: bridgeOperationId, notice: `结束请求 ${bridgeOperationId} 已持久受理，E ${result.execution.execution_id} 正在 closing。不得再 save/publish；Runtime 停止全部进程，连接可能断开。` } : {};
           result = await this.#afterAcceptedFinish(result, payload);
+          result = { ...result, ...finish };
           this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
           return result;
         }
@@ -860,12 +963,17 @@ export class ServicesBridge {
           await this.bindTake(result);
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
           break;
+        case 'task_cancel':
+        case 'task_dependency_replace': result = service.dispatch(operation, payload, { ...sdk.context, operation_id: bridgeOperationId }); break;
         case 'task_link_material': result = sdk.linkMaterial(payload, options); break;
         case 'task_finish':
           result = await this.#afterAcceptedFinish(sdk.finishTask(payload, options), payload);
           break;
         case 'context_search_materials': result = sdk.searchMaterials(payload); break;
         case 'context_get_material': result = sdk.getMaterial(payload.material_id ?? payload.materialId); break;
+        case 'material_dispute':
+        case 'material_supersede':
+        case 'material_unsupersede': result = service.dispatch(operation, payload, { ...sdk.context, operation_id: bridgeOperationId }); break;
         case 'context_publish_material': result = sdk.publishCollaborationMaterial(payload, options); break;
         case 'read_materials': result = sdk.readMaterials(payload); break;
         case 'consume_materials': result = sdk.consumeMaterials(payload, options); break;

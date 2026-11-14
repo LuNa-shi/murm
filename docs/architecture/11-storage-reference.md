@@ -14,7 +14,7 @@ This chapter separates persisted facts from live-process state, and provides eve
 | Registry/Bridge | Manifest/profile hashes can be recorded in run metadata; source/bundle files define defaults | Registered adapters, readiness cache, Bridge token, current binding, deferred lifecycle callback |
 | Sandbox | Workspace files can be saved by Runtime checkpoint/progress | Container/process state, background job handles; cleanup and saving are separate steps |
 
-The benchmark normally supplies one project SQLite connection to Task, Context and Judge. This lets the Task Service use Context publication inside its transaction. Independently hosted processes can point at the same mounted database; using separate files does not magically provide distributed transactions or replicate state. The shared `operations` table namespaces replay by `operation_id`, so callers use distinct IDs across logically different actions.
+The production benchmark uses `project.sqlite` for Task/Mission coordination and observations, `context.sqlite` for Material state, `judge.sqlite` for Judge state, and private `model-budget.sqlite` for model admission and settlement. Services own their own connections and schema. Synchronous Context mutations and Judge admission/launch run through a narrow Task-owned writer window: Task holds its SQLite writer lock while the service validates current authority and commits its own record. The services exchange facts through APIs, never by reading one another's database. This orders lifecycle revocation against each service commit without claiming distributed transactions or all-store crash atomicity. Each service retains its own idempotent receipts; interrupted multi-step work is reconciled by its named operation. Independently hosted HTTP Context/Judge writes without the equivalent local authority composition fail closed. Historical single-connection fixtures remain supported as diagnostic composition.
 
 ## How to interpret the tables
 
@@ -22,15 +22,19 @@ The benchmark normally supplies one project SQLite connection to Task, Context a
 |---|---|
 | `missions` | Mission columns are `mission_id`, `goal`, `acceptance_conditions_json`, `created_by`, `created_at`, `updated_at`. Initial Materials/resource budgets are not Mission columns. |
 | `tasks` + `modern_task_records` | Durable Task row plus `modern_task_records` Mission ID, short summary, timebox and registration hash. Responsibility keys live on `tasks`; feedback lives in notifications/receipts. Modern record projection combines these facts. A Mission may begin with zero Tasks; each Task is explicitly created and taken, with no implicit shared-Mission Task. |
-| `bots` | One Bot run: Mission/Core, state/version, unique optional Execution, selection deadline, resource key, provider/Sandbox IDs, exit request/reason, optional Runtime stop terminal state, and lifecycle timestamps. A partial unique index reserves each Mission/Core until CLOSED. Pi/worker tokens are not stored here. |
+| `bots` | One Bot run: Mission/Core, state/version, unique optional Execution, selection deadline, resource key, provider/Sandbox IDs, exit request/reason, optional Runtime stop terminal state, and lifecycle timestamps. A partial unique index reserves each Mission/Core until CLOSED. The trusted registration grant is stored in `coordination_permissions_json`; Pi/worker tokens are not stored here. |
 | `executions` | One authorization interval: Task/spec/state/fence, owner/Core, lease/deadline, Workspace/checkpoint, Workspace source/check references, input snapshot/Materials, and terminal reason. Only the unregistered compatibility path can retain this Execution across a Session restart. |
 | `execution_finish_intents` | One accepted finish per Execution, unique request ID, immutable payload/outcome, optional wait/replacement references, and acceptance/closure timestamps. Stored atomically with CLOSING and dynamic wait edges; exposed through Task detail. |
-| `task_relations` | Modern `spawned_from` provenance and `depends_on` prerequisite edges. Provenance does not imply a scheduler dependency. |
+| `task_relations` | Current `depends_on` prerequisite edges and retained historical `spawned_from` records; new proposals cannot create provenance edges. |
+| `task_cancellations`, `task_dependency_replacements` | CAS-protected unowned cancellation and exact prerequisite replacement audit; original legacy/modern edge bytes and reasons remain. |
+| `mission_submissions`, `mission_submission_audit` | Mission-owned preparation/pending/terminal receipts, immutable inputs, freeze epoch, retry lineage, cleanup intent and bounded late-result audit. |
 | `task_material_links` | A Material's input/response/handoff/experience role for a Task and receiving Task, separate from immutable producer provenance. |
 | `task_notifications` | Durable typed feedback queue with Mission/Task/Execution targeting and fallback delivery/handling metadata. |
 | `task_notification_receipts` | Per-Execution receipt: two concurrent Executions can handle the same notification independently. Delivery is not handling. |
-| `materials` | Immutable content and producer IDs, role/kind/evidence state, Mission ID, content hash/ref, version, supersedes pointer and provenance. Public reads also add `producer_task_id`/`producer_execution_id` aliases. |
-| `material_consumptions` | Explicit `(operation_id, material_id)` consumption with reader Task/Execution, action and optional action reference. Reading/searching alone does not create this row. |
+| `materials` | Immutable content and producer IDs, title/summary/media type, Mission, body/attachment identity and provenance. Historical role/kind/evidence columns remain internal; registered projection uses current terms. Public reads also add `producer_task_id`/`producer_execution_id` aliases. |
+| `material_consumptions` | Explicit `(operation_id, material_id)` use with exact version/hash, reader Task/E, action and impact. Reading/searching alone does not create this row. |
+| `material_attachments` | Immutable content-addressed attachment descriptors and durable bytes; source reuse validates Mission scope/hash. |
+| `material_relation_heads`, `material_relations`, `material_relation_events` | Per-old-Material CAS version, immutable original dispute/supersede details and append-only revocation history. Active flags select current relationships without erasing past authors or reasons. |
 | `check_results` | Request key/hash and Workspace source binding; status/verdict; separate process status/result class/retryability/diagnostic; applied Task state/version/time. A result is evidence, not universally Mission acceptance. |
 | `checker_preflights` | Checker/environment/project identity, health fingerprint, repeated-failure count and evidence. |
 | `operations`, `take_keys`, `task_creation_keys`, `wait_keys`, `wake_keys` | Replay and conflict protection. Operation replay normally compares the full stable operation/payload/envelope fingerprint. New finish receipts exclude volatile state/fence versions while retaining actor, Task, Execution, spec and payload identity. |
@@ -56,9 +60,81 @@ Durable state can outlive a Session, but runtime recovery still has to validate 
 
 The SQL below is the complete exported create-schema text, including checks, keys and indexes. It is schema text, not an export of a user database. The `tasks` interpolation is expanded. Constructors also migrate older databases as described above. Shared `operations` declarations intentionally appear in several owners because the services can share a SQLite connection.
 
+### Model budget gateway
+
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `17e2568c677e7c76930c1b1a716747f449533cf0033cee348bdc4595bdd68a23`.
+
+```sql
+CREATE TABLE IF NOT EXISTS responses_budget_policies (
+        mission_id TEXT PRIMARY KEY, policy_digest TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS responses_budget_attempts (
+        mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
+        cost INTEGER NOT NULL, settled INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL, reason TEXT, receipt BLOB,
+        started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
+        PRIMARY KEY (mission_id, bot_id, request_id)
+      );
+      CREATE INDEX IF NOT EXISTS responses_budget_scope
+        ON responses_budget_attempts (mission_id, bot_id, phase);
+```
+
+### Mission submission coordinator
+
+Source: [src/runtime/mission-submission.js](../../src/runtime/mission-submission.js); source SHA-256: `5894fbac687e7a325947858266300b6a327cd25d6adb6ad61d0dd88b1a8a5697`.
+
+```sql
+CREATE TABLE IF NOT EXISTS mission_final_check_policies (
+        mission_id TEXT PRIMARY KEY,
+        max_checks INTEGER NOT NULL CHECK(max_checks > 0),
+        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
+      );
+      CREATE TABLE IF NOT EXISTS mission_final_check_admissions (
+        mission_id TEXT NOT NULL,
+        submission_id TEXT NOT NULL,
+        admitted_at TEXT NOT NULL,
+        settled_at TEXT,
+        PRIMARY KEY (mission_id, submission_id)
+      );
+      CREATE INDEX IF NOT EXISTS mission_final_check_active
+        ON mission_final_check_admissions(mission_id) WHERE settled_at IS NULL;
+      CREATE TABLE IF NOT EXISTS mission_submissions (
+        mission_id TEXT NOT NULL,
+        submission_id TEXT NOT NULL,
+        request_fingerprint TEXT NOT NULL,
+        snapshot_fingerprint TEXT NOT NULL,
+        state TEXT NOT NULL,
+        document TEXT NOT NULL,
+        PRIMARY KEY (mission_id, submission_id)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS mission_submission_inflight
+        ON mission_submissions (mission_id) WHERE state IN ('preparing', 'pending');
+      CREATE TABLE IF NOT EXISTS mission_submission_audit (
+        mission_id TEXT NOT NULL, submission_id TEXT NOT NULL, event TEXT NOT NULL, observed_at TEXT NOT NULL, details_json TEXT
+      );
+```
+
+### Owner-local manual Mission review
+
+Source: [src/runtime/manual-mission-review.js](../../src/runtime/manual-mission-review.js); source SHA-256: `91bd77a9dcf425b1bd201c60924856944ad4e69baf99c40dab4e2b039c120d58`.
+
+```sql
+CREATE TABLE IF NOT EXISTS mission_manual_reviews (
+    mission_id TEXT NOT NULL,
+    submission_id TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    document TEXT NOT NULL,
+    PRIMARY KEY (mission_id, submission_id, request_id)
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS mission_manual_one_timely_decision
+  ON mission_manual_reviews (mission_id, submission_id)
+  WHERE json_extract(document, '$.timely') = 1;
+```
+
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `506ac449b886a29af5f829b20db2eb7826135d2975ad4d71ff92e1e252190822`.
+Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `7818911a2378f1830ad37af602595f85462f024a91f6d694a6969589e6770598`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -76,7 +152,7 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `d850875eefec08ce1fa20ec4df71c2f3ac3acc908954d9e23ce0b462e9b3c436`.
+Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `369543a78166e16b954674a9ea992eeb8baceebba5f74e17f8bb364e774589ea`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -90,6 +166,7 @@ CREATE TABLE IF NOT EXISTS missions (
   mission_id TEXT PRIMARY KEY,
   goal TEXT NOT NULL,
   acceptance_conditions_json TEXT NOT NULL DEFAULT '{}',
+  merge_required_check_json TEXT,
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -130,6 +207,27 @@ CREATE INDEX IF NOT EXISTS task_relations_task
 
 CREATE INDEX IF NOT EXISTS task_relations_related
   ON task_relations(related_task_id, relation_kind, created_at);
+
+CREATE TABLE IF NOT EXISTS task_dependency_replacements (
+  operation_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  original_relation_json TEXT NOT NULL,
+  replacement_relation_id TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  execution_id TEXT REFERENCES executions(execution_id),
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_cancellations (
+  task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+  operation_id TEXT NOT NULL UNIQUE,
+  replacement_task_id TEXT REFERENCES tasks(task_id),
+  actor_ref TEXT NOT NULL,
+  execution_id TEXT REFERENCES executions(execution_id),
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 
 -- Notifications are durable, keyed lifecycle facts rather than a general
 -- Agent-to-Agent chat channel.  A delivery key makes retries idempotent while
@@ -312,9 +410,13 @@ CREATE TABLE IF NOT EXISTS bots (
   state_version INTEGER NOT NULL DEFAULT 0,
   selection_deadline TEXT NOT NULL,
   hard_deadline TEXT NOT NULL,
+  coordination_permissions_json TEXT NOT NULL DEFAULT '[]',
   resource_key TEXT NOT NULL UNIQUE,
   provider TEXT,
   sandbox_id TEXT,
+  sandbox_create_state TEXT NOT NULL DEFAULT 'NOT_DISPATCHED',
+  sandbox_timeout_seconds INTEGER,
+  sandbox_expires_at TEXT,
   exit_request_id TEXT UNIQUE,
   exit_reason TEXT,
   stop_terminal_state TEXT,
@@ -492,7 +594,7 @@ CREATE TABLE IF NOT EXISTS wake_keys (
 
 ### Context database
 
-Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `f7af6355a0313194bb5b318fc15d8259b76555d0f72ff350bf85612c0dca923a`.
+Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `5e0a1a4fc2fed95cfaf765a218c4dcc402f391be18899105145405e269b93bd1`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -522,11 +624,24 @@ CREATE TABLE IF NOT EXISTS materials (
   provenance_json TEXT NOT NULL,
   supersedes TEXT REFERENCES materials(material_id),
   evidence_json TEXT NOT NULL DEFAULT '[]',
+  title TEXT,
+  summary TEXT,
+  media_type TEXT,
   created_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS materials_kind_scope ON materials(kind, scope);
 CREATE INDEX IF NOT EXISTS materials_source ON materials(source_task, source_execution);
+CREATE INDEX IF NOT EXISTS materials_mission_scan ON materials(mission_id);
+
+CREATE TABLE IF NOT EXISTS material_attachments (
+  material_id TEXT NOT NULL REFERENCES materials(material_id),
+  name TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  bytes BLOB NOT NULL,
+  PRIMARY KEY (material_id, name)
+);
 
 CREATE TABLE IF NOT EXISTS material_relations (
   relation_id TEXT PRIMARY KEY,
@@ -535,6 +650,7 @@ CREATE TABLE IF NOT EXISTS material_relations (
   relation_kind TEXT NOT NULL CHECK (relation_kind IN ('dispute', 'supersede')),
   active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
   reason TEXT,
+  claim TEXT,
   actor_ref TEXT NOT NULL,
   source_task TEXT,
   source_execution TEXT,
@@ -545,6 +661,31 @@ CREATE TABLE IF NOT EXISTS material_relations (
 
 CREATE INDEX IF NOT EXISTS material_relations_active
   ON material_relations(material_id, relation_kind, active, created_at);
+CREATE INDEX IF NOT EXISTS material_relations_outgoing_scan
+  ON material_relations(material_id, relation_kind, active);
+CREATE INDEX IF NOT EXISTS material_relations_incoming_scan
+  ON material_relations(replacement_material_id, relation_kind, active);
+
+-- Relation revision belongs to the old Material, including after revocation.
+CREATE TABLE IF NOT EXISTS material_relation_heads (
+  material_id TEXT PRIMARY KEY REFERENCES materials(material_id),
+  version INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS material_relation_events (
+  event_id TEXT PRIMARY KEY,
+  relation_id TEXT NOT NULL REFERENCES material_relations(relation_id),
+  material_id TEXT NOT NULL REFERENCES materials(material_id),
+  action TEXT NOT NULL CHECK (action IN ('created', 'revoked')),
+  operation_id TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  source_task TEXT,
+  source_execution TEXT,
+  reason TEXT NOT NULL,
+  relation_version INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS material_relation_events_material
+  ON material_relation_events(material_id, relation_version, created_at);
 
 CREATE TABLE IF NOT EXISTS material_consumptions (
   operation_id TEXT NOT NULL,
@@ -553,6 +694,9 @@ CREATE TABLE IF NOT EXISTS material_consumptions (
   reader_execution TEXT NOT NULL,
   action TEXT NOT NULL CHECK (action IN ('route', 'task', 'workspace', 'integration')),
   action_ref TEXT,
+  material_version INTEGER,
+  content_hash TEXT,
+  impact TEXT,
   created_at TEXT NOT NULL,
   PRIMARY KEY (operation_id, material_id)
 );
@@ -561,11 +705,13 @@ CREATE INDEX IF NOT EXISTS material_consumptions_reader
   ON material_consumptions(reader_task, reader_execution, action);
 CREATE INDEX IF NOT EXISTS material_consumptions_material
   ON material_consumptions(material_id, action);
+CREATE INDEX IF NOT EXISTS material_consumptions_material_scan
+  ON material_consumptions(material_id);
 ```
 
 ### Judge database
 
-Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `7ef05fdf3f9c4c2ff5618a433a911514723055f7c4f08ad80f94078b290218b6`.
+Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `e64a4f2af8af880c6c31baace65dc1716a038276d6bbe257ba8157ee42288933`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -582,6 +728,26 @@ CREATE TABLE IF NOT EXISTS judge_request_aliases (
   check_result_id TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS judge_mission_check_policies (
+  mission_id TEXT PRIMARY KEY,
+  max_requests INTEGER NOT NULL CHECK(max_requests > 0),
+  max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_requests),
+  process_timeout_ms INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS judge_mission_check_admissions (
+  mission_id TEXT NOT NULL,
+  check_result_id TEXT NOT NULL,
+  admitted_at TEXT NOT NULL,
+  is_retry INTEGER NOT NULL DEFAULT 0,
+  preflight_starts INTEGER NOT NULL DEFAULT 0,
+  source_starts INTEGER NOT NULL DEFAULT 0,
+  settled_at TEXT,
+  PRIMARY KEY (mission_id, check_result_id)
+);
+CREATE INDEX IF NOT EXISTS judge_mission_check_active
+  ON judge_mission_check_admissions(mission_id) WHERE settled_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS check_results (
   check_result_id TEXT PRIMARY KEY,
@@ -687,12 +853,70 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `bb957b448e5f72fc768593b578c9f696414d1ff55155b03a4766bf6e8f4e9d58`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `29abf3ee626f7bc7e8892cc248609ae286d7682f3cd91466db254d5eb028e6ba`.
 
 #### executions_active_core
 
 ```sql
 CREATE INDEX executions_active_core ON executions(core_id, state) WHERE core_id IS NOT NULL AND state IN ('CREATED', 'RUNNING', 'CLOSING');
+```
+
+#### mission_final_check_active
+
+```sql
+CREATE INDEX mission_final_check_active
+        ON mission_final_check_admissions(mission_id) WHERE settled_at IS NULL;
+```
+
+#### mission_final_check_admissions
+
+```sql
+CREATE TABLE mission_final_check_admissions (
+        mission_id TEXT NOT NULL,
+        submission_id TEXT NOT NULL,
+        admitted_at TEXT NOT NULL,
+        settled_at TEXT,
+        PRIMARY KEY (mission_id, submission_id)
+      );
+```
+
+#### mission_final_check_policies
+
+```sql
+CREATE TABLE mission_final_check_policies (
+        mission_id TEXT PRIMARY KEY,
+        max_checks INTEGER NOT NULL CHECK(max_checks > 0),
+        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
+      );
+```
+
+#### mission_submission_audit
+
+```sql
+CREATE TABLE mission_submission_audit (
+        mission_id TEXT NOT NULL, submission_id TEXT NOT NULL, event TEXT NOT NULL, observed_at TEXT NOT NULL, details_json TEXT
+      );
+```
+
+#### mission_submission_inflight
+
+```sql
+CREATE UNIQUE INDEX mission_submission_inflight
+        ON mission_submissions (mission_id) WHERE state IN ('preparing', 'pending');
+```
+
+#### mission_submissions
+
+```sql
+CREATE TABLE mission_submissions (
+        mission_id TEXT NOT NULL,
+        submission_id TEXT NOT NULL,
+        request_fingerprint TEXT NOT NULL,
+        snapshot_fingerprint TEXT NOT NULL,
+        state TEXT NOT NULL,
+        document TEXT NOT NULL,
+        PRIMARY KEY (mission_id, submission_id)
+      );
 ```
 
 #### tasks_active_responsibility

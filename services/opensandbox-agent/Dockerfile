@@ -1,5 +1,12 @@
 # syntax=docker/dockerfile:1.7
 
+FROM node:22.19.0-bookworm-slim AS filesystem-policy-build
+RUN apt-get update \
+  && apt-get install --no-install-recommends --yes gcc libc6-dev linux-libc-dev \
+  && rm -rf /var/lib/apt/lists/*
+COPY scripts/bot-filesystem-policy.c /tmp/bot-filesystem-policy.c
+RUN cc -O2 -Wall -Wextra -Werror -o /bot-filesystem-policy /tmp/bot-filesystem-policy.c
+
 FROM node:22.19.0-bookworm-slim
 
 ARG PI_VERSION=1.3.0
@@ -14,6 +21,7 @@ WORKDIR /opt/swarmenv
 COPY package.json package-lock.json ./
 RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund
 
+COPY --from=filesystem-policy-build /bot-filesystem-policy /opt/swarmenv/bot-filesystem-policy
 COPY scripts/opensandbox-agent-worker.mjs /opt/swarmenv/agent-worker.mjs
 COPY scripts/sandbox-project.mjs /opt/swarmenv/sandbox-project.mjs
 COPY scripts/project-install.mjs scripts/project-processes.mjs /opt/swarmenv/

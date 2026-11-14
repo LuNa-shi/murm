@@ -14,7 +14,7 @@ Read the Mission and relevant public Tasks, Materials, and Workspace files withi
 ````
 ## Registered Bot discovery: complete synthetic example
 
-Body SHA-256: `167a132c6206fdb83c6506fe901a776fabf9a8a92bc761598cab047b31f7dcd8`
+Body SHA-256: `87c47b563023cb846f3d521d1810e2d8f6d2518acc36925177ee2d8f6793429f`
 
 ````text
 你已在全新的 sandbox/Pi Session 启动，尚无 Execution。通过 swarm CLI 读取相关公开工作，在预算内自主选择已有 Task，或先提出缺失的局部 Task 再 take。下方只是当前可领取任务的一页，不代表全部历史；空页不表示 Mission 完成。
@@ -36,14 +36,15 @@ Body SHA-256: `167a132c6206fdb83c6506fe901a776fabf9a8a92bc761598cab047b31f7dcd8`
     "sandbox_id": "<SANDBOX_ID>",
     "pi_session_id": "<PI_SESSION_ID>",
     "state": "UNBOUND",
-    "execution_id": null
+    "execution_id": null,
+    "coordination_permissions": []
   },
   "workspace_preview": {
     "workspace_id": "<WORKSPACE_ID>",
     "resolved_main_revision": "0.1",
     "project_path": "/workspace/project",
     "project_state": "empty, protected; populated during take",
-    "note": "This preview is not the actual take input. Take returns the pinned initial revision."
+    "note": "This preview is not the actual take input. Take returns the pinned initial revision. If reread_required is true, reread its public input before continuing."
   },
   "budget": {
     "run_deadline": "2026-11-14T00:30:00.000Z",
@@ -76,11 +77,11 @@ Body SHA-256: `167a132c6206fdb83c6506fe901a776fabf9a8a92bc761598cab047b31f7dcd8`
       "name": "material",
       "provider_service": "context",
       "provider_version": "builtin-1",
-      "manifest_hash": "f773f88432bfed97efcae390c55a002e54a33596857cf525047d76dd47d349e5",
+      "manifest_hash": "453e81ad42ab6062e37da4bbe99db8d3b4ad29e60053a85b1c60880581e4a8f4",
       "help": "swarm material --help",
       "manifest_help": "swarm service view context --json",
       "documentation": [],
-      "permission": "Mission reads/search; publish and consume require current E"
+      "permission": "Mission reads/search; publication, use and correction require current E; explicitly granted coordination can only revoke a matching supersession"
     },
     {
       "name": "judge",
@@ -96,37 +97,37 @@ Body SHA-256: `167a132c6206fdb83c6506fe901a776fabf9a8a92bc761598cab047b31f7dcd8`
       "name": "mission",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "712e7e0784cc3ca7a7198aa6378a192da37cad9a5a356a52e41999a6b96d58a4",
+      "manifest_hash": "68fdfc90b1ac987bafde92f69e16a23b15529699a8d05d7ab108cb0c5920b2af",
       "help": "swarm mission --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
-      "permission": "read; submission temporarily unavailable (SERVICE_NOT_READY)"
+      "permission": "read public acceptance state; submit fixed main and explicit Materials only with a Mission coordination grant"
     },
     {
       "name": "task",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "712e7e0784cc3ca7a7198aa6378a192da37cad9a5a356a52e41999a6b96d58a4",
+      "manifest_hash": "68fdfc90b1ac987bafde92f69e16a23b15529699a8d05d7ab108cb0c5920b2af",
       "help": "swarm task --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
-      "permission": "Mission reads, propose and take; finish and feedback require current E"
+      "permission": "Mission reads, propose and take; finish and feedback require current E; unowned cancel and dependency repair require explicit coordination grants"
     },
     {
       "name": "workspace",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "712e7e0784cc3ca7a7198aa6378a192da37cad9a5a356a52e41999a6b96d58a4",
+      "manifest_hash": "68fdfc90b1ac987bafde92f69e16a23b15529699a8d05d7ab108cb0c5920b2af",
       "help": "swarm workspace --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
-      "permission": "public view/history/files/read/search before take; status/diff/save/apply require current E; merge integration pending"
+      "permission": "public view/history/files/read/search and revision-pair diff before take; status/current-E diff/save/apply and checked merge require current E"
     },
     {
       "name": "bot",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "712e7e0784cc3ca7a7198aa6378a192da37cad9a5a356a52e41999a6b96d58a4",
+      "manifest_hash": "68fdfc90b1ac987bafde92f69e16a23b15529699a8d05d7ab108cb0c5920b2af",
       "help": "swarm bot --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -139,14 +140,14 @@ Body SHA-256: `167a132c6206fdb83c6506fe901a776fabf9a8a92bc761598cab047b31f7dcd8`
       "version": "draft.2",
       "path": "/opt/swarmenv/src/agent/bot-contract/plan-task.md",
       "description": "在有限选工预算内发现、提出或选择 Task，处理竞争、阻塞和正常退出。",
-      "sha256": "bc1435dadd4bbf1643e147f56d58bd24d14eb346081f55ea392f18aeb5764556"
+      "sha256": "14ffb93c3f51b8f6d0a2ac0622ac4749a889be1c11dd5a5894e28325094a62b3"
     },
     {
       "name": "use-material",
       "version": "draft.2",
       "path": "/opt/swarmenv/src/agent/bot-contract/use-material.md",
       "description": "发布、读取、复用或纠正研究内容，记录真实来源，并在整份 supersede 时保留有效知识。",
-      "sha256": "85bf5f19bd85356ffe54dbf71711507fc0846d4fb79fafb820a145a00e2e4148"
+      "sha256": "386905226c0115404fc52af91350ab80ebf9399ee9df3cdc627f2d43c8cf8f24"
     },
     {
       "name": "use-workspace",
@@ -209,10 +210,11 @@ Body SHA-256: `11354c574ae63980d2af9af6aa7730b36a000e71daa5e404789a3a856448295d`
 ````
 ## Soft closeout continuation
 
-Body SHA-256: `be2c918881f23b78f3a134503920904bbaac676a85389f401c00cdc3a99e9e6b`
+Body SHA-256: `e35cff8aebd38330965d1e738767dd0d37296979d47e63b98df9f993402b92aa`
 
 ````text
-当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；仅保存已有有用文件、发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要提出新 Task、apply 新输入、发起新 Judge 检查或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。
+E <EXECUTION_ID> 接近 Execution 时间上限，收尾额度为 30000 ms。停止扩展，保存已有文件和研究内容，再按真实结果 finish。
+当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；仅保存已有有用文件、发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要提出新 Task、apply 新输入、发起新 Judge 检查、Mission 验收或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。
 ````
 ## Registered Bot compaction follow-up
 
@@ -225,10 +227,10 @@ Body SHA-256: `2a7382aa7bba76a8c50e0bbeeae541bf2d759d3f90adaec26242153fb586a0c5`
 ````
 ## Registered Bot notification: handoff_warning
 
-Body SHA-256: `9886baa46dda10a85d6c6046df298dfc3ed8245b673fbe646aac21c920a28f27`
+Body SHA-256: `2e150b215757a25d32d47037f49049ac311c66ec0566fa36454629a0f6824cc1`
 
 ````text
-Execution 即将到达硬截止。停止扩展责任，在剩余时间内 save 有用文件、publish 有用 Material，然后调用 swarm task finish 给出真实 outcome；没有有用新成果也可如实结束。finish 接受后或硬停止后不能补交。通知 ID: <NOTIFICATION_ID>
+E <EXECUTION_ID> 接近 Execution 时间上限，收尾额度为 30000 ms。停止扩展，保存已有文件和研究内容，再按真实结果 finish。 通知 ID: <NOTIFICATION_ID>
 ````
 ## Registered Bot notification: material_available
 

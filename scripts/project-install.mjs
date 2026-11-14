@@ -189,7 +189,7 @@ export class ProjectInstaller {
     }
     if (this.held) throw busy('Another install is awaiting durable acknowledgement');
     const original = await this.snapshot(input);
-    if (original.content_hash !== input.expected_content_hash) throw busy('Project changed after apply capture; save before applying again');
+    if (original.content_hash !== input.expected_content_hash) throw Object.assign(busy('Project changed after apply capture; save before applying again'), { applyBlocker: 'dirty' });
     const changed = changes(original.manifest, target.manifest);
     const replacedDirectories = [];
     const modes = Object.create(null);
@@ -212,7 +212,7 @@ export class ProjectInstaller {
         child.stdin.end(inspectionInput);
       });
       if (JSON.parse(stdout).safe !== true) throw new Error('Project process inspection was inconclusive');
-    } catch (error) { throw busy('An open project file, mapped file or cwd prevents safe installation'); }
+    } catch (error) { throw Object.assign(busy('An open project file, mapped file or cwd prevents safe installation'), { applyBlocker: 'active_writer' }); }
     this.assertOpen(input);
     const directories = await this.#directories();
     // Large immutable bytes are written once. Phase transitions only replace a

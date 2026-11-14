@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `b4f866d89fd71919212282a71eddc60e517506569ccfde03cc301425af82dbd5`
+Body SHA-256: `cf55b1c6958359df1b90b3a57d823f9309bd78fd13a354fae217ad2a4f6f4399`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -63,12 +63,14 @@ Body SHA-256: `b4f866d89fd71919212282a71eddc60e517506569ccfde03cc301425af82dbd5`
   - swarmenv_catalog_list_services: List every available SwarmEnv Service and its tool count. (logical operation catalog.list_services; read-only; inputs required=[none] fields=[none]; List every available SwarmEnv Service and its tool count.)
   - swarmenv_catalog_list_tools: List all named Service tools or only the tools owned by one Service. (logical operation catalog.list_tools; read-only; inputs required=[none] fields=[service]; List all named Service tools or only the tools owned by one Service.)
 - Context Service — Versioned shared Materials and provenance.
-  - swarmenv_context_consume: Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action. (logical operation context.consume_materials; writes state; inputs required=[material_ids,action] fields=[action,action_ref,material_ids]; Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.)
-  - swarmenv_context_get_material: Read one immutable Material and its producer Task/Execution provenance. (logical operation context.context_get_material; read-only; inputs required=[material_id] fields=[material_id]; Read one immutable Material and its producer Task/Execution provenance.)
-  - swarmenv_context_publish: Publish a versioned shared Material for other Executions. (logical operation context.publish_material; writes state; inputs required=[kind,scope,content] fields=[content,evidence_state,kind,scope]; Publish a versioned shared Material for other Executions.)
-  - swarmenv_context_publish_material: Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance. (logical operation context.context_publish_material; writes state; inputs required=[role,content] fields=[content,evidence_state,kind,receiving_task_id,role,scope,summary,supersedes]; Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.)
-  - swarmenv_context_read: Read immutable shared Materials published by other Executions. (logical operation context.read_materials; read-only; inputs required=[none] fields=[none]; Read immutable shared Materials published by other Executions.)
-  - swarmenv_context_search_materials: Search shared immutable Materials by summary, role, Task, producer, or Mission. (logical operation context.context_search_materials; read-only; inputs required=[none] fields=[limit,mission_id,query,role,task_id]; Search shared immutable Materials by summary, role, Task, producer, or Mission.)
+  - swarmenv_context_consume: Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action. (logical operation context.consume_materials; writes state; inputs required=[material_ids,action,impact] fields=[action,action_ref,impact,material_ids]; Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.)
+  - swarmenv_context_get_material: Read one immutable Material and its producer Task/Execution provenance. (logical operation context.context_get_material; read-only; inputs required=[material_id] fields=[attachment_name,material_id,usage_cursor,usage_limit]; Read one immutable Material and its producer Task/Execution provenance.)
+  - swarmenv_context_publish_material: Publish immutable research content and optional attachments with current Task/Execution provenance. Explain evidence in the body where applicable. (logical operation context.context_publish_material; writes state; inputs required=[content] fields=[attachments,content,expected_version,media_type,receiving_task_id,summary,supersede_reason,supersedes,title,used_material_ids]; Publish immutable research content and optional attachments with current Task/Execution provenance. Explain evidence in the body where applicable.)
+  - swarmenv_context_read: List one page of shared Material summaries. Use an exact Material ID to read its complete content. (logical operation context.read_materials; read-only; inputs required=[none] fields=[cursor,include_history,limit,material_id,mission_id,source_execution,source_task,task_id]; List one page of shared Material summaries. Use an exact Material ID to read its complete content.)
+  - swarmenv_context_search_materials: Search immutable Material summaries by keyword, Task, producer, or Mission. Follow continuation cursors and read exact IDs for full content. (logical operation context.context_search_materials; read-only; inputs required=[none] fields=[cursor,include_history,limit,mission_id,query,related_material_id,relation_kind,source_execution,source_task,task_id]; Search immutable Material summaries by keyword, Task, producer, or Mission. Follow continuation cursors and read exact IDs for full content.)
+  - swarmenv_material_dispute: Record a specific claim or section and the reason it needs correction; keep the Material visible. (logical operation context.material_dispute; writes state; inputs required=[material_id,claim,reason] fields=[claim,material_id,reason]; Record a specific claim or section and the reason it needs correction; keep the Material visible.)
+  - swarmenv_material_supersede: Replace an entire Material with a complete successor using its observed relation_version. (logical operation context.material_supersede; writes state; inputs required=[material_id,replacement_material_id,expected_version,reason] fields=[expected_version,material_id,reason,replacement_material_id]; Replace an entire Material with a complete successor using its observed relation_version.)
+  - swarmenv_material_unsupersede: Revoke only the matching successor using the observed relation_version and a reason; preserve all history. (logical operation context.material_unsupersede; writes state; inputs required=[material_id,replacement_material_id,expected_version,reason] fields=[expected_version,material_id,reason,replacement_material_id]; Revoke only the matching successor using the observed relation_version and a reason; preserve all history.)
 - Judge Service — Workspace source checking and structured CheckResults.
   - swarmenv_judge_get_check_result: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback. (logical operation judge.get_check_result; read-only; inputs required=[none] fields=[check_result_id,request_key]; Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.)
   - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[revision,path] fields=[path,request_key,revision,workspace_id]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
@@ -84,24 +86,27 @@ Body SHA-256: `b4f866d89fd71919212282a71eddc60e517506569ccfde03cc301425af82dbd5`
   - swarmenv_execution_progress: Save a bounded Progress Material and either continue the current Execution or hand it off. (logical operation task.execution_progress; writes state; inputs required=[kind,progress] fields=[checkpoint,files,kind,progress,reason,summary]; Save a bounded Progress Material and either continue the current Execution or hand it off.)
   - swarmenv_mission_get: Read the current Mission goal and acceptance conditions. (logical operation task.mission_get; read-only; inputs required=[mission_id] fields=[mission_id]; Read the current Mission goal and acceptance conditions.)
   - swarmenv_mission_submission_get: Read the durable Mission submission state and its immutable acceptance snapshot. (logical operation task.mission_submission_get; read-only; inputs required=[mission_id] fields=[mission_id,submission_id]; Read the durable Mission submission state and its immutable acceptance snapshot.)
-  - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[mission_id,workspace_id,main_revision,actor_ref] fields=[acceptance,actor_ref,checker,environment,main_revision,material_ids,mission_id,request_id,workspace_id]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
-  - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,spawned_from,summary,task_instructions,task_type,timebox_ms,workspace]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.)
+  - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[material_ids] fields=[material_ids]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
+  - swarmenv_task_cancel: Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner. (logical operation task.task_cancel; writes state; inputs required=[task_id,expected_spec_version,expected_state_version,reason] fields=[expected_spec_version,expected_state_version,reason,replacement_task_id,task_id]; Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.)
+  - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,base_revision,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,summary,task_instructions,task_type,timebox_ms,workspace]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.)
+  - swarmenv_task_dependency_replace: Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge. (logical operation task.task_dependency_replace; writes state; inputs required=[task_id,from_task_id,to_task_id,expected_spec_version,expected_state_version,reason] fields=[expected_spec_version,expected_state_version,from_task_id,reason,task_id,to_task_id]; Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge.)
   - swarmenv_task_feedback: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state. (logical operation task.task_feedback; writes state; inputs required=[notification_id,decision,action] fields=[action,decision,details,notification_id]; Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.)
-  - swarmenv_task_finish: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for]; Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.)
+  - swarmenv_task_finish: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for,workspace_revision]; Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.)
   - swarmenv_task_link_material: Link an immutable Material to a Task with an input, response, handoff, or experience role. (logical operation task.task_link_material; writes state; inputs required=[task_id,material_id,role] fields=[material_id,receiving_task_id,role,task_id]; Link an immutable Material to a Task with an input, response, handoff, or experience role.)
   - swarmenv_task_list: Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[available_only,cursor,limit,mission_id,query,state,states]; Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.)
-  - swarmenv_task_status: Read the authoritative Mission, Task counts, eligible work, and observation timestamp. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read the authoritative Mission, Task counts, eligible work, and observation timestamp.)
-  - swarmenv_task_take: Take an existing Mission or ordinary Task using the caller identity and Core lane. (logical operation task.task_take; writes state; inputs required=[task_id] fields=[input_material_refs,take_key,task_id]; Take an existing Mission or ordinary Task using the caller identity and Core lane.)
-  - swarmenv_task_view: Read one Task, its two relations, state, current Execution, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read one Task, its two relations, state, current Execution, and linked Materials.)
+  - swarmenv_task_status: Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery.)
+  - swarmenv_task_take: Take an existing Task in this Mission using the caller Bot and Core. (logical operation task.task_take; writes state; inputs required=[task_id] fields=[input_material_refs,take_key,task_id]; Take an existing Task in this Mission using the caller Bot and Core.)
+  - swarmenv_task_view: Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.)
   - swarmenv_workspace_current_diff: Compare the current E tree with its last saved revision. (logical operation task.workspace_current_diff; read-only; inputs required=[none] fields=[none]; Compare the current E tree with its last saved revision.)
   - swarmenv_workspace_merge: Conditionally merge one complete public Workspace revision into main after conflict and check validation. (logical operation task.workspace_merge; writes state; inputs required=[from] fields=[from]; Conditionally merge one complete public Workspace revision into main after conflict and check validation.)
   - swarmenv_workspace_public_apply: Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents. (logical operation task.workspace_public_apply; writes state; inputs required=[from] fields=[from]; Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.)
-  - swarmenv_workspace_public_files: List files in the immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_files; read-only; inputs required=[workspace_id] fields=[path,revision,workspace_id]; List files in the immutable Mission Workspace revision before a Task is taken.)
-  - swarmenv_workspace_public_history: Read main history by default or all saved revisions, with provenance and bounded snapshot pagination. (logical operation task.workspace_public_history; read-only; inputs required=[workspace_id] fields=[all,cursor,limit,path,source_execution,source_task,workspace_id]; Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.)
+  - swarmenv_workspace_public_diff: Compare any two published Mission Workspace revisions, including unmerged saves. Pages pin both revisions. (logical operation task.workspace_public_diff; read-only; inputs required=[workspace_id,from,to] fields=[cursor,from,limit,path,to,workspace_id]; Compare any two published Mission Workspace revisions, including unmerged saves. Pages pin both revisions.)
+  - swarmenv_workspace_public_files: List files in the immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_files; read-only; inputs required=[workspace_id] fields=[cursor,limit,path,revision,workspace_id]; List files in the immutable Mission Workspace revision before a Task is taken.)
+  - swarmenv_workspace_public_history: Read main history by default or all saved revisions, with provenance and bounded snapshot pagination. (logical operation task.workspace_public_history; read-only; inputs required=[workspace_id] fields=[all,cursor,limit,material_id,path,source_execution,source_task,workspace_id]; Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.)
   - swarmenv_workspace_public_read: Read one file from an immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_read; read-only; inputs required=[workspace_id,path] fields=[max_bytes,path,revision,workspace_id]; Read one file from an immutable Mission Workspace revision before a Task is taken.)
-  - swarmenv_workspace_public_search: Search text in an immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_search; read-only; inputs required=[workspace_id,query] fields=[max_results,path,query,revision,workspace_id]; Search text in an immutable Mission Workspace revision before a Task is taken.)
+  - swarmenv_workspace_public_search: Search text in an immutable Mission Workspace revision before a Task is taken. (logical operation task.workspace_public_search; read-only; inputs required=[workspace_id,query] fields=[cursor,max_results,path,query,revision,workspace_id]; Search text in an immutable Mission Workspace revision before a Task is taken.)
   - swarmenv_workspace_public_view: Read the public Mission Workspace and current main. (logical operation task.workspace_public_view; read-only; inputs required=[workspace_id] fields=[workspace_id]; Read the public Mission Workspace and current main.)
-  - swarmenv_workspace_save: Save a complete public Mission Workspace file tree as an immutable revision without advancing main. (logical operation task.workspace_save; writes state; inputs required=[none] fields=[resolved]; Save a complete public Mission Workspace file tree as an immutable revision without advancing main.)
+  - swarmenv_workspace_save: Save a complete public Mission Workspace file tree as an immutable revision without advancing main. (logical operation task.workspace_save; writes state; inputs required=[none] fields=[material_ids,resolved]; Save a complete public Mission Workspace file tree as an immutable revision without advancing main.)
   - swarmenv_workspace_status: Inspect the current E tree, initial revision and saved lineage. (logical operation task.workspace_status; read-only; inputs required=[none] fields=[none]; Inspect the current E tree, initial revision and saved lineage.)
 ````
 
@@ -178,59 +183,87 @@ Body SHA-256: `a60b9a5399c8a1bfc9dc428e94279af449e9f886c61897d8b79d1c31d3f389a1`
   ]
 }
 ````
-## swarmenv_context_publish
-
-Body SHA-256: `222bed2233225e70b802fb264ca6cc33e50e7619b6474e9c0790839a86e6d36a`
-
-````text
-{
-  "description": "Publish a versioned shared Material for other Executions.",
-  "promptSnippet": "Context Service: Publish a versioned shared Material for other Executions.",
-  "promptGuidelines": [
-    "Publish a versioned shared Material for other Executions.",
-    "Help: service://context/publish_material"
-  ]
-}
-````
 ## swarmenv_context_publish_material
 
-Body SHA-256: `155faf46bb68866b3a6f048df2e0ab2922b1b3c193b6ff8cdcd7fb677e02de54`
+Body SHA-256: `bbd61c6cffe20375ffeffd2723ef71b4d05b6bd1f64ca531721fc838497d4611`
 
 ````text
 {
-  "description": "Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.",
-  "promptSnippet": "Context Service: Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.",
+  "description": "Publish immutable research content and optional attachments with current Task/Execution provenance. Explain evidence in the body where applicable.",
+  "promptSnippet": "Context Service: Publish immutable research content and optional attachments with current Task/Execution provenance. Explain evidence in the body where applicable.",
   "promptGuidelines": [
-    "Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.",
+    "Publish immutable research content and optional attachments with current Task/Execution provenance. Explain evidence in the body where applicable.",
     "Help: service://context/context_publish_material"
   ]
 }
 ````
 ## swarmenv_context_read
 
-Body SHA-256: `ac3c878472e8cd9e7deb7adae85160cfac52132718ba91456f61a7396e440041`
+Body SHA-256: `9fa48ad699211358648aa5f5f8aa5f20f76b8e0216c9574911761af49b99bffb`
 
 ````text
 {
-  "description": "Read immutable shared Materials published by other Executions.",
-  "promptSnippet": "Context Service: Read immutable shared Materials published by other Executions.",
+  "description": "List one page of shared Material summaries. Use an exact Material ID to read its complete content.",
+  "promptSnippet": "Context Service: List one page of shared Material summaries. Use an exact Material ID to read its complete content.",
   "promptGuidelines": [
-    "Read immutable shared Materials published by other Executions.",
+    "List one page of shared Material summaries. Use an exact Material ID to read its complete content.",
     "Help: service://context/read_materials"
   ]
 }
 ````
 ## swarmenv_context_search_materials
 
-Body SHA-256: `c689baf674b2befad99603b156962f2bab77e0700e6933b16232e716e7b4463d`
+Body SHA-256: `b76614e5dd2e7fdbce37c24b83f56e4a98ab8996da13329fe28893b09c7556a6`
 
 ````text
 {
-  "description": "Search shared immutable Materials by summary, role, Task, producer, or Mission.",
-  "promptSnippet": "Context Service: Search shared immutable Materials by summary, role, Task, producer, or Mission.",
+  "description": "Search immutable Material summaries by keyword, Task, producer, or Mission. Follow continuation cursors and read exact IDs for full content.",
+  "promptSnippet": "Context Service: Search immutable Material summaries by keyword, Task, producer, or Mission. Follow continuation cursors and read exact IDs for full content.",
   "promptGuidelines": [
-    "Search shared immutable Materials by summary, role, Task, producer, or Mission.",
+    "Search immutable Material summaries by keyword, Task, producer, or Mission. Follow continuation cursors and read exact IDs for full content.",
     "Help: service://context/context_search_materials"
+  ]
+}
+````
+## swarmenv_material_dispute
+
+Body SHA-256: `9aa03567a86468c1815bf8149a2f65b6638e8546bdf981876cec69d105bfdcfa`
+
+````text
+{
+  "description": "Record a specific claim or section and the reason it needs correction; keep the Material visible.",
+  "promptSnippet": "Context Service: Record a specific claim or section and the reason it needs correction; keep the Material visible.",
+  "promptGuidelines": [
+    "Record a specific claim or section and the reason it needs correction; keep the Material visible.",
+    "Help: service://context/material_dispute"
+  ]
+}
+````
+## swarmenv_material_supersede
+
+Body SHA-256: `cd69e814fee2a0428234ae95e0589515c6df53f5074c373f6f882418b56b2528`
+
+````text
+{
+  "description": "Replace an entire Material with a complete successor using its observed relation_version.",
+  "promptSnippet": "Context Service: Replace an entire Material with a complete successor using its observed relation_version.",
+  "promptGuidelines": [
+    "Replace an entire Material with a complete successor using its observed relation_version.",
+    "Help: service://context/material_supersede"
+  ]
+}
+````
+## swarmenv_material_unsupersede
+
+Body SHA-256: `779d3a060125e503b042369617def0f2a55bf628188bdcf8c3449f77be950ca2`
+
+````text
+{
+  "description": "Revoke only the matching successor using the observed relation_version and a reason; preserve all history.",
+  "promptSnippet": "Context Service: Revoke only the matching successor using the observed relation_version and a reason; preserve all history.",
+  "promptGuidelines": [
+    "Revoke only the matching successor using the observed relation_version and a reason; preserve all history.",
+    "Help: service://context/material_unsupersede"
   ]
 }
 ````
@@ -458,17 +491,45 @@ Body SHA-256: `a6567ffa44babeb019a266d40a3e2d40a44bce65133544959abd08bb2f979b74`
   ]
 }
 ````
-## swarmenv_task_create
+## swarmenv_task_cancel
 
-Body SHA-256: `7251cda8d9955ccb09385e07266cb841de7065a130b1e9db600c26cb1168ad1e`
+Body SHA-256: `9d5abd1ef831e37f498b403753f8d2a28952ade88fd0ed619041b0257f3da310`
 
 ````text
 {
-  "description": "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.",
-  "promptSnippet": "Task Service: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.",
+  "description": "Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.",
+  "promptSnippet": "Task Service: Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.",
   "promptGuidelines": [
-    "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.",
+    "Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.",
+    "Help: service://task/task_cancel"
+  ]
+}
+````
+## swarmenv_task_create
+
+Body SHA-256: `fef726617fae99009ee96f6e5c6cd8d98567db434256a07ba9fcf4dd468adb31`
+
+````text
+{
+  "description": "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.",
+  "promptSnippet": "Task Service: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.",
+  "promptGuidelines": [
+    "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.",
     "Help: service://task/task_create"
+  ]
+}
+````
+## swarmenv_task_dependency_replace
+
+Body SHA-256: `91e6d16ab623cdff2f2565f6bb8c28bfd0badff6059b5799824be9e0270d57ca`
+
+````text
+{
+  "description": "Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge.",
+  "promptSnippet": "Task Service: Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge.",
+  "promptGuidelines": [
+    "Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge.",
+    "Help: service://task/task_dependency_replace"
   ]
 }
 ````
@@ -530,42 +591,42 @@ Body SHA-256: `d66eefc93b667ef4b5978afa69e0bda852bc11369e422a7d6e6726ea26316b6e`
 ````
 ## swarmenv_task_status
 
-Body SHA-256: `ee7c7e2188a5c624ebb42e3c32df9477db51b82afcaae176ce61a29db11fa9cf`
+Body SHA-256: `65b5436d80ff6eda9dfc883288f0100f7418f6ef650abf04967c316adec9906d`
 
 ````text
 {
-  "description": "Read the authoritative Mission, Task counts, eligible work, and observation timestamp.",
-  "promptSnippet": "Task Service: Read the authoritative Mission, Task counts, eligible work, and observation timestamp.",
+  "description": "Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery.",
+  "promptSnippet": "Task Service: Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery.",
   "promptGuidelines": [
-    "Read the authoritative Mission, Task counts, eligible work, and observation timestamp.",
+    "Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery.",
     "Help: service://task/task_status"
   ]
 }
 ````
 ## swarmenv_task_take
 
-Body SHA-256: `58d09d4116363a324a559899d17b29e37aeb79b71f05cfa2cb16c2114aabbb1c`
+Body SHA-256: `5c85eefabffe15eabce3eb65ea73b1c1a53b5bdca2e8f98af09029e529219769`
 
 ````text
 {
-  "description": "Take an existing Mission or ordinary Task using the caller identity and Core lane.",
-  "promptSnippet": "Task Service: Take an existing Mission or ordinary Task using the caller identity and Core lane.",
+  "description": "Take an existing Task in this Mission using the caller Bot and Core.",
+  "promptSnippet": "Task Service: Take an existing Task in this Mission using the caller Bot and Core.",
   "promptGuidelines": [
-    "Take an existing Mission or ordinary Task using the caller identity and Core lane.",
+    "Take an existing Task in this Mission using the caller Bot and Core.",
     "Help: service://task/task_take"
   ]
 }
 ````
 ## swarmenv_task_view
 
-Body SHA-256: `fffae822ee01243ff0d4f1f9c5e0014f0c1610b58ef6bce8756b3658e78a0a7b`
+Body SHA-256: `3cad18d1931d6dbd664485eb045c2504b7915f13427fa85fe3fa3f3ee154dee1`
 
 ````text
 {
-  "description": "Read one Task, its two relations, state, current Execution, and linked Materials.",
-  "promptSnippet": "Task Service: Read one Task, its two relations, state, current Execution, and linked Materials.",
+  "description": "Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.",
+  "promptSnippet": "Task Service: Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.",
   "promptGuidelines": [
-    "Read one Task, its two relations, state, current Execution, and linked Materials.",
+    "Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.",
     "Help: service://task/task_view"
   ]
 }
@@ -609,6 +670,20 @@ Body SHA-256: `449b15adb7353f5835f2893f20546e784bbd313964f3e8bfffe6d162b56a83a2`
   "promptGuidelines": [
     "Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.",
     "Help: service://task/workspace_public_apply"
+  ]
+}
+````
+## swarmenv_workspace_public_diff
+
+Body SHA-256: `50ffc90c888cc12db751d8d153f653b75f0239c653ff0aa29d55c82609af1d93`
+
+````text
+{
+  "description": "Compare any two published Mission Workspace revisions, including unmerged saves. Pages pin both revisions.",
+  "promptSnippet": "Task Service: Compare any two published Mission Workspace revisions, including unmerged saves. Pages pin both revisions.",
+  "promptGuidelines": [
+    "Compare any two published Mission Workspace revisions, including unmerged saves. Pages pin both revisions.",
+    "Help: service://task/workspace_public_diff"
   ]
 }
 ````

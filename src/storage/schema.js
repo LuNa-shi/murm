@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS missions (
   mission_id TEXT PRIMARY KEY,
   goal TEXT NOT NULL,
   acceptance_conditions_json TEXT NOT NULL DEFAULT '{}',
+  merge_required_check_json TEXT,
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -88,6 +89,27 @@ CREATE INDEX IF NOT EXISTS task_relations_task
 
 CREATE INDEX IF NOT EXISTS task_relations_related
   ON task_relations(related_task_id, relation_kind, created_at);
+
+CREATE TABLE IF NOT EXISTS task_dependency_replacements (
+  operation_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  original_relation_json TEXT NOT NULL,
+  replacement_relation_id TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  execution_id TEXT REFERENCES executions(execution_id),
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_cancellations (
+  task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+  operation_id TEXT NOT NULL UNIQUE,
+  replacement_task_id TEXT REFERENCES tasks(task_id),
+  actor_ref TEXT NOT NULL,
+  execution_id TEXT REFERENCES executions(execution_id),
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 
 -- Notifications are durable, keyed lifecycle facts rather than a general
 -- Agent-to-Agent chat channel.  A delivery key makes retries idempotent while
@@ -237,9 +259,13 @@ CREATE TABLE IF NOT EXISTS bots (
   state_version INTEGER NOT NULL DEFAULT 0,
   selection_deadline TEXT NOT NULL,
   hard_deadline TEXT NOT NULL,
+  coordination_permissions_json TEXT NOT NULL DEFAULT '[]',
   resource_key TEXT NOT NULL UNIQUE,
   provider TEXT,
   sandbox_id TEXT,
+  sandbox_create_state TEXT NOT NULL DEFAULT 'NOT_DISPATCHED',
+  sandbox_timeout_seconds INTEGER,
+  sandbox_expires_at TEXT,
   exit_request_id TEXT UNIQUE,
   exit_reason TEXT,
   stop_terminal_state TEXT,
@@ -414,3 +440,34 @@ CREATE TABLE IF NOT EXISTS wake_keys (
   created_at TEXT NOT NULL
 );
 `;
+
+export const MISSION_SUBMISSION_SCHEMA_SQL = `
+      CREATE TABLE IF NOT EXISTS mission_final_check_policies (
+        mission_id TEXT PRIMARY KEY,
+        max_checks INTEGER NOT NULL CHECK(max_checks > 0),
+        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
+      );
+      CREATE TABLE IF NOT EXISTS mission_final_check_admissions (
+        mission_id TEXT NOT NULL,
+        submission_id TEXT NOT NULL,
+        admitted_at TEXT NOT NULL,
+        settled_at TEXT,
+        PRIMARY KEY (mission_id, submission_id)
+      );
+      CREATE INDEX IF NOT EXISTS mission_final_check_active
+        ON mission_final_check_admissions(mission_id) WHERE settled_at IS NULL;
+      CREATE TABLE IF NOT EXISTS mission_submissions (
+        mission_id TEXT NOT NULL,
+        submission_id TEXT NOT NULL,
+        request_fingerprint TEXT NOT NULL,
+        snapshot_fingerprint TEXT NOT NULL,
+        state TEXT NOT NULL,
+        document TEXT NOT NULL,
+        PRIMARY KEY (mission_id, submission_id)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS mission_submission_inflight
+        ON mission_submissions (mission_id) WHERE state IN ('preparing', 'pending');
+      CREATE TABLE IF NOT EXISTS mission_submission_audit (
+        mission_id TEXT NOT NULL, submission_id TEXT NOT NULL, event TEXT NOT NULL, observed_at TEXT NOT NULL, details_json TEXT
+      );
+    `;

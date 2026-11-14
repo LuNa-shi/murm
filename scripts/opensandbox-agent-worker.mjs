@@ -2,8 +2,8 @@
 
 import { createServer } from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
-import { readFile, writeFile, mkdir, chown, readdir, lstat, realpath } from 'node:fs/promises';
+import { spawn, spawnSync } from 'node:child_process';
+import { readFile, writeFile, mkdir, chown, readdir, lstat, realpath, statfs } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { SandboxProject, BOT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.mjs';
 
@@ -17,7 +17,13 @@ const token = option('--token', process.env.SWARMENV_WORKER_TOKEN) ?? randomUUID
 if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('worker port must be an integer from 1 to 65535');
 
 const project = new SandboxProject();
-await project.initialize();
+const quotaRequired = argv.includes('--require-project-quota');
+const catalogPath = '/opt/swarmenv/pi-agent/models.json';
+const filesystemPolicy = '/opt/swarmenv/bot-filesystem-policy';
+const unprivileged = ['--reuid', String(BOT_UID), '--regid', String(BOT_UID), '--clear-groups', '--no-new-privs',
+  '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all', '--'];
+let initialized = !quotaRequired;
+if (initialized) await project.initialize();
 let everStarted = false;
 let stopping = null;
 let writerGate = Promise.resolve();
@@ -101,6 +107,23 @@ async function startAgent(input) {
   const cwd = input.cwd ?? PROJECT_DIR;
   if (cwd !== PROJECT_DIR) throw new Error('worker project cwd must be /workspace/project');
   everStarted = true;
+  let projectQuota = null;
+  if (quotaRequired) {
+    const { bytes, inodes } = input.project_quota ?? {};
+    if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(inodes) || bytes <= 0 || inodes <= 0) throw new Error('Bot workspace quota is required');
+    const filesystem = await statfs('/workspace', { bigint: true });
+    const mounts = (await readFile('/proc/self/mountinfo', 'utf8')).trim().split('\n');
+    const mount = mounts.findLast(row => row.split(' ')[4] === '/workspace')?.split(' ');
+    if (mounts.some(row => row.split(' ')[4]?.startsWith('/workspace/')) || filesystem.type !== 0x01021994n || filesystem.blocks * filesystem.bsize !== BigInt(bytes) ||
+        filesystem.files !== BigInt(inodes) || !mount?.[5]?.split(',').includes('nodev') ||
+        !mount[5].split(',').includes('nosuid') || (await readdir('/workspace')).length) throw new Error('Bot workspace quota is absent or mismatched');
+    const probe = spawnSync('setpriv', [...unprivileged, filesystemPolicy, '/usr/bin/true'], { cwd: '/', timeout: 2_000 });
+    if (probe.status !== 0) throw new Error('Bot filesystem policy could not be enforced');
+    if (project.closing) throw new Error('Bot stopped during filesystem validation');
+    await project.initialize();
+    initialized = true;
+    projectQuota = { bytes, inodes };
+  } else if (input.project_quota) throw new Error('Worker must start in quota enforcement mode');
   const expectedNames = ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
   if (input.contract_version !== 'swarm-bot-v1-draft.2' || !Array.isArray(input.resources) || input.resources.length !== 5 ||
       new Set(input.resources.map(resource => resource.path)).size !== 5 ||
@@ -131,13 +154,18 @@ async function startAgent(input) {
   delete suppliedEnv.SWARMENV_WORKER_TOKEN;
   const agentEnvironment = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', ...suppliedEnv,
     HOME: join(RUNTIME_DIR, 'home'), TMPDIR: join(RUNTIME_DIR, 'tmp'), PI_CODING_AGENT_DIR: join(RUNTIME_DIR, 'pi-agent') };
-  const catalog = await readFile('/opt/swarmenv/pi-agent/models.json');
+  const catalog = await readFile(catalogPath);
+  let modelCatalogResource = null;
+  if (input.model_catalog_resource) {
+    const sha256 = createHash('sha256').update(catalog).digest('hex');
+    if (input.model_catalog_resource.path !== catalogPath || input.model_catalog_resource.sha256 !== sha256) throw new Error('Pi model catalog does not match the host selection gate');
+    modelCatalogResource = { path: catalogPath, sha256 };
+  }
   await writeFile(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), catalog, { mode: 0o600 });
   await expandPiModelCatalog(agentEnvironment);
   await chown(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), BOT_UID, BOT_UID);
   if (project.closing) throw new Error('Bot stopped during startup');
-  child = spawn('setpriv', ['--reuid', String(BOT_UID), '--regid', String(BOT_UID), '--clear-groups', '--no-new-privs',
-    '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all', '--', input.command, ...input.args],
+  child = spawn('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), input.command, ...input.args],
     { cwd, env: agentEnvironment, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdout.on('data', processStdout);
   child.stderr.on('data', (chunk) => { for (const response of subscribers) response.write(`event: stderr\ndata: ${JSON.stringify({ text: chunk.toString() })}\n\n`); });
@@ -148,7 +176,9 @@ async function startAgent(input) {
     subscribers.clear();
     child = null;
   });
-  return { pid: child.pid, contract: { version: input.contract_version, resources: input.resources } };
+  return { pid: child.pid, contract: { version: input.contract_version, resources: input.resources },
+    ...(projectQuota ? { project_quota: projectQuota } : {}),
+    ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}) };
 }
 
 async function rpc(input) {
@@ -262,6 +292,7 @@ function stopBot() {
       if (Date.now() >= deadline) throw new Error('Bot descendant stop was not confirmed');
       await new Promise(resolve => setTimeout(resolve, 10));
     }
+    if (!initialized) return { stopped: true, project_installs: [] };
     await project.close();
     return { stopped: true, project_installs: await project.installReceipts() };
   })().catch(error => { stopping = null; throw error; });
@@ -274,6 +305,7 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
     if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request)) }); return; }
+    if (url.pathname.startsWith('/project/') && !initialized) throw new Error('Bot workspace is not initialized');
     if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.grant(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/snapshot') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.snapshot(input)) }); return; }
@@ -296,7 +328,8 @@ const server = createServer(async (request, response) => {
     }
     send(response, 404, { ok: false, error: 'unknown worker route' });
   } catch (error) {
-    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT'].includes(error.code) ? { code: error.code } : {}) });
+    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT'].includes(error.code) ? { code: error.code } : {}),
+      ...(['dirty', 'active_writer'].includes(error.applyBlocker) ? { apply_blocker: error.applyBlocker } : {}) });
   }
 });
 

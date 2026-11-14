@@ -15,7 +15,8 @@ import { ServicesBridge } from '../src/agent/services-bridge.js';
 import { ContextService } from '../src/context/context-service.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { CoreParallelismTracker } from '../src/benchmark/parallelism.js';
-import { ensureAgentSession, releaseTerminalExecution, stopCore, stopBenchmarkRuntime, withinRunDeadline, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
+import { ObservationStore } from '../src/observability/observation-store.js';
+import { closeProjectStores, ensureAgentSession, releaseTerminalExecution, stopCore, stopBenchmarkRuntime, withinRunDeadline, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
 
 function deferred() {
   let resolve;
@@ -26,10 +27,16 @@ function deferred() {
 async function fixture(t, { removeSandbox = async () => new Response('{}'), bind = true, runtimeOptions = {} } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarm-cleanup-'));
   const service = new TaskService();
+  let sandboxDeleted = false;
   const sandboxManager = createOpenSandboxManager({
     lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',
     fetchImpl: async (url, options) => {
-      if (options.method === 'DELETE') return removeSandbox();
+      if (options.method === 'DELETE') {
+        const response = await removeSandbox();
+        if (response.ok && response.status !== 202 || response.status === 404) sandboxDeleted = true;
+        return response;
+      }
+      if (sandboxDeleted && url.endsWith('/sandboxes/sandbox-test')) return new Response('{}', { status: 404 });
       if (url.endsWith('/sandboxes')) return new Response(JSON.stringify({ id: 'sandbox-test' }), { status: 202 });
       if (url.includes('/endpoints/')) return new Response(JSON.stringify({ url: 'http://execd.test' }));
       if (url.endsWith('/command')) return new Response('event: execution_complete\ndata: {"exit_code":0}\n\n');
@@ -606,6 +613,36 @@ test('Controller stop prevents a held public-token read from waking another Bot 
   held.resolve();
   await Promise.all([reconciling, stopping]);
   assert.equal(wakeups, 0);
+});
+
+test('bounded benchmark cleanup reports pending and retains stores through late observation writes', async () => {
+  const observer = new ObservationStore();
+  const held = deferred();
+  const state = { cores: [], cleanupErrors: [], controller: { async stop() {
+    await held.promise;
+    observer.append({ experimentId: 'delayed', source: 'runtime', kind: 'cleanup_confirmed' });
+  } } };
+  observer.registerExperiment({ experimentId: 'delayed' });
+  let pending, projectClosed = false, observerClosed = false;
+  try {
+    await stopBenchmarkRuntime(state, { cleanupGraceMs: 20 });
+    assert.equal(state.cleanupErrors[0]?.code, 'CONTROLLER_STOP_TIMEOUT');
+    closeProjectStores(state, () => { projectClosed = true; }, {
+      onCleanupPending(promise) { pending = promise; },
+    });
+    assert.ok(pending instanceof Promise);
+    assert.equal(projectClosed, false);
+    held.resolve();
+    await pending;
+    assert.equal(projectClosed, true);
+    assert.equal(observer.listEvents({ experimentId: 'delayed' }).events[0]?.kind, 'cleanup_confirmed');
+    observer.close();
+    observerClosed = true;
+  } finally {
+    held.resolve();
+    await state.cleanupPromise;
+    if (!observerClosed) observer.close();
+  }
 });
 
 for (const failure of ['initialization', 'orchestration', 'report-write']) test(`benchmark closes authority after ${failure} failure without allocating a Bot`, async t => {

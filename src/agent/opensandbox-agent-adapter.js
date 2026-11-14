@@ -189,12 +189,17 @@ class RemoteAgentChild extends EventEmitter {
  * messages over the provider endpoint and never spawns the Agent command.
  */
 export class OpenSandboxAgentAdapter {
-  constructor({ sandboxManager, command = 'nurouter', provider, model, account, group, env = {}, agentEnvironment = {}, secretEnv = {}, systemPrompt = null, extensionPath = null, sessionDir = '/workspace/runtime/pi-session', manifestVersions = {} } = {}) {
+  constructor({ sandboxManager, modelAccess = null, networkIsolation = null, diskIsolation = null, modelCatalogResource = null, command = 'nurouter', provider, model, account, group, env = {}, agentEnvironment = {}, secretEnv = {}, systemPrompt = null, extensionPath = null, sessionDir = '/workspace/runtime/pi-session', manifestVersions = {} } = {}) {
     if (!sandboxManager) throw new TypeError('OpenSandboxAgentAdapter requires sandboxManager');
     if (systemPrompt && systemPrompt !== BOT_SYSTEM_PROMPT) throw new TypeError('registered Bots require the versioned Bot system contract');
     if (extensionPath) throw new TypeError('registered Bots use four native Pi tools and the swarm CLI; Service tool extensions are retired');
     systemPrompt = BOT_SYSTEM_PROMPT;
     this.sandboxManager = sandboxManager;
+    this.modelAccess = modelAccess;
+    this.networkIsolation = networkIsolation;
+    this.diskIsolation = diskIsolation;
+    this.modelCatalogResource = modelCatalogResource;
+    if (modelAccess && command !== 'pi' && !command.endsWith('/pi')) throw new TypeError('Budgeted model access requires direct Pi');
     this.command = command;
     this.config = { provider, model, account, group, env, agentEnvironment, secretEnv, systemPrompt, extensionPath, sessionDir };
     this.manifestVersions = manifestVersions;
@@ -229,20 +234,21 @@ export class OpenSandboxAgentAdapter {
     return starting;
   }
 
-  async #startTracked({ executionId, bot = null, signal = null, onSandboxCreated = null, sessionDir = this.config.sessionDir, cwd = null, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = executionId } = {}) {
+  async #startTracked({ executionId, bot = null, signal = null, onSandboxCreateDispatch = null, onSandboxCreateRejected = null, onSandboxCreated = null, sessionDir = this.config.sessionDir, cwd = null, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = randomUUID() } = {}) {
     await this.#cleanupFailedStarts();
     if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent adapter is stopping');
     this.pendingStartupCleanup ??= new Set();
     required(executionId, 'execution_id');
     try {
       if (signal?.aborted) throw signal.reason;
-      const session = await this.#startSession({ executionId, bot, signal, onSandboxCreated, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId });
+      const session = await this.#startSession({ executionId, bot, signal, onSandboxCreateDispatch, onSandboxCreateRejected, onSandboxCreated, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId });
       if (this.stopping || signal?.aborted) {
         await session.stop();
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent startup was stopped');
       }
       return session;
     } catch (error) {
+      this.modelAccess?.revokeBot(bot?.bot_id);
       // Before a Session exists, the adapter still owns the sandbox. Keep
       // that responsibility if deletion fails and refuse another startup.
       this.pendingStartupCleanup.add(executionId);
@@ -265,14 +271,18 @@ export class OpenSandboxAgentAdapter {
     }
   }
 
-  async #startSession({ executionId, bot, signal, onSandboxCreated, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId }) {
+  async #startSession({ executionId, bot, signal, onSandboxCreateDispatch, onSandboxCreateRejected, onSandboxCreated, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId }) {
     // Runtime passes its host-side session directory to every adapter. The
     // remote worker has one fixed guest work surface and must never receive a
     // host path as an argv or filesystem target.
     const guestSessionDir = '/workspace/runtime/pi-session';
     const launchArgs = this.buildLaunchArgs({ executionId, sessionId, sessionDir: guestSessionDir });
     const sandbox = await this.sandboxManager.ensureExecution({ executionId, botId: bot?.bot_id ?? null,
-      onCreated: onSandboxCreated, bindingVersion: observationContext.fencingVersion ?? null });
+      ...(this.diskIsolation ? { projectQuotaRequired: true } : {}),
+      onCreateDispatch: onSandboxCreateDispatch, onCreateRejected: onSandboxCreateRejected,
+      timeoutSeconds: Number.isFinite(Date.parse(bot?.hard_deadline)) ? Math.max(60, Math.ceil((Date.parse(bot.hard_deadline) - Date.now() + 30_000) / 1000)) : 3600,
+      onCreated: onSandboxCreated, bindingVersion: observationContext.fencingVersion ?? null,
+      ...(bot?.mission_id ? { metadata: { mission_id: bot.mission_id } } : {}) });
     if (this.stopping || signal?.aborted) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent startup was stopped');
     if (cwd && !bot) await this.sandboxManager.syncWorkspace({ executionId, workspaceRef: cwd });
     const workerEnvironment = publicAgentEnvironment(this.config.env, this.config.agentEnvironment);
@@ -290,6 +300,20 @@ export class OpenSandboxAgentAdapter {
       for (const key of Object.keys(workerEnvironment)) if (/^SWARMENV_.*_SERVICE_URL$/.test(key)) delete workerEnvironment[key];
       for (const key of Object.keys(workerSecretEnvironment)) if (/^SWARMENV_.*_SERVICE_TOKEN$/.test(key)) delete workerSecretEnvironment[key];
     }
+    if (this.modelAccess) {
+      // All upstream and alternate router credentials stay on the host. The
+      // Bridge credential is independently scoped to this Bot by Runtime.
+      for (const key of Object.keys(workerSecretEnvironment)) if (key !== 'SWARMENV_BRIDGE_TOKEN') delete workerSecretEnvironment[key];
+      for (const key of Object.keys(workerEnvironment)) if (/^(?:NUROUTER_|PI_.*_BASE_URL)/.test(key)) delete workerEnvironment[key];
+      const credentials = this.modelAccess.credentialsForBot(bot);
+      Object.assign(workerEnvironment, credentials.environment);
+      Object.assign(workerSecretEnvironment, credentials.secretEnvironment);
+    }
+    const networkEvidence = this.networkIsolation ? await this.networkIsolation.isolate({ sandboxId: sandbox?.sandbox_id, bot,
+      bridgeUrl: workerEnvironment.SWARMENV_BRIDGE_URL, modelUrl: this.modelAccess?.baseUrl }) : null;
+    if (this.stopping || signal?.aborted) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent startup was stopped');
+    const projectQuota = this.diskIsolation ? await this.diskIsolation.isolate({ sandboxId: sandbox?.sandbox_id, bot }) : null;
+    if (this.stopping || signal?.aborted) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent startup was stopped');
     let guestVersions = null;
     const directPi = this.command === 'pi' || this.command.endsWith('/pi');
     const explicitVersions = {
@@ -309,6 +333,8 @@ export class OpenSandboxAgentAdapter {
       sessionDir: guestSessionDir,
       resources: [BOT_SYSTEM_RESOURCE, ...BOT_SKILLS.map(({ path, sha256 }) => ({ path, sha256 }))],
       secretEnvironment: workerSecretEnvironment,
+      ...(projectQuota ? { projectQuota } : {}),
+      ...(this.modelCatalogResource ? { modelCatalogResource: this.modelCatalogResource } : {}),
     });
     let session;
     const child = new RemoteAgentChild(this.sandboxManager, executionId, logger, () => ({ execution_id: bot ? session?.executionId ?? null : executionId, ...(bot ? { bot_id: bot.bot_id, resource_key: executionId } : {}) }));
@@ -321,11 +347,15 @@ export class OpenSandboxAgentAdapter {
     }), bot_contract: { protocol_version: BOT_PROTOCOL_VERSION, system_prompt_sha256: BOT_SYSTEM_HASH, system_resource: BOT_SYSTEM_RESOURCE, skills: BOT_SKILLS, tools: BOT_TOOL_NAMES } };
     const observedExecutionId = bot ? null : (observationContext.executionId ?? executionId);
     session = new AgentCoreSession(child, { executionId: observedExecutionId, sessionId, launchArgs, manifest, logger, observation, coreId: observationContext.coreId ?? null, taskId: observationContext.taskId ?? null });
+    session.on('close', () => this.modelAccess?.revokeBot(bot?.bot_id));
     session.botId = bot?.bot_id ?? null;
+    session.networkEvidence = networkEvidence;
+    session.diskEvidence = projectQuota;
     session.resourceKey = executionId;
     session.sandboxId = sandbox?.sandbox_id ?? null;
     const stopProcess = session.stop.bind(session);
     session.stop = async (...args) => {
+      this.modelAccess?.revokeBot(bot?.bot_id);
       const result = await stopProcess(...args);
       // A worker exit (or a failed best-effort kill) only closes the RPC
       // transport. Retain and retry cleanup of the original worker sandbox,
@@ -333,7 +363,7 @@ export class OpenSandboxAgentAdapter {
       await this.sandboxManager.stopExecution(executionId);
       return result;
     };
-    observation?.({ source: 'agent', kind: 'session_started', visibility: 'operator', payload: { launch_args: launchArgs, manifest, transport: 'opensandbox-worker', bot_id: bot?.bot_id ?? null }, sessionId, executionId: observedExecutionId, taskId: observationContext.taskId ?? null, coreId: observationContext.coreId ?? null });
+    observation?.({ source: 'agent', kind: 'session_started', visibility: 'operator', payload: { launch_args: launchArgs, manifest, network_isolation: networkEvidence, disk_isolation: projectQuota, model_catalog_resource: this.modelCatalogResource, transport: 'opensandbox-worker', bot_id: bot?.bot_id ?? null }, sessionId, executionId: observedExecutionId, taskId: observationContext.taskId ?? null, coreId: observationContext.coreId ?? null });
     if (agentPrompt) {
       await session.waitForReady({ timeoutMs: 30_000 });
       await session.setAutoCompaction(true);

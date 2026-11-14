@@ -7,10 +7,10 @@ Sources: [runtime.js](../../../src/runtime/runtime.js). Runtime-generated values
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Execution deadline notification
 
-Body SHA-256: `7a13591586731d9df85067aa69542b4da9effbce625f33feb58ce607ab16ba35`
+Body SHA-256: `d5bf821777bb9c3b38fae2aa3d6a64209bbf665c704dbf9b93507780663183ee`
 
 ````text
-Execution deadline is approaching (notification_id <NOTIFICATION_ID>). Publish and link Handoff Material now if the current Task is unfinished; this reminder is persisted.
+E undefined 接近 Execution 时间上限，收尾额度为 未知。停止扩展，保存已有文件和研究内容，再按真实结果 finish。 (notification_id <NOTIFICATION_ID>)
 ````
 ## Response Material notification
 

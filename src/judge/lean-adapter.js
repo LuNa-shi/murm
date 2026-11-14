@@ -89,7 +89,7 @@ export class LeanChecker {
     this.logger = logger;
   }
 
-  async preflight({ fixtureManifest, assertCanStart = () => {} }) {
+  async preflight({ fixtureManifest, assertCanStart = () => {}, startProcess = launch => { assertCanStart(); return launch(); } }) {
     validateFixtureManifest(fixtureManifest);
     const identity = checkerIdentity(fixtureManifest);
     const projectRoot = fixtureManifest.project_root;
@@ -163,12 +163,13 @@ export class LeanChecker {
       // Exercise the same toolchain entrypoint used for a WorkspaceSource.  A bare
       // `lake --version` can succeed while the project toolchain or Mathlib
       // environment is unusable.
-      process = await this.runner(this.command, ['env', 'lean', '--version'], {
+      process = await startProcess(() => this.runner(this.command, ['env', 'lean', '--version'], {
         cwd: projectRoot,
         timeoutMs: this.timeoutMs,
         maxOutputBytes: this.maxOutputBytes,
-      });
+      }));
     } catch (error) {
+      if ([ERROR_CODES.NOT_ALLOWED, ERROR_CODES.FENCED].includes(error.code)) throw error;
       process = { exit_code: null, signal: null, error: error.message, error_code: error.code, checker_started: false };
     }
     const observedVersion = toolchainVersion([process.stdout, process.stderr].filter(Boolean).join('\n'));
@@ -239,7 +240,7 @@ export class LeanChecker {
     return result;
   }
 
-  async check({ workspace_source, targetTask, workspace, fixtureManifest, assertCanStart = () => {} }) {
+  async check({ workspace_source, targetTask, workspace, fixtureManifest, assertCanStart = () => {}, startProcess = launch => { assertCanStart(); return launch(); } }) {
     validateFixtureManifest(fixtureManifest);
     if (!workspace_source || typeof workspace_source.content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content is required');
     const workspace_sourceHash = sha256(workspace_source.content);
@@ -271,8 +272,7 @@ export class LeanChecker {
       // project/toolchain cwd.  The per-workspace_source directory only stores the
       // workspace_source file; it is not a substitute for the project root.
       const projectRoot = fixtureManifest.project_root ?? this.workRoot;
-      assertCanStart();
-      const result = await this.runner(this.command, ['env', 'lean', workspace_sourcePath], { cwd: projectRoot, timeoutMs: this.timeoutMs, maxOutputBytes: this.maxOutputBytes });
+      const result = await startProcess(() => this.runner(this.command, ['env', 'lean', workspace_sourcePath], { cwd: projectRoot, timeoutMs: this.timeoutMs, maxOutputBytes: this.maxOutputBytes }));
       const processStatus = result.error || result.checker_started === false
         ? 'not_started'
         : result.timed_out

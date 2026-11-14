@@ -34,6 +34,17 @@ test('OpenSandbox Agent adapter keeps Pi RPC inside the provider worker', async 
   assert.equal(manager.executionStopped, true);
 });
 
+test('default Pi session identity is valid and distinct from the durable Bot resource key', async () => {
+  const manager = new FakeSandboxManager();
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, command: 'pi', provider: 'openai', model: 'fixture' });
+  const bot = { bot_id: 'bot:test', resource_key: 'bot:test' };
+  const session = await adapter.start({ executionId: bot.resource_key, bot });
+  assert.match(session.sessionId, /^[a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?$/i);
+  assert.notEqual(session.sessionId, bot.resource_key);
+  assert.equal(manager.started.args[manager.started.args.indexOf('--session-id') + 1], session.sessionId);
+  await session.stop();
+});
+
 test('remote Session stop reports sandbox deletion failure and retries even after worker exit', async () => {
   const manager = new FakeSandboxManager();
   let fail = true;
@@ -220,4 +231,25 @@ test('unregistered remote Agent startup fails before creating a provider resourc
   const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, command: 'pi', provider: 'openai', model: 'gpt-6.1-sol' });
   await assert.rejects(adapter.start({ executionId: 'legacy-execution' }), /requires a registered Bot/);
   assert.equal(manager.started, null);
+});
+
+test('budgeted adapter strips upstream credentials and revokes local access before stopping Pi', async () => {
+  const manager = new FakeSandboxManager();
+  const revoked = [];
+  const access = {
+    credentialsForBot: bot => {
+      assert.equal(bot.bot_id, 'budget-bot');
+      return { environment: { PI_GPT_PROXY_BASE_URL: 'http://host-gateway/v1' }, secretEnvironment: { PI_GPT_PROXY_API_KEY: 'local-bot-token' } };
+    }, revokeBot: id => revoked.push(id),
+  };
+  const originalStop = manager.stopAgent.bind(manager);
+  manager.stopAgent = async () => { assert.ok(revoked.includes('budget-bot')); await originalStop(); };
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, modelAccess: access, command: 'pi', provider: 'gpt_proxy', model: 'fixed',
+    env: { SWARMENV_BRIDGE_TOKEN: 'bridge-token', PI_OTHER_BASE_URL: 'http://alternate' },
+    secretEnv: { PI_GPT_PROXY_API_KEY: 'upstream-secret', OPENAI_API_KEY: 'other-secret', NUROUTER_TOKEN: 'router-secret' } });
+  const session = await adapter.start({ executionId: 'budget-bot', bot: { bot_id: 'budget-bot' } });
+  assert.deepEqual(manager.started.secretEnvironment, { SWARMENV_BRIDGE_TOKEN: 'bridge-token', PI_GPT_PROXY_API_KEY: 'local-bot-token' });
+  assert.equal(manager.started.env.PI_OTHER_BASE_URL, undefined);
+  assert.equal(manager.started.env.PI_GPT_PROXY_BASE_URL, 'http://host-gateway/v1');
+  await session.stop();
 });

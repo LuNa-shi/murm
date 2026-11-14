@@ -30,16 +30,16 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `d4d88b3ebf245ee64aab431aef832b5d3e3b37e8f9f9b1600f9a9efabbf175ed` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `ca7b1da88de58c2273c90949b41134272d9c2e88f906e5bce15157b4cd7acb92` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `4620e6dda652d7c8dbc27accd93175435e3e93f7f7da4e72d1f028db472818eb` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `528c5679002a17c048332291f2c5a51a4c7c9160467379dc1198cc604e667a6d` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `fc537d04cb0471d1496d82c1866b5fde81986f790768eea9e720bd7391ecdabd` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `ac9a9598b971c192107b958b5e451b5f589e12a10a89e53ed68a46584cd4ffee` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `5be1832ad5b7e08437ded98d21f98445874a683c7127b97305b8ca370e3421b6` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `4c672ee2567e3a75f6bb5e9c83bc80d96d1e30e9a3f9325207eea7fb46a46af3` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `eefc3bff5692aba757445b062772926f159a35ae38277d9153cf4e2c808c3fa3` |
+| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `c26e5b1047fb77a779564462962131fbe7af4437edacbedf1e1096f19183bf22` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `db04e700c40f446570da9c24f817db4a832e9442acaffcbc7295bfd221e5f8cd` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `cfa268ea61002a545b46f65bf8c72d109edf6ee27aa81830dc7ca745cb80e628` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `61c7bbf151fca86773254984cc62e5f5ff6451c7ef2246640c613ce15b4c7d64` |
 
@@ -54,10 +54,12 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `catalog.catalog_list_tools` | `swarmenv_catalog_list_tools` | `swarmenv_catalog_list_tools` |
 | `context.context_consume` | `swarmenv_context_consume` | `swarmenv_context_consume` |
 | `context.context_get_material` | `swarmenv_context_get_material` | `swarmenv_context_get_material` |
-| `context.context_publish` | `swarmenv_context_publish` | `swarmenv_context_publish` |
 | `context.context_publish_material` | `swarmenv_context_publish_material` | `swarmenv_context_publish_material` |
 | `context.context_read` | `swarmenv_context_read` | `swarmenv_context_read` |
 | `context.context_search_materials` | `swarmenv_context_search_materials` | `swarmenv_context_search_materials` |
+| `context.material_dispute` | `swarmenv_material_dispute` | `swarmenv_material_dispute` |
+| `context.material_supersede` | `swarmenv_material_supersede` | `swarmenv_material_supersede` |
+| `context.material_unsupersede` | `swarmenv_material_unsupersede` | `swarmenv_material_unsupersede` |
 | `judge.judge_get_check_result` | `swarmenv_judge_get_check_result` | `swarmenv_judge_get_check_result` |
 | `judge.judge_workspace_check` | `swarmenv_judge_workspace_check` | `swarmenv_judge_workspace_check` |
 | `runtime.execution_get` | `swarmenv_execution_get` | `swarmenv_execution_get` |
@@ -73,7 +75,9 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `task.mission_get` | `swarmenv_mission_get` | `swarmenv_mission_get` |
 | `task.mission_submission_get` | `swarmenv_mission_submission_get` | `swarmenv_mission_submission_get` |
 | `task.mission_submit` | `swarmenv_mission_submit` | `swarmenv_mission_submit` |
+| `task.task_cancel` | `swarmenv_task_cancel` | `swarmenv_task_cancel` |
 | `task.task_create` | `swarmenv_task_create` | `swarmenv_task_create` |
+| `task.task_dependency_replace` | `swarmenv_task_dependency_replace` | `swarmenv_task_dependency_replace` |
 | `task.task_feedback` | `swarmenv_task_feedback` | `swarmenv_task_feedback` |
 | `task.task_finish` | `swarmenv_task_finish` | `swarmenv_task_finish` |
 | `task.task_link_material` | `swarmenv_task_link_material` | `swarmenv_task_link_material` |
@@ -84,6 +88,7 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `task.workspace_current_diff` | `swarmenv_workspace_current_diff` | `swarmenv_workspace_current_diff` |
 | `task.workspace_merge` | `swarmenv_workspace_merge` | `swarmenv_workspace_merge` |
 | `task.workspace_public_apply` | `swarmenv_workspace_public_apply` | `swarmenv_workspace_public_apply` |
+| `task.workspace_public_diff` | `swarmenv_workspace_public_diff` | `swarmenv_workspace_public_diff` |
 | `task.workspace_public_files` | `swarmenv_workspace_public_files` | `swarmenv_workspace_public_files` |
 | `task.workspace_public_history` | `swarmenv_workspace_public_history` | `swarmenv_workspace_public_history` |
 | `task.workspace_public_read` | `swarmenv_workspace_public_read` | `swarmenv_workspace_public_read` |
@@ -92,7 +97,7 @@ The four columns apply the benchmark's current Task-model and Sandbox filters. O
 | `task.workspace_save` | `swarmenv_workspace_save` | `swarmenv_workspace_save` |
 | `task.workspace_status` | `swarmenv_workspace_status` | `swarmenv_workspace_status` |
 
-The flat Mission Task profile is the only Agent-facing Task model. Retired structural and lease operations may remain in internal catalog definitions for storage/analysis compatibility, but are filtered from the built-in Registry and cannot be called by a bound Agent. The normal handoff tool is `execution_progress` with `kind: "handoff"`.
+The flat Mission Task profile is the only Agent-facing Task model. Retired structural and lease operations may remain in internal catalog definitions for storage/analysis compatibility, but are filtered from the built-in Registry and cannot be called by a bound Agent. Registered Bots use explicit save/publish and `task_finish`; the old `execution_progress` compound path is rejected.
 
 ### Service Catalog: 3 registered capabilities
 
@@ -264,7 +269,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 23 registered capabilities
+### Task Service: 26 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -287,7 +292,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "712e7e0784cc3ca7a7198aa6378a192da37cad9a5a356a52e41999a6b96d58a4"
+  "manifest_hash": "68fdfc90b1ac987bafde92f69e16a23b15529699a8d05d7ab108cb0c5920b2af"
 }
 ```
 
@@ -348,13 +353,13 @@ End this unbound Bot after finding no useful work or exhausting its selection bu
 
 #### task.task_status
 
-Read the authoritative Mission, Task counts, eligible work, and observation timestamp.
+Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery.
 
 ```json
 {
   "name": "task_status",
   "operation": "task_status",
-  "description": "Read the authoritative Mission, Task counts, eligible work, and observation timestamp.",
+  "description": "Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -373,7 +378,7 @@ Read the authoritative Mission, Task counts, eligible work, and observation time
       "limit": {
         "type": "integer",
         "minimum": 1,
-        "maximum": 500
+        "maximum": 100
       }
     },
     "additionalProperties": false
@@ -401,9 +406,9 @@ Read the authoritative Mission, Task counts, eligible work, and observation time
   "requires_binding": false,
   "scope": "task-read",
   "help": {
-    "when": "Read the authoritative Mission, Task counts, eligible work, and observation timestamp.",
+    "when": "Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery.",
     "ref": "service://task/task_status",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read the authoritative Mission, Task counts, eligible work, and observation timestamp.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_status",
@@ -413,13 +418,13 @@ Read the authoritative Mission, Task counts, eligible work, and observation time
 
 #### task.task_take
 
-Take an existing Mission or ordinary Task using the caller identity and Core lane.
+Take an existing Task in this Mission using the caller Bot and Core.
 
 ```json
 {
   "name": "task_take",
   "operation": "task_take",
-  "description": "Take an existing Mission or ordinary Task using the caller identity and Core lane.",
+  "description": "Take an existing Task in this Mission using the caller Bot and Core.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -464,9 +469,9 @@ Take an existing Mission or ordinary Task using the caller identity and Core lan
   "requires_binding": false,
   "scope": "task-write",
   "help": {
-    "when": "Take an existing Mission or ordinary Task using the caller identity and Core lane.",
+    "when": "Take an existing Task in this Mission using the caller Bot and Core.",
     "ref": "service://task/task_take",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Take an existing Mission or ordinary Task using the caller identity and Core lane.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Take an existing Task in this Mission using the caller Bot and Core.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_take",
@@ -697,13 +702,13 @@ Search bounded Task summaries across states; follow next_cursor and read Task de
 
 #### task.task_view
 
-Read one Task, its two relations, state, current Execution, and linked Materials.
+Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.
 
 ```json
 {
   "name": "task_view",
   "operation": "task_view",
-  "description": "Read one Task, its two relations, state, current Execution, and linked Materials.",
+  "description": "Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.",
   "input_schema": {
     "type": "object",
     "properties": {
@@ -736,9 +741,9 @@ Read one Task, its two relations, state, current Execution, and linked Materials
   "requires_binding": false,
   "scope": "task-read",
   "help": {
-    "when": "Read one Task, its two relations, state, current Execution, and linked Materials.",
+    "when": "Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.",
     "ref": "service://task/task_view",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read one Task, its two relations, state, current Execution, and linked Materials.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_view",
@@ -748,13 +753,13 @@ Read one Task, its two relations, state, current Execution, and linked Materials
 
 #### task.task_create
 
-Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.
+Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.
 
 ```json
 {
   "name": "task_create",
   "operation": "task_create",
-  "description": "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.",
+  "description": "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -803,13 +808,20 @@ Create one substantial ordinary Task with a summary, expected output, acceptance
         "type": "object"
       },
       "workspace": {
-        "type": "object"
+        "type": "object",
+        "description": "Compatibility input. If both workspace.revision and base_revision are supplied, they must match."
+      },
+      "base_revision": {
+        "type": "string",
+        "pattern": "^[0-9]+[.][0-9]+$"
       },
       "input_material_refs": {
         "type": "array",
         "items": {
-          "type": "string"
-        }
+          "type": "string",
+          "minLength": 1
+        },
+        "maxItems": 100
       },
       "responsibility_key": {
         "type": "string",
@@ -819,9 +831,6 @@ Create one substantial ordinary Task with a summary, expected output, acceptance
       "priority": {
         "type": "integer",
         "minimum": 0
-      },
-      "spawned_from": {
-        "type": "string"
       },
       "depends_on": {
         "type": "array",
@@ -859,9 +868,9 @@ Create one substantial ordinary Task with a summary, expected output, acceptance
   "requires_binding": false,
   "scope": "task-write",
   "help": {
-    "when": "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.",
+    "when": "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.",
     "ref": "service://task/task_create",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_create",
@@ -970,6 +979,9 @@ Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup close
           "type": "string"
         }
       },
+      "workspace_revision": {
+        "type": "string"
+      },
       "check_result_id": {
         "type": "string"
       },
@@ -1026,6 +1038,153 @@ Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup close
   },
   "method": "POST",
   "path": "/v1/task_finish",
+  "errors": []
+}
+```
+
+#### task.task_cancel
+
+Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.
+
+```json
+{
+  "name": "task_cancel",
+  "operation": "task_cancel",
+  "description": "Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "task_id",
+      "expected_spec_version",
+      "expected_state_version",
+      "reason"
+    ],
+    "properties": {
+      "task_id": {
+        "type": "string"
+      },
+      "expected_spec_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "expected_state_version": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "reason": {
+        "type": "string"
+      },
+      "replacement_task_id": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "mission-write",
+  "help": {
+    "when": "Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.",
+    "ref": "service://task/task_cancel",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/task_cancel",
+  "errors": []
+}
+```
+
+#### task.task_dependency_replace
+
+Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge.
+
+```json
+{
+  "name": "task_dependency_replace",
+  "operation": "task_dependency_replace",
+  "description": "Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "task_id",
+      "from_task_id",
+      "to_task_id",
+      "expected_spec_version",
+      "expected_state_version",
+      "reason"
+    ],
+    "properties": {
+      "task_id": {
+        "type": "string"
+      },
+      "from_task_id": {
+        "type": "string"
+      },
+      "to_task_id": {
+        "type": "string"
+      },
+      "expected_spec_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "expected_state_version": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "reason": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "mission-write",
+  "help": {
+    "when": "Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge.",
+    "ref": "service://task/task_dependency_replace",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/task_dependency_replace",
   "errors": []
 }
 ```
@@ -1108,6 +1267,9 @@ Read main history by default or all saved revisions, with provenance and bounded
       "source_execution": {
         "type": "string"
       },
+      "material_id": {
+        "type": "string"
+      },
       "path": {
         "type": "string"
       },
@@ -1148,6 +1310,76 @@ Read main history by default or all saved revisions, with provenance and bounded
   },
   "method": "POST",
   "path": "/v1/workspace_public_history",
+  "errors": []
+}
+```
+
+#### task.workspace_public_diff
+
+Compare any two published Mission Workspace revisions, including unmerged saves. Pages pin both revisions.
+
+```json
+{
+  "name": "workspace_public_diff",
+  "operation": "workspace_public_diff",
+  "description": "Compare any two published Mission Workspace revisions, including unmerged saves. Pages pin both revisions.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "workspace_id",
+      "from",
+      "to"
+    ],
+    "properties": {
+      "workspace_id": {
+        "type": "string"
+      },
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "cursor": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "read",
+  "idempotent": true,
+  "context": [],
+  "requires_binding": false,
+  "scope": "mission-read",
+  "help": {
+    "when": "Compare any two published Mission Workspace revisions, including unmerged saves. Pages pin both revisions.",
+    "ref": "service://task/workspace_public_diff",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Compare any two published Mission Workspace revisions, including unmerged saves. Pages pin both revisions.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/workspace_public_diff",
   "errors": []
 }
 ```
@@ -1322,6 +1554,14 @@ List files in the immutable Mission Workspace revision before a Task is taken.
       },
       "path": {
         "type": "string"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "cursor": {
+        "type": "string"
       }
     },
     "additionalProperties": false
@@ -1445,12 +1685,16 @@ Search text in an immutable Mission Workspace revision before a Task is taken.
         "type": "string"
       },
       "query": {
-        "type": "string"
+        "type": "string",
+        "maxLength": 1024
       },
       "max_results": {
         "type": "integer",
         "minimum": 1,
         "maximum": 500
+      },
+      "cursor": {
+        "type": "string"
       }
     },
     "additionalProperties": false
@@ -1553,6 +1797,14 @@ Save a complete public Mission Workspace file tree as an immutable revision with
     "properties": {
       "resolved": {
         "type": "boolean"
+      },
+      "material_ids": {
+        "type": "array",
+        "maxItems": 20,
+        "uniqueItems": true,
+        "items": {
+          "type": "string"
+        }
       }
     },
     "additionalProperties": false
@@ -1657,47 +1909,16 @@ Freeze the selected Workspace main revision and immutable Material/checker input
   "input_schema": {
     "type": "object",
     "required": [
-      "mission_id",
-      "workspace_id",
-      "main_revision",
-      "actor_ref"
+      "material_ids"
     ],
     "properties": {
-      "mission_id": {
-        "type": "string"
-      },
-      "workspace_id": {
-        "type": "string"
-      },
-      "main_revision": {
-        "type": "string"
-      },
       "material_ids": {
         "type": "array",
+        "maxItems": 100,
+        "uniqueItems": true,
         "items": {
           "type": "string"
         }
-      },
-      "checker": {
-        "type": [
-          "string",
-          "null"
-        ]
-      },
-      "environment": {
-        "type": [
-          "string",
-          "null"
-        ]
-      },
-      "acceptance": {
-        "type": "object"
-      },
-      "actor_ref": {
-        "type": "string"
-      },
-      "request_id": {
-        "type": "string"
       }
     },
     "additionalProperties": false
@@ -1786,7 +2007,7 @@ Read the durable Mission submission state and its immutable acceptance snapshot.
 }
 ```
 
-### Context Service: 6 registered capabilities
+### Context Service: 8 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -1809,23 +2030,50 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "f773f88432bfed97efcae390c55a002e54a33596857cf525047d76dd47d349e5"
+  "manifest_hash": "453e81ad42ab6062e37da4bbe99db8d3b4ad29e60053a85b1c60880581e4a8f4"
 }
 ```
 
 #### context.context_read
 
-Read immutable shared Materials published by other Executions.
+List one page of shared Material summaries. Use an exact Material ID to read its complete content.
 
 ```json
 {
   "name": "context_read",
   "operation": "read_materials",
-  "description": "Read immutable shared Materials published by other Executions.",
+  "description": "List one page of shared Material summaries. Use an exact Material ID to read its complete content.",
   "input_schema": {
     "type": "object",
-    "additionalProperties": true,
-    "properties": {}
+    "properties": {
+      "mission_id": {
+        "type": "string"
+      },
+      "material_id": {
+        "type": "string"
+      },
+      "task_id": {
+        "type": "string"
+      },
+      "source_task": {
+        "type": "string"
+      },
+      "source_execution": {
+        "type": "string"
+      },
+      "include_history": {
+        "type": "boolean"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "cursor": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
   },
   "output_schema": {
     "type": [
@@ -1850,9 +2098,9 @@ Read immutable shared Materials published by other Executions.
   "requires_binding": false,
   "scope": "public-read",
   "help": {
-    "when": "Read immutable shared Materials published by other Executions.",
+    "when": "List one page of shared Material summaries. Use an exact Material ID to read its complete content.",
     "ref": "service://context/read_materials",
-    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: Read immutable shared Materials published by other Executions.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: List one page of shared Material summaries. Use an exact Material ID to read its complete content.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/read_materials",
@@ -1873,7 +2121,8 @@ Record which bounded shared Material IDs this Execution used for a route, Task, 
     "type": "object",
     "required": [
       "material_ids",
-      "action"
+      "action",
+      "impact"
     ],
     "properties": {
       "material_ids": {
@@ -1893,6 +2142,11 @@ Record which bounded shared Material IDs this Execution used for a route, Task, 
           "workspace",
           "integration"
         ]
+      },
+      "impact": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
       },
       "action_ref": {
         "type": [
@@ -1936,53 +2190,34 @@ Record which bounded shared Material IDs this Execution used for a route, Task, 
 }
 ```
 
-#### context.context_publish
+#### context.material_dispute
 
-Publish a versioned shared Material for other Executions.
+Record a specific claim or section and the reason it needs correction; keep the Material visible.
 
 ```json
 {
-  "name": "context_publish",
-  "operation": "publish_material",
-  "description": "Publish a versioned shared Material for other Executions.",
+  "name": "material_dispute",
+  "operation": "material_dispute",
+  "description": "Record a specific claim or section and the reason it needs correction; keep the Material visible.",
   "input_schema": {
     "type": "object",
     "required": [
-      "kind",
-      "scope",
-      "content"
+      "material_id",
+      "claim",
+      "reason"
     ],
     "properties": {
-      "kind": {
-        "type": "string",
-        "enum": [
-          "assumption",
-          "fact",
-          "conjecture",
-          "experience",
-          "failure",
-          "artifact",
-          "steer",
-          "check_result"
-        ]
-      },
-      "scope": {
+      "material_id": {
         "type": "string"
       },
-      "content": {},
-      "evidence_state": {
-        "type": "string",
-        "enum": [
-          "proposed",
-          "observed",
-          "checked",
-          "accepted",
-          "rejected",
-          "stale"
-        ]
+      "reason": {
+        "type": "string"
+      },
+      "claim": {
+        "type": "string"
       }
     },
-    "additionalProperties": true
+    "additionalProperties": false
   },
   "output_schema": {
     "type": [
@@ -2005,27 +2240,161 @@ Publish a versioned shared Material for other Executions.
     "execution"
   ],
   "requires_binding": false,
-  "scope": "execution-write",
+  "scope": "context-write",
   "help": {
-    "when": "Publish a versioned shared Material for other Executions.",
-    "ref": "service://context/publish_material",
-    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: Publish a versioned shared Material for other Executions.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "when": "Record a specific claim or section and the reason it needs correction; keep the Material visible.",
+    "ref": "service://context/material_dispute",
+    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: Record a specific claim or section and the reason it needs correction; keep the Material visible.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
-  "path": "/v1/publish_material",
+  "path": "/v1/material_dispute",
+  "errors": []
+}
+```
+
+#### context.material_supersede
+
+Replace an entire Material with a complete successor using its observed relation_version.
+
+```json
+{
+  "name": "material_supersede",
+  "operation": "material_supersede",
+  "description": "Replace an entire Material with a complete successor using its observed relation_version.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "material_id",
+      "replacement_material_id",
+      "expected_version",
+      "reason"
+    ],
+    "properties": {
+      "material_id": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "replacement_material_id": {
+        "type": "string"
+      },
+      "expected_version": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "context-write",
+  "help": {
+    "when": "Replace an entire Material with a complete successor using its observed relation_version.",
+    "ref": "service://context/material_supersede",
+    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: Replace an entire Material with a complete successor using its observed relation_version.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/material_supersede",
+  "errors": []
+}
+```
+
+#### context.material_unsupersede
+
+Revoke only the matching successor using the observed relation_version and a reason; preserve all history.
+
+```json
+{
+  "name": "material_unsupersede",
+  "operation": "material_unsupersede",
+  "description": "Revoke only the matching successor using the observed relation_version and a reason; preserve all history.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "material_id",
+      "replacement_material_id",
+      "expected_version",
+      "reason"
+    ],
+    "properties": {
+      "material_id": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "replacement_material_id": {
+        "type": "string"
+      },
+      "expected_version": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "context-write",
+  "help": {
+    "when": "Revoke only the matching successor using the observed relation_version and a reason; preserve all history.",
+    "ref": "service://context/material_unsupersede",
+    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: Revoke only the matching successor using the observed relation_version and a reason; preserve all history.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/material_unsupersede",
   "errors": []
 }
 ```
 
 #### context.context_search_materials
 
-Search shared immutable Materials by summary, role, Task, producer, or Mission.
+Search immutable Material summaries by keyword, Task, producer, or Mission. Follow continuation cursors and read exact IDs for full content.
 
 ```json
 {
   "name": "context_search_materials",
   "operation": "context_search_materials",
-  "description": "Search shared immutable Materials by summary, role, Task, producer, or Mission.",
+  "description": "Search immutable Material summaries by keyword, Task, producer, or Mission. Follow continuation cursors and read exact IDs for full content.",
   "input_schema": {
     "type": "object",
     "properties": {
@@ -2035,16 +2404,35 @@ Search shared immutable Materials by summary, role, Task, producer, or Mission.
       "query": {
         "type": "string"
       },
-      "role": {
+      "task_id": {
         "type": "string"
       },
-      "task_id": {
+      "source_task": {
+        "type": "string"
+      },
+      "source_execution": {
+        "type": "string"
+      },
+      "include_history": {
+        "type": "boolean"
+      },
+      "relation_kind": {
+        "type": "string",
+        "enum": [
+          "supersede",
+          "dispute"
+        ]
+      },
+      "related_material_id": {
         "type": "string"
       },
       "limit": {
         "type": "integer",
         "minimum": 1,
         "maximum": 100
+      },
+      "cursor": {
+        "type": "string"
       }
     },
     "additionalProperties": false
@@ -2072,9 +2460,9 @@ Search shared immutable Materials by summary, role, Task, producer, or Mission.
   "requires_binding": false,
   "scope": "context-read",
   "help": {
-    "when": "Search shared immutable Materials by summary, role, Task, producer, or Mission.",
+    "when": "Search immutable Material summaries by keyword, Task, producer, or Mission. Follow continuation cursors and read exact IDs for full content.",
     "ref": "service://context/context_search_materials",
-    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: Search shared immutable Materials by summary, role, Task, producer, or Mission.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: Search immutable Material summaries by keyword, Task, producer, or Mission. Follow continuation cursors and read exact IDs for full content.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/context_search_materials",
@@ -2098,6 +2486,17 @@ Read one immutable Material and its producer Task/Execution provenance.
     ],
     "properties": {
       "material_id": {
+        "type": "string"
+      },
+      "attachment_name": {
+        "type": "string"
+      },
+      "usage_limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "usage_cursor": {
         "type": "string"
       }
     },
@@ -2138,55 +2537,90 @@ Read one immutable Material and its producer Task/Execution provenance.
 
 #### context.context_publish_material
 
-Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.
+Publish immutable research content and optional attachments with current Task/Execution provenance. Explain evidence in the body where applicable.
 
 ```json
 {
   "name": "context_publish_material",
   "operation": "context_publish_material",
-  "description": "Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.",
+  "description": "Publish immutable research content and optional attachments with current Task/Execution provenance. Explain evidence in the body where applicable.",
   "input_schema": {
     "type": "object",
     "required": [
-      "role",
       "content"
     ],
     "properties": {
-      "role": {
-        "type": "string",
-        "enum": [
-          "response",
-          "handoff",
-          "experience"
-        ]
-      },
-      "kind": {
-        "type": "string",
-        "description": "Material kind, for example fact, experience, failure, or artifact."
-      },
-      "scope": {
-        "type": "string",
-        "description": "The bounded collaboration or proof scope for the Material."
-      },
-      "evidence_state": {
-        "type": "string",
-        "enum": [
-          "proposed",
-          "observed",
-          "checked",
-          "accepted",
-          "rejected",
-          "stale"
-        ]
-      },
       "content": {},
+      "title": {
+        "type": "string",
+        "maxLength": 120
+      },
       "summary": {
+        "type": "string",
+        "maxLength": 500
+      },
+      "media_type": {
         "type": "string"
       },
       "receiving_task_id": {
         "type": "string"
       },
+      "used_material_ids": {
+        "type": "array",
+        "maxItems": 100,
+        "items": {
+          "type": "string"
+        }
+      },
+      "attachments": {
+        "type": "array",
+        "maxItems": 16,
+        "items": {
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "media_type": {
+              "type": "string"
+            },
+            "content_base64": {
+              "type": "string"
+            },
+            "content_hash": {
+              "type": "string"
+            },
+            "source": {
+              "type": "object",
+              "required": [
+                "material_id",
+                "attachment_name"
+              ],
+              "properties": {
+                "material_id": {
+                  "type": "string"
+                },
+                "attachment_name": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
       "supersedes": {
+        "type": "string"
+      },
+      "expected_version": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "supersede_reason": {
         "type": "string"
       }
     },
@@ -2215,9 +2649,9 @@ Publish durable Response, Handoff, or Experience Material with current Task/Exec
   "requires_binding": false,
   "scope": "context-write",
   "help": {
-    "when": "Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.",
+    "when": "Publish immutable research content and optional attachments with current Task/Execution provenance. Explain evidence in the body where applicable.",
     "ref": "service://context/context_publish_material",
-    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: Publish durable Response, Handoff, or Experience Material with current Task/Execution provenance.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Versioned shared Materials and provenance.\nUse when: Publish immutable research content and optional attachments with current Task/Execution provenance. Explain evidence in the body where applicable.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/context_publish_material",
@@ -3233,6 +3667,59 @@ This section records every extra catalog declaration not represented by the regi
 }
 ```
 
+#### Catalog context.context_publish / publish_material
+
+```json
+{
+  "name": "context_publish",
+  "service": "context",
+  "operation": "publish_material",
+  "version": "1.0",
+  "description": "Publish a versioned shared Material for other Executions.",
+  "scope": "execution-write",
+  "side_effect": true,
+  "parameters": {
+    "type": "object",
+    "required": [
+      "kind",
+      "scope",
+      "content"
+    ],
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "assumption",
+          "fact",
+          "conjecture",
+          "experience",
+          "failure",
+          "artifact",
+          "steer",
+          "check_result"
+        ]
+      },
+      "scope": {
+        "type": "string"
+      },
+      "content": {},
+      "evidence_state": {
+        "type": "string",
+        "enum": [
+          "proposed",
+          "observed",
+          "checked",
+          "accepted",
+          "rejected",
+          "stale"
+        ]
+      }
+    },
+    "additionalProperties": true
+  }
+}
+```
+
 ### Complete local SDK dispatch mapping
 
 The SDK constructor requires `dispatch` and `actorRef`. `withContext` creates another SDK with merged context. The methods below are the complete direct read/write wrappers, extracted from the source. This table records local/internal entry points, not the current Agent tool authorization list. Each call constructs an envelope from its context and explicit write options; read calls also have an operation ID. `createMission` and `proposeTask` clear Task/Execution/fence binding; `taskTake` supplies the context actor and configured Core lane. Structural methods select the Task state version from explicit options/context.
@@ -3290,6 +3777,8 @@ Registry matches are resolved first by capability name or operation and must be 
   "task_take",
   "task_feedback",
   "execution_progress",
+  "task_cancel",
+  "task_dependency_replace",
   "link_material",
   "task_link_material",
   "list_task_materials",

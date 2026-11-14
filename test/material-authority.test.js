@@ -12,11 +12,11 @@ import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { TaskController } from '../src/runtime/task-controller.js';
 import { IdentityTaskLoop } from '../src/runtime/identity-task-loop.js';
 
-function fixture(t, database = ':memory:') {
+function fixture(t, database = ':memory:', contextDatabase = null) {
   const tasks = new TaskService(database);
-  const context = new ContextService(tasks.db, { taskService: tasks });
+  const context = new ContextService(contextDatabase ?? tasks.db, { taskService: tasks });
   tasks.contextService = context;
-  t.after(() => tasks.close());
+  t.after(() => { if (contextDatabase) context.close(); tasks.close(); });
   const actor = (id, missionId, { start = true, take = true } = {}) => {
     if (!tasks.getMission(missionId)) tasks.createMission({ mission_id: missionId, goal: 'Investigate independent questions' }, makeEnvelope({ actorRef: 'operator:test' }));
     tasks.registerBot({ botId: id, missionId, coreId: id, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
@@ -57,11 +57,11 @@ test('Material reads, consumption and correction cannot cross the durable Bot Mi
   const two = actor('two', 'mission:b');
   const a = publish(one, 'a').material;
   const b = publish(two, 'b').material;
-  assert.deepEqual(context.dispatch('read_materials', {}, one.envelope('list-a')).map(m => m.material_id), [a.material_id]);
+  assert.deepEqual(context.dispatch('read_materials', {}, one.envelope('list-a')).materials.map(m => m.material_id), [a.material_id]);
   for (const [operation, payload] of [
     ['get_material', { material_id: b.material_id }],
     ['read_materials', { mission_id: 'mission:b' }],
-    ['consume_materials', { material_ids: [b.material_id], action: 'task', action_ref: 'foreign-use' }],
+    ['consume_materials', { material_ids: [b.material_id], action: 'task', impact: 'Shape the next experiment' }],
     ['dispute_material', { material_id: b.material_id, reason: 'foreign claim' }],
     ['supersede_material', { material_id: a.material_id, replacement_material_id: b.material_id, expected_version: 0, reason: 'foreign successor' }],
   ]) assert.throws(() => context.dispatch(operation, payload, one.envelope(`foreign:${operation}`)), { code: 'NOT_ALLOWED' });
@@ -89,37 +89,41 @@ test('Task Material links also check the receiving actor Mission for nonproducer
     task_id: two.execution.task_id, receiving_task_id: two.execution.task_id }, one.envelope('foreign-link')), { code: 'NOT_ALLOWED' });
 });
 
-test('Material publication holds the lifecycle writer lock until the content and receipt commit', t => {
+test('independent Context publication excludes Task finish in a second process until content and receipt commit', t => {
   const root = mkdtempSync(join(tmpdir(), 'material-lifecycle-'));
   const database = join(root, 'state.sqlite');
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const { tasks, actor, publish } = fixture(t, database);
+  const { tasks, actor, publish } = fixture(t, database, join(root, 'context.sqlite'));
   const bot = actor('writer', 'mission:a');
+  const other = new TaskService(database);
+  other.db.exec('PRAGMA busy_timeout = 40');
+  t.after(() => other.close());
   const authorize = tasks.materialScope.bind(tasks);
   let blocked = false;
   tasks.materialScope = (...args) => {
     const scope = authorize(...args);
+    assert.throws(() => other.dispatch('task_finish', { outcome: 'incomplete' }, bot.envelope('competing-finish')), error => error.errcode === 5);
     const result = execFileSync(process.execPath, ['--input-type=module', '-e', `
       import { DatabaseSync } from 'node:sqlite';
       const db = new DatabaseSync(process.argv[1]);
       db.exec('PRAGMA busy_timeout = 40');
-      try { db.prepare("UPDATE bots SET state = 'CLOSING' WHERE bot_id = ?").run(process.argv[2]); console.log('incorrectly closed'); }
+      try { db.exec('BEGIN IMMEDIATE'); db.exec('ROLLBACK'); console.log('incorrectly closed'); }
       catch (error) { console.log(error.errcode === 5 ? 'blocked' : error.message); }
       db.close();
-    `, database, bot.id], { encoding: 'utf8', timeout: 5000 });
+    `, database], { encoding: 'utf8', timeout: 5000 });
     assert.equal(result.trim(), 'blocked'); blocked = true;
     return scope;
   };
   const accepted = publish(bot, 'publication-first');
   tasks.materialScope = authorize;
   assert.equal(blocked, true);
-  tasks.dispatch('task_finish', { outcome: 'incomplete' }, bot.envelope('finish-after-publication'));
+  other.dispatch('task_finish', { outcome: 'incomplete' }, bot.envelope('finish-after-publication'));
   assert.deepEqual(publish(bot, 'publication-first'), accepted);
   assert.throws(() => publish(bot, 'new-after-close'), { code: 'NOT_ALLOWED' });
 });
 
 test('Material provenance cannot be claimed by another producer or upgraded by a Bot name prefix', t => {
-  const { actor, publish } = fixture(t);
+  const { actor, publish, context } = fixture(t);
   const first = actor('judge:pretender', 'mission:a');
   const second = actor('second-producer', 'mission:a');
   const input = { material_id: 'fixed-material-id', content: 'same bytes', evidence_state: 'accepted', provenance: { actor_ref: 'system:forged', bot_id: 'forged' } };
@@ -127,17 +131,18 @@ test('Material provenance cannot be claimed by another producer or upgraded by a
   assert.equal(material.producer_bot_id, first.id);
   assert.equal(material.provenance.bot_id, first.id);
   assert.equal(material.provenance.actor_ref, first.id);
-  assert.equal(material.evidence_state, 'proposed');
+  assert.equal(material.evidence_state, undefined);
+  assert.equal(context.getMaterial(material.material_id).evidence_state, 'proposed');
   assert.throws(() => publish(second, 'second-producer', input), { code: 'CONFLICT' });
 });
 
-test('unbound Bot reads public Material in its Mission but separate commit domains reject registered writes', t => {
+test('unbound Bot reads public Material in its Mission and remote-only authority cannot authorize writes', t => {
   const { tasks, context, actor, publish } = fixture(t);
   const producer = actor('producer-read', 'mission:a');
   const material = publish(producer, 'readable').material;
   const reader = actor('reader', 'mission:a', { take: false });
   assert.equal(context.dispatch('get_material', { material_id: material.material_id }, reader.envelope('read')).material.content_hash, material.content_hash);
-  const isolated = new ContextService(':memory:', { taskService: tasks });
+  const isolated = new ContextService(':memory:', { taskService: { materialScope: tasks.materialScope.bind(tasks), getBot: tasks.getBot.bind(tasks) } });
   t.after(() => isolated.close());
   assert.throws(() => isolated.dispatch('context_publish_material', { role: 'experience', content: 'unsafe separate commit' }, producer.envelope('separate-write')), { code: 'SERVICE_NOT_READY' });
 });
@@ -162,7 +167,7 @@ test('historical cross-Mission relations and links stay stored but cannot affect
     (relation_id, material_id, replacement_material_id, relation_kind, active, actor_ref, version, created_at)
     VALUES ('old-foreign-edge', ?, ?, 'supersede', 1, 'legacy', 1, ?)`).run(a.material_id, b.material_id, new Date().toISOString());
   assert.deepEqual(context.dispatch('list_material_relations', {}, one.envelope('history-relations')), []);
-  assert.deepEqual(context.dispatch('read_materials', {}, one.envelope('history-visible')).map(m => m.material_id), [a.material_id]);
+  assert.deepEqual(context.dispatch('read_materials', {}, one.envelope('history-visible')).materials.map(m => m.material_id), [a.material_id]);
   assert.equal(context.listMaterialRelations({ material_id: a.material_id }).length, 1);
   const successor = publish(one, 'history-local-successor').material;
   for (const kind of ['dispute', 'supersede']) tasks.db.prepare(`INSERT INTO material_relations
@@ -170,7 +175,7 @@ test('historical cross-Mission relations and links stay stored but cannot affect
     VALUES (?, ?, ?, ?, 1, ?, ?, ?, 2, ?)`).run(`foreign-origin-${kind}`, a.material_id, kind === 'supersede' ? successor.material_id : null,
     kind, two.id, two.execution.task_id, two.execution.execution_id, new Date().toISOString());
   assert.deepEqual(context.dispatch('list_material_relations', {}, one.envelope('local-endpoints-foreign-author')), []);
-  assert.ok(context.dispatch('read_materials', {}, one.envelope('foreign-author-cannot-hide')).some(m => m.material_id === a.material_id));
+  assert.ok(context.dispatch('read_materials', {}, one.envelope('foreign-author-cannot-hide')).materials.some(m => m.material_id === a.material_id));
   tasks.db.prepare(`INSERT INTO material_consumptions (operation_id, material_id, reader_task, reader_execution, action, created_at)
     VALUES ('old-foreign-consumption', ?, ?, ?, 'task', ?)`).run(a.material_id, two.execution.task_id, two.execution.execution_id, new Date().toISOString());
   assert.deepEqual(context.dispatch('list_material_consumptions', {}, one.envelope('scoped-consumers')), []);
@@ -178,7 +183,7 @@ test('historical cross-Mission relations and links stay stored but cannot affect
   tasks.dispatch('task_link_material', { material_id: a.material_id, role: 'experience' }, one.envelope('before-contamination'));
   tasks.db.prepare('UPDATE materials SET mission_id = ? WHERE material_id = ?').run('mission:b', a.material_id);
   assert.throws(() => context.dispatch('get_material', { material_id: a.material_id }, two.envelope('mismatched-producer')), { code: 'NOT_ALLOWED' });
-  assert.ok(!context.dispatch('read_materials', {}, two.envelope('mismatched-producer-list')).some(m => m.material_id === a.material_id));
+  assert.ok(!context.dispatch('read_materials', {}, two.envelope('mismatched-producer-list')).materials.some(m => m.material_id === a.material_id));
   assert.deepEqual(tasks.dispatch('list_task_materials', { task_id: one.execution.task_id }, one.envelope('after-contamination')).links, []);
   assert.deepEqual(tasks.getTask(one.execution.task_id).materials, []);
   assert.equal(tasks.db.prepare('SELECT COUNT(*) AS count FROM task_material_links WHERE material_id = ?').get(a.material_id).count, 1);
@@ -232,10 +237,10 @@ test('durable public changes wake no-work discovery even with lost hints and an 
   tasks.dispatch('heartbeat', {}, producer.envelope('private-heartbeat')); await poll(0);
   const a = publish(producer, 'wake-material').material;
   await poll(1); assert.equal(discoveries, 3);
-  context.dispatch('dispute_material', { material_id: a.material_id, reason: 'A claim requires rechecking' }, producer.envelope('wake-dispute'));
+  context.dispatch('dispute_material', { material_id: a.material_id, claim: 'The claimed result', reason: 'A claim requires rechecking' }, producer.envelope('wake-dispute'));
   await poll(1); assert.equal(discoveries, 4);
   const b = publish(producer, 'wake-successor').material;
-  const relation = context.dispatch('supersede_material', { material_id: a.material_id, replacement_material_id: b.material_id, reason: 'Complete replacement' }, producer.envelope('wake-supersede')).relation;
+  const relation = context.dispatch('supersede_material', { material_id: a.material_id, replacement_material_id: b.material_id, expected_version: 0, reason: 'Complete replacement' }, producer.envelope('wake-supersede')).relation;
   await poll(1); assert.equal(discoveries, 5);
   const revoke = () => context.dispatch('unsupersede_material', { material_id: a.material_id, replacement_material_id: b.material_id,
     expected_version: relation.version, reason: 'Replacement was mistaken' }, producer.envelope('wake-unsupersede'));

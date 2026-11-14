@@ -16,15 +16,25 @@ const docker = args => run('docker', args, { timeout: 60_000, maxBuffer: 2 * 102
 if (!process.argv.includes('--inside')) {
   const name = `swarm-contract-${randomUUID()}`;
   const root = fileURLToPath(new URL('../', import.meta.url));
+  const image = process.env.SWARMENV_BOT_CONTRACT_TEST_IMAGE ?? 'swarmenv/agent:issue122';
   const { OpenSandboxAgentAdapter } = await import('../src/agent/opensandbox-agent-adapter.js');
-  const adapter = new OpenSandboxAgentAdapter({ sandboxManager: {}, command: 'pi', provider: 'openai', model: 'fixture' });
+  let launchArgs;
+  const sandboxManager = {
+    async ensureExecution() {},
+    async startAgent(input) { launchArgs = input.args; },
+    async *agentEvents() {},
+  };
+  const adapter = new OpenSandboxAgentAdapter({ sandboxManager, command: 'pi', provider: 'openai', model: 'fixture' });
+  const bot = { bot_id: 'bot:controlled', resource_key: 'bot:controlled', mission_id: 'mission:controlled' };
+  await adapter.start({ executionId: bot.resource_key, bot });
+  assert.ok(launchArgs);
   try {
     await docker(['run', '--detach', '--name', name, '--network', 'none', '--cpus', '1', '--memory', '512m', '--pids-limit', '128',
       '--env', `SWARMENV_WORKER_TOKEN=${token}`, '--tmpfs', '/workspace:rw,nosuid,nodev,size=64m',
       '--mount', `type=bind,source=${root}scripts/opensandbox-agent-worker.mjs,target=/opt/swarmenv/agent-worker.mjs,readonly`,
       '--mount', `type=bind,source=${root}scripts/sandbox-project.mjs,target=/opt/swarmenv/sandbox-project.mjs,readonly`,
       ...['project-install.mjs', 'project-processes.mjs'].flatMap(file => ['--mount', `type=bind,source=${root}scripts/${file},target=/opt/swarmenv/${file},readonly`]),
-      '--entrypoint', 'node', 'swarmenv/agent:issue122', '/opt/swarmenv/agent-worker.mjs']);
+      '--entrypoint', 'node', image, '/opt/swarmenv/agent-worker.mjs']);
     await docker(['exec', name, 'mkdir', '-p', '/opt/swarmenv/test-support']);
     for (const path of ['src/agent/bot-contract', 'src/agent/bot-contract.js', 'src/cli/swarm-cli.js', 'test-support/bot-contract-probe.mjs']) {
       await docker(['cp', `${root}${path}`, `${name}:/opt/swarmenv/${path}`]);
@@ -34,7 +44,7 @@ if (!process.argv.includes('--inside')) {
     const result = await docker(['exec', name, 'node', '/opt/swarmenv/test-support/bot-contract-probe.mjs', '--inside',
       ...(process.argv.includes('--unreadable') ? ['--unreadable'] : []),
       ...(process.argv.includes('--missing-resource') ? ['--missing-resource'] : []),
-      JSON.stringify(adapter.buildLaunchArgs({ executionId: 'controlled', sessionId: randomUUID() }))]);
+      JSON.stringify(launchArgs)]);
     process.stdout.write(result.stdout);
   } finally { await docker(['rm', '--force', name]).catch(() => undefined); }
 } else {

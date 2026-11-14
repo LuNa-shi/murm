@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
@@ -10,7 +10,6 @@ async function startServer(root) {
   const child = spawn(process.execPath, [
     'scripts/serve-observability.mjs',
     '--root', join(root, 'experiments'),
-    '--host', '127.0.0.1',
     '--port', '0',
   ], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
   const startup = await new Promise((resolve, reject) => {
@@ -101,4 +100,16 @@ test('persistent observability discovers repository .worktrees and .worktree exp
     await new Promise((resolve) => child.once('exit', resolve));
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('standalone Observer fails before side effects when remote auth is omitted', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observer-auth-cli-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const env = { ...process.env };
+  delete env.SWARMENV_OBSERVABILITY_OPERATOR_PASSWORD;
+  const rejected = spawnSync(process.execPath, [
+    'scripts/serve-observability.mjs', '--root', join(root, 'experiments'), '--host', '0.0.0.0', '--port', '0',
+  ], { cwd: process.cwd(), env, encoding: 'utf8', timeout: 5000 });
+  assert.equal(rejected.status, 1);
+  assert.match(rejected.stderr, /requires explicit operator authentication/);
 });

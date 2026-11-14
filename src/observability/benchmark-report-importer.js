@@ -95,13 +95,15 @@ async function importRawLogs(store, experimentId, experimentRoot, report) {
  * the same Observation Store used by live experiments. Re-importing an
  * already populated Experiment is idempotent by returning its existing data.
  */
-export async function importBenchmarkReport({ observationStore, reportPath, experimentDir = null, includeRawLogs = true } = {}) {
+export async function importBenchmarkReport({ observationStore, reportPath, experimentDir = null, includeRawLogs = false } = {}) {
   if (!(observationStore instanceof ObservationStore)) throw new TypeError('observationStore must be an ObservationStore');
   const resolvedReportPath = await resolveReportPath(reportPath);
   const report = await readJson(resolvedReportPath);
   const experimentRoot = experimentRootFromReport(report, resolvedReportPath, experimentDir);
   const experimentId = report.project?.run_id ?? basename(experimentRoot);
-  const rootTaskId = report.project?.task_tree?.find((task) => task.parent_id === null)?.task_id ?? null;
+  const rootTaskId = report.protocol?.task_model === 'flat' || report.protocol?.mission_id
+    ? null
+    : report.project?.task_tree?.find((task) => task.parent_id === null)?.task_id ?? null;
   const existing = observationStore.getExperiment(experimentId);
   if (existing && observationStore.countEvents(experimentId) > 0) return { experiment: existing, report, imported_events: 0, report_path: resolvedReportPath };
   const metadata = {

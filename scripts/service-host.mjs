@@ -29,6 +29,9 @@ const catalogEndpoints = Object.fromEntries(['task', 'context', 'judge', 'catalo
   .filter(([, endpoint]) => endpoint));
 
 const isolated = process.env.SWARMENV_SERVICE_ISOLATED === 'true';
+// Invocation requires an actor-bound credential selected by the host operator.
+const principals = process.env.SWARMENV_SERVICE_PRINCIPALS ? JSON.parse(process.env.SWARMENV_SERVICE_PRINCIPALS) : [];
+if (!Array.isArray(principals)) throw new TypeError('SWARMENV_SERVICE_PRINCIPALS must be a JSON array');
 const databasePath = isolated && serviceId === 'catalog'
   ? null
   : resolve(process.env.SWARMENV_SERVICE_DATABASE ?? `./data/${serviceId}.sqlite`);
@@ -94,10 +97,37 @@ function dispatch(capability, input, envelope, role = null) {
     }
     if (capability.operation === 'list_tools') return { tools: catalogRegistry.listTools(input?.service ?? null).filter(allowed) };
   }
+  if (['task_take', 'take', 'take_task'].includes(capability.operation) &&
+      [input?.owner_ref, input?.ownerRef, input?.actor_ref].some(value => value !== undefined && value !== envelope.actor_ref)) {
+    throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service credentials cannot assign another Task owner');
+  }
+  if ((input?.actor_ref !== undefined && input.actor_ref !== envelope.actor_ref) ||
+      (input?.actorRef !== undefined && input.actorRef !== envelope.actor_ref)) {
+    throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service credentials cannot delegate the authenticated actor');
+  }
   const service = serviceId === 'task' ? taskService : serviceId === 'context' ? contextService : judgeService;
   if (!service) throw new Error(`isolated ${serviceId} Service is not available in this process`);
   if (serviceId === 'context' && typeof contextService.taskService?.materialScope !== 'function') {
     throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Context requires an authenticated Mission authority and lifecycle commit boundary');
+  }
+  if (serviceId === 'judge' && !judgeService.taskService) {
+    throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Judge requires local Task lifecycle authority and a trusted Workspace source');
+  }
+  if (serviceId === 'task') {
+    const bot = taskService.getBot(envelope.actor_ref);
+    if (bot) {
+      if (capability.operation === 'execution_progress') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Legacy Execution progress is unavailable to Bots');
+      const requestedMission = input.mission_id ?? input.missionId;
+      const taskId = input.task_id ?? input.taskId ?? envelope.task_id;
+      if ((requestedMission !== undefined && requestedMission !== bot.mission_id) ||
+          (taskId && taskService.getTask(taskId)?.mission_id !== bot.mission_id)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service request does not belong to the Bot Mission');
+      }
+      if (['task_list', 'task_status', 'mission_get'].includes(capability.operation)) input = { ...input, mission_id: bot.mission_id };
+      if (envelope.execution_id && taskService.getExecution(envelope.execution_id)?.owner_ref !== bot.bot_id) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service request does not belong to the Bot Execution');
+      }
+    }
   }
   return service.dispatch(capability.operation, input, envelope);
 }
@@ -105,8 +135,9 @@ function dispatch(capability, input, envelope, role = null) {
 const serviceHost = createServiceHost({
   manifest,
   handler: ({ capability, input, envelope, role }) => dispatch(capability, input, envelope, role),
-  readiness: async () => serviceId !== 'context' || typeof contextService.taskService?.materialScope === 'function',
-  token: process.env.SWARMENV_SERVICE_TOKEN ?? null,
+  readiness: async () => serviceId === 'context' ? typeof contextService.taskService?.materialScope === 'function'
+    : serviceId === 'judge' ? Boolean(judgeService.taskService) : true,
+  principals,
   host,
   advertiseHost,
   publicUrl: endpointUrl,

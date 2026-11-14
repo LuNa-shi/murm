@@ -27,8 +27,9 @@ export const EXECUTION_WORKSPACE_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS execut
  * no path, tree, parent, Workspace, source identity or checker policy.
  */
 export class ExecutionWorkspace {
-  constructor({ taskService, workspace, sandboxManager, guard, onPending = null }) {
+  constructor({ taskService, contextService = null, workspace, sandboxManager, guard, onPending = null }) {
     this.tasks = taskService;
+    this.context = contextService;
     this.db = taskService.db;
     this.workspace = workspace;
     this.sandbox = sandboxManager;
@@ -117,8 +118,13 @@ export class ExecutionWorkspace {
 
   async dispatch(operation, input, identity) {
     if (!['save', 'apply', 'status', 'diff'].includes(operation)) throw invalid('Unknown Execution Workspace operation');
-    const allowed = operation === 'save' ? ['resolved'] : operation === 'apply' ? ['from'] : [];
+    const allowed = operation === 'save' ? ['resolved', 'material_ids'] : operation === 'apply' ? ['from'] : [];
     if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !allowed.includes(key))) throw invalid('Workspace input cannot supply files, paths, lineage or identity');
+    if (input.material_ids !== undefined && (!Array.isArray(input.material_ids) || input.material_ids.length > 20 ||
+        new Set(input.material_ids).size !== input.material_ids.length ||
+        input.material_ids.some(id => typeof id !== 'string' || !id || id.length > 256))) {
+      throw invalid('material_ids must contain at most twenty distinct Material IDs');
+    }
     if (input.resolved !== undefined && typeof input.resolved !== 'boolean') throw invalid('resolved must be boolean');
     if (operation === 'apply' && (typeof input.from !== 'string' || !input.from)) throw invalid('apply requires --from revision or main');
     const execution = this.guard(identity, { receiptOnly: true });
@@ -148,7 +154,7 @@ export class ExecutionWorkspace {
         if (existing.error_json) { const error = JSON.parse(existing.error_json); throw new SwarmEnvError(error.code, error.message, error.details); }
         if (existing.result_json) return JSON.parse(existing.result_json);
       }
-      const active = this.guard(identity);
+      const active = this.guard(identity, { newWork: operation === 'apply' });
       if (operation === 'apply') assertNewExecutionWork(active);
       const current = this.#state(active);
       if (['status', 'diff'].includes(operation)) {
@@ -165,15 +171,21 @@ export class ExecutionWorkspace {
           state_version: current.version, manifest: snapshot.manifest, files: Object.fromEntries(Object.entries(snapshot.files).map(([path, bytes]) => [path, bytes.toString('base64')])),
           source: { mission_id: this.tasks.getTask(execution.task_id).mission_id, task_id: execution.task_id, execution_id: execution.execution_id, bot_id: execution.owner_ref, fencing_version: execution.fencing_version },
           conflicts: current.conflicts };
+        if (operation === 'save' && input.material_ids?.length) {
+          const context = this.context ?? this.tasks.contextService;
+          if (!context?.readWorkspaceMaterialUses) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Workspace Material use authority is unavailable');
+          captured.source.material_uses = context.readWorkspaceMaterialUses({ missionId: captured.source.mission_id,
+            taskId: execution.task_id, executionId: execution.execution_id, materialIds: input.material_ids });
+        }
         if (operation === 'apply') {
-          if (this.#view(current, snapshot).dirty) throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'Save unsaved project changes before apply');
+          if (this.#view(current, snapshot).dirty) throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'Save unsaved project changes before apply', { apply_blocker: 'dirty' });
           const plan = await this.workspace.planApply({ workspaceId: current.workspace_id, baseRevision: captured.base_revision, fromRevision: input.from, requestId });
           if (plan.expected_content_hash !== snapshot.content_hash) throw invalid('Apply base differs from the current saved project');
           captured = { kind: 'apply', state_version: current.version, source: captured.source, ...plan, files: Object.fromEntries(Object.entries(plan.files).map(([path, bytes]) => [path, Buffer.from(bytes).toString('base64')])) };
         } else if (input.resolved) captured.conflicts = this.#resolveConflicts(current.conflicts, snapshot.files);
         this.db.exec('BEGIN IMMEDIATE');
         try {
-          const active = this.guard(identity);
+          const active = this.guard(identity, { newWork: operation === 'apply' });
           if (operation === 'apply') assertNewExecutionWork(active);
           this.db.prepare("UPDATE execution_workspace_requests SET phase = 'captured', captured_json = ?, updated_at = ? WHERE execution_id = ? AND request_id = ?")
             .run(json(captured), new Date().toISOString(), execution.execution_id, requestId);

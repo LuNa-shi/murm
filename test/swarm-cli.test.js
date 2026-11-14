@@ -4,6 +4,35 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { runSwarmCli } from '../src/cli/swarm-cli.js';
 
+test('swarm take reports the actual transmitted request ID after transport loss', async t => {
+  let invocation;
+  const server = createServer(async request => {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    invocation = JSON.parse(body);
+    request.socket.destroy();
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => server.close());
+  const restore = ['SWARMENV_BRIDGE_URL', 'SWARMENV_BRIDGE_TOKEN'].map(key => [key, process.env[key]]);
+  t.after(() => {
+    for (const [key, value] of restore) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  process.env.SWARMENV_BRIDGE_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.SWARMENV_BRIDGE_TOKEN = 'local-test-credential';
+  await assert.rejects(runSwarmCli(['task', 'take', 'task-1']), error => {
+    assert.equal(invocation.operation, 'task_take');
+    assert.match(invocation.operation_id, /^cli:take:/);
+    assert.equal(error.details.request_id, invocation.operation_id);
+    assert.equal(error.details.notice, `请求 ${invocation.operation_id} 结果未明。查询或重试同一请求；不要以新 ID 认领其他 Task。`);
+    return true;
+  });
+});
+
 test('swarm CLI exposes offline help at every level', async () => {
   let output = '';
   const stdout = { write: (value) => { output += value; } };
@@ -13,6 +42,11 @@ test('swarm CLI exposes offline help at every level', async () => {
   await runSwarmCli(['task', 'view', '--help'], { stdout });
   assert.match(output, /Required: <task-id>/);
   assert.match(output, /--timeout-ms/);
+  output = '';
+  await runSwarmCli(['task', 'propose', '--help'], { stdout });
+  assert.match(output, /--base-revision/);
+  await assert.rejects(runSwarmCli(['context', 'publish'], { stdout }), /retired.*swarm material/);
+  await assert.rejects(runSwarmCli(['context', '--help'], { stdout }), /retired.*swarm material/);
 });
 
 test('swarm task command discovers a manifest and sends a typed JSON request', async () => {
@@ -21,7 +55,8 @@ test('swarm task command discovers a manifest and sends a typed JSON request', a
     requests.push({ url: request.url, method: request.method, body: request.method === 'POST' ? JSON.parse(await new Promise((resolve) => { let value = ''; request.on('data', (chunk) => { value += chunk; }); request.on('end', () => resolve(value)); })) : null });
     if (request.url === '/v1/manifest') {
       response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({ ok: true, result: { service_id: 'task', endpoint: { url: `http://127.0.0.1:${server.address().port}` }, capabilities: [{ name: 'task_view', operation: 'task_view', method: 'POST', path: '/v1/task_view' }] } }));
+      response.end(JSON.stringify({ ok: true, result: { service_id: 'task', endpoint: { url: `http://127.0.0.1:${server.address().port}` },
+        capabilities: ['task_view', 'task_create'].map(operation => ({ name: operation, operation, method: 'POST', path: `/v1/${operation}` })) } }));
       return;
     }
     response.setHeader('content-type', 'application/json');
@@ -39,6 +74,8 @@ test('swarm task command discovers a manifest and sends a typed JSON request', a
     const invocation = requests.find((request) => request.url === '/v1/task_view');
     assert.equal(invocation.body.input.task_id, 'task-1');
     assert.equal(invocation.body.envelope.actor_ref.startsWith('cli:'), true);
+    await runSwarmCli(['task', 'propose', '--base-revision', '0.2'], { stdout: { write() {} } });
+    assert.equal(requests.find(request => request.url === '/v1/task_create').body.input.base_revision, '0.2');
   } finally {
     if (previous === undefined) delete process.env.SWARMENV_TASK_SERVICE_URL;
     else process.env.SWARMENV_TASK_SERVICE_URL = previous;

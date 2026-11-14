@@ -8,8 +8,8 @@ const ALIASES = Object.freeze({
   bot: { exit: 'bot_exit' },
   // complete/block/close remain transport aliases for old clients; finish is
   // the single public Task lifecycle command.
-  task: { list: 'task_list', discover: 'task_list', view: 'task_view', create: 'task_create', propose: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status' },
-  material: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', view: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials' },
+  task: { list: 'task_list', discover: 'task_list', view: 'task_view', create: 'task_create', propose: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status', cancel: 'task_cancel', 'dependency-replace': 'task_dependency_replace' },
+  material: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', view: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials', dispute: 'material_dispute', supersede: 'material_supersede', unsupersede: 'material_unsupersede' },
   workspace: { view: 'workspace_public_view', history: 'workspace_public_history', status: 'workspace_status', diff: 'workspace_current_diff', apply: 'workspace_public_apply', files: 'workspace_public_files', list: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
   mission: { view: 'mission_get', submit: 'mission_submit', status: 'mission_submission_get', finish: 'mission_submission_finish' },
   judge: { check: 'workspace_check', submit: 'workspace_check', result: 'get_check_result', get: 'get_check_result' },
@@ -20,46 +20,42 @@ const COMMAND_HELP = Object.freeze({
   task: {
     list: 'Search Task summaries across states using --query, --state/--states, --limit (1-100) and --cursor. Follow next_cursor even after an empty page, then view Task details before proposing or taking. Creation order is stable within a scan; state and readiness are live at each page.',
     view: 'Read one Task. Required: <task-id> (or --task-id). Output: authoritative Task, state, relations and Material links.',
-    propose: 'Propose a Task with a bounded goal, deliverable and completion conditions. Use --input file or --stdin. Creator and Mission come from the Bot binding.',
-    create: 'Create a Task. Use --input or --stdin for the complete Task contract. Output: created Task.',
+    propose: 'Propose a Task with a bounded goal, deliverable and completion conditions. Use --input file or --stdin. Optional --base-revision R pins a public Workspace revision. Creator and Mission come from the Bot binding.',
+    create: 'Create a Task. Use --input or --stdin for the complete Task contract. Optional --base-revision R pins a public Workspace revision. Output: created Task.',
     take: 'Take an eligible Task. Use --input or --stdin for the task request. Output: Execution binding.',
-    finish: 'Finish the current Task with outcome done, incomplete, blocked, or cancelled. Use --input or --stdin for the outcome contract.',
+    finish: 'Finish the current Task with outcome done, incomplete, blocked, or cancelled. For a declared Workspace delivery, provide --workspace-revision and any required --check-result-id.',
+    cancel: 'Cancel an unowned Task. Required: <task-id> --expected-spec-version --expected-state-version --reason. Optional --replacement. Requires a Mission coordination grant.',
+    'dependency-replace': 'Repair a cancelled prerequisite of an unowned blocked Task. Required: <task-id> --from-task-id --to-task-id --expected-spec-version --expected-state-version --reason. Requires a Mission coordination grant.',
     feedback: 'Record feedback for the current Task. Use --input or --stdin for the feedback contract.',
   },
-  context: {
-    list: 'Read bounded Materials. Input: filters such as --mission-id, --kind and --limit.',
-    read: 'Read Materials. Use --input or --stdin for the read filter.',
-    get: 'Read one Material. Required: <material-id> (or --material-id).',
-    view: 'Read one immutable Material including provenance and corrections. Required: <material-id>.',
-    search: 'Search Materials. Input: --query and explicit scope filters.',
-    publish: 'Publish immutable Material. Use --input or --stdin for content and provenance.',
-    consume: 'Record Material consumption. Use --input or --stdin for Material IDs and action.',
-  },
   material: {
-    list: 'Read bounded Materials. Input: filters such as --mission-id, --kind and --limit.',
+    list: 'Read bounded Material summaries using --query, --task-id, --limit and --cursor; follow next_cursor even after an empty page.',
     read: 'Read Materials. Use --input or --stdin for the read filter.',
     get: 'Read one Material. Required: <material-id> (or --material-id).',
     view: 'Read one immutable Material including provenance and corrections. Required: <material-id>.',
     search: 'Search Materials. Input: --query and explicit scope filters.',
     publish: 'Publish immutable Material. The service binds producer Task/Execution from the trusted request context.',
-    consume: 'Record a meaningful Material use. Use --input or --stdin for Material IDs and action.',
+    dispute: 'Question a Material. Required: <material-id> --reason --claim; claim identifies the affected claim or section.',
+    supersede: 'Replace a whole Material. Required: <old-id> --with <new-id> --expected-version <observed relation_version> --reason.',
+    unsupersede: 'Revoke only the matching replacement. Required: <old-id> --with <new-id> --expected-version <observed relation_version> --reason. Preserves history.',
+    consume: 'Record a meaningful Material use with --material-ids, --action and concrete --impact; the service binds the exact version and hash.',
   },
   workspace: {
     view: 'Read the current public Workspace and main.',
-    history: 'Read main history; --all includes unmerged saves. Filter --task, --execution, --path; paginate with --limit and --cursor.',
+    history: 'Read main history; --all includes unmerged saves. Filter --task, --execution, --material-id, --path; paginate with --limit and --cursor.',
     status: 'Inspect current E initial input, saved revision, dirty paths and conflicts.',
-    diff: 'Compare the current E project with its last saved revision.',
-    files: 'Read files from a fixed public Workspace revision before take.',
+    diff: 'With --from R --to R, compare public revisions before take; paginate with --limit and --cursor. With no revision arguments, compare the current E project against its last save.',
+    files: 'List public paths at --at R with optional <path>, --limit and --cursor.',
     list: 'List files from a fixed public Workspace revision before take.',
     read: 'Read one file from a fixed public Workspace revision.',
-    search: 'Search text in a fixed public Workspace revision.',
+    search: 'Search public paths and UTF-8 text at --at R; paginate with --max-results and --cursor.',
     apply: 'Apply a fixed public revision into the current E using --from revision or main. Save dirty work first; reuse --request-id after an unknown response.',
-    save: 'Save the actual current E project as a stable public revision. Use --resolved only after resolving recorded conflicts and removing their alternatives. No file, identity or lineage arguments. Reuse --request-id after an unknown response.',
+    save: 'Save the actual current E project as a stable public revision. Use --resolved only after resolving recorded conflicts and removing their alternatives. Use --material-ids for recorded Workspace uses. No file, identity or lineage arguments. Reuse --request-id after an unknown response.',
     merge: 'Merge --from a fixed public revision; Runtime pins main, checks the combined tree when configured, and conditionally advances main. Reuse --request-id after response loss.',
   },
   mission: {
     view: 'Read the current Mission goal and acceptance conditions through the trusted Bot binding.',
-    submit: 'Mission snapshot submission is pending Runtime integration; registered Bot requests return SERVICE_NOT_READY.',
+    submit: 'Submit current main plus an explicit Material selection using --materials M1,M2 (or --materials [] for files only). Requires a Mission coordination grant. Checker/configuration and main are fixed by the service; query submission view after response loss.',
     status: 'Read Mission submission state and immutable snapshots.',
     finish: 'Record the result of a durable Mission submission.',
   },
@@ -70,7 +66,7 @@ const COMMAND_HELP = Object.freeze({
 });
 
 function usage(scope = 'top', commandName = null) {
-  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|take|finish|feedback\n  material list|view|search|publish|consume\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
+  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|take|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
   if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest through the Bot Bridge. No network is required for --help.';
   if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${DEFAULT_REQUEST_TIMEOUT_MS})\n  --help                     Show this command help`;
   return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Task and Material IDs and file paths use the documented positional arguments.\nBot identity always comes from the protected Bridge binding.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;
@@ -228,17 +224,24 @@ async function listServices() {
 async function bridgeCall(operation, payload, options = {}, serviceId = undefined) {
   const token = process.env.SWARMENV_BRIDGE_TOKEN;
   if (!token) throw new Error('SWARMENV_BRIDGE_TOKEN is required for Bot operations');
-  return request(`${process.env.SWARMENV_BRIDGE_URL.replace(/\/$/, '')}/call`, {
+  const requestId = options['request-id'] ?? options['operation-id'] ?? (operation === 'task_take' ? `cli:take:${randomUUID()}` : undefined);
+  try { return await request(`${process.env.SWARMENV_BRIDGE_URL.replace(/\/$/, '')}/call`, {
     method: 'POST', token, timeoutMs: parseScalar(options['timeout-ms']) ?? DEFAULT_REQUEST_TIMEOUT_MS,
-    body: { operation, service_id: serviceId, operation_id: options['request-id'] ?? options['operation-id'] ?? undefined, payload },
-  });
+    body: { operation, service_id: serviceId, operation_id: requestId, payload },
+  }); } catch (error) {
+    if (operation === 'task_take' && requestId && (error.code === 'SERVICE_TIMEOUT' || !error.code)) {
+      error.details = { ...error.details, request_id: requestId,
+        notice: `请求 ${requestId} 结果未明。查询或重试同一请求；不要以新 ID 认领其他 Task。` };
+    }
+    throw error;
+  }
 }
 
 function commandInput(service, command, options, args, input) {
   const fields = {
-    task: { view: 'task_id', take: 'task_id' },
-    material: { view: 'material_id', read: 'material_id', get: 'material_id', search: 'query' },
-    workspace: { read: 'path', search: 'query' },
+    task: { view: 'task_id', take: 'task_id', cancel: 'task_id', 'dependency-replace': 'task_id' },
+    material: { view: 'material_id', read: 'material_id', get: 'material_id', search: 'query', dispute: 'material_id', supersede: 'material_id', unsupersede: 'material_id' },
+    workspace: { files: 'path', list: 'path', read: 'path', search: 'query' },
     judge: { result: 'check_result_id', get: 'check_result_id' },
     mission: { status: 'submission_id' },
   };
@@ -255,7 +258,14 @@ function commandInput(service, command, options, args, input) {
   };
   if (service === 'workspace' || service === 'judge') rename('at', 'revision');
   if (service === 'workspace' && command === 'history') { rename('task', 'source_task'); rename('execution', 'source_execution'); }
-  if (service === 'task' && command === 'finish') rename('replacement', 'replacement_task_id');
+  if (service === 'material' && ['supersede', 'unsupersede'].includes(command)) rename('with', 'replacement_material_id');
+  if (service === 'workspace' && command === 'save' && typeof input.material_ids === 'string') input.material_ids = input.material_ids.split(',').filter(Boolean);
+  if (service === 'mission' && command === 'submit') {
+    rename('materials', 'material_ids');
+    if (typeof input.material_ids === 'string') input.material_ids = input.material_ids.split(',').filter(Boolean);
+    if (!Array.isArray(input.material_ids)) throw new Error('mission submit requires an explicit --materials selection, including [] for files only');
+  }
+  if (service === 'task' && ['finish', 'cancel'].includes(command)) rename('replacement', 'replacement_task_id');
   if (options['request-id'] !== undefined && options['operation-id'] !== undefined && options['request-id'] !== options['operation-id']) throw new Error('request-id and operation-id must match');
   if (process.env.SWARMENV_BRIDGE_URL) {
     const forbidden = ['actor_ref', 'owner_ref', 'bot_id', 'bot', 'core_id', 'execution_id', 'execution', 'task_owner', 'fencing_version', 'spec_version', 'state_version'];
@@ -265,8 +275,12 @@ function commandInput(service, command, options, args, input) {
 }
 
 async function invoke(service, commandName, options, args = []) {
-  const operation = ALIASES[service]?.[commandName] ?? commandName;
+  let operation = ALIASES[service]?.[commandName] ?? commandName;
   const input = commandInput(service, commandName, options, args, { ...(await inputFrom(options)), ...flagInput(options) });
+  if (service === 'workspace' && commandName === 'diff' && (input.from !== undefined || input.to !== undefined)) {
+    if (typeof input.from !== 'string' || typeof input.to !== 'string' || !input.from || !input.to) throw new Error('public Workspace diff requires both --from and --to');
+    operation = 'workspace_public_diff';
+  }
   if (process.env.SWARMENV_BRIDGE_URL) {
     if (!ALIASES[service]) {
       const metadata = await manifest(service);
@@ -288,6 +302,7 @@ async function invoke(service, commandName, options, args = []) {
 
 export async function runSwarmCli(argv = process.argv.slice(2), { stdout = process.stdout } = {}) {
   const { positionals, options } = parseArgs(argv);
+  if (positionals[0] === 'context') throw new Error('swarm context is retired. Use swarm material for Material operations.');
   if (options.help) {
     if (positionals[0] === 'mission' && positionals[1] === 'submission') {
       stdout.write('Usage: swarm mission submission view <id> [--json]\nRead the persistent submission and its fixed inputs.\n');
@@ -301,6 +316,10 @@ export async function runSwarmCli(argv = process.argv.slice(2), { stdout = proce
   const [service, rawCommand, serviceId] = positionals;
   let commandName = rawCommand;
   let args = positionals.slice(2);
+  if (service === 'task' && commandName === 'dependency') {
+    if (args[0] !== 'replace') throw new Error('task dependency requires replace <task-id>');
+    commandName = 'dependency-replace'; args = args.slice(1);
+  }
   if (service === 'mission' && commandName === 'submission') {
     if (args[0] !== 'view') throw new Error('mission submission requires view <id>');
     commandName = 'status'; args = args.slice(1);

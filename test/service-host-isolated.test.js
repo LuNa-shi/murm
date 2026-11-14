@@ -27,7 +27,8 @@ async function startService(serviceId, port, root, endpoints = {}) {
       SWARMENV_SERVICE_PORT: String(port),
       SWARMENV_SERVICE_PUBLIC_URL: endpoint,
       SWARMENV_SERVICE_DATABASE: join(root, `${serviceId}.sqlite`),
-      SWARMENV_SERVICE_TOKEN: 'isolated-probe-token',
+      SWARMENV_SERVICE_TOKEN: 'deprecated-shared-token',
+      SWARMENV_SERVICE_PRINCIPALS: JSON.stringify([{ token: 'isolated-probe-token', actor_ref: 'operator:isolated-probe', role: 'bound' }]),
       ...Object.fromEntries(Object.entries(endpoints).map(([id, url]) => [`SWARMENV_${id.toUpperCase()}_SERVICE_URL`, url])),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -79,9 +80,12 @@ test('built-in service image includes the checker git dependency and prebuild en
   assert.match(dockerfile, /ENTRYPOINT \["\.\/scripts\/service-host-entrypoint\.sh"\]/);
   assert.match(entrypoint, /SWARMENV_JUDGE_PREBUILD/);
   assert.match(entrypoint, /SWARMENV_JUDGE_PREBUILD_KEY/);
-  assert.match(compose, /SWARMENV_CONTEXT_SERVICE_TOKEN: \$\{SWARMENV_SERVICE_TOKEN:-\}/);
-  assert.match(compose, /SWARMENV_TASK_SERVICE_TOKEN: \$\{SWARMENV_SERVICE_TOKEN:-\}/);
-  assert.match(compose, /SWARMENV_JUDGE_SERVICE_TOKEN: \$\{SWARMENV_SERVICE_TOKEN:-\}/);
+  assert.match(compose, /SWARMENV_CONTEXT_SERVICE_TOKEN: \$\{SWARMENV_CONTEXT_SERVICE_TOKEN:-\}/);
+  assert.match(compose, /SWARMENV_TASK_SERVICE_TOKEN: \$\{SWARMENV_TASK_SERVICE_TOKEN:-\}/);
+  assert.match(compose, /SWARMENV_JUDGE_SERVICE_TOKEN: \$\{SWARMENV_JUDGE_SERVICE_TOKEN:-\}/);
+  for (const id of ['TASK', 'CONTEXT', 'JUDGE', 'CATALOG']) {
+    assert.ok(compose.includes('SWARMENV_SERVICE_PRINCIPALS: ${SWARMENV_' + id + '_SERVICE_PRINCIPALS:-[]}'));
+  }
 });
 
 test('service-host isolated mode owns one service database and HTTP manifest', async () => {
@@ -142,9 +146,23 @@ test('isolated hosts remain discoverable while Context fails closed without Miss
     assert.deepEqual(new Set(listedServices.map((service) => service.service_id)), new Set(['task', 'context', 'judge', 'catalog']));
     assert.equal(new Set(services.map((service) => service.manifest.service_id)).size, 4);
 
+    const membership = await fetch(`${urls.task}/v1/manifest`).then(response => response.json());
+    const capability = membership.result.capabilities.find(candidate => candidate.operation === 'task_take');
+    const request = (token, actor, role, owner) => fetch(`${urls.task}${capability.path}`, {
+      method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ envelope: { operation_id: 'identity-probe', actor_ref: actor, task_id: 'other-task',
+        execution_id: null, spec_version: null, state_version: null, fencing_version: null }, role,
+        input: { task_id: 'other-task', owner_ref: owner } }),
+    });
+    assert.equal((await request('deprecated-shared-token', 'operator:isolated-probe', 'bound')).status, 401);
+    assert.equal((await request('isolated-probe-token', 'bot:forged', 'bound')).status, 403);
+    assert.equal((await request('isolated-probe-token', 'operator:isolated-probe', 'recovery')).status, 403);
+    assert.equal((await request('isolated-probe-token', 'operator:isolated-probe', 'bound', 'bot:forged')).status, 403);
+
+
     const inputPath = join(root, 'material.json');
     await writeFile(inputPath, JSON.stringify({ kind: 'fact', scope: 'mission', role: 'experience', content: { marker: 'persisted-material' }, evidence_state: 'observed' }));
-    const published = await runCli(['material', 'publish', '--input', inputPath, '--json'], cliEnv);
+    const published = await runCli(['material', 'publish', '--input', inputPath, '--actor-ref', 'operator:isolated-probe', '--json'], cliEnv);
     assert.notEqual(published.code, 0);
     assert.match(published.stderr, /SERVICE_NOT_READY|authenticated Mission authority/);
     const ready = await fetch(`${urls.context}/readyz`);
@@ -154,7 +172,7 @@ test('isolated hosts remain discoverable while Context fails closed without Miss
     await stopServiceProcess(context.child);
     const restarted = await startService('context', ports.context, root, { task: urls.task });
     services.push(restarted);
-    const read = await runCli(['material', 'get', '--material-id', 'arbitrary-public-id', '--json'], cliEnv);
+    const read = await runCli(['material', 'get', '--material-id', 'arbitrary-public-id', '--actor-ref', 'operator:isolated-probe', '--json'], cliEnv);
     assert.notEqual(read.code, 0);
     assert.match(read.stderr, /SERVICE_NOT_READY|authenticated Mission authority/);
   } finally {

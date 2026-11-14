@@ -1,10 +1,10 @@
-import { createBuiltinServiceRegistry } from './builtin-registry.js';
+import { createBuiltinServiceRegistry, dispatchMissionWorkspaceRead, MISSION_WORKSPACE_READS } from './builtin-registry.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 const TASK_OPERATIONS = new Set([
   'get_execution', 'list_tasks', 'list_executions',
   'create_mission', 'get_mission', 'create_task', 'list_task', 'view_task', 'task_list', 'task_view', 'task_create',
-  'task_status', 'task_take', 'task_feedback', 'execution_progress',
+  'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_cancel', 'task_dependency_replace',
   'link_material', 'task_link_material', 'list_task_materials', 'task_materials', 'finish_task', 'task_finish',
 ]);
 const CONTEXT_OPERATIONS = new Set([
@@ -19,7 +19,7 @@ const CONTEXT_OPERATIONS = new Set([
 ]);
 const JUDGE_OPERATIONS = new Set(['workspace_check', 'get_check_result']);
 const PUBLIC_WORKSPACE_OPERATIONS = new Set([
-  'workspace_public_files', 'workspace_public_read', 'workspace_public_search',
+  ...Object.keys(MISSION_WORKSPACE_READS),
   'workspace_public_apply', 'workspace_save', 'workspace_merge', 'mission_submit', 'mission_submission_finish', 'mission_submission_get',
 ]);
 
@@ -127,15 +127,13 @@ export class ServicesRouter {
   async #dispatchPublic(operation, payload = {}, envelope = {}) {
     if (operation.startsWith('workspace_') && !this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not configured');
     if (operation.startsWith('mission_') && !this.missionSubmissionStore) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not configured');
-    if (operation === 'workspace_public_files') return this.missionWorkspace.files({ workspaceId: payload.workspace_id, revision: payload.revision, prefix: payload.path ?? '' });
-    if (operation === 'workspace_public_read') return this.missionWorkspace.read({ workspaceId: payload.workspace_id, revision: payload.revision, path: payload.path, maxBytes: payload.max_bytes });
-    if (operation === 'workspace_public_search') return this.missionWorkspace.search({ workspaceId: payload.workspace_id, revision: payload.revision, prefix: payload.path ?? '', query: payload.query, maxResults: payload.max_results });
+    if (Object.hasOwn(MISSION_WORKSPACE_READS, operation)) return dispatchMissionWorkspaceRead(this, operation, payload, envelope);
     if (operation === 'workspace_public_apply') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace apply requires the authenticated Runtime Bridge');
     if (operation === 'workspace_save') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace save requires the authenticated Runtime Bridge');
     if (operation === 'workspace_merge') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace merge requires authenticated Runtime integration');
-    if (operation === 'mission_submit') return this.missionSubmissionStore.submit({ ...payload, actorRef: payload.actor_ref ?? envelope.actor_ref });
+    if (operation === 'mission_submit') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission submit requires the authenticated Runtime Bridge');
     if (operation === 'mission_submission_finish') return this.missionSubmissionStore.finish(payload);
-    if (operation === 'mission_submission_get') return this.missionSubmissionStore.get(payload);
+    if (operation === 'mission_submission_get') return this.missionSubmissionStore.get({ missionId: payload.mission_id, submissionId: payload.submission_id ?? null });
     throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `${operation} is not configured`, { operation });
   }
 }

@@ -129,6 +129,7 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
         operationId: `activate:${e.execution_id}`, actorRef: e.owner_ref, taskId: e.task_id,
         executionId: e.execution_id, specVersion: e.spec_version, stateVersion: e.state_version, fencingVersion: e.fencing_version,
       })).execution;
+      result.workspace = { workspace_ref: '/controller/private/tree', cache_path: '/controller/private/cache' };
     },
   });
   service = fixtureResult.service;
@@ -149,10 +150,39 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
   await writeFile(proposalPath, JSON.stringify({ summary: 'Check one independently useful boundary', expected_output: 'A reproducible result', acceptance_conditions: ['Result is readable'] }));
   const task = (await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-propose')).task;
   assert.equal(task.mission_id, 'mission:auth');
-  assert.equal((await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-propose')).task.task_id, task.task_id);
-  assert.equal((await run('task', 'view', task.task_id)).task.task_id, task.task_id);
+  const assertFlat = value => {
+    for (const field of ['root_id', 'parent_id', 'root_deadline', 'max_children', 'acceptance_conditions_json']) {
+      assert.equal(Object.hasOwn(value, field), false, field);
+    }
+    assert.equal(Object.hasOwn(value.relations, 'spawned_from'), false);
+  };
+  assertFlat(task);
+  assert.equal(service.getTask(task.task_id).root_id, task.task_id);
+  assert.equal(task.creation.actor_ref, 'bot:cli-flow');
+  assert.equal(task.creation.execution_id, null);
+  assert.deepEqual((await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-propose')).task, task);
+  const prior = service.takeTask(task.task_id, { owner_ref: 'agent:prior', core_id: 'core-prior', take_key: 'prior' }).execution;
+  service.dispatch('stop_execution', { terminal_state: 'FAILED', reason: 'startup_failed' }, makeEnvelope({
+    actorRef: prior.owner_ref, taskId: prior.task_id, executionId: prior.execution_id,
+    specVersion: prior.spec_version, stateVersion: prior.state_version, fencingVersion: prior.fencing_version,
+  }));
+  const detail = await run('task', 'view', task.task_id);
+  assertFlat(detail.task);
+  assert.equal(Object.hasOwn(detail.relations, 'spawned_from'), false);
+  assert.deepEqual(detail.finishes, []);
+  assert.equal(detail.executions[0].execution_id, prior.execution_id);
+  assert.equal(detail.executions[0].state, 'FAILED');
+  assert.equal(detail.executions[0].terminal_reason, 'startup_failed');
+  assert.equal(detail.executions[0].finish, null);
+  assert.equal(Object.hasOwn(detail.executions[0], 'launch_token'), false);
   const taken = await run('task', 'take', task.task_id, '--request-id', 'cli-take');
+  assertFlat(taken.task);
   assert.equal(taken.execution.state, 'RUNNING');
+  assert.ok(service.getExecution(taken.execution.execution_id).launch_token);
+  for (const field of ['launch_token', 'resume_token', 'workspace_ref', 'checkpoint_ref', 'agent_prompt']) {
+    assert.equal(Object.hasOwn(taken.execution, field), false, field);
+  }
+  assert.equal(taken.workspace, null);
   assert.deepEqual(await run('task', 'take', task.task_id, '--request-id', 'cli-take'), taken);
   assert.equal(activations, 1);
   await assert.rejects(run('task', 'take', task.task_id, '--request-id', 'different-take'), /current Execution binding/);
@@ -170,9 +200,14 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
   assert.equal((await run('material', 'view', published.material.material_id)).material.content, published.material.content);
   await writeFile(proposalPath, JSON.stringify({ summary: 'Inspect the replacement responsibility and its boundary', expected_output: 'A new bounded result', acceptance_conditions: ['Result is readable'] }));
   const replacement = (await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-replacement')).task;
+  const replacementDetail = (await run('task', 'view', replacement.task_id)).task;
+  assert.equal(replacementDetail.creation.task_id, task.task_id);
+  assert.equal(replacementDetail.creation.execution_id, taken.execution.execution_id);
   const finished = await run('task', 'finish', '--outcome', 'cancelled', '--reason', 'responsibility replaced', '--replacement', replacement.task_id, '--request-id', 'cli-finish');
   assert.equal(service.getExecutionFinish(taken.execution.execution_id).replacement_task_id, replacement.task_id);
   assert.equal(finished.execution.state, 'CLOSING');
+  assertFlat(finished.task);
+  assert.equal(Object.hasOwn(finished.execution, 'launch_token'), false);
   await assert.rejects(run('material', 'publish', '--input', materialPath, '--request-id', 'after-finish'));
 });
 
@@ -186,7 +221,7 @@ test('Bot public discovery refuses foreign Mission/Task identities and does not 
   service.takeTask(foreign.task_id, { owner_ref: 'operator:foreign', core_id: 'foreign-core', take_key: 'foreign-take' });
   const status = await bridge.call({ operation: 'task_status', payload: {} });
   assert.deepEqual(status.lanes, []);
-  await assert.rejects(bridge.call({ operation: 'mission_submit', payload: {} }), { code: 'SERVICE_NOT_READY' });
+  await assert.rejects(bridge.call({ operation: 'mission_submit', payload: {} }), { code: 'INVALID_CONTRACT' });
   const { stdout } = await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', 'task', 'list', '--query=x=y=z'], { env: { PATH: process.env.PATH, ...env }, timeout: 10_000 });
   assert.equal(JSON.parse(stdout).tasks.length, 0);
 });
@@ -205,6 +240,12 @@ test('real CLI follows Task pages and takes an existing low-priority responsibil
   const run = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], {
     env: { PATH: process.env.PATH, ...env }, timeout: 10000,
   })).stdout);
+  const status = await run('task', 'status', '--limit', '2');
+  assert.equal(status.counts.total, 505);
+  assert.equal(status.counts.eligible, null);
+  assert.deepEqual(status.eligible_page, { limit: 2, returned: 2, complete: false });
+  assert.equal(status.page.complete, false);
+  assert.equal(Object.hasOwn(status.tasks[0], 'root_id'), false);
   let cursor, target, pages = 0;
   do {
     const page = await run('task', 'list', '--query', 'reusable', '--limit', '100', ...(cursor ? ['--cursor', cursor] : []));

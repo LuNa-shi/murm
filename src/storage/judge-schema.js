@@ -14,6 +14,26 @@ CREATE TABLE IF NOT EXISTS judge_request_aliases (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS judge_mission_check_policies (
+  mission_id TEXT PRIMARY KEY,
+  max_requests INTEGER NOT NULL CHECK(max_requests > 0),
+  max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_requests),
+  process_timeout_ms INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS judge_mission_check_admissions (
+  mission_id TEXT NOT NULL,
+  check_result_id TEXT NOT NULL,
+  admitted_at TEXT NOT NULL,
+  is_retry INTEGER NOT NULL DEFAULT 0,
+  preflight_starts INTEGER NOT NULL DEFAULT 0,
+  source_starts INTEGER NOT NULL DEFAULT 0,
+  settled_at TEXT,
+  PRIMARY KEY (mission_id, check_result_id)
+);
+CREATE INDEX IF NOT EXISTS judge_mission_check_active
+  ON judge_mission_check_admissions(mission_id) WHERE settled_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS check_results (
   check_result_id TEXT PRIMARY KEY,
   request_key TEXT NOT NULL UNIQUE,

@@ -1,66 +1,80 @@
 # 09. Known implementation boundaries
 
-These are properties of the [reviewed runtime](INDEX.md), not proposed fixes or new acceptance claims. They are collected here because omitting them would make the main execution narrative misleading. The linked chapters explain the surrounding flow. When an approved change resolves an item, update the implementation and these descriptions together; old behavior remains available in Git history.
+These limits apply to the reviewed runtime. Each linked chapter explains the relevant call sequence, persistent state and failure handling. Historical evidence belongs to its original code revision.
 
-## Execution and Task model
-
-| Current boundary | Effect on interpretation | Detailed explanation |
-|---|---|---|
-| Flat-only normal entry points and retained compatibility are different scopes | CLI and exported runner use flat Mission Tasks and reject removed model selectors. Inspect Runtime, fixture and historical-data entry points separately; neither a historical legacy label nor the flat-only CLI proves which compatibility operations remain callable. | [07 Launch](07-run-configuration.md), [03 Tasks](03-mission-task.md) |
-| Historical root projection is not shared Task authority | The runner still records its first proposal as `rootTaskId` for old reports, but current Mission Tasks are exclusive; all Cores now enter discovery and may propose local work. The remaining report vocabulary needs migration. | [03 Tasks](03-mission-task.md) |
-| Take ordering and take enforcement have different scopes | Mission-wide listing can age/sort Tasks, while take-time fairness uses a Task's root scope. Modern Tasks have their own roots, so this is not a global Mission fairness guarantee. | [03 Tasks](03-mission-task.md) |
-| Retained dependency interpretations have different terminal predicates | Modern `depends_on` handling requires `DONE`, while the historical structural-dependency helper uses `DONE`/`SATISFIED`. A closed prerequisite can leave a blocker in that lower-level or historical-data path; this does not make legacy a selectable benchmark model. | [03 Tasks](03-mission-task.md) |
-| Persistent finish intent does not reconstruct lost provider ownership | Bot-initiated finish retains durable CLOSING ownership until isolation; Runtime and benchmark retain/retry local cleanup bindings. A new Runtime refuses to finalize without a known resource binding. Bot/Core/Execution/provider identities now persist in `bots`, but provider reconstruction and automatic closing recovery after controller loss remain incomplete. | [02 Execution](02-execution.md) |
-| Unregistered compatibility Sessions can preserve Execution identity | Registered Bots reject Session replacement and close after process failure. Historical callers without Bot registration still reach recovery/rotation; this is a remaining migration gap. | [02 Execution](02-execution.md), [05 Continuity](05-workspace-continuity.md) |
-
-## Judge and completion
-
-The named `judge.workspace_check` capability now uses the direct `Bridge → Registry → Judge` route in both in-process and hosted deployments. Bridge supplies the Execution Workspace source and its attestation; Judge owns checking and persistence. Task Service and runner are not submission handlers. This landed boundary is documented in [ADR 0019](../adr/0019-direct-judge-workspace-submission.md), and must not be confused with the future Phase 02 public-revision, final merge-tree or Mission-submission contracts.
-
-LeanChecker validates the locked environment/input and compiles standalone Workspace artifact source. It does **not** compare the Workspace artifact's theorem statement with the Mission through an AST/equivalence check. The runner separately rejects certain placeholder tokens. A PASS establishes the check's actual result; additional take that it proves the original Mission requires goal-binding evidence that compilation alone does not provide.
-
-A direct Judge result does not automatically block or complete a Task, complete the Mission, or mark a benchmark solved. Task Service's explicit modern completion path checks Mission acceptance for the shared Task. Its retained `apply_check_result` operation has its own completion gates when explicitly invoked; it is not an automatic consequence of direct submission. Do not assume every explicit completion operation has identical gates. [Services](04-services.md) and [Tasks](03-mission-task.md) describe the exact paths.
-
-## Prompts and tool exposure
-
-| Current boundary | Effect |
+| Area | Current behavior and limit |
 |---|---|
-| Composed initial snapshot versus actual send | Normal benchmark `task_take` binds with `sendInitialPrompt: false`; the snapshot event/hash is not evidence that this body was delivered. |
-| Discovery versus full composed service documentation | Discovery sends SOP, tool guide, Mission/input context and an explicitly partial eligible Task view. Pi registration carries schema/description/short help, while the composer's full authorized Service documentation is path dependent. |
-| Two-stage Runtime composition | Runtime can use an already-composed snapshot as the static prefix of another bound composition. Recovery profile/context can therefore appear inside a second wrapper. |
-| Session tool registration versus refreshed Bridge profile | The Pi extension registers once per Session, while Bridge can refresh its cached Registry profile. A Registry change does not by itself re-register Pi tools in the current Session. |
-| Task instruction versus optional Sandbox profile | The benchmark Task text forbids shell, while an explicitly enabled Sandbox exposes bounded `sandbox_exec` and its help. The manual preserves both actual surfaces instead of inventing a reconciled prompt. |
-| Tool-result text cap | Extension text output is capped at 65,536 JavaScript characters. It is not a guarantee that the model received every byte of a large result. |
+| Mission and Task | The normal benchmark starts one Mission, a public Workspace and four reusable Cores with an empty Task pool. A fresh Bot can propose and take, take existing work, or exit unbound. The creator of a proposal has no exclusive claim. The word “goal” describes the Mission purpose or local Task objective. There is no separate Goal runtime object. [Core and Bot](01-agent-core.md) · [Mission and Task](03-mission-task.md) |
+| Historical paths | Trusted lower-level APIs retain historical Task relations, internal Session recovery and old data projections. The protected registered Bot CLI grants one Execution per Bot and uses only public continuity. New research starts with a fresh Mission. Additive schema compatibility and report import do not provide a general migration or hot upgrade of active historical research state. [Execution](02-execution.md) · [Mission and Task](03-mission-task.md) · [Observability](06-observability-experiments.md) |
+| Runtime and provider cleanup | Finish and stop retain Core and Task ownership until process isolation is confirmed and pending Workspace requests are reconciled. Startup compares durable Bot identity and provider labels. If a dispatched create has an unknown outcome, a listing without a match cannot confirm safe release. The network and storage controls apply to the supported local Docker-backed OpenSandbox configuration. Another provider, image or topology requires its own verification. [Execution](02-execution.md) · [Run configuration](07-run-configuration.md) |
+| Service authority and cost | Timed runs use co-located Task, Context and Judge with separate durable state and an explicit Task-owned authorization window for fenced writes. Independent HTTP and custom registry paths are available for supported operator and diagnostic calls. The timed Putnam profile refuses remote/custom service providers and requires the bounded local composition. The model gateway reserves worst-case cost before dispatch and retains that reservation when upstream completion is unknown. Production admission requires actual upstream bounds, billing units and an authorized total. [Services](04-services.md) · [Run configuration](07-run-configuration.md) |
+| Public files and Material | A save captures the actual guest tree and does not advance main. Apply requires an active E and checks its private changes. Merge preserves ancestry and enforces configured combined-tree checks. Ordinary Material and Task queries are bounded. A cursor indicates unvisited scope, even after an empty filtered page. Recorded Material consumption establishes a stated use of a fixed version. Scientific usefulness requires separate evidence. [Services](04-services.md) · [Workspace](05-workspace-continuity.md) |
+| Judge and final acceptance | The registered source diagnostic checks a fixed Workspace revision/path within isolated process limits. A source PASS does not advance main, complete a Task or prove the original theorem. The fixed Putnam Mission checker evaluates the submitted main tree against the pinned statement and axiom policy. For a Mission without a checker, the configured manual route can hold a bounded review and requires a trusted reviewer. Failed or timed-out submissions release only their own freeze. Persisted acceptance determines scientific solved status independently of protocol validity. [Services](04-services.md) · [Mission and Task](03-mission-task.md) |
+| Prompt and tools | The registered Bot uses four native Pi tools and four fixed on-disk skills. Its first message comes from live Mission, Bot and Workspace state. Trusted compatibility compositions have their own sender and tool surface. Asset receipts and composed message hashes establish identity. Actual transmission and skill use depend on recorded RPC and tool evidence. Pi or provider internal text may be unavailable. [Prompts](08-prompts.md) |
+| Observation and reporting | The report includes the total proposed Task count with a bounded detail page. Busy time and recorded activity do not measure scientific utility. Raw audit retention and observer HTTP access have separate policy boundaries. Field-level redaction cannot remove all sensitive prose. Startup failure, forced shutdown or incomplete historical evidence can leave fields unknown. [Observability](06-observability-experiments.md) |
+| Experiment evidence | Local scripted model traffic exercises named provider and Service paths. Deterministic fault tests and Docker probes verify other individual boundaries. These layers leave some combined provider fault sequences and all paid upstream behavior unverified. The current runner explicitly rejects the old parallel-mode selector. Its treatment labels remain historical report data. [Run configuration](07-run-configuration.md) · [Validation design](../phases/0002-task-material-workspace/07-validation-and-research.md) |
 
-Full bodies, composition inputs, send sites and raw evidence locations are in [08](08-prompts.md). Provider/Pi internal prompts and a run's evolving private data are not supplied by a repository template catalog. Existing aggregate prompt hashes are not complete conversation hashes.
+## Fresh-start migration and restore rehearsal
 
-## Workspace and Sandbox
+Keep the old release, deployment configuration, and database locations pinned. Stop
+the old writer, verify the Pi/process and provider Sandboxes are stopped or isolated,
+revoke old contribution credentials, and reconcile any externally accepted operations
+and their costs. Database terminal states alone cannot establish those facts. Archive
+the supporting operator evidence separately and prepare an owner-private JSON file
+with string references named `old_writer_stop`, `provider_isolation`, and
+`external_operations_accounted`.
 
-The benchmark CLI requires the OpenSandbox provider; the local Docker manager remains an explicitly selected compatibility path for library callers and fixtures. Startup preflight runs before Observation Store creation, but its logger now guards a nullable store reference, so the former initialization-order exception is not a current boundary. Provider/worker implementations and deterministic tests still do not establish a particular image's real Pi connectivity, file synchronization or complete process cleanup. [02](02-execution.md) and [07](07-run-configuration.md) identify the implemented provider paths and the evidence needed for a deployed run.
+Use canonical paths. A legacy shared database can be supplied explicitly to multiple
+domain flags. The Workspace path is the public repository directory that contains
+`.swarm-workspace.json`; the revision must be a specific published `major.minor`.
+Create a private parent directory with `mkdir -m 700 /absolute/rehearsal` before
+creating the backup or restore directory.
 
-Workspace revision metadata tracks file entries updated through the explicit file-write payload. Saving a revision can also `git add -A`, without rescanning all shell-modified files into that metadata. A Git commit can therefore contain a new/changed shell-written file while Workspace list/diff hashes are absent or stale. Reading a file can return current bytes alongside a stored older hash. Git lineage and Workspace manifest lineage must be distinguished when checking continuation evidence.
+```sh
+node scripts/preview-migration.mjs preview \
+  --task /old/task.sqlite --context /old/context.sqlite --judge /old/judge.sqlite \
+  --workspace /old/public/workspace-id --revision 0.3
 
-The compatibility Docker Sandbox's foreground command wrapper writes the child exit code to an `.exit` file but does not propagate that code as the wrapper's final exit status. A failed child command can consequently produce a zero foreground wrapper status. Background `jobStatus` reads the stored child status. For detached jobs, the launch timeout bounds startup; it does not establish an ongoing job deadline. These wrapper details must not be generalized to the separate OpenSandbox Execd adapter. Container termination/lifecycle cleanup remains a separate boundary. [05](05-workspace-continuity.md) gives the execution and cleanup behavior.
+node scripts/preview-migration.mjs backup \
+  --task /old/task.sqlite --context /old/context.sqlite --judge /old/judge.sqlite \
+  --workspace /old/public/workspace-id --revision 0.3 \
+  --run-manifest /old/run-manifest.json --external-evidence /private/isolation.json \
+  --out /absolute/rehearsal/backup
 
-## Interfaces, storage and observation
+node scripts/preview-migration.mjs restore-verify \
+  --backup /absolute/rehearsal/backup --out /absolute/rehearsal/restored
+```
 
-The service manifests contain JSON Schema declarations, but Registry/Host do not run a general input/output JSON Schema validator on every call. Manifest/envelope/role/binding validation and handler-specific checks are the actual enforcement. Some output declarations are intentionally broad or incomplete relative to actual handler returns. [10](10-service-api-reference.md) preserves exact declarations; [04](04-services.md) describes actual behavior.
+The preview opens each database read-only. It reports SQLite's `user_version`, a
+SHA-256 fingerprint of the schema definitions, and the inspected table columns.
+These identify the supplied schema for comparison; they do not certify writer
+compatibility. The preview reports missing authority tables or columns, nonterminal
+Bot/Execution/check work, duplicate active owners, and legacy or
+unknown Task states. It reports historical roles, missing producer references, corrupt
+or missing Material/attachment bytes and external/private content references. Each
+domain shows up to 250 findings and an untruncated count. Blocked previews still
+emit their JSON report and exit with status 2. The selected public
+revision is a candidate for explicit operator selection. The tool resolves its
+retained Git ref, verifies the commit/tree and published content hashes, and rejects
+conflicts, dangling publication journals, and private or nonregular paths.
 
-Context search/read accepts fields that are not all applied as a server-side bound: the current Material read implementation does not enforce the advertised `limit`, and lexical query behavior uses serialized content/provenance rather than a dedicated summary field. A schema field's presence is not evidence of enforced pagination. Exact semantics appear in [04](04-services.md).
+Backup refuses active records and missing authority. It uses the SQLite backup API
+for each domain and records their schema/classification, the checked public
+snapshot with file modes and bytes, the run manifest, and the supplied external
+evidence references. Cross-domain consistency depends on the operator maintaining
+quiescence throughout capture. The tool detects observed changes and keeps
+`external_isolation_verified` false. The target is a new owner-private directory
+with a SHA-256 manifest. Restore rehearsal verifies all hashes, copies into a
+different new directory, rechecks the copies and runs SQLite integrity checks.
+This rehearsal retains the selected public input and database archives; it does
+not capture the private worktree, provider resource, full Git repository, or
+referenced external blobs. It never opens an archive with an old or new writer.
 
-Observation endpoints have different projection and visibility policies. Generic event views force the Agent payload projection; the server has no built-in user authentication, and direct Task/Context, Workspace and report routes are not covered by a universal redaction guarantee. Redaction is based on fields and size bounds, not a semantic guarantee that all sensitive text is removed. Raw-log files are local evidence, not a separate raw-log HTTP endpoint. Use [06](06-observability-experiments.md) to understand the actual exposure and deployment boundary.
-
-## What reports and timing do not establish
-
-| Report/runtime fact | Limit |
-|---|---|
-| Project report Task list | The runner requests at most 100 Tasks; derived Task/dynamic/decomposition counts can undercount a larger Mission. |
-| `made_progress` | True for activity such as a created responsibility, write, nonfailure Material or check. It is not semantic proof progress. |
-| `solved` | Derived from runner solve state, protocol audit and the activity predicate; it inherits the Workspace artifact/goal-binding limits above. |
-| Agent time/utilization | Produced from recorded turn intervals; production explicitly records discovery turns as well. Busy time is not useful collaboration. |
-| Material read/consume counts | Reading and recorded consumption show access or stated use; downstream change and usefulness need additional evidence. |
-| Prompt version/hash fields | Identify selected bases/compositions; they do not independently reconstruct every delivered message. |
-| `timeboxMs` | Bounds the active-loop target; setup precedes it, polling can cross the deadline, and cleanup has additional grace. |
-| Full report at shutdown | Normal cleanup tries to preserve reports; setup errors, propagated single-project errors, abrupt termination or missing evidence can leave them incomplete. |
-
-The detailed definitions and evidence gaps are in [06](06-observability-experiments.md) and [07](07-run-configuration.md). Keep missing evidence unknown; do not manufacture zeros or reinterpret a historical run as verification of later code.
+Start a fresh Mission under the new release with independent paths and an explicit
+approved initial input. The owner can review the verified public snapshot and
+choose its files as initial input when composing the new Mission. This workflow
+imports no Tasks, Materials or Executions. A selective historical import would
+require its own explicit decision and provenance. To roll back the release, stop
+new writers, reconcile their resources and costs, and point the pinned legacy
+release only at its separately verified old-format state. Preserve new-format
+history and already-published results.

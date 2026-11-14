@@ -18,6 +18,7 @@ const EVIDENCE_CLASSES = [
 
 const SENSITIVE_KEYS = /(?:^|_)(?:authorization|content|credential|formal_source|password|private_key|proof|raw_transcript|secret|stderr|stdout|task_instructions|token|api_key|agent_prompt|candidate_source)(?:$|_)/i;
 const SAFE_RESULT_KEYS = new Set([
+  'pi_result', 'pi_result_sha256', 'pi_result_json_bytes', 'pi_result_truncated', 'pi_result_limits', 'model_request_delivery',
   'task_id', 'root_id', 'parent_id', 'execution_id', 'owner_ref', 'task_type',
   'state', 'task_state', 'execution_state', 'state_version', 'attempt_no',
   'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision',
@@ -53,6 +54,8 @@ const INTENT_BY_OPERATION = new Map([
   ['read_workspace_file', 'inspect a Workspace file'],
   ['workspace_diff', 'inspect Workspace changes'],
   ['task_take', 'take a Task'],
+  ['task_create', 'propose a Task'],
+  ['task_finish', 'finish a Task'],
   ['create_child_task', 'decompose the Task'],
   ['save_workspace_revision', 'save a Workspace revision'],
   ['write_workspace_file', 'edit the Workspace'],
@@ -78,6 +81,23 @@ const BOUNDARY_KINDS = new Set([
 
 function hash(value) {
   return createHash('sha256').update(String(value)).digest('hex');
+}
+
+// Pi's completed result is a different boundary from the Service response.
+// Hash the actual recorded result content without copying private text to reports.
+function returnedToolEvidence(record) {
+  const result = record?.result;
+  if (!result || !Array.isArray(result.content)) return { pi_result: 'unknown' };
+  const encoded = JSON.stringify(result.content);
+  const truncation = result.details?.truncation;
+  const limits = {};
+  for (const key of ['totalLines', 'totalBytes', 'outputLines', 'outputBytes']) {
+    if (Number.isSafeInteger(truncation?.[key]) && truncation[key] >= 0) limits[key] = truncation[key];
+  }
+  return { pi_result: 'recorded_pi_tool_result', pi_result_sha256: hash(encoded),
+    pi_result_json_bytes: Buffer.byteLength(encoded),
+    pi_result_truncated: typeof truncation?.truncated === 'boolean' ? truncation.truncated : 'unknown',
+    pi_result_limits: limits, model_request_delivery: 'not_established_by_tool_event' };
 }
 
 function jsonParse(value) {
@@ -206,7 +226,7 @@ function safeEntity(value, type) {
     : type === 'execution'
       ? ['execution_id', 'task_id', 'owner_ref', 'state', 'state_version', 'attempt_no', 'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision', 'artifact_material_id', 'wait_condition', 'wait_deadline', 'created_at', 'updated_at']
       : type === 'material'
-        ? ['material_id', 'kind', 'scope', 'evidence_state', 'source_task', 'source_execution', 'version', 'created_at']
+        ? ['material_id', 'kind', 'scope', 'evidence_state', 'source_task', 'source_execution', 'producer_task_id', 'producer_execution_id', 'producer_bot_id', 'version', 'created_at']
         : type === 'check_result'
           ? ['check_result_id', 'request_key', 'artifact_material_id', 'target_task_id', 'execution_id', 'status', 'verdict', 'judge_operation_status', 'checker_process_status', 'result_class', 'retryable', 'diagnostic_code', 'checker_ref', 'checker_version', 'environment_ref', 'diagnostic_class', 'created_at', 'updated_at']
           : [...SAFE_RESULT_KEYS];
@@ -286,6 +306,20 @@ function coreFromScope(scope) {
   return match?.[1]?.startsWith('core-') ? match[1] : null;
 }
 
+const OPERATION_ALIASES = new Map([
+  ['context_publish_material', 'publish_material'], ['material_publish', 'publish_material'],
+  ['workspace_save', 'save_workspace_revision'], ['context_read_materials', 'read_materials'],
+  ['finish_task', 'task_finish'],
+]);
+
+function canonicalOperation(operation) {
+  return OPERATION_ALIASES.get(operation) ?? operation;
+}
+
+function revisionValue(value) {
+  return Number.isInteger(value) || (typeof value === 'string' && /^\d+\.\d+$/.test(value)) ? value : null;
+}
+
 function operationFromTool(toolName) {
   const operation = text(String(toolName ?? '').replace(/^swarmenv_(?:task|execution|workspace|context|judge|catalog)_/, ''), 100);
   return operation === 'take' ? 'task_take' : operation;
@@ -360,7 +394,7 @@ function sourceForObservation(root, path, sequence) {
 
 function serviceFact(root, row, source, payload, result = null) {
   const event = row.kind ?? payload?.event ?? row.event;
-  const operation = row.operation ?? payload?.operation ?? null;
+  const operation = canonicalOperation(row.operation ?? payload?.operation ?? null);
   const envelope = row.envelope ?? payload?.envelope ?? {};
   const owner = envelopeIds(envelope);
   const targetTask = idsFromEntity(result?.task);
@@ -398,7 +432,7 @@ function serviceFact(root, row, source, payload, result = null) {
 }
 
 function domainFactsForService(root, row, source, payload, result = null) {
-  const operation = row.operation ?? payload?.operation ?? null;
+  const operation = canonicalOperation(row.operation ?? payload?.operation ?? null);
   const event = row.kind ?? payload?.event ?? row.event;
   if (!event?.endsWith('.complete') && !event?.endsWith('.finished')) return [];
   const envelope = row.envelope ?? payload?.envelope ?? {};
@@ -426,7 +460,7 @@ function domainFactsForService(root, row, source, payload, result = null) {
     summary,
     priority: 2,
   });
-  if (['propose_task', 'create_child_task'].includes(operation) && task) {
+  if (['task_create', 'propose_task', 'create_child_task'].includes(operation) && task) {
     facts.push(base('task_created', { task: safeEntity(task, 'task'), parent_task_id: owner.taskId, parent_execution_id: owner.executionId }, { taskId: owner.taskId, executionId: owner.executionId }));
   }
   if (operation === 'task_take' && execution) {
@@ -435,15 +469,15 @@ function domainFactsForService(root, row, source, payload, result = null) {
   if (operation === 'save_workspace_revision') {
     facts.push(base('workspace_revision', {
       execution_id: execution?.execution_id ?? ids.executionId,
-      workspace_revision: execution?.workspace_revision ?? result?.workspace_revision ?? null,
+      workspace_revision: revisionValue(result?.revision ?? result?.workspace_revision ?? execution?.workspace_revision),
       workspace_content_hash: execution?.workspace_content_hash ?? null,
     }));
   }
   if (operation === 'publish_material' && material) {
-    facts.push(base('material_published', { material: safeEntity(material, 'material') }, { taskId: material.source_task ?? ids.taskId, executionId: material.source_execution ?? ids.executionId }));
+    facts.push(base('material_published', { material: safeEntity(material, 'material') }, { taskId: material.producer_task_id ?? material.source_task ?? ids.taskId, executionId: material.producer_execution_id ?? material.source_execution ?? ids.executionId }));
   }
-  if (operation === 'read_materials') {
-    const materials = array(result).map((item) => safeEntity(item, 'material') ?? { material_id: item?.material_id ?? item }).filter((item) => item.material_id);
+  if (['read_materials', 'context_search_materials', 'context_get_material'].includes(operation)) {
+    const materials = array(result?.materials ?? (operation === 'context_get_material' && material ? [material] : result)).map((item) => safeEntity(item, 'material') ?? { material_id: item?.material_id ?? item }).filter((item) => item.material_id);
     facts.push(base('material_read', { material_ids: materials.map((item) => item.material_id), count: materials.length }, {}));
   }
   if (operation === 'consume_materials') {
@@ -477,7 +511,7 @@ function domainFactsForService(root, row, source, payload, result = null) {
   }
   if (operation === 'accept_task') facts.push(base('review', { decision: 'accept', target_task_id: task?.task_id ?? owner.taskId, authority_execution_id: authorityIds.executionId ?? owner.executionId }, { taskId: owner.taskId ?? authorityIds.taskId, executionId: authorityIds.executionId ?? owner.executionId }));
   if (operation === 'request_rework') facts.push(base('rework', { decision: 'request_rework', target_task_id: task?.task_id ?? owner.taskId, parent_execution_id: authorityIds.executionId ?? owner.executionId }, { taskId: owner.taskId ?? authorityIds.taskId, executionId: authorityIds.executionId ?? owner.executionId }));
-  if (operation === 'stop_execution') {
+  if (operation === 'stop_execution' || (operation === 'task_finish' && execution && !['RUNNING', 'CREATED', 'WAITING'].includes(execution.state))) {
     facts.push(base('execution_terminal', { execution: safeEntity(execution, 'execution'), terminal_state: execution?.state ?? result?.terminal_state ?? null }, { executionId: execution?.execution_id ?? ids.executionId }));
   }
   if (task?.state) facts.push(base('task_state_changed', { task_id: task.task_id, state: task.state, state_version: task.state_version }, { taskId: task.task_id, executionId: execution?.execution_id ?? ids.executionId }));
@@ -497,12 +531,12 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     correlationId: row.correlation_id ?? envelope.operation_id ?? null,
   };
   const event = payload?.event ?? row.kind;
-  const operation = payload?.operation ?? null;
+  const operation = canonicalOperation(payload?.operation ?? null);
   const facts = [];
   const base = (kind, summary = {}, extra = {}) => makeFact(root, {
     kind, at: row.occurred_at, source,
     taskId: extra.taskId ?? ids.taskId, executionId: extra.executionId ?? ids.executionId,
-    sessionId: ids.sessionId, coreId: ids.coreId, correlationId: ids.correlationId,
+    sessionId: ids.sessionId, coreId: ids.coreId, correlationId: extra.correlationId ?? ids.correlationId,
     operation: extra.operation ?? operation, summary, priority: 1,
     preserveBoundedOperatorIds: true,
   });
@@ -560,8 +594,16 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
   }
   if (row.kind === 'workspace_revision_saved') {
     facts.push(base('workspace_revision', {
-      workspace_revision: Number.isInteger(payload?.workspace_revision) ? payload.workspace_revision : null,
+      workspace_revision: revisionValue(payload?.revision ?? payload?.workspace_revision),
     }, { operation: 'save_workspace_revision' }));
+    return facts;
+  }
+  if (row.kind === 'task_lifecycle_operation' && operation === 'task_finish') {
+    facts.push(base('task_finish_recorded', {
+      disposition: text(payload?.disposition, 80),
+      task_state: text(payload?.task_state, 80),
+      execution_state: text(payload?.execution_state, 80),
+    }, { operation }));
     return facts;
   }
   if (row.kind === 'workspace_checked') {
@@ -577,11 +619,11 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
     const recordType = record?.type;
     if (['tool_execution_start', 'tool_call'].includes(recordType)) {
       const tool = record.toolName ?? record.tool_name ?? record.name;
-      facts.push(base('tool_call', { tool: text(tool, 120), operation: operationFromTool(tool), outcome: 'started' }, { operation: operationFromTool(tool) }));
+      facts.push(base('tool_call', { tool: text(tool, 120), operation: operationFromTool(tool), outcome: 'started' }, { operation: operationFromTool(tool), correlationId: record.toolCallId ?? record.id ?? null }));
     } else if (['tool_execution_end', 'tool_result'].includes(recordType)) {
       const tool = record.toolName ?? record.tool_name ?? record.name;
       const failed = Boolean(record.isError || record.error);
-      facts.push(base('tool_call', { tool: text(tool, 120), operation: operationFromTool(tool), outcome: failed ? 'error' : 'finished', error: failed ? 'tool error' : null }, { operation: operationFromTool(tool) }));
+      facts.push(base('tool_call', { tool: text(tool, 120), operation: operationFromTool(tool), outcome: failed ? 'error' : 'finished', error: failed ? 'tool error' : null, ...returnedToolEvidence(record) }, { operation: operationFromTool(tool), correlationId: record.toolCallId ?? record.id ?? null }));
     } else if (recordType === 'turn_start' || recordType === 'turn_end') {
       facts.push(base('agent_turn', { phase: recordType === 'turn_start' ? 'started' : 'finished' }));
     } else if (recordType === 'agent_settled') {
@@ -691,8 +733,8 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
       const failed = Boolean(nested.isError || nested.error);
       facts.push(makeFact(root, {
         kind: 'tool_call', at, source, coreId, taskId: ids.taskId, executionId: ids.executionId,
-        correlationId: nested.id ?? nested.toolCallId ?? record.correlation_id ?? null,
-        operation, summary: { tool: text(tool, 120), operation, outcome: finished ? (failed ? 'error' : 'finished') : 'started', error: failed ? 'tool error' : null, ...(active ? { assignment_basis: 'timestamp_core_interval' } : {}) }, priority: 2,
+        correlationId: nested.toolCallId ?? nested.id ?? record.correlation_id ?? null,
+        operation, summary: { tool: text(tool, 120), operation, outcome: finished ? (failed ? 'error' : 'finished') : 'started', error: failed ? 'tool error' : null, ...(finished ? returnedToolEvidence(nested) : {}), ...(active ? { assignment_basis: 'timestamp_core_interval' } : {}) }, priority: 2,
       }));
     } else if (['turn_start', 'turn_end', 'agent_settled', 'session_started', 'session_closed'].includes(type) || ['stdout', 'stderr', 'rpc_request'].includes(record.type)) {
       facts.push(makeFact(root, {
@@ -718,7 +760,7 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
   }
   if (sourceClass === 'bridge') {
     const event = record.event ?? record.type;
-    const operation = record.operation ?? null;
+    const operation = canonicalOperation(record.operation ?? null);
     const pending = event === 'bridge.complete' ? context.takePending('bridge', operation) : null;
     const effective = pending?.record ?? record;
     const ids = { taskId: effective.task_id ?? record.task_id ?? null, executionId: effective.execution_id ?? record.execution_id ?? null, correlationId: effective.operation_id ?? record.operation_id ?? null };
@@ -728,11 +770,14 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
       summary: { service: 'bridge', operation, phase: event === 'bridge.start' ? 'started' : 'finished', ok: record.ok ?? null, result: mode === 'full' ? safeResult(result) : null }, priority: 2,
     }));
     if (event === 'bridge.start') context.addPending('bridge', operation, record);
+    if (event === 'bridge.complete' && record.ok === true) facts.push(...domainFactsForService(root, {
+      ...record, operation, envelope: { task_id: ids.taskId, execution_id: ids.executionId, operation_id: ids.correlationId },
+    }, source, null, result));
     return facts;
   }
   if (sourceClass === 'service') {
     const event = record.event ?? record.type;
-    const operation = record.operation ?? null;
+    const operation = canonicalOperation(record.operation ?? null);
     const pending = event === 'dispatch.complete' ? context.takePending('service', operation) : null;
     const start = pending?.record ?? {};
     const envelope = start.envelope ?? record.envelope ?? {};
@@ -814,11 +859,21 @@ function dedupeFacts(facts) {
     fact.summary?.material_id, fact.summary?.artifact_material_id, fact.summary?.check_result_id,
     fact.correlationId, fact.summary?.tool, fact.summary?.phase, fact.summary?.outcome, fact.summary?.event,
     fact.summary?.check_result?.check_result_id, fact.summary?.artifact_material_id,
+    fact.summary?.workspace_revision, fact.summary?.material?.material_id,
   ].map((value) => value ?? '').join('|');
   for (const fact of facts) {
     const key = semantic(fact);
     const existing = map.get(key);
     if (!existing) { map.set(key, fact); continue; }
+    // Prefer the authoritative attribution without losing a recorded raw Pi
+    // boundary when an observation echo deliberately omitted private content.
+    const recorded = fact.summary?.pi_result_sha256 ? fact : existing.summary?.pi_result_sha256 ? existing : null;
+    if (recorded) {
+      const target = fact.priority < existing.priority ? fact : existing;
+      for (const [field, value] of Object.entries(recorded.summary)) {
+        if (field.startsWith('pi_result') || field === 'model_request_delivery') target.summary[field] = value;
+      }
+    }
     if (fact.priority < existing.priority) {
       fact.sources = [...new Set([...fact.sources, ...existing.sources])].sort();
       map.set(key, fact);
@@ -867,10 +922,10 @@ function closeDb(db) {
 }
 
 async function readDomainDatabases(root, dbPaths, errors, mode = 'full') {
-  const model = { tasks: [], executions: [], materials: [], checks: [], preflights: [], operations: [] };
+  const model = { tasks: [], executions: [], bots: [], materials: [], checks: [], preflights: [], operations: [] };
   for (const dbPath of dbPaths) {
     let db;
-    try { db = new DatabaseSync(dbPath); }
+    try { db = new DatabaseSync(dbPath, { readOnly: true }); }
     catch (error) { errors.push({ path: sourcePath(root, dbPath), error: text(error.message, 180) }); continue; }
     try {
       const tables = new Set(databaseTableNames(db));
@@ -879,13 +934,18 @@ async function readDomainDatabases(root, dbPaths, errors, mode = 'full') {
           model.tasks.push({ ...row, project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'tasks', `task_id=${row.task_id}`) });
         }
       }
+      if (tables.has('bots')) {
+        for (const row of selectRows(db, 'bots', ['bot_id', 'mission_id', 'core_id', 'state', 'execution_id'])) {
+          model.bots.push({ ...row, source: sourceForDb(root, dbPath, 'bots', `bot_id=${row.bot_id}`) });
+        }
+      }
       if (tables.has('executions')) {
         for (const row of selectRows(db, 'executions', ['execution_id', 'task_id', 'owner_ref', 'state', 'state_version', 'attempt_no', 'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision', 'artifact_material_id', 'wait_condition_json', 'wait_deadline', 'created_at', 'updated_at'])) {
           model.executions.push({ ...row, wait_condition: jsonParse(row.wait_condition_json), project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'executions', `execution_id=${row.execution_id}`) });
         }
       }
       if (tables.has('materials')) {
-        for (const row of selectRows(db, 'materials', ['material_id', 'kind', 'scope', 'evidence_state', 'source_task', 'source_execution', 'version', 'created_at'])) {
+        for (const row of selectRows(db, 'materials', ['material_id', 'kind', 'scope', 'evidence_state', 'source_task', 'source_execution', 'producer_task_id', 'producer_execution_id', 'producer_bot_id', 'version', 'created_at'])) {
           model.materials.push({ ...row, project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'materials', `material_id=${row.material_id}`) });
         }
       }
@@ -984,21 +1044,27 @@ async function readWorkspaceFacts(root, projectIds, model, errors) {
   for (const projectId of projectIds) {
     const projectRoot = join(workspaceRoot, projectId);
     if (!(await isDirectory(projectRoot))) continue;
+    const projectExecutions = model.executions.filter(row => row.project === projectId);
+    const knownIds = new Set(projectExecutions.map(row => row.execution_id));
     const executionDirs = await readdir(projectRoot, { withFileTypes: true }).catch(() => []);
     for (const entry of executionDirs.filter((candidate) => candidate.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
-      const executionId = entry.name;
-      const executionRoot = join(projectRoot, executionId);
+      const executionRoot = join(projectRoot, entry.name);
+      const bindings = new Set(projectExecutions.filter(row => row.workspace_ref &&
+        (resolve(root, row.workspace_ref) === executionRoot || resolve(projectRoot, row.workspace_ref) === executionRoot))
+        .map(row => row.execution_id));
       for (const filename of ['workspace-manifest.json', 'runtime-manifest.json', '.swarm/workspace.json']) {
         const path = join(executionRoot, filename);
         if (!(await isRegularFile(path))) continue;
         try {
           const manifest = await readJson(path);
+          if (knownIds.has(manifest.execution_id)) bindings.add(manifest.execution_id);
           const revision = manifest.workspace_revision ?? manifest.revision ?? null;
           facts.push(makeFact(root, { kind: 'workspace_manifest', at: manifest.updated_at ?? manifest.created_at ?? null,
-            source: { ref: sourceRef(root, path) }, executionId: manifest.execution_id ?? executionId,
+            source: { ref: sourceRef(root, path) }, executionId: knownIds.has(manifest.execution_id) ? manifest.execution_id : null,
             taskId: manifest.task_id ?? null, summary: { workspace_revision: revision, content_hash: manifest.content_hash ?? null, file_count: isObject(manifest.files) ? Object.keys(manifest.files).length : null }, priority: 1 }));
         } catch (error) { errors.push({ path: sourcePath(root, path), error: text(error.message, 180) }); }
       }
+      const executionId = bindings.size === 1 ? [...bindings][0] : null;
       const revisionRoot = join(executionRoot, '.swarm', 'revisions');
       const revisionFiles = await listFiles(revisionRoot, '.json');
       for (const path of revisionFiles) {
@@ -1008,6 +1074,7 @@ async function readWorkspaceFacts(root, projectIds, model, errors) {
           facts.push(makeFact(root, { kind: 'workspace_revision', at: revision.created_at ?? revision.updated_at ?? null,
             source: { ref: sourceRef(root, path) }, executionId,
             summary: { workspace_revision: revisionNumber, content_hash: revision.content_hash ?? null, changed_files: array(revision.changed_files).map((item) => text(item, 120)).filter(Boolean) }, priority: 1 }));
+          if (!executionId) errors.push({ path: sourcePath(root, path), kind: 'correlation', error: 'Workspace revision has no unique durable Execution binding' });
         } catch (error) { errors.push({ path: sourcePath(root, path), error: text(error.message, 180) }); }
       }
     }
@@ -1017,7 +1084,7 @@ async function readWorkspaceFacts(root, projectIds, model, errors) {
 
 async function readObservationFacts(root, observationPath, experimentIds, mode, errors) {
   let db;
-  try { db = new DatabaseSync(observationPath); }
+  try { db = new DatabaseSync(observationPath, { readOnly: true }); }
   catch (error) { errors.push({ path: sourcePath(root, observationPath), error: text(error.message, 180) }); return []; }
   try {
     const tables = new Set(databaseTableNames(db));
@@ -1037,7 +1104,7 @@ async function readObservationFacts(root, observationPath, experimentIds, mode, 
       if (mode === 'full') {
         try { payload = JSON.parse(row.payload_json ?? '{}'); }
         catch (error) { errors.push({ path: sourcePath(root, observationPath), sequence: row.sequence, error: text(error.message, 180) }); continue; }
-      } else if (['material_read', 'material_consumed', 'material_published', 'task_review', 'workspace_revision_saved', 'workspace_checked'].includes(row.kind)) {
+      } else if (['material_read', 'material_consumed', 'material_published', 'task_review', 'task_lifecycle_operation', 'workspace_revision_saved', 'workspace_checked'].includes(row.kind)) {
         // Read only the runner's bounded operator events in sanitized mode.
         // Other observation payloads may contain Agent or checker material and
         // remain intentionally opaque.
@@ -1072,7 +1139,10 @@ async function readObservationFacts(root, observationPath, experimentIds, mode, 
               target_task_id: typeof decoded.target_task_id === 'string' ? decoded.target_task_id : null,
             };
           } else if (row.kind === 'workspace_revision_saved') {
-            payload = { workspace_revision: Number.isInteger(decoded.workspace_revision) ? decoded.workspace_revision : null };
+            payload = { workspace_revision: revisionValue(decoded.revision ?? decoded.workspace_revision) };
+          } else if (row.kind === 'task_lifecycle_operation') {
+            payload = { operation: decoded.operation === 'task_finish' ? 'task_finish' : null,
+              disposition: text(decoded.disposition, 80), task_state: text(decoded.task_state, 80), execution_state: text(decoded.execution_state, 80) };
           } else {
             payload = {
               artifact_material_id: typeof decoded.artifact_material_id === 'string' ? decoded.artifact_material_id : null,
@@ -1220,16 +1290,21 @@ async function inventoryExperiment(root, { mode = 'full', metadata = null, proje
     const status = result.malformed ? 'malformed' : result.files.length ? 'present' : result.directories.length ? 'empty' : 'missing';
     add(className, status, result.files, result.malformed ? `${result.malformed} malformed NDJSON record(s)` : null);
   }
-  const dbPaths = [];
-  for (const projectId of ids) {
-    const path = join(root, 'state', 'projects', projectId, 'project.sqlite');
-    if (await isRegularFile(path)) dbPaths.push(path);
-  }
+  const dbPaths = await findProjectDatabases(root, ids);
   add('sqlite', dbPaths.length ? 'present' : 'missing', dbPaths, null);
   const localObservation = join(root, 'observability.sqlite');
   const configuredObservation = actualMetadata.observability?.database_path ? resolve(actualMetadata.observability.database_path) : null;
   const observationPaths = [];
-  for (const path of [...new Set([localObservation, configuredObservation].filter(Boolean))]) if (await isRegularFile(path)) observationPaths.push(path);
+  for (const path of [...new Set([localObservation, configuredObservation, ...dbPaths].filter(Boolean))]) {
+    if (!(await isRegularFile(path))) continue;
+    let db;
+    try {
+      db = new DatabaseSync(path, { readOnly: true });
+      if (databaseTableNames(db).includes('observation_events')) observationPaths.push(path);
+    } catch (error) {
+      errors.push({ path: sourcePath(root, path), error: text(error.message, 180) });
+    } finally { if (db) closeDb(db); }
+  }
   add('observation', observationPaths.length ? 'present' : 'missing', observationPaths, null);
   const workspaceRoot = join(root, 'workspaces', 'projects');
   const workspaceFiles = await listFiles(workspaceRoot);
@@ -1253,12 +1328,6 @@ async function inventoryExperiment(root, { mode = 'full', metadata = null, proje
     metadata: actualMetadata,
     summaryPaths: summaries.map((path) => sourcePath(root, path)),
   };
-}
-
-function resolveConfiguredObservation(root, metadata) {
-  const paths = [join(root, 'observability.sqlite')];
-  if (metadata.observability?.database_path) paths.push(resolve(metadata.observability.database_path));
-  return paths;
 }
 
 async function readRawFacts(root, projectIds, mode, intervals, errors) {
@@ -1349,7 +1418,7 @@ function factOperation(fact) {
 function isBoundary(fact) {
   if (BOUNDARY_KINDS.has(fact.kind)) return true;
   const operation = factOperation(fact);
-  return ['task_take', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
+  return ['task_take', 'task_create', 'task_finish', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
 }
 
 function isSemanticBoundary(fact) {
@@ -1395,7 +1464,7 @@ function latestState(facts, execution) {
 function resultForWindow(facts) {
   const meaningful = [...facts].reverse().find((fact) => ['judge_result', 'judge_check', 'judge_check_record', 'workspace_checked', 'wait_for_requested', 'review', 'rework', 'material_read', 'material_consumed', 'material_published', 'workspace_revision', 'execution_terminal', 'task_state_changed', 'execution_state_changed'].includes(fact.kind));
   const impactful = meaningful ?? [...facts].reverse().find((fact) => {
-    const durableOperations = ['task_take', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'];
+    const durableOperations = ['task_take', 'task_create', 'task_finish', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'];
     if (['heartbeat', 'agent_turn', 'agent_settled', 'process_event', 'agent_event', 'agent_rpc_request'].includes(fact.kind)) return false;
     if (durableOperations.includes(fact.operation)) return true;
     if (fact.kind === 'service_call_started' || fact.kind === 'service_call_finished') return Boolean(fact.summary?.ok === false || fact.summary?.error);
@@ -2022,7 +2091,7 @@ function deriveConclusions(analysis) {
   if (analysis.candidates.infrastructure_failure_count) conclusions.push({ type: 'Interpretation', text: `${analysis.candidates.infrastructure_failure_count} Candidate check(s) were infrastructure failures and produced no mathematical verdict. They are reported as unassessed rather than as proof failures.`, evidence: analysis.candidates.rows.filter((row) => row.result_class === 'infrastructure_failure').flatMap((row) => row.evidence).slice(0, 12) });
   if (analysis.candidates.all_failed) conclusions.push({ type: 'Interpretation', text: `None of the ${analysis.candidates.rows.length} recorded Candidate check(s) returned PASS. Repeated diagnostic classes are reported as route non-convergence, not as proof of a mathematical impossibility.`, evidence: analysis.candidates.rows.flatMap((row) => row.evidence).slice(0, 12) });
   if (analysis.terminal) conclusions.push({ type: 'Interpretation', text: analysis.terminal.interpretation, evidence: analysis.terminal.evidence.slice(0, 8) });
-  conclusions.push({ type: 'Derived metric', text: 'The report treats heartbeat, turn count, Material count, Task acceptance, and report.json made_progress as activity or supporting metrics. None is labeled productive Goal progress by itself.', evidence: ['docs/workflows/experiment.md'] });
+  conclusions.push({ type: 'Derived metric', text: 'The report treats heartbeat, turn count, Material count, Task acceptance, and report.json made_progress as activity or supporting metrics. None is labeled productive Mission progress by itself.', evidence: ['docs/workflows/experiment.md'] });
   return conclusions;
 }
 
@@ -2043,6 +2112,17 @@ export async function resolveExperiment(input, { experimentsRoot = null } = {}) 
   throw new Error(`experiment directory not found: ${input}`);
 }
 
+async function findProjectDatabases(root, ids) {
+  const paths = [];
+  for (const projectId of ids) {
+    for (const filename of ['project.sqlite', 'context.sqlite', 'judge.sqlite']) {
+      const path = join(root, 'state', 'projects', projectId, filename);
+      if (await isRegularFile(path)) paths.push(path);
+    }
+  }
+  return paths;
+}
+
 export async function analyseExperiment(input, { mode = 'full', experimentsRoot = null, outputPath = null, maxWindowMs = DEFAULT_MAX_WINDOW_MS } = {}) {
   if (!['full', 'sanitized'].includes(mode)) throw new TypeError('mode must be full or sanitized');
   const root = await resolveExperiment(input, { experimentsRoot });
@@ -2051,11 +2131,7 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
   const inventory = await inventoryExperiment(root, { mode, metadata });
   inventory.errors = [...metadataErrors, ...inventory.errors].slice(0, MAX_SOURCE_ERRORS);
   const projectIds = inventory.projectIds;
-  const dbPaths = [];
-  for (const projectId of projectIds) {
-    const path = join(root, 'state', 'projects', projectId, 'project.sqlite');
-    if (await isRegularFile(path)) dbPaths.push(path);
-  }
+  const dbPaths = await findProjectDatabases(root, projectIds);
   const modelErrors = [];
   const model = await readDomainDatabases(root, dbPaths, modelErrors, mode);
   const summaries = await readSummaries(root, metadata, modelErrors);
@@ -2075,7 +2151,10 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
   }
   const intervals = buildExecutionIntervals(rawRuntimeRecords);
   const observationCandidates = [];
-  for (const path of resolveConfiguredObservation(root, metadata)) if (await isRegularFile(path)) observationCandidates.push(path);
+  for (const path of inventory.evidence.find(entry => entry.class === 'observation')?.paths ?? []) {
+    const configured = metadata.observability?.database_path;
+    observationCandidates.push(path.startsWith('<external>/') ? resolve(configured) : resolve(root, path));
+  }
   const observationFacts = [];
   const observationErrors = [];
   let observationMatched = false;
@@ -2088,7 +2167,6 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
       if (facts.length) {
         for (const fact of facts) observationFacts.push(fact);
         observationMatched = true;
-        break;
       }
     }
     if (!observationMatched) observationErrors.push({ path: sourcePath(root, observationCandidates[0]), kind: 'correlation', error: 'no observation events matched the resolved experiment/project run IDs' });
@@ -2096,8 +2174,9 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
   const rawErrors = [];
   const rawFacts = await readRawFacts(root, projectIds, mode, intervals, rawErrors);
   const domainFacts = factsFromDomainModel(root, model);
-  const allFacts = dedupeFacts([...observationFacts, ...rawFacts, ...domainFacts, ...workspaceFacts]);
-  const warnings = attachFactReferences(allFacts, model, intervals);
+  const attributedFacts = [...observationFacts, ...rawFacts, ...domainFacts, ...workspaceFacts];
+  const warnings = attachFactReferences(attributedFacts, model, intervals);
+  const allFacts = dedupeFacts(attributedFacts);
   const projectSummary = summaries.find((summary) => summary.data?.run?.protocol_valid !== null || summary.data?.run?.solved !== null) ?? summaries[0];
   const experimentEnd = inventory.metadata.experiment?.ended_at ?? projectSummary?.data?.run?.ended_at ?? new Date().toISOString();
   const executions = executionInventory(model, allFacts, experimentEnd, maxWindowMs);
@@ -2175,6 +2254,15 @@ function taskTable(model) {
 function executionTable(executions) {
   const rows = executions.map(({ execution: item, counts, sources, coreIds, sessionIds, workspaceRefs, lifecycle_role, predecessor_execution_id, successor_execution_id }) => `| ${md(item.execution_id)} | ${md(item.task_id)} | ${md(lifecycle_role)} | ${md(predecessor_execution_id ?? 'none')} | ${md(successor_execution_id ?? 'none')} | ${md(item.owner_ref)} | ${md(coreIds.join(', ') || 'unknown')} | ${md(sessionIds.join(', ') || 'unknown')} | ${md(item.state)} | ${md(item.attempt_no ?? 'unknown')} | ${md(workspaceRefs.map(safeWorkspaceRef).join(', ') || 'unknown')} | ${sources.slice(0, 2).join('<br>') || 'none'} |`);
   return rows.length ? ['| Execution attempt | Task | Lifecycle role | Predecessor | Successor | Owner | Core | Session | State | Attempt | Workspace lineage | Evidence |', '|---|---|---|---|---|---|---|---|---|---:|---|---|', ...rows].join('\n') : '_No Execution was discoverable._';
+}
+
+function botTable(bots) {
+  if (!bots.length) return '_No authoritative Bot rows were available._';
+  const visible = [...bots].sort((left, right) => left.bot_id.localeCompare(right.bot_id)).slice(0, 200);
+  const unbound = bots.filter(bot => bot.execution_id === null).length;
+  const rows = visible.map(bot => `| ${md(bot.bot_id)} | ${md(bot.core_id)} | ${md(bot.state)} | ${md(bot.execution_id ?? 'none')} | ${bot.source.ref} |`);
+  return [`${bots.length} Bot(s), including ${unbound} without a persisted Execution binding. Showing ${visible.length}.`,
+    '', '| Bot | Core | State | Execution | Evidence |', '|---|---|---|---|---|', ...rows].join('\n');
 }
 
 function windowTable(item) {
@@ -2286,6 +2374,10 @@ ${taskTable(analysis.model)}
 
 ${executionTable(analysis.executions)}
 
+### Bots
+
+${botTable(analysis.model.bots)}
+
 ## Execution layer
 
 The authoritative domain model keeps a durable Execution distinct from an Agent Session. This report presents each Execution attempt and its Session/Core segments; a successor Execution is shown only when the durable model records a new ID. A wait/resume, Core handoff, or in-place parent rework remains the same Execution.
@@ -2316,7 +2408,7 @@ The efficiency view must distinguish configured capacity from effective work: Co
 
 ## Tool layer
 
-This layer evaluates provider/transport failures, tool contract use, response schemas, and error fidelity. Judge/checker results are reviewed for diagnostic quality and whether the Agent could act on the feedback.
+This layer evaluates provider/transport failures, tool contract use, response schemas, and error fidelity. Judge/checker results are reviewed for diagnostic quality and whether the Agent could act on the feedback. Completed raw Pi tool events retain a hash and byte count of the actual returned content in normalized facts, with explicit truncation metadata when present. Missing truncation metadata is unknown; structured programmatic output is not substituted for model-facing content. Tool events alone do not prove delivery in a subsequent model request. Correlated raw call arguments retain read ranges and private Bash commands; skill version must come from that run’s resource manifest, not the analyzer checkout.
 
 | Metric | Observed value | Interpretation | Evidence |
 |---|---:|---|---|

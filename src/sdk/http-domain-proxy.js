@@ -35,10 +35,13 @@ export class HttpDomainProxy {
     const requestEnvelope = envelope?.operation_id && envelope?.actor_ref
       ? envelope
       : makeEnvelope({ operationId: `proxy:${this.serviceId}:${operation}:${randomUUID()}`, actorRef: this.actorRef });
+    if (requestEnvelope.actor_ref !== this.actorRef) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'A domain peer credential cannot relay another actor identity');
+    }
     const body = JSON.stringify({ envelope: requestEnvelope, input, role });
-    const args = ['--silent', '--show-error', '--max-time', String(Math.ceil(this.timeoutMs / 1000)), '--request', 'POST', `${this.url}/v1/${operation}`, '--header', 'accept: application/json', '--header', 'content-type: application/json', '--header', `idempotency-key: ${requestEnvelope.operation_id}`, '--data-binary', body, '--write-out', '\n%{http_code}'];
+    const args = ['--disable', '--silent', '--show-error', '--max-time', String(Math.ceil(this.timeoutMs / 1000)), '--request', 'POST', `${this.url}/v1/${operation}`, '--header', 'accept: application/json', '--header', 'content-type: application/json', '--header', `idempotency-key: ${requestEnvelope.operation_id}`, '--data-binary', '@-', '--write-out', '\n%{http_code}'];
     if (this.token) args.splice(args.length - 4, 0, '--header', `authorization: Bearer ${this.token}`);
-    const result = this.spawnSync(this.curlCommand, args, { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, timeout: this.timeoutMs + 2_000 });
+    const result = this.spawnSync(this.curlCommand, args, { input: body, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, timeout: this.timeoutMs + 2_000 });
     if (result.error) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `HTTP ${this.serviceId} proxy failed: ${result.error.message}`, { service_id: this.serviceId }, { cause: result.error, retryable: true });
     const output = String(result.stdout ?? '');
     const marker = output.lastIndexOf('\n');

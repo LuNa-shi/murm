@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError, asSwarmEnvError } from '../errors.js';
 import { createServiceManifest, manifestSnapshot, SERVICE_ROLES } from './service-manifest.js';
 import { validateEnvelope } from '../protocol/envelope.js';
@@ -24,6 +25,7 @@ function send(response, status, body, headers = {}) {
 function statusForError(error) {
   switch (error?.code) {
     case ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED: return 403;
+    case ERROR_CODES.NOT_ALLOWED: return 403;
     case ERROR_CODES.SERVICE_NOT_FOUND:
     case ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND: return 404;
     case ERROR_CODES.CONFLICT:
@@ -63,7 +65,7 @@ async function readJson(request, maxBytes) {
 }
 
 export class ServiceHost {
-  constructor({ manifest, handler, readiness = null, token = null, host = '127.0.0.1', advertiseHost = null, publicUrl = null, requireRole = true, trusted = false, maxBodyBytes = DEFAULT_MAX_BODY_BYTES, logger = null } = {}) {
+  constructor({ manifest, handler, readiness = null, token = null, principals = null, host = '127.0.0.1', advertiseHost = null, publicUrl = null, requireRole = true, trusted = false, maxBodyBytes = DEFAULT_MAX_BODY_BYTES, logger = null } = {}) {
     if (!manifest) throw new TypeError('ServiceHost requires a Service Manifest');
     if (typeof handler !== 'function') throw new TypeError('ServiceHost requires a handler');
     if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 1) throw new TypeError('maxBodyBytes must be a positive integer');
@@ -71,6 +73,16 @@ export class ServiceHost {
     this.handler = handler;
     this.readiness = readiness;
     this.token = token;
+    if (principals !== null && (!Array.isArray(principals) || principals.some(principal =>
+      typeof principal?.token !== 'string' || !principal.token || typeof principal.actor_ref !== 'string' || !principal.actor_ref ||
+      !SERVICE_ROLES.includes(principal.role) || (principal.operations !== undefined &&
+        (!Array.isArray(principal.operations) || principal.operations.some(operation => typeof operation !== 'string' || !operation)))) ||
+      new Set(principals.map(principal => principal.token)).size !== principals.length)) {
+      throw new TypeError('Service principals require unique tokens, actor identities, valid roles and optional operation lists');
+    }
+    this.principals = principals?.map(({ token: credential, actor_ref, role, operations }) => ({
+      hash: createHash('sha256').update(`Bearer ${credential}`).digest(), actor_ref, role, operations: operations ? new Set(operations) : null,
+    })) ?? null;
     this.host = host;
     this.advertiseHost = advertiseHost ?? (host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host);
     this.publicUrl = publicUrl;
@@ -147,7 +159,11 @@ export class ServiceHost {
         send(response, 404, { ok: false, error: { code: ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND, message: `unknown service route: ${request.method} ${url.pathname}` } });
         return;
       }
-      if (this.token && request.headers.authorization !== `Bearer ${this.token}`) {
+      const credential = request.headers.authorization ?? '';
+      const credentialHash = this.principals ? createHash('sha256').update(credential).digest() : null;
+      const principal = this.principals && this.principals.find(candidate =>
+        timingSafeEqual(candidate.hash, credentialHash));
+      if ((this.principals && !principal) || (this.principals === null && this.token && credential !== `Bearer ${this.token}`)) {
         send(response, 401, { ok: false, error: { code: ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, message: 'service authorization is required', retryable: false } });
         return;
       }
@@ -156,6 +172,10 @@ export class ServiceHost {
       validateEnvelope(body.envelope);
       const input = body.input ?? {};
       const role = body.role ?? null;
+      if (principal && (body.envelope.actor_ref !== principal.actor_ref || role !== principal.role ||
+          (principal.operations && !principal.operations.has(capability.operation)))) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, 'Service credential does not authorize this actor, role or operation');
+      }
       if (this.requireRole && role === null) {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, 'service invocation requires an Agent role', { service_id: this.manifest.service_id, capability: capability.name });
       }

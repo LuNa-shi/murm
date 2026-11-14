@@ -20,13 +20,13 @@ const CURRENT_AGENT_OPERATIONS = new Set([
   'list_services', 'get_service_metadata', 'list_tools',
   'list_tasks', 'list_executions',
   'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
-  'task_status', 'task_take', 'task_feedback', 'execution_progress',
-  'publish_material', 'read_materials', 'consume_materials',
-  'context_search_materials', 'context_get_material', 'context_publish_material',
+  'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_cancel', 'task_dependency_replace',
+  'read_materials', 'consume_materials',
+  'context_search_materials', 'context_get_material', 'context_publish_material', 'material_dispute', 'material_supersede', 'material_unsupersede',
   'workspace_check', 'get_check_result', 'get_execution',
   'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
   'read_workspace_file', 'write_workspace_file', 'workspace_diff',
-  'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_apply',
+  'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_apply',
   'workspace_save', 'workspace_merge', 'mission_get', 'mission_submit', 'mission_submission_get',
 ]);
 

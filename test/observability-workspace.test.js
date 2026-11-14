@@ -9,7 +9,7 @@ import { TaskService } from '../src/task/task-service.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
-test('ObservabilityServer exposes the selected Execution Workspace files and revisions', async () => {
+test('ObservabilityServer exposes the selected Execution Workspace files and revisions', async t => {
   const root = await mkdtemp('/tmp/swarmenv-observability-workspace-');
   const database = new DatabaseSync(join(root, 'state.sqlite'));
   const taskService = new TaskService(database);
@@ -38,13 +38,28 @@ test('ObservabilityServer exposes the selected Execution Workspace files and rev
   const observations = new ObservationStore(database);
   observations.registerExperiment({ experimentId: 'run-workspace', rootTaskId: task.task_id });
   observations.append({ experimentId: 'run-workspace', source: 'runtime', kind: 'execution_assigned', coreId: 'core-1', taskId: task.task_id, executionId: taken.execution.execution_id, payload: {} });
-  const server = new ObservabilityServer({ observationStore: observations, taskService, workspaceManager });
+  const password = 'test-observer-password';
+  const server = new ObservabilityServer({ observationStore: observations, taskService, workspaceManager, operatorPassword: password });
   const { url } = await server.start();
-  const result = await fetch(`${url}/api/executions/${taken.execution.execution_id}/workspace?experiment_id=run-workspace`).then((response) => response.json());
+  t.after(async () => { await server.stop(); taskService.close(); await rm(root, { recursive: true, force: true }); });
+  const endpoint = `${url}/api/executions/${taken.execution.execution_id}/workspace?experiment_id=run-workspace`;
+  const restore = workspaceManager.restoreWorkspace.bind(workspaceManager);
+  let restores = 0;
+  workspaceManager.restoreWorkspace = input => { restores += 1; return restore(input); };
+  for (const authorization of ['', 'Bearer guest-token', `Basic ${Buffer.from('operator:incorrect').toString('base64')}`]) {
+    const denied = await fetch(endpoint, { headers: { authorization } });
+    assert.equal(denied.status, 401);
+    assert.match(denied.headers.get('www-authenticate'), /^Basic /);
+    assert.doesNotMatch(await denied.text(), /notes\.md|observable/);
+  }
+  assert.equal(restores, 0);
+  assert.equal((await fetch(`${url}/api/experiments/run-workspace/events`)).status, 401);
+  assert.equal((await fetch(`${url}/health`)).status, 200);
+  const result = await fetch(endpoint, { headers: {
+    authorization: `Basic ${Buffer.from(`operator:${password}`).toString('base64')}`,
+  } }).then(response => response.json());
+  assert.ok(restores > 0);
   assert.equal(result.workspace.workspace_revision, 2);
   assert.ok(result.files.some((file) => file.path === 'notes.md'));
   assert.equal(result.revisions.length, 2);
-  await server.stop();
-  taskService.close();
-  await rm(root, { recursive: true, force: true });
 });

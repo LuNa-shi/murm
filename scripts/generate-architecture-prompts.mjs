@@ -9,7 +9,7 @@ import vm from 'node:vm';
 import { SYSTEM_IDENTITY_PROMPT, BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, PROMPT_VERSION, SYSTEM_PROMPT_VERSION, buildPromptSnapshot, composeAgentPrompt, composeDynamicAgentPrompt, taskLoopGuide } from '../src/agent/agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile, capabilityDirectory } from '../src/agent/capability-profile.js';
 import swarmenvExtension from '../src/agent/swarmenv-extension.mjs';
-import { BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION, buildBotStartupMessage } from '../src/agent/bot-contract.js';
+import { BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION, buildBotStartupMessage } from '../src/agent/bot-contract.js';
 import { IDENTITY_TAKE_PROMPT } from '../src/runtime/identity-task-loop.js';
 import { runtimeCapabilityList } from '../src/runtime/runtime-capabilities.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
@@ -120,16 +120,17 @@ let benchmarkDoc = header('Complete benchmark turn messages', 'The registered Bo
 benchmarkDoc += block('IdentityTaskLoop default for compatibility callers', IDENTITY_TAKE_PROMPT);
 benchmarkDoc += block('Registered Bot discovery: complete synthetic example', discoveryPrompt);
 benchmarkDoc += block('Current bound continuation', BOT_CONTINUATION_MESSAGE, 'Both bound continuation send paths reread durable Execution state after Session readiness. Before soft closeout they use this ordinary message; after the deadline or an early reminder they send the closeout body below. Closing or expired identities do not receive another research turn.');
-benchmarkDoc += block('Soft closeout continuation', BOT_SOFT_CLOSEOUT_MESSAGE);
+benchmarkDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
 benchmarkDoc += block('Registered Bot compaction follow-up', BOT_COMPACTION_MESSAGE, 'If the current E has reached soft closeout, the closeout body replaces this ordinary follow-up.');
-for (const notification_type of ['handoff_warning', 'material_available', 'dependency_updated']) benchmarkDoc += block(`Registered Bot notification: ${notification_type}`, buildBotNotification({ notification_type, notification_id: '<NOTIFICATION_ID>', recipient_task_id: '<TASK_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', material_id: '<MATERIAL_ID>' }));
+for (const notification_type of ['handoff_warning', 'material_available', 'dependency_updated']) benchmarkDoc += block(`Registered Bot notification: ${notification_type}`, buildBotNotification({ notification_type, notification_id: '<NOTIFICATION_ID>', recipient_task_id: '<TASK_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', material_id: '<MATERIAL_ID>', payload: { execution_id: '<EXECUTION_ID>', deadline: '2099-01-01T00:00:00.000Z' } }, { at: Date.parse('2098-12-31T23:59:30.000Z') }));
 output('03-benchmark-turns.md', benchmarkDoc);
 let skillDoc = header('Complete registered Bot skills', 'Root-owned immutable image files. Pi receives explicit --skill paths with ambient discovery disabled; the four metadata entries are included in system context, and actual read-tool results carry the loaded bodies into subsequent model input. The worker verifies bytes and permissions before startup.');
 for (const skill of BOT_SKILLS) skillDoc += block(`${skill.name} (${skill.version})`, sources.get(`src/agent/bot-contract/${skill.name}.md`), `Guest path: ${skill.path}; file SHA-256: ${skill.sha256}`);
 output('08-bot-skills.md', skillDoc);
 
 const notificationFunction = between(runtimePath, '  #notificationText', '\n\n  #onNotification');
-const notificationText = evaluate(`function notificationText${notificationFunction}`);
+const notificationText = evaluate(`function notificationText${notificationFunction}`, { buildBotSoftCloseoutNotice })
+  .bind({ clock: () => Date.parse('2026-01-01T00:00:30.000Z') });
 const recoveryFunction = between(runtimePath, '  #recoveryPrompt', '\n\n  #executionEnvelope');
 const recoveryText = evaluate(`function recoveryPrompt${recoveryFunction}`);
 const legacyReminder = evaluate(between(runtimePath, '        const prompt = ', ';\n        active.promptChain', "} else if (active) {\n        const prompt ="));

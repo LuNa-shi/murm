@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { TaskService } from '../src/task/task-service.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { takeTaskWithAgent, observedEligibleWorkCount, projectReport } from '../src/benchmark/putnam-runner.js';
+import { takeTaskWithAgent, observedEligibleWorkCount, projectReport, runBenchmarkBatch, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
 import { BOT_SKILLS, BOT_SYSTEM_HASH, botServiceDirectory } from '../src/agent/bot-contract.js';
 
 test('four Core discovery send paths carry current durable identity and pinned preview from a zero-Task Mission', { timeout: 10_000 }, async t => {
@@ -21,6 +21,7 @@ test('four Core discovery send paths carry current durable identity and pinned p
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   const sent = [];
+  const previews = new Map();
   const cores = Array.from({ length: 4 }, (_, index) => {
     const botId = `B-${index}`;
     const coreId = `core-${index}`;
@@ -38,6 +39,7 @@ test('four Core discovery send paths carry current durable identity and pinned p
       startConfig: { options: { turnTimeoutMs: 2000 } }, bridge: { getCapabilityProfile: () => ({ services: [{ service_id: 'task', provider_version: '1' }] }) },
       stateRef: { problem: { id: 'controlled-project', problem_file: 'input.txt', source_hash: 'controlled-hash' } },
       runtime: { taskService, missionWorkspace: workspace, missionWorkspaceId: 'W-prompt', hasActiveExecution: () => false,
+        recordBotWorkspacePreview(input) { assert.equal(input.session, session); previews.set(input.botId, input.workspace.main_revision); },
         runDeadlineAt: Date.now() + 1800000, executionTimeoutMs: 120000, handoffReminderMs: 90000 },
       parallelism: { beginAgentTurn() {}, endAgentTurn() {}, recordTurnTime() {} },
     };
@@ -53,6 +55,7 @@ test('four Core discovery send paths carry current durable identity and pinned p
     assert.equal(input.bot.sandbox_id, bot.sandbox_id);
     assert.equal(input.bot.pi_session_id, `Pi-${index}`);
     assert.equal(input.workspace_preview.resolved_main_revision, merged.main_revision);
+    assert.equal(previews.get(bot.bot_id), merged.main_revision);
     assert.equal(input.budget.bot_hard_deadline, bot.hard_deadline);
     assert.equal(input.budget.selection_deadline, bot.selection_deadline);
     assert.equal(input.system_prompt_sha256, BOT_SYSTEM_HASH);
@@ -119,14 +122,18 @@ test('proposal-only report counts more than one page exactly without claiming pr
       summary: `Investigate independent documented input case ${index}`, expected_output: 'Reproducible case result', acceptance_conditions: ['Publish evidence for this case'] }, makeEnvelope({ actorRef: 'bot:proposer' })).task;
     const state = { taskService: service, missionId: mission.mission_id, cores: [], initialTaskIds: [],
       contextService: { readMaterials: () => [], listMaterialConsumptions: () => [] },
-      judgeService: { listCheckerPreflights: () => [] }, capabilityRegistry: { listServices: () => [] },
+      judgeService: { listCheckerPreflights: () => [], getMissionCheckBudget: () => null }, capabilityRegistry: { listServices: () => [] },
       parallelism: { snapshot: () => ({}) }, allowedAgentToolNames: ['read', 'write', 'edit', 'bash'],
       publicWorkspace: { mission_id: mission.mission_id, metadata: { input_snapshot_hash: 'test-input' } },
       inputMaterialHash: 'test-input', problem: { id: 'controlled', source_hash: 'test-input' }, fixtureManifest: {},
-      readinessSamples: [], schedulerEvents: [], solvedAt: null,
+      readinessSamples: [], schedulerEvents: [], solvedAt: null, missionSubmissionStore: { isAccepted: () => false, getFinalCheckBudget: () => null },
     };
     const report = projectReport(state, Date.now() - 1000, Date.now());
     assert.equal(report.protocol.proposed_task_count, 105);
+    assert.equal(Object.hasOwn(report.protocol, 'parallel_mode'), false);
+    assert.equal(report.protocol.project_parallelism, 1);
+    assert.equal(Object.hasOwn(report.project, 'structure'), false);
+    assert.equal(Object.hasOwn(report.project.task_tree[0], 'parent_id'), false);
     assert.equal(report.project.task_count, 105);
     assert.equal(report.project.task_tree.length, 100);
     assert.equal(report.project.task_page.complete, false);
@@ -140,4 +147,12 @@ test('proposal-only report counts more than one page exactly without claiming pr
     assert.equal(Object.hasOwn(report.parallelism, 'decomposition_available'), false);
     assert.equal(observedEligibleWorkCount(state, [last]), 1, 'ready work outside the first page is still observed');
   } finally { service.close(); }
+});
+
+test('runner rejects old parallel treatment labels and inconsistent Core counts', async () => {
+  for (const parallelMode of ['root-only', 'semantic', 'direct']) {
+    await assert.rejects(runBenchmarkProject({}, {}, { parallelMode }), /parallelMode has been retired/);
+    await assert.rejects(runBenchmarkBatch([], {}, { parallelMode }), /parallelMode has been retired/);
+  }
+  await assert.rejects(runBenchmarkProject({}, {}, { cores: 2 }), /require four independent Core loops/);
 });

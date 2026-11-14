@@ -16,7 +16,7 @@ Services Bridge + Capability Profile
         └── Catalog/Registry   manifests, tools, documentation and hashes
 ```
 
-The benchmark runner owns the outer run, Core lanes and finalization. The Agent-facing Bridge reads the current Workspace source and invokes Judge directly; the runner only records the returned CheckResult and applies the existing Task completion projection.
+The benchmark runner owns the outer run, Core lanes and finalization. The Agent-facing Bridge reads the current Workspace source and invokes Judge directly; the runner records the returned CheckResult. Task finish and fixed-input Mission acceptance are separate decisions.
 Runtime owns process/session lifecycle and physical cleanup. Domain Services
 own authoritative Task, Execution, Material and Judge state. The Agent chooses
 research actions through the exposed tools; the Runtime does not choose a
@@ -47,18 +47,21 @@ activity evidence, not proof of useful research.
 
 ```text
 Bot reads capability profile and public Mission/Task/Material/Workspace state
-  → task_take in its own Core lane
+  → prefer suitable existing work; otherwise propose a bounded Task with task_create
+  → task_take in its own Core
   → Runtime binds one Execution and private Workspace
   → Agent reads/publishes/consumes Material and edits Workspace
   → Agent may register a genuinely independent ordinary Task
   → Agent submits a Workspace candidate through the registered Judge Service
   → Judge checks and persists a CheckResult; the Bridge returns it synchronously and the runner records its projection
-  → Agent revises, checkpoints, completes, blocks, or hands off
+  → Agent saves public revisions and may merge incremental work into main
+  → Agent explicitly finishes done, incomplete, blocked or cancelled
+  → an authorized Bot may separately submit fixed main and selected Materials for Mission acceptance
   → Runtime fences/releases this Execution
   → Runtime stops the Bot; a fresh Bot may continue from public state
 ```
 
-The **flat Mission Task model** is the only runtime Task model described by this architecture. The benchmark CLI has no Task-model selector, and the Agent/SDK surface exposes Mission Tasks, relations, Materials and Execution progress without Root/Child structure operations. The normal bound profile uses named Task, Context, Judge, Workspace and Runtime capabilities.
+The **flat Mission Task model** is the only runtime Task model described by this architecture. The benchmark CLI has no Task-model selector, and the Agent/SDK surface exposes Mission Tasks, relations, Materials and Execution progress without Root/Child structure operations. Bots use the read, write, edit and bash tools, with the typed `swarm` CLI routed through their authenticated Bridge to Task, Material, Judge and Workspace operations. They do not receive a second set of domain-native tools.
 
 Within the flat benchmark path, `TaskController` observes eligible work and signals idle `IdentityTaskLoop`s; the Agent chooses its Task through `task_take`. Controller and Runner do not select the mathematical research route. See `src/benchmark/putnam-runner.js`, `src/runtime/task-controller.js`, and `src/runtime/identity-task-loop.js`.
 

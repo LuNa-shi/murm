@@ -1,5 +1,5 @@
 import { watch } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { basename, dirname, extname, join } from 'node:path';
@@ -8,6 +8,25 @@ import { once } from 'node:events';
 import { listServices, listTools } from '../sdk/service-catalog.js';
 
 const PUBLIC_ROOT = fileURLToPath(new URL('./public/', import.meta.url));
+
+export const OBSERVABILITY_AUTH_VERSION = 1;
+
+function isLoopbackAddress(address) {
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
+export function observabilityAccessMode({ host, operatorPassword = null }) {
+  if (operatorPassword !== null && (typeof operatorPassword !== 'string' || !operatorPassword.trim())) {
+    throw new TypeError('Observer operator password must be nonempty');
+  }
+  if (operatorPassword !== null) return 'operator-basic';
+  if (host === 'localhost' || isLoopbackAddress(host)) return 'local-operator';
+  throw new TypeError('Non-loopback Observer requires explicit operator authentication');
+}
+
+function httpHost(host) {
+  return host.includes(':') ? `[${host}]` : host;
+}
 
 function json(value) {
   return JSON.stringify(value ?? null);
@@ -522,7 +541,7 @@ async function readStatic(path) {
  * their existing Service boundaries.
  */
 export class ObservabilityServer {
-  constructor({ observationStore, taskService = null, contextService = null, workspaceManager = null, workspaceProvider = null, experimentRoot = null, host = '127.0.0.1', advertiseHost = null } = {}) {
+  constructor({ observationStore, taskService = null, contextService = null, workspaceManager = null, workspaceProvider = null, experimentRoot = null, host = '127.0.0.1', advertiseHost = null, operatorPassword = null } = {}) {
     if (!observationStore) throw new TypeError('ObservabilityServer requires observationStore');
     this.observationStore = observationStore;
     this.taskService = taskService;
@@ -532,6 +551,9 @@ export class ObservabilityServer {
     this.experimentRoot = experimentRoot;
     this.host = host;
     this.advertiseHost = advertiseHost;
+    this.accessMode = observabilityAccessMode({ host, operatorPassword });
+    this.operatorHash = operatorPassword === null ? null :
+      createHash('sha256').update(`operator:${operatorPassword}`).digest();
     this.server = null;
     this.addressValue = null;
     this.streamResponses = new Set();
@@ -565,7 +587,8 @@ export class ObservabilityServer {
       host: this.host,
       advertise_host: this.advertiseHost,
       port: this.addressValue.port,
-      url: `http://${publicHost}:${this.addressValue.port}`,
+      url: `http://${httpHost(publicHost)}:${this.addressValue.port}`,
+      access_mode: this.accessMode,
     };
   }
 
@@ -590,11 +613,34 @@ export class ObservabilityServer {
     await once(server, 'close').catch(() => undefined);
   }
 
+  #isOperator(request) {
+    if (request.headers['sec-fetch-site'] === 'cross-site') return false;
+    if (this.operatorHash) {
+      const value = /^Basic ([A-Za-z0-9+/]+={0,2})$/i.exec(request.headers.authorization ?? '')?.[1];
+      if (!value) return false;
+      const digest = createHash('sha256').update(Buffer.from(value, 'base64')).digest();
+      return timingSafeEqual(digest, this.operatorHash);
+    }
+    if (!isLoopbackAddress(request.socket.remoteAddress)) return false;
+    // Protect loopback-only browser sessions from virtual-host/DNS rebinding
+    // and accidental forwarding by a reverse proxy.
+    const host = request.headers.host?.toLowerCase();
+    const port = this.addressValue.port;
+    return ['127.0.0.1', 'localhost', '[::1]'].some(name => host === `${name}:${port}`) &&
+      !request.headers.forwarded && !request.headers['x-forwarded-for'] && !request.headers['x-forwarded-host'];
+  }
+
   async #handle(request, response) {
     try {
-      const url = new URL(request.url ?? '/', `http://${this.host}`);
+      const url = new URL(request.url ?? '/', `http://${httpHost(this.host)}`);
       if (request.method === 'GET' && url.pathname === '/health') {
-        send(response, 200, { ok: true, service: 'swarmenv-observability' });
+        send(response, 200, { ok: true, service: 'swarmenv-observability',
+          auth_version: OBSERVABILITY_AUTH_VERSION, access_mode: this.accessMode });
+        return;
+      }
+      if (!this.#isOperator(request)) {
+        if (this.operatorHash) response.setHeader('www-authenticate', 'Basic realm="SwarmEnv Operator", charset="UTF-8"');
+        send(response, this.operatorHash ? 401 : 403, { ok: false, error: { code: 'OPERATOR_REQUIRED', message: 'Observer operator access is required' } });
         return;
       }
       if (request.method !== 'GET') {

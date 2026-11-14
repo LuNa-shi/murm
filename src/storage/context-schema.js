@@ -26,11 +26,24 @@ CREATE TABLE IF NOT EXISTS materials (
   provenance_json TEXT NOT NULL,
   supersedes TEXT REFERENCES materials(material_id),
   evidence_json TEXT NOT NULL DEFAULT '[]',
+  title TEXT,
+  summary TEXT,
+  media_type TEXT,
   created_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS materials_kind_scope ON materials(kind, scope);
 CREATE INDEX IF NOT EXISTS materials_source ON materials(source_task, source_execution);
+CREATE INDEX IF NOT EXISTS materials_mission_scan ON materials(mission_id);
+
+CREATE TABLE IF NOT EXISTS material_attachments (
+  material_id TEXT NOT NULL REFERENCES materials(material_id),
+  name TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  bytes BLOB NOT NULL,
+  PRIMARY KEY (material_id, name)
+);
 
 CREATE TABLE IF NOT EXISTS material_relations (
   relation_id TEXT PRIMARY KEY,
@@ -39,6 +52,7 @@ CREATE TABLE IF NOT EXISTS material_relations (
   relation_kind TEXT NOT NULL CHECK (relation_kind IN ('dispute', 'supersede')),
   active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
   reason TEXT,
+  claim TEXT,
   actor_ref TEXT NOT NULL,
   source_task TEXT,
   source_execution TEXT,
@@ -49,6 +63,31 @@ CREATE TABLE IF NOT EXISTS material_relations (
 
 CREATE INDEX IF NOT EXISTS material_relations_active
   ON material_relations(material_id, relation_kind, active, created_at);
+CREATE INDEX IF NOT EXISTS material_relations_outgoing_scan
+  ON material_relations(material_id, relation_kind, active);
+CREATE INDEX IF NOT EXISTS material_relations_incoming_scan
+  ON material_relations(replacement_material_id, relation_kind, active);
+
+-- Relation revision belongs to the old Material, including after revocation.
+CREATE TABLE IF NOT EXISTS material_relation_heads (
+  material_id TEXT PRIMARY KEY REFERENCES materials(material_id),
+  version INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS material_relation_events (
+  event_id TEXT PRIMARY KEY,
+  relation_id TEXT NOT NULL REFERENCES material_relations(relation_id),
+  material_id TEXT NOT NULL REFERENCES materials(material_id),
+  action TEXT NOT NULL CHECK (action IN ('created', 'revoked')),
+  operation_id TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  source_task TEXT,
+  source_execution TEXT,
+  reason TEXT NOT NULL,
+  relation_version INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS material_relation_events_material
+  ON material_relation_events(material_id, relation_version, created_at);
 
 CREATE TABLE IF NOT EXISTS material_consumptions (
   operation_id TEXT NOT NULL,
@@ -57,6 +96,9 @@ CREATE TABLE IF NOT EXISTS material_consumptions (
   reader_execution TEXT NOT NULL,
   action TEXT NOT NULL CHECK (action IN ('route', 'task', 'workspace', 'integration')),
   action_ref TEXT,
+  material_version INTEGER,
+  content_hash TEXT,
+  impact TEXT,
   created_at TEXT NOT NULL,
   PRIMARY KEY (operation_id, material_id)
 );
@@ -65,5 +107,7 @@ CREATE INDEX IF NOT EXISTS material_consumptions_reader
   ON material_consumptions(reader_task, reader_execution, action);
 CREATE INDEX IF NOT EXISTS material_consumptions_material
   ON material_consumptions(material_id, action);
+CREATE INDEX IF NOT EXISTS material_consumptions_material_scan
+  ON material_consumptions(material_id);
 
 `;

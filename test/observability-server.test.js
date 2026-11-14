@@ -287,3 +287,15 @@ test('ObservabilityServer preserves active Core lanes beyond the recent timeline
     store.close();
   }
 });
+
+test('Observer refuses anonymous remote binds and rejects forwarded or cross-site local API requests', async t => {
+  const store = new ObservationStore(':memory:');
+  t.after(() => store.close());
+  assert.throws(() => new ObservabilityServer({ observationStore: store, host: '0.0.0.0' }),
+    /requires explicit operator authentication/);
+  const server = new ObservabilityServer({ observationStore: store });
+  const { url } = await server.start();
+  t.after(() => server.stop());
+  assert.equal((await fetch(`${url}/api/experiments`)).status, 200);
+  assert.equal((await fetch(`${url}/api/experiments`, { headers: { 'x-forwarded-host': 'remote.example' } })).status, 403);
+});

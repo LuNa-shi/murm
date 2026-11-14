@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "84c5ab9dc0ae803df03f38746f9804813d0b219a",
+  "runtime_baseline": "595c1da",
   "reviewed_date": "2026-11-14",
   "scope_roots": [
     "src",
@@ -135,6 +135,15 @@
       "role": "Offline analysis CLI arguments and failure reporting"
     },
     {
+      "path": "scripts/bot-filesystem-policy.c",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "UID-restricted Landlock policy inherited by Pi and its descendants"
+    },
+    {
       "path": "scripts/check-architecture.mjs",
       "category": "documentation tooling",
       "chapters": [
@@ -171,6 +180,15 @@
       "role": "Offline exact prompt extraction, synthetic composition and drift check"
     },
     {
+      "path": "scripts/lock-final-tree-checker.mjs",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Trusted local checker lock generator with source provenance checks"
+    },
+    {
       "path": "scripts/mathlib-search-service.mjs",
       "category": "launch and composition",
       "chapters": [
@@ -178,6 +196,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Mathlib HTTP provider process and environment settings"
+    },
+    {
+      "path": "scripts/mount-bot-workspace.py",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pin and mount a bounded tmpfs in a verified Docker namespace"
     },
     {
       "path": "scripts/opensandbox-agent-worker.mjs",
@@ -204,6 +231,20 @@
         "docs/architecture/05-workspace-continuity.md"
       ],
       "role": "Immutable same-UID process inspection before changing paused project paths"
+    },
+    {
+      "path": "scripts/preview-migration.mjs",
+      "category": "launch and composition",
+      "chapters": ["docs/architecture/09-known-boundaries.md"],
+      "role": "Read-only fresh-start migration preview and verified restore rehearsal"
+    },
+    {
+      "path": "scripts/prune-private-audit.mjs",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Operator deletion task for expired managed private audit directories"
     },
     {
       "path": "scripts/run-putnambench-benchmark.mjs",
@@ -435,6 +476,15 @@
       "role": "Versioned registered Bot contract, immutable skill resources and dynamic message composition"
     },
     {
+      "path": "src/agent/bot-model-access.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Trusted Bot lifecycle and model credential composition"
+    },
+    {
       "path": "src/agent/capability-profile.js",
       "category": "Agent and prompts",
       "chapters": [
@@ -463,6 +513,16 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Provider routing, Pi process arguments, RPC, streaming and Session lifecycle"
+    },
+    {
+      "path": "src/agent/responses-budget-gateway.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Durable model reservations and bounded Responses forwarding"
     },
     {
       "path": "src/agent/services-bridge.js",
@@ -502,6 +562,14 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Offline evidence inventory, timeline reconstruction, metrics and report rendering"
+    },
+    {
+      "path": "src/benchmark/benchmark-fixture.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned Git blob and timed service composition gates"
     },
     {
       "path": "src/benchmark/parallelism.js",
@@ -570,6 +638,32 @@
       "role": "Check outcome/diagnostic classification and caller-safe result projections"
     },
     {
+      "path": "src/judge/checker-process-limits.js",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Verified systemd cgroup limits and process-tree cleanup ownership"
+    },
+    {
+      "path": "src/judge/final-tree-deployment.js",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned source/artifact lock and production checker startup gate"
+    },
+    {
+      "path": "src/judge/final-tree-proof.lean",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Trusted Comparator harness consuming inert proof exports"
+    },
+    {
       "path": "src/judge/fixture.js",
       "category": "services and contracts",
       "chapters": [
@@ -598,6 +692,15 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Independent Lean preflight/compiler process and diagnostic extraction"
+    },
+    {
+      "path": "src/judge/lean-final-tree-verifier.js",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/05-workspace-continuity.md"
+      ],
+      "role": "Isolated final-tree Lean export, theorem comparison and kernel replay"
     },
     {
       "path": "src/observability/benchmark-report-importer.js",
@@ -744,6 +847,14 @@
       "role": "SQLite event/projection schema, visibility and multi-database collections"
     },
     {
+      "path": "src/observability/private-audit-retention.js",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Exclusive private audit roots, run ownership markers, and retention sweep"
+    },
+    {
       "path": "src/observability/public/app.js",
       "category": "generated served asset",
       "chapters": [
@@ -799,6 +910,24 @@
       "role": "Identity/version envelope validation and stable serialization"
     },
     {
+      "path": "src/runtime/docker-bot-disk.js",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Docker Bot identity validation and bounded filesystem preparation"
+    },
+    {
+      "path": "src/runtime/docker-bot-network.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned local Docker namespace egress enforcement"
+    },
+    {
       "path": "src/runtime/execution-workspace.js",
       "category": "runtime and execution",
       "chapters": [
@@ -817,6 +946,33 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Per-Core discovery/take supervisor, rescans, waiting and wake events"
+    },
+    {
+      "path": "src/runtime/mission-coordination.js",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Trusted Task/Context/Mission acceptance assembly and observed input validation"
+    },
+    {
+      "path": "scripts/review-mission.mjs",
+      "category": "Mission and Task",
+      "chapters": [
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Owner-local CLI for an exact fixed manual Mission review receipt"
+    },
+    {
+      "path": "src/runtime/manual-mission-review.js",
+      "category": "Mission and Task",
+      "chapters": [
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Explicit bounded manual Mission checker and immutable operator decision ledger"
     },
     {
       "path": "src/runtime/mission-submission.js",
@@ -848,6 +1004,14 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "OpenSandbox lifecycle and Execd provider boundary for one Execution"
+    },
+    {
+      "path": "src/runtime/opensandbox-metadata.js",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/02-execution.md"
+      ],
+      "role": "Provider-compatible Mission, Bot and Execution identity labels"
     },
     {
       "path": "src/runtime/runtime-capabilities.js",

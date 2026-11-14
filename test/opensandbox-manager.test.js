@@ -1,3 +1,4 @@
+import { openSandboxBotKey, openSandboxExecutionKey, openSandboxMissionKey } from '../src/runtime/opensandbox-metadata.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -30,7 +31,7 @@ test('OpenSandbox creates an independent sandbox and executes through its Execd 
   assert.equal(calls[0].options.headers['OPEN-SANDBOX-API-KEY'], 'test-key');
   const createBody = JSON.parse(calls[0].options.body);
   assert.equal(createBody.image.uri, 'swarmenv/agent:2026-11-11');
-  assert.equal(createBody.metadata.execution_id, 'execution-1');
+  assert.equal(createBody.metadata.execution_key, openSandboxExecutionKey('execution-1'));
   assert.equal(createBody.metadata.binding_version, '3');
   assert.equal(createBody.workspace, undefined);
 
@@ -139,7 +140,7 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
       if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-worker' });
       if (url === 'http://worker.test/sbx-worker/health') return response({ ok: true });
       if (url === 'http://worker.test/sbx-worker/start') return response({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } });
-      if (url.includes('/sandboxes/sbx-worker')) return response({});
+      if (url.includes('/sandboxes/sbx-worker')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
   });
@@ -245,10 +246,9 @@ test('OpenSandbox workspace pull is idempotent after provider cleanup removed th
 test('OpenSandbox quarantines provider sandboxes whose Agent token cannot be recovered', async () => {
   const manager = createOpenSandboxManager({
     lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',
-    fetchImpl: async (url) => {
+    fetchImpl: async (url, { method }) => {
       if (url.includes('/sandboxes?pageSize=100')) return response({ items: [{ id: 'sbx-existing', metadata: { execution_id: 'e-existing', binding_version: '4' } }] });
-      if (url.includes('/endpoints/44772')) return response({ url: 'http://execd.test/existing' });
-      if (url.includes('/sandboxes/sbx-existing')) return response({});
+      if (url.includes('/sandboxes/sbx-existing')) return response({}, { status: method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
   });
@@ -328,6 +328,7 @@ test('Bot Sandbox is recorded before endpoint preparation and reused for its sol
       calls.push({ url, options });
       if (options.method === 'POST' && url.endsWith('/sandboxes')) return response({ id: 'sandbox:one' });
       if (url.includes('/endpoints/')) { assert.equal(recorded, true); return response({ url: 'http://execd.test' }); }
+      if (url.includes('/sandboxes/sandbox%3Aone')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       return response({});
     },
   });
@@ -339,7 +340,8 @@ test('Bot Sandbox is recorded before endpoint preparation and reused for its sol
   } });
   assert.equal(unbound.execution_id, null);
   const metadata = JSON.parse(calls[0].options.body).metadata;
-  assert.equal(metadata.bot_id, 'bot:one');
+  assert.equal(metadata.bot_key, openSandboxBotKey('bot:one'));
+  assert.equal(metadata.bot_id, undefined);
   assert.equal(metadata.execution_id, undefined);
   const bound = manager.bindBotExecution({ botId: 'bot:one', executionId: 'execution:one', bindingVersion: 0 });
   assert.equal(bound.sandbox_id, unbound.sandbox_id);
@@ -357,7 +359,8 @@ for (const receipt of [null, { version: BOT_PROTOCOL_VERSION, resources: [] }, {
   test(`Agent startup refuses missing or mismatched worker contract attestation: ${receipt === null ? 'missing' : receipt.resources.length}`, async () => {
     const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'fixture', waitForExecdReady: false,
       fetchImpl: async (url, options) => {
-        if (options.method === 'DELETE') return response({});
+        if (options.method === 'DELETE') return response({}, { status: 204 });
+        if (url.endsWith('/sandboxes/sandbox-attestation')) return response({}, { status: 404 });
         if (url.endsWith('/sandboxes')) return response({ id: 'sandbox-attestation' }, { status: 202 });
         if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
         if (url.endsWith('/health')) return response({ ok: true });
@@ -372,3 +375,176 @@ for (const receipt of [null, { version: BOT_PROTOCOL_VERSION, resources: [] }, {
     assert.equal(manager.snapshot().executions.length, 0);
   });
 }
+
+test('restart quarantines only durable Mission resources across provider pages without resolving endpoints', async () => {
+  const calls = [];
+  let cleanupComplete = false;
+  const manager = createOpenSandboxManager({
+    lifecycleBaseUrl: 'http://provider.test/v1', image: 'image:test',
+    fetchImpl: async (url, { method }) => {
+      const path = new URL(url).pathname;
+      const page = Number(new URL(url).searchParams.get('page') ?? 1);
+      calls.push([method, path, page]);
+      if (path.endsWith('/sandboxes')) return response({
+        items: page === 1 ? [
+          { id: 'foreign', metadata: { mission_id: 'other', bot_id: 'B-foreign' } },
+          { id: 'legacy', metadata: { execution_id: 'E-legacy' } },
+          { id: 'conflict', metadata: { mission_id: 'other', bot_id: 'B-conflict' } },
+        ] : cleanupComplete ? [] : [
+          { id: 'registered', metadata: { mission_id: 'M', bot_id: 'B-unbound', resource_key: 'bot:unbound' } },
+        ],
+        pagination: { page, hasNextPage: page === 1 },
+      });
+      const id = path.split('/').at(-1);
+      assert.ok(['registered', 'legacy', 'known-not-listed'].includes(id), `unexpected lifecycle target: ${id}`);
+      if (method === 'DELETE') return response({}, { status: id === 'registered' ? 502 : 204 });
+      return response({}, { status: id !== 'registered' || cleanupComplete ? 404 : 200 });
+    },
+  });
+  const bots = [
+    { mission_id: 'M', bot_id: 'B-unbound', resource_key: 'bot:unbound', state: 'UNBOUND' },
+    { mission_id: 'M', bot_id: 'B-known', resource_key: 'bot:known', state: 'CLOSING', sandbox_id: 'known-not-listed' },
+    { mission_id: 'M', bot_id: 'B-conflict', resource_key: 'bot:conflict' },
+    { mission_id: 'M', bot_id: 'B-missing', resource_key: 'bot:missing', state: 'STARTING' },
+    { mission_id: 'other', bot_id: 'B-foreign', resource_key: 'bot:foreign' },
+  ];
+  const first = await manager.reconcileExecutions({ missionId: 'M', bots, executionIds: ['E-legacy'] });
+  assert.deepEqual(calls.slice(0, 2), [['GET', '/v1/sandboxes', 1], ['GET', '/v1/sandboxes', 2]]);
+  assert.deepEqual(first.adopted, []);
+  assert.deepEqual(first.confirmed_bot_ids, ['B-known']);
+  assert.deepEqual(first.quarantined.map(({ sandbox_id }) => sandbox_id), ['known-not-listed', 'legacy']);
+  assert.deepEqual(first.pending.map(({ bot_id, reason }) => [bot_id, reason]), [
+    ['B-unbound', 'deletion_unconfirmed'], ['B-conflict', 'provider_identity_mismatch'], ['B-missing', 'creation_unconfirmed'],
+  ]);
+  assert.equal(first.pending[0].sandbox_id, 'registered');
+  cleanupComplete = true;
+  const retry = await manager.reconcileExecutions({ missionId: 'M', bots: [bots[0]] });
+  assert.deepEqual(retry.pending, []);
+  assert.deepEqual(retry.confirmed_bot_ids, ['B-unbound']);
+});
+
+test('unknown create blocks new starts and local cleanup until the real resource disappears', async () => {
+  const calls = [];
+  let listed = false;
+  let deleted = false;
+  let releasePost;
+  const manager = createOpenSandboxManager({
+    lifecycleBaseUrl: 'http://provider.test', image: 'image:test',
+    fetchImpl: async (url, options) => {
+      const path = new URL(url).pathname;
+      calls.push([options.method, path]);
+      if (path === '/sandboxes' && options.method === 'POST') {
+        assert.deepEqual(JSON.parse(options.body).metadata, { mission_key: openSandboxMissionKey('M'), bot_key: openSandboxBotKey('B'), resource_key: openSandboxBotKey('bot:B') });
+        return new Promise((resolve) => { releasePost = () => resolve(response({}, { status: 502 })); });
+      }
+      if (path === '/sandboxes') return response({ items: listed ? [
+        { id: 'late', metadata: { mission_key: openSandboxMissionKey('M'), bot_key: openSandboxBotKey('B'), resource_key: openSandboxBotKey('bot:B') } },
+      ] : [] });
+      assert.equal(path, '/sandboxes/late');
+      if (options.method === 'DELETE') return response({}, { status: 202 });
+      return response({}, { status: deleted ? 404 : 200 });
+    },
+  });
+  const input = { executionId: 'bot:B', botId: 'B', metadata: { mission_id: 'M' } };
+  const start = manager.ensureExecution(input);
+  await assert.rejects(manager.stopExecution('bot:B'), { code: ERROR_CODES.SERVICE_UNAVAILABLE });
+  await assert.rejects(manager.ensureExecution(input), { code: ERROR_CODES.SERVICE_UNAVAILABLE });
+  const live = await manager.reconcileExecutions({ missionId: 'M', bots: [{ bot_id: 'B', mission_id: 'M', resource_key: 'bot:B' }] });
+  assert.deepEqual(live.owned_bot_ids, ['B']);
+  releasePost();
+  await assert.rejects(start, { code: ERROR_CODES.SERVICE_UNAVAILABLE });
+  await assert.rejects(manager.stopExecution('bot:B'), { code: ERROR_CODES.SERVICE_UNAVAILABLE });
+  listed = true;
+  await assert.rejects(manager.stopExecution('bot:B'), { code: ERROR_CODES.SERVICE_UNAVAILABLE });
+  listed = false;
+  deleted = true;
+  assert.equal(await manager.stopExecution('bot:B'), true);
+  assert.equal(await manager.stopExecution('bot:B'), false);
+  assert.equal(calls.filter(([method]) => method === 'POST').length, 1);
+});
+
+test('restart records a newly found provider ID before deletion and never deletes conflicting matches', async () => {
+  const deleted = [];
+  const rows = [
+    { id: 's-found', metadata: { mission_id: 'M', bot_id: 'B-found', resource_key: 'bot:found' } },
+    { id: 's-duplicate-1', metadata: { mission_id: 'M', bot_id: 'B-duplicate', resource_key: 'bot:duplicate' } },
+    { id: 's-duplicate-2', metadata: { mission_id: 'M', bot_id: 'B-duplicate', resource_key: 'bot:duplicate' } },
+  ];
+  const bots = [
+    { mission_id: 'M', bot_id: 'B-found', resource_key: 'bot:found' },
+    { mission_id: 'M', bot_id: 'B-duplicate', resource_key: 'bot:duplicate' },
+  ];
+  let persisted = null;
+  const manager = createOpenSandboxManager({
+    lifecycleBaseUrl: 'http://provider.test', image: 'image:test',
+    fetchImpl: async (url, { method }) => {
+      const path = new URL(url).pathname;
+      if (path === '/sandboxes') return response({ items: rows });
+      assert.equal(path, '/sandboxes/s-found');
+      if (method === 'DELETE') {
+        assert.equal(persisted, 's-found');
+        deleted.push(path);
+        return response({}, { status: 204 });
+      }
+      return response({}, { status: 404 });
+    },
+  });
+  const error = await manager.reconcileExecutions({ missionId: 'M', bots, onSandboxDiscovered: () => { throw new Error('SQLite unavailable'); } });
+  assert.deepEqual(error.pending.map(({ reason }) => reason), [
+    'resource_record_unconfirmed', 'provider_identity_mismatch', 'provider_identity_mismatch',
+  ]);
+  assert.deepEqual(deleted, []);
+  const result = await manager.reconcileExecutions({ missionId: 'M', bots, onSandboxDiscovered: (bot, id) => {
+    assert.equal(bot.bot_id, 'B-found');
+    persisted = id;
+  } });
+  assert.deepEqual(result.confirmed_bot_ids, ['B-found']);
+  assert.deepEqual(deleted, ['/sandboxes/s-found']);
+});
+
+test('restart does not delete an otherwise eligible first page if listing cannot finish', async () => {
+  const methods = [];
+  const manager = createOpenSandboxManager({
+    lifecycleBaseUrl: 'http://provider.test', image: 'image:test',
+    fetchImpl: async (url, { method }) => {
+      methods.push(method);
+      if (new URL(url).searchParams.get('page') === '2') return response({}, { status: 502 });
+      return response({ items: [{ id: 's', metadata: { execution_id: 'E' } }], pagination: { page: 1, hasNextPage: true } });
+    },
+  });
+  await assert.rejects(manager.reconcileExecutions({ executionIds: ['E'] }), { code: ERROR_CODES.SERVICE_UNAVAILABLE });
+  assert.deepEqual(methods, ['GET', 'GET']);
+});
+
+test('worker quota and exact catalog attestations are required when configured', async () => {
+  const quota = { bytes: 16 * 1024 ** 2, inodes: 1024 };
+  const modelCatalogResource = { path: '/opt/swarmenv/pi-agent/models.json', sha256: 'c'.repeat(64) };
+  for (const variant of ['quota missing', 'catalog mismatch', 'accepted']) {
+    const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'fixture', waitForExecdReady: false,
+      fetchImpl: async (url, options) => {
+        if (options.method === 'DELETE') return response({}, { status: 204 });
+        if (url.endsWith('/sandboxes/sandbox-quota')) return response({}, { status: 404 });
+        if (url.endsWith('/sandboxes')) {
+          assert.ok(JSON.parse(options.body).entrypoint.includes('--require-project-quota'));
+          return response({ id: 'sandbox-quota' }, { status: 202 });
+        }
+        if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
+        if (url.endsWith('/health')) return response({ ok: true });
+        if (url.endsWith('/start')) {
+          assert.deepEqual(JSON.parse(options.body).project_quota, quota);
+          assert.deepEqual(JSON.parse(options.body).model_catalog_resource, modelCatalogResource);
+          return response({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES },
+            ...(variant === 'quota missing' ? {} : { project_quota: quota }),
+            model_catalog_resource: variant === 'catalog mismatch' ? { ...modelCatalogResource, sha256: '0'.repeat(64) } : modelCatalogResource } });
+        }
+        throw new Error(`unexpected: ${url}`);
+      },
+    });
+    await manager.ensureExecution({ executionId: 'B-quota', botId: 'B-quota', projectQuotaRequired: true });
+    await assert.rejects(manager.startAgent({ executionId: 'B-quota', command: 'pi' }), { code: 'INVALID_CONTRACT' });
+    const started = manager.startAgent({ executionId: 'B-quota', command: 'pi', projectQuota: quota, modelCatalogResource });
+    if (variant === 'accepted') await started;
+    else await assert.rejects(started, { code: 'START_FAILED' });
+    await manager.stopExecution('B-quota');
+  }
+});
