@@ -1,6 +1,6 @@
 # EXP-20261115-01: Four-Core single-project 30-minute validation
 
-Status: REGISTERED
+Status: BLOCKED (startup only)
 Approved GitHub Issue: [#122 and owner decision](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563)
 Implementation: `e601e81a2bd17d17299e08d552ecccc93bf28a86`, with architecture clarification `c928e86`.
 Comparison: descriptive comparison with [formal24](issue122-formal24-gap-analysis.md); this is not a controlled causal comparison.
@@ -48,7 +48,7 @@ Stop at the Mission deadline or trusted Mission acceptance, followed by bounded 
 
 ## Results
 
-Pending execution. No formal model result is asserted by this registration.
+The CLI exited before project setup because its default observation daemon could not become healthy. The experiment contains metadata and closed private-audit markers but no project state, Bot, Execution or model ledger. No model request was made by this run. There is no aggregate report and no 30-minute behavior evidence. The default port 8787 was occupied by an existing listener; old metadata did not match the current authentication contract. A separately started loopback service on an automatically allocated port passed the actual health check.
 
 ## Analysis
 
@@ -56,7 +56,7 @@ This single problem and single run can establish observed behavior and diagnose 
 
 ## Next steps
 
-After review and checks pass, execute this registered run and reconstruct every Bot's task choice, work, public delivery, successor actions and terminal state. If healthy, execute the separately registered two-hour run authorized by the owner, increasing finite Bot lifetimes as recorded before that launch.
+Repeat under EXP-20261115-02 using the verified loopback observation service. Preserve this aborted registration and its metadata; do not reuse this ID or count its elapsed startup as the requested 30 minutes.
 
 ## Evidence and limitations
 
