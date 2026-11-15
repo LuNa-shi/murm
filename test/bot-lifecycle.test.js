@@ -103,3 +103,30 @@ test('trusted Runtime activation rechecks the Bot deadline inside the Task write
     specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version })), /hard deadline elapsed/);
   assert.equal(service.getExecution(execution.execution_id).state, 'CREATED');
 });
+
+test('a queued Runtime heartbeat cannot renew a registered Bot lease after expiry before sweep', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const { service, start } = fixture(t);
+  const bot = start('bot:late-heartbeat');
+  service.recordBotSandbox(bot.bot_id, { provider: 'controlled', sandboxId: 'sandbox:late-heartbeat' });
+  service.markBotReady(bot.bot_id);
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Observe delayed heartbeat admission',
+    expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution: preparing } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'late-heartbeat' });
+  const envelope = (execution, actorRef = 'runtime:core-1') => makeEnvelope({ actorRef, taskId: execution.task_id,
+    executionId: execution.execution_id, specVersion: execution.spec_version, stateVersion: execution.state_version,
+    fencingVersion: execution.fencing_version });
+  const { execution } = service.dispatch('start_execution', {}, envelope(preparing, bot.bot_id));
+  const freshLease = new Date(Date.now() + 50).toISOString();
+  const { execution: renewed } = service.dispatch('heartbeat', { lease_expires_at: freshLease }, envelope(execution));
+  assert.equal(renewed.lease_expires_at, freshLease);
+
+  // Advance clocks past the lease without running sweep or closing the Bot.
+  // A due heartbeat can get the first callback after an event-loop stall.
+  t.mock.timers.setTime(Date.parse(freshLease) + 1);
+  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+  assert.equal(service.getExecution(execution.execution_id).state, 'RUNNING');
+  assert.throws(() => service.dispatch('heartbeat', {}, envelope(renewed)),
+    error => error.code === 'NOT_ALLOWED' && /Execution lease has expired/.test(error.message));
+  assert.deepEqual(service.getExecution(execution.execution_id), renewed);
+});

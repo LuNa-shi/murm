@@ -105,7 +105,7 @@ test('gateway aborts a held upstream request at the earlier Bot deadline and ret
 });
 
 test('held model HTTP requests follow a renewed lease for the same Execution and fence', async t => {
-  for (const outcome of ['renewed', 'unrenewed', 'finished', 'owner-changed', 'fenced', 'revoked', 'request-deadline']) {
+  for (const outcome of ['renewed', 'unrenewed', 'finished', 'owner-changed', 'execution-changed', 'fenced', 'revoked', 'request-deadline']) {
     await t.test(outcome, { timeout: 3000 }, async t => {
       const { promise: started, resolve: dispatch } = Promise.withResolvers();
       const { promise: terminal, resolve: complete } = Promise.withResolvers();
@@ -133,6 +133,10 @@ test('held model HTTP requests follow a renewed lease for the same Execution and
       const startedAt = await started;
       if (outcome !== 'unrenewed') f.execution.lease_expires_at = new Date(leaseAt + 10_000).toISOString();
       if (outcome === 'finished') f.execution.state = 'SUCCEEDED';
+      if (outcome === 'execution-changed') {
+        f.bot.execution_id = 'replacement';
+        f.execution.execution_id = 'replacement';
+      }
       if (outcome === 'owner-changed') f.execution.owner_ref = 'another-bot';
       if (outcome === 'fenced') f.execution.fencing_version++;
       if (outcome === 'revoked') f.access.revokeBot('b');

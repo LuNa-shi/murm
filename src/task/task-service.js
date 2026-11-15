@@ -3137,8 +3137,12 @@ export class TaskService {
 
   #heartbeat(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
-    const updatedAt = now();
-    const leaseExpiresAt = payload.lease_expires_at ?? new Date(Date.now() + 30_000).toISOString();
+    const at = Date.now();
+    if (this.getBot(execution.owner_ref) && !(at < Date.parse(execution.lease_expires_at))) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution lease has expired');
+    }
+    const updatedAt = new Date(at).toISOString();
+    const leaseExpiresAt = payload.lease_expires_at ?? new Date(at + 30_000).toISOString();
     this.db.prepare('UPDATE executions SET heartbeat_at = ?, lease_expires_at = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
       .run(updatedAt, leaseExpiresAt, updatedAt, execution.execution_id);
     return { execution: this.getExecution(execution.execution_id) };
