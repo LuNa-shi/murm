@@ -596,9 +596,10 @@
       "category": "service and Agent integration",
       "chapters": [
         "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
       ],
-      "role": "Non-interactive Bash CLI parser, discovery and HTTP JSON invocation"
+      "role": "Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation"
     },
     {
       "path": "src/context/context-service.js",
