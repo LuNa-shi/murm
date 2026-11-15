@@ -32,6 +32,24 @@ async function fixture(t, options = {}) {
   return { service, bridge, start, close };
 }
 
+test('the authenticated Bot Bridge gives actionable feedback for premature exit', async t => {
+  const { service, start } = await fixture(t);
+  const env = start('bot:discover-gap');
+  for (const reason of ['no-work', 'selection-budget']) {
+    const response = await fetch(`${env.SWARMENV_BRIDGE_URL}/call`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ operation: 'bot_exit', payload: { reason } }),
+    });
+    const receipt = await response.json();
+    assert.equal(receipt.ok, false);
+    assert.equal(receipt.error.code, 'NOT_ALLOWED');
+    assert.equal(receipt.error.details.phase, 'discovery_required');
+    assert.match(receipt.error.details.notice, /提出有可核验交付的新 Task/);
+    assert.equal(service.getBot('bot:discover-gap').state, 'UNBOUND');
+  }
+});
+
 test('a request authenticated before rotation cannot execute as the successor Bot', async t => {
   const { service, bridge, start, close } = await fixture(t);
   const env = start('bot:first');
@@ -79,6 +97,7 @@ test('a queued Task proposal cannot acquire a successor Bot identity', async t =
 test('swarm bot exit uses the provisioned Bridge identity without an actor override', async t => {
   const { service, start } = await fixture(t);
   const env = start('bot:cli');
+  service.setMissionStopReader(id => id === 'mission:auth');
   const { stdout } = await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', 'bot', 'exit', '--reason', 'no-work', '--json'], { cwd: process.cwd(), env: { ...process.env, ...env }, timeout: 10_000 });
   const result = JSON.parse(stdout);
   assert.equal(result.bot.bot_id, 'bot:cli');

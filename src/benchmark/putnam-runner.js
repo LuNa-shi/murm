@@ -64,6 +64,10 @@ class SerialTaskCreateAdmission {
 function assertCurrentParallelConfiguration(options) {
   if (Object.hasOwn(options, 'parallelMode')) throw new TypeError('parallelMode has been retired; omit it to use four independent Core loops');
   if (options.cores !== undefined && options.cores !== 4) throw new TypeError('Benchmark projects require four independent Core loops');
+  const stagger = options.initialBotStaggerMs ?? 0;
+  if (!Number.isSafeInteger(stagger) || stagger < 0 || stagger > Math.floor(2_147_483_647 / 3)) {
+    throw new TypeError('initialBotStaggerMs must be a nonnegative integer within the four-Core timer limit');
+  }
 }
 
 function projectTasks(state, {
@@ -665,6 +669,13 @@ function selectionView(candidates) {
   }));
 }
 
+function discoveryOpen(core) {
+  const state = core.stateRef;
+  return !core.stopping && !state?.stopping && !state?.signal?.aborted &&
+    Date.now() < (state?.runDeadlineAt ?? Infinity) &&
+    !(state?.mission && core.runtime.taskService.isMissionStopped(state.mission.mission_id));
+}
+
 /**
  * Run one bounded task-discovery turn on the reusable Core identity.  The
  * identity itself chooses a Task and calls the canonical `task_take` seam;
@@ -676,10 +687,10 @@ function selectionView(candidates) {
 export async function takeTaskWithAgent(core, candidates) {
   // An active Execution owns the identity. Never open a parallel discovery
   // turn or ask the model to take a second responsibility.
-  if (core.taskId || core.executionId) return { take_deferred: true };
+  if (!discoveryOpen(core) || core.taskId || core.executionId) return { take_deferred: true };
   core.bridge.beginTakeAttempt?.();
   const session = await ensureAgentSession(core);
-  if (core.stopping) return { take_deferred: true };
+  if (!discoveryOpen(core)) return { take_deferred: true };
   if (!session) return core.turnInFlight ? { take_deferred: true } : { take_failed: true, error: { code: 'SERVICE_UNAVAILABLE', message: 'Bot session could not start' } };
   const discoveryBotId = core.botId;
   const exitedWithoutWork = () => {
@@ -702,7 +713,7 @@ export async function takeTaskWithAgent(core, candidates) {
   try {
     const workspace = await core.runtime.missionWorkspace.get({ workspaceId: core.runtime.missionWorkspaceId });
     const bot = core.runtime.taskService.getBot(discoveryBotId);
-    if (core.stopping || core.session !== session || core.botId !== discoveryBotId || session.closed || bot?.state !== 'UNBOUND') return { take_deferred: true };
+    if (!discoveryOpen(core) || core.session !== session || core.botId !== discoveryBotId || session.closed || bot?.state !== 'UNBOUND') return { take_deferred: true };
     core.runtime.taskService.assertBotDeadline(discoveryBotId);
     if (Date.now() >= Date.parse(bot.selection_deadline)) return { take_deferred: true };
     const message = buildBotStartupMessage({
@@ -1240,6 +1251,7 @@ export function projectReport(state, startedAt, deadline) {
     protocol: {
       project_isolation: true,
       core_count: 4,
+      initial_bot_stagger_ms: state.initialBotStaggerMs ?? 0,
       project_parallelism: state.projectParallelism ?? 1,
       repository_commit: state.repositoryCommit,
       repository_worktree_dirty: state.repositoryWorktreeDirty,
@@ -1797,6 +1809,7 @@ async function createProjectState(problem, config, options) {
       payload: {
         problem_id: problem.id,
         core_count: 4,
+        initial_bot_stagger_ms: options.initialBotStaggerMs ?? 0,
         timebox_ms: options.timeboxMs ?? 60 * 60_000,
         task_model: 'flat',
         mission_id: mission?.mission_id ?? null,
@@ -2544,6 +2557,7 @@ async function createProjectState(problem, config, options) {
       provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER ?? null,
       model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL ?? null,
       timeboxMs: options.timeboxMs ?? 60 * 60_000,
+      initialBotStaggerMs: options.initialBotStaggerMs ?? 0,
       signal: options.signal,
       runDeadlineAt: startedAt + (options.timeboxMs ?? 60 * 60_000),
       missionCloseoutMs: options.missionCloseoutMs ?? 30_000,
@@ -2753,6 +2767,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
   state.identityLoops = state.cores.map((core) => {
     const loop = new IdentityTaskLoop({
       coreId: `core-${core.index}`,
+      firstDiscoveryAt: startedAt + (core.index - 1) * state.initialBotStaggerMs,
       // This is a bounded discovery prompt for the reusable identity, not a
       // old selection transport SOP.  The identity must call task_take itself.
       takePrompt: 'Runtime composes the current unbound Bot context at dispatch.',
@@ -3086,6 +3101,7 @@ async function writeUnavailableProjectReport(problem, options, error, { operator
     protocol: {
       project_isolation: true,
       core_count: 4,
+      initial_bot_stagger_ms: options.initialBotStaggerMs ?? 0,
       project_parallelism: options.projectParallelism ?? 1,
       task_model: 'flat',
       input_policy: 'pinned formalization only; no candidate or solution input',

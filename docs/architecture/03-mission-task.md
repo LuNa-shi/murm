@@ -107,7 +107,7 @@ Execution/fence, a still-running Task and no other active owner. It records the
 close time, advances the fence, closes the Execution and projects Task state:
 `DONE`, `CANCELLED`, or `OPEN`/`BLOCKED` recomputed from all effective dependencies.
 A prerequisite that finishes during cleanup can therefore make a blocked result
-immediately eligible. Finalization also reconciles direct dependents and emits a committed public change that wakes no-work discovery loops. Repeating a completed finalization makes no further Task
+immediately eligible. Finalization also reconciles direct dependents and emits a committed public change that can wake discovery before the retry timer. Repeating a completed finalization makes no further Task
 changes and cannot clear a successor's ownership.
 
 The original finish receipt remains an accepted `closing` receipt. Replaying

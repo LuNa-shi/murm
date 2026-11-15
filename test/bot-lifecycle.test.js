@@ -55,19 +55,26 @@ test('a registered Bot binds exactly one Execution and never takes a second Task
 });
 
 test('unbound exit is durable, creates no Execution, and releases the Core only after cleanup', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   const { service, start } = fixture(t);
   const bot = start('bot:no-work');
   service.recordBotSandbox(bot.bot_id, { provider: 'controlled', sandboxId: 'sandbox:no-work' });
   service.markBotReady(bot.bot_id);
   const request = makeEnvelope({ actorRef: bot.bot_id, operationId: 'bot:exit:first' });
-  const accepted = service.dispatch('bot_exit', { reason: 'no-work' }, request);
+  for (const reason of ['no-work', 'selection-budget']) {
+    assert.throws(() => service.dispatch('bot_exit', { reason }, request),
+      error => error.code === 'NOT_ALLOWED' && error.details.phase === 'discovery_required');
+    assert.equal(service.getBot(bot.bot_id).state, 'UNBOUND');
+  }
+  t.mock.timers.setTime(Date.parse(bot.selection_deadline));
+  const accepted = service.dispatch('bot_exit', { reason: 'selection-budget' }, request);
   assert.equal(accepted.bot.state, 'CLOSING');
   assert.equal(accepted.bot.execution_id, null);
   assert.equal(service.listActiveExecutions().length, 0);
   assert.throws(() => start('bot:too-early'), (error) => error.code === 'CONFLICT');
   service.finalizeBotClose(bot.bot_id);
-  assert.deepEqual(service.dispatch('bot_exit', { reason: 'no-work' }, request), accepted);
-  assert.equal(service.getBot(bot.bot_id).exit_reason, 'no-work');
+  assert.deepEqual(service.dispatch('bot_exit', { reason: 'selection-budget' }, request), accepted);
+  assert.equal(service.getBot(bot.bot_id).exit_reason, 'selection-budget');
   assert.equal(start('bot:after-event').state, 'STARTING');
 });
 

@@ -683,7 +683,7 @@ export class TaskService {
             replayed = true;
             return replay;
           }
-          this.assertBotDeadline(envelope.actor_ref);
+          if (normalizedOperation !== 'bot_exit') this.assertBotDeadline(envelope.actor_ref);
           const value = this.#mutate(normalizedOperation, payload, envelope);
           this.#saveOperation(envelope.operation_id, normalizedOperation, fingerprint, value);
           return value;
@@ -949,6 +949,10 @@ export class TaskService {
     const bot = this.getBot(envelope.actor_ref);
     if (!bot || bot.state !== 'UNBOUND' || bot.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bot exit requires an unbound Bot with no pending take');
     if (!['no-work', 'selection-budget'].includes(payload.reason)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bot exit reason must be no-work or selection-budget');
+    const at = Date.now();
+    if (!this.isMissionStopped(bot.mission_id) && at < Date.parse(bot.selection_deadline) && at < Date.parse(bot.hard_deadline)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission is still open and the Bot has selection time remaining', { phase: 'discovery_required' });
+    }
     this.db.prepare("UPDATE bots SET state = 'CLOSING', exit_request_id = ?, exit_reason = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
       .run(envelope.operation_id, payload.reason, now(), bot.bot_id);
     return { bot: this.getBot(bot.bot_id), disposition: 'closing' };

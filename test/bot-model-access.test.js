@@ -221,7 +221,7 @@ test('model reservation and upstream dispatch hold real Task authority against a
   };
   const first = call();
   await started;
-  other.dispatch('bot_exit', { reason: 'selection-budget' }, envelope());
+  other.requestBotStop('b', 'selection-budget');
   assert.equal(await call(), 403);
   release(new Response('event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}\n\n', { headers: { 'content-type': 'text/event-stream' } }));
   assert.equal(await first, 200);
