@@ -62,7 +62,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Model budget gateway
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `c7b27b6b6662b8ca4fc3b736577dc41e7f93f5e822bb5be2da88318b83d13b04`.
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `0131ea53efc8adfbffcbc219fa8b7fc7a649d838bc778e37ddf7d7aa259a3468`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS responses_budget_policies (

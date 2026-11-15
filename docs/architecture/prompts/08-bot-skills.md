@@ -7,9 +7,9 @@ Root-owned immutable image files. Pi receives explicit --skill paths with ambien
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## plan-task (draft.2)
 
-Guest path: /opt/swarmenv/src/agent/bot-contract/plan-task.md; file SHA-256: 14ffb93c3f51b8f6d0a2ac0622ac4749a889be1c11dd5a5894e28325094a62b3
+Guest path: /opt/swarmenv/src/agent/bot-contract/plan-task.md; file SHA-256: 31b039f721a265bca7f0872aa8114f6776d2c9b3429d85410de5ed1f19c7545d
 
-Body SHA-256: `14ffb93c3f51b8f6d0a2ac0622ac4749a889be1c11dd5a5894e28325094a62b3`
+Body SHA-256: `31b039f721a265bca7f0872aa8114f6776d2c9b3429d85410de5ed1f19c7545d`
 
 ````text
 ---
@@ -25,6 +25,23 @@ description: 在有限选工预算内发现、提出或选择 Task，处理竞�
 4. 缺少明确责任时提出局部 Task：目标、交付、完成条件、输入、Dependencies 和与已有工作的区别。可行性探索、反例搜索、失败复现也可以形成有用交付，不必预先承诺研究会成功。
 5. 用简短事实说明选择，调用 take。竞争失败仍在原选工阶段；请求未知时查询/重试原请求。成功后核对实际初始输入和固定工作目录。
 6. 无工作或选工预算耗尽且没有未决 take 时，bot exit --reason no-work 或 selection-budget。不要不断造 Task/重试保持忙碌。
+
+在 Bash 中调用这些命令。用实际公开 revision、返回的文件路径和 task_id 替换示例中的 `0.1`、`notes.txt` 和 `T1`。不加状态筛选时，task list 会搜索全部状态；多状态用带引号的 JSON 数组。
+
+```bash
+swarm workspace files --at 0.1 --limit 20
+swarm workspace read notes.txt --at 0.1
+swarm task list --state ready
+swarm task list --states '["ready","running","blocked","done","cancelled"]'
+swarm task view T1
+swarm task take T1 --request-id take-t1
+```
+
+需要新责任时，提交包含 `summary`、`expected_output` 和非空 `acceptance_conditions` 的 JSON，把示例内容换成实际责任和可验收的结果。提交后用返回的 task_id 调用 take。提案和 take 使用各自的请求 ID。
+
+```bash
+printf '%s\n' '{"summary":"Check a boundary case","expected_output":"A reproducible result","acceptance_conditions":["The result includes a reproducible check"]}' | swarm task propose --stdin --request-id propose-boundary
+```
 
 Task 目标、交付和完成条件不 revise。执行中发现必要前置时，先保存有用成果，再 finish --outcome blocked --wait-for T2。目标需要根本改变时提出新责任，再 cancelled --replacement T3 撤回旧项。
 
