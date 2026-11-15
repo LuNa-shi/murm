@@ -62,7 +62,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Model budget gateway
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `0131ea53efc8adfbffcbc219fa8b7fc7a649d838bc778e37ddf7d7aa259a3468`.
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `8fafd8f05506fe04b747e5c7716206ea5441f88651a2841515fa0f8d4c1925de`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS responses_budget_policies (
@@ -861,7 +861,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `29abf3ee626f7bc7e8892cc248609ae286d7682f3cd91466db254d5eb028e6ba`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `d27496e1f9f22c8405bc846efc55f6d7c4cc9373974b0a110dabd69cffc14ebf`.
 
 #### executions_active_core
 
