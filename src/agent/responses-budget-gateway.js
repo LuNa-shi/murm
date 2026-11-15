@@ -84,9 +84,10 @@ function validItem(item) {
       optionalText(item.id) && optionalText(item.status);
   }
   return item.type === 'reasoning' &&
-    fields(item, ['type', 'id', 'summary', 'encrypted_content', 'status']) &&
+    fields(item, ['type', 'id', 'summary', 'encrypted_content', 'content', 'status']) &&
     optionalText(item.id) && optionalText(item.status) &&
     (item.encrypted_content === null || optionalText(item.encrypted_content)) &&
+    (item.content === undefined || (Array.isArray(item.content) && item.content.length === 0)) &&
     Array.isArray(item.summary) && item.summary.every(part =>
       fields(part, ['type', 'text']) && part.type === 'summary_text' && typeof part.text === 'string');
 }
