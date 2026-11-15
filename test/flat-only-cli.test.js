@@ -56,7 +56,7 @@ syncBuiltinESMExports();`);
     signalArguments.push('--import', inject);
   }
   child = spawn(process.execPath, [...signalArguments, runner, '--problems', config, '--putnambench-root', fixture,
-    ...(late ? [] : ['--problem', 'fixture_0']),
+    ...(late ? ['--initial-bot-stagger-ms', '1200'] : ['--problem', 'fixture_0']),
     '--experiment-root', root, '--experiment-dir', experiment, '--report-dir', reports, '--observability-metadata', observer],
   { env: { PATH: process.env.PATH, PI_GPT_PROXY_BASE_URL: 'http://127.0.0.1:1/v1', PI_GPT_PROXY_API_KEY: 'local-fixture' } });
   t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
@@ -68,6 +68,8 @@ syncBuiltinESMExports();`);
   assert.equal(healthChecks, 1);
   const aggregate = JSON.parse(await readFile(join(reports, 'aggregate-report.json')));
   const metadata = JSON.parse(await readFile(join(experiment, 'metadata', 'experiment.json')));
+  assert.equal(aggregate.protocol.initial_bot_stagger_ms, late ? 1200 : 60000);
+  assert.equal(metadata.protocol.initial_bot_stagger_ms, late ? 1200 : 60000);
   assert.equal(metadata.valid_for_analysis, false);
   if (late) {
     assert.doesNotMatch(stderr, /stop_requested/);
@@ -92,5 +94,15 @@ test('benchmark CLI exposes one Mission Task model and rejects the removed model
     const result = spawnSync(process.execPath, [runner, flag], { encoding: 'utf8' });
     assert.notEqual(result.status, 0, flag);
     assert.match(result.stderr, /unknown option:/, flag);
+  }
+});
+
+test('benchmark CLI rejects invalid stagger timers before loading deployment or starting services', () => {
+  for (const value of ['-1', 'NaN', '1.5', '715827883']) {
+    const result = spawnSync(process.execPath, [runner, '--problems', '/missing/config.json',
+      '--putnambench-root', '/missing/fixture', '--initial-bot-stagger-ms', value], { encoding: 'utf8' });
+    assert.notEqual(result.status, 0, value);
+    assert.match(result.stderr, /--initial-bot-stagger-ms must be a nonnegative timer-safe integer/, value);
+    assert.doesNotMatch(result.stderr, /ENOENT|observability daemon|stop_requested/);
   }
 });

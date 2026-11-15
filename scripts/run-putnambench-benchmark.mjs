@@ -139,6 +139,7 @@ function optionsFromArgs(argv) {
     cores: 4,
     projectParallelism: 1,
     timeboxMs: 60 * 60_000,
+    initialBotStaggerMs: 60_000,
     turnTimeoutMs: 9 * 60_000,
     observabilityPort: 8787,
     observabilityHost: '127.0.0.1',
@@ -176,6 +177,7 @@ function optionsFromArgs(argv) {
       '--project-parallelism': 'projectParallelism',
       '--timebox-ms': 'timeboxMs',
       '--bot-max-ms': 'botMaxMs',
+      '--initial-bot-stagger-ms': 'initialBotStaggerMs',
       '--selection-timeout-ms': 'selectionTimeoutMs',
       '--execution-timeout-ms': 'executionTimeoutMs',
       '--turn-timeout-ms': 'turnTimeoutMs',
@@ -189,7 +191,7 @@ function optionsFromArgs(argv) {
     if (key === '--parallel-mode') throw new Error('--parallel-mode has been retired; omit it to use four independent Core loops');
     if (!fields[key]) throw new Error(`unknown option: ${arg}`);
     const value = inline ?? argv[++index];
-    options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'botMaxMs', 'selectionTimeoutMs', 'executionTimeoutMs', 'turnTimeoutMs', 'observabilityPort'].includes(fields[key])
+    options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'botMaxMs', 'initialBotStaggerMs', 'selectionTimeoutMs', 'executionTimeoutMs', 'turnTimeoutMs', 'observabilityPort'].includes(fields[key])
       ? Number(value)
       : value;
   }
@@ -206,6 +208,7 @@ function usage() {
     '    --project-parallelism 3',
     '    --timebox-ms 1800000',
     '    --bot-max-ms 600000 --selection-timeout-ms 120000',
+    '    --initial-bot-stagger-ms 60000',
     '    --execution-timeout-ms 600000',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
@@ -215,6 +218,7 @@ function usage() {
     '    --observability-metadata /path/to/experiments/.observability/public-server.json',
     '',
     'Use --problem <id> to run one configured project as a pilot.',
+    'Initial Bots start 60000 ms apart by default; replacement Bots do not repeat this stagger.',
     '',
   ].join('\n');
 }
@@ -232,6 +236,9 @@ if (!options.configPath || !options.putnamBenchRoot) throw new Error(usage() + '
 if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark protocol');
 if (!Number.isInteger(options.projectParallelism) || options.projectParallelism < 1) throw new Error('--project-parallelism must be a positive integer');
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
+if (!Number.isSafeInteger(options.initialBotStaggerMs) || options.initialBotStaggerMs < 0 || options.initialBotStaggerMs > Math.floor(2_147_483_647 / 3)) {
+  throw new Error('--initial-bot-stagger-ms must be a nonnegative timer-safe integer for four Core starts');
+}
 options.botMaxMs ??= options.timeboxMs;
 options.selectionTimeoutMs ??= Math.min(300_000, options.botMaxMs);
 options.executionTimeoutMs ??= options.botMaxMs;
@@ -309,6 +316,7 @@ const metadata = {
     project_parallelism: options.projectParallelism,
     timebox_ms: options.timeboxMs,
     bot_max_ms: options.botMaxMs,
+    initial_bot_stagger_ms: options.initialBotStaggerMs,
     selection_timeout_ms: options.selectionTimeoutMs,
     execution_timeout_ms: options.executionTimeoutMs,
     task_model: 'flat',
@@ -370,6 +378,7 @@ try {
       project_parallelism: options.projectParallelism,
       timebox_ms: options.timeboxMs,
       bot_max_ms: options.botMaxMs,
+      initial_bot_stagger_ms: options.initialBotStaggerMs,
       selection_timeout_ms: options.selectionTimeoutMs,
       execution_timeout_ms: options.executionTimeoutMs,
       experiment_dir: resolve(options.experimentDir),
