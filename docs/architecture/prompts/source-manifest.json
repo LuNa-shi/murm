@@ -13,7 +13,7 @@
     },
     {
       "path": "src/agent/bot-contract/plan-task.md",
-      "sha256": "31b039f721a265bca7f0872aa8114f6776d2c9b3429d85410de5ed1f19c7545d"
+      "sha256": "97a6bb524e57e9c2b576f21fcced17af855d547e1cf0b45d59bcd99eb1eb28f4"
     },
     {
       "path": "src/agent/bot-contract/use-material.md",
@@ -57,7 +57,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "c4ef335a8952b09c0fb855ad4aa9f0214c527c3ece7b31ef1974336ac64e5813"
+      "sha256": "1c86b7833ccaeebeb77b6c6ac3cceb38143396ca50a330cd0371cd7511ce6119"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -354,11 +354,11 @@
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "85d77f8f0d0d48f0fcad7fa4cddd4ec105e19b1a2ae98ee297f86b247137e58e"
+      "sha256": "fbca98e5288543510c3442cf76f1376dd21fe2961cb28cfeaddc1d01521fa4c1"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
-      "sha256": "a9b5d5397201d346a3b6fa2dcbd2b1b19e3ebc76d80591396d66c7617e023b8f"
+      "sha256": "571149f56e273120b337afa99bc04c86e4f067f5f4cef6b23aec1803f329ff16"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",

@@ -7,9 +7,9 @@ Root-owned immutable image files. Pi receives explicit --skill paths with ambien
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## plan-task (draft.2)
 
-Guest path: /opt/swarmenv/src/agent/bot-contract/plan-task.md; file SHA-256: 31b039f721a265bca7f0872aa8114f6776d2c9b3429d85410de5ed1f19c7545d
+Guest path: /opt/swarmenv/src/agent/bot-contract/plan-task.md; file SHA-256: 97a6bb524e57e9c2b576f21fcced17af855d547e1cf0b45d59bcd99eb1eb28f4
 
-Body SHA-256: `31b039f721a265bca7f0872aa8114f6776d2c9b3429d85410de5ed1f19c7545d`
+Body SHA-256: `97a6bb524e57e9c2b576f21fcced17af855d547e1cf0b45d59bcd99eb1eb28f4`
 
 ````text
 ---
@@ -37,7 +37,7 @@ swarm task view T1
 swarm task take T1 --request-id take-t1
 ```
 
-需要新责任时，提交包含 `summary`、`expected_output` 和非空 `acceptance_conditions` 的 JSON，把示例内容换成实际责任和可验收的结果。提交后用返回的 task_id 调用 take。提案和 take 使用各自的请求 ID。
+需要新责任时，提交包含 `summary`（去掉首尾空白后至少 20 个字符，最多 4000 个字符）、`expected_output` 和非空 `acceptance_conditions` 的 JSON，把示例内容换成实际责任和可验收的结果。提交后用返回的 task_id 调用 take。提案和 take 使用各自的请求 ID。
 
 ```bash
 printf '%s\n' '{"summary":"Check a boundary case","expected_output":"A reproducible result","acceptance_conditions":["The result includes a reproducible check"]}' | swarm task propose --stdin --request-id propose-boundary
