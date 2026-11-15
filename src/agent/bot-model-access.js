@@ -14,7 +14,7 @@ export async function assertBenchmarkModelPair({ provider, model, command }) {
   const prefix = name ? `PI_${name.toUpperCase().replaceAll('-', '_')}` : null;
   if (entry?.api !== 'openai-responses' || entry.baseUrl !== `$${prefix}_BASE_URL` ||
       entry.apiKey !== `$${prefix}_API_KEY` || entry.authHeader !== true || !entry.models?.some(item => item.id === model)) {
-    throw new TypeError('Configured provider and model do not match the budgeted Responses catalog shipped in the Agent image');
+    throw new TypeError('Configured provider and model do not match the Responses catalog shipped in the Agent image');
   }
   return { path: '/opt/swarmenv/pi-agent/models.json', sha256: createHash('sha256').update(catalogBytes).digest('hex') };
 }
@@ -22,10 +22,10 @@ export async function assertBenchmarkModelPair({ provider, model, command }) {
 // Trusted composition seam. Research code receives only a random, revocable
 // credential for this gateway; the fixed upstream credential never enters Pi.
 export class BotModelAccess {
-  constructor({ db, taskService, missionId, provider, model, upstream, configuration,
+  constructor({ db, taskService, missionId, provider, model, upstream, configuration, timeBounded = false,
     deadline, closeoutDeadline = () => Infinity, isStopping = () => false, fetchImpl } = {}) {
     if (!/^[a-zA-Z0-9_-]+$/.test(provider ?? '') || !configuration || typeof deadline !== 'function') {
-      throw new TypeError('Explicit provider, model budget and Mission deadline are required');
+      throw new TypeError('Explicit provider, model gateway and Mission deadline are required');
     }
     this.provider = provider;
     this.prefix = `PI_${provider.toUpperCase().replaceAll('-', '_')}`;
@@ -33,7 +33,7 @@ export class BotModelAccess {
     this.configuration = configuration;
     this.tokens = new Map();
     this.gateway = new ResponsesBudgetGateway({ db, upstream: { ...upstream, model, contract: configuration.contract },
-      limits: configuration.limits, fetchImpl,
+      limits: configuration.limits, timeBounds: timeBounded ? configuration : undefined, fetchImpl,
       withLifecycleWrite: commit => taskService.withServiceLifecycleWrite(commit),
       validateBot: ({ missionId: requestedMission, botId }) => {
         const at = Date.now();
@@ -43,12 +43,15 @@ export class BotModelAccess {
         if (bot.state === 'UNBOUND') return !taskService.isMissionStopped(missionId) && at < Date.parse(bot.selection_deadline) ? { phase: 'selection', deadline: Math.min(deadline(), Date.parse(bot.hard_deadline), Date.parse(bot.selection_deadline)) } : null;
         if (bot.state !== 'ACTIVE') return null;
         const execution = taskService.getExecution(bot.execution_id);
+        const executionDeadline = Date.parse(execution?.execution_deadline);
+        const leaseDeadline = Date.parse(execution?.lease_expires_at);
         if (execution?.owner_ref !== botId || execution.state !== 'RUNNING' ||
-            at >= Date.parse(execution.execution_deadline) || at >= Date.parse(execution.lease_expires_at)) return null;
+            !(at < executionDeadline && at < leaseDeadline)) return null;
         if (taskService.isMissionStopped(missionId) && !isSoftCloseout(execution, at)) return null;
         const phase = isSoftCloseout(execution, at) ? 'closeout' : 'work';
         return phase === 'closeout' && at >= closeoutDeadline() ? null : { phase, deadline: Math.min(deadline(), Date.parse(bot.hard_deadline),
-          Date.parse(execution.execution_deadline), Date.parse(execution.lease_expires_at), phase === 'closeout' ? closeoutDeadline() : Infinity) };
+          executionDeadline, phase === 'closeout' ? closeoutDeadline() : Infinity),
+          executionId: bot.execution_id, fencingVersion: execution.fencing_version, leaseDeadline };
       } });
   }
 
@@ -79,6 +82,11 @@ export class BotModelAccess {
   }
 
   evidence() {
+    if (this.gateway.policy.mode === 'time_bounded') return {
+      mode: 'time_bounded', policy_digest: this.gateway.pin,
+      request_timeout_ms: this.gateway.policy.requestTimeoutMs, max_output_tokens: this.gateway.policy.maxOutputTokens,
+      observed_usage: this.gateway.observedUsage(this.missionId), cost: null, cost_unit: null,
+    };
     return { policy_digest: this.gateway.pin, cost_unit: this.gateway.policy.costUnit,
       bound_evidence: this.gateway.policy.boundEvidence, limits: this.gateway.limits,
       accounted_upper_bound: this.gateway.totals({ missionId: this.missionId }) };

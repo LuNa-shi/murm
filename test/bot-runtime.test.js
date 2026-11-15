@@ -9,7 +9,8 @@ import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createMissionCoordination } from '../src/runtime/mission-coordination.js';
-import { beginMissionCloseout } from '../src/benchmark/putnam-runner.js';
+import { beginMissionCloseout, ensureAgentSession, takeTaskWithAgent } from '../src/benchmark/putnam-runner.js';
+import { IdentityTaskLoop } from '../src/runtime/identity-task-loop.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { BOT_RESOURCES, BOT_PROTOCOL_VERSION, BOT_COMPACTION_MESSAGE } from '../src/agent/bot-contract.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
@@ -22,7 +23,7 @@ import { ContextService } from '../src/context/context-service.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { SwarmEnvError, ERROR_CODES } from '../src/errors.js';
 
-async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceConditions = {}, mergeRequiredCheck = null } = {}) {
+async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceConditions = {}, mergeRequiredCheck = null, beforeFetch = null } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarm-bot-'));
   const service = new TaskService(persistent ? join(root, 'state.sqlite') : ':memory:');
   service.createMission({ mission_id: 'mission:bots', goal: 'Inspect independent questions', acceptance_conditions: acceptanceConditions, merge_required_check: mergeRequiredCheck }, makeEnvelope({ actorRef: 'operator:test' }));
@@ -32,6 +33,7 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
   const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'test:bot', waitForExecdReady: false,
     fetchImpl: async (url, options) => {
       calls.push({ url, method: options.method });
+      await beforeFetch?.(url, options);
       if (options.method === 'DELETE') { deletedSandboxes.add(url); return new Response('{}'); }
       if (options.method === 'GET' && deletedSandboxes.has(url)) return new Response('{}', { status: 404 });
       if (url.endsWith('/sandboxes')) return new Response(JSON.stringify({ id: `sandbox:${++sandboxNumber}` }), { status: 202 });
@@ -49,9 +51,9 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
   await missionWorkspace.create({ missionId: 'mission:bots', workspaceId: 'workspace-default', initialFiles: { 'input.txt': 'public project input' } });
   const runtime = new Runtime({ taskService: service, missionWorkspace, missionWorkspaceId: 'workspace-default', workspaceManager: new WorkspaceManager({ rootDir: root }), sandboxManager: manager, agentAdapter: {}, ...runtimeOptions });
   t.after(async () => { await runtime.missionSubmissionStore?.stop({ missionId: 'mission:bots' }); await runtime.shutdown(); service.close(); await rm(root, { recursive: true, force: true }); });
-  const startSession = async ({ bot, onSandboxCreated }) => {
+  const startSession = async ({ bot, onSandboxCreated, beforeAgentStart }) => {
     const sandbox = await manager.ensureExecution({ executionId: bot.resource_key, botId: bot.bot_id, onCreated: onSandboxCreated });
-    await manager.startAgent({ executionId: bot.resource_key, command: 'controlled-session', args: [] });
+    await manager.startAgent({ executionId: bot.resource_key, command: 'controlled-session', args: [], beforeAgentStart });
     const session = new EventEmitter();
     session.closed = false;
     session.waitForReady = async () => {};
@@ -67,6 +69,7 @@ test('Runtime starts and cleans an unbound Bot without inventing an Execution', 
   assert.equal(bot.state, 'UNBOUND');
   assert.equal(runtime.getCoreStatus('core-1').bot_id, bot.bot_id);
   assert.equal(service.listActiveExecutions().length, 0);
+  service.setMissionStopReader(id => id === bot.mission_id);
   const accepted = service.dispatch('bot_exit', { reason: 'no-work' }, makeEnvelope({ actorRef: bot.bot_id }));
   assert.equal(accepted.bot.execution_id, null);
   await runtime.releaseBot(bot.bot_id);
@@ -74,6 +77,149 @@ test('Runtime starts and cleans an unbound Bot without inventing an Execution', 
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
   assert.equal(manager.snapshot().executions.length, 0);
+});
+
+test('a quiet unfinished Mission discovers a new responsibility after all Tasks are done and final validation times out', async t => {
+  const identity = { checker_ref: 'controlled', checker_version: '1', environment_ref: 'test' };
+  const { service, runtime, startSession } = await fixture(t, { coordinationPermissions: ['mission_submit'] },
+    { acceptanceConditions: { required_check: identity } });
+  const context = new ContextService(':memory:', { taskService: service });
+  t.after(() => context.close());
+  const missionId = 'mission:bots';
+  const coreId = 'core-1';
+  const store = createMissionCoordination({ taskService: service, contextService: context, missionId,
+    workspace: runtime.missionWorkspace, workspaceId: runtime.missionWorkspaceId,
+    deadline: Date.now() + 60_000,
+    checker: { identity, check: () => { throw new SwarmEnvError('SERVICE_TIMEOUT', 'controlled final-check timeout'); } },
+  });
+  runtime.missionSubmissionStore = store;
+  const create = (summary, actorRef) => service.createTask({ mission_id: missionId, summary,
+    expected_output: 'Reproducible result', acceptance_conditions: ['Evidence is published'] }, makeEnvelope({ actorRef })).task;
+  const former = create('Check a completed responsibility', 'operator:test');
+  const done = service.takeTask(former.task_id, { owner_ref: 'agent:earlier', core_id: 'core-earlier', take_key: 'earlier' }).execution;
+  service.dispatch('task_finish', { outcome: 'done' }, makeEnvelope({ actorRef: done.owner_ref,
+    taskId: done.task_id, executionId: done.execution_id, specVersion: done.spec_version,
+    stateVersion: done.state_version, fencingVersion: done.fencing_version }));
+  service.finalizeExecutionFinish(done.execution_id, { fencingVersion: done.fencing_version });
+  assert.equal(service.getTask(former.task_id).state, 'DONE');
+
+  const starter = () => runtime.startBot({ missionId, coreId, startSession });
+  const first = await starter();
+  const submission = await store.submit({ missionId, workspaceId: runtime.missionWorkspaceId,
+    actorRef: first.bot.bot_id, materialIds: [], requestId: 'final-timeout' });
+  await store.waitForIdle();
+  assert.equal((await store.get({ missionId, submissionId: submission.submission_id })).state, 'timed_out');
+  assert.equal((await runtime.missionWorkspace.get({ workspaceId: runtime.missionWorkspaceId })).frozen_submission_id, null);
+  const retry = await store.submit({ missionId, workspaceId: runtime.missionWorkspaceId,
+    actorRef: first.bot.bot_id, materialIds: [], requestId: 'same-snapshot' });
+  assert.equal(retry.result.code, 'MISSION_RETRY_EXHAUSTED');
+
+  let discoveries = 0, closedAt, proposed;
+  const loop = new IdentityTaskLoop({ coreId, taskService: service, discoveryRetryMs: 50, idleBackoffMs: 10,
+    takeTask: async ({ candidates }) => {
+      assert.deepEqual(candidates, []);
+      discoveries += 1;
+      if (discoveries === 1) {
+        // Model discovery ends by the trusted selector timeout. Do not emit or
+        // inject any public-change notification to the Identity loop.
+        service.requestBotStop(first.bot.bot_id, 'selection-budget');
+        await runtime.releaseBot(first.bot.bot_id);
+        closedAt = Date.now();
+        return { no_work: true };
+      }
+      assert.ok(Date.now() - closedAt >= 45);
+      assert.equal(first.session.closed, true);
+      assert.equal(service.getBot(first.bot.bot_id).state, 'CLOSED');
+      const second = await starter();
+      assert.notEqual(second.bot.bot_id, first.bot.bot_id);
+      assert.equal(second.bot.core_id, first.bot.core_id);
+      proposed = create('Find a smaller proof that fits the final check budget', second.bot.bot_id);
+      loop.stop();
+      return { take_deferred: true };
+    },
+  });
+  await loop.run({ maxTurns: 5 });
+  assert.equal(discoveries, 2);
+  assert.ok(proposed);
+  assert.equal(service.getTask(former.task_id).state, 'DONE');
+  assert.equal(service.listActiveExecutions().length, 0);
+});
+
+for (const boundary of ['accepted', 'stopped', 'deadline']) test(
+  `discovery refuses to start a Bot after the ${boundary} boundary`, async t => {
+    const { service, runtime } = await fixture(t);
+    const mission = service.getMission('mission:bots');
+    if (boundary === 'accepted') service.setMissionStopReader(() => true);
+    const core = { runtime, stateRef: { mission, stopping: boundary === 'stopped',
+      runDeadlineAt: boundary === 'deadline' ? Date.now() - 1 : Infinity } };
+    assert.deepEqual(await takeTaskWithAgent(core, []), { take_deferred: true });
+    assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+  },
+);
+
+for (const boundary of ['accepted Mission', 'Runtime stop', 'run deadline'])
+for (const checkpoint of ['sandbox dispatch', 'sandbox receipt', 'Pi dispatch', 'ready']) test(
+  `${boundary} prevents late Bot ${checkpoint} and releases its resources`, async t => {
+    let entered, resume, botId;
+    const reached = new Promise(resolve => { entered = resolve; });
+    const gate = new Promise(resolve => { resume = resolve; });
+    const { service, runtime, manager, startSession, calls } = await fixture(t, {}, {
+      beforeFetch: async (url, { method }) => {
+        if ((checkpoint === 'Pi dispatch' && url.endsWith('/health')) ||
+            (checkpoint === 'sandbox receipt' && method === 'POST' && url.endsWith('/sandboxes'))) {
+          entered();
+          await gate;
+        }
+      },
+    });
+    const starting = runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession: async options => {
+      botId = options.bot.bot_id;
+      if (checkpoint === 'sandbox dispatch') { entered(); await gate; }
+      await manager.ensureExecution({ executionId: botId, botId,
+        onCreateDispatch: options.onSandboxCreateDispatch, onCreated: options.onSandboxCreated });
+      const session = await startSession({ ...options, beforeAgentStart: options.assertStartupAllowed });
+      if (checkpoint === 'ready') session.waitForReady = async () => { entered(); await gate; };
+      return session;
+    } });
+    const rejected = assert.rejects(starting, { code: ERROR_CODES.NOT_ALLOWED });
+    await reached;
+    if (checkpoint === 'sandbox receipt') assert.equal(service.getBot(botId).sandbox_create_state, 'UNKNOWN');
+    let shutdown;
+    if (boundary === 'accepted Mission') service.setMissionStopReader(id => id === 'mission:bots');
+    if (boundary === 'Runtime stop') shutdown = runtime.shutdown();
+    if (boundary === 'run deadline') runtime.setRunDeadline(Date.now());
+    resume();
+    await rejected;
+    await shutdown;
+    await runtime.releaseBot(botId);
+    assert.equal(service.getBot(botId).state, 'CLOSED');
+    assert.equal(service.getBot(botId).ready_at, null);
+    if (checkpoint === 'sandbox receipt') {
+      assert.equal(service.getBot(botId).sandbox_id, 'sandbox:1');
+      assert.ok(calls.some(call => call.method === 'DELETE' && call.url.endsWith('/sandboxes/sandbox%3A1')));
+    }
+    assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+    assert.equal(manager.snapshot().executions.length, 0);
+    assert.equal(calls.filter(call => call.method === 'POST' && call.url.endsWith('/sandboxes')).length, checkpoint === 'sandbox dispatch' ? 0 : 1);
+    assert.equal(calls.filter(call => call.method === 'POST' && call.url.endsWith('/start')).length, checkpoint === 'ready' ? 1 : 0);
+  },
+);
+
+test('benchmark rechecks Mission stop after awaiting prior Session cleanup', async t => {
+  const { service, runtime } = await fixture(t);
+  let entered, resume;
+  const reached = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { resume = resolve; });
+  const core = { runtime, errors: [], stateRef: { mission: { mission_id: 'mission:bots' } },
+    releasedSession: { closed: true, stop: async () => { entered(); await gate; } } };
+  const starting = ensureAgentSession(core);
+  await reached;
+  service.setMissionStopReader(id => id === 'mission:bots');
+  resume();
+  assert.equal(await starting, false);
+  assert.equal(core.releasedSession, null);
+  assert.equal(core.sessionStartAttempts, undefined);
+  assert.deepEqual(core.errors, []);
 });
 
 test('selection timeout closes an unbound Bot and releases no phantom Execution', async (t) => {
@@ -1595,6 +1741,13 @@ test('independent contributions can merge before a failing Mission submission an
   assert.equal(settled.freeze_release_result, 'released');
   assert.equal(settled.current.merge_allowed, true);
   assert.match(settled.notice, /未通过不能记为成功/);
+  const discovery = await command('mission', 'submission', 'view');
+  assert.equal(discovery.state, 'open');
+  assert.equal(discovery.current.main_revision, merge.main_revision);
+  assert.equal(discovery.active_submission_id, null);
+  const observed = discovery.submissions.find(row => row.submission_id === submit.submission_id);
+  assert.equal(observed.state, 'failed');
+  assert.equal(observed.main_revision, merge.main_revision);
   assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).frozen_submission_id, null);
   const next = await command('workspace', 'merge', '--from', followup.revision, '--request-id', 'merge-after-unfreeze');
   assert.notEqual(next.main_revision, merge.main_revision);

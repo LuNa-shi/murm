@@ -30,6 +30,26 @@ test('final-tree verifier fixes the source identity and rejects missing source b
 
 const lean = { skip: !leanRoot || !comparatorRoot };
 
+test('production locked source diagnostics compile the full Mathlib import', {
+  skip: !leanRoot || !process.env.SWARMENV_TEST_PUTNAM_ROOT || !process.env.SWARMENV_TEST_CHECKER_CGROUP,
+}, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-mathlib-diagnostic-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = join(directory, 'source.lean');
+  const root = process.env.SWARMENV_TEST_PUTNAM_ROOT;
+  const libraryRoots = ['batteries', 'Qq', 'aesop', 'proofwidgets', 'importGraph', 'LeanSearchClient', 'plausible', 'mathlib']
+    .map(pkg => join(root, '.lake/packages', pkg, '.lake/build/lib/lean'));
+  const verifier = fixture(undefined, { libraryRoots, allowUnboundedDiagnostics: false });
+  const limits = { timeoutMs: 120000, maxOutputBytes: 10000 };
+  await writeFile(source, 'import Mathlib\nexample : True := by trivial\n');
+  const valid = await verifier.runSourceDiagnostic('lake', ['env', 'lean', source], limits);
+  assert.equal(valid.exit_code, 0, JSON.stringify(valid));
+  await writeFile(source, 'import Mathlib\nexample : True := (0 : Nat)\n');
+  const invalid = await verifier.runSourceDiagnostic('lake', ['env', 'lean', source], limits);
+  assert.equal(invalid.exit_code, 1, JSON.stringify(invalid));
+  assert.match(invalid.stdout, /\/input\/WorkspaceSource\.lean:\d+:\d+: error/);
+});
+
 test('locked source diagnostics use bounded Lean without host private files or environment', { skip: !leanRoot }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'swarmenv-locked-diagnostic-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

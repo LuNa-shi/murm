@@ -58,9 +58,11 @@ async function ensureObservabilityServer(options) {
   const compatible = metadata => configuredMetadataPath ||
     (metadata.host === options.observabilityHost && metadata.access_mode === accessMode);
   for (const candidatePath of metadataPaths) {
+    if (options.signal?.aborted) return null;
     const existing = await readServerMetadata(candidatePath);
     if (existing && compatible(existing) && (configuredMetadataPath || resolve(existing.database_path ?? '') === databasePath) && await healthCheck(existing)) return existing;
   }
+  if (options.signal?.aborted) return null;
   if (configuredMetadataPath) {
     throw new Error(`configured persistent observability service is unavailable; inspect ${metadataPath}`);
   }
@@ -79,6 +81,7 @@ async function ensureObservabilityServer(options) {
   const daemon = spawn(process.execPath, args, { detached: true, stdio: 'ignore' });
   daemon.unref();
   for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (options.signal?.aborted) return null;
     const metadata = await readServerMetadata(metadataPath);
     if (metadata && compatible(metadata) && resolve(metadata.database_path ?? '') === databasePath && await healthCheck(metadata)) return metadata;
     await sleep(250);
@@ -136,6 +139,7 @@ function optionsFromArgs(argv) {
     cores: 4,
     projectParallelism: 1,
     timeboxMs: 60 * 60_000,
+    initialBotStaggerMs: 60_000,
     turnTimeoutMs: 9 * 60_000,
     observabilityPort: 8787,
     observabilityHost: '127.0.0.1',
@@ -173,6 +177,7 @@ function optionsFromArgs(argv) {
       '--project-parallelism': 'projectParallelism',
       '--timebox-ms': 'timeboxMs',
       '--bot-max-ms': 'botMaxMs',
+      '--initial-bot-stagger-ms': 'initialBotStaggerMs',
       '--selection-timeout-ms': 'selectionTimeoutMs',
       '--execution-timeout-ms': 'executionTimeoutMs',
       '--turn-timeout-ms': 'turnTimeoutMs',
@@ -186,7 +191,7 @@ function optionsFromArgs(argv) {
     if (key === '--parallel-mode') throw new Error('--parallel-mode has been retired; omit it to use four independent Core loops');
     if (!fields[key]) throw new Error(`unknown option: ${arg}`);
     const value = inline ?? argv[++index];
-    options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'botMaxMs', 'selectionTimeoutMs', 'executionTimeoutMs', 'turnTimeoutMs', 'observabilityPort'].includes(fields[key])
+    options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'botMaxMs', 'initialBotStaggerMs', 'selectionTimeoutMs', 'executionTimeoutMs', 'turnTimeoutMs', 'observabilityPort'].includes(fields[key])
       ? Number(value)
       : value;
   }
@@ -203,6 +208,7 @@ function usage() {
     '    --project-parallelism 3',
     '    --timebox-ms 1800000',
     '    --bot-max-ms 600000 --selection-timeout-ms 120000',
+    '    --initial-bot-stagger-ms 60000',
     '    --execution-timeout-ms 600000',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
@@ -212,6 +218,7 @@ function usage() {
     '    --observability-metadata /path/to/experiments/.observability/public-server.json',
     '',
     'Use --problem <id> to run one configured project as a pilot.',
+    'Initial Bots start 60000 ms apart by default; replacement Bots do not repeat this stagger.',
     '',
   ].join('\n');
 }
@@ -229,6 +236,9 @@ if (!options.configPath || !options.putnamBenchRoot) throw new Error(usage() + '
 if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark protocol');
 if (!Number.isInteger(options.projectParallelism) || options.projectParallelism < 1) throw new Error('--project-parallelism must be a positive integer');
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
+if (!Number.isSafeInteger(options.initialBotStaggerMs) || options.initialBotStaggerMs < 0 || options.initialBotStaggerMs > Math.floor(2_147_483_647 / 3)) {
+  throw new Error('--initial-bot-stagger-ms must be a nonnegative timer-safe integer for four Core starts');
+}
 options.botMaxMs ??= options.timeboxMs;
 options.selectionTimeoutMs ??= Math.min(300_000, options.botMaxMs);
 options.executionTimeoutMs ??= options.botMaxMs;
@@ -238,8 +248,20 @@ for (const [field, flag] of [['botMaxMs', '--bot-max-ms'], ['selectionTimeoutMs'
 if (!options.provider) throw new Error('PI_PROVIDER is required; set it in .env or the environment');
 if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the environment');
 
+const operatorStop = new AbortController();
+options.signal = operatorStop.signal;
+let projectOutcomesKnown = false;
+let stoppedByOperator = false;
+const onOperatorSignal = signal => {
+  if (projectOutcomesKnown || operatorStop.signal.aborted) return;
+  operatorStop.abort(signal);
+  process.stderr.write(JSON.stringify({ status: 'stop_requested', reason: 'operator_stop', signal }) + '\n');
+};
+process.on('SIGINT', onOperatorSignal);
+process.on('SIGTERM', onOperatorSignal);
+
 // Resolve the selected upstream on the host. The sandbox receives a separate
-// per-Bot credential from the metered gateway, never this provider key.
+// per-Bot credential from the local gateway, never this provider key.
 const piProviderSettings = await loadPiProviderSettings(options.provider);
 const piProviderEnvPrefix = `PI_${options.provider.toUpperCase().replaceAll('-', '_')}`;
 const upstreamBase = process.env[`${piProviderEnvPrefix}_BASE_URL`] ?? piProviderSettings.baseUrl;
@@ -294,6 +316,7 @@ const metadata = {
     project_parallelism: options.projectParallelism,
     timebox_ms: options.timeboxMs,
     bot_max_ms: options.botMaxMs,
+    initial_bot_stagger_ms: options.initialBotStaggerMs,
     selection_timeout_ms: options.selectionTimeoutMs,
     execution_timeout_ms: options.executionTimeoutMs,
     task_model: 'flat',
@@ -319,27 +342,34 @@ try {
   await mkdir(resolve(options.reportDir), { recursive: true });
   await mkdir(resolve(options.experimentDir, 'metadata'), { recursive: true });
   await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
-  const observationAddress = await ensureObservabilityServer(options);
-  const observationDatabasePath = resolve(observationAddress.database_path ?? join(options.experimentRoot, '.observability', 'observability.sqlite'));
-  observationStore = new ObservationStore(observationDatabasePath);
-  options.observationStore = observationStore;
-  await writeFile(resolve(options.experimentDir, 'metadata', 'observability.json'), JSON.stringify({
-    experiment_dir: options.experimentDir,
-    experiment_root: options.experimentRoot,
-    database_path: observationDatabasePath,
-    server_metadata_path: resolve(observationAddress.metadata_path ?? options.observabilityMetadataPath ?? resolve(options.experimentRoot, '.observability', 'public-server.json')),
-    persistent: true,
-    url: observationAddress.url,
-    host: observationAddress.host,
-    advertise_host: observationAddress.advertise_host ?? null,
-    port: observationAddress.port,
-    started_at: new Date().toISOString(),
-  }, null, 2));
-  process.stdout.write(JSON.stringify({ observability_url: observationAddress.url }) + '\n');
+  const observationAddress = await ensureObservabilityServer(options).catch(error => {
+    if (operatorStop.signal.aborted) return null;
+    throw error;
+  });
+  if (observationAddress && !operatorStop.signal.aborted) {
+    const observationDatabasePath = resolve(observationAddress.database_path ?? join(options.experimentRoot, '.observability', 'observability.sqlite'));
+    observationStore = new ObservationStore(observationDatabasePath);
+    options.observationStore = observationStore;
+    await writeFile(resolve(options.experimentDir, 'metadata', 'observability.json'), JSON.stringify({
+      experiment_dir: options.experimentDir,
+      experiment_root: options.experimentRoot,
+      database_path: observationDatabasePath,
+      server_metadata_path: resolve(observationAddress.metadata_path ?? options.observabilityMetadataPath ?? resolve(options.experimentRoot, '.observability', 'public-server.json')),
+      persistent: true,
+      url: observationAddress.url,
+      host: observationAddress.host,
+      advertise_host: observationAddress.advertise_host ?? null,
+      port: observationAddress.port,
+      started_at: new Date().toISOString(),
+    }, null, 2));
+    process.stdout.write(JSON.stringify({ observability_url: observationAddress.url }) + '\n');
+  }
 
   const reports = options.problemId
     ? [await runBenchmarkProject(problems[0], config, options)]
     : await runBenchmarkBatch(problems, config, options);
+  projectOutcomesKnown = true;
+  stoppedByOperator = reports.some(report => report.run?.stop_reason === 'operator_stop');
   const aggregate = {
     schema_version: 1,
     protocol: {
@@ -348,6 +378,7 @@ try {
       project_parallelism: options.projectParallelism,
       timebox_ms: options.timeboxMs,
       bot_max_ms: options.botMaxMs,
+      initial_bot_stagger_ms: options.initialBotStaggerMs,
       selection_timeout_ms: options.selectionTimeoutMs,
       execution_timeout_ms: options.executionTimeoutMs,
       experiment_dir: resolve(options.experimentDir),
@@ -364,6 +395,7 @@ try {
       candidate_count: report.run?.candidate_count ?? null,
       invalid: report.audit?.invalid ?? true,
       invalid_reasons: report.audit?.invalid_reasons ?? [],
+      stop_reason: report.run?.stop_reason ?? null,
       repository_commit: report.protocol?.repository_commit ?? null,
       repository_worktree_dirty: report.protocol?.repository_worktree_dirty ?? null,
       agent_time_utilization_v0: report.parallelism?.agent_time_utilization_v0 ?? null,
@@ -385,7 +417,8 @@ try {
   await writeFile(metadataPath, JSON.stringify({
     ...metadata,
     ended_at: new Date().toISOString(),
-    status: 'completed',
+    status: stoppedByOperator ? 'operator_stopped' : 'completed',
+    ...(stoppedByOperator ? { stop_reason: 'operator_stop', stop_signal: operatorStop.signal.reason } : {}),
     valid_for_analysis: invalidCount === 0,
     result: {
       project_count: aggregate.projects.length,
@@ -410,5 +443,12 @@ try {
     finally { clearInterval(keepAlive); }
   }
   try { observationStore?.close(); }
-  finally { await audit.close(); }
+  finally {
+    try { await audit.close(); }
+    finally {
+      process.off('SIGINT', onOperatorSignal);
+      process.off('SIGTERM', onOperatorSignal);
+      if (stoppedByOperator) process.exitCode = operatorStop.signal.reason === 'SIGINT' ? 130 : 143;
+    }
+  }
 }

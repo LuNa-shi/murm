@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { getEventListeners } from 'node:events';
 import { IdentityTaskLoop, IDENTITY_LOOP_STATES } from '../src/runtime/identity-task-loop.js';
 import { TaskController } from '../src/runtime/task-controller.js';
 import { ServicesBridge } from '../src/agent/services-bridge.js';
@@ -460,6 +461,57 @@ test('IdentityTaskLoop notify wakes a custom waitForSignal path', async () => {
   daemon.stop();
 });
 
+test('quiet discovery retries cancel each custom wait without accumulating parent abort listeners', async () => {
+  const parent = new AbortController();
+  const waits = [];
+  const daemon = new IdentityTaskLoop({
+    coreId: 'core-quiet-retries', discoveryRetryMs: 1,
+    listEligibleTasks: () => [],
+    takeTask: async () => ({ no_work: true }),
+    waitForSignal: ({ signal }) => {
+      assert.equal(getEventListeners(parent.signal, 'abort').length, 1);
+      waits.push(signal);
+      return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    },
+  });
+  const result = await daemon.run({ signal: parent.signal, maxTurns: 32 });
+  assert.equal(result.turns, 32);
+  assert.equal(waits.length, 31);
+  assert.ok(waits.every(signal => signal.aborted));
+  assert.equal(getEventListeners(parent.signal, 'abort').length, 0);
+  assert.equal(daemon.waiters.size, 0);
+});
+
+for (const outcome of ['notify', 'stop', 'abort', 'external']) test(`custom discovery wait cleans up after ${outcome}`, async () => {
+  const parent = new AbortController();
+  const started = deferred();
+  let waitSignal;
+  let resolveExternal;
+  const daemon = new IdentityTaskLoop({
+    coreId: 'core-cancel-wait', discoveryRetryMs: 60_000,
+    listEligibleTasks: () => [],
+    takeTask: async () => ({ no_work: true }),
+    waitForSignal: ({ signal }) => {
+      waitSignal = signal;
+      started.resolve();
+      return new Promise((resolve, reject) => {
+        resolveExternal = resolve;
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    },
+  });
+  const running = daemon.run({ signal: parent.signal, maxTurns: 2 });
+  await started.promise;
+  if (outcome === 'notify') daemon.notify('public-change');
+  else if (outcome === 'stop') daemon.stop();
+  else if (outcome === 'abort') parent.abort();
+  else resolveExternal();
+  await running;
+  assert.equal(waitSignal.aborted, true);
+  assert.equal(getEventListeners(parent.signal, 'abort').length, 0);
+  assert.equal(daemon.waiters.size, 0);
+});
+
 test('IdentityTaskLoop default idle wait is interruptible by notify', async () => {
   const calls = [];
   let discoveries = 0;
@@ -600,7 +652,7 @@ test('a bounded discovery page does not reject a newly proposed Task already acc
   } finally { service.close(); }
 });
 
-test('no-work discovery waits for a public-state signal and permits a later empty-queue discovery', async () => {
+test('no-work discovery backoff permits a public-state signal to rearm it early', async () => {
   let discoveries = 0;
   const loop = new IdentityTaskLoop({
     coreId: 'core-no-work',
@@ -610,10 +662,44 @@ test('no-work discovery waits for a public-state signal and permits a later empt
   assert.equal((await loop.runOnce()).disposition, 'idle');
   assert.equal(loop.snapshot().take_failure_count, 0);
   await loop.runOnce({ reason: 'fallback-timer' });
-  assert.equal(discoveries, 1, 'a timer alone must not restart model discovery');
+  assert.equal(discoveries, 1, 'early polling must not bypass the discovery backoff');
   loop.notify('material_published');
   assert.equal((await loop.runOnce()).disposition, 'idle');
   assert.equal(discoveries, 2, 'new public information allows discovery even with no eligible Task');
+});
+
+test('each Core honors its first discovery offset without delaying replacement discovery', async () => {
+  let at = 1000;
+  const attempted = [];
+  const loops = [1, 2, 3, 4].map(index => new IdentityTaskLoop({
+    coreId: `core-${index}`,
+    firstDiscoveryAt: at + (index - 1) * 60_000,
+    now: () => at,
+    listEligibleTasks: () => [],
+    takeTask: () => { attempted.push(index); return { take_deferred: true }; },
+  }));
+  for (const [index, loop] of loops.entries()) {
+    at = 1000 + index * 60_000;
+    await loop.runOnce();
+    if (loops[index + 1]) {
+      const delayed = loops[index + 1];
+      delayed.notify('material_published');
+      assert.equal((await delayed.runOnce()).reason, 'initial_stagger');
+    }
+    assert.deepEqual(attempted, [1, 2, 3, 4].slice(0, index + 1));
+  }
+  await loops[3].runOnce();
+  assert.deepEqual(attempted, [1, 2, 3, 4, 4]);
+});
+
+test('stopping an identity loop cancels its delayed first discovery', async () => {
+  const loop = new IdentityTaskLoop({ coreId: 'core-delayed', firstDiscoveryAt: Date.now() + 60_000,
+    listEligibleTasks: () => assert.fail('discovery must wait'), takeTask: () => assert.fail('no Bot may start'),
+  });
+  const running = loop.run();
+  await new Promise(resolve => setImmediate(resolve));
+  loop.stop();
+  assert.equal((await running).disposition, 'stopped');
 });
 
 test('a public change during discovery is not lost when the Bot reports no work', async () => {

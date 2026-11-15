@@ -193,6 +193,11 @@ export class LeanFinalTreeVerifier {
     this.fixtureSource = Buffer.from(fixtureSource);
     this.timeoutMs = timeoutMs;
     this.resourceLimits = allowUnboundedDiagnostics !== true;
+    // The systemd cgroup remains the production memory authority. Lean's
+    // separate 4 GiB accounting rejects even a trivial full-Mathlib import
+    // below that physical limit. Keep its guard only for opt-in diagnostics
+    // that do not use the production cgroup wrapper.
+    this.leanMemoryArgument = this.resourceLimits ? '-M0' : '-M4096';
   }
 
   async runSourceDiagnostic(_command, invocation, { timeoutMs, maxOutputBytes }) {
@@ -205,7 +210,7 @@ export class LeanFinalTreeVerifier {
     const trustedLibraries = libraries(this.libraryRoots, 'library', args);
     args.push('--setenv', 'LEAN_PATH', trustedLibraries.join(':'), '--chdir', '/tmp');
     if (!version) args.push('--ro-bind', source, '/input/WorkspaceSource.lean');
-    args.push('/toolchain/bin/lean', ...(version ? ['--version'] : ['-j1', '-M4096', '/input/WorkspaceSource.lean']));
+    args.push('/toolchain/bin/lean', ...(version ? ['--version'] : ['-j1', this.leanMemoryArgument, '/input/WorkspaceSource.lean']));
     try {
       const result = await execute(this.bubblewrap, args, {
         deadline: Date.now() + Math.min(timeoutMs, this.timeoutMs),
@@ -239,7 +244,7 @@ export class LeanFinalTreeVerifier {
       '--chdir', '/input', '/bin/sh', '-eu', '-c',
       'ulimit -c 0\n' +
       'compile() {\n' +
-      '  /toolchain/bin/lean --json -j1 -M4096 -R /input -o "$1" "$2" >&2 && return 0\n' +
+      `  /toolchain/bin/lean --json -j1 ${this.leanMemoryArgument} -R /input -o "$1" "$2" >&2 && return 0\n` +
       '  status=$?; if [ "$status" = 1 ]; then exit 21; fi; exit 23\n' +
       '}\n' +
       'while [ "$1" != "--" ]; do\n' +
@@ -292,7 +297,7 @@ export class LeanFinalTreeVerifier {
         '--ro-bind', originalExport, '/verifier/original.jsonl',
         '--ro-bind', candidateExport, '/verifier/candidate.jsonl',
         '--setenv', 'LEAN_PATH', trustedLibraries.join(':'), '--chdir', '/verifier',
-        '/toolchain/bin/lean', '-j1', '-M4096', '--run', '/verifier/Verify.lean',
+        '/toolchain/bin/lean', '-j1', this.leanMemoryArgument, '--run', '/verifier/Verify.lean',
         this.declarationName, '/verifier/original.jsonl', '/verifier/candidate.jsonl');
       const validation = await execute(this.bubblewrap, args, { ...budget, maxOutput: diagnosticLimit, resourceLimits: this.resourceLimits });
       if (validation.code === 0 && validation.output.toString().trim() === 'SWARMENV_FINAL_TREE_VERIFIED') {

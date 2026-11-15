@@ -8,6 +8,14 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261115-08` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896946332) | **Four criteria passed; accepted in 11m06s of 1h limit · PASS** | `77f716c` | [Single-project 1h acceptance](EXP-20261115-08-single-problem-1h.md) |
+| `EXP-20261115-07` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Stopped on gap-discovery clarification at 16m33s · BLOCKED** | `6a256d6` | [Single-project 2h validation](EXP-20261115-07-single-problem-2h.md) |
+| `EXP-20261115-06` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Mission accepted in 7m42s of 30m limit · PASS** | `6a256d6` | [Single-project 30m validation](EXP-20261115-06-single-problem-30m.md) |
+| `EXP-20261115-05` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **30m renewal/checker repair validation · BLOCKED** | `6a256d6` | [Single-project 30m completion run](EXP-20261115-05-single-problem-30m.md) |
+| `EXP-20261115-04` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Four self-proposed parallel Tasks; runtime defects · BLOCKED** | `cb6c982` | [Repaired single-project 30m](EXP-20261115-04-single-problem-30m.md) |
+| `EXP-20261115-03` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Real-model attempt interrupted by schema errors · BLOCKED** | `e601e81` | [Single-project 30m validation](EXP-20261115-03-single-problem-30m.md) |
+| `EXP-20261115-02` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Startup rejected malformed lock reference · BLOCKED** | `e601e81` | [Single-project 30m repeat](EXP-20261115-02-single-problem-30m.md) |
+| `EXP-20261115-01` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Startup aborted before project creation · BLOCKED** | `e601e81` | [Single-project 30m](EXP-20261115-01-single-problem-30m.md) |
 | `EXP-20261111-01` | Historical R16; no newly approved Issue | **Retrospective example, not preregistered** | `93176b7` | [R16 example](EXP-20261111-01-r16-example.md) |
 | `EXP-20261112-01` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **Aborted compatibility-path preflight · BLOCKED** | `f43a722` | [Issue #122 partial report](EXP-20261112-01-issue122-1h.md) |
 | `EXP-20261112-02` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **Aborted multi-project setup diagnostic · BLOCKED** | `148e37f` | [Issue #122 batch diagnostic](EXP-20261112-02-issue122-1h.md) |

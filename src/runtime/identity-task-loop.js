@@ -10,7 +10,7 @@ export const IDENTITY_LOOP_STATES = Object.freeze({
   FAILED: 'FAILED',
 });
 
-export const IDENTITY_TAKE_PROMPT = 'Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work; propose an independent Task when a useful responsibility is missing. Call canonical task_take for the chosen Task and continue in the same Bot Session after success. If no useful work is available, report no work.';
+export const IDENTITY_TAKE_PROMPT = 'Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work. If the Mission is unfinished and no suitable Task exists, identify a concrete gap and propose a bounded Task with a verifiable deliverable. Call canonical task_take and continue in the same Bot Session after success. An empty queue does not end discovery. Respect actual Bot and run deadlines; stop expanding work after Mission acceptance or stop.';
 
 const CONFLICT_CODE = ERROR_CODES.CONFLICT ?? 'CONFLICT';
 
@@ -68,6 +68,8 @@ export class IdentityTaskLoop {
     handoffTimeoutMs = Number.POSITIVE_INFINITY,
     handoffPollMs = 25,
     idleBackoffMs = 5_000,
+    discoveryRetryMs = 30_000,
+    firstDiscoveryAt = null,
     waitForSignal = null,
     now = () => Date.now(),
     onEvent = null,
@@ -83,6 +85,8 @@ export class IdentityTaskLoop {
     if (!Number.isInteger(maxTakeRescans) || maxTakeRescans < 0 || maxTakeRescans > 10) throw new TypeError('maxTakeRescans must be an integer between 0 and 10');
     if (!Number.isInteger(maxTakeAttempts) || maxTakeAttempts < 1 || maxTakeAttempts > 10) throw new TypeError('maxTakeAttempts must be an integer between 1 and 10');
     if (!Number.isFinite(takeRetryCooldownMs) || takeRetryCooldownMs < 0) throw new TypeError('takeRetryCooldownMs must be non-negative');
+    if (firstDiscoveryAt !== null && !Number.isSafeInteger(firstDiscoveryAt)) throw new TypeError('IdentityTaskLoop firstDiscoveryAt must be epoch milliseconds');
+    if (!Number.isSafeInteger(discoveryRetryMs) || discoveryRetryMs <= 0 || discoveryRetryMs > 2_147_483_647) throw new TypeError('IdentityTaskLoop discoveryRetryMs must be a positive timer interval');
     if (!Number.isFinite(idleBackoffMs) || idleBackoffMs < 0) throw new TypeError('idleBackoffMs must be non-negative');
     if (handoffTimeoutMs !== Number.POSITIVE_INFINITY && (!Number.isFinite(handoffTimeoutMs) || handoffTimeoutMs < 0)) throw new TypeError('handoffTimeoutMs must be non-negative or Infinity');
     if (!Number.isFinite(handoffPollMs) || handoffPollMs <= 0) throw new TypeError('handoffPollMs must be positive');
@@ -105,7 +109,9 @@ export class IdentityTaskLoop {
     this.handoffTimeoutMs = handoffTimeoutMs;
     this.handoffPollMs = handoffPollMs;
     this.idleBackoffMs = idleBackoffMs;
-    this.waitingForWork = false;
+    this.firstDiscoveryAt = firstDiscoveryAt;
+    this.discoveryRetryMs = discoveryRetryMs;
+    this.discoveryRetryAt = null;
     this.workSignalVersion = 0;
     this.waitForSignal = waitForSignal;
     this.now = now;
@@ -155,7 +161,9 @@ export class IdentityTaskLoop {
       take_exhausted: this.takeExhausted,
       take_retry_at: this.takeRetryAt,
       idle_backoff_ms: this.idleBackoffMs,
-      waiting_for_work: this.waitingForWork,
+      waiting_for_work: this.discoveryRetryAt !== null,
+      discovery_retry_at: this.discoveryRetryAt,
+      first_discovery_at: this.firstDiscoveryAt,
       idle_generation: this.idleGeneration,
       last_error: this.lastError,
       last_event_at: this.lastEventAt,
@@ -173,7 +181,7 @@ export class IdentityTaskLoop {
 
   /** A controller signal permits another bounded discovery turn. */
   notify(reason = 'event') {
-    this.waitingForWork = false;
+    this.discoveryRetryAt = null;
     this.workSignalVersion += 1;
     this.#rearmTakeIfDue(reason);
     // A bounded take retry cooldown is an intentional backoff.  A wake
@@ -258,7 +266,14 @@ export class IdentityTaskLoop {
   }
 
   async #runOnce(reason) {
-    if (this.waitingForWork) return { disposition: 'idle', reason: 'awaiting_public_change', snapshot: this.snapshot() };
+    if (this.firstDiscoveryAt !== null) {
+      if (this.now() < this.firstDiscoveryAt) return { disposition: 'idle', reason: 'initial_stagger', snapshot: this.snapshot() };
+      this.firstDiscoveryAt = null;
+    }
+    if (this.discoveryRetryAt !== null) {
+      if (this.now() < this.discoveryRetryAt) return { disposition: 'idle', reason: 'discovery_backoff', snapshot: this.snapshot() };
+      this.discoveryRetryAt = null;
+    }
     this.#rearmTakeIfDue(reason);
     if (this.takeExhausted) {
       this.#setIdle({ reason: 'take_attempts_exhausted' });
@@ -298,7 +313,7 @@ export class IdentityTaskLoop {
       const taken = directTake(selection);
       const selectedId = taken?.task?.task_id ?? null;
       if (!taken && selection?.no_work === true) {
-        this.waitingForWork = discoverySignalVersion === this.workSignalVersion;
+        if (discoverySignalVersion === this.workSignalVersion) this.discoveryRetryAt = this.now() + this.discoveryRetryMs;
         this.#setIdle({ reason: 'no_work' });
         return { disposition: 'idle', reason: 'no_work', snapshot: this.snapshot() };
       }
@@ -470,19 +485,39 @@ export class IdentityTaskLoop {
       this.pendingWake = false;
       return;
     }
+    // A quiet public state cannot wake itself. The discovery retry has its
+    // own finite timer, including for callers with a custom waiter.
+    const discoveryAt = this.firstDiscoveryAt ?? this.discoveryRetryAt;
+    const retryDelay = discoveryAt === null ? Infinity : Math.max(0, discoveryAt - this.now());
     if (typeof this.waitForSignal === 'function') {
       let resolveWake;
       const wake = new Promise((resolve) => {
         resolveWake = resolve;
         this.waiters.add(resolve);
       });
-      const external = Promise.resolve().then(() => this.waitForSignal({ core_id: this.coreId, signal }));
-      const aborted = this.#abortPromise(signal);
+      const waitAbort = new AbortController();
+      let abortHandler;
+      const aborted = new Promise(resolve => {
+        abortHandler = () => {
+          resolve('aborted');
+          waitAbort.abort(signal?.reason);
+        };
+        signal?.addEventListener('abort', abortHandler, { once: true });
+        if (signal?.aborted) abortHandler();
+      });
+      const external = Promise.resolve().then(() => this.waitForSignal({ core_id: this.coreId, signal: waitAbort.signal }));
+      let retryTimer;
+      const retry = Number.isFinite(retryDelay)
+        ? new Promise(resolve => { retryTimer = setTimeout(resolve, retryDelay); })
+        : new Promise(() => {});
       try {
-        const result = await Promise.race([external, wake.then(() => 'notified'), aborted]);
+        const result = await Promise.race([external, wake.then(() => 'notified'), retry, aborted]);
         if (result === 'notified') this.pendingWake = false;
       } finally {
+        clearTimeout(retryTimer);
+        signal?.removeEventListener('abort', abortHandler);
         this.waiters.delete(resolveWake);
+        waitAbort.abort();
       }
       return;
     }
@@ -500,7 +535,7 @@ export class IdentityTaskLoop {
       this.waiters.add(resolve);
     });
     const timeout = new Promise((resolve) => {
-      timeoutId = setTimeout(() => resolve('backoff'), this.idleBackoffMs);
+      timeoutId = setTimeout(() => resolve('backoff'), Number.isFinite(retryDelay) ? retryDelay : this.idleBackoffMs);
     });
     const aborted = signal
       ? new Promise((resolve) => {
@@ -516,12 +551,6 @@ export class IdentityTaskLoop {
       if (abortHandler) signal.removeEventListener('abort', abortHandler);
       this.waiters.delete(resolveWake);
     }
-  }
-
-  #abortPromise(signal) {
-    if (!signal) return new Promise(() => {});
-    if (signal.aborted) return Promise.resolve();
-    return new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }));
   }
 
   #setIdle({ reason }) {

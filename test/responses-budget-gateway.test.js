@@ -24,7 +24,7 @@ function completion(usage = { input_tokens: 4, output_tokens: 3 }) {
     JSON.stringify({ type: 'response.completed', response: { id: 'resp_fixture', status: 'completed', model, usage } }) + '\n\n';
 }
 
-async function fixture(t, fn) {
+async function fixture(t, fn, { timeBounds } = {}) {
   const requests = [];
   const upstream = createServer(async (req, res) => {
     const chunks = [];
@@ -38,10 +38,11 @@ async function fixture(t, fn) {
   const db = new DatabaseSync(':memory:');
   const phases = new Map([['b', 'selection'], ['c', 'work']]);
   const upstreamOptions = {
-    url: `http://127.0.0.1:${upstream.address().port}/v1/responses`, model, contract,
+    url: `http://127.0.0.1:${upstream.address().port}/v1/responses`, model, contract: timeBounds ? undefined : contract,
     headers: { authorization: 'Bearer host-secret', 'x-openai-actor-authorization': 'host-actor' },
   };
-  const options = { db, upstream: upstreamOptions, limits, validateBot: ({ botId }) => ({ phase: phases.get(botId) }) };
+  const options = { db, upstream: upstreamOptions, limits: timeBounds ? undefined : limits, timeBounds,
+    validateBot: ({ botId }) => ({ phase: phases.get(botId) }) };
   const gateway = new ResponsesBudgetGateway(options);
   const { baseUrl } = await gateway.start();
   t.after(async () => {
@@ -61,6 +62,30 @@ async function fixture(t, fn) {
   });
   return { db, gateway, baseUrl, requests, phases, options, call };
 }
+
+test('time-bounded Responses uses real usage only, and preserves scope and replay without financial configuration', async t => {
+  const { db, gateway, call, requests } = await fixture(t, (_, response) => {
+    response.end(requests.length === 1 ? completion() : 'event: unrecognized\ndata: {}\n\n');
+  }, { timeBounds: { requestTimeoutMs: 1000, maxOutputTokens: 64 } });
+  const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
+  const body = { model, input: 'prove', max_output_tokens: 100 };
+  assert.equal((await call(token, 'one', body)).status, 200);
+  assert.equal(await (await call(token, 'one', body)).text(), completion());
+  assert.equal((await call(token, 'one', { ...body, input: 'changed' })).status, 409);
+  assert.equal((await call(token, 'two', { ...body, background: true })).status, 400);
+  assert.equal((await call(token, 'two', body)).status, 200);
+  assert.equal((await call(token, 'two', body)).status, 409);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].body.max_output_tokens, 64);
+  assert.equal(requests[0].headers.authorization, 'Bearer host-secret');
+  assert.deepEqual({ ...gateway.observedUsage('m') }, { requests: 2, requests_with_usage: 1, unknown_requests: 1,
+    pending_requests: 0, observed_input_tokens: 4, observed_output_tokens: 3 });
+  const rows = db.prepare('SELECT cost, input_tokens, output_tokens FROM responses_timed_attempts ORDER BY request_id').all();
+  assert.deepEqual(rows.map(row => ({ ...row })), [{ cost: null, input_tokens: 4, output_tokens: 3 },
+    { cost: null, input_tokens: null, output_tokens: null }]);
+  gateway.revokeToken(token);
+  assert.equal((await call(token, 'three')).status, 401);
+});
 
 test('validates actual Pi Responses item shapes, forwards only configured credentials, and replays receipt', async t => {
   const { gateway, call, requests } = await fixture(t);
@@ -107,6 +132,7 @@ test('rejects alternate routes, tools, remote inputs, tier and stateful Response
     { service_tier: 'priority' }, { tools: [{ type: 'web_search' }] },
     { tools: [{ type: 'function', name: 'remote', parameters: { $ref: 'https://example.com/a' } }] },
     { input: [{ type: 'item_reference', id: 'ref_1' }] },
+    { input: [{ type: 'reasoning', summary: [], content: [{ type: 'input_image', image_url: 'https://example.com/a' }] }] },
     { input: [{ role: 'user', content: [{ type: 'input_image', image_url: 'https://example.com/a' }] }] },
   ]) {
     assert.equal((await call(token, 'one', { input: 'x', ...patch })).status, 400);
@@ -166,11 +192,16 @@ test('rejects missing contract evidence and burns no quota', async t => {
   assert.throws(() => new ResponsesBudgetGateway(missing), /complete trusted/);
 });
 
-test('locally installed Pi provider communicates with the gateway over real SSE', async t => {
+test('locally installed Pi replays provider reasoning with empty content through the gateway over real SSE', async t => {
   const packageRoot = process.env.SWARMENV_TEST_PI_AI_ROOT;
   if (!packageRoot) return t.skip('set SWARMENV_TEST_PI_AI_ROOT to the installed Pi AI package');
   const { stream } = await import(new URL('dist/api/openai-responses.js', pathToFileURL(packageRoot + '/')));
-  const { gateway, baseUrl, requests } = await fixture(t);
+  const reasoning = { type: 'reasoning', id: 'rs_fixture', summary: [{ type: 'summary_text', text: 'Fixture summary' }],
+    encrypted_content: 'fixture-encrypted', content: [] };
+  const { gateway, baseUrl, requests } = await fixture(t, (_request, response) => {
+    response.end('event: response.output_item.done\ndata: ' +
+      JSON.stringify({ type: 'response.output_item.done', output_index: 0, item: reasoning }) + '\n\n' + completion());
+  });
   const token = gateway.issueToken({ missionId: 'm', botId: 'c' });
   const provider = {
     id: model, name: model, api: 'openai-responses', provider: 'gpt_proxy', baseUrl,
@@ -186,4 +217,12 @@ test('locally installed Pi provider communicates with the gateway over real SSE'
   assert.equal(requests.length, 1);
   assert.equal(requests[0].body.include[0], 'reasoning.encrypted_content');
   assert.equal(requests[0].body.max_output_tokens, 20);
+  assert.deepEqual(JSON.parse(result.content.find(part => part.type === 'thinking').thinkingSignature), reasoning);
+  const continued = await stream(provider, { systemPrompt: 'Solve', messages: [...messages, result,
+    { role: 'user', content: [{ type: 'text', text: 'Continue' }], timestamp: 2 }], tools: [] }, {
+    apiKey: token, maxTokens: 20, reasoningEffort: 'high', maxRetries: 0,
+  }).result();
+  assert.equal(continued.stopReason, 'stop', continued.errorMessage);
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests[1].body.input.find(item => item.type === 'reasoning'), reasoning);
 });

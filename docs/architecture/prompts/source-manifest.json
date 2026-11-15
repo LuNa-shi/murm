@@ -5,19 +5,19 @@
   "sources": [
     {
       "path": "src/agent/bot-contract.js",
-      "sha256": "df2fce8465089d28730fe6122d6f756d9806c6f0c4817016ee0aa9c5a809cd21"
+      "sha256": "61cc7f5f7ef39f71b2c2317742c3f74cb6d8a47888308cbc37415c91a8a15c02"
     },
     {
       "path": "src/agent/bot-contract/system.txt",
-      "sha256": "683af4e09fe2b53ee766fb62bbc04000ed2fb2afe89f9ec00e51e6b933c0c5c5"
+      "sha256": "304c03fb6c5e7e5e53980adf1b2977ae57f7d51215cf6412733f9b8d71ddff90"
     },
     {
       "path": "src/agent/bot-contract/plan-task.md",
-      "sha256": "14ffb93c3f51b8f6d0a2ac0622ac4749a889be1c11dd5a5894e28325094a62b3"
+      "sha256": "c369dce0c2f77d597d4f199c6b767c57ac4cea2b9b7bb5fdd069b7f8e77ef695"
     },
     {
       "path": "src/agent/bot-contract/use-material.md",
-      "sha256": "386905226c0115404fc52af91350ab80ebf9399ee9df3cdc627f2d43c8cf8f24"
+      "sha256": "53ff58a3a35baee7f03bd08e65334b6195ab94463ceafc3e9a2faa5bc08ccf80"
     },
     {
       "path": "src/agent/bot-contract/use-workspace.md",
@@ -41,7 +41,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "4c672ee2567e3a75f6bb5e9c83bc80d96d1e30e9a3f9325207eea7fb46a46af3"
+      "sha256": "bdfe183785007d3516dc7e6e459799d4ecfc4d03dd4d13ade5930332db5e287a"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -53,19 +53,19 @@
     },
     {
       "path": "src/agent/opensandbox-agent-adapter.js",
-      "sha256": "7a2fea156dfc3a044dee2d5cd304d244e86428493e1b2ea88c7a17abcaf665c2"
+      "sha256": "29ce2f3c4c28168bf9f9ebf6c9e0e294a59ae2025cb734cd37fcc751fa528fa6"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "04d29f824b0f48ff77de869508881536dd2c8a555c99e1ed09fcb4597bde3961"
+      "sha256": "28ac5b6024b36ae5fd09361946877ff6f24baf08e3230e93a8ba3680e8926758"
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "007e83ba367168c1c9243ac77481cd6bf7559298d4ba3fa312e160d8dc679767"
+      "sha256": "fe8f2a805f929bc6f347b683967105897f8613b8a216053d0605837cb95c78cd"
     },
     {
       "path": "src/runtime/identity-task-loop.js",
-      "sha256": "d79f2e8ef4703796ae5ccf62605f0d8bce13a3ddf21a4d52ea9c7c64a942fe41"
+      "sha256": "e0406286b77a4c5e3168a6b8433356e1aafc81efcb7ab9df15cc530825299eca"
     },
     {
       "path": "src/runtime/runtime-capabilities.js",
@@ -105,7 +105,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "29abf3ee626f7bc7e8892cc248609ae286d7682f3cd91466db254d5eb028e6ba"
+      "sha256": "757e79582f18374278cdde3596374b760583254a8d3090078f59c9b3f995d72d"
     },
     {
       "path": "src/task/task-types.js",
@@ -128,31 +128,31 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 649,
+      "line": 654,
       "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #notificationText",
-      "line": 2498,
+      "line": 2514,
       "sha256": "91d762ef38719a12b9cfab2a135e6db814d9ef0d90609916d1e34374c39c9369"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #recoveryPrompt",
-      "line": 3129,
+      "line": 3145,
       "sha256": "9ba0d06fb75945a5e5e3fd4a5768df5c449818e7f6abbc0b5879feb6941cf61b"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "        const prompt = ",
-      "line": 1758,
+      "line": 1774,
       "sha256": "7324112e1ed5f71238d9bf5ac227047ab65eb0e32c8e609355b9959928503c2f"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "              await active.session.prompt(\n                ",
-      "line": 2962,
+      "line": 2978,
       "sha256": "aa531fc52ff79a137d3465b431a874606d420f627f5d4723998fb1ab0bc8dec6"
     },
     {
@@ -165,7 +165,7 @@
   "prompt_send_sites": [
     {
       "path": "src/agent/opensandbox-agent-adapter.js",
-      "line": 371,
+      "line": 373,
       "expression": "await session.prompt(agentPrompt, { timeoutMs: 30_000 });"
     },
     {
@@ -175,37 +175,37 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 428,
+      "line": 432,
       "expression": "const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 722,
+      "line": 734,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1763,
+      "line": 1779,
       "expression": "active.promptChain = active.promptChain.catch(() => undefined).then(() => active.session.prompt?.(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' }));"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2484,
+      "line": 2500,
       "expression": "await session.prompt(dynamic.prompt, { timeoutMs: 30_000 });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2549,
+      "line": 2565,
       "expression": "await active.session.prompt?.(this.taskService.getBot(active.execution.owner_ref) ? buildBotNotification(notification) : this.#notificationText(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2934,
+      "line": 2950,
       "expression": "await active.session.prompt?.(buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2962,
+      "line": 2978,
       "expression": "await active.session.prompt("
     }
   ],
@@ -236,13 +236,13 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 645,
+      "line": 644,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 652,
+      "line": 651,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -320,25 +320,25 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1739,
+      "line": 1756,
       "field": "guidance",
       "sha256": "2331ed3898810daacce352f5433d670aae5a8e9127527d6f6dbdd13c314fa95e"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1855,
+      "line": 1872,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 2067,
+      "line": 2084,
       "field": "action",
       "sha256": "ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 2160,
+      "line": 2177,
       "field": "guidance",
       "sha256": "0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b"
     }
@@ -346,7 +346,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "455209a8ceb69709937a0b10d0f4a987f51dc31e351115ad05302ca36a6439e7"
+      "sha256": "d763dc80cbad61f726b6a6d4970ac6a9ba0b74107638b0d95a9b3fdca0bcd962"
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
@@ -354,11 +354,11 @@
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "a6e7cffb392e1bb2ae27731ef29a8907b5ee02a28289e4faa46d5dbeca38dcca"
+      "sha256": "11026ba67f40df708231dcaa25a50591f6b3e701d7e0005e483771c13006dcbf"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
-      "sha256": "51dc9699e4db5b4f2c1e8ad7e9ff86fcc9c0ddf7572c902a57f157afa847b5e6"
+      "sha256": "e744a7802cb941d2159a828e3fce19726a560cf506861ddce6da02b3c2ad2ec0"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
@@ -370,7 +370,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "fb870bdf82d59ebe22b4190ddb076151e0edbd0c461102851c0f67710167a45f"
+      "sha256": "8b7ff6cfdd29a9603e6ae3fbd393b18d4b6c72e83a0a4d27a10ee0991e921c9b"
     }
   ]
 }

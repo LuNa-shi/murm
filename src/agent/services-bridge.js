@@ -534,9 +534,6 @@ export class ServicesBridge {
         const paths = [...new Set(result.conflicts.flatMap(item => item.paths ?? (item.path ? [item.path] : [])))];
         receipt.notice = `来源 ${result.source_revision} 与当前工作状态存在冲突，main 未改变。冲突文件为 ${paths.join(', ')}；可在当前 E 解决并 save --resolved，初始输入记录不变。`;
       }
-      if (registeredBot && input.operation === 'bot_exit' && result?.bot?.exit_reason === 'no-work') {
-        receipt.notice = '当前无已知可推进责任：no-work。可正常 bot exit --reason no-work；Runtime 按状态变化或退避安排后续发现。';
-      }
       send(response, 200, { ok: true, result: receipt });
       this.logger?.append({ event: 'bridge.response_sent', operation: input.operation });
       if (this.deferredLifecycle && !this.deferredLifecyclePromise) {
@@ -564,6 +561,8 @@ export class ServicesBridge {
             notice = `检查后 main 已从 ${details.observed_revision} 前进到 ${details.actual_revision}；本请求未覆盖 main。可在剩余额度内重新合成并检查；若转到当前目录修复，先确认来源 ${details.source_revision} 已通过 apply 接入并保存，再跟进 main，不能丢掉待合入来源。`;
           } else if (details.phase === 'hard_stop') {
             notice = '已达到硬上限或发生强制停止，当前 E 不再有发布机会。此前未保存/发布的内容不视为已交接。';
+          } else if (operation === 'bot_exit' && details.phase === 'discovery_required') {
+            notice = 'Mission 尚未结束且选工时间仍有剩余。优先查看并领取已有可推进 Task；若没有，核对最新验收、公开 Workspace 和材料，找出具体缺口并提出有可核验交付的新 Task，再领取执行。不要创建占位 Task。';
           } else if (details.phase === 'selection_budget') {
             notice = '选工额度已到时间上限。尚未绑定 E 时使用 bot exit --reason selection-budget；不能为保持运行制造任务。';
           } else if (operation === 'task_take' && body.code === 'CONFLICT' && details.parallel_quota !== undefined) {

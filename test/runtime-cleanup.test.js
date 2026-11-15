@@ -683,3 +683,63 @@ for (const failure of ['initialization', 'orchestration', 'report-write']) test(
   assert.ok(requests.length > 0);
   assert.ok(requests.every(method => method === 'GET'), 'controlled preflight reads only; no provider allocation or model calls');
 });
+
+test('operator stop interrupts the active run wait while retaining the admitted work for cleanup', async () => {
+  const signal = new AbortController();
+  const state = { signal: signal.signal };
+  const held = deferred();
+  const wait = withinRunDeadline(state, () => held.promise, Date.now() + 30_000);
+  signal.abort('SIGINT');
+  await assert.rejects(wait, { code: 'BENCHMARK_OPERATOR_STOPPED' });
+  await assert.rejects(withinRunDeadline(state, () => assert.fail('late work admitted'), Date.now() + 30_000),
+    { code: 'BENCHMARK_OPERATOR_STOPPED' });
+  assert.equal(state.pendingRunOperations.size, 1);
+  held.resolve();
+  await Promise.allSettled(state.pendingRunOperations);
+  assert.equal(state.pendingRunOperations.size, 0);
+});
+
+for (const boundary of ['failed provider preflight', 'initialization', 'natural deadline cleanup']) test(`operator stop during ${boundary} has the correct terminal report`, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'benchmark-operator-stop-'));
+  const requests = [];
+  const signal = new AbortController();
+  const late = boundary === 'natural deadline cleanup';
+  const failPreflight = boundary === 'failed provider preflight';
+  const server = createServer((request, response) => {
+    requests.push(request.method);
+    if (failPreflight) { signal.abort('SIGINT'); response.statusCode = 400; }
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({ items: [] }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true }); });
+  const problem = { id: 'operator_stop_fixture', problem_file: 'input.lean', source: 'theorem fixture : True := by trivial', source_hash: 'a'.repeat(64) };
+  const config = { lean_project_root: root, putnam_bench_root: root, putnambench_commit: 'b'.repeat(40), lean_toolchain: 'controlled',
+    mathlib_version: 'controlled', checker_ref: 'controlled', checker_version: '1', environment_ref: 'controlled' };
+  let service;
+  if (late) {
+    const shutdown = Runtime.prototype.shutdown;
+    t.mock.method(Runtime.prototype, 'shutdown', function (...args) {
+      signal.abort('SIGINT');
+      return shutdown.apply(this, args);
+    });
+  }
+  const result = await runBenchmarkProject(problem, config, { experimentDir: root, reportDir: join(root, 'reports'), timeboxMs: 0, botMaxMs: 60_000,
+    signal: signal.signal,
+    sandbox: { enabled: true, provider: 'opensandbox', lifecycleBaseUrl: `http://127.0.0.1:${server.address().port}`, image: 'controlled:test' },
+    prepareProject: ({ taskService }) => {
+      service = taskService;
+      if (boundary === 'initialization') signal.abort('SIGINT');
+    },
+  });
+  assert.equal(signal.signal.aborted, true);
+  assert.equal(result.run.stop_reason, late ? undefined : 'operator_stop');
+  assert.equal(result.run.protocol_valid, late);
+  assert.deepEqual(result.audit.invalid_reasons, late ? [] : ['operator_stop']);
+  assert.equal(result.run.solved, false);
+  assert.deepEqual(result.run.cleanup_errors, []);
+  if (failPreflight) assert.equal(service, undefined);
+  else assert.throws(() => service.db.prepare('SELECT 1'), /closed|not open/i);
+  assert.ok(requests.length > 0 && requests.every(method => method === 'GET'));
+});

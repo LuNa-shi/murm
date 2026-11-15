@@ -48,6 +48,7 @@ test('four Core discovery send paths carry current durable identity and pinned p
   assert.ok(results.every(result => result.no_work));
   assert.equal(taskService.listMissionTasks({ mission_id: 'M-prompt' }).length, 0);
   for (const { index, message } of sent) {
+    assert.match(message.slice(0, message.indexOf('{')), /若无合适项.*swarm mission submission view.*提出可验证的局部 Task 再 take/);
     const input = JSON.parse(message.slice(message.indexOf('{')));
     const bot = taskService.getBot(`B-${index}`);
     assert.equal(input.bot.bot_id, bot.bot_id);

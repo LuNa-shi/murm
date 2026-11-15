@@ -683,7 +683,7 @@ export class TaskService {
             replayed = true;
             return replay;
           }
-          this.assertBotDeadline(envelope.actor_ref);
+          if (normalizedOperation !== 'bot_exit') this.assertBotDeadline(envelope.actor_ref);
           const value = this.#mutate(normalizedOperation, payload, envelope);
           this.#saveOperation(envelope.operation_id, normalizedOperation, fingerprint, value);
           return value;
@@ -857,11 +857,23 @@ export class TaskService {
     });
   }
 
+  /** Runtime-only admission at the asynchronous provider startup boundaries. */
+  assertBotStartupAllowed(botId) {
+    const bot = this.getBot(botId);
+    const nowMs = Date.now();
+    if (!bot || bot.state !== 'STARTING' ||
+        Date.parse(bot.selection_deadline) <= nowMs || Date.parse(bot.hard_deadline) <= nowMs) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup is not eligible to proceed');
+    }
+    this.#assertMissionOpen(bot.mission_id);
+    return bot;
+  }
+
   recordBotSandboxDispatch(botId, { provider, timeoutSeconds }) {
     requireString(provider, 'provider');
     if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Sandbox create requires a finite lifetime');
     return this.#transaction(() => {
-      this.assertBotDeadline(botId);
+      this.assertBotStartupAllowed(botId);
       const result = this.db.prepare(`UPDATE bots SET provider = ?, sandbox_create_state = 'UNKNOWN',
         sandbox_timeout_seconds = ?, updated_at = ? WHERE bot_id = ? AND state = 'STARTING' AND sandbox_create_state = 'NOT_DISPATCHED'`)
         .run(provider, timeoutSeconds, now(), botId);
@@ -895,9 +907,10 @@ export class TaskService {
 
   markBotReady(botId) {
     return this.#transaction(() => {
-      const bot = this.getBot(botId);
-      if (bot?.state === 'UNBOUND') return bot;
-      if (!bot || bot.state !== 'STARTING' || !bot.sandbox_id || (Date.parse(bot.selection_deadline) <= Date.now() || Date.parse(bot.hard_deadline) <= Date.now())) {
+      const current = this.getBot(botId);
+      if (current?.state === 'UNBOUND') return current;
+      const bot = this.assertBotStartupAllowed(botId);
+      if (!bot.sandbox_id) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup is not eligible to become ready');
       }
       const readyAt = now();
@@ -949,6 +962,10 @@ export class TaskService {
     const bot = this.getBot(envelope.actor_ref);
     if (!bot || bot.state !== 'UNBOUND' || bot.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bot exit requires an unbound Bot with no pending take');
     if (!['no-work', 'selection-budget'].includes(payload.reason)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bot exit reason must be no-work or selection-budget');
+    const at = Date.now();
+    if (!this.isMissionStopped(bot.mission_id) && at < Date.parse(bot.selection_deadline) && at < Date.parse(bot.hard_deadline)) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission is still open and the Bot has selection time remaining', { phase: 'discovery_required' });
+    }
     this.db.prepare("UPDATE bots SET state = 'CLOSING', exit_request_id = ?, exit_reason = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
       .run(envelope.operation_id, payload.reason, now(), bot.bot_id);
     return { bot: this.getBot(bot.bot_id), disposition: 'closing' };
@@ -3137,8 +3154,12 @@ export class TaskService {
 
   #heartbeat(payload, envelope) {
     const execution = this.#executionForWrite(envelope);
-    const updatedAt = now();
-    const leaseExpiresAt = payload.lease_expires_at ?? new Date(Date.now() + 30_000).toISOString();
+    const at = Date.now();
+    if (this.getBot(execution.owner_ref) && !(at < Date.parse(execution.lease_expires_at))) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution lease has expired');
+    }
+    const updatedAt = new Date(at).toISOString();
+    const leaseExpiresAt = payload.lease_expires_at ?? new Date(at + 30_000).toISOString();
     this.db.prepare('UPDATE executions SET heartbeat_at = ?, lease_expires_at = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
       .run(updatedAt, leaseExpiresAt, updatedAt, execution.execution_id);
     return { execution: this.getExecution(execution.execution_id) };

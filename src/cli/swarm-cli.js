@@ -15,14 +15,21 @@ const ALIASES = Object.freeze({
   judge: { check: 'workspace_check', submit: 'workspace_check', result: 'get_check_result', get: 'get_check_result' },
 });
 const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'operation-id', 'request-id', 'timeout-ms']);
+const TASK_PROPOSAL_HELP = `Propose one Task with --input <file> or --stdin. Required JSON fields: summary (at least 20 characters after trimming, at most 4000), expected_output (string), acceptance_conditions (nonempty array or object). Optional --base-revision R pins a public Workspace revision. The Bot Bridge provides creator and Mission.
+Example (replace the responsibility and completion evidence with your own):
+  printf '%s\\n' '{"summary":"Check a boundary case","expected_output":"A reproducible result","acceptance_conditions":["The result includes a reproducible check"]}' | swarm task propose --stdin --request-id propose-boundary`;
+const WORKSPACE_FILES_HELP = 'List public paths. Use --at R (main is allowed), an optional positional path prefix, --limit or --cursor. Example: swarm workspace files --at 0.1 --limit 20';
 const COMMAND_HELP = Object.freeze({
-  bot: { exit: 'End an unbound Bot. Required: --reason no-work or selection-budget. The Core is released after cleanup.' },
+  bot: { exit: 'End an unbound Bot with no pending take after the selection budget expires. Use --reason selection-budget. For an open Mission with selection time left, inspect the public gap and propose work if no Task fits. The Core is released after cleanup.' },
   task: {
-    list: 'Search Task summaries across states using --query, --state/--states, --limit (1-100) and --cursor. Follow next_cursor even after an empty page, then view Task details before proposing or taking. Creation order is stable within a scan; state and readiness are live at each page.',
+    list: `Search Task summaries using --query, --limit (1-100) and --cursor. Omit the state filter to include all states, use --state for one state, or pass a quoted JSON array to --states.
+  swarm task list --state ready
+  swarm task list --states '["ready","running","blocked","done","cancelled"]'
+Follow next_cursor even after an empty page, then view Task details before proposing or taking. Creation order is stable within a scan; state and readiness are live at each page.`,
     view: 'Read one Task. Required: <task-id> (or --task-id). Output: authoritative Task, state, relations and Material links.',
-    propose: 'Propose a Task with a bounded goal, deliverable and completion conditions. Use --input file or --stdin. Optional --base-revision R pins a public Workspace revision. Creator and Mission come from the Bot binding.',
-    create: 'Create a Task. Use --input or --stdin for the complete Task contract. Optional --base-revision R pins a public Workspace revision. Output: created Task.',
-    take: 'Take an eligible Task. Use --input or --stdin for the task request. Output: Execution binding.',
+    propose: TASK_PROPOSAL_HELP,
+    create: TASK_PROPOSAL_HELP,
+    take: 'Take an eligible Task by its positional ID. Example: swarm task take T1 --request-id take-t1 (replace T1 with the returned task_id). The result includes the Execution and pinned inputs. If the response is unknown, reuse the same request ID with the same Task.',
     finish: 'Finish the current Task with outcome done, incomplete, blocked, or cancelled. For a declared Workspace delivery, provide --workspace-revision and any required --check-result-id.',
     cancel: 'Cancel an unowned Task. Required: <task-id> --expected-spec-version --expected-state-version --reason. Optional --replacement. Requires a Mission coordination grant.',
     'dependency-replace': 'Repair a cancelled prerequisite of an unowned blocked Task. Required: <task-id> --from-task-id --to-task-id --expected-spec-version --expected-state-version --reason. Requires a Mission coordination grant.',
@@ -38,16 +45,19 @@ const COMMAND_HELP = Object.freeze({
     dispute: 'Question a Material. Required: <material-id> --reason --claim; claim identifies the affected claim or section.',
     supersede: 'Replace a whole Material. Required: <old-id> --with <new-id> --expected-version <observed relation_version> --reason.',
     unsupersede: 'Revoke only the matching replacement. Required: <old-id> --with <new-id> --expected-version <observed relation_version> --reason. Preserves history.',
-    consume: 'Record a meaningful Material use with --material-ids, --action and concrete --impact; the service binds the exact version and hash.',
+    consume: `Record a meaningful Material use in the current Execution. Pass --material-ids as a quoted JSON array of 1–100 unique IDs, even for a single ID.
+Allowed --action values: route, task, workspace, integration. Use --impact to describe what changed because of the Material.
+Example: swarm material consume --material-ids '["M1"]' --action integration --impact "Used M1 to choose the boundary case in the integrated proof." --request-id use-m1
+Replace M1 with an actual Material ID. After an unknown response, reuse the same request ID and payload.`,
   },
   workspace: {
     view: 'Read the current public Workspace and main.',
     history: 'Read main history; --all includes unmerged saves. Filter --task, --execution, --material-id, --path; paginate with --limit and --cursor.',
     status: 'Inspect current E initial input, saved revision, dirty paths and conflicts.',
     diff: 'With --from R --to R, compare public revisions before take; paginate with --limit and --cursor. With no revision arguments, compare the current E project against its last save.',
-    files: 'List public paths at --at R with optional <path>, --limit and --cursor.',
-    list: 'List files from a fixed public Workspace revision before take.',
-    read: 'Read one file from a fixed public Workspace revision.',
+    files: WORKSPACE_FILES_HELP,
+    list: WORKSPACE_FILES_HELP,
+    read: 'Read one public file by its positional path. Use --at R (main is allowed) and optional --max-bytes. Example: swarm workspace read notes.txt --at 0.1 (choose a path from workspace files).',
     search: 'Search public paths and UTF-8 text at --at R; paginate with --max-results and --cursor.',
     apply: 'Apply a fixed public revision into the current E using --from revision or main. Save dirty work first; reuse --request-id after an unknown response.',
     save: 'Save the actual current E project as a stable public revision. Use --resolved only after resolving recorded conflicts and removing their alternatives. Use --material-ids for recorded Workspace uses. No file, identity or lineage arguments. Reuse --request-id after an unknown response.',
@@ -305,7 +315,7 @@ export async function runSwarmCli(argv = process.argv.slice(2), { stdout = proce
   if (positionals[0] === 'context') throw new Error('swarm context is retired. Use swarm material for Material operations.');
   if (options.help) {
     if (positionals[0] === 'mission' && positionals[1] === 'submission') {
-      stdout.write('Usage: swarm mission submission view <id> [--json]\nRead the persistent submission and its fixed inputs.\n');
+      stdout.write('Usage: swarm mission submission view [id] [--json]\nWithout an ID, read current Mission state and its submissions. With an ID, read that submission and its fixed inputs.\n');
       return 0;
     }
     const scope = positionals[0] === 'service' ? 'service' : (positionals[0] ?? 'top');
@@ -321,7 +331,7 @@ export async function runSwarmCli(argv = process.argv.slice(2), { stdout = proce
     commandName = 'dependency-replace'; args = args.slice(1);
   }
   if (service === 'mission' && commandName === 'submission') {
-    if (args[0] !== 'view') throw new Error('mission submission requires view <id>');
+    if (args[0] !== 'view') throw new Error('mission submission requires view [id]');
     commandName = 'status'; args = args.slice(1);
   }
   if (service === 'service') {

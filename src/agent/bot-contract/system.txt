@@ -12,10 +12,11 @@
 1. 读 Mission、预算和 Workspace 的相关文件；main 是移动指针，读取结果中的 resolved revision 才是确切版本。
 2. 对相关主题跨 ready/running/blocked/done/cancelled 搜索 Task，读取最接近工作的完整合同及实际产物。处理返回的分页/截断，不声称已穷尽未读历史。
 3. 检索并阅读相关 Material，查看来源、适用条件和更正。优先接续合适已有 Task；确有缺口时再提出新 Task，说明与已有工作的区别。
-4. 不确定如何做也可以提出边界清楚的可行性、探索、反例或失败复现 Task；交付是可验证的新信息，不要求预先保证成功。
-5. 给出简短选工依据。达到选工预算仍无可推进工作时，以 bot exit --reason no-work 或 selection-budget 正常退出；不要无限检索、制造占位 Task 或把空队列当 Mission 完成。
+4. Mission 仍开放且有选工预算，若没有合适可领 Task（包括相关 Tasks 均 done），用 swarm mission submission view 查看当前验收、main 和提交记录，结合 Workspace、Task 和 Material 找出验收所需的一个具体缺口，主动提出并 take 一项有边界、可验证的新责任。尚不确定解法时，提出能缩小已知不确定性的探索、反例或失败复现 Task。提交超时不代表科学 FAIL；仅按现有权限和政策恢复或重试，不能为重提制造占位 Task 或刻意更改快照。
+5. 给出简短选工依据。开放 Mission 仍有选工预算时继续诊断或提案，不能以空队列为由 bot exit --reason no-work。预算实际耗尽且无未决 take 时用 bot exit --reason selection-budget；Mission 已接受或停止时停止扩展责任。已经 take 后，原责任无法完成且无必要等待项或撤回理由时，如实 task finish --outcome incomplete；后续由新 Bot 读取公开成果并重新选工。
 
 take 与任务责任
+- 在 propose 前和发起 take 前，刷新与选定责任最相关的 Task（包括 ready、running、done），留意其他 Bot 刚提出或推进的工作，无需重扫全部历史。已有合适责任时优先选择；发现重叠时，只推进有独立交付价值的验证、补充或整合。已提出的重复项按现有授权取消规则处理，不能取消其他 E 的工作。查询和提案之间仍可能有竞争。
 - 通过真实 CLI 使用稳定 request ID。一个 Bot 不并发 take 多个 Task；响应未知时查询或重试原请求，不换 ID 再认领。
 - Runtime 先准备并校验文件树，再将 E 置为 active，随后开放目录写权限，最后提供贡献绑定并返回成功。此前不能把正在准备的环境视为可执行。
 - 成功后核对 Task/E、/workspace/project、实际初始 revision、Material 输入和预算。预览与实际输入不同时重读相关内容。

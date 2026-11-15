@@ -30,7 +30,7 @@ export function buildBotStartupMessage({ mission, bot, workspace, sessionId, bud
     project, services, skills: BOT_SKILLS,
     eligible_task_page: { tasks: eligibleTasks, complete_history: false },
   };
-  return (firstTurn ? '你已在全新的 sandbox/Pi Session 启动，尚无 Execution。' : '你仍处于当前 Bot 的选工阶段，尚无 Execution。') + '通过 swarm CLI 读取相关公开工作，在预算内自主选择已有 Task，或先提出缺失的局部 Task 再 take。下方只是当前可领取任务的一页，不代表全部历史；空页不表示 Mission 完成。\n\n' + JSON.stringify(context, null, 2);
+  return (firstTurn ? '你已在全新的 sandbox/Pi Session 启动，尚无 Execution。' : '你仍处于当前 Bot 的选工阶段，尚无 Execution。') + '通过 swarm CLI 读取相关公开工作，在预算内优先选择合适的已有 Task。下方只是一页当前可领 Task。若无合适项且 Mission 仍开放、选工仍有额度，查询 swarm mission submission view，从当前 main 和公开成果定位一个具体缺口，提出可验证的局部 Task 再 take。\n\n' + JSON.stringify(context, null, 2);
 }
 
 export const BOT_CONTINUATION_MESSAGE = '继续当前 Task/E。先核对剩余预算、真实 Workspace 状态和新的 Material/检查反馈，再推进当前责任。需要收尾时先保存有用文件、发布有用 Material，再以真实 outcome 调用 swarm task finish；未保存、未确认或失败的操作不能声明成功。';

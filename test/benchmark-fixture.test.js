@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
 import { readBenchmarkFixture, verifyBenchmarkFixtureCheckout } from '../src/benchmark/benchmark-fixture.js';
+import { beginPrivateAudit } from '../src/observability/private-audit-retention.js';
 
 const path = 'lean4/putnam.lean';
 const original = 'theorem preuve_é : True := by\n  sorry\n\n';
@@ -79,6 +80,26 @@ test('timed runner verifies prepared fixture fields even if the caller claims a 
   await assert.rejects(run({ fixture_verified: false }), /explicit valid Mission coordination grant/);
   await writeFile(verified.sourcePath, 'different file in worktree');
   await assert.rejects(run({}), error => error.code === 'SERVICE_NOT_READY' && /pinned blob/.test(error.cause?.message));
+});
+
+test('timed benchmark admits host-only model routing without a financial budget and still requires a locked checker', async t => {
+  const input = await fixture(t);
+  const prepared = await readBenchmarkFixture(input);
+  const experimentDir = join(input.root, 'experiment');
+  const privateAudit = await beginPrivateAudit({ root: input.root, directory: experimentDir });
+  const config = { putnam_bench_root: input.root, putnambench_commit: input.commit };
+  const problem = { id: 'putnam_2025_b1', problem_file: input.path, source: prepared.source,
+    source_hash: prepared.sourceHash, source_path: prepared.sourcePath };
+  const options = { timeboxMs: 1000, experimentDir, privateAudit, coordinationPermissions: ['mission_submit'],
+    provider: 'gpt_proxy', model: 'gpt-6.1-sol', command: 'pi', serviceEndpoints: {} };
+  try {
+    await assert.rejects(runBenchmarkProject(problem, config, options), /host-side model endpoint and credential/);
+    await assert.rejects(runBenchmarkProject(problem, config, {
+      ...options, modelUpstream: { url: 'http://127.0.0.1:1/v1/responses', headers: { authorization: 'Bearer local-fixture' } },
+    }), /requires locked final and source checkers/);
+  } finally {
+    await privateAudit.close();
+  }
 });
 
 test('timed entry rejects remote/custom service bypasses while local composition stays available', async () => {

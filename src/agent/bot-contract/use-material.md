@@ -12,6 +12,12 @@ description: 发布、读取、复用或纠正研究内容，记录真实来源�
 5. 发布有用正文、标题、摘要及自然语言 Evidence；不填写全局可信度或强制材料分类。附件须含实际持久字节，或同 Mission 中已验证哈希的持久附件引用。文件成果先 save，再引用 Workspace ID、revision、path；多文件引用同一 revision。不要留下旧 sandbox 路径或把整个 Git 快照另包装成 Material。
 6. publish 由服务自动绑定生产 Task/E/Bot。确认实际可读，才声明交付；没有新内容时不制造空记录。
 
+在已绑定并有效的 E 中，`--material-ids` 用带引号的 JSON 数组，即使只有一个 ID。可用的 `--action` 是 `route`（研究路线）、`task`（Task 决策）、`workspace`（工作目录中的成果）和 `integration`（整合）。`--impact` 说明具体改变。把示例中的 M1 换成实际读过并使用的 ID；响应未知时使用同一个请求 ID 和相同参数恢复。
+
+```bash
+swarm material consume --material-ids '["M1"]' --action integration --impact "Used M1 to choose the boundary case in the integrated proof." --request-id use-m1
+```
+
 发现疑点但还未形成完整替代时，可以 dispute 并指向确切主张和证据。
 
 决定 supersede 时，新 Material 必须自包含地承接原文仍有效的内容、适用范围以及本次修正，再以精确读取返回的 relation_version 作为 expected-version 执行 supersede；竞争冲突必须重读。整份旧版从默认搜索/列表隐藏；精确 ID 和历史仍可读。不用局部 supersede 保留默认旧版，也不能只发布一句更正使其余有效知识难以发现。

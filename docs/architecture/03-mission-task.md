@@ -107,7 +107,7 @@ Execution/fence, a still-running Task and no other active owner. It records the
 close time, advances the fence, closes the Execution and projects Task state:
 `DONE`, `CANCELLED`, or `OPEN`/`BLOCKED` recomputed from all effective dependencies.
 A prerequisite that finishes during cleanup can therefore make a blocked result
-immediately eligible. Finalization also reconciles direct dependents and emits a committed public change that wakes no-work discovery loops. Repeating a completed finalization makes no further Task
+immediately eligible. Finalization also reconciles direct dependents and emits a committed public change that can wake discovery before the retry timer. Repeating a completed finalization makes no further Task
 changes and cannot clear a successor's ownership.
 
 The original finish receipt remains an accepted `closing` receipt. Replaying
@@ -178,4 +178,4 @@ The operator's local command displays the fixed acceptance conditions and accept
 
 A persisted PASS keeps the accepted main frozen and immediately blocks new Task proposals, takes, merge/apply and Judge work. The Runner fixes one closeout deadline at `min(run deadline, acceptance time + missionCloseoutMs)` (default 30 seconds). It stops selection loops and Controller and retains the original stop promise for final cleanup. Only already RUNNING Executions receive durable handoff reminders; a take still preparing its Workspace rechecks Mission state before activation and after asynchronous grant, and cannot hand a new active binding to its Bot after PASS. Existing work may save, publish useful increments and finish within its own remaining hard deadline.
 
-Acceptance callback retries keep the original deadline, skip committed reminders and complete the remaining notifications before acknowledgement. New background maintenance promises append to the existing stop list. No active Execution means immediate transition to cleanup; cleanup still joins unbound or preparing resources and never marks unfinished Tasks done. Model requests admitted during closeout spend the reserved closeout allowance and stop at the earlier Bot, Execution, lease, Mission or closeout deadline.
+Acceptance callback retries keep the original deadline, skip committed reminders and complete the remaining notifications before acknowledgement. New background maintenance promises append to the existing stop list. No active Execution means immediate transition to cleanup; cleanup still joins unbound or preparing resources and never marks unfinished Tasks done. Model requests admitted during closeout stop at the earlier Bot, Execution, lease, Mission or closeout deadline. Optional financial mode additionally charges the reserved closeout allowance; default time-bounded mode records observed usage without asserting a monetary allowance.

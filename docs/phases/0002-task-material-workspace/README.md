@@ -4,6 +4,8 @@
 >
 > 状态：目标设计，已按本轮用户确认统一跨模块合同。Workspace 整版 merge 粒度也已确认；设计审阅不代表运行实现或真实 sandbox 已验收。[Architecture](../../architecture/INDEX.md) 继续描述当前实现。
 
+[Issue #122 的 Core 循环决策](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896808817) 更新补位与选工合同。旧 Bot 安全关闭后，开放 Mission 在本次运行还有额度时补位，由新 Bot 优先选择已有合适 Task；没有合适项就默认发现公开缺口、提出并执行可验证的责任。空队列、所有 Task 已 done 或单 Bot 额度耗尽都不结束 Core 循环。首 Bot 按四 Core 的 0、1、2、3 分钟错峰，后继 Bot 不重复错峰。本轮不新增服务端语义去重。详见 [每个 Core 的循环与停止条件](01-model-and-runtime.md#每个-core-的循环与停止条件)。此前固定版本的运行证据保留原义。
+
 ## 1. 项目目的与对象关系
 
 本项目建立可复用的 Agent Swarm 环境：Services 提供独立持久能力，Task 组织工作责任，Material 保存研究内容，Workspace 累积项目文件。研究目标是验证 Bot 能否自主发现和选择工作、形成并行分工、复用和纠正成果，并跨 Execution 推进 Mission；机制可执行不等于研究收益已成立。
@@ -27,7 +29,7 @@
 
 | 顺序 | 文档 | 权威范围 |
 |---|---|---|
-| 01 | [Core Runtime：Mission、Core、Bot 与 Execution](01-model-and-runtime.md) | 启动、take/finish、无任务退出、软硬停止、Mission submit |
+| 01 | [Core Runtime：Mission、Core、Bot 与 Execution](01-model-and-runtime.md) | 启动、take/finish、发现缺口和选工预算退出、软硬停止、Mission submit |
 | 02 | [Sandbox 与 Execution Runtime](02-sandbox-runtime.md) | 固定路径、进程/网络/凭据、准备与授权、停止和 provider 验收 |
 | 03 | [Task：任务合同、分工与执行责任](03-task.md) | 稳定合同、动态等待、提案/选工、完成、取消和依赖修复 |
 | 04 | [Material：研究内容、Evidence、检索与纠错](04-material.md) | 内容与来源、使用、质疑、整份替代及错误关系撤销 |
@@ -45,7 +47,7 @@ Prompt/Skills 只把模块合同转成可执行指导，不另创权限；Valida
 ### 3.1 Task 与 Bot 生命周期
 
 - Mission 可以从零 Task 启动多个 Bot，自主阅读、提案和选工；选工预算有限，不要求穷尽全部历史。
-- 一个 Bot 最多 take 一个 Task，take 前允许正常 `bot exit`；Runtime 退避或等待事件，不靠假 Task 合法退出。
+- 一个 Bot 最多 take 一个 Task。开放 Mission 若无可领责任且有选工余额，Bot 检查验收现状、诊断公开缺口并自主提案。实际选工耗尽可正常 `bot exit`；Runtime 不以空任务填补 Core。四 Core 可错峰启动首 Bot，之后独立并行，后继 Bot 不重复错峰。
 - Goal、Deliverable、Completion condition 创建后稳定，不提供通用 `revise`。运行中新发现的前置工作通过窄的 `finish blocked --wait-for` 表达，不改变验收标准。
 - finish 支持 done、incomplete、blocked、cancelled；取消不满足依赖，替代不自动等价。仅在无 owner 的 blocked Task 上显式修复已取消的依赖，并核对版本、权限与无环性。
 - take 顺序统一为准备输入、E active、开放目录写权限、发布绑定并返回成功。finish 接受后拒绝新贡献，Task 直到旧进程停止/隔离才释放。

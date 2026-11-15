@@ -1,5 +1,7 @@
 # Issue #122 · 设计与实现对账
 
+2026-11-15 的 [Owner 决策](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) 将后续正式运行改为按时间限制启动，取消强制总费用、费率与上游重试计费合同。以下内容保留为固定提交 `9172e04` 的历史证据。当前两种模式见 [运行配置](../../architecture/07-run-configuration.md#host-gated-model-access-and-concrete-network-deployment)。
+
 ## Results
 
 ### 固定对象与证据边界

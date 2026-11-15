@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "9172e04f51b14df26fbbda11d2f4a02173de27b9",
-  "reviewed_date": "2026-11-14",
+  "runtime_baseline": "a20cee6ddaabf29ff3909031ee031b529e313147",
+  "reviewed_date": "2026-11-15",
   "scope_roots": [
     "src",
     "scripts",
@@ -524,7 +524,7 @@
         "docs/architecture/07-run-configuration.md",
         "docs/architecture/11-storage-reference.md"
       ],
-      "role": "Durable model reservations and bounded Responses forwarding"
+      "role": "Bounded Responses forwarding with durable observed attempts or explicit financial reservations"
     },
     {
       "path": "src/agent/services-bridge.js",
@@ -596,9 +596,10 @@
       "category": "service and Agent integration",
       "chapters": [
         "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
       ],
-      "role": "Non-interactive Bash CLI parser, discovery and HTTP JSON invocation"
+      "role": "Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation"
     },
     {
       "path": "src/context/context-service.js",

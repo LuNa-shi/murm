@@ -62,7 +62,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Model budget gateway
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `17e2568c677e7c76930c1b1a716747f449533cf0033cee348bdc4595bdd68a23`.
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `8fafd8f05506fe04b747e5c7716206ea5441f88651a2841515fa0f8d4c1925de`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS responses_budget_policies (
@@ -72,6 +72,14 @@ CREATE TABLE IF NOT EXISTS responses_budget_policies (
         mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
         phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
         cost INTEGER NOT NULL, settled INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL, reason TEXT, receipt BLOB,
+        started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
+        PRIMARY KEY (mission_id, bot_id, request_id)
+      );
+      CREATE TABLE IF NOT EXISTS responses_timed_attempts (
+        mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER,
+        output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL, reason TEXT, receipt BLOB,
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
         PRIMARY KEY (mission_id, bot_id, request_id)
@@ -853,7 +861,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `29abf3ee626f7bc7e8892cc248609ae286d7682f3cd91466db254d5eb028e6ba`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `757e79582f18374278cdde3596374b760583254a8d3090078f59c9b3f995d72d`.
 
 #### executions_active_core
 

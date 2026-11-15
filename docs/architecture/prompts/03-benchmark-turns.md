@@ -7,22 +7,22 @@ The registered Bot path loads the stable system contract from the image, then di
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## IdentityTaskLoop default for compatibility callers
 
-Body SHA-256: `54581e151ecfd7c6720afc9abebaa298204060869a41ec6c829dcc96114fbe14`
+Body SHA-256: `e82d91aa2907158ce4349ee6191107bd14a4d110bf1438697fca36744ec643d2`
 
 ````text
-Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work; propose an independent Task when a useful responsibility is missing. Call canonical task_take for the chosen Task and continue in the same Bot Session after success. If no useful work is available, report no work.
+Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work. If the Mission is unfinished and no suitable Task exists, identify a concrete gap and propose a bounded Task with a verifiable deliverable. Call canonical task_take and continue in the same Bot Session after success. An empty queue does not end discovery. Respect actual Bot and run deadlines; stop expanding work after Mission acceptance or stop.
 ````
 ## Registered Bot discovery: complete synthetic example
 
-Body SHA-256: `87c47b563023cb846f3d521d1810e2d8f6d2518acc36925177ee2d8f6793429f`
+Body SHA-256: `e2cbb1e75491fc10edf0c3cb10cc2b4a51031ef4a1d52e106b4ee2e5b0a929ef`
 
 ````text
-你已在全新的 sandbox/Pi Session 启动，尚无 Execution。通过 swarm CLI 读取相关公开工作，在预算内自主选择已有 Task，或先提出缺失的局部 Task 再 take。下方只是当前可领取任务的一页，不代表全部历史；空页不表示 Mission 完成。
+你已在全新的 sandbox/Pi Session 启动，尚无 Execution。通过 swarm CLI 读取相关公开工作，在预算内优先选择合适的已有 Task。下方只是一页当前可领 Task。若无合适项且 Mission 仍开放、选工仍有额度，查询 swarm mission submission view，从当前 main 和公开成果定位一个具体缺口，提出可验证的局部 Task 再 take。
 
 {
   "protocol_version": "swarm-bot-v1-draft.2",
   "observed_at": "2026-11-14T00:00:00.000Z",
-  "system_prompt_sha256": "41cd0e3defe098b9418a89838b5713a216b225c10122da07d0abd50c47d7c39e",
+  "system_prompt_sha256": "aadad188ace990f5f12d136d25b0129ba0a45b2902589ab338c1da95844e1ab6",
   "mission": {
     "mission_id": "<MISSION_ID>",
     "goal": "<MISSION_GOAL>",
@@ -140,14 +140,14 @@ Body SHA-256: `87c47b563023cb846f3d521d1810e2d8f6d2518acc36925177ee2d8f6793429f`
       "version": "draft.2",
       "path": "/opt/swarmenv/src/agent/bot-contract/plan-task.md",
       "description": "在有限选工预算内发现、提出或选择 Task，处理竞争、阻塞和正常退出。",
-      "sha256": "14ffb93c3f51b8f6d0a2ac0622ac4749a889be1c11dd5a5894e28325094a62b3"
+      "sha256": "c369dce0c2f77d597d4f199c6b767c57ac4cea2b9b7bb5fdd069b7f8e77ef695"
     },
     {
       "name": "use-material",
       "version": "draft.2",
       "path": "/opt/swarmenv/src/agent/bot-contract/use-material.md",
       "description": "发布、读取、复用或纠正研究内容，记录真实来源，并在整份 supersede 时保留有效知识。",
-      "sha256": "386905226c0115404fc52af91350ab80ebf9399ee9df3cdc627f2d43c8cf8f24"
+      "sha256": "53ff58a3a35baee7f03bd08e65334b6195ab94463ceafc3e9a2faa5bc08ccf80"
     },
     {
       "name": "use-workspace",
