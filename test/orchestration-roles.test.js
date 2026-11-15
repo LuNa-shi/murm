@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { getEventListeners } from 'node:events';
 import { IdentityTaskLoop, IDENTITY_LOOP_STATES } from '../src/runtime/identity-task-loop.js';
 import { TaskController } from '../src/runtime/task-controller.js';
 import { ServicesBridge } from '../src/agent/services-bridge.js';
@@ -458,6 +459,57 @@ test('IdentityTaskLoop notify wakes a custom waitForSignal path', async () => {
   assert.equal(result.turns, 2);
   assert.equal(discoveries, 2);
   daemon.stop();
+});
+
+test('quiet discovery retries cancel each custom wait without accumulating parent abort listeners', async () => {
+  const parent = new AbortController();
+  const waits = [];
+  const daemon = new IdentityTaskLoop({
+    coreId: 'core-quiet-retries', discoveryRetryMs: 1,
+    listEligibleTasks: () => [],
+    takeTask: async () => ({ no_work: true }),
+    waitForSignal: ({ signal }) => {
+      assert.equal(getEventListeners(parent.signal, 'abort').length, 1);
+      waits.push(signal);
+      return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    },
+  });
+  const result = await daemon.run({ signal: parent.signal, maxTurns: 32 });
+  assert.equal(result.turns, 32);
+  assert.equal(waits.length, 31);
+  assert.ok(waits.every(signal => signal.aborted));
+  assert.equal(getEventListeners(parent.signal, 'abort').length, 0);
+  assert.equal(daemon.waiters.size, 0);
+});
+
+for (const outcome of ['notify', 'stop', 'abort', 'external']) test(`custom discovery wait cleans up after ${outcome}`, async () => {
+  const parent = new AbortController();
+  const started = deferred();
+  let waitSignal;
+  let resolveExternal;
+  const daemon = new IdentityTaskLoop({
+    coreId: 'core-cancel-wait', discoveryRetryMs: 60_000,
+    listEligibleTasks: () => [],
+    takeTask: async () => ({ no_work: true }),
+    waitForSignal: ({ signal }) => {
+      waitSignal = signal;
+      started.resolve();
+      return new Promise((resolve, reject) => {
+        resolveExternal = resolve;
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    },
+  });
+  const running = daemon.run({ signal: parent.signal, maxTurns: 2 });
+  await started.promise;
+  if (outcome === 'notify') daemon.notify('public-change');
+  else if (outcome === 'stop') daemon.stop();
+  else if (outcome === 'abort') parent.abort();
+  else resolveExternal();
+  await running;
+  assert.equal(waitSignal.aborted, true);
+  assert.equal(getEventListeners(parent.signal, 'abort').length, 0);
+  assert.equal(daemon.waiters.size, 0);
 });
 
 test('IdentityTaskLoop default idle wait is interruptible by notify', async () => {

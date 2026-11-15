@@ -10,7 +10,7 @@ export const IDENTITY_LOOP_STATES = Object.freeze({
   FAILED: 'FAILED',
 });
 
-export const IDENTITY_TAKE_PROMPT = 'Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work; propose an independent Task when a useful responsibility is missing. Call canonical task_take for the chosen Task and continue in the same Bot Session after success. If no useful work is available, report no work.';
+export const IDENTITY_TAKE_PROMPT = 'Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work. If the Mission is unfinished and no suitable Task exists, identify a concrete gap and propose a bounded Task with a verifiable deliverable. Call canonical task_take and continue in the same Bot Session after success. An empty queue does not end discovery. Respect actual Bot and run deadlines; stop expanding work after Mission acceptance or stop.';
 
 const CONFLICT_CODE = ERROR_CODES.CONFLICT ?? 'CONFLICT';
 
@@ -495,8 +495,17 @@ export class IdentityTaskLoop {
         resolveWake = resolve;
         this.waiters.add(resolve);
       });
-      const external = Promise.resolve().then(() => this.waitForSignal({ core_id: this.coreId, signal }));
-      const aborted = this.#abortPromise(signal);
+      const waitAbort = new AbortController();
+      let abortHandler;
+      const aborted = new Promise(resolve => {
+        abortHandler = () => {
+          resolve('aborted');
+          waitAbort.abort(signal?.reason);
+        };
+        signal?.addEventListener('abort', abortHandler, { once: true });
+        if (signal?.aborted) abortHandler();
+      });
+      const external = Promise.resolve().then(() => this.waitForSignal({ core_id: this.coreId, signal: waitAbort.signal }));
       let retryTimer;
       const retry = Number.isFinite(retryDelay)
         ? new Promise(resolve => { retryTimer = setTimeout(resolve, retryDelay); })
@@ -506,7 +515,9 @@ export class IdentityTaskLoop {
         if (result === 'notified') this.pendingWake = false;
       } finally {
         clearTimeout(retryTimer);
+        signal?.removeEventListener('abort', abortHandler);
         this.waiters.delete(resolveWake);
+        waitAbort.abort();
       }
       return;
     }
@@ -540,12 +551,6 @@ export class IdentityTaskLoop {
       if (abortHandler) signal.removeEventListener('abort', abortHandler);
       this.waiters.delete(resolveWake);
     }
-  }
-
-  #abortPromise(signal) {
-    if (!signal) return new Promise(() => {});
-    if (signal.aborted) return Promise.resolve();
-    return new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }));
   }
 
   #setIdle({ reason }) {

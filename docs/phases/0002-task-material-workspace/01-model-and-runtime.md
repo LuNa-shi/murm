@@ -76,6 +76,7 @@ v1 的 Task/Mission 协调模块与 Workspace 模块位于同一协调进程、�
 3. **允许零 Task。** 不创建隐藏 Mission Task 或计费占位任务。
 4. **启动 Bot。** 每个 Core 创建新 Bot ID、sandbox 和 Pi。四 Core 的错峰运行把每个 Core 的首个 Bot 分别安排在编排开始后的 0、60、120、180 秒获得启动资格。获得启动资格的时点与其他 Core 是否已 take 或 finish 无关；每个 Core 到点后可独立发现并并行执行。此间隔不用于后继 Bot，后继按原有生命周期和有界退避调度。到点前不创建该 Bot 或其环境。等待包含在 Mission 墙钟额度内；单 Bot 的选工与生存预算从实际注册开始。预留空的、由可信身份控制的 `/workspace/project`；Pi 会话、缓存和临时文件放在另外的运行目录。take 前项目浏览通过 `workspace files/read/search --at R` 等只读 API 完成。
 5. **发送初始输入。** 提供 Mission、Bot/Core、Workspace 版本、服务/skill 目录和预算快照。完整文本由 [06](06-prompts-and-skills.md) 定义；启动快照不能替代操作前的服务查询。
+
 ## 每个 Core 的循环与停止条件
 
 这个循环适用于首个 Bot 和所有补位 Bot。首 Bot 遵守启动错峰；补位只遵守常规清理与有界退避。四个 Core 独立推进，不等其他 Core 完成。
