@@ -47,7 +47,7 @@ Prompt/Skills 只把模块合同转成可执行指导，不另创权限；Valida
 ### 3.1 Task 与 Bot 生命周期
 
 - Mission 可以从零 Task 启动多个 Bot，自主阅读、提案和选工；选工预算有限，不要求穷尽全部历史。
-- 一个 Bot 最多 take 一个 Task。开放 Mission 若无可领责任且有选工余额，Bot 检查验收现状、诊断公开缺口并自主提案。实际选工耗尽可正常 `bot exit`；Runtime 不以空任务填补 Core。
+- 一个 Bot 最多 take 一个 Task。开放 Mission 若无可领责任且有选工余额，Bot 检查验收现状、诊断公开缺口并自主提案。实际选工耗尽可正常 `bot exit`；Runtime 不以空任务填补 Core。四 Core 可错峰启动首 Bot，之后独立并行，后继 Bot 不重复错峰。
 - Goal、Deliverable、Completion condition 创建后稳定，不提供通用 `revise`。运行中新发现的前置工作通过窄的 `finish blocked --wait-for` 表达，不改变验收标准。
 - finish 支持 done、incomplete、blocked、cancelled；取消不满足依赖，替代不自动等价。仅在无 owner 的 blocked Task 上显式修复已取消的依赖，并核对版本、权限与无环性。
 - take 顺序统一为准备输入、E active、开放目录写权限、发布绑定并返回成功。finish 接受后拒绝新贡献，Task 直到旧进程停止/隔离才释放。

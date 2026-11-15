@@ -73,7 +73,7 @@ v1 的 Task/Mission 协调模块与 Workspace 模块位于同一协调进程、�
 1. **操作者提供 Mission。** 固定目标、验收配置、可用服务、初始输入、资源上限和停止条件。Core 数是配置，不是固定四路算法。
 2. **初始化 Workspace。** 在 sandbox 外导入初始项目，保存可物化的初始 revision 并让 main 指向它。空项目也有明确初始文件树；不从旧 Bot 的私有目录猜测起点。
 3. **允许零 Task。** 不创建隐藏 Mission Task 或计费占位任务。
-4. **启动 Bot。** 每个 Core 创建新 Bot ID、sandbox 和 Pi。预留空的、由可信身份控制的 `/workspace/project`；Pi 会话、缓存和临时文件放在另外的运行目录。take 前项目浏览通过 `workspace files/read/search --at R` 等只读 API 完成。
+4. **启动 Bot。** 每个 Core 创建新 Bot ID、sandbox 和 Pi。四 Core 的错峰运行把每个 Core 的首个 Bot 分别安排在编排开始后的 0、60、120、180 秒获得启动资格。获得启动资格的时点与其他 Core 是否已 take 或 finish 无关；每个 Core 到点后可独立发现并并行执行。此间隔不用于后继 Bot，后继按原有生命周期和有界退避调度。到点前不创建该 Bot 或其环境；等待包含在 Mission 墙钟额度内。预留空的、由可信身份控制的 `/workspace/project`；Pi 会话、缓存和临时文件放在另外的运行目录。take 前项目浏览通过 `workspace files/read/search --at R` 等只读 API 完成。
 5. **发送初始输入。** 提供 Mission、Bot/Core、Workspace 版本、服务/skill 目录和预算快照。完整文本由 [06](06-prompts-and-skills.md) 定义；启动快照不能替代操作前的服务查询。
 6. **Bot 发现工作。** 查询相关 Task 的所有状态、Material 和 Workspace 文件，优先选择已有适合的责任；开放 Mission 在有选工额度而无合适可领 Task 时，读取当前验收状态并从公开证据找出缺口，提出并 take 一项有边界、可验证的新责任。具备权限时也可提交已准备好的 Mission 交付。
 

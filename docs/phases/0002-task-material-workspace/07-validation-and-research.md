@@ -94,7 +94,7 @@ Workspace 情景统一使用 revision：`save` 保存完整文件树但不改变
 
 | 标识与情景 | 操作及故障安排 | 必须成立的结果 | 主要证据层 |
 |---|---|---|---|
-| V01：零 Task 启动 | 创建一个 Mission、明确初始 Workspace 输入，启动四个 Core；Task 列表最初为空。 | Bot 通过 Workspace `files/read/search --at`、Task 与 Material 的只读接口取得真实内容；不要求四份本地只读 clone，不创建隐藏 Mission Task。相关 Task 查询覆盖必要状态并标明范围，未认领成本归 Mission/Bot。 | E2 |
+| V01：零 Task 启动 | 创建一个 Mission、明确初始 Workspace 输入，Task 列表最初为空。配置四 Core 首 Bot 错峰并观察各自首次启动。 | Bot 通过 Workspace `files/read/search --at`、Task 与 Material 的只读接口取得真实内容；不要求四份本地只读 clone，不创建隐藏 Mission Task。按配置偏移到点前不得创建相应 Bot/sandbox，后启动 Core 可读取先启动 Core 的公开成果。首启动无先前 Core 完成屏障，后继无重复错峰。相关 Task 查询覆盖必要状态并标明范围，未认领成本归 Mission/Bot。 | E2 |
 | V02：认领前项目只读 | 尝试写预留项目目录、替换父目录、自改权限，以及不经 CLI 直接调用服务贡献接口。 | take 前没有可写项目工作目录；OS 和服务拒绝越权。必要日志/缓存可写但不成为主线或后继输入，不宣称所有临时计算均被禁止。 | E2 |
 | V03：管理与服务旁路 | 不经 CLI 直接请求服务；尝试用 Bot 可达入口改变身份/权限，或填写他人的 Task/E。 | 服务按真实身份拒绝越权贡献；管理面不能授予 Bot 更高权限；take 前仅有已声明的阅读/协调权限。 | E2 |
 | V04：同 Task 竞争 | 两个 Bot 同时 take 一个可领 Task。 | 只有一个有效执行者。失败者未获项目写权限，仍可在原阅读会话重新选工。 | E1、E2 |
@@ -135,8 +135,8 @@ Workspace 情景统一使用 revision：`save` 保存完整文件树但不改变
 
 | 检查点 | 要发生的事件 | 需要检查的共同状态 |
 |---|---|---|
-| C0：阅读 | 四个 Bot 在自己的 sandbox 中看到同一 Mission；列表最初为空。 | 通过只读 API 和 `workspace files/read/search --at R1` 读取真实文件；不准备四份本地只读 clone。Task 数为零、无 E、无隐藏根任务；main→R1 可追溯。 |
-| C1：分工 | Bot 在选工预算内查询相关任务与材料，提出可独立交付的工作；另安排同 Task 的竞争 take。 | 四路可执行不同 Task；查询范围与未读部分明确，不要求穷尽历史；竞争只产生一个执行者。按 preparing→输入校验→active→OS 授权→绑定注入返回，失败不留下可写半激活 Bot。 |
+| C0：阅读 | Task 列表初始为空，四个 Core 的首个 Bot 可按配置错峰，并在各自 sandbox 中看到同一 Mission。晚启动者按真实状态读取已有 Task 和 Material。 | 通过只读 API 和 `workspace files/read/search --at R1` 读取真实文件；不准备四份本地只读 clone。Task 数为零、无 E、无隐藏根任务；main→R1 可追溯。 |
+| C1：分工 | Bot 在选工预算内查询相关任务与材料，提出可独立交付的工作；另安排同 Task 的竞争 take。 | 错峰只作用于首启动；独立 Execution 随后可并行，四路可执行不同 Task。查询范围与未读部分明确，不要求穷尽历史；竞争只产生一个执行者。按 preparing→输入校验→active→OS 授权→绑定注入返回，失败不留下可写半激活 Bot。 |
 | C2：保存与等待 | B1 发布 M1、save 过滤文件为 R2 后按合同完成；B2 save 统计文件与失败样例为 R3、发布 M2，并因新发现的 T4 前置条件 blocked finish；B3 的首次 save 失败后重试；B4 产出验证资料 M4。 | M1/M2 与 R2/R3 均可在原 sandbox 外读取，save 不改 main。T2 的等待关系被持久记录；旧 E 安全关闭时按最新依赖状态计算 blocked/ready，T4 尚未 done 时不热重领，closing 期间已 done 也不漏唤醒；取消时进入明确修复路径。 |
 | C3：公开文件接续 | B1/B2 sandbox 已删除；新 B5 在有效 E 内读取 R2 文件并按需要 apply、编辑、save，再请求 merge。 | 只有 Workspace/revision/path，没有独立 Candidate ID。后继无私有历史；Runtime 保留三方合并 parents，最终合并树通过指定检查后 CAS 推进 main；网络重试不重复推进。 |
 | C4：同 E 处理主线变化 | T4 done 后新 B6 接续 T2，读取 M2 与 R3，apply R3；期间 main 多次变化。B3 同时尝试合入 JSON 文件所在 revision。 | 原有文件内容完整可接续；main 更新不强制结束 B6/B3。dirty 目录先 save，再 apply main、解决冲突并 save；检查针对最终合并树。失败保留公开 revision，Task 完成不替代 Mission 验收。 |
@@ -163,7 +163,7 @@ Mission 启动时固定验收对象与评估方式。代码可以是独立端到
 | 维度 | 记录与计算方式 | 防止误读 |
 |---|---|---|
 | Mission 结果 | 固定标准下的最终质量/成功率，失败与超时全部保留。 | 不以 Task 自报 done 替代独立验收。 |
-| 时间与总资源 | 到首次合格成果的墙钟时间；全部 Bot、整合、Judge、领域工具、重试和已接收后台作业的总费用/资源。 | 四个 Bot 的总 token 不与单 Bot token 混用；阅读期和空闲消耗也计入。 |
+| 时间与总资源 | 到首次合格成果的墙钟时间；全部 Bot、整合、Judge、领域工具、重试和已接收后台作业的总费用/资源。记录首 Bot 配置偏移和实际启动/Execution 重叠时间。 | 四个 Bot 的总 token 不与单 Bot token 混用；阅读期和空闲消耗也计入。 |
 | 分工 | 有用任务覆盖、实际重复解决的工作、依赖等待、长期无人领取项、整合工作占比。 | 相同文件被两个 Task 修改不必然重复；不同 Task ID 也可能是同一工作。需内容审阅。 |
 | 累积 | 在预先声明的检查点对共享成果运行同一组独立检查，记录进展、退化和修复。 | main 更新次数和 Git 可合并性不等于可用性；记录“先过后坏”。 |
 | 接续 | 中断后到下一项经检查进展的时间/资源，已完成工作的复做比例，以及接续所需公开输入是否完整。 | 无中断对照和中断位置要匹配；快读完摘要不等于成功继续。 |
