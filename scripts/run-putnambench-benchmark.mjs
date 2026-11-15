@@ -58,9 +58,11 @@ async function ensureObservabilityServer(options) {
   const compatible = metadata => configuredMetadataPath ||
     (metadata.host === options.observabilityHost && metadata.access_mode === accessMode);
   for (const candidatePath of metadataPaths) {
+    if (options.signal?.aborted) return null;
     const existing = await readServerMetadata(candidatePath);
     if (existing && compatible(existing) && (configuredMetadataPath || resolve(existing.database_path ?? '') === databasePath) && await healthCheck(existing)) return existing;
   }
+  if (options.signal?.aborted) return null;
   if (configuredMetadataPath) {
     throw new Error(`configured persistent observability service is unavailable; inspect ${metadataPath}`);
   }
@@ -79,6 +81,7 @@ async function ensureObservabilityServer(options) {
   const daemon = spawn(process.execPath, args, { detached: true, stdio: 'ignore' });
   daemon.unref();
   for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (options.signal?.aborted) return null;
     const metadata = await readServerMetadata(metadataPath);
     if (metadata && compatible(metadata) && resolve(metadata.database_path ?? '') === databasePath && await healthCheck(metadata)) return metadata;
     await sleep(250);
@@ -240,8 +243,10 @@ if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the
 
 const operatorStop = new AbortController();
 options.signal = operatorStop.signal;
+let projectOutcomesKnown = false;
+let stoppedByOperator = false;
 const onOperatorSignal = signal => {
-  if (operatorStop.signal.aborted) return;
+  if (projectOutcomesKnown || operatorStop.signal.aborted) return;
   operatorStop.abort(signal);
   process.stderr.write(JSON.stringify({ status: 'stop_requested', reason: 'operator_stop', signal }) + '\n');
 };
@@ -329,27 +334,34 @@ try {
   await mkdir(resolve(options.reportDir), { recursive: true });
   await mkdir(resolve(options.experimentDir, 'metadata'), { recursive: true });
   await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
-  const observationAddress = await ensureObservabilityServer(options);
-  const observationDatabasePath = resolve(observationAddress.database_path ?? join(options.experimentRoot, '.observability', 'observability.sqlite'));
-  observationStore = new ObservationStore(observationDatabasePath);
-  options.observationStore = observationStore;
-  await writeFile(resolve(options.experimentDir, 'metadata', 'observability.json'), JSON.stringify({
-    experiment_dir: options.experimentDir,
-    experiment_root: options.experimentRoot,
-    database_path: observationDatabasePath,
-    server_metadata_path: resolve(observationAddress.metadata_path ?? options.observabilityMetadataPath ?? resolve(options.experimentRoot, '.observability', 'public-server.json')),
-    persistent: true,
-    url: observationAddress.url,
-    host: observationAddress.host,
-    advertise_host: observationAddress.advertise_host ?? null,
-    port: observationAddress.port,
-    started_at: new Date().toISOString(),
-  }, null, 2));
-  process.stdout.write(JSON.stringify({ observability_url: observationAddress.url }) + '\n');
+  const observationAddress = await ensureObservabilityServer(options).catch(error => {
+    if (operatorStop.signal.aborted) return null;
+    throw error;
+  });
+  if (observationAddress && !operatorStop.signal.aborted) {
+    const observationDatabasePath = resolve(observationAddress.database_path ?? join(options.experimentRoot, '.observability', 'observability.sqlite'));
+    observationStore = new ObservationStore(observationDatabasePath);
+    options.observationStore = observationStore;
+    await writeFile(resolve(options.experimentDir, 'metadata', 'observability.json'), JSON.stringify({
+      experiment_dir: options.experimentDir,
+      experiment_root: options.experimentRoot,
+      database_path: observationDatabasePath,
+      server_metadata_path: resolve(observationAddress.metadata_path ?? options.observabilityMetadataPath ?? resolve(options.experimentRoot, '.observability', 'public-server.json')),
+      persistent: true,
+      url: observationAddress.url,
+      host: observationAddress.host,
+      advertise_host: observationAddress.advertise_host ?? null,
+      port: observationAddress.port,
+      started_at: new Date().toISOString(),
+    }, null, 2));
+    process.stdout.write(JSON.stringify({ observability_url: observationAddress.url }) + '\n');
+  }
 
   const reports = options.problemId
     ? [await runBenchmarkProject(problems[0], config, options)]
     : await runBenchmarkBatch(problems, config, options);
+  projectOutcomesKnown = true;
+  stoppedByOperator = reports.some(report => report.run?.stop_reason === 'operator_stop');
   const aggregate = {
     schema_version: 1,
     protocol: {
@@ -396,9 +408,9 @@ try {
   await writeFile(metadataPath, JSON.stringify({
     ...metadata,
     ended_at: new Date().toISOString(),
-    status: operatorStop.signal.aborted ? 'operator_stopped' : 'completed',
-    ...(operatorStop.signal.aborted ? { stop_reason: 'operator_stop', stop_signal: operatorStop.signal.reason } : {}),
-    valid_for_analysis: !operatorStop.signal.aborted && invalidCount === 0,
+    status: stoppedByOperator ? 'operator_stopped' : 'completed',
+    ...(stoppedByOperator ? { stop_reason: 'operator_stop', stop_signal: operatorStop.signal.reason } : {}),
+    valid_for_analysis: invalidCount === 0,
     result: {
       project_count: aggregate.projects.length,
       solved_count: solvedCount,
@@ -427,7 +439,7 @@ try {
     finally {
       process.off('SIGINT', onOperatorSignal);
       process.off('SIGTERM', onOperatorSignal);
-      if (operatorStop.signal.aborted) process.exitCode = operatorStop.signal.reason === 'SIGINT' ? 130 : 143;
+      if (stoppedByOperator) process.exitCode = operatorStop.signal.reason === 'SIGINT' ? 130 : 143;
     }
   }
 }

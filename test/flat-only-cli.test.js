@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const runner = fileURLToPath(new URL('../scripts/run-putnambench-benchmark.mjs', import.meta.url));
 
-test('benchmark CLI handles SIGTERM before project startup and writes operator-stop reports', async t => {
+for (const late of [false, true]) test(`benchmark CLI handles SIGTERM ${late ? 'during aggregate output' : 'during failed observer startup'}`, async t => {
   const root = await mkdtemp(join(tmpdir(), 'swarm-cli-stop-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const fixture = join(root, 'fixture');
@@ -26,7 +26,8 @@ test('benchmark CLI handles SIGTERM before project startup and writes operator-s
   let child, healthChecks = 0;
   const server = createServer((request, response) => {
     healthChecks++;
-    child.kill('SIGTERM');
+    if (!late) child.kill('SIGTERM');
+    response.statusCode = late ? 200 : 503;
     response.setHeader('content-type', 'application/json');
     response.end(JSON.stringify({ auth_version: 1, access_mode: 'loopback' }));
   });
@@ -37,7 +38,25 @@ test('benchmark CLI handles SIGTERM before project startup and writes operator-s
   await writeFile(observer, JSON.stringify({ host: '127.0.0.1', port: server.address().port,
     access_mode: 'loopback', database_path: join(root, 'observer.sqlite') }));
   const experiment = join(root, 'experiment'), reports = join(root, 'reports');
-  child = spawn(process.execPath, [runner, '--problems', config, '--putnambench-root', fixture, '--problem', 'fixture_0',
+  const signalArguments = [];
+  if (late) {
+    const inject = join(root, 'inject-late-stop.mjs');
+    await writeFile(inject, `import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
+import { setTimeout as sleep } from 'node:timers/promises';
+const write = fs.writeFile;
+fs.writeFile = async (path, ...args) => {
+  if (path.endsWith('/aggregate-report.json')) {
+    process.kill(process.pid, 'SIGTERM');
+    await sleep(30);
+  }
+  return write(path, ...args);
+};
+syncBuiltinESMExports();`);
+    signalArguments.push('--import', inject);
+  }
+  child = spawn(process.execPath, [...signalArguments, runner, '--problems', config, '--putnambench-root', fixture,
+    ...(late ? [] : ['--problem', 'fixture_0']),
     '--experiment-root', root, '--experiment-dir', experiment, '--report-dir', reports, '--observability-metadata', observer],
   { env: { PATH: process.env.PATH, PI_GPT_PROXY_BASE_URL: 'http://127.0.0.1:1/v1', PI_GPT_PROXY_API_KEY: 'local-fixture' } });
   t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
@@ -45,16 +64,24 @@ test('benchmark CLI handles SIGTERM before project startup and writes operator-s
   child.stderr.on('data', chunk => { stderr += chunk; });
   const [code, signal] = await once(child, 'close');
   assert.equal(signal, null, stderr);
-  assert.equal(code, 143, stderr);
+  assert.equal(code, late ? 0 : 143, stderr);
   assert.equal(healthChecks, 1);
-  assert.match(stderr, /stop_requested/);
   const aggregate = JSON.parse(await readFile(join(reports, 'aggregate-report.json')));
-  assert.equal(aggregate.projects[0].stop_reason, 'operator_stop');
-  assert.deepEqual(aggregate.projects[0].invalid_reasons, ['operator_stop']);
   const metadata = JSON.parse(await readFile(join(experiment, 'metadata', 'experiment.json')));
-  assert.equal(metadata.status, 'operator_stopped');
   assert.equal(metadata.valid_for_analysis, false);
-  assert.equal(metadata.stop_signal, 'SIGTERM');
+  if (late) {
+    assert.doesNotMatch(stderr, /stop_requested/);
+    assert.equal(aggregate.projects.length, 12);
+    assert.ok(aggregate.projects.every(project => project.stop_reason === null && project.invalid_reasons.includes('project_runner_error')));
+    assert.equal(metadata.status, 'completed');
+    assert.equal(metadata.stop_signal, undefined);
+  } else {
+    assert.match(stderr, /stop_requested/);
+    assert.equal(aggregate.projects[0].stop_reason, 'operator_stop');
+    assert.deepEqual(aggregate.projects[0].invalid_reasons, ['operator_stop']);
+    assert.equal(metadata.status, 'operator_stopped');
+    assert.equal(metadata.stop_signal, 'SIGTERM');
+  }
 });
 
 test('benchmark CLI exposes one Mission Task model and rejects the removed model flags', () => {

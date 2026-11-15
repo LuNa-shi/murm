@@ -951,7 +951,7 @@ export async function stopCore(state, core, { cleanupGraceMs = 30_000, cleanupDe
       Promise.allSettled([core.sessionStartPromise]),
     ])],
     ['RUNTIME_SHUTDOWN', () => core.runtime.shutdown({ terminalState: 'FAILED',
-      terminalReason: state.signal?.aborted ? 'operator_stop' : 'benchmark_deadline_cleanup' })],
+      terminalReason: state.operatorStopped ? 'operator_stop' : 'benchmark_deadline_cleanup' })],
     ['BRIDGE_CLEANUP', () => core.bridge.stop()],
     ['SESSION_CLEANUP', () => joinCleanup([...sessions].map(async session => {
       await session.stop?.();
@@ -1520,15 +1520,18 @@ async function createProjectState(problem, config, options) {
         command: options.command ?? 'pi',
       });
     } catch (error) {
+      assertInitializing();
       throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, error.message, {}, { cause: error });
     }
   }
+  assertInitializing();
   const finalTreeConfiguration = options.finalTreeCheckerConfig ?? config.final_tree_checker;
   const timedBenchmark = (options.timeboxMs ?? 60 * 60_000) > 0;
   if (timedBenchmark && (!finalTreeConfiguration || options.finalTreeChecker || options.checker)) {
     throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'A timed benchmark requires locked final and source checkers from the configured deployment');
   }
-  const finalTreeDeployment = finalTreeConfiguration ? await createLockedFinalTreeVerifier({ configuration: finalTreeConfiguration, problem }) : null;
+  const finalTreeDeployment = finalTreeConfiguration ? await createLockedFinalTreeVerifier({ configuration: finalTreeConfiguration, problem })
+    .catch(error => { assertInitializing(); throw error; }) : null;
   assertInitializing();
   const finalTreeChecker = options.finalTreeChecker ?? finalTreeDeployment?.adapter ?? null;
   const lockedSourceRunner = finalTreeDeployment?.adapter.runSourceDiagnostic.bind(finalTreeDeployment.adapter);
@@ -1577,7 +1580,8 @@ async function createProjectState(problem, config, options) {
           if (sandboxObservationStore?.getExperiment?.(runId)) sandboxObservationStore.append({ experimentId: runId, source: 'runtime', kind: 'sandbox_event', payload: event });
         },
       });
-  if (sandboxManager) await sandboxManager.preflight({ timeoutMs: sandboxConfig.preflightTimeoutMs ?? 20_000 });
+  await sandboxManager.preflight({ timeoutMs: sandboxConfig.preflightTimeoutMs ?? 20_000 })
+    .catch(error => { assertInitializing(); throw error; });
   assertInitializing();
   const logRoot = join(experimentRoot, 'logs', 'projects', problem.id);
   await Promise.all([
@@ -1598,10 +1602,10 @@ async function createProjectState(problem, config, options) {
   const cores = [];
   try { return await initializeProjectState(); }
   catch (error) {
-    const cleanup = { cores, cleanupErrors: [], missionSubmissionStore, modelAccess, judgeService, signal: options.signal };
+    const cleanup = { cores, cleanupErrors: [], missionSubmissionStore, modelAccess, judgeService, operatorStopped: options.signal?.aborted === true };
     await stopBenchmarkRuntime(cleanup, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
     closeProjectStores(cleanup, closeStores, options);
-    if (options.signal?.aborted) {
+    if (cleanup.operatorStopped) {
       const stopped = operatorStop();
       stopped.cleanupErrors = cleanup.cleanupErrors;
       throw stopped;
@@ -2625,7 +2629,10 @@ async function runProject(problem, config, options) {
     problem = { ...problem };
     config = { ...config };
     const verified = await verifyBenchmarkRunFixture({ root: config.putnam_bench_root, commit: config.putnambench_commit, problem })
-      .catch(error => { throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Timed benchmarks require a verified committed fixture', {}, { cause: error }); });
+      .catch(error => {
+        if (options.signal?.aborted) throw operatorStop();
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Timed benchmarks require a verified committed fixture', {}, { cause: error });
+      });
     validateProblemInput(problem, verified.source);
   }
   if (!Number.isFinite(options.cleanupGraceMs ?? 30_000) || (options.cleanupGraceMs ?? 30_000) <= 0) throw new TypeError('cleanupGraceMs must be finite and positive');
@@ -2862,8 +2869,13 @@ async function executeBenchmarkProject(state, problem, config, options) {
     stopped: state.identityLoops.every((loop) => loop.snapshot().stopped),
   }) };
   let operatorStoppedAt;
+  const acceptedAndClosed = () => state.missionSubmissionStore.isAccepted(state.missionId) &&
+    !state.cores.some(core => core.executionId && state.taskService.getExecution(core.executionId)?.state === 'RUNNING');
   const onOperatorStop = () => {
-    operatorStoppedAt = Date.now();
+    const at = Date.now();
+    if (at < Math.min(deadline, state.missionCloseoutDeadline ?? deadline) && !acceptedAndClosed()) {
+      operatorStoppedAt = at;
+    }
     state.stopping = true;
     for (const core of state.cores) core.stopping = true;
     state.identityLoopAbortController?.abort();
@@ -2872,7 +2884,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
   };
   state.signal?.addEventListener('abort', onOperatorStop, { once: true });
   try {
-    if (state.signal?.aborted) throw operatorStop();
+    if (state.signal?.aborted) { onOperatorStop(); throw operatorStop(); }
     // Every configured Core enters discovery, including a zero-Task Mission.
     // Readiness is context for the Bot, not permission to start discovery.
     if (state.missionCloseoutDeadline === undefined) await withinRunDeadline(state, () => state.controller.reconcile({ reason: 'initial' }), deadline);
@@ -2972,8 +2984,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
       while (!state.signal?.aborted && Date.now() < Math.min(deadline, state.missionCloseoutDeadline ?? deadline)) {
         // Acceptance may precede wake wiring. Nothing can start after PASS;
         // if no activated Execution needs closeout, proceed directly to stop.
-        if (state.missionSubmissionStore.isAccepted(state.missionId) &&
-            !state.cores.some(core => core.executionId && state.taskService.getExecution(core.executionId)?.state === 'RUNNING')) break;
+        if (acceptedAndClosed()) break;
         if (!state.identityWakeRequested) {
           await Promise.race([sleep(Math.max(0, Math.min(options.pollMs ?? 5_000, Math.min(deadline, state.missionCloseoutDeadline ?? deadline) - Date.now()))), identityWake]);
         }
@@ -3033,6 +3044,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
     if (!['BENCHMARK_TIMEBOX_EXPIRED', 'BENCHMARK_OPERATOR_STOPPED'].includes(error.code)) throw error;
   } finally {
     state.signal?.removeEventListener('abort', onOperatorStop);
+    state.operatorStopped = operatorStoppedAt !== undefined;
     await stopBenchmarkRuntime(state, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
   }
   const report = projectReport(state, startedAt, deadline);
@@ -3047,13 +3059,11 @@ async function executeBenchmarkProject(state, problem, config, options) {
     report.run.protocol_valid = false;
     report.audit.invalid_reasons.push('cleanup_pending');
   }
-  if (state.signal?.aborted) {
+  if (state.operatorStopped) {
     report.run.protocol_valid = false;
     report.run.stop_reason = 'operator_stop';
-    if (operatorStoppedAt !== undefined) {
-      report.run.deadline_reached = operatorStoppedAt >= deadline;
-      report.run.ended_early = operatorStoppedAt < deadline;
-    }
+    report.run.deadline_reached = false;
+    report.run.ended_early = true;
     report.audit.invalid = true;
     report.audit.invalid_reasons.push('operator_stop');
   }
@@ -3064,7 +3074,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
     taskId: null,
     payload: { solved: report.run.solved, protocol_valid: report.run.protocol_valid, made_progress: report.run.made_progress },
   });
-  state.observationStore.finishExperiment(state.runId, { status: report.run.solved && !state.signal?.aborted ? 'SUCCEEDED' : 'FINISHED' });
+  state.observationStore.finishExperiment(state.runId, { status: report.run.solved && !state.operatorStopped ? 'SUCCEEDED' : 'FINISHED' });
   await writeFile(join(state.reportProjectDir, 'report.json'), JSON.stringify(report, null, 2));
   return report;
 }
