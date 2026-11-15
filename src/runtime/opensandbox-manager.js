@@ -413,7 +413,8 @@ export class OpenSandboxManager {
     const workerToken = randomUUID();
     const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort), ...(projectQuotaRequired ? ['--require-project-quota'] : [])];
     try {
-      await onCreateDispatch?.({ provider: 'opensandbox', timeout_seconds: timeoutSeconds });
+      const admission = onCreateDispatch?.({ provider: 'opensandbox', timeout_seconds: timeoutSeconds });
+      if (typeof admission?.then === 'function') await admission;
     } catch (error) {
       if (creation) this.pendingCreations.delete(id);
       throw error;
@@ -589,7 +590,7 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources = BOT_RESOURCES, projectQuota = null, modelCatalogResource = null } = {}) {
+  async startAgent({ executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources = BOT_RESOURCES, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
     const record = this.#record(executionId);
     const signature = values => Array.isArray(values) && values.every(item => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
       ? JSON.stringify(values.map(({ path, sha256 }) => ({ path, sha256 })).sort((a, b) => a.path.localeCompare(b.path))) : null;
@@ -604,6 +605,7 @@ export class OpenSandboxManager {
     endpoint = endpoint.replace(/\/$/, '');
     const workerHeaders = { authorization: `Bearer ${workerToken}` };
     await this.#waitWorker(endpoint, workerHeaders);
+    beforeAgentStart?.();
     const startup = await this.#request(`${endpoint}/start`, {
       absolute: true,
       method: 'POST',

@@ -857,11 +857,23 @@ export class TaskService {
     });
   }
 
+  /** Runtime-only admission at the asynchronous provider startup boundaries. */
+  assertBotStartupAllowed(botId) {
+    const bot = this.getBot(botId);
+    const nowMs = Date.now();
+    if (!bot || bot.state !== 'STARTING' ||
+        Date.parse(bot.selection_deadline) <= nowMs || Date.parse(bot.hard_deadline) <= nowMs) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup is not eligible to proceed');
+    }
+    this.#assertMissionOpen(bot.mission_id);
+    return bot;
+  }
+
   recordBotSandboxDispatch(botId, { provider, timeoutSeconds }) {
     requireString(provider, 'provider');
     if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Sandbox create requires a finite lifetime');
     return this.#transaction(() => {
-      this.assertBotDeadline(botId);
+      this.assertBotStartupAllowed(botId);
       const result = this.db.prepare(`UPDATE bots SET provider = ?, sandbox_create_state = 'UNKNOWN',
         sandbox_timeout_seconds = ?, updated_at = ? WHERE bot_id = ? AND state = 'STARTING' AND sandbox_create_state = 'NOT_DISPATCHED'`)
         .run(provider, timeoutSeconds, now(), botId);
@@ -895,9 +907,10 @@ export class TaskService {
 
   markBotReady(botId) {
     return this.#transaction(() => {
-      const bot = this.getBot(botId);
-      if (bot?.state === 'UNBOUND') return bot;
-      if (!bot || bot.state !== 'STARTING' || !bot.sandbox_id || (Date.parse(bot.selection_deadline) <= Date.now() || Date.parse(bot.hard_deadline) <= Date.now())) {
+      const current = this.getBot(botId);
+      if (current?.state === 'UNBOUND') return current;
+      const bot = this.assertBotStartupAllowed(botId);
+      if (!bot.sandbox_id) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup is not eligible to become ready');
       }
       const readyAt = now();

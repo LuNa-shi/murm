@@ -510,13 +510,14 @@ async function startAgentSession(core) {
     selectionTimeoutMs: core.startConfig.options.selectionTimeoutMs ?? Math.min(300_000, core.startConfig.options.botMaxMs ?? flatExecutionTimeoutMs(core.startConfig.options)),
     maxLifetimeMs: core.startConfig.options.botMaxMs ?? flatExecutionTimeoutMs(core.startConfig.options),
     readyTimeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000,
-    startSession: async ({ bot: startingBot, signal, onSandboxCreateDispatch, onSandboxCreateRejected, onSandboxCreated }) => {
+    startSession: async ({ bot: startingBot, signal, assertStartupAllowed, onSandboxCreateDispatch, onSandboxCreateRejected, onSandboxCreated }) => {
       core.actorRef = startingBot.bot_id;
       Object.assign(core.childEnv, core.bridge.startBotIdentity(startingBot.bot_id));
       return core.adapter.start({
         executionId: startingBot.resource_key,
         bot: startingBot,
         signal,
+        assertStartupAllowed,
         onSandboxCreated,
         onSandboxCreateDispatch,
         onSandboxCreateRejected,
@@ -620,7 +621,7 @@ export async function ensureAgentSession(core) {
   if (core.turnInFlight && !core.session && !core.taskId && !core.executionId && !core.boundTurnPromise && !core.recoveryInFlight) {
     core.turnInFlight = false;
   }
-  if (core.stopping || core.turnInFlight) return false;
+  if (!discoveryOpen(core) || core.turnInFlight) return false;
   if (core.session) return core.session;
   if (core.sessionStartPromise) return false;
   core.sessionStartAttempts = (core.sessionStartAttempts ?? 0) + 1;
@@ -1712,7 +1713,7 @@ async function createProjectState(problem, config, options) {
       },
     });
     taskService.setMissionStopReader(id => id === mission.mission_id &&
-      (projectState?.stopping === true || Date.now() >= startedAt + (options.timeboxMs ?? 60 * 60_000) || missionSubmissionStore.isAccepted(id)));
+      (projectState?.stopping === true || options.signal?.aborted === true || Date.now() >= startedAt + (options.timeboxMs ?? 60 * 60_000) || missionSubmissionStore.isAccepted(id)));
     await missionSubmissionStore.reconcile({ missionId: mission.mission_id });
     const capabilityRegistry = options.serviceRegistry ?? createBuiltinServiceRegistry({
       taskService,

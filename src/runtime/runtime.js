@@ -243,6 +243,7 @@ export class Runtime {
         !Number.isFinite(readyTimeoutMs) || readyTimeoutMs <= 0 || !Number.isInteger(maxLifetimeMs) || maxLifetimeMs < 2 || maxLifetimeMs > 2_147_483_647) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot requires a Session factory and finite selection and lifetime limits');
     }
+    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during Bot startup');
     this.#refreshRecoveredCore(coreId);
     if (this.getCoreStatus(coreId)?.state !== 'IDLE' || this.taskService.getActiveExecutionForCore(coreId)) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core is occupied');
@@ -286,9 +287,22 @@ export class Runtime {
     binding.armDeadline(hardDeadlineAt, 'bot-lifetime-budget');
     binding.selectionTimer = setTimeout(() => stopUnbound('selection-budget'), Math.max(1, Date.parse(bot.selection_deadline) - Date.now()));
     binding.selectionTimer.unref?.();
-    const factory = Promise.resolve().then(() => startSession({ bot, signal: controller.signal,
-      onSandboxCreateDispatch: (resource) => this.taskService.recordBotSandboxDispatch(bot.bot_id,
-        { provider: resource.provider, timeoutSeconds: resource.timeout_seconds }),
+    const assertRuntimeStartupOpen = () => {
+      if (controller.signal.aborted) throw controller.signal.reason;
+      if (this.stopping || Date.now() >= (this.runDeadlineAt ?? Infinity)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during Bot startup');
+      }
+    };
+    const assertStartupAllowed = () => {
+      assertRuntimeStartupOpen();
+      this.taskService.assertBotStartupAllowed(bot.bot_id);
+    };
+    const factory = Promise.resolve().then(() => startSession({ bot, signal: controller.signal, assertStartupAllowed,
+      onSandboxCreateDispatch: (resource) => {
+        assertRuntimeStartupOpen();
+        this.taskService.recordBotSandboxDispatch(bot.bot_id,
+          { provider: resource.provider, timeoutSeconds: resource.timeout_seconds });
+      },
       onSandboxCreateRejected: () => this.taskService.recordBotSandboxRejection(bot.bot_id),
       onSandboxCreated: (resource) => this.taskService.recordBotSandbox(bot.bot_id,
         { provider: resource.provider ?? 'opensandbox', sandboxId: resource.sandbox_id, expiresAt: resource.expires_at }) }));
@@ -310,15 +324,17 @@ export class Runtime {
     });
     try {
       const session = await Promise.race([prepared, cancelled]);
-      if (this.stopping || session.closed || this.taskService.getBot(bot.bot_id).state !== 'STARTING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped');
+      if (session.closed) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped');
+      assertStartupAllowed();
       await Promise.race([(async () => {
         await session.waitForReady({ timeoutMs: readyTimeoutMs });
-        if (controller.signal.aborted) throw controller.signal.reason;
+        assertStartupAllowed();
         await session.setAutoCompaction?.(true);
-        if (controller.signal.aborted) throw controller.signal.reason;
+        assertStartupAllowed();
         await session.setAutoRetry?.(true);
       })(), cancelled]);
-      if (this.stopping || session.closed) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during Bot startup');
+      if (session.closed) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped');
+      assertRuntimeStartupOpen();
       const ready = this.taskService.markBotReady(bot.bot_id);
       this.#setCoreState(coreId, { state: 'DISCOVERING', session_id: session.sessionId ?? null });
       return { bot: ready, session };

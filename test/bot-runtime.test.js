@@ -9,7 +9,7 @@ import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createMissionCoordination } from '../src/runtime/mission-coordination.js';
-import { beginMissionCloseout, takeTaskWithAgent } from '../src/benchmark/putnam-runner.js';
+import { beginMissionCloseout, ensureAgentSession, takeTaskWithAgent } from '../src/benchmark/putnam-runner.js';
 import { IdentityTaskLoop } from '../src/runtime/identity-task-loop.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { BOT_RESOURCES, BOT_PROTOCOL_VERSION, BOT_COMPACTION_MESSAGE } from '../src/agent/bot-contract.js';
@@ -23,7 +23,7 @@ import { ContextService } from '../src/context/context-service.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { SwarmEnvError, ERROR_CODES } from '../src/errors.js';
 
-async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceConditions = {}, mergeRequiredCheck = null } = {}) {
+async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceConditions = {}, mergeRequiredCheck = null, beforeFetch = null } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarm-bot-'));
   const service = new TaskService(persistent ? join(root, 'state.sqlite') : ':memory:');
   service.createMission({ mission_id: 'mission:bots', goal: 'Inspect independent questions', acceptance_conditions: acceptanceConditions, merge_required_check: mergeRequiredCheck }, makeEnvelope({ actorRef: 'operator:test' }));
@@ -33,6 +33,7 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
   const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'test:bot', waitForExecdReady: false,
     fetchImpl: async (url, options) => {
       calls.push({ url, method: options.method });
+      await beforeFetch?.(url, options);
       if (options.method === 'DELETE') { deletedSandboxes.add(url); return new Response('{}'); }
       if (options.method === 'GET' && deletedSandboxes.has(url)) return new Response('{}', { status: 404 });
       if (url.endsWith('/sandboxes')) return new Response(JSON.stringify({ id: `sandbox:${++sandboxNumber}` }), { status: 202 });
@@ -50,9 +51,9 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
   await missionWorkspace.create({ missionId: 'mission:bots', workspaceId: 'workspace-default', initialFiles: { 'input.txt': 'public project input' } });
   const runtime = new Runtime({ taskService: service, missionWorkspace, missionWorkspaceId: 'workspace-default', workspaceManager: new WorkspaceManager({ rootDir: root }), sandboxManager: manager, agentAdapter: {}, ...runtimeOptions });
   t.after(async () => { await runtime.missionSubmissionStore?.stop({ missionId: 'mission:bots' }); await runtime.shutdown(); service.close(); await rm(root, { recursive: true, force: true }); });
-  const startSession = async ({ bot, onSandboxCreated }) => {
+  const startSession = async ({ bot, onSandboxCreated, beforeAgentStart }) => {
     const sandbox = await manager.ensureExecution({ executionId: bot.resource_key, botId: bot.bot_id, onCreated: onSandboxCreated });
-    await manager.startAgent({ executionId: bot.resource_key, command: 'controlled-session', args: [] });
+    await manager.startAgent({ executionId: bot.resource_key, command: 'controlled-session', args: [], beforeAgentStart });
     const session = new EventEmitter();
     session.closed = false;
     session.waitForReady = async () => {};
@@ -155,6 +156,71 @@ for (const boundary of ['accepted', 'stopped', 'deadline']) test(
     assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
   },
 );
+
+for (const boundary of ['accepted Mission', 'Runtime stop', 'run deadline'])
+for (const checkpoint of ['sandbox dispatch', 'sandbox receipt', 'Pi dispatch', 'ready']) test(
+  `${boundary} prevents late Bot ${checkpoint} and releases its resources`, async t => {
+    let entered, resume, botId;
+    const reached = new Promise(resolve => { entered = resolve; });
+    const gate = new Promise(resolve => { resume = resolve; });
+    const { service, runtime, manager, startSession, calls } = await fixture(t, {}, {
+      beforeFetch: async (url, { method }) => {
+        if ((checkpoint === 'Pi dispatch' && url.endsWith('/health')) ||
+            (checkpoint === 'sandbox receipt' && method === 'POST' && url.endsWith('/sandboxes'))) {
+          entered();
+          await gate;
+        }
+      },
+    });
+    const starting = runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession: async options => {
+      botId = options.bot.bot_id;
+      if (checkpoint === 'sandbox dispatch') { entered(); await gate; }
+      await manager.ensureExecution({ executionId: botId, botId,
+        onCreateDispatch: options.onSandboxCreateDispatch, onCreated: options.onSandboxCreated });
+      const session = await startSession({ ...options, beforeAgentStart: options.assertStartupAllowed });
+      if (checkpoint === 'ready') session.waitForReady = async () => { entered(); await gate; };
+      return session;
+    } });
+    const rejected = assert.rejects(starting, { code: ERROR_CODES.NOT_ALLOWED });
+    await reached;
+    if (checkpoint === 'sandbox receipt') assert.equal(service.getBot(botId).sandbox_create_state, 'UNKNOWN');
+    let shutdown;
+    if (boundary === 'accepted Mission') service.setMissionStopReader(id => id === 'mission:bots');
+    if (boundary === 'Runtime stop') shutdown = runtime.shutdown();
+    if (boundary === 'run deadline') runtime.setRunDeadline(Date.now());
+    resume();
+    await rejected;
+    await shutdown;
+    await runtime.releaseBot(botId);
+    assert.equal(service.getBot(botId).state, 'CLOSED');
+    assert.equal(service.getBot(botId).ready_at, null);
+    if (checkpoint === 'sandbox receipt') {
+      assert.equal(service.getBot(botId).sandbox_id, 'sandbox:1');
+      assert.ok(calls.some(call => call.method === 'DELETE' && call.url.endsWith('/sandboxes/sandbox%3A1')));
+    }
+    assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+    assert.equal(manager.snapshot().executions.length, 0);
+    assert.equal(calls.filter(call => call.method === 'POST' && call.url.endsWith('/sandboxes')).length, checkpoint === 'sandbox dispatch' ? 0 : 1);
+    assert.equal(calls.filter(call => call.method === 'POST' && call.url.endsWith('/start')).length, checkpoint === 'ready' ? 1 : 0);
+  },
+);
+
+test('benchmark rechecks Mission stop after awaiting prior Session cleanup', async t => {
+  const { service, runtime } = await fixture(t);
+  let entered, resume;
+  const reached = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { resume = resolve; });
+  const core = { runtime, errors: [], stateRef: { mission: { mission_id: 'mission:bots' } },
+    releasedSession: { closed: true, stop: async () => { entered(); await gate; } } };
+  const starting = ensureAgentSession(core);
+  await reached;
+  service.setMissionStopReader(id => id === 'mission:bots');
+  resume();
+  assert.equal(await starting, false);
+  assert.equal(core.releasedSession, null);
+  assert.equal(core.sessionStartAttempts, undefined);
+  assert.deepEqual(core.errors, []);
+});
 
 test('selection timeout closes an unbound Bot and releases no phantom Execution', async (t) => {
   const { service, runtime, startSession } = await fixture(t);

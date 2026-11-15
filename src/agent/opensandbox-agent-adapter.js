@@ -234,14 +234,14 @@ export class OpenSandboxAgentAdapter {
     return starting;
   }
 
-  async #startTracked({ executionId, bot = null, signal = null, onSandboxCreateDispatch = null, onSandboxCreateRejected = null, onSandboxCreated = null, sessionDir = this.config.sessionDir, cwd = null, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = randomUUID() } = {}) {
+  async #startTracked({ executionId, bot = null, signal = null, assertStartupAllowed = null, onSandboxCreateDispatch = null, onSandboxCreateRejected = null, onSandboxCreated = null, sessionDir = this.config.sessionDir, cwd = null, agentPrompt = null, logger = null, observation = null, observationContext = {}, sessionId = randomUUID() } = {}) {
     await this.#cleanupFailedStarts();
     if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent adapter is stopping');
     this.pendingStartupCleanup ??= new Set();
     required(executionId, 'execution_id');
     try {
       if (signal?.aborted) throw signal.reason;
-      const session = await this.#startSession({ executionId, bot, signal, onSandboxCreateDispatch, onSandboxCreateRejected, onSandboxCreated, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId });
+      const session = await this.#startSession({ executionId, bot, signal, assertStartupAllowed, onSandboxCreateDispatch, onSandboxCreateRejected, onSandboxCreated, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId });
       if (this.stopping || signal?.aborted) {
         await session.stop();
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent startup was stopped');
@@ -271,7 +271,7 @@ export class OpenSandboxAgentAdapter {
     }
   }
 
-  async #startSession({ executionId, bot, signal, onSandboxCreateDispatch, onSandboxCreateRejected, onSandboxCreated, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId }) {
+  async #startSession({ executionId, bot, signal, assertStartupAllowed, onSandboxCreateDispatch, onSandboxCreateRejected, onSandboxCreated, sessionDir, cwd, agentPrompt, logger, observation, observationContext, sessionId }) {
     // Runtime passes its host-side session directory to every adapter. The
     // remote worker has one fixed guest work surface and must never receive a
     // host path as an argv or filesystem target.
@@ -324,8 +324,10 @@ export class OpenSandboxAgentAdapter {
     if (typeof this.sandboxManager.agentVersions === 'function' && Object.values(explicitVersions).some((value) => !value)) {
       guestVersions = await this.sandboxManager.agentVersions({ executionId, includeNurouter: !directPi });
     }
+    assertStartupAllowed?.();
     await this.sandboxManager.startAgent({
       executionId,
+      beforeAgentStart: assertStartupAllowed,
       command: this.command,
       args: launchArgs,
       cwd: '/workspace/project',
