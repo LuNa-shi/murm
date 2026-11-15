@@ -54,16 +54,36 @@ Launch commit `72b4487197e075bd66722241dc703d7549ee8ac7`, clean worktree; unchan
 
 Four initially empty Core lanes each proposed and took a Task, and all four Executions succeeded. All four Tasks ended DONE. All 12 Bots closed; the independent observer verified every sandbox returned HTTP 404. Ordinary Judge results: 5 PASS, 7 source FAIL and 1 request rejection, zero infrastructure failures, healthy checker. Gateway: 190 requests, all 190 with terminal observed usage, zero unknown or pending; 4,051,044 input and 34,447 output tokens observed, actual currency cost unknown.
 
-This was a successful run within a 30-minute upper bound. It stopped early on Mission acceptance after 7 min 42 s and **does not demonstrate 30-minute endurance**. Detailed per-Bot observations are recorded in the local analysis artifacts and will be consolidated below.
+This was a successful run within a 30-minute upper bound. It stopped early on Mission acceptance after 7 min 42 s and **does not demonstrate 30-minute endurance**. The per-Bot reconstruction follows; IDs are stable prefixes.
+
+| Core / Bot | 实际行为与结局 |
+| --- | --- |
+| Core 1 / `2e8cf6df` | 查 Mission、Workspace 和空队列，提议并领取完整网格计数证明 `1bf53ca8` / E `7f8d4c7b`。检索 Lean API，自 R 0.1 修改并保存目标文件，R 0.6、0.9、0.10 三次真实诊断失败，修到 R 0.12 获普通 PASS `ad24437d`。合入形成 main R 0.14，发布证明说明 M `c851e19b` 并核对公开版本。以该说明和 main 触发最终 Mission 验收，同时用 R 0.12 与原 CheckResult 结束 Task done。 |
+| Core 2 / `a2470cc5` | 提议并领取另一条完整网格证明 `f3adc4f5` / E `9c8b724d`。查询 Mathlib，保存 R 0.3 后因占位符被请求层拒绝。后续 R 0.8、0.11、0.13 是实际源错误，继续修改到 R 0.15 获普通 PASS `53a942f4`。发布独立方案 M `7b8dd65b`，以 R 0.15 和该 CheckResult done。此分支未合并、未纳入唯一成功 Mission 快照。 |
+| Core 3 / `bdc7730e` | 先调用本地 propose 帮助，随后查看两个已有完整证明 Task，提出较窄的三点圆周到单形/颜色桥接 `80f1df67` / E `f7402b17`。R 0.2 真实源检查失败，修到 R 0.4 获普通 PASS `85742921`，发布使用说明 M `716e786a`。第一次 finish 带未建立 Task 链接的 Material 被拒，按已检查的 R/CheckResult 提交有效 done。 |
+| Core 4 / `dc0f6b44` | 查看两条完整网格 Task 后，也提出圆周三点到颜色的可复用桥接 `8c48c1d6` / E `5aba38ce`。独立在 R 0.5、0.7 两次通过公开辅助文件的 Lean 检查，发布 M `62a504d8`，以 R 0.7 / `26aa9b12` 完成 done。 |
+| Core 3 / `edb278ce` | 前任 done 后读取两份桥接 Material 和公开 R 0.4、0.7，也查看推进中的 R 0.9。ready 后用约 79 秒探索，到 no-work 时尚无可归因的受理变更。最终无提议/领取，显式 no-work。 |
+| Core 4 / `8699b940` | 新 Bot 比较两份桥接 Material，检查当前队列和仍在工作的候选。无提议/领取，显式 no-work。 |
+| Core 3 / `db56308d` | 再核对两份公开桥接实现、Mission 状态，看到后来发布的 M `c851e19b`。无提议/领取，显式 no-work。 |
+| Core 4 / `a86097f5` | 从 R 0.1 切到读合并后的 main R 0.14，核对 Core 1 Task、M `c851e19b` 与提交状态。无提议/领取，显式 no-work。 |
+| Core 3 / `b803efd2` | 对照两个证明 Task、原始 R 0.1 和 M `c851e19b`，实际尝试提交已有公开成果。服务以已有提交/冻结拒绝，随后查询状态。无新 E，由 Mission 接受后的运行收尾关闭。 |
+| Core 1 / `e891316f` | 前任完成后对照两个证明 Task 与两条证明 Material，读取公开 Workspace。没有产生新 Task/E，由运行收尾关闭。 |
+| Core 2 / `d0c9c81c` | 对照两个已完成证明 Task、两条证明 Material，并多次读取独立 R 0.15。无新持久提交或 E，由运行收尾关闭。 |
+| Core 4 / `431b8f43` | 比较两条证明 Task/Material 并读取 R 0.15。无新持久提交或 E，由运行收尾关闭。 |
+
 
 ## Analysis
 
 The actual model completed the intended propose/take/execute flow on all four Cores. Source failures led to corrected revisions and fresh successful checks; long requests survived valid lease renewal. Final Mission acceptance, not the helper PASS count, establishes success on the fixed B1 target. Initial work was partly duplicated: two complete proof tracks and two adapter tracks. No durable helper Material consumption was observed, so concurrency and published Materials do not establish useful division of labor or reuse. Successor discovery included justified no-work decisions while complete proof owners were still active or the final check was pending.
 
+
+四次 no-work 前，Bot 实际比较了已完成的桥接和仍有人负责的证明，后来的 Bot 又观察到 main 合并与现有提交。公开证据不足以证明需要另提整合 Task，实际接受结果也显示这条成功路径可以由原证明 E 合入并提交；当时再提等价责任会重复已有工作。另一方面，新 Bot 的重复扫描开销可观：8 个后继只选工，共 79/190 请求，其中四个 no-work Bot 占 44 次、825,880 输入 tokens。Runtime 以 Task、Material、Workspace 公共变更通知重新唤醒空闲 Core。观察到这批 Bot 同期确实出现保存、发布、结束和合入，仍未逐次归因触发者。数据支持区分「再发现带来分工变化」和「反复确认已有责任」；不把四次退出都判为 Runtime 故障，也不把后继的阅读计作研究交付。
+
+
 ## Next steps
 
-After a complete healthy 30-minute run, obtain independent content/lifecycle observations and separately register the authorized two-hour experiment with a finite longer Bot lifetime. Report all incomplete responsibilities, source failures, expected budget rejections and unobserved paths honestly.
+The independent content and lifecycle reviews passed for this observed successful run. [EXP-20261115-07](EXP-20261115-07-single-problem-2h.md) preserves early acceptance and the same fixture with a two-hour upper bound and finite longer Bot lifetime. Actual duration, duplicate work, existing-task selection and genuine downstream reuse remain explicit observations.
 
 ## Evidence and limitations
 
-Raw transcripts, reasoning, proof files, logs, credentials, database files and private paths remain in ignored local evidence. Public reporting uses stable IDs, summarized actions and attributed results. Currency cost and upstream retry/billing outcomes remain unknown when not supplied by the provider. Lifecycle cancellation is not proof of upstream cancellation or zero cost. The run deadline includes setup; cleanup has its separate bounded grace.
+The repository analyzer completed with exit 0, full local evidence, four Executions and zero warnings. Local `analysis/experiment-analysis.md`, `analysis/bot-observation.md` and `analysis/system-observation.md` provide complementary reconstructions. Raw transcripts, reasoning, proof files, logs, credentials, database files and private paths remain in ignored local evidence. Public reporting uses stable IDs, summarized actions and attributed results. Currency cost and upstream retry/billing outcomes remain unknown when not supplied by the provider. Lifecycle cancellation is not proof of upstream cancellation or zero cost. The run deadline includes setup; cleanup has its separate bounded grace.
