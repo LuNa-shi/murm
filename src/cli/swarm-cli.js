@@ -15,7 +15,7 @@ const ALIASES = Object.freeze({
   judge: { check: 'workspace_check', submit: 'workspace_check', result: 'get_check_result', get: 'get_check_result' },
 });
 const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'operation-id', 'request-id', 'timeout-ms']);
-const TASK_PROPOSAL_HELP = `Propose one Task with --input <file> or --stdin. Required JSON fields: summary (string), expected_output (string), acceptance_conditions (nonempty array or object). Optional --base-revision R pins a public Workspace revision. The Bot Bridge provides creator and Mission.
+const TASK_PROPOSAL_HELP = `Propose one Task with --input <file> or --stdin. Required JSON fields: summary (at least 20 characters after trimming, at most 4000), expected_output (string), acceptance_conditions (nonempty array or object). Optional --base-revision R pins a public Workspace revision. The Bot Bridge provides creator and Mission.
 Example (replace the responsibility and completion evidence with your own):
   printf '%s\\n' '{"summary":"Check a boundary case","expected_output":"A reproducible result","acceptance_conditions":["The result includes a reproducible check"]}' | swarm task propose --stdin --request-id propose-boundary`;
 const WORKSPACE_FILES_HELP = 'List public paths. Use --at R (main is allowed), an optional positional path prefix, --limit or --cursor. Example: swarm workspace files --at 0.1 --limit 20';

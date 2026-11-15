@@ -1,6 +1,6 @@
 # EXP-20261115-03: Four-Core single-project 30-minute validation
 
-Status: REGISTERED
+Status: BLOCKED (real-model attempt interrupted before 30 minutes)
 Approved GitHub Issue: [#122 and owner decision](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563)
 Implementation: `e601e81a2bd17d17299e08d552ecccc93bf28a86`, with architecture clarification `c928e86`.
 Repeat of: [EXP-20261115-02](EXP-20261115-02-single-problem-30m.md), stopped before model startup by an incorrectly encoded artifact-lock reference. The corrected configuration uses the existing lock file path and passed actual `createLockedFinalTreeVerifier` validation, including artifact hashes, tool versions and process isolation. The independently health-checked loopback observation service is retained; all research parameters are unchanged.
@@ -50,16 +50,34 @@ Stop at the Mission deadline or trusted Mission acceptance, followed by bounded 
 
 ## Results
 
-Pending execution. No formal model result is asserted by this registration.
+Actual launch was clean commit `8425c589f3f57ec6c51d44833bbc974006105bde`, with the registered `e601e81` runtime and image. CLI metadata starts at 2026-11-15 13:45:06.558 UTC. After trusted deployment verification, four distinct Cores entered UNBOUND discovery concurrently with zero Tasks. Real model/tool traffic occurred, but no proposal was accepted and no Execution was created.
+
+| Core / Bot (unique prefix) | Observed action and result |
+|---|---|
+| Core 1 / `c2634de6` | Read planning, Workspace and Material guidance, Mission and public Workspace. Three productive model/tool turns were followed by nine local schema rejections. Closed on selection budget. |
+| Core 2 / `fe6167b9` | Queried Mission, Workspace, Task and Material interfaces. Two productive tool turns; one upstream request became unknown when selection ended. Closed on selection budget. |
+| Core 3 / `51e7c1e8` | Read planning/Workspace guidance, queried public files and Tasks. Three productive tool turns were followed by nine local schema rejections. Closed on selection budget. |
+| Core 4 / `dedaaf09` | Five productive tool turns. A multi-state query had invalid encoding; a proposed counting/construction responsibility was rejected because it omitted required `summary`. Later requests received nine schema rejections. Closed on selection budget. |
+| Core 1 / `c0719d9b`, Core 3 / `a311402a`, Core 4 / `d8ccf522` | Fresh successor Bots entered selection and each dispatched a request before operator interruption. Their persisted state remains UNBOUND because this runtime lacked graceful signal finalization; it was not rewritten to manufacture completion. |
+
+The model ledger contains 17 admitted upstream attempts: 13 completed with terminal usage, 1 unknown after transport interruption, and 3 still persisted as pending. Observed usage totals 97,114 input and 1,721 output tokens from the 13 completed attempts. Local pre-dispatch 400 rejections are not admitted upstream attempts. Cost is unknown. No Task, Execution, Material publication, Workspace write or Judge check occurred.
+
+The operator stopped the process once repeated schema errors were identified. There is no normal aggregate report, and this attempt did not satisfy the 30-minute protocol. All seven recorded provider resources were independently confirmed HTTP 404; explicit removal of the three still-live resources was recorded separately. Provider listing returned HTTP 200 with zero items. Database terminal state and external cleanup evidence are deliberately distinguished.
 
 ## Analysis
 
-This single problem and single run can establish observed behavior and diagnose failures. It cannot establish general collaboration benefits. Fixed source checks, controlled integration evidence and real-model behavior remain separate.
+Two independent readers found the same concrete transport incompatibility. The real provider returned reasoning items with an empty `content` array. Pi 1.3.0 preserved that object in its signature and replayed it into the next request. The gateway's reasoning allowlist rejected the field. Its prior one-turn Pi test did not exercise provider output returning in the next input. A new two-turn installed-Pi/local-SSE regression reproduced the 400 without external model calls; allowing only absent or empty `content` made the regression pass while nonempty or unknown content remained rejected.
+
+The CLI also exposed incomplete help: public file reads required an actual positional path and `--at`, Task state arrays required JSON, and proposal input required `summary`, `expected_output` and `acceptance_conditions`. Reading help did not give Bots enough syntax to avoid guessing. Exact executable examples were added and exercised through the real authenticated CLI/Bridge path. This repairs the interface contract; it does not instruct the model to manufacture any particular research Task.
+
+The lack of an operator signal shutdown path prevented this failed attempt from producing honest normal finalization. A separate repair routes signals into bounded cleanup and explicit interruption reporting. Independent review examines early initialization and late reporting races before another run.
+
+This attempt proves concurrent discovery and real model access, but supplies no evidence of parallel Task execution, useful Material transfer or mathematical progress. It is not a negative test of the intended collaboration model: the observed interface failures blocked the necessary actions first. The first two registrations also remain distinct startup failures.
 
 ## Next steps
 
-After review and checks pass, execute this registered run and reconstruct every Bot's task choice, work, public delivery, successor actions and terminal state. If healthy, execute the separately registered two-hour run authorized by the owner, increasing finite Bot lifetimes as recorded before that launch.
+Complete independent review of the transport, help and interruption fixes, rerun required checks, rebuild the image and register a new complete 30-minute attempt. Only a healthy completed pilot with independent content review may unlock the already-authorized two-hour run. Keep the same problem, model, fixture and final acceptance condition; finite selection/request limits may be adjusted and recorded before launch to avoid exhausting discovery on a single slow response.
 
 ## Evidence and limitations
 
-Keep raw conversations, proof/candidate source, stdout/stderr, credentials, private databases and private paths outside this report. Unknown provider-side billing and retries remain unknown; observed terminal token usage is not a verified invoice. Versioned prompt templates describe repository-controlled input, not hidden provider context.
+Private evidence: `metadata/experiment.json`, `state/projects/putnam_2025_b1/{project,model-budget,judge}.sqlite`, per-Core `logs/`, `metadata/operator-stop-bots.json`, `metadata/operator-cleanup.json`, and `analysis/{experiment-analysis,system-observation}.md`. The bot prefixes above are unique within this run; full IDs and timestamps remain in these local stores. Reports do not reproduce conversations, reasoning summaries, proof source or credentials. Pending/unknown requests have unknown upstream completion and cost. HTTP 404 proves scoped resource absence at observation time, not a completed application-level Bot finalization.

@@ -23,7 +23,7 @@ swarm task view T1
 swarm task take T1 --request-id take-t1
 ```
 
-需要新责任时，提交包含 `summary`、`expected_output` 和非空 `acceptance_conditions` 的 JSON，把示例内容换成实际责任和可验收的结果。提交后用返回的 task_id 调用 take。提案和 take 使用各自的请求 ID。
+需要新责任时，提交包含 `summary`（去掉首尾空白后至少 20 个字符，最多 4000 个字符）、`expected_output` 和非空 `acceptance_conditions` 的 JSON，把示例内容换成实际责任和可验收的结果。提交后用返回的 task_id 调用 take。提案和 take 使用各自的请求 ID。
 
 ```bash
 printf '%s\n' '{"summary":"Check a boundary case","expected_output":"A reproducible result","acceptance_conditions":["The result includes a reproducible check"]}' | swarm task propose --stdin --request-id propose-boundary
