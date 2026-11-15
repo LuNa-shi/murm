@@ -75,11 +75,11 @@ v1 的 Task/Mission 协调模块与 Workspace 模块位于同一协调进程、�
 3. **允许零 Task。** 不创建隐藏 Mission Task 或计费占位任务。
 4. **启动 Bot。** 每个 Core 创建新 Bot ID、sandbox 和 Pi。预留空的、由可信身份控制的 `/workspace/project`；Pi 会话、缓存和临时文件放在另外的运行目录。take 前项目浏览通过 `workspace files/read/search --at R` 等只读 API 完成。
 5. **发送初始输入。** 提供 Mission、Bot/Core、Workspace 版本、服务/skill 目录和预算快照。完整文本由 [06](06-prompts-and-skills.md) 定义；启动快照不能替代操作前的服务查询。
-6. **Bot 发现工作。** 查询相关 Task 的所有状态、Material 和 Workspace 文件，先考虑已有责任，再提出并 take 新责任；也可以提交已经准备好的 Mission 交付，或诚实退出。
+6. **Bot 发现工作。** 查询相关 Task 的所有状态、Material 和 Workspace 文件，优先选择已有适合的责任；开放 Mission 在有选工额度而无合适可领 Task 时，读取当前验收状态并从公开证据找出缺口，提出并 take 一项有边界、可验证的新责任。具备权限时也可提交已准备好的 Mission 交付。
 
 ### 未绑定 Bot 的等待与正常退出
 
-未 take 的模型调用、检索和等待费用归 Mission/Bot/Core，不虚构 E。Bot 找不到有价值的可推进工作时，可调用 `swarm bot exit --reason no-work`；选工预算耗尽时使用 `--reason selection-budget`。此操作持久记录原因，结束整份 Bot/sandbox，不产生 Task 或 E，也不表示 Mission 成功。
+未 take 的模型调用、检索和等待费用归 Mission/Bot/Core，不虚构 E。开放且未接受的 Mission 仍有选工预算时，当前队列无合适责任意味着 Bot 应继续诊断并提案。选工预算实际耗尽且无未决 take 时使用 `swarm bot exit --reason selection-budget`。Mission 已接受或停止时停止扩展责任。此操作持久记录原因，结束整份 Bot/sandbox，不产生 Task 或 E，也不表示 Mission 成功。
 
 Runtime 根据 Task 可领性变化、材料/Workspace 更新、服务恢复或有上限的退避定时重新评估启动。仅因 Core 空闲，不立即重复创建相同 Bot。事件要合并，定时要有退避和总预算约束；不能用模型忙轮询或 sandbox 热重启代替等待。Bot 也可在有限等待窗口内暂停模型调用，等待 Runtime 唤醒；等待或退出的实际选择与费用必须可观察。
 

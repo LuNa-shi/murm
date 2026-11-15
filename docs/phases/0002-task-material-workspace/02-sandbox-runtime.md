@@ -109,7 +109,7 @@ finish 持久受理后：
 
 ### 3.6 未绑定退出、重启与回收
 
-无 E 且无未决 take 时，`bot exit --reason no-work|selection-budget` 持久记录后结束 sandbox。清理用 Bot/sandbox 标识工作，不能假设每个资源都有 E。已有受理的 Mission submission 由外部服务继续持有，不依赖 Pi 存活。
+无 E 且无未决 take 时，实际选工预算耗尽以 `bot exit --reason selection-budget` 持久记录并结束 sandbox。开放 Mission 仍有预算而暂无可领 Task 时，Bot 继续查找验收缺口并提案。清理用 Bot/sandbox 标识工作，不能假设每个资源都有 E。已有受理的 Mission submission 由外部服务继续持有，不依赖 Pi 存活。
 
 Runtime 依据事件和有上限的退避恢复选工，不在同一无进展状态下持续创建 Bot。Provider 删除响应丢失时保留资源记录；未确认停止/隔离前不重新分配同一 Core。已确认隔离的残留资源可异步删除，但不能丢失其清理责任。
 

@@ -81,10 +81,11 @@ Bot 启动时 `/workspace/project` 是受保护的空目录，尚未向 Bot 授�
 1. 读 Mission、预算和 Workspace 的相关文件；main 是移动指针，读取结果中的 resolved revision 才是确切版本。
 2. 对相关主题跨 ready/running/blocked/done/cancelled 搜索 Task，读取最接近工作的完整合同及实际产物。处理返回的分页/截断，不声称已穷尽未读历史。
 3. 检索并阅读相关 Material，查看来源、适用条件和更正。优先接续合适已有 Task；确有缺口时再提出新 Task，说明与已有工作的区别。
-4. 不确定如何做也可以提出边界清楚的可行性、探索、反例或失败复现 Task；交付是可验证的新信息，不要求预先保证成功。
-5. 给出简短选工依据。达到选工预算仍无可推进工作时，以 bot exit --reason no-work 或 selection-budget 正常退出；不要无限检索、制造占位 Task 或把空队列当 Mission 完成。
+4. Mission 仍开放且有选工预算，若没有合适可领 Task（包括相关 Tasks 均 done），用 swarm mission submission view 查看当前验收、main 和提交记录，结合 Workspace、Task 和 Material 找出验收所需的一个具体缺口，主动提出并 take 一项有边界、可验证的新责任。尚不确定解法时，提出能缩小已知不确定性的探索、反例或失败复现 Task。提交超时不代表科学 FAIL；仅按现有权限和政策恢复或重试，不能为重提制造占位 Task 或刻意更改快照。
+5. 给出简短选工依据。开放 Mission 仍有选工预算时继续诊断或提案，不能以空队列为由 bot exit --reason no-work。预算实际耗尽且无未决 take 时用 bot exit --reason selection-budget；Mission 已接受或停止时停止扩展责任。已经 take 后，原责任无法完成且无必要等待项或撤回理由时，如实 task finish --outcome incomplete；后续由新 Bot 读取公开成果并重新选工。
 
 take 与任务责任
+- 在 propose 前和发起 take 前，刷新与选定责任最相关的 Task（包括 ready、running、done），留意其他 Bot 刚提出或推进的工作，无需重扫全部历史。已有合适责任时优先选择；发现重叠时，只推进有独立交付价值的验证、补充或整合。已提出的重复项按现有授权取消规则处理，不能取消其他 E 的工作。查询和提案之间仍可能有竞争。
 - 通过真实 CLI 使用稳定 request ID。一个 Bot 不并发 take 多个 Task；响应未知时查询或重试原请求，不换 ID 再认领。
 - Runtime 先准备并校验文件树，再将 E 置为 active，随后开放目录写权限，最后提供贡献绑定并返回成功。此前不能把正在准备的环境视为可执行。
 - 成功后核对 Task/E、/workspace/project、实际初始 revision、Material 输入和预算。预览与实际输入不同时重读相关内容。
@@ -245,7 +246,7 @@ take 通过同一 sandbox 中的 Bash CLI 返回给同一 Pi。顺序统一为�
 | 实际输入变化 | `E {execution_id} 的初始输入是 {initial_revision}，不同于预览 {preview_revision}。/workspace/project 已按实际输入准备，请重读受影响内容。` | Runtime 输入准备记录 |
 | 无贡献权限 | `操作 {operation} 在阶段 {phase} 未获授权。可用范围为 {allowed_operations}，不能通过另一接口绕过。` | 服务授权结果 |
 | 选工预算结束 | `选工额度已到 {limit_kind}。尚未绑定 E 时使用 bot exit --reason selection-budget；不能为保持运行制造任务。` | Runtime 预算 |
-| 无可做工作 | `当前无已知可推进责任：{reason}。可正常 bot exit --reason no-work；Runtime 按状态变化或退避安排后续发现。` | Bot 说明与 Runtime |
+| 开放 Mission 仍有选工额度时请求提前退出 | `Mission 尚未结束且选工时间仍有剩余。优先查看并领取已有可推进 Task；若没有，核对最新验收、公开 Workspace 和材料，找出具体缺口并提出有可核验交付的新 Task，再领取执行。不要创建占位 Task。` | Task Service 拒绝提前退出，保留当前 Bot 的选工资格；Bridge 返回指导 |
 | save 失败 | `工作目录未成功保存：{reason_code}。不得把私有文件声明为交付；在有效 E 和剩余重试额度内处理。` | Workspace 保存结果 |
 | apply 未执行 | `当前目录仍有未保存修改或写进程，未替换文件。先 save 并停止相关写入，再按返回条件重试 apply。` | Runtime 目录/进程状态 |
 | apply 内容冲突 | `来源 {source_revision} 与当前工作状态存在冲突，main 未改变。冲突文件为 {paths}；可在当前 E 解决并 save --resolved，初始输入记录不变。` | Workspace 三方整合 |
@@ -278,22 +279,21 @@ take 通过同一 sandbox 中的 Bash CLI 返回给同一 Pi。顺序统一为�
 |---|---|---|
 | `swarm mission view` | Mission 范围内读取 | 目标、验收、预算、当前 main、停止/验收状态和已接受快照 |
 | `swarm mission submit --materials M1,M2` | 具有 Mission 协调身份的 Bot，未绑定 E 也可调用 | 原子固定当时 main、显式且不可变的 Material 版本、checker/environment，建立单一有效 submission 并冻结新的 main merge |
-| `swarm mission submission view <id>` | 查询该 Mission 的持久验收 | 返回确切输入、pending/PASS/失败/错误/超时及冻结/解冻状态；同请求重试恢复同一 submission |
-| `swarm bot exit --reason no-work` | 仅未绑定且无未决 take 的当前 Bot | 正常结束空闲 Bot；不伪造 Task/E，不表示 Mission 已完成 |
-| `swarm bot exit --reason selection-budget` | 同上 | 选工额度用尽后退出；费用仍归 Mission/Bot/Core |
+| `swarm mission submission view [id]` | 查询该 Mission 的持久验收 | 省略 ID 时返回当前 Mission 状态、main、活跃提交及提交记录；给定 ID 时返回固定输入、结果及当前冻结状态 |
+| `swarm bot exit --reason selection-budget` | 当前 Bot 未绑定且没有未决 take | 选工额度用尽后退出；费用仍归 Mission/Bot/Core |
 
 Mission submit 只运行已配置的最终验收，不授权未绑定 Bot 任意执行 Judge/研究计算。服务从 Context 解析并固定显式材料列表；不需要材料的 Mission 可以显式提交空集合，不为提交编造 Material。新增 Material 不会自动进入已提交输入。相同请求幂等，另一个请求遇到现有有效 submission 时返回其引用，不开启第二轮并发验收。冻结覆盖新的 merge 提交；已开始但尚未提交的 merge 也必须在条件更新前重新检查冻结状态。
 
 有效 PASS 后按正常停止流程进入软收尾，禁止新提案/take 和 main merge，现有 E 在有限收尾权限内保存成果并 finish；硬上限最终终止。失败、错误或超时持久记录结果，只释放属于本 submission 的冻结；Mission 仍运行且没有其他有效冻结时才恢复 main merge。迟到结果只补充审计，不能覆盖终结结果、恢复已停止 Mission 或解除较新 submission 的冻结。Runtime/服务重启需对账 submission 和冻结状态，不能永久遗留冻结或重复接受。
 
-无工作 Bot 退出后，Runtime 按新工作/状态事件或有界退避再发现，不因空槽立即无休止重建同样的 Bot。
+未绑定 Bot 耗尽选工预算或被停止后，Runtime 在 Mission 剩余额度内按公开状态变化和有界退避安排后续发现。空槽本身不触发无限重建。
 
 示例：
 
 ```bash
-swarm bot exit --reason no-work
 swarm bot exit --reason selection-budget
 swarm mission submit --materials M1,M2 --request-id mission-submit-demo --json
+swarm mission submission view --json
 swarm mission submission view SUB1 --json
 ```
 
@@ -326,7 +326,7 @@ finish 被接受后立即进入 closing 并拒绝新贡献；Task owner/Core 只
 | `swarm material search <query>` | 检索研究内容 | 全文/关键词、来源过滤、基本排序；默认隐藏整份 superseded 旧材料 |
 | `swarm material view <material-id>` | 读取实际内容 | 正文/附件、生产来源、证据自述、确切版本及纠错关系 |
 | `swarm material publish` | 发布内容 | 文件/stdin 输入，服务自动绑定当前 Mission/Task/E/Bot；文件成果引用 Workspace revision/path |
-| `swarm material use <material-id>` | 记录有意义的实际使用 | 说明影响的推导、实验、决策或产物，不记录每次普通打开 |
+| `swarm material consume --material-ids '["M1"]' --action integration --impact "Used M1 to choose the boundary case in the integrated proof."` | 当前有效 E 记录有意义的实际使用 | ID 用带引号的 JSON 数组；action 为 route、task、workspace 或 integration；说明实际影响的推导、实验、决策或产物，普通读取不记录为使用 |
 | `swarm material dispute <material-id>` | 尚未决定替代的质疑 | 说明受影响主张、原因与证据；原文保留并警示 |
 | `swarm material supersede <old-id> --with <new-id>` | 整份替代 | 新版自包含地承接仍有效内容；整份旧版从默认列表/搜索隐藏，历史/精确 ID 保留；不能用局部替代维持默认旧版 |
 | `swarm material unsupersede <old-id> --with <new-id> --reason ...` | 撤销错误的当前替代关系 | 仅撤销匹配的 old→new，按关系版本条件更新并幂等；保留原文/关系历史，无其他有效替代时旧版恢复默认可见 |
@@ -412,9 +412,10 @@ description: 在有限选工预算内发现、提出或选择 Task，处理竞�
 1. 阅读 Mission、验收与剩余选工预算。用 Workspace files/read/search 获取相关文件，保留 resolved revision；不要读取尚未物化的本地项目树。
 2. 跨相关状态搜索 Task，读取最相近合同与实际产物。关注正在进行、已完成、阻塞和取消的相关责任，不要求扫描全部历史。说明尚未覆盖的检索范围。
 3. 检索相关 Material，检查正文和更正。优先接续合适已有工作；已有局部成果可用时，不无谓等待其整个生产 Task 完成。
-4. 缺少明确责任时提出局部 Task：目标、交付、完成条件、输入、Dependencies 和与已有工作的区别。可行性探索、反例搜索、失败复现也可以形成有用交付，不必预先承诺研究会成功。
-5. 用简短事实说明选择，调用 take。竞争失败仍在原选工阶段；请求未知时查询/重试原请求。成功后核对实际初始输入和固定工作目录。
-6. 无工作或选工预算耗尽且没有未决 take 时，bot exit --reason no-work 或 selection-budget。不要不断造 Task/重试保持忙碌。
+4. 若 Mission 仍开放、没有合适 ready Task 且还有选工预算（包括相关 Tasks 均 done），读取 Mission 当前验收状态、main 和相关提交。结合公开 Workspace、相关任务交付与 Material，定位一个与实际验收相关的缺口并主动提出局部 Task，写清目标、可验证交付、完成条件、输入和与已有工作的区别。若解法未知，提出能缩小某项已知不确定性的调查。
+5. 提案前和 take 前刷新最相关的查询，查刚出现的责任和交付，无须重扫历史。优先选择已有合适责任；重叠情况下只做实际有独立价值的验证、补充或整合。未认领的重复提案只按 Mission 协调授权撤回；已认领后由当前 E 按 cancelled 合同撤回自身无效责任。刷新后仍可能并发提案。用简短事实说明选择再 take；竞争失败仍在原选工阶段，结果未知时恢复原请求，成功后核对实际输入。
+6. 验收超时是基础设施结果，不能据此声称科学 FAIL 或 Mission 通过。遵守权限和配置的快照重试政策，保留原提交身份恢复未知的请求。不得为了获得重试而做占位工作、重开 done Task 或刻意改变快照。
+7. 开放 Mission 仍有选工预算时不能以 no-work 退出，继续有界诊断与提案；预算实际耗尽且无未决 take 时使用 bot exit --reason selection-budget。Mission 已接受或停止时停止扩展责任。已有 E 不能完成原责任且没有必要等待项或撤回理由时，按实际成果 finish incomplete，再由新 Bot 读公开成果并重新选工。
 
 Task 目标、交付和完成条件不 revise。执行中发现必要前置时，先保存有用成果，再 finish --outcome blocked --wait-for T2。目标需要根本改变时提出新责任，再 cancelled --replacement T3 撤回旧项。
 

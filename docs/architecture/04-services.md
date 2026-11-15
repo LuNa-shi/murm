@@ -283,7 +283,7 @@ Sources: [SDK](../../src/sdk/services-sdk.js), [router](../../src/sdk/service-ro
 
 ### Bot CLI routing
 
-When a worker supplies `SWARMENV_BRIDGE_URL`, `swarm` requires `SWARMENV_BRIDGE_TOKEN` and posts its operation and input to `/call`; actor, Core and Execution binding come from the Bridge. This route covers public Task, Material, Workspace and Bot operations, including `swarm bot exit --reason no-work|selection-budget`. Operator-style standalone invocation without a Bridge still discovers the configured Service manifest and calls its advertised path. A configured Bridge failure does not silently fall back to standalone credentials. The `bot` command is a Task Service transport alias in standalone mode.
+When a worker supplies `SWARMENV_BRIDGE_URL`, `swarm` requires `SWARMENV_BRIDGE_TOKEN` and posts its operation and input to `/call`; actor, Core and Execution binding come from the Bridge. This route covers public Task, Material, Workspace and Bot operations, including the unbound budget exit `swarm bot exit --reason selection-budget`. Operator-style standalone invocation without a Bridge still discovers the configured Service manifest and calls its advertised path. A configured Bridge failure does not silently fall back to standalone credentials. The `bot` command is a Task Service transport alias in standalone mode.
 
 ## Judge admission and soft closeout
 

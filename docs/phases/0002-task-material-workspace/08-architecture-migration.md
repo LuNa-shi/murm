@@ -136,7 +136,7 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 **依赖：** P0；按 #122 已确认的 v1 生命周期、权限和数据版本边界实施。
 
-**闭环：** 创建 Mission、Workspace main 初始 commit/revision `0.1`；独立知识输入另存为 Material，Task 表为空；启动一个只读 Bot，展示并记录真实初始 prompt；Bot 经 Workspace API 读取文件并提出 Task；同一 Pi 经准备输入→E active→开放写权限→发布绑定完成 take，发布最小有效 Material，再按 done/incomplete/blocked/cancelled 调用 task finish。未 take 无工作或选工预算耗尽时通过 bot exit 正常退出。清理完成后用新 Bot 读取该 Material。补充双 Bot 竞争同 Task 和同 Bot 双重 take 的故障安排。
+**闭环：** 创建 Mission、Workspace main 初始 commit/revision `0.1`；独立知识输入另存为 Material，Task 表为空；启动一个只读 Bot，展示并记录真实初始 prompt；Bot 经 Workspace API 读取文件并提出 Task；同一 Pi 经准备输入→E active→开放写权限→发布绑定完成 take，发布最小有效 Material，再按 done/incomplete/blocked/cancelled 调用 task finish。开放 Mission 无现成可领 Task 且尚有选工预算时由 Bot 发现缺口并提出责任；实际耗尽选工预算的未绑定 Bot 通过 bot exit 正常退出。清理完成后用新 Bot 读取该 Material。补充双 Bot 竞争同 Task 和同 Bot 双重 take 的故障安排。
 
 **必须一起交付：** 新 schema 的隔离运行边界、Task/E/Bot 排他、稳定 Task 合同和窄动态依赖、准备与关闭请求持久化、固定项目路径、初始 revision 的 files/read/search 与可信权限开放、普通 Service 写请求校验/撤权、无 E 成本、停止对账、实际 take 返回和最小 UI 事实。Material 单次发布自动绑定来源，只需足够完成此闭环，不提前宣称检索/纠错策略已完善。
 

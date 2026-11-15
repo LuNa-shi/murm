@@ -20,7 +20,7 @@ Example (replace the responsibility and completion evidence with your own):
   printf '%s\\n' '{"summary":"Check a boundary case","expected_output":"A reproducible result","acceptance_conditions":["The result includes a reproducible check"]}' | swarm task propose --stdin --request-id propose-boundary`;
 const WORKSPACE_FILES_HELP = 'List public paths. Use --at R (main is allowed), an optional positional path prefix, --limit or --cursor. Example: swarm workspace files --at 0.1 --limit 20';
 const COMMAND_HELP = Object.freeze({
-  bot: { exit: 'End an unbound Bot. Required: --reason no-work or selection-budget. The Core is released after cleanup.' },
+  bot: { exit: 'End an unbound Bot with no pending take after the selection budget expires. Use --reason selection-budget. For an open Mission with selection time left, inspect the public gap and propose work if no Task fits. The Core is released after cleanup.' },
   task: {
     list: `Search Task summaries using --query, --limit (1-100) and --cursor. Omit the state filter to include all states, use --state for one state, or pass a quoted JSON array to --states.
   swarm task list --state ready
