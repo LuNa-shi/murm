@@ -5,15 +5,15 @@
   "sources": [
     {
       "path": "src/agent/bot-contract.js",
-      "sha256": "df2fce8465089d28730fe6122d6f756d9806c6f0c4817016ee0aa9c5a809cd21"
+      "sha256": "61cc7f5f7ef39f71b2c2317742c3f74cb6d8a47888308cbc37415c91a8a15c02"
     },
     {
       "path": "src/agent/bot-contract/system.txt",
-      "sha256": "683af4e09fe2b53ee766fb62bbc04000ed2fb2afe89f9ec00e51e6b933c0c5c5"
+      "sha256": "304c03fb6c5e7e5e53980adf1b2977ae57f7d51215cf6412733f9b8d71ddff90"
     },
     {
       "path": "src/agent/bot-contract/plan-task.md",
-      "sha256": "ad8fc7334c516956bfdec6a10c1c73a929bd03f887979ac4a5844ce4d1894b35"
+      "sha256": "c369dce0c2f77d597d4f199c6b767c57ac4cea2b9b7bb5fdd069b7f8e77ef695"
     },
     {
       "path": "src/agent/bot-contract/use-material.md",
@@ -41,7 +41,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "4c672ee2567e3a75f6bb5e9c83bc80d96d1e30e9a3f9325207eea7fb46a46af3"
+      "sha256": "bdfe183785007d3516dc7e6e459799d4ecfc4d03dd4d13ade5930332db5e287a"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -57,7 +57,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "1c86b7833ccaeebeb77b6c6ac3cceb38143396ca50a330cd0371cd7511ce6119"
+      "sha256": "e3ecaf20c98c2270924214190eb01aee5057b617bd3026b72cc040ac656c3518"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -65,7 +65,7 @@
     },
     {
       "path": "src/runtime/identity-task-loop.js",
-      "sha256": "d79f2e8ef4703796ae5ccf62605f0d8bce13a3ddf21a4d52ea9c7c64a942fe41"
+      "sha256": "c1457d30ba19b4153559a8c68e7f0ce9746a060205971125017aad358a5ea378"
     },
     {
       "path": "src/runtime/runtime-capabilities.js",
@@ -105,7 +105,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "d27496e1f9f22c8405bc846efc55f6d7c4cc9373974b0a110dabd69cffc14ebf"
+      "sha256": "4bc25ec93c8db5a8900f5e70766752e608b78bfa20fdd0166f5052fe359ced6c"
     },
     {
       "path": "src/task/task-types.js",
@@ -128,7 +128,7 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 649,
+      "line": 653,
       "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
     },
     {
@@ -175,12 +175,12 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 428,
+      "line": 432,
       "expression": "const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 722,
+      "line": 733,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
     },
     {
@@ -236,13 +236,13 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 645,
+      "line": 644,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 652,
+      "line": 651,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -320,25 +320,25 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1739,
+      "line": 1743,
       "field": "guidance",
       "sha256": "2331ed3898810daacce352f5433d670aae5a8e9127527d6f6dbdd13c314fa95e"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1855,
+      "line": 1859,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 2067,
+      "line": 2071,
       "field": "action",
       "sha256": "ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 2160,
+      "line": 2164,
       "field": "guidance",
       "sha256": "0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b"
     }
@@ -346,7 +346,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "455209a8ceb69709937a0b10d0f4a987f51dc31e351115ad05302ca36a6439e7"
+      "sha256": "d763dc80cbad61f726b6a6d4970ac6a9ba0b74107638b0d95a9b3fdca0bcd962"
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
@@ -354,11 +354,11 @@
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "39129321a1ffa3365b1bec083c8f723d52d3d4f75efcca3d37e5412d54bee0e0"
+      "sha256": "7065b019f611f058592207c12570fcf0b562df2179e9289e9421381b21246843"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
-      "sha256": "3e9fc1eab0989da856f722caaa44758e9083abc4a2312d705220ec3ce55666c1"
+      "sha256": "e744a7802cb941d2159a828e3fce19726a560cf506861ddce6da02b3c2ad2ec0"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
@@ -370,7 +370,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "fb870bdf82d59ebe22b4190ddb076151e0edbd0c461102851c0f67710167a45f"
+      "sha256": "b541a4c631ce0e1b06a242d8b1f19214f7c770902f88ef7b7a336df9625a023e"
     }
   ]
 }
