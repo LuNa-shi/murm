@@ -31,6 +31,7 @@ const metrics = ['requests', 'inputTokens', 'outputTokens', 'cost'];
 const phases = ['selection', 'work', 'closeout'];
 const maximumBodyBytes = 8 * 1024 * 1024;
 const maximumEventBytes = 8 * 1024 * 1024;
+const executionAuthorityCheckMs = 1000;
 const maximumReceiptBytes = 1024 * 1024;
 const terminalStatuses = new Map([
   ['response.completed', 'completed'],
@@ -269,7 +270,7 @@ export class ResponsesBudgetGateway {
   #server;
   #closing = false;
   #working = new Set();
-  #controllers = new Set();
+  #controllers = new Map();
   #stopPromise;
   #attempts;
 
@@ -351,7 +352,11 @@ export class ResponsesBudgetGateway {
   }
 
   revokeToken(token) {
-    return this.#tokens.delete(token);
+    const revoked = this.#tokens.delete(token);
+    for (const [controller, activeToken] of this.#controllers) {
+      if (activeToken === token) controller.abort();
+    }
+    return revoked;
   }
 
   observedUsage(missionId) {
@@ -375,7 +380,7 @@ export class ResponsesBudgetGateway {
     if (this.#stopPromise) return this.#stopPromise;
     this.#closing = true;
     this.#tokens.clear();
-    for (const controller of this.#controllers) controller.abort();
+    for (const controller of this.#controllers.keys()) controller.abort();
     const closed = this.#server
       ? new Promise((resolve, rejectClose) => this.#server.close(error => {
         if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') rejectClose(error);
@@ -422,11 +427,44 @@ export class ResponsesBudgetGateway {
         .run(missionId, botId, requestId, phase, fingerprint, budget?.inputTokens ?? null, budget?.outputTokens ?? null, budget?.cost ?? null,
           startedAt, deadline);
       this.db.exec('COMMIT');
-      return { ...binding, deadline };
+      return { ...binding, deadline, authority };
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  #watchAuthority({ token, missionId, botId, deadline, authority, controller }) {
+    let hardDeadline = deadline;
+    let timer;
+    const arm = current => {
+      const nextCheck = authority.executionId
+        ? Math.min(hardDeadline, current.leaseDeadline, Date.now() + executionAuthorityCheckMs)
+        : hardDeadline;
+      timer = setTimeout(check, Math.max(0, nextCheck - Date.now()));
+    };
+    const check = () => {
+      if (controller.signal.aborted) return;
+      try {
+        if (Date.now() < hardDeadline && this.#tokens.has(token) && authority.executionId) {
+          const current = this.validateBot({ missionId, botId });
+          const at = Date.now();
+          if (current?.executionId === authority.executionId && current.fencingVersion === authority.fencingVersion &&
+              at < current.leaseDeadline && at < current.deadline) {
+            hardDeadline = Math.min(hardDeadline, current.deadline);
+            if (at < hardDeadline) {
+              arm(current);
+              return;
+            }
+          }
+        }
+      } catch {
+        // Unavailable Task authority cannot keep an admitted request alive.
+      }
+      controller.abort();
+    };
+    arm(authority);
+    return () => clearTimeout(timer);
   }
 
   #assertBudget(missionId, botId, phase, budget) {
@@ -483,7 +521,7 @@ export class ResponsesBudgetGateway {
       ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
     };
     const fingerprint = createHash('sha256').update(JSON.stringify(canonicalPayload(body))).digest('hex');
-    let missionId, botId, receipt, deadline, timer, upstreamWork;
+    let missionId, botId, receipt, cancelWatch, upstreamWork;
     const controller = new AbortController();
     const disconnect = () => controller.abort();
     let usageRecorded = false;
@@ -495,10 +533,11 @@ export class ResponsesBudgetGateway {
       // dispatch share the Task lifecycle writer window. Settlement never
       // holds that lock while waiting on external IO.
       this.withLifecycleWrite(() => {
-        ({ missionId, botId, receipt, deadline } = this.#admit(token, requestId, fingerprint, budget));
+        const admission = this.#admit(token, requestId, fingerprint, budget);
+        ({ missionId, botId, receipt } = admission);
         if (receipt) return;
-        this.#controllers.add(controller);
-        timer = setTimeout(() => controller.abort(), Math.max(0, deadline - Date.now()));
+        this.#controllers.set(controller, token);
+        cancelWatch = this.#watchAuthority({ ...admission, token, controller });
         response.once('close', disconnect);
         upstreamWork = this.fetch(this.policy.url, {
           method: 'POST', headers: this.headers, redirect: 'error', signal: controller.signal,
@@ -546,7 +585,7 @@ export class ResponsesBudgetGateway {
           .run(Buffer.concat(receiptChunks), missionId, botId, requestId);
       }
     } finally {
-      clearTimeout(timer);
+      cancelWatch?.();
       controller.abort();
       response.removeListener('close', disconnect);
       this.#controllers.delete(controller);

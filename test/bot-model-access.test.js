@@ -3,13 +3,14 @@ import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { BotModelAccess, assertBenchmarkModelPair } from '../src/agent/bot-model-access.js';
 
-async function fixture(t, { fetchImpl, autoStart = true, timeBounded = false } = {}) {
+async function fixture(t, { fetchImpl, autoStart = true, timeBounded = false, requestTimeoutMs = 1000 } = {}) {
   const db = new DatabaseSync(':memory:');
   const bot = { bot_id: 'b', mission_id: 'm', state: 'UNBOUND', hard_deadline: new Date(Date.now() + 60_000).toISOString(),
     selection_deadline: new Date(Date.now() + 30_000).toISOString() };
-  const execution = { execution_id: 'e', owner_ref: 'b', state: 'RUNNING', execution_deadline: bot.hard_deadline, lease_expires_at: bot.hard_deadline };
+  const execution = { execution_id: 'e', owner_ref: 'b', state: 'RUNNING', fencing_version: 1, execution_deadline: bot.hard_deadline, lease_expires_at: bot.hard_deadline };
   let stopping = false;
   let accepted = false;
   let closeoutDeadline = Infinity;
@@ -20,10 +21,10 @@ async function fixture(t, { fetchImpl, autoStart = true, timeBounded = false } =
     deadline: () => Date.now() + 60_000, closeoutDeadline: () => closeoutDeadline, isStopping: () => stopping,
     upstream: { url: 'http://upstream.test/v1/responses', headers: { authorization: 'Bearer host-secret' } },
     timeBounded,
-    configuration: timeBounded ? {} : { limits: { mission: allowance, bot: allowance, selection: allowance,
+    configuration: timeBounded ? { requestTimeoutMs } : { limits: { mission: allowance, bot: allowance, selection: allowance,
       closeout: { requests: 2, inputTokens: 200, outputTokens: 200, cost: 400 } },
       contract: { maxInputTokens: 100, maxOutputTokens: 100, maxFanout: 1, inputCostPerToken: 1,
-        outputCostPerToken: 1, fixedAttemptCost: 0, costUnit: 'test-units', requestTimeoutMs: 1000, boundEvidence: 'controlled upstream' } },
+        outputCostPerToken: 1, fixedAttemptCost: 0, costUnit: 'test-units', requestTimeoutMs, boundEvidence: 'controlled upstream' } },
     fetchImpl: fetchImpl ?? (async (url, options) => {
       requests.push({ url, options });
       return new Response('event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
@@ -101,6 +102,55 @@ test('gateway aborts a held upstream request at the earlier Bot deadline and ret
   assert.equal(await call, 502);
   const accounted = f.access.gateway.totals({ missionId: 'm' });
   assert.deepEqual({ ...accounted }, { requests: 1, inputTokens: 100, outputTokens: 100, cost: 200 });
+});
+
+test('held model HTTP requests follow a renewed lease for the same Execution and fence', async t => {
+  for (const outcome of ['renewed', 'unrenewed', 'finished', 'owner-changed', 'fenced', 'revoked', 'request-deadline']) {
+    await t.test(outcome, { timeout: 3000 }, async t => {
+      const { promise: started, resolve: dispatch } = Promise.withResolvers();
+      const { promise: terminal, resolve: complete } = Promise.withResolvers();
+      const { promise: aborted, resolve: recordAbort } = Promise.withResolvers();
+      let upstreamCalls = 0;
+      const f = await fixture(t, {
+        timeBounded: true, requestTimeoutMs: outcome === 'request-deadline' ? 450 : 1500,
+        fetchImpl: async (_url, { signal }) => {
+          upstreamCalls++;
+          const abort = new Promise((_, reject) => signal.addEventListener('abort', () => {
+            recordAbort(Date.now());
+            reject(signal.reason);
+          }, { once: true }));
+          dispatch(Date.now());
+          await Promise.race([terminal, abort]);
+          return new Response('event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","model":"fixed","usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
+            { headers: { 'content-type': 'text/event-stream' } });
+        },
+      });
+      f.bot.state = 'ACTIVE';
+      f.bot.execution_id = 'e';
+      const leaseAt = Date.now() + 250;
+      f.execution.lease_expires_at = new Date(leaseAt).toISOString();
+      const call = f.call();
+      const startedAt = await started;
+      if (outcome !== 'unrenewed') f.execution.lease_expires_at = new Date(leaseAt + 10_000).toISOString();
+      if (outcome === 'finished') f.execution.state = 'SUCCEEDED';
+      if (outcome === 'owner-changed') f.execution.owner_ref = 'another-bot';
+      if (outcome === 'fenced') f.execution.fencing_version++;
+      if (outcome === 'revoked') f.access.revokeBot('b');
+      if (outcome === 'renewed') {
+        await delay(leaseAt - Date.now() + 75);
+        complete();
+        assert.equal(await call, 200);
+        assert.equal(f.access.evidence().observed_usage.requests_with_usage, 1);
+      } else {
+        const abortedAt = await aborted;
+        assert.equal(await call, 502);
+        assert.equal(f.access.evidence().observed_usage.unknown_requests, 1);
+        if (outcome === 'request-deadline') assert.ok(abortedAt >= startedAt + 425 && abortedAt < startedAt + 850);
+        else if (outcome !== 'revoked') assert.ok(abortedAt >= leaseAt - 15 && abortedAt < leaseAt + 400);
+      }
+      assert.equal(upstreamCalls, 1);
+    });
+  }
 });
 
 test('gateway stop during listen settles startup and repeated stop', async t => {

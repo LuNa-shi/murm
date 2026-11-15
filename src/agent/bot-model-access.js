@@ -43,12 +43,15 @@ export class BotModelAccess {
         if (bot.state === 'UNBOUND') return !taskService.isMissionStopped(missionId) && at < Date.parse(bot.selection_deadline) ? { phase: 'selection', deadline: Math.min(deadline(), Date.parse(bot.hard_deadline), Date.parse(bot.selection_deadline)) } : null;
         if (bot.state !== 'ACTIVE') return null;
         const execution = taskService.getExecution(bot.execution_id);
+        const executionDeadline = Date.parse(execution?.execution_deadline);
+        const leaseDeadline = Date.parse(execution?.lease_expires_at);
         if (execution?.owner_ref !== botId || execution.state !== 'RUNNING' ||
-            at >= Date.parse(execution.execution_deadline) || at >= Date.parse(execution.lease_expires_at)) return null;
+            !(at < executionDeadline && at < leaseDeadline)) return null;
         if (taskService.isMissionStopped(missionId) && !isSoftCloseout(execution, at)) return null;
         const phase = isSoftCloseout(execution, at) ? 'closeout' : 'work';
         return phase === 'closeout' && at >= closeoutDeadline() ? null : { phase, deadline: Math.min(deadline(), Date.parse(bot.hard_deadline),
-          Date.parse(execution.execution_deadline), Date.parse(execution.lease_expires_at), phase === 'closeout' ? closeoutDeadline() : Infinity) };
+          executionDeadline, phase === 'closeout' ? closeoutDeadline() : Infinity),
+          executionId: bot.execution_id, fencingVersion: execution.fencing_version, leaseDeadline };
       } });
   }
 
