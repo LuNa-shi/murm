@@ -891,25 +891,40 @@ async function joinCleanup(promises) {
   return results.map(result => result.value);
 }
 
-async function settleBy(promise, deadline) {
-  let timer;
+function operatorStop() {
+  return Object.assign(new Error('Benchmark stopped by operator'), { code: 'BENCHMARK_OPERATOR_STOPPED' });
+}
+
+async function settleBy(promise, deadline, signal) {
+  let timer, onAbort;
   try {
+    const stopped = signal && new Promise(resolve => {
+      onAbort = () => resolve({ status: 'aborted' });
+      signal.addEventListener('abort', onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    });
     return await Promise.race([
+      ...(stopped ? [stopped] : []),
       Promise.resolve(promise).then(value => ({ status: 'fulfilled', value }), reason => ({ status: 'rejected', reason })),
       new Promise(resolve => { timer = setTimeout(() => resolve({ status: 'pending' }), Math.max(0, deadline - Date.now())); }),
     ]);
-  } finally { clearTimeout(timer); }
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) signal.removeEventListener('abort', onAbort);
+  }
 }
 
 // This deadline bounds orchestration waits, not just individual model turns.
 // The underlying operation remains tracked and joins the shutdown boundary.
 export async function withinRunDeadline(state, operation, deadline) {
+  if (state.signal?.aborted) throw operatorStop();
   if (Date.now() >= deadline) throw Object.assign(new Error('Benchmark execution timebox elapsed'), { code: 'BENCHMARK_TIMEBOX_EXPIRED' });
   const promise = typeof operation === 'function' ? operation() : operation;
   state.pendingRunOperations ??= new Set();
   const tracked = Promise.resolve(promise).finally(() => state.pendingRunOperations.delete(tracked));
   state.pendingRunOperations.add(tracked);
-  const result = await settleBy(tracked, deadline);
+  const result = await settleBy(tracked, deadline, state.signal);
+  if (result.status === 'aborted') throw operatorStop();
   if (result.status === 'rejected') throw result.reason;
   if (result.status === 'pending') {
     const error = new Error('Benchmark execution timebox elapsed');
@@ -935,7 +950,8 @@ export async function stopCore(state, core, { cleanupGraceMs = 30_000, cleanupDe
       // shutdown independently confirm that any resources were removed.
       Promise.allSettled([core.sessionStartPromise]),
     ])],
-    ['RUNTIME_SHUTDOWN', () => core.runtime.shutdown({ terminalState: 'FAILED', terminalReason: 'benchmark_deadline_cleanup' })],
+    ['RUNTIME_SHUTDOWN', () => core.runtime.shutdown({ terminalState: 'FAILED',
+      terminalReason: state.signal?.aborted ? 'operator_stop' : 'benchmark_deadline_cleanup' })],
     ['BRIDGE_CLEANUP', () => core.bridge.stop()],
     ['SESSION_CLEANUP', () => joinCleanup([...sessions].map(async session => {
       await session.stop?.();
@@ -1455,6 +1471,8 @@ export function projectReport(state, startedAt, deadline) {
 }
 
 async function createProjectState(problem, config, options) {
+  const assertInitializing = () => { if (options.signal?.aborted) throw operatorStop(); };
+  assertInitializing();
   // The Mission-scoped Task lifecycle is the only supported model.
   // Reject removed programmatic mode toggles rather than silently ignoring them.
   if (Object.hasOwn(options, 'taskModel') || Object.hasOwn(options, 'taskOriented')) {
@@ -1511,6 +1529,7 @@ async function createProjectState(problem, config, options) {
     throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'A timed benchmark requires locked final and source checkers from the configured deployment');
   }
   const finalTreeDeployment = finalTreeConfiguration ? await createLockedFinalTreeVerifier({ configuration: finalTreeConfiguration, problem }) : null;
+  assertInitializing();
   const finalTreeChecker = options.finalTreeChecker ?? finalTreeDeployment?.adapter ?? null;
   const lockedSourceRunner = finalTreeDeployment?.adapter.runSourceDiagnostic.bind(finalTreeDeployment.adapter);
   let sandboxObservationStore = null;
@@ -1559,6 +1578,7 @@ async function createProjectState(problem, config, options) {
         },
       });
   if (sandboxManager) await sandboxManager.preflight({ timeoutMs: sandboxConfig.preflightTimeoutMs ?? 20_000 });
+  assertInitializing();
   const logRoot = join(experimentRoot, 'logs', 'projects', problem.id);
   await Promise.all([
     mkdir(projectDir, { recursive: true }),
@@ -1566,6 +1586,7 @@ async function createProjectState(problem, config, options) {
     mkdir(workspaceRoot, { recursive: true }),
     mkdir(logRoot, { recursive: true }),
   ]);
+  assertInitializing();
   const databasePath = join(projectDir, 'project.sqlite');
   const database = new DatabaseSync(databasePath);
   let contextService;
@@ -1577,9 +1598,14 @@ async function createProjectState(problem, config, options) {
   const cores = [];
   try { return await initializeProjectState(); }
   catch (error) {
-    const cleanup = { cores, cleanupErrors: [], missionSubmissionStore, modelAccess, judgeService };
+    const cleanup = { cores, cleanupErrors: [], missionSubmissionStore, modelAccess, judgeService, signal: options.signal };
     await stopBenchmarkRuntime(cleanup, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
     closeProjectStores(cleanup, closeStores, options);
+    if (options.signal?.aborted) {
+      const stopped = operatorStop();
+      stopped.cleanupErrors = cleanup.cleanupErrors;
+      throw stopped;
+    }
     throw error;
   }
 
@@ -1780,6 +1806,7 @@ async function createProjectState(problem, config, options) {
     // sessions start. The hook uses the same Task Service boundary as Agent
     // operations; it does not replace queue take, Runtime, or dispatch logic.
     await options.prepareProject?.({ owner, root: null, mission, publicWorkspace, initialTasks, taskService, contextService, router, fixture, problem });
+    assertInitializing();
     if (modelConfiguration !== null) {
       modelDatabase = new DatabaseSync(join(projectDir, 'model-budget.sqlite'));
       modelAccess = new BotModelAccess({ db: modelDatabase, taskService, missionId: mission.mission_id,
@@ -1795,6 +1822,7 @@ async function createProjectState(problem, config, options) {
       for (let index = 1; index <= 4; index += 1) {
       const coreDir = join(workspaceRoot, `core-${index}`);
       await mkdir(coreDir, { recursive: true });
+      assertInitializing();
       const childEnv = { ...process.env };
       const adapter = new OpenSandboxAgentAdapter({
           sandboxManager,
@@ -2512,6 +2540,7 @@ async function createProjectState(problem, config, options) {
       provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER ?? null,
       model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL ?? null,
       timeboxMs: options.timeboxMs ?? 60 * 60_000,
+      signal: options.signal,
       runDeadlineAt: startedAt + (options.timeboxMs ?? 60 * 60_000),
       missionCloseoutMs: options.missionCloseoutMs ?? 30_000,
       fixtureManifest: fixture,
@@ -2588,8 +2617,10 @@ async function createProjectState(problem, config, options) {
   }
 }
 
-export async function runBenchmarkProject(problem, config, options = {}) {
+async function runProject(problem, config, options) {
   assertCurrentParallelConfiguration(options);
+  if (!SAFE_PROJECT_ID.test(problem.id)) throw new TypeError(`unsafe problem id: ${problem.id}`);
+  if (options.signal?.aborted) throw operatorStop();
   if ((options.timeboxMs ?? 60 * 60_000) > 0) {
     problem = { ...problem };
     config = { ...config };
@@ -2606,6 +2637,14 @@ export async function runBenchmarkProject(problem, config, options = {}) {
     // Also owns exceptions during orchestration, report generation and write.
     // A timed-out join retains the store until all admitted work settles.
     closeProjectStores(state, state.closeStores, options);
+  }
+}
+
+export async function runBenchmarkProject(problem, config, options = {}) {
+  try { return await runProject(problem, config, options); }
+  catch (error) {
+    if (error.code !== 'BENCHMARK_OPERATOR_STOPPED') throw error;
+    return writeUnavailableProjectReport(problem, options, error, { operatorStopped: true });
   }
 }
 
@@ -2649,6 +2688,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
       healthy: !core.stopping,
     }),
     signalIdleIdentity: (_loop, payload) => {
+      if (state.signal?.aborted) return;
       // This callback runs inside a Controller reconciliation pass.  The
       // general wake helper also asks the Controller to reconcile, which would
       // queue another pass from this callback and self-trigger on an OPEN
@@ -2794,7 +2834,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
     return loop;
   });
   state.requestIdentityWake = (reason = 'event') => {
-    if (state.stopping) return;
+    if (state.stopping || state.signal?.aborted) return;
     state.identityWakeRequested = true;
     resolveIdentityWake();
     void state.controller.notify(reason).catch(() => undefined);
@@ -2821,7 +2861,18 @@ async function executeBenchmarkProject(state, problem, config, options) {
     in_flight_core_ids: state.identityLoops.filter((loop) => loop.snapshot().state !== 'IDLE').map((loop) => loop.coreId),
     stopped: state.identityLoops.every((loop) => loop.snapshot().stopped),
   }) };
+  let operatorStoppedAt;
+  const onOperatorStop = () => {
+    operatorStoppedAt = Date.now();
+    state.stopping = true;
+    for (const core of state.cores) core.stopping = true;
+    state.identityLoopAbortController?.abort();
+    for (const loop of state.identityLoops) loop.stop();
+    resolveIdentityWake();
+  };
+  state.signal?.addEventListener('abort', onOperatorStop, { once: true });
   try {
+    if (state.signal?.aborted) throw operatorStop();
     // Every configured Core enters discovery, including a zero-Task Mission.
     // Readiness is context for the Bot, not permission to start discovery.
     if (state.missionCloseoutDeadline === undefined) await withinRunDeadline(state, () => state.controller.reconcile({ reason: 'initial' }), deadline);
@@ -2918,7 +2969,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
         });
     }, options.executionTimeoutSweepMs ?? 10_000);
     try {
-      while (Date.now() < Math.min(deadline, state.missionCloseoutDeadline ?? deadline)) {
+      while (!state.signal?.aborted && Date.now() < Math.min(deadline, state.missionCloseoutDeadline ?? deadline)) {
         // Acceptance may precede wake wiring. Nothing can start after PASS;
         // if no activated Execution needs closeout, proceed directly to stop.
         if (state.missionSubmissionStore.isAccepted(state.missionId) &&
@@ -2926,12 +2977,14 @@ async function executeBenchmarkProject(state, problem, config, options) {
         if (!state.identityWakeRequested) {
           await Promise.race([sleep(Math.max(0, Math.min(options.pollMs ?? 5_000, Math.min(deadline, state.missionCloseoutDeadline ?? deadline) - Date.now()))), identityWake]);
         }
+        if (state.signal?.aborted) break;
         const reconcileReason = state.identityWakeRequested ? 'event' : 'poll';
         state.identityWakeRequested = false;
         identityWake = new Promise((resolve) => { resolveIdentityWake = resolve; });
         if (state.missionSubmissionStore.isAccepted(state.missionId)) {
           if (state.missionCloseoutDeadline === undefined) {
-            const accepted = await state.missionSubmissionStore.get({ missionId: state.missionId });
+            const accepted = await withinRunDeadline(state, () => state.missionSubmissionStore.get({ missionId: state.missionId }), deadline);
+            if (state.signal?.aborted) break;
             beginMissionCloseout(state, accepted.submissions.find(row => row.state === 'accepted'));
           }
           const remaining = Math.min(deadline, state.missionCloseoutDeadline) - Date.now();
@@ -2977,8 +3030,9 @@ async function executeBenchmarkProject(state, problem, config, options) {
       state.backgroundStopPromises = [...(state.backgroundStopPromises ?? []), executionTimeoutSweepPromise, ...state.cores.map(core => core.watchdogPromise)].filter(Boolean);
     }
   } catch (error) {
-    if (error.code !== 'BENCHMARK_TIMEBOX_EXPIRED') throw error;
+    if (!['BENCHMARK_TIMEBOX_EXPIRED', 'BENCHMARK_OPERATOR_STOPPED'].includes(error.code)) throw error;
   } finally {
+    state.signal?.removeEventListener('abort', onOperatorStop);
     await stopBenchmarkRuntime(state, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
   }
   const report = projectReport(state, startedAt, deadline);
@@ -2993,6 +3047,16 @@ async function executeBenchmarkProject(state, problem, config, options) {
     report.run.protocol_valid = false;
     report.audit.invalid_reasons.push('cleanup_pending');
   }
+  if (state.signal?.aborted) {
+    report.run.protocol_valid = false;
+    report.run.stop_reason = 'operator_stop';
+    if (operatorStoppedAt !== undefined) {
+      report.run.deadline_reached = operatorStoppedAt >= deadline;
+      report.run.ended_early = operatorStoppedAt < deadline;
+    }
+    report.audit.invalid = true;
+    report.audit.invalid_reasons.push('operator_stop');
+  }
   state.observationStore.append({
     experimentId: state.runId,
     source: 'runtime',
@@ -3000,8 +3064,45 @@ async function executeBenchmarkProject(state, problem, config, options) {
     taskId: null,
     payload: { solved: report.run.solved, protocol_valid: report.run.protocol_valid, made_progress: report.run.made_progress },
   });
-  state.observationStore.finishExperiment(state.runId, { status: report.run.solved ? 'SUCCEEDED' : 'FINISHED' });
+  state.observationStore.finishExperiment(state.runId, { status: report.run.solved && !state.signal?.aborted ? 'SUCCEEDED' : 'FINISHED' });
   await writeFile(join(state.reportProjectDir, 'report.json'), JSON.stringify(report, null, 2));
+  return report;
+}
+
+async function writeUnavailableProjectReport(problem, options, error, { operatorStopped = false } = {}) {
+  const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt: 0 }).snapshot({ endedAt: 0 });
+  const report = {
+    schema_version: 1,
+    protocol: {
+      project_isolation: true,
+      core_count: 4,
+      project_parallelism: options.projectParallelism ?? 1,
+      task_model: 'flat',
+      input_policy: 'pinned formalization only; no candidate or solution input',
+      tool_policy: 'Pi read/write/edit/bash; services through authenticated swarm CLI; ambient extensions, skills, prompt templates and project context discovery disabled',
+      cheating_policy: 'placeholder or tool event outside read/write/edit/bash invalidates the project',
+    },
+    parallelism,
+    project: { problem_id: problem.id, source_hash: problem.source_hash ?? null },
+    run: {
+      protocol_valid: false,
+      made_progress: false,
+      progress_evidence: { proposed_task_count: 0, workspace_write_count: 0, meaningful_material_count: 0, candidate_check_count: 0 },
+      solved: false,
+      ended_early: operatorStopped,
+      ...(operatorStopped ? { stop_reason: 'operator_stop', cleanup_errors: error.cleanupErrors ?? [] } : {}),
+      elapsed_ms: null,
+      deadline_reached: false,
+      cleanup_elapsed_ms: null,
+    },
+    audit: { invalid: true, invalid_reasons: [operatorStopped ? 'operator_stop' : 'project_runner_error',
+      ...(error.cleanupErrors?.length ? ['cleanup_pending'] : [])], raw_transcript_exported: false, proof_contents_exported: false },
+    error: { code: operatorStopped ? 'BENCHMARK_OPERATOR_STOPPED' : error.code ?? error.name, class: operatorStopped ? 'operator_stop' : safeDiagnostic(error.message) ?? 'project_runner_error' },
+  };
+  validateBenchmarkReport(report);
+  const projectDir = join(resolve(options.reportDir ?? options.experimentDir), problem.id);
+  await mkdir(projectDir, { recursive: true });
+  await writeFile(join(projectDir, 'report.json'), JSON.stringify(report, null, 2));
   return report;
 }
 
@@ -3018,38 +3119,7 @@ export async function runBenchmarkBatch(problems, config, options = {}) {
       try {
         reports[index] = await runBenchmarkProject(problems[index], config, options);
       } catch (error) {
-        const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt: 0 }).snapshot({ endedAt: 0 });
-        const report = {
-          schema_version: 1,
-          protocol: {
-            project_isolation: true,
-            core_count: 4,
-            project_parallelism: options.projectParallelism ?? 1,
-            task_model: 'flat',
-            input_policy: 'pinned formalization only; no candidate or solution input',
-            tool_policy: 'Pi read/write/edit/bash; services through authenticated swarm CLI; ambient extensions, skills, prompt templates and project context discovery disabled',
-            cheating_policy: 'placeholder or tool event outside read/write/edit/bash invalidates the project',
-          },
-          parallelism,
-          project: { problem_id: problems[index].id, source_hash: problems[index].source_hash ?? null },
-          run: {
-            protocol_valid: false,
-            made_progress: false,
-            progress_evidence: { proposed_task_count: 0, workspace_write_count: 0, meaningful_material_count: 0, candidate_check_count: 0 },
-            solved: false,
-            ended_early: false,
-            elapsed_ms: null,
-            deadline_reached: false,
-            cleanup_elapsed_ms: null,
-          },
-          audit: { invalid: true, invalid_reasons: ['project_runner_error'], raw_transcript_exported: false, proof_contents_exported: false },
-          error: { code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'project_runner_error' },
-        };
-        validateBenchmarkReport(report);
-        reports[index] = report;
-        const projectDir = join(resolve(options.reportDir ?? options.experimentDir), problems[index].id);
-        await mkdir(projectDir, { recursive: true });
-        await writeFile(join(projectDir, 'report.json'), JSON.stringify(report, null, 2));
+        reports[index] = await writeUnavailableProjectReport(problems[index], options, error);
       }
     }
   }

@@ -238,6 +238,16 @@ for (const [field, flag] of [['botMaxMs', '--bot-max-ms'], ['selectionTimeoutMs'
 if (!options.provider) throw new Error('PI_PROVIDER is required; set it in .env or the environment');
 if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the environment');
 
+const operatorStop = new AbortController();
+options.signal = operatorStop.signal;
+const onOperatorSignal = signal => {
+  if (operatorStop.signal.aborted) return;
+  operatorStop.abort(signal);
+  process.stderr.write(JSON.stringify({ status: 'stop_requested', reason: 'operator_stop', signal }) + '\n');
+};
+process.on('SIGINT', onOperatorSignal);
+process.on('SIGTERM', onOperatorSignal);
+
 // Resolve the selected upstream on the host. The sandbox receives a separate
 // per-Bot credential from the local gateway, never this provider key.
 const piProviderSettings = await loadPiProviderSettings(options.provider);
@@ -364,6 +374,7 @@ try {
       candidate_count: report.run?.candidate_count ?? null,
       invalid: report.audit?.invalid ?? true,
       invalid_reasons: report.audit?.invalid_reasons ?? [],
+      stop_reason: report.run?.stop_reason ?? null,
       repository_commit: report.protocol?.repository_commit ?? null,
       repository_worktree_dirty: report.protocol?.repository_worktree_dirty ?? null,
       agent_time_utilization_v0: report.parallelism?.agent_time_utilization_v0 ?? null,
@@ -385,8 +396,9 @@ try {
   await writeFile(metadataPath, JSON.stringify({
     ...metadata,
     ended_at: new Date().toISOString(),
-    status: 'completed',
-    valid_for_analysis: invalidCount === 0,
+    status: operatorStop.signal.aborted ? 'operator_stopped' : 'completed',
+    ...(operatorStop.signal.aborted ? { stop_reason: 'operator_stop', stop_signal: operatorStop.signal.reason } : {}),
+    valid_for_analysis: !operatorStop.signal.aborted && invalidCount === 0,
     result: {
       project_count: aggregate.projects.length,
       solved_count: solvedCount,
@@ -410,5 +422,12 @@ try {
     finally { clearInterval(keepAlive); }
   }
   try { observationStore?.close(); }
-  finally { await audit.close(); }
+  finally {
+    try { await audit.close(); }
+    finally {
+      process.off('SIGINT', onOperatorSignal);
+      process.off('SIGTERM', onOperatorSignal);
+      if (operatorStop.signal.aborted) process.exitCode = operatorStop.signal.reason === 'SIGINT' ? 130 : 143;
+    }
+  }
 }
