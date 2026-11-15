@@ -1,6 +1,6 @@
 # EXP-20261115-05: Four-Core single-project 30-minute validation
 
-Status: REGISTERED
+Status: BLOCKED
 Approved GitHub Issue: [#122 and owner decision](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563)
 Implementation: `6a256d6d4ed53d7b8281de1fd2f05ff21c28a94b`; independent Spec/Standards review covered renewable model authority, late-heartbeat rejection and production checker memory enforcement before registration.
 Repeat of: [EXP-20261115-04](EXP-20261115-04-single-problem-30m.md), which demonstrated four self-proposed/self-taken parallel Executions but was stopped on request-lease and source-checker defects. The new gateway observes timely lease renewal within the original request hard limit and cancels on loss of the same E/fence; Task Service rejects expired renewals. Lean compilation/replay relies on the unchanged physical cgroup memory cap rather than its conflicting internal threshold. Actual full-Mathlib source success/error, isolation, kernel/axiom rejection and B1 placeholder rejection were checked before this run.
@@ -50,7 +50,7 @@ Stop at the Mission deadline or trusted Mission acceptance, followed by bounded 
 
 ## Results
 
-Pending final checks and execution. This registration is not a successful experiment result.
+Launch commit `3b3f93e`; started at 2026-11-15T14:35:37.834Z. Startup rejected `Final-tree checker artifact content or path drift: verifier` before project/Bot/model activity. No aggregate result or completed 30-minute run exists. The lock correctly detected the verifier implementation change; the launch preparation had failed to regenerate its deployment fingerprint.
 
 ## Analysis
 
@@ -58,7 +58,7 @@ The preceding real run established the intended parallel Task creation and owner
 
 ## Next steps
 
-After a complete healthy 30-minute run, obtain independent content/lifecycle observations and separately register the authorized two-hour experiment with a finite longer Bot lifetime. Report all incomplete responsibilities, source failures, expected budget rejections and unobserved paths honestly.
+Regenerate the verifier artifact lock, validate it through the actual locked-verifier loader, and register a fresh 30-minute attempt. The two-hour run remains conditional on a healthy completed pilot.
 
 ## Evidence and limitations
 
