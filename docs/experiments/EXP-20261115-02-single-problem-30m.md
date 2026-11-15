@@ -1,6 +1,6 @@
 # EXP-20261115-02: Four-Core single-project 30-minute validation
 
-Status: REGISTERED
+Status: BLOCKED (startup only)
 Approved GitHub Issue: [#122 and owner decision](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563)
 Implementation: `e601e81a2bd17d17299e08d552ecccc93bf28a86`, with architecture clarification `c928e86`.
 Repeat of: [EXP-20261115-01](EXP-20261115-01-single-problem-30m.md), which stopped before creating a project because the default observation port was occupied. This repeat uses an independently health-checked loopback observation service through explicit metadata; all research parameters are unchanged.
@@ -50,7 +50,7 @@ Stop at the Mission deadline or trusted Mission acceptance, followed by bounded 
 
 ## Results
 
-Pending execution. No formal model result is asserted by this registration.
+The observation service was healthy, but the CLI exited during trusted checker configuration validation: the private deployment overlay encoded `artifactLock` as an array containing the lock rather than a lock object or path. The verifier correctly rejected it. No Bot, Execution, model request or aggregate report exists for this attempt. After correcting only that reference to the existing lock path, the actual artifact verifier passed, including file identities, versions and process isolation. The fixture/checker and lock contents were unchanged.
 
 ## Analysis
 
@@ -58,7 +58,7 @@ This single problem and single run can establish observed behavior and diagnose 
 
 ## Next steps
 
-After review and checks pass, execute this registered run and reconstruct every Bot's task choice, work, public delivery, successor actions and terminal state. If healthy, execute the separately registered two-hour run authorized by the owner, increasing finite Bot lifetimes as recorded before that launch.
+Repeat under EXP-20261115-03 with the validated deployment overlay. Preserve this aborted registration and its private original configuration; do not reuse its ID or count it as a 30-minute experiment.
 
 ## Evidence and limitations
 

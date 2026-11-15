@@ -8,7 +8,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261115-02` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **30m repeat with verified observation service · REGISTERED** | `e601e81` | [Single-project 30m repeat](EXP-20261115-02-single-problem-30m.md) |
+| `EXP-20261115-03` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **30m repeat with validated deployment · REGISTERED** | `e601e81` | [Single-project 30m validation](EXP-20261115-03-single-problem-30m.md) |
+| `EXP-20261115-02` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Startup rejected malformed lock reference · BLOCKED** | `e601e81` | [Single-project 30m repeat](EXP-20261115-02-single-problem-30m.md) |
 | `EXP-20261115-01` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Startup aborted before project creation · BLOCKED** | `e601e81` | [Single-project 30m](EXP-20261115-01-single-problem-30m.md) |
 | `EXP-20261111-01` | Historical R16; no newly approved Issue | **Retrospective example, not preregistered** | `93176b7` | [R16 example](EXP-20261111-01-r16-example.md) |
 | `EXP-20261112-01` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **Aborted compatibility-path preflight · BLOCKED** | `f43a722` | [Issue #122 partial report](EXP-20261112-01-issue122-1h.md) |
