@@ -1,6 +1,6 @@
 # EXP-20261115-06: Four-Core single-project 30-minute validation
 
-Status: REGISTERED
+Status: PASS (Mission accepted before the 30-minute maximum)
 Approved GitHub Issue: [#122 and owner decision](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563)
 Implementation: `6a256d6d4ed53d7b8281de1fd2f05ff21c28a94b`; independent Spec/Standards review covered renewable model authority, late-heartbeat rejection and production checker memory enforcement before registration.
 Repeat of: [EXP-20261115-05](EXP-20261115-05-single-problem-30m.md), rejected before Bot/model activity because its deployment lock still pinned the previous verifier implementation. The regenerated lock changes only the verifier artifact fingerprint. Full locked-verifier validation passed with the same fixture, toolchain and 4 GiB resource guard before this registration. Runtime code and Agent image are unchanged.
@@ -50,11 +50,15 @@ Stop at the Mission deadline or trusted Mission acceptance, followed by bounded 
 
 ## Results
 
-Pending final checks and execution. This registration is not a successful experiment result.
+Launch commit `72b4487197e075bd66722241dc703d7549ee8ac7`, clean worktree; unchanged runtime `6a256d6`. Actual elapsed **462,488 ms** with cleanup **950 ms**, zero cleanup errors. `protocol_valid=true`, `invalid=false`, `solved=true`. Mission submission `submit-circle-grid` accepted main revision `0.14`, final check `treecheck:eb901a3f-002f-4e39-90db-8ccbcb146c94` at 2026-11-15T14:55:11.977Z.
+
+Four initially empty Core lanes each proposed and took a Task, and all four Executions succeeded. All four Tasks ended DONE. All 12 Bots closed; the independent observer verified every sandbox returned HTTP 404. Ordinary Judge results: 5 PASS, 7 source FAIL and 1 request rejection, zero infrastructure failures, healthy checker. Gateway: 190 requests, all 190 with terminal observed usage, zero unknown or pending; 4,051,044 input and 34,447 output tokens observed, actual currency cost unknown.
+
+This was a successful run within a 30-minute upper bound. It stopped early on Mission acceptance after 7 min 42 s and **does not demonstrate 30-minute endurance**. Detailed per-Bot observations are recorded in the local analysis artifacts and will be consolidated below.
 
 ## Analysis
 
-The preceding real run established the intended parallel Task creation and ownership pattern but its operational defects prevented a complete pilot. This repeat examines work, public deliveries and succession without those defects. Research outcomes remain separate from protocol validity and an isolated helper compiling is not a Mission proof.
+The actual model completed the intended propose/take/execute flow on all four Cores. Source failures led to corrected revisions and fresh successful checks; long requests survived valid lease renewal. Final Mission acceptance, not the helper PASS count, establishes success on the fixed B1 target. Initial work was partly duplicated: two complete proof tracks and two adapter tracks. No durable helper Material consumption was observed, so concurrency and published Materials do not establish useful division of labor or reuse. Successor discovery included justified no-work decisions while complete proof owners were still active or the final check was pending.
 
 ## Next steps
 

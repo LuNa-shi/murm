@@ -8,7 +8,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261115-06` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Four-Core single-project 30m · REGISTERED** | `6a256d6` | [Single-project 30m validation](EXP-20261115-06-single-problem-30m.md) |
+| `EXP-20261115-07` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Four-Core single-project 2h maximum · REGISTERED** | `6a256d6` | [Single-project 2h validation](EXP-20261115-07-single-problem-2h.md) |
+| `EXP-20261115-06` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Mission accepted in 7m42s of 30m limit · PASS** | `6a256d6` | [Single-project 30m validation](EXP-20261115-06-single-problem-30m.md) |
 | `EXP-20261115-05` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **30m renewal/checker repair validation · BLOCKED** | `6a256d6` | [Single-project 30m completion run](EXP-20261115-05-single-problem-30m.md) |
 | `EXP-20261115-04` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Four self-proposed parallel Tasks; runtime defects · BLOCKED** | `cb6c982` | [Repaired single-project 30m](EXP-20261115-04-single-problem-30m.md) |
 | `EXP-20261115-03` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Real-model attempt interrupted by schema errors · BLOCKED** | `e601e81` | [Single-project 30m validation](EXP-20261115-03-single-problem-30m.md) |
