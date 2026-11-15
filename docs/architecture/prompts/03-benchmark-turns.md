@@ -7,10 +7,10 @@ The registered Bot path loads the stable system contract from the image, then di
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## IdentityTaskLoop default for compatibility callers
 
-Body SHA-256: `54581e151ecfd7c6720afc9abebaa298204060869a41ec6c829dcc96114fbe14`
+Body SHA-256: `e82d91aa2907158ce4349ee6191107bd14a4d110bf1438697fca36744ec643d2`
 
 ````text
-Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work; propose an independent Task when a useful responsibility is missing. Call canonical task_take for the chosen Task and continue in the same Bot Session after success. If no useful work is available, report no work.
+Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work. If the Mission is unfinished and no suitable Task exists, identify a concrete gap and propose a bounded Task with a verifiable deliverable. Call canonical task_take and continue in the same Bot Session after success. An empty queue does not end discovery. Respect actual Bot and run deadlines; stop expanding work after Mission acceptance or stop.
 ````
 ## Registered Bot discovery: complete synthetic example
 
