@@ -239,7 +239,7 @@ if (!options.provider) throw new Error('PI_PROVIDER is required; set it in .env 
 if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the environment');
 
 // Resolve the selected upstream on the host. The sandbox receives a separate
-// per-Bot credential from the metered gateway, never this provider key.
+// per-Bot credential from the local gateway, never this provider key.
 const piProviderSettings = await loadPiProviderSettings(options.provider);
 const piProviderEnvPrefix = `PI_${options.provider.toUpperCase().replaceAll('-', '_')}`;
 const upstreamBase = process.env[`${piProviderEnvPrefix}_BASE_URL`] ?? piProviderSettings.baseUrl;

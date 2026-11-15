@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { BotModelAccess, assertBenchmarkModelPair } from '../src/agent/bot-model-access.js';
 
-async function fixture(t, { fetchImpl, autoStart = true } = {}) {
+async function fixture(t, { fetchImpl, autoStart = true, timeBounded = false } = {}) {
   const db = new DatabaseSync(':memory:');
   const bot = { bot_id: 'b', mission_id: 'm', state: 'UNBOUND', hard_deadline: new Date(Date.now() + 60_000).toISOString(),
     selection_deadline: new Date(Date.now() + 30_000).toISOString() };
@@ -19,7 +19,8 @@ async function fixture(t, { fetchImpl, autoStart = true } = {}) {
     taskService: { withServiceLifecycleWrite: commit => commit(), getBot: () => bot, getExecution: () => execution, isMissionStopped: () => accepted },
     deadline: () => Date.now() + 60_000, closeoutDeadline: () => closeoutDeadline, isStopping: () => stopping,
     upstream: { url: 'http://upstream.test/v1/responses', headers: { authorization: 'Bearer host-secret' } },
-    configuration: { limits: { mission: allowance, bot: allowance, selection: allowance,
+    timeBounded,
+    configuration: timeBounded ? {} : { limits: { mission: allowance, bot: allowance, selection: allowance,
       closeout: { requests: 2, inputTokens: 200, outputTokens: 200, cost: 400 } },
       contract: { maxInputTokens: 100, maxOutputTokens: 100, maxFanout: 1, inputCostPerToken: 1,
         outputCostPerToken: 1, fixedAttemptCost: 0, costUnit: 'test-units', requestTimeoutMs: 1000, boundEvidence: 'controlled upstream' } },
@@ -67,13 +68,18 @@ test('model gateway uses current Bot authority for selection, work, closeout and
 });
 
 test('hard deadline and stopping deny new model work before delayed Runtime cleanup', async t => {
-  const f = await fixture(t);
+  const f = await fixture(t, { timeBounded: true });
   f.bot.hard_deadline = new Date(0).toISOString();
   assert.equal(await f.call(), 403);
   f.bot.hard_deadline = new Date(Date.now() + 60_000).toISOString();
   f.stop();
   assert.equal(await f.call(), 403);
   assert.equal(f.requests.length, 0);
+  const evidence = f.access.evidence();
+  assert.equal(evidence.mode, 'time_bounded');
+  assert.equal(evidence.cost, null);
+  assert.equal(evidence.observed_usage.observed_input_tokens, null);
+  assert.equal(evidence.observed_usage.requests, 0);
 });
 
 test('gateway aborts a held upstream request at the earlier Bot deadline and retains its reservation', async t => {

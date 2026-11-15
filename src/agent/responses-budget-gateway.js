@@ -15,6 +15,14 @@ export const RESPONSES_BUDGET_SCHEMA_SQL = `
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
         PRIMARY KEY (mission_id, bot_id, request_id)
       );
+      CREATE TABLE IF NOT EXISTS responses_timed_attempts (
+        mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER,
+        output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL, reason TEXT, receipt BLOB,
+        started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
+        PRIMARY KEY (mission_id, bot_id, request_id)
+      );
       CREATE INDEX IF NOT EXISTS responses_budget_scope
         ON responses_budget_attempts (mission_id, bot_id, phase);
     `;
@@ -136,10 +144,30 @@ function canonicalPayload(value) {
   return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalPayload(value[key])]));
 }
 
+function upstreamPolicy(upstream) {
+  if (typeof upstream?.model !== 'string' || !upstream.model) throw new TypeError('A fixed Responses model is required');
+  const url = new URL(upstream.url);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
+      url.search || url.hash || url.pathname !== '/v1/responses') {
+    throw new TypeError('A fixed HTTP(S) /v1/responses endpoint is required');
+  }
+  const policy = { model: upstream.model, url: url.href, serviceTier: upstream.serviceTier ?? null };
+  if (policy.serviceTier !== null && (typeof policy.serviceTier !== 'string' || !policy.serviceTier)) {
+    throw new TypeError('A fixed service tier must be a nonempty string');
+  }
+  return policy;
+}
+
+function timedPolicy(upstream, { maxOutputTokens = 32_768, requestTimeoutMs = 120_000 } = {}) {
+  if (!integer(maxOutputTokens, 16) || !integer(requestTimeoutMs, 1) || requestTimeoutMs > 2_147_483_647) {
+    throw new TypeError('Timed Responses gateway requires a finite request timeout and output-token cap');
+  }
+  return { ...upstreamPolicy(upstream), mode: 'time_bounded', maxOutputTokens, requestTimeoutMs };
+}
+
 function contractFor(upstream) {
   const contract = upstream?.contract;
-  if (!object(contract) || typeof upstream.model !== 'string' || !upstream.model ||
-      typeof contract.costUnit !== 'string' || !contract.costUnit ||
+  if (!object(contract) || typeof contract.costUnit !== 'string' || !contract.costUnit ||
       typeof contract.boundEvidence !== 'string' || !contract.boundEvidence.trim() ||
       !integer(contract.maxInputTokens, 1) || !integer(contract.maxOutputTokens, 16) ||
       !integer(contract.maxFanout, 1) || !integer(contract.inputCostPerToken) ||
@@ -147,14 +175,8 @@ function contractFor(upstream) {
       !integer(contract.requestTimeoutMs, 1) || contract.requestTimeoutMs > 2_147_483_647) {
     throw new TypeError('A complete trusted Responses upstream budget contract is required');
   }
-  const url = new URL(upstream.url);
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
-      url.search || url.hash || url.pathname !== '/v1/responses') {
-    throw new TypeError('A fixed HTTP(S) /v1/responses endpoint is required');
-  }
   const policy = {
-    model: upstream.model, url: url.href,
-    serviceTier: upstream.serviceTier ?? null,
+    ...upstreamPolicy(upstream),
     costUnit: contract.costUnit, boundEvidence: contract.boundEvidence,
     maxInputTokens: contract.maxInputTokens,
     maxOutputTokens: contract.maxOutputTokens,
@@ -164,9 +186,6 @@ function contractFor(upstream) {
     fixedAttemptCost: contract.fixedAttemptCost,
     requestTimeoutMs: contract.requestTimeoutMs,
   };
-  if (policy.serviceTier !== null && (typeof policy.serviceTier !== 'string' || !policy.serviceTier)) {
-    throw new TypeError('A fixed service tier must be a nonempty string');
-  }
   if (!Object.values(reserve(policy, policy.maxOutputTokens)).every(value => integer(value))) {
     throw new TypeError('Responses upstream budget exceeds safe integer range');
   }
@@ -204,14 +223,17 @@ function terminalMeter(policy, budget, maxOutputTokens, onUsage) {
           if (!status || event.response?.status !== status) continue;
           const usage = event.response?.usage;
           if (event.response?.model !== policy.model ||
-              !integer(usage?.input_tokens) || usage.input_tokens > policy.maxInputTokens ||
-              !integer(usage?.output_tokens) || usage.output_tokens > maxOutputTokens) continue;
-          // The response accounts for one attempt. Keep all other possible upstream attempts reserved.
-          const inputTokens = budget.inputTokens - policy.maxInputTokens + usage.input_tokens;
-          const outputTokens = budget.outputTokens - maxOutputTokens + usage.output_tokens;
-          const cost = inputTokens * policy.inputCostPerToken + outputTokens * policy.outputCostPerToken +
-            policy.fixedAttemptCost * policy.maxFanout;
-          try { onUsage({ inputTokens, outputTokens, cost }); } catch (error) { callback(error); return; }
+              !integer(usage?.input_tokens) || (budget && usage.input_tokens > policy.maxInputTokens) ||
+              !integer(usage?.output_tokens) || (budget && usage.output_tokens > maxOutputTokens)) continue;
+          let accounting = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens, cost: null };
+          if (budget) {
+            // Keep all other possible upstream attempts reserved.
+            const inputTokens = budget.inputTokens - policy.maxInputTokens + usage.input_tokens;
+            const outputTokens = budget.outputTokens - maxOutputTokens + usage.output_tokens;
+            accounting = { inputTokens, outputTokens, cost: inputTokens * policy.inputCostPerToken +
+              outputTokens * policy.outputCostPerToken + policy.fixedAttemptCost * policy.maxFanout };
+          }
+          try { onUsage(accounting); } catch (error) { callback(error); return; }
           overflow = true;
           break;
         }
@@ -248,8 +270,9 @@ export class ResponsesBudgetGateway {
   #working = new Set();
   #controllers = new Set();
   #stopPromise;
+  #attempts;
 
-  constructor({ db, upstream, limits, validateBot, withLifecycleWrite = commit => commit(), fetchImpl = globalThis.fetch } = {}) {
+  constructor({ db, upstream, limits, timeBounds, validateBot, withLifecycleWrite = commit => commit(), fetchImpl = globalThis.fetch } = {}) {
     if (!db?.prepare || typeof validateBot !== 'function' || typeof fetchImpl !== 'function') {
       throw new TypeError('Database, synchronous Bot authority, and fetch are required');
     }
@@ -258,19 +281,24 @@ export class ResponsesBudgetGateway {
     this.validateBot = validateBot;
     this.withLifecycleWrite = withLifecycleWrite;
     this.fetch = fetchImpl;
-    this.policy = Object.freeze(contractFor(upstream));
+    const timed = timeBounds !== undefined;
+    if (timed && (upstream?.contract !== undefined || limits !== undefined)) {
+      throw new TypeError('Timed and financial Responses policies are mutually exclusive');
+    }
+    this.policy = Object.freeze(timed ? timedPolicy(upstream, timeBounds) : contractFor(upstream));
+    this.#attempts = timed ? 'responses_timed_attempts' : 'responses_budget_attempts';
     this.headers = new Headers(upstream.headers);
     this.headers.set('accept', 'text/event-stream');
     this.headers.set('content-type', 'application/json');
     for (const name of ['host', 'content-length', 'connection', 'transfer-encoding']) this.headers.delete(name);
-    this.limits = Object.freeze(Object.fromEntries(['mission', 'bot', 'selection', 'closeout'].map(scope => {
+    this.limits = timed ? null : Object.freeze(Object.fromEntries(['mission', 'bot', 'selection', 'closeout'].map(scope => {
       const limit = Object.fromEntries(metrics.map(metric => [metric, limits?.[scope]?.[metric]]));
       if (!Object.values(limit).every(value => integer(value))) {
         throw new TypeError(`Explicit finite Responses limits are required for ${scope}`);
       }
       return [scope, Object.freeze(limit)];
     })));
-    if (metrics.some(metric => this.limits.closeout[metric] > this.limits.mission[metric])) {
+    if (this.limits && metrics.some(metric => this.limits.closeout[metric] > this.limits.mission[metric])) {
       throw new TypeError('Responses closeout reserve exceeds the Mission limit');
     }
     this.pin = createHash('sha256').update(JSON.stringify([this.policy, this.limits])).digest('hex');
@@ -325,6 +353,14 @@ export class ResponsesBudgetGateway {
     return this.#tokens.delete(token);
   }
 
+  observedUsage(missionId) {
+    return this.db.prepare(`SELECT COUNT(*) AS requests, COUNT(input_tokens) AS requests_with_usage,
+      COUNT(*) FILTER (WHERE state = 'unknown') AS unknown_requests,
+      COUNT(*) FILTER (WHERE state = 'pending') AS pending_requests,
+      SUM(input_tokens) AS observed_input_tokens, SUM(output_tokens) AS observed_output_tokens
+      FROM responses_timed_attempts WHERE mission_id = ?`).get(missionId);
+  }
+
   totals({ missionId, botId = null, phase = null }) {
     return this.db.prepare(`
       SELECT COUNT(*) AS requests, COALESCE(SUM(input_tokens), 0) AS inputTokens,
@@ -365,7 +401,7 @@ export class ResponsesBudgetGateway {
       this.db.prepare('INSERT OR IGNORE INTO responses_budget_policies VALUES (?, ?)').run(missionId, this.pin);
       if (this.db.prepare('SELECT policy_digest FROM responses_budget_policies WHERE mission_id = ?')
         .get(missionId).policy_digest !== this.pin) throw new GatewayError(409, 'budget_policy_changed');
-      const prior = this.db.prepare(`SELECT fingerprint, state, receipt, deadline_ms FROM responses_budget_attempts
+      const prior = this.db.prepare(`SELECT fingerprint, state, receipt, deadline_ms FROM ${this.#attempts}
         WHERE mission_id = ? AND bot_id = ? AND request_id = ?`).get(missionId, botId, requestId);
       if (prior) {
         if (prior.fingerprint !== fingerprint) throw new GatewayError(409, 'request_payload_conflict');
@@ -376,35 +412,39 @@ export class ResponsesBudgetGateway {
         this.db.exec('COMMIT');
         return { ...binding, receipt: prior.receipt };
       }
-      const applicable = [
-        [this.limits.mission, this.totals({ missionId })],
-        [this.limits.bot, this.totals({ missionId, botId })],
-      ];
-      if (phase !== 'closeout') {
-        const missionWork = Object.fromEntries(metrics.map(metric =>
-          [metric, this.limits.mission[metric] - this.limits.closeout[metric]]));
-        const total = this.totals({ missionId });
-        const closeout = this.totals({ missionId, phase: 'closeout' });
-        const work = Object.fromEntries(metrics.map(metric => [metric, total[metric] - closeout[metric]]));
-        applicable.push([missionWork, work]);
-      }
-      if (phase === 'selection') applicable.push([this.limits.selection, this.totals({ missionId, botId, phase })]);
-      if (phase === 'closeout') applicable.push([this.limits.closeout, this.totals({ missionId, phase })]);
-      if (applicable.some(([limit, totals]) => metrics.some(metric => budget[metric] > limit[metric] - totals[metric]))) {
-        throw new GatewayError(429, 'responses_budget_exhausted');
-      }
+      if (budget) this.#assertBudget(missionId, botId, phase, budget);
       const startedAt = Date.now();
       const deadline = Math.min(authorityDeadline, startedAt + this.policy.requestTimeoutMs);
-      this.db.prepare(`INSERT INTO responses_budget_attempts
+      this.db.prepare(`INSERT INTO ${this.#attempts}
         (mission_id, bot_id, request_id, phase, fingerprint, input_tokens, output_tokens, cost, state, started_at_ms, deadline_ms)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
-        .run(missionId, botId, requestId, phase, fingerprint, budget.inputTokens, budget.outputTokens, budget.cost,
+        .run(missionId, botId, requestId, phase, fingerprint, budget?.inputTokens ?? null, budget?.outputTokens ?? null, budget?.cost ?? null,
           startedAt, deadline);
       this.db.exec('COMMIT');
       return { ...binding, deadline };
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
+    }
+  }
+
+  #assertBudget(missionId, botId, phase, budget) {
+    const applicable = [
+      [this.limits.mission, this.totals({ missionId })],
+      [this.limits.bot, this.totals({ missionId, botId })],
+    ];
+    if (phase !== 'closeout') {
+      const missionWork = Object.fromEntries(metrics.map(metric =>
+        [metric, this.limits.mission[metric] - this.limits.closeout[metric]]));
+      const total = this.totals({ missionId });
+      const closeout = this.totals({ missionId, phase: 'closeout' });
+      const work = Object.fromEntries(metrics.map(metric => [metric, total[metric] - closeout[metric]]));
+      applicable.push([missionWork, work]);
+    }
+    if (phase === 'selection') applicable.push([this.limits.selection, this.totals({ missionId, botId, phase })]);
+    if (phase === 'closeout') applicable.push([this.limits.closeout, this.totals({ missionId, phase })]);
+    if (applicable.some(([limit, totals]) => metrics.some(metric => budget[metric] > limit[metric] - totals[metric]))) {
+      throw new GatewayError(429, 'responses_budget_exhausted');
     }
   }
 
@@ -436,7 +476,7 @@ export class ResponsesBudgetGateway {
     if (!validPayload(body, this.policy.model)) throw new GatewayError(400, 'unsupported_responses_request');
     if (response.destroyed || request.aborted) return;
     const maxOutputTokens = Math.min(body.max_output_tokens ?? this.policy.maxOutputTokens, this.policy.maxOutputTokens);
-    const budget = reserve(this.policy, maxOutputTokens);
+    const budget = this.limits ? reserve(this.policy, maxOutputTokens) : null;
     const payload = {
       ...body, model: this.policy.model, stream: true, store: false, max_output_tokens: maxOutputTokens,
       ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
@@ -474,7 +514,7 @@ export class ResponsesBudgetGateway {
       const upstream = await upstreamWork;
       const upstreamId = upstream.headers.get('x-request-id');
       if (upstreamId && /^[A-Za-z0-9_.:-]{1,256}$/.test(upstreamId)) {
-        this.db.prepare(`UPDATE responses_budget_attempts SET upstream_request_id = ?
+        this.db.prepare(`UPDATE ${this.#attempts} SET upstream_request_id = ?
           WHERE mission_id = ? AND bot_id = ? AND request_id = ?`).run(upstreamId, missionId, botId, requestId);
       }
       if (!upstream.ok || !upstream.body || !/^text\/event-stream(?:;|$)/i.test(upstream.headers.get('content-type') ?? '')) {
@@ -484,7 +524,7 @@ export class ResponsesBudgetGateway {
       }
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
       const meter = terminalMeter(this.policy, budget, maxOutputTokens, usage => {
-        this.db.prepare(`UPDATE responses_budget_attempts SET input_tokens = ?, output_tokens = ?, cost = ?, settled = 1
+        this.db.prepare(`UPDATE ${this.#attempts} SET input_tokens = ?, output_tokens = ?, cost = ?, settled = 1
           WHERE mission_id = ? AND bot_id = ? AND request_id = ? AND settled = 0`)
           .run(usage.inputTokens, usage.outputTokens, usage.cost, missionId, botId, requestId);
         usageRecorded = true;
@@ -500,7 +540,7 @@ export class ResponsesBudgetGateway {
       await pipeline(Readable.fromWeb(upstream.body), meter, capture, response, { signal: controller.signal });
       reason = usageRecorded ? (stableId ? 'receipt_too_large' : null) : 'no_trusted_terminal_usage';
       if (usageRecorded && receiptChunks.length) {
-        this.db.prepare(`UPDATE responses_budget_attempts SET state = 'completed', receipt = ?
+        this.db.prepare(`UPDATE ${this.#attempts} SET state = 'completed', receipt = ?
           WHERE mission_id = ? AND bot_id = ? AND request_id = ?`)
           .run(Buffer.concat(receiptChunks), missionId, botId, requestId);
       }
@@ -513,7 +553,7 @@ export class ResponsesBudgetGateway {
         const started = await Promise.resolve(upstreamWork).catch(() => undefined);
         if (started?.body && !started.bodyUsed) await started.body.cancel().catch(() => undefined);
       }
-      if (missionId && !receipt) this.db.prepare(`UPDATE responses_budget_attempts SET state = ?, reason = ?
+      if (missionId && !receipt) this.db.prepare(`UPDATE ${this.#attempts} SET state = ?, reason = ?
         WHERE mission_id = ? AND bot_id = ? AND request_id = ? AND state = 'pending'`)
         .run(usageRecorded ? 'completed' : 'unknown', reason, missionId, botId, requestId);
     }

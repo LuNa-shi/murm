@@ -1488,9 +1488,10 @@ async function createProjectState(problem, config, options) {
   // diagnostic single-source checker. Configuration is trusted host input.
   assertTimedServiceComposition(options);
   const modelBudget = options.modelBudget ?? config.model_budget;
+  const modelGateway = options.modelGateway ?? config.model_gateway;
   const judgeMissionBudget = normalizeJudgeMissionBudget(options.judgeMissionBudget ?? config.judge_mission_budget);
-  if ((options.timeboxMs ?? 60 * 60_000) > 0 && (!modelBudget || !options.modelUpstream)) {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Timed benchmarks require explicit model limits and a verified upstream usage contract');
+  if ((options.timeboxMs ?? 60 * 60_000) > 0 && !options.modelUpstream) {
+    throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Timed benchmarks require a host-side model endpoint and credential');
   }
   let modelCatalogResource = null;
   if ((options.timeboxMs ?? 60 * 60_000) > 0) {
@@ -1514,6 +1515,12 @@ async function createProjectState(problem, config, options) {
   const lockedSourceRunner = finalTreeDeployment?.adapter.runSourceDiagnostic.bind(finalTreeDeployment.adapter);
   let sandboxObservationStore = null;
   const sandboxConfig = options.sandbox ?? {};
+  const timeBoundedModel = modelBudget == null && timedBenchmark;
+  const modelConfiguration = modelBudget ?? (timeBoundedModel ? {
+    host: sandboxConfig.bridgeHost ?? '127.0.0.1',
+    advertiseHost: sandboxConfig.bridgeUrl ? new URL(sandboxConfig.bridgeUrl.replaceAll('{port}', '80')).hostname : undefined,
+    ...modelGateway,
+  } : null);
   const networkConfiguration = sandboxConfig.networkIsolation ?? config.sandbox_network;
   if ((options.timeboxMs ?? 60 * 60_000) > 0 && networkConfiguration?.mode !== 'local-docker') {
     throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Timed benchmarks require verified Bot network isolation');
@@ -1773,12 +1780,12 @@ async function createProjectState(problem, config, options) {
     // sessions start. The hook uses the same Task Service boundary as Agent
     // operations; it does not replace queue take, Runtime, or dispatch logic.
     await options.prepareProject?.({ owner, root: null, mission, publicWorkspace, initialTasks, taskService, contextService, router, fixture, problem });
-    if (modelBudget) {
+    if (modelConfiguration !== null) {
       modelDatabase = new DatabaseSync(join(projectDir, 'model-budget.sqlite'));
       modelAccess = new BotModelAccess({ db: modelDatabase, taskService, missionId: mission.mission_id,
         provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER,
         model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL,
-        upstream: options.modelUpstream, configuration: modelBudget,
+        upstream: options.modelUpstream, configuration: modelConfiguration, timeBounded: timeBoundedModel,
         deadline: () => projectState?.runDeadlineAt ?? startedAt + (options.timeboxMs ?? 60 * 60_000),
         closeoutDeadline: () => projectState?.missionCloseoutDeadline ?? Infinity,
         isStopping: () => projectState?.stopping === true });

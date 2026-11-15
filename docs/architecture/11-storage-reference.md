@@ -62,7 +62,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Model budget gateway
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `17e2568c677e7c76930c1b1a716747f449533cf0033cee348bdc4595bdd68a23`.
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `c7b27b6b6662b8ca4fc3b736577dc41e7f93f5e822bb5be2da88318b83d13b04`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS responses_budget_policies (
@@ -72,6 +72,14 @@ CREATE TABLE IF NOT EXISTS responses_budget_policies (
         mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
         phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
         cost INTEGER NOT NULL, settled INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL, reason TEXT, receipt BLOB,
+        started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
+        PRIMARY KEY (mission_id, bot_id, request_id)
+      );
+      CREATE TABLE IF NOT EXISTS responses_timed_attempts (
+        mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER,
+        output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL, reason TEXT, receipt BLOB,
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
         PRIMARY KEY (mission_id, bot_id, request_id)
