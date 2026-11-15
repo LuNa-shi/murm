@@ -14,7 +14,7 @@ Read the Mission and relevant public Tasks, Materials, and Workspace files withi
 ````
 ## Registered Bot discovery: complete synthetic example
 
-Body SHA-256: `6ee9d85c94808c46807fca30be131bd0529a9ba6dbaf388a3093e341736fe701`
+Body SHA-256: `694375178493c9409021f5004f5babcfe419aa50cd9074033b4a1ab01860c1f9`
 
 ````text
 你已在全新的 sandbox/Pi Session 启动，尚无 Execution。通过 swarm CLI 读取相关公开工作，在预算内自主选择已有 Task，或先提出缺失的局部 Task 再 take。下方只是当前可领取任务的一页，不代表全部历史；空页不表示 Mission 完成。
@@ -140,14 +140,14 @@ Body SHA-256: `6ee9d85c94808c46807fca30be131bd0529a9ba6dbaf388a3093e341736fe701`
       "version": "draft.2",
       "path": "/opt/swarmenv/src/agent/bot-contract/plan-task.md",
       "description": "在有限选工预算内发现、提出或选择 Task，处理竞争、阻塞和正常退出。",
-      "sha256": "97a6bb524e57e9c2b576f21fcced17af855d547e1cf0b45d59bcd99eb1eb28f4"
+      "sha256": "ad8fc7334c516956bfdec6a10c1c73a929bd03f887979ac4a5844ce4d1894b35"
     },
     {
       "name": "use-material",
       "version": "draft.2",
       "path": "/opt/swarmenv/src/agent/bot-contract/use-material.md",
       "description": "发布、读取、复用或纠正研究内容，记录真实来源，并在整份 supersede 时保留有效知识。",
-      "sha256": "386905226c0115404fc52af91350ab80ebf9399ee9df3cdc627f2d43c8cf8f24"
+      "sha256": "53ff58a3a35baee7f03bd08e65334b6195ab94463ceafc3e9a2faa5bc08ccf80"
     },
     {
       "name": "use-workspace",

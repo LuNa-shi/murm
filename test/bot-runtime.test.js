@@ -1595,6 +1595,13 @@ test('independent contributions can merge before a failing Mission submission an
   assert.equal(settled.freeze_release_result, 'released');
   assert.equal(settled.current.merge_allowed, true);
   assert.match(settled.notice, /未通过不能记为成功/);
+  const discovery = await command('mission', 'submission', 'view');
+  assert.equal(discovery.state, 'open');
+  assert.equal(discovery.current.main_revision, merge.main_revision);
+  assert.equal(discovery.active_submission_id, null);
+  const observed = discovery.submissions.find(row => row.submission_id === submit.submission_id);
+  assert.equal(observed.state, 'failed');
+  assert.equal(observed.main_revision, merge.main_revision);
   assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).frozen_submission_id, null);
   const next = await command('workspace', 'merge', '--from', followup.revision, '--request-id', 'merge-after-unfreeze');
   assert.notEqual(next.main_revision, merge.main_revision);

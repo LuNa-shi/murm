@@ -45,6 +45,13 @@ test('swarm CLI exposes offline help at every level', async () => {
   output = '';
   await runSwarmCli(['task', 'propose', '--help'], { stdout });
   assert.match(output, /--base-revision/);
+  output = '';
+  await runSwarmCli(['material', 'consume', '--help'], { stdout });
+  assert.match(output, /--material-ids '\["M1"\]' --action integration --impact/);
+  assert.match(output, /route, task, workspace, integration/);
+  output = '';
+  await runSwarmCli(['mission', 'submission', 'view', '--help'], { stdout });
+  assert.match(output, /view \[id\].*\nWithout an ID, read current Mission state/);
   await assert.rejects(runSwarmCli(['context', 'publish'], { stdout }), /retired.*swarm material/);
   await assert.rejects(runSwarmCli(['context', '--help'], { stdout }), /retired.*swarm material/);
 });

@@ -45,7 +45,10 @@ Follow next_cursor even after an empty page, then view Task details before propo
     dispute: 'Question a Material. Required: <material-id> --reason --claim; claim identifies the affected claim or section.',
     supersede: 'Replace a whole Material. Required: <old-id> --with <new-id> --expected-version <observed relation_version> --reason.',
     unsupersede: 'Revoke only the matching replacement. Required: <old-id> --with <new-id> --expected-version <observed relation_version> --reason. Preserves history.',
-    consume: 'Record a meaningful Material use with --material-ids, --action and concrete --impact; the service binds the exact version and hash.',
+    consume: `Record a meaningful Material use in the current Execution. Pass --material-ids as a quoted JSON array of 1–100 unique IDs, even for a single ID.
+Allowed --action values: route, task, workspace, integration. Use --impact to describe what changed because of the Material.
+Example: swarm material consume --material-ids '["M1"]' --action integration --impact "Used M1 to choose the boundary case in the integrated proof." --request-id use-m1
+Replace M1 with an actual Material ID. After an unknown response, reuse the same request ID and payload.`,
   },
   workspace: {
     view: 'Read the current public Workspace and main.',
@@ -312,7 +315,7 @@ export async function runSwarmCli(argv = process.argv.slice(2), { stdout = proce
   if (positionals[0] === 'context') throw new Error('swarm context is retired. Use swarm material for Material operations.');
   if (options.help) {
     if (positionals[0] === 'mission' && positionals[1] === 'submission') {
-      stdout.write('Usage: swarm mission submission view <id> [--json]\nRead the persistent submission and its fixed inputs.\n');
+      stdout.write('Usage: swarm mission submission view [id] [--json]\nWithout an ID, read current Mission state and its submissions. With an ID, read that submission and its fixed inputs.\n');
       return 0;
     }
     const scope = positionals[0] === 'service' ? 'service' : (positionals[0] ?? 'top');
@@ -328,7 +331,7 @@ export async function runSwarmCli(argv = process.argv.slice(2), { stdout = proce
     commandName = 'dependency-replace'; args = args.slice(1);
   }
   if (service === 'mission' && commandName === 'submission') {
-    if (args[0] !== 'view') throw new Error('mission submission requires view <id>');
+    if (args[0] !== 'view') throw new Error('mission submission requires view [id]');
     commandName = 'status'; args = args.slice(1);
   }
   if (service === 'service') {
