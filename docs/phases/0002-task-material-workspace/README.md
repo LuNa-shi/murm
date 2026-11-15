@@ -4,7 +4,7 @@
 >
 > 状态：目标设计，已按本轮用户确认统一跨模块合同。Workspace 整版 merge 粒度也已确认；设计审阅不代表运行实现或真实 sandbox 已验收。[Architecture](../../architecture/INDEX.md) 继续描述当前实现。
 
-[Issue #122 的后续用户决策](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896705828) 更新选工合同。开放且未验收的 Mission 还有选工额度时，Bot 必须主动发现缺口并提出合格责任，不能因为没有现成 Task 而以 no-work 退出。此前固定版本的运行证据保留原义。
+[Issue #122 的 Core 循环决策](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896808817) 更新补位与选工合同。旧 Bot 安全关闭后，开放 Mission 在本次运行还有额度时补位，由新 Bot 优先选择已有合适 Task；没有合适项就默认发现公开缺口、提出并执行可验证的责任。空队列、所有 Task 已 done 或单 Bot 额度耗尽都不结束 Core 循环。首 Bot 按四 Core 的 0、1、2、3 分钟错峰，后继 Bot 不重复错峰。本轮不新增服务端语义去重。详见 [每个 Core 的循环与停止条件](01-model-and-runtime.md#每个-core-的循环与停止条件)。此前固定版本的运行证据保留原义。
 
 ## 1. 项目目的与对象关系
 

@@ -9,6 +9,7 @@
 - [对象与关系](#对象与关系)
 - [组件各自负责什么](#组件各自负责什么)
 - [一次 Mission 的启动](#一次-mission-的启动)
+- [每个 Core 的循环与停止条件](#每个-core-的循环与停止条件)
 - [take 前后的权限](#take-前后的权限)
 - [take 的完整顺序](#take-的完整顺序)
 - [普通 Service 调用与 Execution 结束](#普通-service-调用与-execution-结束)
@@ -73,15 +74,24 @@ v1 的 Task/Mission 协调模块与 Workspace 模块位于同一协调进程、�
 1. **操作者提供 Mission。** 固定目标、验收配置、可用服务、初始输入、资源上限和停止条件。Core 数是配置，不是固定四路算法。
 2. **初始化 Workspace。** 在 sandbox 外导入初始项目，保存可物化的初始 revision 并让 main 指向它。空项目也有明确初始文件树；不从旧 Bot 的私有目录猜测起点。
 3. **允许零 Task。** 不创建隐藏 Mission Task 或计费占位任务。
-4. **启动 Bot。** 每个 Core 创建新 Bot ID、sandbox 和 Pi。四 Core 的错峰运行把每个 Core 的首个 Bot 分别安排在编排开始后的 0、60、120、180 秒获得启动资格。获得启动资格的时点与其他 Core 是否已 take 或 finish 无关；每个 Core 到点后可独立发现并并行执行。此间隔不用于后继 Bot，后继按原有生命周期和有界退避调度。到点前不创建该 Bot 或其环境；等待包含在 Mission 墙钟额度内。预留空的、由可信身份控制的 `/workspace/project`；Pi 会话、缓存和临时文件放在另外的运行目录。take 前项目浏览通过 `workspace files/read/search --at R` 等只读 API 完成。
+4. **启动 Bot。** 每个 Core 创建新 Bot ID、sandbox 和 Pi。四 Core 的错峰运行把每个 Core 的首个 Bot 分别安排在编排开始后的 0、60、120、180 秒获得启动资格。获得启动资格的时点与其他 Core 是否已 take 或 finish 无关；每个 Core 到点后可独立发现并并行执行。此间隔不用于后继 Bot，后继按原有生命周期和有界退避调度。到点前不创建该 Bot 或其环境。等待包含在 Mission 墙钟额度内；单 Bot 的选工与生存预算从实际注册开始。预留空的、由可信身份控制的 `/workspace/project`；Pi 会话、缓存和临时文件放在另外的运行目录。take 前项目浏览通过 `workspace files/read/search --at R` 等只读 API 完成。
 5. **发送初始输入。** 提供 Mission、Bot/Core、Workspace 版本、服务/skill 目录和预算快照。完整文本由 [06](06-prompts-and-skills.md) 定义；启动快照不能替代操作前的服务查询。
-6. **Bot 发现工作。** 查询相关 Task 的所有状态、Material 和 Workspace 文件，优先选择已有适合的责任；开放 Mission 在有选工额度而无合适可领 Task 时，读取当前验收状态并从公开证据找出缺口，提出并 take 一项有边界、可验证的新责任。具备权限时也可提交已准备好的 Mission 交付。
+## 每个 Core 的循环与停止条件
+
+这个循环适用于首个 Bot 和所有补位 Bot。首 Bot 遵守启动错峰；补位只遵守常规清理与有界退避。四个 Core 独立推进，不等其他 Core 完成。
+
+1. **确认旧环境已经关闭。** 上一 Bot 的进程和 sandbox 必须确认停止或隔离，Runtime 才能释放该 Core 并补位。finish 已受理或停止请求已发出时，清理尚未确认的 Core 继续由旧 Bot 占用。
+2. **重新检查 Mission 和运行额度。** Mission 仍开放且未耗尽本次运行额度时，在启动资格到达后注册全新 Bot，创建新的 sandbox 和 Pi。处于退避或错峰等待的 Core 也遵守这一检查。正常停止新增 Bot 的条件是 Mission 验收通过、Mission 被停止或本次运行期限耗尽。不能恢复的运行错误单独记录；清理责任仍保留。
+3. **优先已有工作，默认补缺。** Bot 读取当前 Mission 验收、Workspace main、相关 Task 和 Material。找到合适可领 Task 时优先 take；没有合适项时，默认从公开证据找出与验收相关的缺口，提出有边界且可验证的新 Task，再 take 并执行。未解问题可形成有区分价值的调查任务；Runtime 不代为创建占位 Task。具备协调权限的 Bot 也可以提交已经准备好的 Mission 成果。
+4. **结束本次尝试并重新检查。** 已 take 的 Bot 通过 finish 或到期停止结束 E。尚未 take 的 Bot 若实际耗尽选工额度或生存额度，只结束该 Bot。释放 Core 后，应在 Mission 和运行额度允许时让后继 Bot 重新读取最新公开状态再选工。Task 队列为空、现有 Task 全部 done、单 Bot 退出都不终止 Core 循环，也不能作为 Mission 通过的证据。
+
+Bot 在提案和 take 前刷新相关 Task 查询。现有 request ID、显式责任身份和同 Task 单 owner 合同继续生效。错峰减少首批 Bot 同读空列表的机会；不同责任标识的并发提案仍可能表达重叠工作。此轮未增加服务端语义去重。[Issue #122 的 Core 循环决策](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896808817)
 
 ### 未绑定 Bot 的等待与正常退出
 
 未 take 的模型调用、检索和等待费用归 Mission/Bot/Core，不虚构 E。开放且未接受的 Mission 仍有选工预算时，当前队列无合适责任意味着 Bot 应继续诊断并提案。选工预算实际耗尽且无未决 take 时使用 `swarm bot exit --reason selection-budget`。Mission 已接受或停止时停止扩展责任。此操作持久记录原因，结束整份 Bot/sandbox，不产生 Task 或 E，也不表示 Mission 成功。
 
-Runtime 根据 Task 可领性变化、材料/Workspace 更新、服务恢复或有上限的退避定时重新评估启动。仅因 Core 空闲，不立即重复创建相同 Bot。事件要合并，定时要有退避和总预算约束；不能用模型忙轮询或 sandbox 热重启代替等待。Bot 也可在有限等待窗口内暂停模型调用，等待 Runtime 唤醒；等待或退出的实际选择与费用必须可观察。
+Runtime 根据 Task 可领性变化、材料/Workspace 更新、服务恢复或有上限的退避定时重新评估启动。仅因 Core 空闲，不立即重复创建相同 Bot。事件要合并，定时要有退避和总预算约束；不能用模型忙轮询或 sandbox 热重启代替等待。有明确服务等待条件时，Bot 可在有限窗口内暂停模型调用，等待 Runtime 唤醒。空队列时仍在选工的 Bot 应按上述循环主动查找缺口。等待或退出的原因与资源用量必须可观察。
 
 `bot exit` 仅适用于没有 E、也没有未决 take 的 Bot。有 take 结果未知时先恢复该请求；已有 E 时必须走 task finish，不能通过 bot exit 绕过 Task 收尾。
 
@@ -96,7 +106,7 @@ Runtime 根据 Task 可领性变化、材料/Workspace 更新、服务恢复或�
 | 会话、日志、缓存、临时文件 | 独立运行目录可写 | 同左 | 同左 | 仅受控审计存档 |
 | Material publish、Workspace save/apply、领域贡献 | 无贡献权限 | 无贡献权限 | 按 E 权限和预算 | 新贡献拒绝 |
 | main merge | 无权 | 无权 | 按 Workspace 合同；Mission 验收冻结时拒绝 | 旧 E 无权 |
-| bot exit | 无未决 take 时允许 | 不允许 | 不允许，使用 task finish | 外部查询最终结果 |
+| bot exit | 无未决 take 且预算已耗尽或 Mission 已停止时允许 | 不允许 | 不允许，使用 task finish | 外部查询最终结果 |
 | 其他 E 私有文件、管理面、服务数据库 | 不提供权限 | 同左 | 同左 | 同左 |
 
 “只读”保护项目目录和研究贡献接口，不等于禁止操作系统中的所有写入。必要缓存可写，因此不声称能阻止每一段提前计算；系统保证贡献归属、受控保存和费用归属。获准的 unsupersede 仅按 04 撤销匹配的替代关系，不允许未绑定 Bot 发布正文、修改来源或自行获得其他 Material 写权限。
