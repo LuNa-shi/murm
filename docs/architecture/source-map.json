@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "e18c7ae5bce48d73cf248c14080dcdf2327476fb",
+  "runtime_baseline": "1c2d5d5825d3511aa47d0964c11f44d107d28da5",
   "reviewed_date": "2026-11-16",
   "scope_roots": [
     "src",

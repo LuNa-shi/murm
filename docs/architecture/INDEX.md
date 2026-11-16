@@ -1,6 +1,6 @@
 # SwarmEnv implementation manual
 
-> Verified runtime baseline: [`e18c7ae`](https://github.com/LuNa-shi/SwarmEnv/commit/e18c7ae5bce48d73cf248c14080dcdf2327476fb), the Issue #130 implementation in [PR #132](https://github.com/LuNa-shi/SwarmEnv/pull/132), exercised by [EXP-20261116-07](../experiments/EXP-20261116-07-centralized-judge-1h.md). Integration/release status remains on the PR/Issue. Generated fingerprints identify the actual mapped source files; historical reports remain evidence for their pinned versions.
+> Implementation baseline: [`1c2d5d5`](https://github.com/LuNa-shi/SwarmEnv/commit/1c2d5d5825d3511aa47d0964c11f44d107d28da5), the Issue #130 queue/diagnostic adjustment in [PR #132](https://github.com/LuNa-shi/SwarmEnv/pull/132). Current chapters describe unlimited ordinary checks, concurrency four and bounded FIFO waiting. [EXP-20261116-07](../experiments/EXP-20261116-07-centralized-judge-1h.md) exercised the earlier `e18c7ae` runtime with 20/2 limits; it is not experimental evidence for this queue. Integration/release status and applicable validation remain on the PR/Issue. Generated fingerprints identify the current mapped source files.
 
 This directory is written for the owner who wants to understand the implementation **without reading source code**. The narrative explains execution order and behavior; the reference pages contain full repository-controlled prompts, tool contracts and storage definitions. Source and test links are evidence for maintainers, not required reading to fill in missing explanations.
 
