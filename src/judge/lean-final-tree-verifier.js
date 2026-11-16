@@ -210,9 +210,14 @@ function collectProjectDiagnostics(sources) {
   const paths = new Map(sources.map(({ path, sourcePath }) => [sourcePath, path]));
   const findings = { warning: [], error: [] };
   let partialLine = '';
-  let resourceTail = '';
   let resourceFailure = false;
   function finishLine(line) {
+    // Lake reports worker exit codes even when its log level hides raw stderr.
+    const workerExit = /^error: Lean exited with code (\d+)\s*$/.exec(line);
+    if (workerExit && Number(workerExit[1]) !== 1) resourceFailure = true;
+    const diagnostic = /^(?:error: )?(?:(?:\/project\/)?source\/[^:]+:\d+:\d+:\s*)?(.*)$/.exec(line)?.[1] ?? '';
+    // Inspect diagnostic headers, never source paths, quoted terms or goal contexts.
+    if (/^(?:out of memory\b|memory (?:consumption exceeded|limit exceeded|exhausted)\b|cannot allocate memory\b|stack overflow\b|\(deterministic\) timeout\b|\(kernel\) (?:deterministic timeout|excessive memory consumption detected)\b|resource temporarily unavailable\b|killed\s*$)/i.test(diagnostic)) resourceFailure = true;
     if (findings.error.length < 8 && /^error: (?:build )?cycle detected:/.test(line)) {
       findings.error.push('Lean project imports contain a cycle');
       return;
@@ -223,12 +228,6 @@ function collectProjectDiagnostics(sources) {
   }
   return {
     write(chunk) {
-      if (!resourceFailure) {
-        // Carry enough overlap for every resource pattern across pipe reads.
-        const scan = resourceTail + chunk;
-        resourceFailure = resourceDiagnostic.test(scan);
-        resourceTail = scan.slice(-128);
-      }
       const segments = chunk.split('\n');
       for (let i = 0; i < segments.length; i++) {
         partialLine += segments[i].slice(0, diagnosticLimit - partialLine.length);

@@ -128,12 +128,19 @@ test('Lake project input rejects sources outside the module layout and trusted n
   }
 });
 
-test('Lake diagnostics retain source errors after the stderr limit and detect later split resource errors', async t => {
+test('Lake diagnostics distinguish source names from late split resource diagnostics and worker exits', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'swarmenv-project-diagnostic-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const files = { 'src/Toy.lean': 'theorem toy : True := trivial\n' };
-  for (const resourceFailure of [false, true]) {
-    const bubblewrap = join(directory, resourceFailure ? 'resource-failure' : 'source-failure');
+  const files = { 'src/Killed.lean': 'theorem toy : True := trivial\n' };
+  for (const [name, resourceMessage] of [
+    ['source-failure', 'error: Lean exited with code 1'],
+    ['out-of-memory', 'error: out of memory'],
+    ['killed-worker', 'error: Lean exited with code 137'],
+    ['heartbeat', 'error: source/Killed.lean:3:1: (deterministic) timeout at `isDefEq`, maximum number of heartbeats (1) has been reached'],
+    ['kernel-memory', 'error: source/Killed.lean:3:1: (kernel) excessive memory consumption detected'],
+  ]) {
+    const resourceFailure = name !== 'source-failure';
+    const bubblewrap = join(directory, name);
     await writeFile(bubblewrap, `#!${process.execPath}
       const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       async function run() {
@@ -141,24 +148,22 @@ test('Lake diagnostics retain source errors after the stderr limit and detect la
           process.stdout.write('{}\\n');
           return;
         }
-        process.stderr.write('begin ' + 'a'.repeat(24_000) + '\\nerror: source/Toy.le');
+        process.stderr.write('begin ' + 'a'.repeat(24_000) + '\\nerror: source/Killed.le');
         await delay(40);
-        process.stderr.write('an:2:1: unsolved goals\\n');
-        if (${resourceFailure}) {
-          process.stderr.write('error: out of mem');
-          await delay(40);
-          process.stderr.write('ory\\n');
-        }
+        process.stderr.write('an:2:1: unsolved goals\\nheartbeats : Nat\\nkilled : True\\n⊢ False\\n');
+        process.stderr.write(${JSON.stringify(resourceMessage.slice(0, -3))});
+        await delay(40);
+        process.stderr.write(${JSON.stringify(resourceMessage.slice(-3) + '\n')});
         process.exitCode = 21;
       }
       void run();
     `, { mode: 0o700 });
-    const verifier = fixture(undefined, { projectChecks: true, targetPath: 'src/Toy.lean', bubblewrap, allowUnboundedDiagnostics: true });
+    const verifier = fixture(undefined, { projectChecks: true, targetPath: 'src/Killed.lean', bubblewrap, allowUnboundedDiagnostics: true });
     const project = await verifier.checkProject({ files, tree: 'fixed' });
     const final = await verifier.check({ files, tree: 'fixed' });
     for (const result of [project, final]) {
       assert.equal(result.verdict, resourceFailure ? 'ERROR' : 'FAIL', result.diagnostic);
-      if (!resourceFailure) assert.equal(result.diagnostic, 'src/Toy.lean:2:1: unsolved goals');
+      if (!resourceFailure) assert.equal(result.diagnostic, 'src/Killed.lean:2:1: unsolved goals');
       assert.doesNotMatch(result.diagnostic, /a{64}/);
     }
   }
