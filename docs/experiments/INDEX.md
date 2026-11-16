@@ -8,6 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261116-11` | [Issue #133](https://github.com/LuNa-shi/SwarmEnv/issues/133) | **FLT10 Q10 repair, 4 Core, 1h maximum · REGISTERED** | `7f1f089` | [Q10 repair observation](EXP-20261116-11-flt-q10-repair-1h.md) |
 | `EXP-20261116-10` | [Issue #133](https://github.com/LuNa-shi/SwarmEnv/issues/133) | **FLT10 Q20, 4 Core · INTERRUPTED; Q10-first correction** | `361a964` | [FLT Q20 observation](EXP-20261116-10-flt-q20-1h.md) |
 | `EXP-20261116-09` | [Issue #133](https://github.com/LuNa-shi/SwarmEnv/issues/133) | **FLT10 Q10, 4 Core · BLOCKED after 14m15s including deployment** | `361a964` | [FLT Q10 observation](EXP-20261116-09-flt-q10-1h.md) |
 | `EXP-20261116-08` | [Issue #130](https://github.com/LuNa-shi/SwarmEnv/issues/130) | **PASS · accepted in 20m28s from startup, within 1h maximum** | `1c2d5d5` | [Judge queue repeat](EXP-20261116-08-judge-queue-1h.md) |
