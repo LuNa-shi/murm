@@ -31,6 +31,7 @@ Follow next_cursor even after an empty page, then view Task details before propo
     create: TASK_PROPOSAL_HELP,
     take: 'Take an eligible Task by its positional ID. Example: swarm task take T1 --request-id take-t1 (replace T1 with the returned task_id). The result includes the Execution and pinned inputs. If the response is unknown, reuse the same request ID with the same Task.',
     link: `Link a published Material to a Task. Provide --task-id, --material-id and --role (input, response, handoff, or experience).
+Create the link during an active Execution, before soft closeout; linking is not a soft-closeout operation.
 To cite your own published Material when finishing, link it to your current Task with --role experience.
 Example: swarm task link --task-id T1 --material-id M1 --role experience --request-id link-m1
 Replace T1 and M1 with the current task_id and the published material_id. Response and handoff links require the producing Execution. A response targets a different receiving Task.`,

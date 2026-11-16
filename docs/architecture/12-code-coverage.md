@@ -211,7 +211,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/swarm.mjs](../../scripts/swarm.mjs) | Executable swarm CLI entry point and exit-code boundary | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `24e754960f63535169c59752d193fbabba734cd2cc04a3eef64e86172a800bc6` |
-| [src/cli/swarm-cli.js](../../src/cli/swarm-cli.js) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `6bb48fc6ae89cf5026944bb9754cc754d2a922b2ff121168a0d2e6ca4f67b584` |
+| [src/cli/swarm-cli.js](../../src/cli/swarm-cli.js) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `3b2b36acd9a71d9083e1eb9b5737b2f1132d6b5a619eeddbadffad07015e5e00` |
 | [src/sdk/http-domain-proxy.js](../../src/sdk/http-domain-proxy.js) | Bounded HTTP proxy for synchronous cross-domain service dependencies in isolated hosts | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `ba33211b035f51d6ffb4403023bf1f66f51f751c2e9c1cede42999158474dddb` |
 
 ### services and contracts (18)
