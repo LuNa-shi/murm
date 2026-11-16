@@ -242,17 +242,18 @@ export class LeanChecker {
   }
 
   async checkProject({ files, tree, path, content, startProcess }) {
-    const inputFailure = diagnostic => ({
-      verdict: 'ERROR', result_class: 'request_failure', checker_process_status: 'not_started', retryable: false,
-      diagnostic_code: 'project_input_invalid', evidence: { diagnostic, checker_started: false },
+    const inputFailure = (diagnostic, diagnosticCode, started = false, evidence = {}) => ({
+      verdict: 'ERROR', result_class: 'request_failure', checker_process_status: started ? 'completed' : 'not_started', retryable: false,
+      evidence: { ...evidence, diagnostic, diagnostic_code: diagnosticCode, checker_started: started },
     });
     if (path && /\b(?:sorry|admit|axiom)\b/i.test(content)) {
-      return inputFailure('Selected delivery file contains a forbidden placeholder. Use a project check without --path to diagnose partial work.');
+      return inputFailure('Selected delivery file contains a forbidden placeholder. Use a project check without --path to diagnose partial work.',
+        'forbidden_placeholder', false, { forbidden_placeholder: true });
     }
     let started = false;
     const result = await this.projectChecker({ files, tree, deadline: Date.now() + this.timeoutMs,
       startProcess: launch => startProcess(() => { started = true; return launch(); }) });
-    if (result.verdict === 'FAIL' && !started) return inputFailure(result.diagnostic);
+    if (result.verdict === 'FAIL' && !started) return inputFailure(result.diagnostic, 'project_input_invalid');
     const paths = result.checked_paths;
     const leanFiles = Object.keys(files).filter(file => file.endsWith('.lean') && file !== 'lakefile.lean');
     const complete = result.verdict === 'PASS' && started && result.checked_tree === tree &&
@@ -260,8 +261,7 @@ export class LeanChecker {
       new Set(paths).size === paths.length && paths.every(file => typeof file === 'string' && file.endsWith('.lean') &&
         file !== 'lakefile.lean' && Object.hasOwn(files, file));
     if (complete && path && !paths.includes(path)) {
-      return { ...inputFailure('Project build did not cover the requested Lean source path.'),
-        checker_process_status: 'completed', evidence: { diagnostic: 'Project build did not cover the requested Lean source path.', checker_started: true } };
+      return inputFailure('Project build did not cover the requested Lean source path.', 'project_path_uncovered', true);
     }
     const verdict = result.verdict === 'PASS' && !complete ? 'ERROR' : result.verdict;
     const processStatus = result.timed_out ? 'timeout' : !started ? 'not_started' : verdict === 'ERROR' ? 'crashed' : 'completed';
@@ -269,6 +269,7 @@ export class LeanChecker {
       verdict, checker_process_status: processStatus,
       result_class: verdict === 'PASS' ? 'PASS' : verdict === 'FAIL' ? 'source_failure' : 'infrastructure_failure',
       evidence: { diagnostic: result.verdict === 'PASS' && !complete ? 'Project checker returned incomplete tree coverage.' : result.diagnostic,
+        ...(result.verdict === 'PASS' && !complete ? { diagnostic_code: 'project_coverage_incomplete' } : {}),
         checker_started: started, timed_out: Boolean(result.timed_out),
         ...(complete ? { checked_paths: paths, build_warnings: Array.isArray(result.warnings)
           ? result.warnings.filter(warning => typeof warning === 'string').slice(0, 32).map(warning => warning.slice(0, 1024)) : [] } : {}) },

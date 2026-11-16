@@ -9,7 +9,7 @@ import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createMissionCoordination } from '../src/runtime/mission-coordination.js';
-import { beginMissionCloseout, ensureAgentSession, takeTaskWithAgent } from '../src/benchmark/putnam-runner.js';
+import { beginMissionCloseout, ensureAgentSession, sanitizedCheck, takeTaskWithAgent } from '../src/benchmark/putnam-runner.js';
 import { IdentityTaskLoop } from '../src/runtime/identity-task-loop.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { BOT_RESOURCES, BOT_PROTOCOL_VERSION, BOT_COMPACTION_MESSAGE } from '../src/agent/bot-contract.js';
@@ -1385,11 +1385,14 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   const checkerIdentity = { checker_ref: 'lean', checker_version: 'test', environment_ref: 'test-project' };
   const builds = [];
   const createJudgeService = (service, runtime) => {
-    const checker = new LeanChecker({ projectChecker: async ({ files, tree, startProcess }) => startProcess(() => {
-      builds.push({ files, tree });
-      return { verdict: 'PASS', checked_tree: tree, checked_paths: ['Helper.lean', 'Proof.lean'],
-        warnings: ['Helper.lean: provisional proof'] };
-    }) });
+    const checker = new LeanChecker({ projectChecker: async ({ files, tree, startProcess }) => {
+      if (Object.hasOwn(files, 'Outside.lean')) return { verdict: 'FAIL', diagnostic: 'Lean source is outside the project source directory' };
+      return startProcess(() => {
+        builds.push({ files, tree });
+        return { verdict: 'PASS', checked_tree: tree, checked_paths: ['Helper.lean', 'Proof.lean'],
+          warnings: ['Helper.lean: provisional proof'] };
+      });
+    } });
     checker.preflight = async () => ({ status: 'healthy', checker_process_status: 'completed',
       evidence: { input_binding_verified: true, toolchain_version_verified: true, checker_version_verified: true } });
     const judge = new JudgeService(service.db, { taskService: service, checker,
@@ -1427,6 +1430,23 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   assert.equal(scoped.workspace_input.git_tree, saved.git_tree);
   assert.equal(builds.length, 2);
   assert.equal(String(builds[1].files['Helper.lean']), String(builds[0].files['Helper.lean']));
+
+  guest.files['lakefile.lean'] = Buffer.from('-- Candidate Lake configuration is ignored');
+  guest.files['Helper.lean'] = Buffer.from('theorem helper : True := by sorry');
+  const partial = await dispatch('save', 'project-rejected-paths');
+  const observedFailure = async (path, revision, diagnosticCode, forbidden = false) => {
+    const result = await command('judge', 'check', '--revision', revision, '--path', path);
+    assert.equal(result.result_class, 'request_failure');
+    assert.equal(result.diagnostic_code, diagnosticCode);
+    assert.equal(sanitizedCheck(result, {}).diagnostic_class === 'forbidden_placeholder', forbidden);
+  };
+  await observedFailure('lakefile.lean', partial.revision, 'project_path_uncovered');
+  await observedFailure('Helper.lean', partial.revision, 'forbidden_placeholder', true);
+
+  guest.files['Outside.lean'] = Buffer.from('theorem outside : True := True.intro');
+  const invalidRoot = await dispatch('save', 'project-invalid-layout');
+  await observedFailure('Proof.lean', invalidRoot.revision, 'project_input_invalid');
+  assert.notEqual(sanitizedCheck({ diagnostic_code: 'checker_request_rejected' }, {}).diagnostic_class, 'forbidden_placeholder');
   assert.equal((await finish(scoped.check_result_id)).workspace_delivery.check.checked_tree, saved.git_tree);
 });
 
@@ -2069,4 +2089,29 @@ test('Task main delivery checks the merged tree under its declared checker envir
   assert.deepEqual(checked, [finished.workspace_delivery.git_tree]);
   assert.equal(finished.workspace_delivery.check.check_result_id, 'delivery-merge-check');
   assert.equal(finished.workspace_delivery.check.environment_ref, identity.environment_ref);
+});
+
+test('Task main project checks require build coverage of every declared delivery file', async t => {
+  for (const uncoveredPath of [null, 'README.md', 'lakefile.lean']) {
+    await t.test(uncoveredPath ?? 'compiled Lean files', async t => {
+      const identity = mergeCheckerIdentity;
+      const checkedPaths = ['Proof.lean', 'Helper.lean'];
+      const paths = ['Proof.lean', uncoveredPath ?? 'Helper.lean'];
+      const { command, dispatch, guest } = await workspaceFixture(t, {
+        completionContract: { workspace_delivery: { paths, require_main: true, check: identity } },
+        runtimeOptions: { workspaceProjectCheck: true, workspaceMergeChecker: { identity, timeoutMs: 5000,
+          async check() { return { verdict: 'PASS', check_result_id: 'project-merge-check', check_mode: 'lean-project', checked_paths: checkedPaths }; },
+        } },
+      });
+      guest.files['Proof.lean'] = Buffer.from('import Helper');
+      guest.files['Helper.lean'] = Buffer.from('theorem helper : True := True.intro');
+      if (uncoveredPath) guest.files[uncoveredPath] = Buffer.from('candidate artifact outside compiler coverage');
+      const saved = await dispatch('save', 'project-delivery-save');
+      const merged = await command('workspace', 'merge', '--from', saved.revision);
+      assert.deepEqual(merged.check.checked_paths, checkedPaths);
+      const finish = () => command('task', 'finish', '--outcome', 'done', '--workspace-revision', merged.main_revision);
+      if (uncoveredPath) await assert.rejects(finish(), /did not cover all declared Workspace delivery files/);
+      else assert.equal((await finish()).workspace_delivery.check.check_result_id, 'project-merge-check');
+    });
+  }
 });

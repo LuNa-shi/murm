@@ -202,6 +202,7 @@ export function agentCheckResult(result) {
 }
 
 export function diagnosticCodeFor({ verdict, evidence = {}, checkerProcessStatus = null, resultClass = null } = {}) {
+  if (evidence.forbidden_placeholder === true) return 'forbidden_placeholder';
   if (text(evidence.diagnostic_code)) return text(evidence.diagnostic_code);
   const diagnostic = diagnosticText(evidence);
   if (resultClass === 'PASS' || verdict === 'PASS') return 'checker_pass';

@@ -61,3 +61,5 @@ phases plus 30 seconds of margin, set `swarm judge check ... --timeout-ms 390000
 If a response is lost, query the original check by request key or repeat the
 exact same request with its original ID. Mission submission returns a pending receipt while the verifier
 runs. Query the original submission for its final result.
+
+For configured project merge checks, use `swarm workspace merge --from R --request-id ID --timeout-ms 210000`. A lost response is an unknown outcome: replay the exact same request to recover its result. Merge checks have one retained slot per Core Runtime; they are separate from ordinary Judge and final-submission admission limits.

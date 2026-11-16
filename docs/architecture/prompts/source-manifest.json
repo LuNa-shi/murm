@@ -57,11 +57,11 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "ff00064cd950b17dcf66a14a27189612f5e2fdbd22ceba6827ad78f57aa26ad9"
+      "sha256": "74ffcc4ed2da55927c9ed46ad16ba4207e2c8fd2f63c5f6d19c679a07fb0cdf7"
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "ed7e8174e53be84c94a69710f7b7451d56ace7a1dd20cd998d8cad0c1b0a68bf"
+      "sha256": "bf849971cb4a5e03daf7ed464d244598f9417f448afe3ca85e1b924fa236c735"
     },
     {
       "path": "src/runtime/identity-task-loop.js",
@@ -105,7 +105,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "73769cedb0235366f25b53592a522bd3bf80a45aa9df73d9af07329c8b2de6ce"
+      "sha256": "66c9b21d1272a24c917084051728d0ca39a704bd54f95b358992c4896f396a99"
     },
     {
       "path": "src/task/task-types.js",
@@ -134,25 +134,25 @@
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #notificationText",
-      "line": 2526,
+      "line": 2527,
       "sha256": "91d762ef38719a12b9cfab2a135e6db814d9ef0d90609916d1e34374c39c9369"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #recoveryPrompt",
-      "line": 3157,
+      "line": 3158,
       "sha256": "9ba0d06fb75945a5e5e3fd4a5768df5c449818e7f6abbc0b5879feb6941cf61b"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "        const prompt = ",
-      "line": 1786,
+      "line": 1787,
       "sha256": "7324112e1ed5f71238d9bf5ac227047ab65eb0e32c8e609355b9959928503c2f"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "              await active.session.prompt(\n                ",
-      "line": 2990,
+      "line": 2991,
       "sha256": "aa531fc52ff79a137d3465b431a874606d420f627f5d4723998fb1ab0bc8dec6"
     },
     {
@@ -185,27 +185,27 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1791,
+      "line": 1792,
       "expression": "active.promptChain = active.promptChain.catch(() => undefined).then(() => active.session.prompt?.(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' }));"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2512,
+      "line": 2513,
       "expression": "await session.prompt(dynamic.prompt, { timeoutMs: 30_000 });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2577,
+      "line": 2578,
       "expression": "await active.session.prompt?.(this.taskService.getBot(active.execution.owner_ref) ? buildBotNotification(notification) : this.#notificationText(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2962,
+      "line": 2963,
       "expression": "await active.session.prompt?.(buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2990,
+      "line": 2991,
       "expression": "await active.session.prompt("
     }
   ],

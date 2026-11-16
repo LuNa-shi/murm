@@ -2,6 +2,8 @@
 
 > 状态为研究依据与接入方案。关联 [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122)；后续[用户决定](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716)已批准独立 PR 实现、审核、实验及通过后合入。范围是提交固定 Workspace 修订、编译多个 Lean 模块，并保留最终证明核验。本文基于官方资料、部署版本源码和局部验证，不将设计或局部验证当作正式实验通过。
 
+本文的“现有入口”分析以合并基线 `c987a44` 为起点；后续实现的实际请求、存储、权限、检查和清理流程见 [Architecture Services](../../architecture/04-services.md#locked-lake-project-preparation-and-compilation)。局部探针记录保留当时验证范围。
+
 设一个 Bot 写 `Mission/Geometry.lean`，另一个写 `Mission/Counting.lean`，第三个在 `Mission/Solution.lean` 中引用两份结果。
 
 ```lean

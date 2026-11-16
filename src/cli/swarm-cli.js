@@ -69,7 +69,7 @@ Replace M1 with an actual Material ID. After an unknown response, reuse the same
     search: 'Search public paths and UTF-8 text at --at R; paginate with --max-results and --cursor.',
     apply: 'Apply a fixed public revision into the current E using --from revision or main. Save dirty work first; reuse --request-id after an unknown response.',
     save: 'Save the actual current E project as a stable public revision. Use --resolved only after resolving recorded conflicts and removing their alternatives. Use --material-ids for recorded Workspace uses. No file, identity or lineage arguments. Reuse --request-id after an unknown response.',
-    merge: 'Merge --from a fixed public revision; Runtime pins main, checks the combined tree when configured, and conditionally advances main. Reuse --request-id after response loss.',
+    merge: 'Merge --from a fixed public revision; Runtime pins main, checks the combined tree when configured, and conditionally advances main. For a configured 3-minute project check, use --timeout-ms 210000 to wait for its response. After response loss, repeat the same --from and --request-id to recover the original operation; do not assume the merge failed or start a new request.',
   },
   mission: {
     view: 'Read the current Mission goal and acceptance conditions through the trusted Bot binding.',

@@ -3575,6 +3575,12 @@ export class TaskService {
           proof.policy?.task?.spec_version !== task.spec_version) {
         throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Declared final-tree delivery check did not pass');
       }
+      if (proof.check_mode === 'lean-project') {
+        const checkedPaths = new Set(Array.isArray(proof.checked_paths) ? proof.checked_paths : []);
+        if (delivery.paths.some(path => !checkedPaths.has(path))) {
+          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Final-tree project check did not cover all declared Workspace delivery files');
+        }
+      }
       check = { ...delivery.check, check_result_id: proof.check_result_id, checked_tree: proof.checked_tree };
     } else if (delivery.check) {
       const result = checkResultId ? this.getCheckResult(checkResultId) : null;

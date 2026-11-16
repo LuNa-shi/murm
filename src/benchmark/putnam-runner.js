@@ -808,7 +808,7 @@ export async function releaseTerminalExecution(core) {
   await core.bridge.releaseTake({ result: { execution } });
 }
 
-function sanitizedCheck(result, material) {
+export function sanitizedCheck(result, material) {
   const evidence = result.evidence ?? {};
   const processEvidence = result.process_evidence ?? {};
   const checkerProcessStatus = result.checker_process_status ?? evidence.checker_process_status ?? 'unknown';
@@ -847,7 +847,7 @@ function sanitizedCheck(result, material) {
       error_code: evidence.error_code ?? processEvidence.error_code ?? null,
     },
     check_result_id: result.check_result_id,
-    diagnostic_class: evidence.forbidden_placeholder === true
+    diagnostic_class: evidence.forbidden_placeholder === true || result.diagnostic_code === 'forbidden_placeholder'
       ? 'forbidden_placeholder'
       : safeDiagnostic(evidence.diagnostic),
   };
@@ -2515,12 +2515,13 @@ async function createProjectState(problem, config, options) {
               material_id: payload?.workspace_source_id ?? check.workspace_source_id ?? null,
               content_hash: check.content_hash ?? null,
             };
+            const observedCheck = sanitizedCheck(check, candidateMaterial);
             core.checks.push({
-              ...sanitizedCheck(check, candidateMaterial),
+              ...observedCheck,
               source_path: payload?.path ?? null,
               ...(check.build ? { workspace_input: check.workspace_input, build: check.build } : {}),
             });
-            if (check.evidence?.forbidden_placeholder === true || check.diagnostic_class === 'forbidden_placeholder' || check.diagnostic_code === 'checker_request_rejected') {
+            if (observedCheck.diagnostic_class === 'forbidden_placeholder') {
               core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: check.material_hash ?? null });
             }
             core.observe({

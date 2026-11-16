@@ -854,9 +854,10 @@ export class Runtime {
           const result = await Promise.race([active.promise,
             new Promise((_, reject) => { timer = setTimeout(() => { reject(new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline')); controller.abort(); }, remaining); })]);
           if (Date.now() >= deadline) throw new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline');
+          const checkedPaths = Array.isArray(result?.checked_paths) ? result.checked_paths : [];
           return { verdict: result?.verdict, check_result_id: typeof result?.check_result_id === 'string' ? result.check_result_id.slice(0, 256) : null,
             diagnostic: typeof result?.diagnostic === 'string' ? result.diagnostic.slice(0, 2048) : null,
-            ...(result?.check_mode === 'lean-project' ? { check_mode: result.check_mode, checked_count: result.checked_paths?.length ?? 0 } : {}),
+            ...(result?.check_mode === 'lean-project' ? { check_mode: result.check_mode, checked_count: checkedPaths.length, checked_paths: checkedPaths } : {}),
             checked_tree: plan.tree, checker: adapter.identity, policy: checkPolicy };
         } finally { clearTimeout(timer); }
       } : null,
