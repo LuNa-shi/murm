@@ -20,10 +20,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import sys
+import subprocess
 from typing import Any, Iterable, Mapping
 
 PROJECT_NAMESPACES = ("FLT10", "Definitions", "Theorems", "P2M")
@@ -235,10 +235,18 @@ def proof_bearing_definition(source: Path) -> bool:
 
 
 def _lean_files(root: Path) -> Iterable[Path]:
-    for directory, _, names in os.walk(root):
-        for name in sorted(names):
-            if name.endswith(".lean"):
-                yield Path(directory) / name
+    # SwarmEnv migration: only committed fixture files are public inputs.
+    # A clean tracked tree does not rule out untracked or ignored proof files.
+    entries = subprocess.check_output([
+        'git', '--no-replace-objects', '-C', str(root),
+        'ls-tree', '-r', '--name-only', '-z', 'HEAD',
+    ]).decode('utf-8').split('\0')
+    for name in entries:
+        if name.endswith('.lean'):
+            path = root / name
+            if path.resolve() != path or not path.is_file():
+                raise GraphBuildError(f'non-regular committed source: {name}')
+            yield path
 
 
 def framework_graph(root: Path) -> dict[str, Any]:

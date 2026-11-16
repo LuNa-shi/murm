@@ -29,6 +29,9 @@ const primitives = [
   'List', 'eagerReduce',
 ];
 const axioms = ['propext', 'Quot.sound', 'Classical.choice'];
+// FLT10's final-source contract is additional to theorem/kernel verification.
+// Diagnostic probes may use these constructs; final submitted Lean files may not.
+const fltForbiddenSource = /\b(?:sorry|sorryAx|admit|axiom|unsafe|native_decide|trustCompiler|extern|implemented_by|run_tac|run_elab|lift_meta_tactic|evalTactic|trace_state|initialize|builtin_initialize|macro|elab)\b|#(?:eval|check|print)\b/;
 
 function sandboxArgs(leanRoot) {
   return [
@@ -441,6 +444,10 @@ export class LeanFinalTreeVerifier {
       if (!files || !Object.hasOwn(files, this.targetPath)) return result('FAIL', 'Final tree lacks the locked theorem source path');
       if (this.fixturePrefix !== null && !files[this.targetPath].toString().startsWith(this.fixturePrefix)) {
         return result('FAIL', 'Benchmark fixture prefix (imports and theorem statement) changed');
+      }
+      if (this.fixturePrefix !== null && Object.entries(files).some(([path, bytes]) =>
+        path.endsWith('.lean') && fltForbiddenSource.test(bytes.toString()))) {
+        return result('FAIL', 'FLT final source policy rejects diagnostic, incomplete or proof-bypass constructs');
       }
       if (this.localModules.some(module => !Object.hasOwn(files, module.path))) {
         return result('FAIL', 'Final tree lacks a configured local Lean module source');

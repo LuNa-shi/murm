@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { loadBenchmarkConfig } from '../src/benchmark/putnam-runner.js';
 import { createHash } from 'node:crypto';
 import { readBenchmarkContext } from '../src/benchmark/benchmark-context.js';
+import { fileURLToPath } from 'node:url';
 
 test('FLT10 loads all ten pinned statements with distinct project and Lean declaration names', async t => {
   const root = await mkdtemp(join(tmpdir(), 'swarm-flt-fixture-'));
@@ -28,6 +29,24 @@ test('FLT10 loads all ten pinned statements with distinct project and Lean decla
   assert.equal(loaded.problems[0].source_hash, '70b457388c35e492ae048993586fcafdae2f0cdaf28b02ca24810d68909f88c4');
   assert.equal(loaded.problems[1].source_hash, '822ab7414a071d2ef44e2490ad175dc5547797a8e5d9cf8d146fdb12855c393f');
   assert.equal(loaded.fixture_commit, config.fixture_commit);
+});
+
+test('FLT graph preparation excludes untracked and ignored source modules', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-flt-graph-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'Definitions'));
+  await writeFile(join(root, 'Definitions/Kept.lean'), 'def kept : Nat := 1\n');
+  await writeFile(join(root, '.gitignore'), 'Definitions/Ignored.lean\n');
+  const git = (...args) => execFileSync('git', ['-C', root, ...args]);
+  git('init', '-q'); git('add', '.');
+  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'Pin graph');
+  await writeFile(join(root, 'Definitions/Untracked.lean'), 'theorem leaked : True := trivial\n');
+  await writeFile(join(root, 'Definitions/Ignored.lean'), 'theorem hidden : True := trivial\n');
+  const output = join(root, 'graph.json');
+  execFileSync('python3', ['-B', fileURLToPath(new URL('../scripts/benchmarks/build_flt10_statement_graph.py', import.meta.url)),
+    '--project-root', root, '--output', output]);
+  const graph = JSON.parse(await readFile(output));
+  assert.deepEqual(Object.keys(graph.framework.nodes), ['Definitions.Kept']);
 });
 
 test('benchmark context retains binary metadata and rejects mutated or escaping files', async t => {

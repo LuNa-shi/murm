@@ -17,6 +17,7 @@ from build_flt10_statement_graph import build_statement_graph, TARGET_MODULES, i
 
 SOURCE_REVISION = 'aa2d8b34692b16c70f699536de0d8e75b9a3e9ef'
 MATHLIB_REVISION = 'db584cd6d46c92f209a44c0f1c829460d327499d'
+FRAMEWORK_SHA256 = '9b04c849247cf72c29ab84dbf941f3ea21fa4eeaa77c7d4b1af0d95550dca987'
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -110,6 +111,8 @@ def prepare(args):
     if git(packages / 'mathlib', 'rev-parse', 'HEAD') != MATHLIB_REVISION:
         raise ValueError('unexpected Mathlib revision')
     graph = build_statement_graph(source, TARGET_MODULES, source_revision=SOURCE_REVISION)
+    if sha(encode(graph['framework'])) != FRAMEWORK_SHA256:
+        raise ValueError('public statement graph differs from the pinned source graph')
     output.mkdir(parents=True)
     public = output / 'public'
     public.mkdir()

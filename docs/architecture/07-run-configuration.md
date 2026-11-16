@@ -326,3 +326,11 @@ parallelism one for the first Q10/Q20 observations, and give each run a fresh
 EXP ID. Time limits and paid-run authorization are owned by Issue #133, not by
 this setup tool. The ordinary shutdown, peer cleanup, checker ownership and
 reporting paths remain the same as other Swarm benchmark runs.
+
+FLT preparation enumerates committed Git tree paths and verifies the complete
+framework digest, so untracked or ignored local Lean files cannot enter public
+metadata. The final FLT source restriction scans all submitted `.lean` files for
+incomplete proofs, unsafe/native bypass and elaborator/diagnostic constructs
+(including `run_tac`, `trace_state`, `#eval`, `#check` and `#print`). This is a
+lexical final-delivery policy, including occurrences in comments, in addition to
+kernel replay; ordinary development diagnostics retain their existing behavior.
