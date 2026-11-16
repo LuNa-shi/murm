@@ -1,6 +1,6 @@
 # EXP-20261116-13: Q20 root-only Workspace, four Core, 15-minute health observation
 
-Status: REGISTERED — complete-target, visibility, service and independent review gates PASS
+Status: COMPLETED — protocol valid; Q20 unsolved; operational health PASS
 Approved GitHub Issue: [#135](https://github.com/LuNa-shi/SwarmEnv/issues/135), with [latest autonomous execution policy](https://github.com/LuNa-shi/SwarmEnv/issues/135) recorded in its discussion; original migration [#133](https://github.com/LuNa-shi/SwarmEnv/issues/133).
 Implementation PR: [#134](https://github.com/LuNa-shi/SwarmEnv/pull/134), stacked on #132; no merge.
 
@@ -72,30 +72,70 @@ Core count remains four.
 
 ## Results
 
-Not launched at registration. Full implementation suite: 654 PASS / 19
-environment skips / 0 FAIL. Actual configured-cgroup and multi-file Lean checks
-pass, as do exact-image contract/disk/visibility checks. Two independent code
-review axes pass the resource implementation. The final service workflow on `d79ace7` passes revision 0.2 source FAIL
-(`8dbd5aaa-66e4-4340-8e5b-979c8705f4d3`) → revision 0.3 repaired PASS
-(`ddef8a85-f6cd-4b43-b259-f3ab6b13d565`), exact replay and provider/peer cleanup.
-Both independent per-run reviews pass: Spec/readiness and Standards/readiness
-separately revalidated the actual public input, receipt/config/lock bindings,
-image evidence and launch settings. The private launcher binds their PASS gate
-to the exact deployment and launcher file hashes. No blocking finding remains.
+Launched from clean commit `ef2ccb56968eb5346ab6ed4ef15abc6312c5a6e9`,
+runtime `d79ace7`, at 14:52:32 UTC. Initialization completed at 14:55:02;
+research activity ended at 15:07:33 against the 15:07:32 Mission deadline.
+The runner and full experiment analyzer both exited 0. Protocol valid, no
+invalid reasons, Q20 **unsolved**, and no Mission submission. Initialization
+consumed about 150 seconds of the 900-second allowance.
+
+| Observation | Result |
+|---|---|
+| Tasks / Executions | 13 / 17; final Tasks: 10 DONE, 2 OPEN, 1 CANCELLED. |
+| Independent Judge | 17 source/project checks: 9 PASS, 8 source FAIL; 0 infrastructure errors. These are not complete-root acceptance. |
+| Context | 12 Materials; 8 recorded consumptions: 5 workspace, 2 route, 1 task. Counts alone do not establish reuse. |
+| Workspace | 31 immutable revisions; main `0.27`, commit `7f342027ad6a337d47692f180e1cde20005093f7`. Seven helper modules on main; unchanged root still contains its initial `sorry`. |
+| Runtime concurrency | Mean active Cores 3.338 over 751.472 seconds after initialization; all four active for 459.327 seconds. Where at least four eligible work items existed, mean active Cores 3.943. These are occupancy measures. |
+| Unassigned work | Ready-work 179.436 seconds; ready-but-unassigned 167.015 seconds. These overlap other work and are not four-Core idle wall time. |
+| Model usage | 270 requests; usage reported for 267: 7,049,143 input and 47,563 output tokens. Three requests have unknown usage; monetary cost unavailable. |
+| Cleanup | All 20 Bots CLOSED and all 20 provider lookups 404; 35 checker units settled, none live; no pending Judge admissions or model requests; both service peer PIDs absent; reported cleanup errors empty. |
+
+Concrete downstream use is present: Task
+`25ddeafe-b76a-4fb5-919d-22b4d56ce772` produced the displacement interface;
+Task `8c6c5f98-b17a-41e3-8c67-99ed58085e2d` recorded workspace consumption
+and its checked successor module imports that interface. Judge PASS
+`6090e18b-67db-46f9-b9b0-3110094bc18e` records that successor check.
+This establishes reusable checked code across Tasks, without establishing a
+complete proof or a numerical parallel speedup.
 
 ## Analysis
 
-No research outcome yet. Initial `sorry` compilation, a privately checked correct
-witness, controlled service probes and natural Agent progress are distinct evidence
-classes. Passing the first three establishes readiness, not Swarm effectiveness.
+The minimal Workspace supports autonomous Task proposal, definitions/lemmas,
+public Mathlib use, multi-file checking and cross-Task reuse. Concurrent work
+produced generic representation lemmas, a checked obstruction to an overly
+general implication, and reductions of the arithmetic assumptions. The unchanged
+root and absence of a Mission submission show the important limitation:
+checked local work has not yet closed the arithmetic gap required by Q20.
+A longer observation tests whether this work can converge; it does not assume
+that more helper files imply progress toward acceptance.
+
+Automated analyzer findings require semantic qualification. Its 48.8-percent
+Execution-duration proxy differs from the Runtime occupancy measure above;
+neither measures mathematical productivity. Repeated `source_failure` labels
+are too broad to establish repeated identical reasoning, and the affected
+Tasks subsequently obtained PASS. Unconsumed Materials may reflect timing or
+independent work; their count does not establish a coordination defect.
+Independent health review found no blocking implementation defect. The report's
+11 Bridge errors comprise six soft-closeout rejections, two main-revision
+conflicts, two absent-revision reads and one Task quota conflict. Agent tool
+errors have a different scope; the analyzer's count of 27 must not be read as
+27 infrastructure failures. At 15:04:32, the existing three-minute closeout
+window began; new Executions immediately inherited closeout and could save,
+publish and finish but could not start Judge/apply/merge work. Repeated
+handoff/retake during this tail consumed time without new checked work. This
+is a documented lifecycle efficiency limitation, not evidence of a timer bug.
+Changing that policy would alter the core lifecycle and is outside this run. The final FAILED Execution explicitly records
+`benchmark_deadline_cleanup`; two OPEN Tasks are unfinished obligations.
 
 ## Next steps
 
-Run the short four-Core observation, apply the
-experiment-analysis workflow, and repair any discovered implementation problems
-before a new formal run. Extend to a one-hour observation only after healthy
-progress. Keep Q100 deferred and do not claim single-Agent speedup without an
-appropriate comparison.
+Independent health review passed with no implementation blocker. Register a
+fresh one-hour four-Core Q20 run
+with new independent Spec and Standards launch reviews. Start again from the
+same eight public files; do not inject EXP13 discoveries into the input. Keep
+Q100 deferred and preserve the core Swarm algorithm. A matched single-Agent
+comparison has not been authorized under the current exactly-four-Core policy,
+so these results cannot establish measured speedup.
 
 ## Evidence and limitations
 
