@@ -594,9 +594,9 @@ export class OpenSandboxManager {
     const record = this.#record(executionId);
     const signature = values => Array.isArray(values) && values.every(item => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
       ? JSON.stringify(values.map(({ path, sha256 }) => ({ path, sha256 })).sort((a, b) => a.path.localeCompare(b.path))) : null;
-    if (signature(resources) !== signature(BOT_RESOURCES)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
+    if (signature(resources) !== signature(BOT_RESOURCES)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
     if (!record.botId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
-    if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
+    if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
     if (record.agent) return { ...record.agent };
     const workerToken = record.workerToken;
     if (typeof workerToken !== 'string' || workerToken.length === 0) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox worker token is unavailable for this Execution');
@@ -608,6 +608,7 @@ export class OpenSandboxManager {
     beforeAgentStart?.();
     const startup = await this.#request(`${endpoint}/start`, {
       absolute: true,
+      workerStart: true,
       method: 'POST',
       extraHeaders: workerHeaders,
       body: {
@@ -630,15 +631,15 @@ export class OpenSandboxManager {
     });
     const receipt = startup.body?.result?.contract;
     if (receipt?.version !== BOT_PROTOCOL_VERSION || !Array.isArray(receipt.resources) || signature(receipt.resources) !== signature(resources)) {
-      throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'worker did not attest the pinned Bot contract resources');
+      throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Bot contract resources');
     }
     const quotaReceipt = startup.body?.result?.project_quota;
     const catalogReceipt = startup.body?.result?.model_catalog_resource;
     if (projectQuota && (quotaReceipt?.bytes !== projectQuota.bytes || quotaReceipt?.inodes !== projectQuota.inodes)) {
-      throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'worker did not attest Bot workspace quota');
+      throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest Bot workspace quota');
     }
     if (modelCatalogResource && signature([catalogReceipt]) !== signature([modelCatalogResource])) {
-      throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'worker did not attest the pinned Pi model catalog');
+      throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Pi model catalog');
     }
     record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), contract: receipt };
     this.logger?.({ event: 'sandbox.agent_started', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId, worker_port: this.workerPort });
@@ -970,7 +971,7 @@ export class OpenSandboxManager {
 
   async #execd(record, path, options) { return this.#request(`${record.execdUrl}${path}`, { ...options, absolute: true, extraHeaders: record.execdHeaders }); }
 
-  async #request(path, { method = 'GET', body = undefined, timeoutMs = this.commandTimeoutMs, absolute = false, extraHeaders = {}, allowStatuses = [] } = {}) {
+  async #request(path, { method = 'GET', body = undefined, timeoutMs = this.commandTimeoutMs, absolute = false, extraHeaders = {}, allowStatuses = [], workerStart = false } = {}) {
     const url = absolute ? path : `${this.lifecycleBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('sandbox provider request timed out')), timeoutMs);
@@ -983,6 +984,9 @@ export class OpenSandboxManager {
       const response = await this.fetch(url, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: controller.signal });
       const text = await response.text();
       const parsed = response.headers?.get?.('content-type')?.includes('text/event-stream') ? null : (text ? jsonData(text) : {});
+      if (workerStart && response.status === 400 && parsed?.ok === false && parsed.code === ERROR_CODES.BOT_STARTUP_CONTRACT) {
+        throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker rejected the pinned Bot startup contract');
+      }
       if (!response.ok && !allowStatuses.includes(response.status)) throw new SwarmEnvError(absolute && /\/project\/(snapshot|install|install-result|install-confirm)$/.test(new URL(url).pathname) && [ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED].includes(parsed?.code)
         ? parsed.code : response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT,
       `OpenSandbox request failed with HTTP ${response.status}`, { status: response.status, diagnostic: safeDiagnostic(parsed ?? text),

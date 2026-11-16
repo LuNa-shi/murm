@@ -5,7 +5,6 @@ import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
 import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { TaskController } from '../src/runtime/task-controller.js';
@@ -315,37 +314,6 @@ test('closing lease expiry rejects Runtime heartbeat and does not enter watchdog
   assert.equal(service.getExecution(executionId).state, 'EXPIRED');
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
-
-for (const retryable of [false, true]) {
-  test(`benchmark ${retryable ? 'retries' : 'halts all Core startup on'} a Bot startup contract error`, async () => {
-    const wakes = [];
-    const stateRef = { mission: { mission_id: 'mission' }, requestIdentityWake: (reason) => wakes.push(reason) };
-    let attempts = 0;
-    const runtime = {
-      taskService: { isMissionStopped: () => false },
-      startBot: async () => {
-        attempts += 1;
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Worker rejected request', undefined, { retryable });
-      },
-    };
-    const makeCore = index => ({
-      index, errors: [], childEnv: {}, sessionNumber: 0, stateRef, runtime,
-      startConfig: { options: { requireThirdPartySandbox: true, botMaxMs: 1000 } },
-    });
-    const first = makeCore(1);
-    assert.equal(await ensureAgentSession(first), false);
-    assert.equal(await ensureAgentSession(makeCore(2)), false);
-    assert.equal(attempts, retryable ? 2 : 1);
-    if (retryable) {
-      assert.equal(stateRef.startupFailure, undefined);
-      assert.deepEqual(wakes, []);
-    } else {
-      assert.deepEqual(stateRef.startupFailure, { core_id: 'core-1', code: ERROR_CODES.INVALID_CONTRACT, class: 'bot_startup_contract' });
-      assert.deepEqual(first.errors, [{ code: ERROR_CODES.INVALID_CONTRACT, class: 'bot_startup_contract' }]);
-      assert.deepEqual(wakes, ['bot_startup_contract']);
-    }
-  });
-}
 
 test('benchmark does not discard a closed unbound Session whose sandbox still needs cleanup', async () => {
   let fail = true;

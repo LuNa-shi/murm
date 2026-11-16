@@ -4,6 +4,7 @@ import test from 'node:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
+import { ensureAgentSession } from '../src/benchmark/putnam-runner.js';
 import { createOpenSandboxManager, ERROR_CODES } from '../src/index.js';
 
 function response(body, { status = 200, contentType = 'application/json' } = {}) {
@@ -369,7 +370,7 @@ for (const receipt of [null, { version: BOT_PROTOCOL_VERSION, resources: [] }, {
       },
     });
     await manager.ensureExecution({ executionId: 'B-attestation', botId: 'B-attestation' });
-    await assert.rejects(manager.startAgent({ executionId: 'B-attestation', command: 'pi' }), { code: 'START_FAILED' });
+    await assert.rejects(manager.startAgent({ executionId: 'B-attestation', command: 'pi' }), { code: ERROR_CODES.BOT_STARTUP_CONTRACT });
     assert.equal(manager.snapshot().executions[0].agent, undefined);
     await manager.stopExecution('B-attestation');
     assert.equal(manager.snapshot().executions.length, 0);
@@ -516,6 +517,67 @@ test('restart does not delete an otherwise eligible first page if listing cannot
   assert.deepEqual(methods, ['GET', 'GET']);
 });
 
+const startupCases = [
+  { name: 'Execd endpoint 404', errorCode: ERROR_CODES.INVALID_CONTRACT, endpointStatus: 404, endpointPort: 44772 },
+  { name: 'worker endpoint 404', errorCode: ERROR_CODES.INVALID_CONTRACT, endpointStatus: 404, endpointPort: 44100 },
+  { name: 'untyped worker rejection', errorCode: ERROR_CODES.INVALID_CONTRACT, startStatus: 400, startBody: { ok: false } },
+  { name: 'worker HTTP 502', errorCode: ERROR_CODES.SERVICE_UNAVAILABLE, startStatus: 502, startBody: { ok: false, code: ERROR_CODES.BOT_STARTUP_CONTRACT } },
+  { name: 'worker contract rejection', errorCode: ERROR_CODES.BOT_STARTUP_CONTRACT, startStatus: 400, startBody: { ok: false, code: ERROR_CODES.BOT_STARTUP_CONTRACT } },
+  { name: 'missing worker attestation', errorCode: ERROR_CODES.BOT_STARTUP_CONTRACT, startStatus: 200, startBody: { ok: true, result: { pid: 123 } } },
+];
+
+for (const scenario of startupCases) {
+  test(`benchmark handles ${scenario.name} through the actual OpenSandbox manager`, async () => {
+    const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'fixture', waitForExecdReady: false,
+      fetchImpl: async (url, options) => {
+        if (options.method === 'DELETE') return response({}, { status: 204 });
+        if (url.endsWith('/sandboxes')) return response({ id: 'sandbox-startup' }, { status: 202 });
+        if (url.endsWith('/sandboxes/sandbox-startup')) return response({}, { status: 404 });
+        if (url.endsWith(`/endpoints/${scenario.endpointPort}`)) {
+          return response({ ok: false, code: ERROR_CODES.BOT_STARTUP_CONTRACT }, { status: scenario.endpointStatus });
+        }
+        if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
+        if (url.endsWith('/health')) return response({ ok: true });
+        if (url.endsWith('/start')) return response(scenario.startBody, { status: scenario.startStatus });
+        throw new Error(`unexpected: ${url}`);
+      },
+    });
+    let attempts = 0;
+    const wakes = [];
+    const stateRef = { mission: { mission_id: 'mission' }, requestIdentityWake: (reason) => wakes.push(reason) };
+    const runtime = {
+      taskService: { isMissionStopped: () => false },
+      startBot: async () => {
+        const id = `bot-${++attempts}`;
+        try {
+          await manager.ensureExecution({ executionId: id, botId: id });
+          await manager.startAgent({ executionId: id, command: 'pi' });
+        } finally {
+          await manager.stopExecution(id);
+        }
+      },
+    };
+    const makeCore = index => ({
+      index, errors: [], childEnv: {}, sessionNumber: 0, stateRef, runtime,
+      startConfig: { options: { requireThirdPartySandbox: true, botMaxMs: 1000 } },
+    });
+    const first = makeCore(1);
+    assert.equal(await ensureAgentSession(first), false);
+    assert.equal(await ensureAgentSession(makeCore(2)), false);
+    assert.equal(first.errors[0].code, scenario.errorCode);
+    if (scenario.errorCode === ERROR_CODES.BOT_STARTUP_CONTRACT) {
+      assert.equal(attempts, 1);
+      assert.deepEqual(stateRef.startupFailure, { core_id: 'core-1', code: scenario.errorCode, class: 'bot_startup_contract' });
+      assert.deepEqual(wakes, ['bot_startup_contract']);
+    } else {
+      assert.equal(attempts, 2);
+      assert.equal(stateRef.startupFailure, undefined);
+      assert.deepEqual(wakes, []);
+    }
+    assert.equal(manager.snapshot().executions.length, 0);
+  });
+}
+
 test('worker quota and exact catalog attestations are required when configured', async () => {
   const quota = { bytes: 16 * 1024 ** 2, inodes: 1024 };
   const modelCatalogResource = { path: '/opt/swarmenv/pi-agent/models.json', sha256: 'c'.repeat(64) };
@@ -541,10 +603,10 @@ test('worker quota and exact catalog attestations are required when configured',
       },
     });
     await manager.ensureExecution({ executionId: 'B-quota', botId: 'B-quota', projectQuotaRequired: true });
-    await assert.rejects(manager.startAgent({ executionId: 'B-quota', command: 'pi' }), { code: 'INVALID_CONTRACT' });
+    await assert.rejects(manager.startAgent({ executionId: 'B-quota', command: 'pi' }), { code: ERROR_CODES.BOT_STARTUP_CONTRACT });
     const started = manager.startAgent({ executionId: 'B-quota', command: 'pi', projectQuota: quota, modelCatalogResource });
     if (variant === 'accepted') await started;
-    else await assert.rejects(started, { code: 'START_FAILED' });
+    else await assert.rejects(started, { code: ERROR_CODES.BOT_STARTUP_CONTRACT });
     await manager.stopExecution('B-quota');
   }
 });

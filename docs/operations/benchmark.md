@@ -1,6 +1,6 @@
 # Benchmark environment and operation
 
-> Type: Operations · Status: Verify commands against current source before use · Updated 2026-11-11
+> Type: Operations · Status: Verify commands against current source before use · Updated 2026-11-16
 
 SwarmEnv currently uses PutnamBench, Lean/Mathlib and multi-Core runs to test collaboration mechanisms. `scripts/run-putnambench-benchmark.mjs` is the existing benchmark entry. The current CLI, `config/`, `fixtures/` and `src/benchmark/` are authoritative for supported arguments and actual behavior.
 
@@ -19,11 +19,18 @@ to a new explicit tag for this build. Run both probes against the same image tha
 the OpenSandbox deployment will start, on the host where its Docker storage
 and project quotas are configured.
 
-~~~sh
-docker build -f services/opensandbox-agent/Dockerfile -t "$worker_image" .
-SWARMENV_TEST_AGENT_IMAGE="$worker_image" node --test test/opensandbox-image-contract.test.js
-node test-support/bot-disk-probe.mjs "$worker_image"
+~~~bash
+set -euo pipefail
+git archive HEAD package.json package-lock.json scripts src services/opensandbox-agent |
+  docker build -f services/opensandbox-agent/Dockerfile -t "$worker_image" -
+worker_image_id="$(docker image inspect --format '{{.Id}}' "$worker_image")"
+SWARMENV_TEST_AGENT_IMAGE="$worker_image_id" node --test test/opensandbox-image-contract.test.js
+node test-support/bot-disk-probe.mjs "$worker_image_id"
 ~~~
+
+The build context contains only committed image inputs. Do not send the whole
+checkout to the builder: ignored credentials, raw experiment evidence and host
+dependencies are not image inputs.
 
 The worker contract probe runs the built image without external networking and
 checks the fixed model catalog, pinned resource hashes, ownership and the worker
@@ -53,20 +60,38 @@ The example uses the Issue #127 one-hour single-project profile with
 four Cores, one-minute initial staggering, a 30-minute Bot lifetime, a
 six-minute selection limit and a three-minute source checker process limit.
 Set the environment for the authorized provider and OpenSandbox deployment
-before launch. This command keeps the selected values explicit.
+before launch. In particular, set `opensandbox_url` to the lifecycle API,
+`endpoint_host` to the host used to reach its published worker ports, and
+`bridge_host` to a concrete IPv4 address reachable from the Bot containers.
+`bridge_public_url` must contain the literal `{port}` placeholder, for example
+`http://172.17.0.1:{port}` on a host using that Docker bridge address. The
+deployment JSON's model gateway must advertise a similarly reachable,
+non-loopback IPv4 address. Use the actual site values; Docker bridge addresses
+are not portable defaults. See [run configuration](../architecture/07-run-configuration.md)
+for the OpenSandbox, network isolation and observability setup.
+Set `observability_metadata` to the verified observation server metadata file.
+This command keeps the selected values explicit and rejects image retagging
+after the successful probes.
 
 ~~~sh
 set -e
+test "$(docker image inspect --format '{{.Id}}' "$worker_image")" = "$worker_image_id"
 launch_staging="experiments/.launch/$experiment_id"
 (umask 077; mkdir -p "$launch_staging")
 test ! -e "experiments/$experiment_id"
 test ! -e "reports/$experiment_id"
-SWARMENV_SANDBOX_ENABLED=true SWARMENV_SANDBOX_IMAGE="$worker_image" \
+SWARMENV_SANDBOX_ENABLED=true SWARMENV_SANDBOX_PROVIDER=opensandbox \
+  SWARMENV_SANDBOX_IMAGE="$worker_image" \
+  SWARMENV_OPENSANDBOX_URL="$opensandbox_url" \
+  SWARMENV_OPENSANDBOX_ENDPOINT_HOST="$endpoint_host" \
+  SWARMENV_BRIDGE_HOST="$bridge_host" \
+  SWARMENV_BRIDGE_PUBLIC_URL="$bridge_public_url" \
   node scripts/run-putnambench-benchmark.mjs \
   --problems "$deployment_config" \
   --putnambench-root "$putnambench_root" \
   --problem "$approved_problem" --cores 4 --project-parallelism 1 \
   --provider "$approved_provider" --model "$approved_model" \
+  --observability-metadata "$observability_metadata" \
   --experiment-root experiments --experiment-dir "experiments/$experiment_id" \
   --report-dir "reports/$experiment_id" \
   --timebox-ms 3600000 --initial-bot-stagger-ms 60000 \
@@ -82,7 +107,7 @@ staging inputs and launcher logs when they are no longer needed.
 [built-in services](../../services/builtin/README.md) and
 [Mathlib Search](../../services/mathlib-search/README.md) for service deployment.
 
-A permanent `INVALID_CONTRACT` during Bot startup stops that project, closes
+A typed `BOT_STARTUP_CONTRACT` during Bot startup stops that project, closes
 its resources and saves an invalid report with `stop_reason=bot_startup_contract`
 and the affected Core and error code in `run.startup_failure`. For this stop
 reason the CLI records `startup_failed` and exits 1 after saving the reports.

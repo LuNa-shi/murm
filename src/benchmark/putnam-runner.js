@@ -489,7 +489,7 @@ function scheduleTurn(core, prompt, timeoutMs) {
   // A bound Execution owns its Session continuation. The periodic repair
   // loop must not open a second prompt during the short interval between two
   // continuation turns.
-  if (core.turnInFlight || core.boundTurnPromise || Date.now() < core.nextTurnAt) return false;
+  if (core.stateRef?.startupFailure || core.turnInFlight || core.boundTurnPromise || Date.now() < core.nextTurnAt) return false;
   core.turnStartedAt = Date.now();
   core.turnPromise = runTurn(core, prompt, timeoutMs);
   // Install a rejection handler at creation time. Cleanup may stop the Pi
@@ -633,7 +633,7 @@ export async function ensureAgentSession(core) {
     core.sessionStartFailures = (core.sessionStartFailures ?? 0) + 1;
     const state = core.stateRef;
     const startupContractRejected = core.startConfig.options.requireThirdPartySandbox === true &&
-      error.code === ERROR_CODES.INVALID_CONTRACT && error.retryable !== true;
+      error.code === ERROR_CODES.BOT_STARTUP_CONTRACT;
     if (startupContractRejected && discoveryOpen(core)) {
       state.startupFailure = { core_id: `core-${core.index}`, code: error.code, class: 'bot_startup_contract' };
       state.requestIdentityWake?.('bot_startup_contract');

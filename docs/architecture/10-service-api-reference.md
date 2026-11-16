@@ -39,9 +39,9 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `c26e5b1047fb77a779564462962131fbe7af4437edacbedf1e1096f19183bf22` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `523109df728c11cdb99c3bb14eb659a6dbd247cc983bec572318eb6b4d84c2a9` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `cd7c89d9941d721753ea9adfd9f0c02751e613b501908be95e033a31a031c3c6` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
-| [src/errors.js](../../src/errors.js) | `61c7bbf151fca86773254984cc62e5f5ff6451c7ef2246640c613ce15b4c7d64` |
+| [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 
 ### Exact tool exposure for the built-in benchmark
 
@@ -3842,6 +3842,7 @@ Registry matches are resolved first by capability name or operation and must be 
   "PROCESS_EXITED": "PROCESS_EXITED",
   "RPC_ERROR": "RPC_ERROR",
   "START_FAILED": "START_FAILED",
+  "BOT_STARTUP_CONTRACT": "BOT_STARTUP_CONTRACT",
   "WORKSPACE_BUSY": "WORKSPACE_BUSY",
   "WORKSPACE_RECONCILIATION_REQUIRED": "WORKSPACE_RECONCILIATION_REQUIRED",
   "WORKSPACE_REQUEST_ABORTED": "WORKSPACE_REQUEST_ABORTED",

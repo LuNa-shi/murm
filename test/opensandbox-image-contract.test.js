@@ -47,6 +47,14 @@ test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contr
       }
       const response = await post('/start', { ...input, command: 'bash', args: ['-c', 'pi --version && swarm judge check --help'] });
       const started = await response.json();
+      if (input.expect_rejection) {
+        assert.equal(response.status, 400);
+        assert.equal(started.code, 'BOT_STARTUP_CONTRACT');
+        assert.equal(started.ok, false);
+        const health = await fetch(origin + '/health');
+        assert.equal((await health.json()).pid, null);
+        return;
+      }
       assert.equal(response.status, 200, started.error);
       assert.ok(started.result.pid > 0);
       assert.deepEqual(started.result.contract, { version: input.contract_version, resources: input.resources });
@@ -79,7 +87,11 @@ test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contr
       worker.kill('SIGKILL');
     }
   `;
-  await promisify(execFile)('docker', ['run', '--rm', '--network', 'none', '--entrypoint', 'node', agentImage,
-    '--input-type=module', '-e', probe, JSON.stringify({ contract_version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES,
-      model_catalog_resource: modelCatalogResource })], { timeout: 25_000 });
+  const runProbe = input => promisify(execFile)('docker', ['run', '--rm', '--network', 'none', '--entrypoint', 'node',
+    agentImage, '--input-type=module', '-e', probe, JSON.stringify(input)], { timeout: 25_000 });
+  const input = { contract_version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES, model_catalog_resource: modelCatalogResource };
+  await Promise.all([
+    runProbe(input),
+    runProbe({ ...input, expect_rejection: true, resources: BOT_RESOURCES.map(resource => ({ ...resource, sha256: '0'.repeat(64) })) }),
+  ]);
 });
