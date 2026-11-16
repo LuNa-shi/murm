@@ -9,7 +9,7 @@
     },
     {
       "path": "src/agent/bot-contract/system.txt",
-      "sha256": "41f7d17b175e475d92bd20fe2709d1d360fceb76b3eaad94a429ffabd3cdfd20"
+      "sha256": "7bfee0de07d5cb5e7261d76a59324acb4d19fb249b4277f7cebe3174a8531988"
     },
     {
       "path": "src/agent/bot-contract/plan-task.md",
@@ -21,7 +21,7 @@
     },
     {
       "path": "src/agent/bot-contract/use-workspace.md",
-      "sha256": "f99d28205bb396f550ec0edc9ba21552eb27b135dbcb24ac4e7b9dedaa4038ac"
+      "sha256": "eac1b56f88800434b153f61698fe40aabb9d8a653cd1d542422ff5f4b4fc6b42"
     },
     {
       "path": "src/agent/bot-contract/finish-task.md",
@@ -346,7 +346,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "1b7fe46c41701b9ef99d1b82b6237056e78f22f087bcf258c5244a11c414c5f2"
+      "sha256": "1bd4987555838319c5af710a57b362d8058cb26a29c3e5932ee7380bcac863d2"
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
@@ -354,11 +354,11 @@
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "aba2800e06dbc5f7c0697de940eeae7e0b85050677dd04ffe0b7345980920719"
+      "sha256": "f771053f3e5d2ab46a17ab7fe549bee4a60cf427ee289587585dcad91ee60fb5"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
-      "sha256": "72d20f00048e9ccc3a54b2f848604ffc1b476341b33cb06a66c1b69cb0349865"
+      "sha256": "2cf24d40c36d101ec709bccc37b0811a59f816ea2a22a72c4d7782cda518a7d2"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",

@@ -95,9 +95,9 @@ swarm material consume --material-ids '["M1"]' --action integration --impact "Us
 ````
 ## use-workspace (draft.2)
 
-Guest path: /opt/swarmenv/src/agent/bot-contract/use-workspace.md; file SHA-256: f99d28205bb396f550ec0edc9ba21552eb27b135dbcb24ac4e7b9dedaa4038ac
+Guest path: /opt/swarmenv/src/agent/bot-contract/use-workspace.md; file SHA-256: eac1b56f88800434b153f61698fe40aabb9d8a653cd1d542422ff5f4b4fc6b42
 
-Body SHA-256: `f99d28205bb396f550ec0edc9ba21552eb27b135dbcb24ac4e7b9dedaa4038ac`
+Body SHA-256: `eac1b56f88800434b153f61698fe40aabb9d8a653cd1d542422ff5f4b4fc6b42`
 
 ````text
 ---
@@ -124,6 +124,8 @@ Workspace 在 sandbox 外由 Runtime 管理 Git。你只修改当前 E 的 /work
 Mission 验证期间 main merge 会冻结。查询现有 submission，不用其他接口绕过；save/apply 本身不改变被验收快照。
 
 Lean 项目检查先看 `swarm judge check --help`。配置启用项目检查时，save 后用 `swarm judge check --revision R` 检查整个固定版本；模块文件放在锁定题目所在源码目录下，按 Lean 模块名相互 import，无需复制证明正文。需要给 Task 的指定文件提交检查回执时加 `--path P`：仍编译同一项目，并将回执绑定到该文件。核对实际覆盖文件与警告；编译成功不等于 Mission 已证明，部分证明的占位符只能作为诊断状态保留，最终提交仍须通过独立验收。没有启用项目检查的部署仍要求 `--path`，不要假定它能读取相邻模块。
+
+Sandbox 没有本地 Lean/Lake/Mathlib。日常开发也使用上述 Judge 路径：编辑 → save → check 固定 revision → 阅读错误位置/诊断 → 修复 → save/check。含编译错误或部分证明的中间版本不必先 merge，源码 FAIL 是可用于修复的反馈。网络响应未知时沿用原 request ID；收到 CHECKER_BUSY 时稍后有界重试，不能用新请求并发轰炸。CHECKER_BUDGET_EXHAUSTED 表示当前 Mission 的普通检查额度已耗尽，应保存有用成果并如实记录未验证部分，不通过下载本地编译器规避额度，也不把未检查的源码称为 PASS。
 
 ````
 ## finish-task (draft.2)

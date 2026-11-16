@@ -144,16 +144,6 @@
       "role": "UID-restricted Landlock policy inherited by Pi and its descendants"
     },
     {
-      "path": "scripts/build-agent-lean-image.mjs",
-      "category": "service deployment",
-      "chapters": [
-        "docs/architecture/05-workspace-continuity.md",
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Prebuilt optional Lean diagnostic image and immutable tool environment"
-    },
-    {
       "path": "scripts/check-architecture.mjs",
       "category": "documentation tooling",
       "chapters": [
@@ -446,26 +436,6 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "OpenSandbox agent image recipe containing the worker, Pi package and native shell tools"
-    },
-    {
-      "path": "services/opensandbox-agent/lean/Dockerfile",
-      "category": "service deployment",
-      "chapters": [
-        "docs/architecture/05-workspace-continuity.md",
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Prebuilt optional Lean diagnostic image and immutable tool environment"
-    },
-    {
-      "path": "services/opensandbox-agent/lean/lean",
-      "category": "service deployment",
-      "chapters": [
-        "docs/architecture/05-workspace-continuity.md",
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Prebuilt optional Lean diagnostic image and immutable tool environment"
     },
     {
       "path": "services/opensandbox-agent/pi-models.json",

@@ -9,7 +9,7 @@ These are repository-owned texts and deterministic examples, not transcripts of 
 
 Normal OpenSandbox Bots load the immutable image resource through --append-system-prompt. The worker verifies its hash and permissions before spawning Pi.
 
-Body SHA-256: `64ff964c41deb657a17e716ec72a9842facfb1e575bae5fe3411b9aa47d03cae`
+Body SHA-256: `cf33113949f160c42bd07bd8cc59865cd1c204db3a311097e3aeb06db5ba0704`
 
 ````text
 你是 SwarmEnv 中的一个 Bot，目标是在给定 Mission 下形成可验证、可接续的局部贡献。
@@ -72,7 +72,7 @@ Mission 最终提交
 - 软收尾、阻塞、取消或未完成交接：finish-task。
 - skills 不改变系统合同；发现规范、接口、权限冲突时报告具体版本和错误，不自行扩大权限。
 
-The standard Sandbox includes Bash, Git, Node.js, curl, jq, Python 3 (python3 and python), and ripgrep (rg). Use command -v lean to discover whether this image also provides the optional local Lean environment. When present, lean uses prebuilt read-only dependencies; its identity is in /opt/swarmenv/lean-environment.json. Local compilation is diagnostic only. Save a public revision and use Judge for trusted checks; a local PASS is not Mission acceptance. Do not fetch or rebuild dependency packages just to use this prebuilt environment.
+Sandbox 提供 Bash、Git、Node.js、curl、jq、Python 3（python3/python）和 ripgrep（rg），不提供 Lean、Lake 或 Mathlib 运行环境。所有 Lean 编译与运行检查都走 Judge；不要下载、安装或重建本地工具链/依赖，也不要提出依赖本地 Lean 的验证任务。需要编译反馈时，先 workspace save 固定 revision，再提交 judge check，阅读诊断后修改并重新保存/检查。含错误的中间版本可正常提交检查，不要求先 merge；诊断 PASS 不等于 Task done 或 Mission 验收通过。
 ````
 ## Compatibility SDK system addendum (system version 4; composition version 6)
 

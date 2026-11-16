@@ -47,7 +47,7 @@ test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contr
         assert.ok(Date.now() < startDeadline && worker.exitCode === null, 'worker did not become healthy');
         await delay(50);
       }
-      const response = await post('/start', { ...input, command: 'bash', args: ['-c', 'pi --version && swarm judge check --help && jq -n -e true && python3 -c "import json" && python --version && rg --version && curl --version'] });
+      const response = await post('/start', { ...input, command: 'bash', args: ['-c', 'pi --version && swarm judge check --help && jq -n -e true && python3 -c "import json" && python --version && rg --version && curl --version && ! command -v lean && ! command -v lake && ! command -v elan'] });
       const started = await response.json();
       if (input.expect_rejection) {
         assert.equal(response.status, 400);
