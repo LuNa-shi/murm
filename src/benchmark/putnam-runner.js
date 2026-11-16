@@ -1026,6 +1026,10 @@ export async function stopCore(state, core, { cleanupGraceMs = 30_000, cleanupDe
   return { complete: !cleanupFailed };
 }
 
+export async function finishSolverTask(state, core) {
+  return withinRunDeadline(state, () => core.bridge.controlCall({ operation: 'task_finish', operation_id: `solver-finish:${core.executionId}`, payload: { outcome: 'done', summary: 'Fixed solution accepted by the trusted final verifier' } }), Math.min(state.runDeadlineAt, state.missionCloseoutDeadline));
+}
+
 export function beginMissionCloseout(state, submission) {
   const acceptedAt = Date.parse(submission.finished_at);
   const allowance = state.missionCloseoutMs ?? 30_000;
@@ -3096,7 +3100,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
           const remaining = Math.min(deadline, state.missionCloseoutDeadline) - Date.now();
           if (state.agentMode === 'solver') {
             for (const core of state.cores) if (core.executionId && state.taskService.getExecution(core.executionId)?.state === 'RUNNING') {
-              await core.bridge.controlCall({ operation: 'task_finish', operation_id: `solver-finish:${core.executionId}`, payload: { outcome: 'done', summary: 'Fixed solution accepted by the trusted final verifier' } });
+              await finishSolverTask(state, core);
             }
           }
           const active = state.cores.filter(core => core.executionId && state.taskService.getExecution(core.executionId)?.state === 'RUNNING');

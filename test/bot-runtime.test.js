@@ -9,7 +9,7 @@ import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createMissionCoordination } from '../src/runtime/mission-coordination.js';
-import { beginMissionCloseout, ensureAgentSession, sanitizedCheck, takeTaskWithAgent } from '../src/benchmark/putnam-runner.js';
+import { finishSolverTask, beginMissionCloseout, ensureAgentSession, sanitizedCheck, takeTaskWithAgent } from '../src/benchmark/putnam-runner.js';
 import { IdentityTaskLoop } from '../src/runtime/identity-task-loop.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { BOT_RESOURCES, BOT_PROTOCOL_VERSION, BOT_COMPACTION_MESSAGE } from '../src/agent/bot-contract.js';
@@ -2169,6 +2169,7 @@ for (const accepted of [false, true]) test(`solver control completes real lifecy
   assert.equal(service.getExecution(result.execution.execution_id).state, 'RUNNING');
   assert.equal(service.getBot(started.bot.bot_id).execution_id, result.execution.execution_id);
   assert.equal(service.getExecution(result.execution.execution_id).owner_ref, started.bot.bot_id);
+  let closeoutState;
   if (accepted) {
     const loop = new IdentityTaskLoop({ coreId: 'core-1', taskService: service, runtime,
       listEligibleTasks: () => [task], takeTask: async () => result, runExecution: async () => result,
@@ -2178,15 +2179,17 @@ for (const accepted of [false, true]) test(`solver control completes real lifecy
     t.after(async () => { loop.stop(); await running; });
     while (!loop.executionId) await new Promise(resolve => setImmediate(resolve));
     service.setMissionStopReader(() => true);
-    beginMissionCloseout({ agentMode: 'solver', taskService: service, missionId: 'mission:bots',
+    closeoutState = { agentMode: 'solver', taskService: service, missionId: 'mission:bots',
       runDeadlineAt: Date.now() + 60_000, identityLoops: [loop], requestIdentityWake() {},
-    }, { submission_id: 'accepted-solver', actor_ref: started.bot.bot_id, finished_at: new Date().toISOString() });
+    };
+    beginMissionCloseout(closeoutState, { submission_id: 'accepted-solver', actor_ref: started.bot.bot_id, finished_at: new Date().toISOString() });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(service.getBot(started.bot.bot_id).state, 'ACTIVE', 'acceptance must preserve the Bot until host finish');
   }
   const finish = { operation: 'task_finish', operation_id: 'solver-control-finish', payload: { outcome: accepted ? 'done' : 'incomplete', summary: 'Controlled completion' } };
   await assert.rejects(bridge.call(finish), error => error.code === 'NOT_ALLOWED');
-  await bridge.controlCall(finish);
+  if (accepted) await finishSolverTask(closeoutState, { bridge, executionId: result.execution.execution_id });
+  else await bridge.controlCall(finish);
   assert.equal(service.getBot(started.bot.bot_id).state, 'CLOSED');
   assert.equal(session.closed, true);
   if (accepted) assert.equal(service.getTask(task.task_id).state, 'DONE');
