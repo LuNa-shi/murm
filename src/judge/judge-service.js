@@ -415,10 +415,11 @@ export class JudgeService {
     const work = (async () => {
       try { await this.#waitForMissionSlot(request.missionId, request.result.check_result_id, authority); }
       catch (error) {
+        const requestFailure = error.code === 'CHECKER_BUSY' || executionRejection(error);
         this.db.prepare(`UPDATE check_results SET status = 'RECEIVED', verdict = 'ERROR',
-          judge_operation_status = 'persisted', result_class = 'request_failure', checker_process_status = 'not_started',
+          judge_operation_status = 'persisted', result_class = ?, checker_process_status = 'not_started',
           retryable = ?, diagnostic_code = ?, evidence_json = json_set(evidence_json, '$.checker_started', json('false'), '$.diagnostic', ?), updated_at = ?
-          WHERE check_result_id = ?`).run(error.retryable ? 1 : 0, error.code ?? 'queue_failed', error.message, now(), request.result.check_result_id);
+          WHERE check_result_id = ?`).run(requestFailure ? 'request_failure' : 'infrastructure_failure', error.retryable ? 1 : 0, error.code ?? 'queue_failed', error.message, now(), request.result.check_result_id);
         if (executionRejection(error)) return this.getCheckResult(request.result.check_result_id);
         throw error;
       }

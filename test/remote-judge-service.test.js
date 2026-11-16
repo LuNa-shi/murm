@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { createServer, request as httpRequest } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -66,19 +67,41 @@ for (const closeDuringPreflight of [false, true]) test(`independent Judge preser
   assert.equal(judge.getMissionCheckBudget('mission:one').source_process_starts, 1);
 });
 
-async function queuedJudge(t, { sourceDelay = 1200, missionBudget } = {}) {
+async function queuedJudge(t, { sourceDelay = 1200, missionBudget, interruptQueueAuthority = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'remote-judge-queue-'));
   const tasks = new TaskService(join(root, 'task.sqlite'));
   const token = 'private-queue-coordinator-test-token';
   const judge = new RemoteJudgeService({ taskService: tasks, token, timeoutMs: 10000 });
   const coordinator = await judge.startCoordinator();
+  let interruptedQueueRefreshes = 0;
+  const proxy = interruptQueueAuthority ? createServer(async (incoming, response) => {
+    const chunks = [];
+    for await (const chunk of incoming) chunks.push(chunk);
+    const body = Buffer.concat(chunks);
+    if (JSON.parse(body.toString()).input?.action === 'queue_status' && interruptedQueueRefreshes === 0) {
+      interruptedQueueRefreshes++;
+      incoming.socket.destroy();
+      return;
+    }
+    const forwarded = httpRequest(new URL(incoming.url, coordinator.url), {
+      method: incoming.method, headers: incoming.headers,
+    }, upstream => {
+      response.writeHead(upstream.statusCode, upstream.headers);
+      upstream.pipe(response);
+    });
+    forwarded.on('error', () => response.destroy());
+    forwarded.end(body);
+  }) : null;
+  if (proxy) { proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening'); }
+  const coordinatorUrl = proxy ? `http://127.0.0.1:${proxy.address().port}` : coordinator.url;
   const child = spawn('flock', ['--nonblock', '--no-fork', join(root, 'judge.lock'), process.execPath, 'test-support/judge-peer-fixture.mjs'], {
     env: { ...process.env, JUDGE_PEER_FIXTURE: JSON.stringify({ database: join(root, 'judge.sqlite'), token,
-      coordinator: { url: coordinator.url, token }, fixtureManifest, sourceDelay, processTimeoutMs: 5000, missionBudget }) },
+      coordinator: { url: coordinatorUrl, token }, fixtureManifest, sourceDelay, processTimeoutMs: 5000, missionBudget }) },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   t.after(async () => {
     await judge.close();
+    if (proxy) { proxy.closeAllConnections(); await new Promise(resolve => proxy.close(resolve)); }
     if (child.exitCode === null && child.signalCode === null) {
       const exited = once(child, 'exit');
       child.kill();
@@ -125,7 +148,7 @@ async function queuedJudge(t, { sourceDelay = 1200, missionBudget } = {}) {
       await delay(10);
     }
   };
-  return { tasks, judge, envelope, submit, budget, until };
+  return { tasks, judge, envelope, submit, budget, until, interruptedQueueRefreshes: () => interruptedQueueRefreshes };
 }
 
 for (const finishWhileQueued of [false, true]) test(`independent Judge bounds four active checks and one queued check (finish: ${finishWhileQueued})`, { timeout: 15000 }, async t => {
@@ -205,5 +228,30 @@ test('independent Judge refreshes queued authority after the owning Execution he
   await running;
   assert.ok(Date.now() > oldDeadline, 'The queued request must outlive its original authority lease');
   assert.equal((await queued).verdict, 'PASS');
+  assert.equal(budget().source_process_starts, 2);
+});
+
+
+test('independent Judge permits retry after queued authority refresh transport failure', { timeout: 15000 }, async t => {
+  const { submit, budget, until, judge, interruptedQueueRefreshes } = await queuedJudge(t, {
+    sourceDelay: 800, interruptQueueAuthority: true,
+    missionBudget: { maxConcurrent: 1, maxQueued: 1, queueWaitMs: 5000 },
+  });
+  const running = submit(1);
+  await until(() => budget().source_process_starts === 1);
+  await assert.rejects(submit(2), { code: 'SERVICE_UNAVAILABLE', retryable: true });
+  assert.equal(interruptedQueueRefreshes(), 1);
+  const receipt = await submit(2);
+  assert.equal(receipt.diagnostic_code, 'SERVICE_UNAVAILABLE');
+  assert.equal(receipt.retryable, true);
+  assert.equal(receipt.checker_process_status, 'not_started');
+  assert.equal(budget().source_process_starts, 1);
+  assert.equal(budget().queued_requests, 0);
+  assert.equal(judge.gate.pending(), null);
+  await running;
+  const retried = await submit(2, 'check:queue:2:after-transport-recovery');
+  assert.equal(retried.verdict, 'PASS');
+  assert.notEqual(retried.check_result_id, receipt.check_result_id);
+  assert.equal((await submit(2)).check_result_id, receipt.check_result_id);
   assert.equal(budget().source_process_starts, 2);
 });
