@@ -65,3 +65,145 @@ for (const closeDuringPreflight of [false, true]) test(`independent Judge preser
   assert.equal(replay.check_result_id, result.check_result_id);
   assert.equal(judge.getMissionCheckBudget('mission:one').source_process_starts, 1);
 });
+
+async function queuedJudge(t, { sourceDelay = 1200, missionBudget } = {}) {
+  const root = await mkdtemp(join(tmpdir(), 'remote-judge-queue-'));
+  const tasks = new TaskService(join(root, 'task.sqlite'));
+  const token = 'private-queue-coordinator-test-token';
+  const judge = new RemoteJudgeService({ taskService: tasks, token, timeoutMs: 10000 });
+  const coordinator = await judge.startCoordinator();
+  const child = spawn('flock', ['--nonblock', '--no-fork', join(root, 'judge.lock'), process.execPath, 'test-support/judge-peer-fixture.mjs'], {
+    env: { ...process.env, JUDGE_PEER_FIXTURE: JSON.stringify({ database: join(root, 'judge.sqlite'), token,
+      coordinator: { url: coordinator.url, token }, fixtureManifest, sourceDelay, processTimeoutMs: 5000, missionBudget }) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(async () => {
+    await judge.close();
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = once(child, 'exit');
+      child.kill();
+      await exited;
+    }
+    tasks.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  let errors = '';
+  child.stderr.on('data', chunk => { errors += chunk; });
+  const endpoint = await new Promise((resolve, reject) => {
+    let output = '';
+    child.once('error', reject);
+    child.once('exit', code => reject(new Error(`Judge exited ${code}: ${errors}`)));
+    child.stdout.on('data', chunk => {
+      output += chunk;
+      if (output.includes('\n')) resolve(JSON.parse(output.split('\n')[0]));
+    });
+  });
+  judge.connect(endpoint.url);
+  tasks.createMission({ mission_id: 'mission:queue', goal: 'Investigate queued checks' }, makeEnvelope({ actorRef: 'operator:test' }));
+  tasks.registerBot({ botId: 'bot:queue', missionId: 'mission:queue', coreId: 'core:queue', selectionDeadline: new Date(Date.now() + 60000).toISOString() });
+  tasks.recordBotSandbox('bot:queue', { provider: 'controlled', sandboxId: 'sandbox:queue' });
+  tasks.markBotReady('bot:queue');
+  const task = tasks.createTask({ mission_id: 'mission:queue', summary: 'Check fixed revisions', expected_output: 'Checked source',
+    acceptance_conditions: ['Record checker results'] }, makeEnvelope({ actorRef: 'bot:queue' })).task;
+  const taken = tasks.takeTask(task.task_id, { owner_ref: 'bot:queue', core_id: 'core:queue', take_key: 'take:queue' });
+  const envelope = operationId => {
+    const e = tasks.getExecution(taken.execution.execution_id);
+    return makeEnvelope({ operationId, actorRef: 'bot:queue', taskId: task.task_id, executionId: e.execution_id,
+      specVersion: e.spec_version, stateVersion: e.state_version, fencingVersion: e.fencing_version });
+  };
+  tasks.dispatch('start_execution', {}, envelope('start:queue'));
+  const submit = (revision, requestKey = `check:queue:${revision}`) => judge.dispatch('workspace_check', {
+    request_key: requestKey, source: { workspace_id: 'workspace:queue', revision: `0.${revision}`, path: 'Main.lean',
+      git_commit: revision.toString(16).padStart(40, '0'), git_tree: revision.toString(16).padStart(40, '1'),
+      content: `example : True := by trivial\n-- revision ${revision}` },
+  }, envelope(requestKey));
+  const budget = () => judge.getMissionCheckBudget('mission:queue');
+  const until = async predicate => {
+    const deadline = Date.now() + 5000;
+    while (!predicate()) {
+      assert.ok(Date.now() < deadline, 'Judge did not reach the expected observable queue state');
+      await delay(10);
+    }
+  };
+  return { tasks, judge, envelope, submit, budget, until };
+}
+
+for (const finishWhileQueued of [false, true]) test(`independent Judge bounds four active checks and one queued check (finish: ${finishWhileQueued})`, { timeout: 15000 }, async t => {
+  const service = await queuedJudge(t, { sourceDelay: finishWhileQueued ? 3000 : 1800, missionBudget: { maxConcurrent: 4, maxQueued: 1, queueWaitMs: 5000 } });
+  const { tasks, judge, envelope, submit, budget, until } = service;
+  const running = [1, 2, 3, 4].map(revision => submit(revision));
+  await until(() => budget().source_process_starts === 4);
+  const queued = submit(5);
+  const queuedOutcome = queued.then(result => ({ result }), error => ({ error }));
+  await until(() => budget().queued_requests === 1);
+  assert.equal(budget().active_requests, 4);
+  assert.equal(budget().source_process_starts, 4);
+  const replay = await submit(5);
+  assert.equal(replay.status, 'REQUESTED');
+  assert.equal(budget().admitted_requests, 5);
+  await assert.rejects(submit(6), { code: 'CHECKER_BUSY', retryable: true });
+  assert.equal(budget().admitted_requests, 5);
+  if (finishWhileQueued) {
+    assert.equal(tasks.dispatch('task_finish', { outcome: 'incomplete' }, envelope('finish:queued')).execution.state, 'CLOSING');
+    assert.equal(judge.gate.pending(), null);
+    const waitingAt = Date.now();
+    const cancelled = await queuedOutcome;
+    assert.equal(cancelled.result?.diagnostic_code, 'NOT_ALLOWED');
+    assert.equal(cancelled.result?.result_class, 'request_failure');
+    assert.equal(cancelled.result?.checker_process_status, 'not_started');
+    assert.ok(Date.now() - waitingAt < 1500, 'Closed Execution must settle its queued request before a running checker frees a slot');
+    assert.equal(budget().active_requests, 4);
+    assert.equal(budget().queued_requests, 0);
+    assert.equal(budget().source_process_starts, 4);
+  }
+  const first = await Promise.all(running);
+  assert.ok(first.every(result => result.verdict === 'PASS'));
+  const outcome = await queuedOutcome;
+  const result = finishWhileQueued ? judge.getByRequestKey('check:queue:5') : outcome.result;
+  assert.equal(result.check_result_id, replay.check_result_id);
+  assert.equal(result.result_class, finishWhileQueued ? 'request_failure' : 'PASS');
+  assert.equal(budget().source_process_starts, finishWhileQueued ? 4 : 5);
+  assert.equal(budget().preflight_process_starts, finishWhileQueued ? 4 : 5);
+  assert.equal(budget().queued_requests, 0);
+  assert.equal(budget().active_requests, 0);
+  assert.equal((await submit(5)).check_result_id, result.check_result_id);
+  assert.equal(budget().admitted_requests, 5);
+});
+
+test('independent Judge queue timeout persists its receipt and permits a new request after capacity returns', { timeout: 15000 }, async t => {
+  const { submit, budget, until, judge } = await queuedJudge(t, {
+    sourceDelay: 800, missionBudget: { maxConcurrent: 1, maxQueued: 1, queueWaitMs: 150 },
+  });
+  const running = submit(1);
+  await until(() => budget().source_process_starts === 1);
+  const queued = submit(2);
+  await assert.rejects(queued, { code: 'CHECKER_BUSY', retryable: true });
+  const receipt = await submit(2);
+  assert.equal(receipt.diagnostic_code, 'CHECKER_BUSY');
+  assert.equal(receipt.checker_process_status, 'not_started');
+  assert.equal(budget().source_process_starts, 1);
+  assert.equal(budget().queued_requests, 0);
+  assert.equal(judge.gate.pending(), null);
+  await running;
+  const retried = await submit(2, 'check:queue:2:retry');
+  assert.equal(retried.verdict, 'PASS');
+  assert.notEqual(retried.check_result_id, receipt.check_result_id);
+  assert.equal(budget().source_process_starts, 2);
+});
+
+test('independent Judge refreshes queued authority after the owning Execution heartbeat renews its lease', { timeout: 15000 }, async t => {
+  const { tasks, envelope, submit, budget, until } = await queuedJudge(t, {
+    sourceDelay: 1500, missionBudget: { maxConcurrent: 1, maxQueued: 1, queueWaitMs: 5000 },
+  });
+  const running = submit(1);
+  await until(() => budget().source_process_starts === 1);
+  const oldDeadline = Date.now() + 800;
+  tasks.dispatch('heartbeat', { lease_expires_at: new Date(oldDeadline).toISOString() }, envelope('short-lease'));
+  const queued = submit(2);
+  await until(() => budget().queued_requests === 1);
+  tasks.dispatch('heartbeat', { lease_expires_at: new Date(Date.now() + 30000).toISOString() }, envelope('renew-lease'));
+  await running;
+  assert.ok(Date.now() > oldDeadline, 'The queued request must outlive its original authority lease');
+  assert.equal((await queued).verdict, 'PASS');
+  assert.equal(budget().source_process_starts, 2);
+});

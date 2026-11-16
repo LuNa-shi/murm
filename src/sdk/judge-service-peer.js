@@ -33,6 +33,11 @@ export function createJudgeServicePeer({ database, token, coordinator, checker, 
       }
       return { ...project, files: Object.fromEntries(Object.entries(project.files).map(([path, bytes]) => [path, Buffer.from(bytes, 'base64')])) };
     } : null,
+    refreshQueueAuthority: async () => {
+      const request = requests.getStore();
+      const refreshed = await stage({ action: 'queue_status', call_id: request.call_id, generation });
+      request.authority = new ServiceAuthoritySnapshot(refreshed.authority);
+    },
     lifecycleWrite: async (commit, metadata) => {
       const request = requests.getStore();
       const sequence = request.sequence++;

@@ -98,11 +98,35 @@ A burst of upstream HTTP errors interrupted four Executions (`bb43e484`, `c97489
 
 EXP-04 accepted in 9m23.520s and this run's project interval was 19m09.763s, with more ordinary source failures and an upstream interruption. Model choices and Task decomposition varied, and tool guidance plus service deployment changed together. This single comparison cannot attribute timing, token usage or success to centralization alone. A natural early success is not an hour of endurance evidence.
 
+### Timing comparison with the independent single-solver run
+
+[EXP-20261116-05](https://github.com/LuNa-shi/SwarmEnv/blob/56ae6722d9a83826e17bb904bc2f7c258eeeca08/docs/experiments/EXP-20261116-05-pass-k-1-1h.md) belongs to independent Issue #129. Its runtime was `2edb9b06ebeacefb0a3590e4e427eff66a222894`, launched as `f1cde74c56e221c3e574d1c9032025a4f1683139`; EXP-07 retains its registered `e18c7ae` runtime and historical 20/2 ordinary policy. The single-solver run's closeout defect made its protocol invalid, while submission `submit-final-1` and final receipt `treecheck:18f61b28-8d86-4726-a5b7-a077af138611` establish trusted mathematical acceptance. Its later owner-requested observation wait is excluded from time to acceptance.
+
+Using each run's metadata start and durable acceptance timestamp, EXP-05 took **13m25.609s** and EXP-07 **21m04.908s**, an observed increase of **7m39.299s (57%)**. EXP-05's previously reported group-start interval is 18 ms shorter. EXP-07's 19m09.763s project interval excludes CLI preparation and includes closeout, so it is a different timing measure. Four consecutive, nonoverlapping intervals reconcile the metadata-to-acceptance difference:
+
+| Interval | EXP-05 | EXP-07 | Difference |
+|---|---:|---:|---:|
+| Metadata start → first Execution activation | 80.892 s | 177.004 s | +96.112 s |
+| First Execution → merge of the ultimately accepted main | 621.825 s | 800.459 s | +178.634 s |
+| That merge → final submission creation | 0.085 s | 129.974 s | +129.889 s |
+| Submission creation → trusted acceptance | 102.807 s | 157.471 s | +54.664 s |
+| **Total** | **805.609 s** | **1,264.908 s** | **+459.299 s** |
+
+From first Execution activation alone, the intervals are 12m04.717s and 18m07.904s. Thus the observed slowdown extends beyond startup. The accepted projects contained one and eight Lean modules respectively; merge calls numbered one and nine. Ordinary persisted check intervals had medians of 5.4085 s and 15.3325 s, and maxima of 13.719 s and 40.331 s. The wall-time unions of these intervals were 72.620 s and 340.301 s. These intervals overlap other work and do not measure an additive contribution to the critical path. Bridge-start-to-persisted-admission medians were 165 ms and 278.5 ms, with EXP-07's maximum 517 ms. The single CHECKER_BUSY rejection does not establish minutes of admission queueing. EXP-07 used rejection at full capacity; it did not exercise a later queue implementation.
+
+EXP-07 main `0.39` was merged at 08:42:47.187 UTC, before the upstream-error requests began at 08:43:09.453–08:43:34.334. Those errors cannot explain the preceding proof-integration interval. Four Execution failures and replacement Bots' public-source review/submission occurred before final submission at 08:44:57.161. They coincide with the longer post-merge interval, whose entire duration cannot be attributed to the provider. Ordinary-budget exhaustion also changed the observed development path, with the separately governed merge outcomes recorded above; its net wall-time effect remains unidentified.
+
+The single solver was faster on this observed B1 attempt. Different prompts, permissions, decomposition, startup scheduling, service deployment, proof structure and runtime conditions prevent attributing the difference to coordination or centralized checking alone. This comparison supplies neither a controlled causal estimate nor a general speedup claim. The primary timing evidence is each run's metadata, Bot/Execution and Mission submission rows, Bridge merge receipts, and Judge created/updated timestamps. EXP-07's 31.070 s from acceptance to project end is reported separately from acceptance latency; EXP-05's Bot closed 0.545 s after acceptance, followed by its distinct idle observation wait.
+
+## Post-run HTTP diagnosis and follow-up decision
+
+The 17 rejected attempts all have upstream request IDs and span five Bot identities and five request fingerprints. The last failed request and the next successful request have the same fingerprint, 2.099 seconds apart. This supports a transient provider/proxy response problem. The old gateway mapped non-2xx, missing-body and non-SSE responses to the same error; its local 502 is not evidence of an original upstream 502. The exact status and root cause cannot be recovered from the retained local records. A later gateway fix retains bounded status/response-shape diagnostics for future attempts; it does not retrospectively establish the cause or repair an unknown upstream fault. The owner chose to stop further provider investigation.
+
 ## Next steps
 
-- Keep Bot images lightweight and Lean checks on Judge; retain the current 20/2 ordinary policy as explicitly directed by the owner.
-- Preserve the observed budget limitation and upstream interruption in Issue #130/PR #132. Changing quotas, adding a global check budget, or initiating another paid run requires a new owner decision.
-- Finish release integration only against the verified runtime plus reviewed documentation/governance changes. The new worktree-location rule is a post-run development instruction, not a change to the tested runtime.
+- Keep Bot images lightweight and Lean checks on Judge. The owner subsequently approved removing the ordinary cumulative quota, concurrency four, a bounded waiting queue with busy rejection, and another 1h-limited run after fixes/review. That subsequent policy is not part of EXP-07's tested 20/2 runtime.
+- Compare the new run against the approximately 13-minute single-Agent baseline using the aligned acceptance intervals above. Register and report it independently; preserve EXP-07's original evidence.
+- Complete release integration against the final code, updated Architecture and applicable verification. The new worktree-location rule is a post-run development instruction.
 
 ## Evidence and limitations
 

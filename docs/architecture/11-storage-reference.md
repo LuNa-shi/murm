@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Model budget gateway
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `8fafd8f05506fe04b747e5c7716206ea5441f88651a2841515fa0f8d4c1925de`.
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `bbbe0e546b7da8fd78b0e68f06454d85fdb45c0ad14b7beda107ba5d292b8bed`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS responses_budget_policies (
@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS responses_budget_policies (
         cost INTEGER NOT NULL, settled INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL, reason TEXT, receipt BLOB,
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
+        upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
+        upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
         PRIMARY KEY (mission_id, bot_id, request_id)
       );
       CREATE TABLE IF NOT EXISTS responses_timed_attempts (
@@ -121,6 +123,8 @@ CREATE TABLE IF NOT EXISTS responses_budget_policies (
         output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL, reason TEXT, receipt BLOB,
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
+        upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
+        upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
         PRIMARY KEY (mission_id, bot_id, request_id)
       );
       CREATE INDEX IF NOT EXISTS responses_budget_scope
@@ -758,7 +762,7 @@ CREATE INDEX IF NOT EXISTS material_consumptions_material_scan
 
 ### Judge database
 
-Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `e64a4f2af8af880c6c31baace65dc1716a038276d6bbe257ba8157ee42288933`.
+Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `ac0ce787b69c965d8843b3181d621e8f6d26e8c392c7b0807c6c29b2c746e0b6`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -778,15 +782,18 @@ CREATE TABLE IF NOT EXISTS judge_request_aliases (
 
 CREATE TABLE IF NOT EXISTS judge_mission_check_policies (
   mission_id TEXT PRIMARY KEY,
-  max_requests INTEGER NOT NULL CHECK(max_requests > 0),
-  max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_requests),
-  process_timeout_ms INTEGER
+  max_requests INTEGER CHECK(max_requests > 0),
+  max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0),
+  process_timeout_ms INTEGER,
+  max_queued INTEGER NOT NULL DEFAULT 0,
+  queue_wait_ms INTEGER NOT NULL DEFAULT 120000
 );
 
 CREATE TABLE IF NOT EXISTS judge_mission_check_admissions (
   mission_id TEXT NOT NULL,
   check_result_id TEXT NOT NULL,
   admitted_at TEXT NOT NULL,
+  started_at TEXT,
   is_retry INTEGER NOT NULL DEFAULT 0,
   preflight_starts INTEGER NOT NULL DEFAULT 0,
   source_starts INTEGER NOT NULL DEFAULT 0,

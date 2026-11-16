@@ -103,7 +103,7 @@ export async function startIndependentServices({ taskService, projectDir, logRoo
     taskService.contextService = context;
     if (context.gate.pending()?.command.service !== 'judge') context.reconcile();
     judge = new RemoteJudgeService({ taskService, token, readProjectRevision, logger: judgeLogger,
-      timeoutMs: (checkerTimeoutMs ?? 120_000) * 4 + 30_000 });
+      timeoutMs: Math.max((checkerTimeoutMs ?? 120_000) * 4, (missionBudget?.queueWaitMs ?? 120_000) + 2 * (checkerTimeoutMs ?? 120_000)) + 30_000 });
     const coordinator = await judge.startCoordinator();
     const configPath = join(projectDir, 'judge-peer-config.json');
     await writeFile(configPath, JSON.stringify({ fixtureManifest, finalTreeConfiguration, problem, missionBudget, maxInfrastructureRetries,

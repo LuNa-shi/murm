@@ -13,6 +13,8 @@ export const RESPONSES_BUDGET_SCHEMA_SQL = `
         cost INTEGER NOT NULL, settled INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL, reason TEXT, receipt BLOB,
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
+        upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
+        upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
         PRIMARY KEY (mission_id, bot_id, request_id)
       );
       CREATE TABLE IF NOT EXISTS responses_timed_attempts (
@@ -21,6 +23,8 @@ export const RESPONSES_BUDGET_SCHEMA_SQL = `
         output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL, reason TEXT, receipt BLOB,
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
+        upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
+        upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
         PRIMARY KEY (mission_id, bot_id, request_id)
       );
       CREATE INDEX IF NOT EXISTS responses_budget_scope
@@ -305,6 +309,14 @@ export class ResponsesBudgetGateway {
     }
     this.pin = createHash('sha256').update(JSON.stringify([this.policy, this.limits])).digest('hex');
     db.exec(RESPONSES_BUDGET_SCHEMA_SQL);
+    // Existing audit databases predate these nullable, host-only diagnostics.
+    for (const table of ['responses_budget_attempts', 'responses_timed_attempts']) {
+      const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(column => column.name));
+      for (const [name, type] of Object.entries({ upstream_status: 'INTEGER', upstream_content_type_valid: 'INTEGER',
+        upstream_body_present: 'INTEGER', upstream_rejection_kind: 'TEXT', upstream_retry_after_seconds: 'INTEGER' })) {
+        if (!columns.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+      }
+    }
   }
 
   async start({ host = '127.0.0.1', port = 0 } = {}) {
@@ -557,7 +569,18 @@ export class ResponsesBudgetGateway {
         this.db.prepare(`UPDATE ${this.#attempts} SET upstream_request_id = ?
           WHERE mission_id = ? AND bot_id = ? AND request_id = ?`).run(upstreamId, missionId, botId, requestId);
       }
-      if (!upstream.ok || !upstream.body || !/^text\/event-stream(?:;|$)/i.test(upstream.headers.get('content-type') ?? '')) {
+      const contentTypeValid = /^text\/event-stream(?:;|$)/i.test(upstream.headers.get('content-type') ?? '');
+      const rejectionKind = !upstream.ok ? 'non_2xx' : !upstream.body ? 'missing_body'
+        : !contentTypeValid ? 'invalid_content_type' : null;
+      const retryAfter = upstream.headers.get('retry-after') ?? '';
+      // Only bounded delta-seconds are retained; dates and arbitrary header text are discarded.
+      const retryAfterSeconds = /^\d{1,5}$/.test(retryAfter) && Number(retryAfter) <= 86400 ? Number(retryAfter) : null;
+      this.db.prepare(`UPDATE ${this.#attempts} SET upstream_status = ?, upstream_content_type_valid = ?,
+        upstream_body_present = ?, upstream_rejection_kind = ?, upstream_retry_after_seconds = ?
+        WHERE mission_id = ? AND bot_id = ? AND request_id = ?`)
+        .run(upstream.status, Number(contentTypeValid), Number(Boolean(upstream.body)), rejectionKind,
+          retryAfterSeconds, missionId, botId, requestId);
+      if (rejectionKind) {
         reason = 'upstream_http_error';
         await upstream.body?.cancel();
         throw new GatewayError(upstream.status === 429 ? 429 : 502, 'upstream_rejected');

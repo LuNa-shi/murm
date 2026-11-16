@@ -41,6 +41,11 @@ export class RemoteJudgeService {
   async #lifecycle(input) {
     const call = this.calls.get(input.call_id);
     if (!call) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge stage does not belong to an admitted coordinator request');
+    if (input.action === 'queue_status' && input.generation === this.generation) {
+      const execution = this.taskService.getExecution(call.envelope.execution_id);
+      return { authority: captureServiceAuthority(this.taskService,
+        { ...call.envelope, state_version: execution?.state_version ?? call.envelope.state_version }, { provenance: false }) };
+    }
     if (input.action !== 'execute' || input.generation !== this.generation ||
         !['admission', 'preflight', 'source'].includes(input.phase) || !Number.isSafeInteger(input.sequence) || input.sequence < 0) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Invalid Judge phase identity');
