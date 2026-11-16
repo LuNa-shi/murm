@@ -128,6 +128,42 @@ test('Lake project input rejects sources outside the module layout and trusted n
   }
 });
 
+test('Lake diagnostics retain source errors after the stderr limit and detect later split resource errors', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-project-diagnostic-test-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const files = { 'src/Toy.lean': 'theorem toy : True := trivial\n' };
+  for (const resourceFailure of [false, true]) {
+    const bubblewrap = join(directory, resourceFailure ? 'resource-failure' : 'source-failure');
+    await writeFile(bubblewrap, `#!${process.execPath}
+      const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+      async function run() {
+        if (!process.argv.includes('/project')) {
+          process.stdout.write('{}\\n');
+          return;
+        }
+        process.stderr.write('begin ' + 'a'.repeat(24_000) + '\\nerror: source/Toy.le');
+        await delay(40);
+        process.stderr.write('an:2:1: unsolved goals\\n');
+        if (${resourceFailure}) {
+          process.stderr.write('error: out of mem');
+          await delay(40);
+          process.stderr.write('ory\\n');
+        }
+        process.exitCode = 21;
+      }
+      void run();
+    `, { mode: 0o700 });
+    const verifier = fixture(undefined, { projectChecks: true, targetPath: 'src/Toy.lean', bubblewrap, allowUnboundedDiagnostics: true });
+    const project = await verifier.checkProject({ files, tree: 'fixed' });
+    const final = await verifier.check({ files, tree: 'fixed' });
+    for (const result of [project, final]) {
+      assert.equal(result.verdict, resourceFailure ? 'ERROR' : 'FAIL', result.diagnostic);
+      if (!resourceFailure) assert.equal(result.diagnostic, 'src/Toy.lean:2:1: unsolved goals');
+      assert.doesNotMatch(result.diagnostic, /a{64}/);
+    }
+  }
+});
+
 test('isolated Lake compiles offline Mathlib and all project modules before independent proof checking', {
   skip: !leanRoot || !comparatorRoot || !process.env.SWARMENV_TEST_PUTNAM_ROOT || !process.env.SWARMENV_TEST_CHECKER_CGROUP,
 }, async () => {

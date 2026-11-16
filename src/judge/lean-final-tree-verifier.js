@@ -55,7 +55,7 @@ function assertWithinDeadline({ signal, deadline }) {
   if (!Number.isFinite(deadline) || deadline <= Date.now()) throw new Error('Final-tree checker deadline elapsed');
 }
 
-async function execute(command, args, { signal, deadline, maxOutput, stdoutPath, resourceLimits }) {
+async function execute(command, args, { signal, deadline, maxOutput, stdoutPath, resourceLimits, onStderr }) {
   assertWithinDeadline({ signal, deadline });
   return new Promise((resolve, reject) => {
     const limits = resourceLimits ? createCheckerProcessLimits({ runtimeMs: Math.max(1, deadline - Date.now()) }) : null;
@@ -102,6 +102,7 @@ async function execute(command, args, { signal, deadline, maxOutput, stdoutPath,
     let stderrTruncated = false;
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', chunk => {
+      onStderr?.(chunk);
       if (stderr.length + chunk.length > diagnosticLimit) stderrTruncated = true;
       if (stderr.length < diagnosticLimit) stderr += chunk.slice(0, diagnosticLimit - stderr.length);
     });
@@ -205,16 +206,42 @@ function projectInput(files, sources, libraryCount, leanMemoryArgument) {
   return inputs;
 }
 
-function projectDiagnostics(output, sources) {
+function collectProjectDiagnostics(sources) {
   const paths = new Map(sources.map(({ path, sourcePath }) => [sourcePath, path]));
   const findings = { warning: [], error: [] };
-  for (const line of output.split('\n')) {
+  let partialLine = '';
+  let resourceTail = '';
+  let resourceFailure = false;
+  function finishLine(line) {
+    if (findings.error.length < 8 && /^error: (?:build )?cycle detected:/.test(line)) {
+      findings.error.push('Lean project imports contain a cycle');
+      return;
+    }
     const match = /^(warning|error): (?:\/project\/)?(source\/[^:]+):(\d+:\d+):(.*)$/.exec(line);
-    if (!match || !paths.has(match[2]) || findings[match[1]].length >= 8) continue;
+    if (!match || !paths.has(match[2]) || findings[match[1]].length >= 8) return;
     findings[match[1]].push(`${paths.get(match[2])}:${match[3]}:${match[4]}`.slice(0, 320));
   }
-  if (/^error: (?:build )?cycle detected:/m.test(output)) findings.error.push('Lean project imports contain a cycle');
-  return findings;
+  return {
+    write(chunk) {
+      if (!resourceFailure) {
+        // Carry enough overlap for every resource pattern across pipe reads.
+        const scan = resourceTail + chunk;
+        resourceFailure = resourceDiagnostic.test(scan);
+        resourceTail = scan.slice(-128);
+      }
+      const segments = chunk.split('\n');
+      for (let i = 0; i < segments.length; i++) {
+        partialLine += segments[i].slice(0, diagnosticLimit - partialLine.length);
+        if (i === segments.length - 1) break;
+        finishLine(partialLine);
+        partialLine = '';
+      }
+    },
+    finish() {
+      finishLine(partialLine);
+      return { ...findings, resourceFailure };
+    },
+  };
 }
 
 export class LeanFinalTreeVerifier {
@@ -283,7 +310,7 @@ export class LeanFinalTreeVerifier {
     }
   }
 
-  #buildProject(input, { signal, deadline, stdoutPath, targetModule, startProcess = launch => launch() }) {
+  async #buildProject(input, { signal, deadline, stdoutPath, targetModule, sources, startProcess = launch => launch() }) {
     const args = sandboxArgs(this.leanRoot);
     const dependencyPaths = this.libraryRoots.map((root, index) => {
       const destination = `/project/dependencies/dependency${index}/.lake/build/lib/lean`;
@@ -299,8 +326,11 @@ export class LeanFinalTreeVerifier {
       '/toolchain/bin/lake --no-cache --no-ansi --log-level=warning build >&2 || { status=$?; if [ "$status" = 1 ]; then exit 21; fi; exit 23; }\n' +
       'if [ "$#" != 0 ]; then exec /bin/lean4export --ignore-missing "$@"; fi', 'swarmenv-project');
     if (targetModule) args.push(targetModule, '--', this.declarationName, ...axioms, ...primitives);
-    return startProcess(() => execute(this.bubblewrap, args, { signal, deadline,
-      maxOutput: targetModule ? exportLimit : diagnosticLimit, stdoutPath, resourceLimits: this.resourceLimits }));
+    const diagnostics = collectProjectDiagnostics(sources);
+    const built = await startProcess(() => execute(this.bubblewrap, args, { signal, deadline,
+      maxOutput: targetModule ? exportLimit : diagnosticLimit, stdoutPath, resourceLimits: this.resourceLimits,
+      onStderr: diagnostics.write }));
+    return { ...built, diagnostics: diagnostics.finish() };
   }
 
   async checkProject({ files, tree, signal, deadline = Date.now() + this.timeoutMs, startProcess }) {
@@ -316,10 +346,10 @@ export class LeanFinalTreeVerifier {
       catch (error) { if (error instanceof TypeError) return result('FAIL', error.message); throw error; }
       directory = await mkdtemp(join(tmpdir(), 'swarmenv-project-check-'));
       await this.#materializeProject(directory, files, sources, budget);
-      const built = await this.#buildProject(directory, { ...budget, startProcess });
-      const findings = projectDiagnostics(built.stderr, sources);
+      const built = await this.#buildProject(directory, { ...budget, sources, startProcess });
+      const findings = built.diagnostics;
       if (built.code === 0) return result('PASS', null, { checked_paths: sources.map(({ path }) => path), warnings: findings.warning });
-      if (built.code === sourceFailureStatus && !built.stderrTruncated && !resourceDiagnostic.test(built.stderr) && findings.error.length) {
+      if (built.code === sourceFailureStatus && !findings.resourceFailure && findings.error.length) {
         return result('FAIL', findings.error.join('\n'), { warnings: findings.warning });
       }
       return result('ERROR', 'Locked Lake project build did not complete');
@@ -424,15 +454,17 @@ export class LeanFinalTreeVerifier {
       const original = await this.#export(originalDirectory, { ...budget, stdoutPath: originalExport });
       if (original.code !== 0 || !original.stdoutBytes) return result('ERROR', 'Locked Lean fixture could not be exported');
       const candidate = sources
-        ? await this.#buildProject(candidateDirectory, { ...budget, stdoutPath: candidateExport,
+        ? await this.#buildProject(candidateDirectory, { ...budget, sources, stdoutPath: candidateExport,
           targetModule: sources.find(({ path }) => path === this.targetPath).module })
         : await this.#export(candidateDirectory, { ...budget, stdoutPath: candidateExport, localModules: this.localModules });
       if (candidate.code !== 0 || !candidate.stdoutBytes) {
-        if (candidate.code === sourceFailureStatus && !candidate.stderrTruncated) {
+        if (candidate.code === sourceFailureStatus) {
           if (sources) {
-            const { error } = projectDiagnostics(candidate.stderr, sources);
-            if (!resourceDiagnostic.test(candidate.stderr) && error.length) return result('FAIL', error[0]);
-          } else if (isSourceDiagnostic(candidate.stderr)) return result('FAIL', 'Final-tree theorem source did not compile with the locked Lean dependencies');
+            const { error, resourceFailure } = candidate.diagnostics;
+            if (!resourceFailure && error.length) return result('FAIL', error[0]);
+          } else if (!candidate.stderrTruncated && isSourceDiagnostic(candidate.stderr)) {
+            return result('FAIL', 'Final-tree theorem source did not compile with the locked Lean dependencies');
+          }
         }
         return result('ERROR', 'Final-tree proof export did not complete');
       }
