@@ -65,7 +65,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "89b9ce80c31ee6afa43eb3adf4dc79f775d454d1f00f35ffe001b701f54214eb"
+      "sha256": "1d9ff7d51593250ffc9c25ee259e61564c38090be81e0b06468de4644a5180a3"
     },
     {
       "path": "src/runtime/identity-task-loop.js",
@@ -144,7 +144,7 @@
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #recoveryPrompt",
-      "line": 3159,
+      "line": 3161,
       "sha256": "9ba0d06fb75945a5e5e3fd4a5768df5c449818e7f6abbc0b5879feb6941cf61b"
     },
     {
@@ -156,7 +156,7 @@
     {
       "path": "src/runtime/runtime.js",
       "anchor": "              await active.session.prompt(\n                ",
-      "line": 2992,
+      "line": 2994,
       "sha256": "aa531fc52ff79a137d3465b431a874606d420f627f5d4723998fb1ab0bc8dec6"
     },
     {
@@ -204,12 +204,12 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2964,
+      "line": 2966,
       "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(current) : buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2992,
+      "line": 2994,
       "expression": "await active.session.prompt("
     }
   ],

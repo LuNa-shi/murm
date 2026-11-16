@@ -2845,15 +2845,17 @@ export class Runtime {
     if (record.type === 'compaction_start') {
       this.logger?.append({
         event: 'runtime.compaction_started', execution_id: executionId, identity_id: active.identityId,
-        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
+        compaction_count: active.compactionCount, max_compactions: this.agentMode === 'solver' ? null : this.maxCompactions,
         context_window: usage?.context_window ?? active.session.contextWindow ?? null,
         window_ratio: usage?.ratio ?? null, usage_source: usage ? 'event' : 'unknown',
       });
-      // The fourth compaction is prohibited at the adapter boundary.  A
+      // Swarm bounds compactions before replacing an identity. An independent
+      // solver retains the same sample/Session until its existing hard deadline.
+      // For Swarm the fourth compaction is prohibited at the adapter boundary.  A
       // start record is the earliest portable signal before Pi mutates its
       // context; fence/restart the identity immediately instead of waiting
       // for a later report to discover that the limit was crossed.
-      if (active.compactionCount >= this.maxCompactions) {
+      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions) {
         await this.#rotateIdentity(executionId, {
           reason: 'compaction_limit',
           windowRatio: usage?.ratio ?? null,
@@ -2893,7 +2895,7 @@ export class Runtime {
         : usage ?? contextWindowRatio(record.result, active.session);
       this.logger?.append({
         event: 'runtime.compaction_completed', execution_id: executionId, identity_id: active.identityId,
-        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
+        compaction_count: active.compactionCount, max_compactions: this.agentMode === 'solver' ? null : this.maxCompactions,
         context_window: postCompactionUsage?.context_window ?? active.session.contextWindow ?? null,
         window_ratio: postCompactionUsage?.ratio ?? null,
         usage_source: postCompactionUsage ? 'event' : 'unknown',
@@ -2903,20 +2905,20 @@ export class Runtime {
       // it never starts a concurrent prompt or blocks identity rotation on a
       // failed filesystem/checkpoint write.
       this.#queueCompactionCheckpoint(active, record);
-      if (active.compactionCount >= this.maxCompactions && !postCompactionUsage) {
+      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions && !postCompactionUsage) {
         await this.#rotateIdentity(executionId, {
           reason: 'compaction_window_unknown', usageSource: 'unknown', windowRatio: null,
         });
         return;
       }
-      if (active.compactionCount >= this.maxCompactions && postCompactionUsage?.ratio >= this.handoffWindowRatio) {
+      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions && postCompactionUsage?.ratio >= this.handoffWindowRatio) {
         await this.#rotateIdentity(executionId, {
           reason: 'compaction_window_threshold', usageSource: 'event', windowRatio: postCompactionUsage.ratio,
         });
         return;
       }
     }
-    if (record.type === 'turn_end' && active.compactionCount >= this.maxCompactions) {
+    if (this.agentMode !== 'solver' && record.type === 'turn_end' && active.compactionCount >= this.maxCompactions) {
       if (!usage) {
         this.logger?.append({ event: 'runtime.compaction_window_unknown', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, action: 'continue_until_boundary' });
       } else if (usage.ratio >= this.handoffWindowRatio) {

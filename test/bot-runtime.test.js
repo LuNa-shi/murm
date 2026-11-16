@@ -2175,3 +2175,25 @@ test('solver control binds a real Task and Execution while its Bot credential ca
   assert.equal(service.getBot(started.bot.bot_id).state, 'CLOSED');
   assert.equal(session.closed, true);
 });
+
+test('solver compaction preserves the same Bot and Execution beyond the Swarm rotation limit', async t => {
+  const { service, runtime, startSession } = await fixture(t, { agentMode: 'solver' });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', maxLifetimeMs: 60_000, startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Continue one independent solution through context compaction', expected_output: 'Proof', acceptance_conditions: ['Verified proof'] }, makeEnvelope({ actorRef: 'operator:passk' })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'solver-compaction' });
+  await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
+  const messages = [];
+  session.prompt = async message => { messages.push(message); };
+  for (let index = 0; index < 5; index++) {
+    session.emit('rpc', { type: 'compaction_start' });
+    await new Promise(resolve => setImmediate(resolve));
+    session.emit('rpc', { type: 'compaction_end', result: { tokensBefore: 1000, estimatedTokensAfter: 100 } });
+    await new Promise(resolve => setImmediate(resolve));
+    await runtime.activeProcesses.get(execution.execution_id)?.compactionCheckpointPromise;
+    assert.equal(service.getExecution(execution.execution_id).state, 'RUNNING');
+    assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+    assert.equal(session.closed, false);
+  }
+  assert.equal(messages.length, 5);
+  assert.ok(messages.every(message => !/swarm task|swarm material/.test(message)));
+});
