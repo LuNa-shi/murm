@@ -1,6 +1,6 @@
 # SwarmEnv implementation manual
 
-> Reconciliation baseline: [`755c72e`](https://github.com/LuNa-shi/SwarmEnv/commit/755c72e57cf33ac68d63ed79078b9d7bf8e68bb2), the merged PR #128 tree. Issue #130 owns subsequent implementation and complete manual reconciliation. Generated fingerprints identify the actual mapped source files; historical reports remain evidence for their pinned versions.
+> Verified runtime baseline: [`e18c7ae`](https://github.com/LuNa-shi/SwarmEnv/commit/e18c7ae5bce48d73cf248c14080dcdf2327476fb), the Issue #130 implementation in [PR #132](https://github.com/LuNa-shi/SwarmEnv/pull/132), exercised by [EXP-20261116-07](../experiments/EXP-20261116-07-centralized-judge-1h.md). Integration/release status remains on the PR/Issue. Generated fingerprints identify the actual mapped source files; historical reports remain evidence for their pinned versions.
 
 This directory is written for the owner who wants to understand the implementation **without reading source code**. The narrative explains execution order and behavior; the reference pages contain full repository-controlled prompts, tool contracts and storage definitions. Source and test links are evidence for maintainers, not required reading to fill in missing explanations.
 
