@@ -1132,11 +1132,36 @@ export class Runtime {
     }
     let boundSession = session;
     let startedDurably = false;
+    let preparationLeaseTimer = null;
+    let preparationLeaseError = null;
+    const renewPreparationLease = () => {
+      this.taskService.assertMissionResearchOpen(registeredBot.mission_id);
+      this.taskService.assertBotDeadline(registeredBot.bot_id);
+      const owner = this.taskService.getBot(registeredBot.bot_id);
+      const reserved = this.#getExecution(executionId);
+      if (this.stopping || owner?.state !== 'PREPARING' || owner.execution_id !== executionId ||
+          reserved.state !== 'CREATED' || reserved.fencing_version !== execution.fencing_version) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot preparation no longer owns its reservation');
+      }
+      this.heartbeat(executionId);
+    };
     try {
+      if (registeredBot) {
+        renewPreparationLease();
+        preparationLeaseTimer = setInterval(() => {
+          try { renewPreparationLease(); }
+          catch (error) {
+            preparationLeaseError = error;
+            clearInterval(preparationLeaseTimer);
+          }
+        }, 10_000);
+      }
       const recoverySession = sessionReason === 'recovery' || sessionReason === 'session_recovery' || sessionReason === 'wake';
       const freshWorkspace = this.cleanExecutionWorkspaces && !recoverySession;
       workspace = await this.#prepareWorkspace(execution, workspaceRef, { fresh: freshWorkspace });
-      current = execution.workspace_ref && !freshWorkspace ? execution : this.#saveWorkspaceReference(execution, workspace);
+      if (preparationLeaseError) throw preparationLeaseError;
+      current = this.#getExecution(executionId);
+      current = current.workspace_ref && !freshWorkspace ? current : this.#saveWorkspaceReference(current, workspace);
       if (!initialPromptSnapshot && capabilityProfile) {
         const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
         const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
@@ -1183,6 +1208,10 @@ export class Runtime {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during Task preparation');
         }
       }
+      if (preparationLeaseError) throw preparationLeaseError;
+      if (registeredBot) renewPreparationLease();
+      clearInterval(preparationLeaseTimer);
+      current = this.#getExecution(executionId);
       current = this.taskService.dispatch('start_execution', {
         ...this.#executionTimingPayload(this.clock(), current),
         ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
@@ -1233,6 +1262,8 @@ export class Runtime {
       }
       await this.releaseExecution(executionId);
       throw error;
+    } finally {
+      clearInterval(preparationLeaseTimer);
     }
   }
 

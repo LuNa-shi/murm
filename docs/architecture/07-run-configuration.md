@@ -335,20 +335,29 @@ incomplete proofs, unsafe/native bypass and elaborator/diagnostic constructs
 lexical final-delivery policy, including occurrences in comments, in addition to
 kernel replay; ordinary development diagnostics retain their existing behavior.
 
-The complete graph is currently regular public Workspace input, not a cached
-image asset. Every fresh Bot binding transfers it again through
-`OpenSandboxManager.syncWorkspace`: serial file/chunk shell RPCs, 65,536-character
-base64 segments, hash verification and atomic publication per file. There is no
-cross-Bot graph cache or bulk transfer in this migration. The Workspace byte
-limit is a capacity bound; passing it does not establish acceptable startup
-latency. The first Q10 observation exposed several minutes of preparation;
-see [EXP-20261116-09](../experiments/EXP-20261116-09-flt-q10-1h.md).
+The complete graph remains regular public Workspace input, not a cached image
+asset. For registered Bots, `OpenSandboxManager.syncWorkspace` validates each
+manifest path and source digest, enforces the existing 2 MiB/file and 16 MiB/tree
+bounds, then sends the full base64 file map through the authenticated worker
+`/project/prepare` endpoint. This removes the serial shell invocation for every
+64 KiB segment without changing the public input snapshot or checker. Historical
+unregistered callers retain the bounded shell-copy path.
 
-Slow preparation can outlive the Agent's shell timeout for `task_take`. While
-its Bot is PREPARING, the model gateway rejects new model requests. If the
-session settles before binding finishes, the same-identity runner's later
-`waitForSettled` call uses the current event cursor and misses that earlier
-settlement. It then waits for a new event while Runtime's watchdog can stop the
-unproductive Execution. Automatic replacement repeats preparation. This is a
-known, unrepaired lifecycle limitation of the tested baseline; benchmark
-migration does not change the gateway guard, continuation loop or watchdog.
+The worker accepts at most 32 MiB of JSON at this endpoint, reuses the existing
+project-install decoder to reject malformed base64, unsafe paths, collisions
+and excess decoded bytes, and compares the complete map to the pinned manifest
+before writing. A new bulk input requires an empty root-owned project directory.
+Files are created exclusively with root-only read permission; partial write
+failure removes that attempt's input. The worker then checks the on-disk tree
+and makes it root-owned/read-only as before. Matching preparation replays are
+idempotent; another input/Execution, or preparation after activation, is rejected.
+The ordinary grant still occurs only after durable Execution activation. Old
+manifest-only preparation remains executable for the legacy copy composition.
+
+The initial Q10 observation exposed both transfer latency and a slow-binding
+lifecycle defect; see [EXP-20261116-09](../experiments/EXP-20261116-09-flt-q10-1h.md).
+The subsequent repair keeps the preparation lease alive and preserves the
+current discovery turn's settlement cursor across binding, as described in
+[Execution](02-execution.md). Neither resource budgets nor the core Swarm
+organization algorithm change. Tests and subsequent reports distinguish the
+repair's verification from the original blocked observation.

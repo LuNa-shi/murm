@@ -722,6 +722,7 @@ export async function takeTaskWithAgent(core, candidates) {
     return bot && !bot.execution_id && ['CLOSING', 'CLOSED'].includes(bot.state) && ['no-work', 'selection-budget', 'bot-lifetime-budget'].includes(bot.exit_reason);
   };
   const sequence = session.rpcRecords?.length ?? 0;
+  core.discoveryTurn = { session, afterSequence: sequence };
   core.takeResult = null;
   core.takeActive = true;
   core.dispatchReserved = true;
@@ -2112,6 +2113,8 @@ async function createProjectState(problem, config, options) {
           core.take = take;
           const workerSession = core.session;
           if (!workerSession) throw new Error('Agent took a Task before its session was registered');
+          const boundAfterSequence = core.discoveryTurn?.session === workerSession
+            ? core.discoveryTurn.afterSequence : (workerSession.rpcRecords?.length ?? 0);
           // Deterministic compatibility adapters expose a `bound` marker to
           // choose their scripted prompt path.  The real Pi Session has no such
           // field; updating it here preserves the same-identity transition
@@ -2170,7 +2173,7 @@ async function createProjectState(problem, config, options) {
             let boundTurnPromise;
             boundTurnPromise = (async () => {
               try {
-                if (typeof boundSession.waitForSettled === 'function') await boundSession.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
+                if (typeof boundSession.waitForSettled === 'function') await boundSession.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: boundAfterSequence });
                 // A settled Agent turn does not necessarily release its
                 // Execution: source-level checker feedback, incremental edits,
                 // and ordinary progress may leave the Task RUNNING. Continue

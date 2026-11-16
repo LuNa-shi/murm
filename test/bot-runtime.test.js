@@ -439,9 +439,9 @@ test('provider input-copy rejection fails preparation and cleans the original Bo
   const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect one question with a rejected input copy', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:copy-failed' });
   const providerFetch = manager.fetch;
-  manager.fetch = (url, options) => url.endsWith('/command')
-    ? Promise.resolve(new Response('event: execution_complete\ndata: {"exit_code":1}\n\n')) : providerFetch(url, options);
-  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }), /input copy failed/);
+  manager.fetch = (url, options) => url.endsWith('/project/prepare')
+    ? Promise.resolve(new Response(JSON.stringify({ message: 'project input rejected' }), { status: 400 })) : providerFetch(url, options);
+  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }), error => error.code === ERROR_CODES.INVALID_CONTRACT && error.details?.status === 400);
   assert.equal(session.closed, true);
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
   assert.equal(manager.snapshot().executions.length, 0);
@@ -2143,4 +2143,58 @@ test('Task main project checks require build coverage of every declared delivery
       else assert.equal((await finish()).workspace_delivery.check.check_result_id, 'project-merge-check');
     });
   }
+});
+
+test('Bot input preparation sends exact binary bytes through one authenticated bounded request', async t => {
+  const uploads = [];
+  const { service, runtime, startSession } = await fixture(t, {}, { beforeFetch: (url, options) => {
+    if (url.endsWith('/command')) assert.fail('registered Bot input must not use per-chunk shell RPCs');
+    if (url.endsWith('/project/prepare')) uploads.push(JSON.parse(options.body));
+  } });
+  const bytes = Buffer.alloc(2 * 1024 * 1024, 171);
+  const saved = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', files: { 'binary.bin': bytes } });
+  await runtime.missionWorkspace.merge({ workspaceId: 'workspace-default', fromRevision: saved.revision, expectedMainRevision: '0.1' });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect complete binary reference input', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:binary' });
+  await runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
+  const transfers = uploads.filter(input => input.files);
+  assert.equal(transfers.length, 1);
+  assert.deepEqual(Buffer.from(transfers[0].files['binary.bin'], 'base64'), bytes);
+  assert.equal(transfers[0].manifest['binary.bin'].content_hash, createHash('sha256').update(bytes).digest('hex'));
+  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+});
+
+test('slow Bot preparation keeps its reservation lease live before activation', async t => {
+  const { service, runtime, manager, startSession } = await fixture(t);
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a slow public input', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:slow-lease' });
+  let resume, entered;
+  const gate = new Promise(resolve => { resume = resolve; });
+  const copying = new Promise(resolve => { entered = resolve; });
+  const sync = manager.syncWorkspace.bind(manager);
+  manager.syncWorkspace = async input => { entered(); await gate; return sync(input); };
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: Date.now() });
+  const binding = runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
+  await copying;
+  try {
+    for (let step = 0; step < 4; step++) t.mock.timers.tick(10_000);
+    assert.ok(Date.parse(service.getExecution(execution.execution_id).lease_expires_at) > Date.now(), 'preparation must retain a live lease beyond its original 30 seconds');
+  } finally { resume(); }
+  await binding;
+  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+  assert.doesNotThrow(() => runtime.heartbeat(execution.execution_id));
+});
+
+test('binding cannot revive an already expired preparation lease', async t => {
+  const { service, runtime, startSession, manager } = await fixture(t);
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect expired preparation ownership', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:expired-preparation' });
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse(execution.lease_expires_at) + 1 });
+  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }), /lease has expired/);
+  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
+  assert.equal(manager.snapshot().executions.length, 0);
+  assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
 });

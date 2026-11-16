@@ -98,3 +98,36 @@ test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contr
     runProbe({ ...input, expect_rejection: true, resources: BOT_RESOURCES.map(resource => ({ ...resource, sha256: '0'.repeat(64) })) }),
   ]);
 });
+
+test('built worker prepares a complete large input with exact bytes, replay and permission fencing', { skip: !agentImage, timeout: 30_000 }, async () => {
+  const probe = `
+    import assert from 'node:assert/strict';
+    import { createHash } from 'node:crypto';
+    import { readFile, readdir, stat } from 'node:fs/promises';
+    import { SandboxProject } from '/opt/swarmenv/sandbox-project.mjs';
+    const project = new SandboxProject(); await project.initialize();
+    const files = {}, manifest = {};
+    for (let i = 0; i < 6; i++) {
+      const path = 'benchmark/chunk-' + i + '.bin', bytes = Buffer.alloc(2 * 1024 * 1024, i + 1);
+      files[path] = bytes.toString('base64');
+      manifest[path] = {bytes:bytes.length,content_hash:createHash('sha256').update(bytes).digest('hex')};
+    }
+    const input = {execution_id:'large-input',binding_version:1,files,manifest};
+    await assert.rejects(project.prepare({...input,files:{...files,'../escape':'YQ=='}}));
+    await assert.rejects(project.prepare({...input,files:{...files,'benchmark/chunk-0.bin':'YQ=='}}));
+    assert.deepEqual(await readdir('/workspace/project'),[]);
+    const began = Date.now(); const result = await project.prepare(input);
+    assert.equal(result.state,'PREPARED'); assert.equal(result.bytes,12 * 1024 * 1024);
+    assert.ok(Date.now()-began < 5000, 'local preparation must not incur per-chunk process latency');
+    for (const [path,encoded] of Object.entries(files)) {
+      assert.equal((await readFile('/workspace/project/'+path)).toString('base64'),encoded);
+      const info = await stat('/workspace/project/'+path); assert.equal(info.uid,0); assert.equal(info.mode & 0o222,0);
+    }
+    assert.equal((await project.prepare(input)).state,'PREPARED');
+    await assert.rejects(project.prepare({...input,execution_id:'other'}));
+    await project.grant(input);
+    assert.equal((await stat('/workspace/project/benchmark/chunk-0.bin')).uid,10001);
+    await assert.rejects(project.prepare(input),/closed/);
+  `;
+  await promisify(execFile)('docker',['run','--rm','--network','none','--entrypoint','node',agentImage,'--input-type=module','-e',probe],{timeout:25000});
+});

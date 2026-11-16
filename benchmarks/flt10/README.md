@@ -50,10 +50,10 @@ independent services, Core, Task, Material, Workspace and Judge paths. Supply
 FLT solution sources to the search service. Formal run authorization, registration,
 preflight and cleanup follow `docs/workflows/experiment.md`.
 
-The first four-Core Q10 observation reached task decomposition but blocked in
-large public-context transfer and the existing slow-binding lifecycle path;
-see [the Q10 report](../../docs/experiments/EXP-20261116-09-flt-q10-1h.md).
-Successful preparation and checker probes therefore do not yet establish a
-working long-duration FLT proof run or parallel advantage. The complete graph
-is recopied for each fresh Bot; immutable image distribution is a possible
-follow-up, not an implemented option.
+The first four-Core Q10 observation blocked before proof work; see
+[the Q10 report](../../docs/experiments/EXP-20261116-09-flt-q10-1h.md). The follow-up
+repair keeps the complete graph in Workspace, transfers initial files through
+the existing authenticated worker preparation path, renews preparation leases,
+and preserves discovery settlement across binding. Q10 must pass a real
+edit/Judge/feedback cycle and bounded observation before Q20 resumes. Passing
+setup tests alone does not establish parallel advantage.

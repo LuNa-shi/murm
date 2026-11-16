@@ -324,7 +324,7 @@ const server = createServer(async (request, response) => {
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
     if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request)) }); return; }
     if (url.pathname.startsWith('/project/') && !initialized) throw new Error('Bot workspace is not initialized');
-    if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request, 32 * 1024 * 1024)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.grant(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/snapshot') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.snapshot(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/install') { const input = await body(request, 32 * 1024 * 1024); send(response, 200, { ok: true, result: await withBotPaused(pids => project.install(input, pids)) }); return; }

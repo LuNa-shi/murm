@@ -246,6 +246,24 @@ The benchmark calls `Runtime.startBot` before discovery; no Task or Execution is
 
 The durable Bot states are STARTING → UNBOUND → PREPARING → ACTIVE → CLOSING → CLOSED. `task_take` atomically stores the sole Execution ID and PREPARING; it rejects another owner, Mission/Core, an expired deadline, or a Bot that already took work. Runtime verifies that binding uses the retained original Session/Core, prepares the Workspace in that Bot's existing Sandbox, then activates the Execution and marks the Bot ACTIVE. The provider manager retains both Bot resource-key and Execution aliases to one record; snapshots count it once and confirmed deletion removes every alias. The immutable input tree is pinned before activation and worker-enforced project permissions are granted only after durable activation, as detailed below.
 
+During registered Bot binding, Runtime immediately renews the existing CREATED
+reservation lease and renews it every 10 seconds while asynchronous Workspace
+preparation runs. Every renewal checks the open Mission, Bot hard deadline,
+PREPARING ownership, CREATED state and original fence, then uses the ordinary
+heartbeat guard; an already-expired lease is never revived. Renewal errors stop
+the timer and reject activation. Binding refreshes the current Execution after
+preparation so heartbeat version increments cannot produce a stale write, renews
+once more before activation, and clears the timer on success or failure. Existing
+stop, deadline and physical cleanup paths still own resource release.
+
+The benchmark retains the Session and RPC cursor of the discovery turn before
+sending its prompt. Its same-identity take callback captures that cursor before
+awaiting Runtime binding, then waits for settlement from that position. A turn
+that already settled during preparation is therefore observed immediately;
+work continues in the same Session without waiting for a nonexistent new event.
+The gateway still rejects PREPARING model requests; there is no authorization
+exception or new selection policy.
+
 The default unbound budget is 300,000 ms and covers startup as well as discovery. It must be positive, finite and within the JavaScript timer limit. Expiry records `selection-budget`; a Session close/error records `process-exited`/`process-error`. A Bot that already took work is governed by Execution lifecycle instead. For an unbound Bot, `bot_exit` checks the stored selection/hard deadlines and current Mission state in the Task write transaction. Before those deadlines on an open Mission, it rejects both `no-work` and `selection-budget` with `NOT_ALLOWED`, phase `discovery_required`. The Bridge asks the Bot to check existing work and identify a concrete gap with a verifiable deliverable. When the Mission has stopped or a real budget deadline has elapsed, a valid exit records CLOSING and the reason. These routes create no Execution. Expiry or shutdown cancels the startup wait and stops already-visible Session/provider resources. Cleanup refuses to mark CLOSED while a non-cooperative startup factory is still running; its late result remains attached to that Bot and receives another cleanup attempt. Startup failure retains its Bot binding when physical cleanup fails.
 
 For a taken Bot, accepted Task finish marks the Bot CLOSING. After Session/Sandbox isolation, finish finalization and Workspace release, Runtime marks it CLOSED and frees the Core. Failure and hard-stop paths likewise require a terminal Execution before Bot closure. Registered Bots cannot use `restartSession` to attach another Pi to the same Execution; unexpected active-process failure ends that Execution and Bot. The compaction-limit path also ends the registered Execution as HANDED_OFF and closes its Bot instead of replacing Pi. Historical unregistered Runtime callers retain the old recovery path, so its documentation elsewhere in this chapter applies only to those callers.

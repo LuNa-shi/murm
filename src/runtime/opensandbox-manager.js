@@ -699,6 +699,8 @@ export class OpenSandboxManager {
       }
     } else await walk(root).catch((error) => { throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `could not read initial Workspace: ${error.message}`, undefined, { cause: error }); });
     let total = 0;
+    const inputFiles = Object.create(null);
+    if (record.botId && !manifest) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot input requires a pinned manifest');
     for (const source of files) {
       const content = await readFile(source);
       if (content.length > maxFileBytes || total + content.length > maxTotalBytes) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'initial Workspace exceeds provider sync bounds', { max_file_bytes: maxFileBytes, max_total_bytes: maxTotalBytes });
@@ -706,6 +708,10 @@ export class OpenSandboxManager {
       const path = relative(root, source).split('\\').join('/');
       const digest = createHash('sha256').update(content).digest('hex');
       if (manifest && (manifest[path]?.content_hash !== digest || manifest[path]?.bytes !== content.length)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Public Workspace input bytes differ from the pinned manifest', { path });
+      if (record.botId) {
+        inputFiles[path] = content.toString('base64');
+        continue;
+      }
       const projectRoot = record.botId ? '/workspace/project' : '/workspace';
       const target = `${projectRoot}/${relative(root, source).split('\\').join('/')}`;
       const encoded = content.toString('base64');
@@ -726,6 +732,7 @@ export class OpenSandboxManager {
         throw error;
       }
     }
+    if (record.botId) await this.#projectCall(executionId, 'prepare', manifest, { files: inputFiles });
     this.logger?.({ event: 'sandbox.workspace_initialized', provider: 'opensandbox', execution_id: executionId, file_count: files.length, bytes: total });
     return { execution_id: executionId, file_count: files.length, bytes: total, workspace: record.botId ? '/workspace/project' : '/workspace' };
   }
