@@ -49,3 +49,11 @@ independent services, Core, Task, Material, Workspace and Judge paths. Supply
 `MATHLIB_SEARCH_SOURCE_ROOT` from this FLT Mathlib checkout; do not expose complete
 FLT solution sources to the search service. Formal run authorization, registration,
 preflight and cleanup follow `docs/workflows/experiment.md`.
+
+The first four-Core Q10 observation reached task decomposition but blocked in
+large public-context transfer and the existing slow-binding lifecycle path;
+see [the Q10 report](../../docs/experiments/EXP-20261116-09-flt-q10-1h.md).
+Successful preparation and checker probes therefore do not yet establish a
+working long-duration FLT proof run or parallel advantage. The complete graph
+is recopied for each fresh Bot; immutable image distribution is a possible
+follow-up, not an implemented option.

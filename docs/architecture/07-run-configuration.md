@@ -334,3 +334,21 @@ incomplete proofs, unsafe/native bypass and elaborator/diagnostic constructs
 (including `run_tac`, `trace_state`, `#eval`, `#check` and `#print`). This is a
 lexical final-delivery policy, including occurrences in comments, in addition to
 kernel replay; ordinary development diagnostics retain their existing behavior.
+
+The complete graph is currently regular public Workspace input, not a cached
+image asset. Every fresh Bot binding transfers it again through
+`OpenSandboxManager.syncWorkspace`: serial file/chunk shell RPCs, 65,536-character
+base64 segments, hash verification and atomic publication per file. There is no
+cross-Bot graph cache or bulk transfer in this migration. The Workspace byte
+limit is a capacity bound; passing it does not establish acceptable startup
+latency. The first Q10 observation exposed several minutes of preparation;
+see [EXP-20261116-09](../experiments/EXP-20261116-09-flt-q10-1h.md).
+
+Slow preparation can outlive the Agent's shell timeout for `task_take`. While
+its Bot is PREPARING, the model gateway rejects new model requests. If the
+session settles before binding finishes, the same-identity runner's later
+`waitForSettled` call uses the current event cursor and misses that earlier
+settlement. It then waits for a new event while Runtime's watchdog can stop the
+unproductive Execution. Automatic replacement repeats preparation. This is a
+known, unrepaired lifecycle limitation of the tested baseline; benchmark
+migration does not change the gateway guard, continuation loop or watchdog.
