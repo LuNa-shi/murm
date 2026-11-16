@@ -6,7 +6,7 @@ import { finished } from 'node:stream/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createCheckerProcessLimits } from './checker-process-limits.js';
+import { checkerResourceProfile, createCheckerProcessLimits } from './checker-process-limits.js';
 
 const verifierSource = fileURLToPath(new URL('./final-tree-proof.lean', import.meta.url));
 // Mathlib theorem statements can export hundreds of MiB of transitive declarations.
@@ -58,10 +58,10 @@ function assertWithinDeadline({ signal, deadline }) {
   if (!Number.isFinite(deadline) || deadline <= Date.now()) throw new Error('Final-tree checker deadline elapsed');
 }
 
-async function execute(command, args, { signal, deadline, maxOutput, stdoutPath, resourceLimits, onStderr }) {
+async function execute(command, args, { signal, deadline, maxOutput, stdoutPath, resourceLimits, resources, onStderr }) {
   assertWithinDeadline({ signal, deadline });
   return new Promise((resolve, reject) => {
-    const limits = resourceLimits ? createCheckerProcessLimits({ runtimeMs: Math.max(1, deadline - Date.now()) }) : null;
+    const limits = resourceLimits ? createCheckerProcessLimits({ runtimeMs: Math.max(1, deadline - Date.now()), resources }) : null;
     const child = spawn(limits?.command ?? command, limits?.argsFor(command, args) ?? args,
       { detached: true, env: limits?.environment ?? {}, stdio: ['ignore', 'pipe', 'pipe'] });
     let clientSettled = false;
@@ -249,7 +249,7 @@ function collectProjectDiagnostics(sources) {
 export class LeanFinalTreeVerifier {
   constructor({
     identity, leanRoot, libraryRoots = [], comparatorLibraryRoots, exporterPath, targetPath,
-    declarationName, fixtureSource, fixtureSha256, localModules = [], projectChecks = false, preserveFixturePrefix = false, requireCompleteProject = false, timeoutMs = 120_000, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
+    declarationName, fixtureSource, fixtureSha256, localModules = [], projectChecks = false, projectJobs = 1, resources, preserveFixturePrefix = false, requireCompleteProject = false, timeoutMs = 120_000, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
   }) {
     if (!identity || !['checker_ref', 'checker_version', 'environment_ref'].every(key => typeof identity[key] === 'string' && identity[key])) {
       throw new TypeError('Final-tree verifier requires a fixed checker identity');
@@ -261,6 +261,10 @@ export class LeanFinalTreeVerifier {
       throw new TypeError('Final-tree verifier source differs from the locked fixture hash');
     }
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new TypeError('Invalid verifier timeout');
+    if (!Number.isSafeInteger(projectJobs) || projectJobs < 1 || projectJobs > 256) throw new TypeError('Invalid project build concurrency');
+    checkerResourceProfile(resources);
+    this.resources = resources === undefined ? undefined : Object.freeze({ ...resources });
+    this.projectJobs = projectJobs;
     this.identity = Object.freeze({ ...identity });
     this.leanRoot = pinnedPath(leanRoot);
     this.libraryRoots = Object.freeze(libraryRoots.map(pinnedPath));
@@ -329,7 +333,7 @@ export class LeanFinalTreeVerifier {
     });
     args.push('--ro-bind', input, '/project', '--size', '268435456', '--tmpfs', '/project/.lake',
       ...dependencyPaths.flatMap(([root, destination]) => ['--ro-bind', root, destination]),
-      '--ro-bind', '/usr/bin/dash', '/bin/sh', '--setenv', 'LEAN_NUM_THREADS', '1', '--chdir', '/project');
+      '--ro-bind', '/usr/bin/dash', '/bin/sh', '--setenv', 'LEAN_NUM_THREADS', String(this.projectJobs), '--chdir', '/project');
     if (targetModule) args.push('--ro-bind', this.exporterPath, '/bin/lean4export', '--setenv', 'LEAN_PATH',
       ['/project/.lake/build/lib/lean', ...dependencyPaths.map(([, dest]) => dest)].join(':'));
     args.push('/bin/sh', '-eu', '-c',
@@ -339,7 +343,7 @@ export class LeanFinalTreeVerifier {
     if (targetModule) args.push(targetModule, '--', this.declarationName, ...axioms, ...primitives);
     const diagnostics = collectProjectDiagnostics(sources);
     const built = await startProcess(() => execute(this.bubblewrap, args, { signal, deadline,
-      maxOutput: targetModule ? exportLimit : diagnosticLimit, stdoutPath, resourceLimits: this.resourceLimits,
+      maxOutput: targetModule ? exportLimit : diagnosticLimit, stdoutPath, resourceLimits: this.resourceLimits, resources: this.resources,
       onStderr: diagnostics.write }));
     return { ...built, diagnostics: diagnostics.finish() };
   }
@@ -388,7 +392,7 @@ export class LeanFinalTreeVerifier {
     try {
       const result = await execute(this.bubblewrap, args, {
         deadline: Date.now() + Math.min(timeoutMs, this.timeoutMs),
-        maxOutput: Math.min(maxOutputBytes, 1_000_000), resourceLimits: this.resourceLimits,
+        maxOutput: Math.min(maxOutputBytes, 1_000_000), resourceLimits: this.resourceLimits, resources: this.resources,
       });
       // bwrap can also return 1 on setup failure. Only Lean diagnostics using
       // the locked source path count as an ordinary source failure.
@@ -431,7 +435,7 @@ export class LeanFinalTreeVerifier {
       'swarmenv-export', ...localModules.flatMap(module => [
         `/output/${module.name.replaceAll('.', '/')}.olean`, `/input/${module.path}`,
       ]), '--', `/input/${this.targetPath}`, this.declarationName, ...axioms, ...primitives);
-    return execute(this.bubblewrap, args, { signal, deadline, maxOutput: exportLimit, stdoutPath, resourceLimits: this.resourceLimits });
+    return execute(this.bubblewrap, args, { signal, deadline, maxOutput: exportLimit, stdoutPath, resourceLimits: this.resourceLimits, resources: this.resources });
   }
 
   async check({ files, tree, signal, deadline = Date.now() + this.timeoutMs }) {
@@ -499,7 +503,7 @@ export class LeanFinalTreeVerifier {
         '--setenv', 'LEAN_PATH', trustedLibraries.join(':'), '--chdir', '/verifier',
         '/toolchain/bin/lean', '-j1', this.leanMemoryArgument, '--run', '/verifier/Verify.lean',
         this.declarationName, '/verifier/original.jsonl', '/verifier/candidate.jsonl');
-      const validation = await execute(this.bubblewrap, args, { ...budget, maxOutput: diagnosticLimit, resourceLimits: this.resourceLimits });
+      const validation = await execute(this.bubblewrap, args, { ...budget, maxOutput: diagnosticLimit, resourceLimits: this.resourceLimits, resources: this.resources });
       if (validation.code === 0 && validation.output.toString().trim() === 'SWARMENV_FINAL_TREE_VERIFIED') {
         return result('PASS', null);
       }

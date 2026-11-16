@@ -5,7 +5,7 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { stableStringify } from '../protocol/envelope.js';
-import { verifyCheckerProcessLimits } from './checker-process-limits.js';
+import { checkerResourceProfile, verifyCheckerProcessLimits } from './checker-process-limits.js';
 import { LeanFinalTreeVerifier } from './lean-final-tree-verifier.js';
 
 const exec = promisify(execFile);
@@ -99,6 +99,10 @@ export async function fingerprintFinalTreeArtifact(root, { label, host = false, 
 
 function selected(configuration) {
   sourcePins(configuration ?? {});
+  checkerResourceProfile(configuration?.resources);
+  if (configuration?.projectJobs !== undefined && (!Number.isSafeInteger(configuration.projectJobs) || configuration.projectJobs < 1 || configuration.projectJobs > 256)) {
+    throw failure('Invalid project build concurrency');
+  }
   if (!configuration || !Array.isArray(configuration.libraryRoots) || !Array.isArray(configuration.comparatorLibraryRoots) ||
       configuration.comparatorLibraryRoots.length !== 2 || !configuration.libraryRoots.length) {
     throw failure('Checker configuration requires pinned dependency and Comparator libraries');
@@ -112,6 +116,8 @@ function selected(configuration) {
     comparatorLibraryRoots: configuration.comparatorLibraryRoots, exporterPath: configuration.exporterPath,
     bubblewrap: configuration.bubblewrap ?? '/usr/bin/bwrap', localModules: configuration.localModules ?? [],
     timeoutMs: configuration.timeoutMs ?? 120_000,
+    ...(configuration.resources === undefined ? {} : { resources: { ...configuration.resources } }),
+    ...(configuration.projectJobs === undefined ? {} : { projectJobs: configuration.projectJobs }),
     ...(configuration.projectChecks === undefined ? {} : { projectChecks: configuration.projectChecks }),
     ...(configuration.benchmarkProfile == null ? {} : {
       benchmarkProfile: configuration.benchmarkProfile, checkpoint: configuration.checkpoint,
@@ -319,11 +325,11 @@ export async function createLockedFinalTreeVerifier({ configuration, problem }) 
   if (!Array.isArray(manifest.artifacts)) throw failure('Final-tree artifact lock lacks an artifact set');
   await artifacts(deployment, manifest.artifacts);
   await verifyVersion(deployment.leanRoot, deployment.bubblewrap);
-  const resources = await verifyCheckerProcessLimits();
+  const resources = await verifyCheckerProcessLimits(deployment.resources);
   const identity = { ...deployment.identity, environment_ref: `${deployment.identity.environment_ref}:sha256:${sha256}` };
   const adapter = new LeanFinalTreeVerifier({
     ...deployment, identity, targetPath: problem.problem_file, declarationName: problem.declaration_name ?? problem.id,
     fixtureSource: problem.source, fixtureSha256: problem.source_hash,
   });
-  return { adapter, evidence: { artifact_lock_sha256: sha256, identity, sources: sourcePins(deployment), dependency_pins: manifest.dependencyPins, timeout_ms: adapter.timeoutMs, project_checks: adapter.projectChecks, resources } };
+  return { adapter, evidence: { artifact_lock_sha256: sha256, identity, sources: sourcePins(deployment), dependency_pins: manifest.dependencyPins, timeout_ms: adapter.timeoutMs, project_checks: adapter.projectChecks, project_jobs: adapter.projectJobs, resources } };
 }

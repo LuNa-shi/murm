@@ -45,6 +45,9 @@ test('deployment gate requires the lock and rejects altered content or selection
   await assert.rejects(createLockedFinalTreeVerifier({
     configuration: { ...configuration, libraryRoots: ['/different'], artifactLock: lock },
   }), /lock does not match/);
+  for (const altered of [{ resources: { memory_bytes: 8 * 1024 ** 3 } }, { projectJobs: 4 }]) {
+    await assert.rejects(createLockedFinalTreeVerifier({ configuration: { ...configuration, ...altered, artifactLock: lock } }), /lock does not match/);
+  }
 });
 
 test('nested artifact bytes, paths and modes are pinned, and symlink escapes fail closed', async t => {

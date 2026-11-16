@@ -17,6 +17,28 @@ test('checker limits use a fixed bounded and isolated transient service profile'
   assert.throws(() => limits.argsFor('true', []), TypeError);
 });
 
+test('operator checker resource overrides are isolated from defaults and validated before dispatch', () => {
+  const resources = { memory_bytes: 64 * 1024 ** 3, cpu_percent: 800, max_tasks: 128 };
+  const args = createCheckerProcessLimits({ runtimeMs: 100, resources }).argsFor('/bin/true', []);
+  assert.ok(args.includes('--property=MemoryMax=68719476736'));
+  assert.ok(args.includes('--property=CPUQuota=800%'));
+  assert.ok(args.includes('--property=TasksMax=128'));
+  assert.equal(CHECKER_RESOURCE_PROFILE.memory_bytes, 4 * 1024 ** 3);
+  for (const invalid of [{ memory_bytes: 0 }, { cpu_percent: Infinity }, { max_tasks: -1 }, { swap_bytes: 100 }, []]) {
+    assert.throws(() => createCheckerProcessLimits({ runtimeMs: 100, resources: invalid }), TypeError);
+  }
+});
+
+test('real cgroup enforces the selected operator resource profile', {
+  skip: process.env.SWARMENV_TEST_SYSTEMD_CHECKER !== '1',
+}, async () => {
+  const resources = { memory_bytes: 8 * 1024 ** 3, cpu_percent: 400, max_tasks: 128 };
+  const observed = await verifyCheckerProcessLimits(resources);
+  for (const [key, value] of Object.entries(resources)) assert.equal(observed[key], value);
+  assert.equal(observed.swap_bytes, 0);
+  assert.equal(observed.stop_grace_ms, 1000);
+});
+
 test('real user transient unit enforces memory, swap, PID and CPU bounds and kills descendants', {
   skip: process.env.SWARMENV_TEST_SYSTEMD_CHECKER !== '1',
 }, async t => {

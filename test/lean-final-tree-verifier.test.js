@@ -30,6 +30,18 @@ test('final-tree verifier fixes the source identity and rejects missing source b
 
 const lean = { skip: !leanRoot || !comparatorRoot };
 
+test('locked project forwards configured build concurrency and preserves final checking', lean, async () => {
+  const verifier = fixture(undefined, { projectChecks: true, projectJobs: 4,
+    resources: { memory_bytes: 8 * 1024 ** 3, cpu_percent: 400 } });
+  const result = await verifier.check({ files: {
+    'Toy.lean': 'import Helper\ntheorem toy : True := helper\n',
+    'Helper.lean': 'def checkBuildThreads : IO Unit := do\n  unless (← IO.getEnv "LEAN_NUM_THREADS") == some "4" do\n    throw (IO.userError "build concurrency not propagated")\n#eval checkBuildThreads\ntheorem helper : True := trivial\n',
+  }, tree: 'configured-project-build' });
+  assert.equal(result.verdict, 'PASS', result.diagnostic);
+  assert.throws(() => fixture(undefined, { projectJobs: 0 }), /build concurrency/);
+  assert.throws(() => fixture(undefined, { resources: { memory_bytes: -1 } }), /Checker resources/);
+});
+
 test('complete-project policy rejects a hole in an unused helper before final dispatch', async () => {
   const verifier = fixture(undefined, { projectChecks: true, requireCompleteProject: true });
   const result = await verifier.check({ files: {

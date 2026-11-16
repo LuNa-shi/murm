@@ -438,3 +438,17 @@ visibility audit digest; it does not contain proof source. Timed launch checks
 that the embedded PASS and checked tree match the receipt. The visibility audit
 is separate operator evidence; this command does not claim to perform an Agent
 sandbox audit itself. Checker timeouts and cleanup retain the production behavior.
+
+### Per-deployment checker resources
+
+A trusted `final_tree_checker` may set `resources: { memory_bytes, cpu_percent,
+max_tasks }` (all optional positive safe integers) and `projectJobs` (integer
+1–256, default 1). Defaults remain 4 GiB, 200 percent CPU and 64 tasks. Unknown
+resource fields and invalid values reject before process dispatch. No Agent
+payload selects these values. The artifact lock includes supplied overrides;
+changing them requires a new lock and complete-witness receipt. Startup reads
+back actual cgroup limits, and reports the effective profile and build jobs.
+`projectJobs` supplies Lake's `LEAN_NUM_THREADS`; each child compiler retains
+`-j1`. Compiler/export/replay stages share the chosen cgroup resource policy.
+Swap, termination grace, cleanup ownership and deadline clipping are unchanged.
+Research Core count is a separate setting and remains four in the Q20 study.
