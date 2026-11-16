@@ -147,7 +147,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`. Root fi
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [.env.example](../../.env.example) | Nonsecret example environment-variable names | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `b10bb2f9a9a0e82f99fe10d02654ac09fe338a902a55c49778fee9c889383ee6` |
-| [.gitignore](../../.gitignore) | Raw evidence and credential retention boundary in the working tree | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `bd8f245c0e87838caac383e8867136345ff0c2d820707f630925255e8ea16583` |
+| [.gitignore](../../.gitignore) | Raw evidence and credential retention boundary in the working tree | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `38805b9b8f0d664f5f22c5230880a574bb6702b31c94a92ec6668eec858f16ab` |
 | [config/putnambench-12.json](../../config/putnambench-12.json) | Checked-in twelve-problem protocol and checker/toolchain pins | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `290353d4f2888020d61e8a10ff5f9d816b941cee1cf8645df6a472c99733fd28` |
 | [package-lock.json](../../package-lock.json) | Exact dependency resolution, including external Pi/frontend packages | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `4930b78e6c22920fc6e83563f8a111c76a0b48b0f088910b114577ffb1409ae8` |
 | [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `f5189d47e29227b443add14bb4718cdf7c5d698db97ab91295904b0f79bdac5c` |
