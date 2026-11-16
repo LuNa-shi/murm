@@ -88,6 +88,8 @@ v1 的 Task/Mission 协调模块与 Workspace 模块位于同一协调进程、�
 
 Bot 在提案和 take 前刷新相关 Task 查询。现有 request ID、显式责任身份和同 Task 单 owner 合同继续生效。错峰减少首批 Bot 同读空列表的机会；不同责任标识的并发提案仍可能表达重叠工作。此轮未增加服务端语义去重。[Issue #122 的 Core 循环决策](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896808817)
 
+[启动流程补充决定](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6907134029)：新 Bot 尚未就绪时，若确定违反受信镜像或运行合同，应停止本项目并清理已创建资源，不反复创建注定失败的后继。这与空队列、正常 finish、选工到期不同；不改变已就绪 Bot 的自主工作循环。可恢复的 provider/网络失败仍使用有界恢复政策。启动预检、实际 Bot 握手和模型请求分别记录，不能把 Provider 健康检查当作完整启动成功。
+
 ### 未绑定 Bot 的等待与正常退出
 
 未 take 的模型调用、检索和等待费用归 Mission/Bot/Core，不虚构 E。开放且未接受的 Mission 仍有选工预算时，当前队列无合适责任意味着 Bot 应继续诊断并提案。选工预算实际耗尽且无未决 take 时使用 `swarm bot exit --reason selection-budget`。Mission 已接受或停止时停止扩展责任。此操作持久记录原因，结束整份 Bot/sandbox，不产生 Task 或 E，也不表示 Mission 成功。

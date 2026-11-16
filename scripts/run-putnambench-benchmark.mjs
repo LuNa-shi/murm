@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -252,6 +252,22 @@ for (const [field, flag] of [['botMaxMs', '--bot-max-ms'], ['selectionTimeoutMs'
 if (options.checkerTimeoutMs !== undefined && (!Number.isInteger(options.checkerTimeoutMs) || options.checkerTimeoutMs < 1 || options.checkerTimeoutMs > 2_147_483_647)) {
   throw new Error('--checker-timeout-ms must be a timer-safe positive integer');
 }
+options.experimentRoot = resolve(options.experimentRoot);
+options.experimentDir = resolve(options.experimentDir);
+if (!isWithin(options.experimentRoot, options.experimentDir)) {
+  throw new Error(`--experiment-dir must be under --experiment-root: ${options.experimentDir}`);
+}
+
+function existingExperimentDirectory(cause) {
+  return new Error(`--experiment-dir already exists: ${options.experimentDir}. Choose a fresh experiment ID and store launch inputs outside the experiment directory.`, { cause });
+}
+
+const experimentDirectoryExists = await lstat(options.experimentDir).then(
+  () => true,
+  (error) => { if (error.code !== 'ENOENT') throw error; return false; },
+);
+if (experimentDirectoryExists) throw existingExperimentDirectory();
+
 if (!options.provider) throw new Error('PI_PROVIDER is required; set it in .env or the environment');
 if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the environment');
 
@@ -280,12 +296,6 @@ options.modelUpstream = {
 };
 options.sandbox.agentEnvironment = {};
 options.sandbox.secretEnvironment = {};
-
-options.experimentRoot = resolve(options.experimentRoot);
-options.experimentDir = resolve(options.experimentDir);
-if (!isWithin(options.experimentRoot, options.experimentDir)) {
-  throw new Error(`--experiment-dir must be under --experiment-root: ${options.experimentDir}`);
-}
 
 const config = await loadBenchmarkConfig(options.configPath, {
   putnamBenchRoot: options.putnamBenchRoot,
@@ -343,7 +353,10 @@ const metadata = {
   },
 };
 process.umask(0o077);
-const audit = await beginPrivateAudit({ root: options.experimentRoot, directory: options.experimentDir });
+const audit = await beginPrivateAudit({ root: options.experimentRoot, directory: options.experimentDir }).catch((error) => {
+  if (error.code === 'EEXIST') throw existingExperimentDirectory(error);
+  throw error;
+});
 options.privateAudit = audit;
 metadata.protocol.private_audit_retention_ms = audit.retentionMs;
 let observationStore;
@@ -427,11 +440,20 @@ try {
   await writeFile(aggregatePath, JSON.stringify(aggregate, null, 2));
   const invalidCount = aggregate.projects.filter((project) => project.invalid).length;
   const solvedCount = aggregate.projects.filter((project) => project.solved).length;
+  const startupFailed = aggregate.projects.some((project) => project.stop_reason === 'bot_startup_contract');
+  if (startupFailed && !stoppedByOperator) {
+    process.exitCode = 1;
+    process.stderr.write(JSON.stringify({
+      status: 'startup_failed',
+      reason: 'bot_startup_contract',
+      action: 'Verify the pinned Bot image with the worker contract and disk quota probes before retrying.',
+    }) + '\n');
+  }
   await writeFile(metadataPath, JSON.stringify({
     ...metadata,
     ended_at: new Date().toISOString(),
-    status: stoppedByOperator ? 'operator_stopped' : 'completed',
-    ...(stoppedByOperator ? { stop_reason: 'operator_stop', stop_signal: operatorStop.signal.reason } : {}),
+    status: stoppedByOperator ? 'operator_stopped' : startupFailed ? 'startup_failed' : 'completed',
+    ...(stoppedByOperator ? { stop_reason: 'operator_stop', stop_signal: operatorStop.signal.reason } : startupFailed ? { stop_reason: 'bot_startup_contract' } : {}),
     valid_for_analysis: invalidCount === 0,
     result: {
       project_count: aggregate.projects.length,

@@ -631,7 +631,17 @@ export async function ensureAgentSession(core) {
     return core.session ?? null;
   } catch (error) {
     core.sessionStartFailures = (core.sessionStartFailures ?? 0) + 1;
-    if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_session_error' });
+    const state = core.stateRef;
+    const startupContractRejected = core.startConfig.options.requireThirdPartySandbox === true &&
+      error.code === ERROR_CODES.INVALID_CONTRACT && error.retryable !== true;
+    if (startupContractRejected && discoveryOpen(core)) {
+      state.startupFailure = { core_id: `core-${core.index}`, code: error.code, class: 'bot_startup_contract' };
+      state.requestIdentityWake?.('bot_startup_contract');
+    }
+    if (!core.stopping) core.errors.push({
+      code: error.code ?? error.name,
+      class: startupContractRejected ? 'bot_startup_contract' : safeDiagnostic(error.message) ?? 'agent_session_error',
+    });
     core.sessionCleanupPending = Boolean(core.session);
     try {
       await core.session?.stop?.();
@@ -672,7 +682,7 @@ function selectionView(candidates) {
 
 function discoveryOpen(core) {
   const state = core.stateRef;
-  return !core.stopping && !state?.stopping && !state?.signal?.aborted &&
+  return !core.stopping && !state?.stopping && !state?.startupFailure && !state?.signal?.aborted &&
     Date.now() < (state?.runDeadlineAt ?? Infinity) &&
     !(state?.mission && core.runtime.taskService.isMissionStopped(state.mission.mission_id));
 }
@@ -3019,14 +3029,14 @@ async function executeBenchmarkProject(state, problem, config, options) {
         });
     }, options.executionTimeoutSweepMs ?? 10_000);
     try {
-      while (!state.signal?.aborted && Date.now() < Math.min(deadline, state.missionCloseoutDeadline ?? deadline)) {
+      while (!state.startupFailure && !state.signal?.aborted && Date.now() < Math.min(deadline, state.missionCloseoutDeadline ?? deadline)) {
         // Acceptance may precede wake wiring. Nothing can start after PASS;
         // if no activated Execution needs closeout, proceed directly to stop.
         if (acceptedAndClosed()) break;
         if (!state.identityWakeRequested) {
           await Promise.race([sleep(Math.max(0, Math.min(options.pollMs ?? 5_000, Math.min(deadline, state.missionCloseoutDeadline ?? deadline) - Date.now()))), identityWake]);
         }
-        if (state.signal?.aborted) break;
+        if (state.startupFailure || state.signal?.aborted) break;
         const reconcileReason = state.identityWakeRequested ? 'event' : 'poll';
         state.identityWakeRequested = false;
         identityWake = new Promise((resolve) => { resolveIdentityWake = resolve; });
@@ -3097,6 +3107,15 @@ async function executeBenchmarkProject(state, problem, config, options) {
     report.run.protocol_valid = false;
     report.audit.invalid_reasons.push('cleanup_pending');
   }
+  if (state.startupFailure) {
+    report.run.startup_failure = state.startupFailure;
+    report.run.protocol_valid = false;
+    report.run.stop_reason = 'bot_startup_contract';
+    report.run.deadline_reached = false;
+    report.run.ended_early = true;
+    report.audit.invalid = true;
+    report.audit.invalid_reasons.push('bot_startup_contract');
+  }
   if (state.operatorStopped) {
     report.run.protocol_valid = false;
     report.run.stop_reason = 'operator_stop';
@@ -3112,7 +3131,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
     taskId: null,
     payload: { solved: report.run.solved, protocol_valid: report.run.protocol_valid, made_progress: report.run.made_progress },
   });
-  state.observationStore.finishExperiment(state.runId, { status: report.run.solved && !state.operatorStopped ? 'SUCCEEDED' : 'FINISHED' });
+  state.observationStore.finishExperiment(state.runId, { status: report.run.solved && !state.operatorStopped && !state.startupFailure ? 'SUCCEEDED' : 'FINISHED' });
   await writeFile(join(state.reportProjectDir, 'report.json'), JSON.stringify(report, null, 2));
   return report;
 }

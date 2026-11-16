@@ -10,6 +10,23 @@ import { fileURLToPath } from 'node:url';
 
 const runner = fileURLToPath(new URL('../scripts/run-putnambench-benchmark.mjs', import.meta.url));
 
+test('benchmark CLI refuses an existing experiment directory before loading launch inputs', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-cli-existing-run-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const experiment = join(root, 'experiment');
+  await mkdir(experiment);
+  const sentinel = join(experiment, 'attempt.txt');
+  await writeFile(sentinel, 'previous attempt');
+  const run = spawnSync(process.execPath, [runner, '--experiment-root', root,
+    '--experiment-dir', experiment, '--problems', join(root, 'missing.json'),
+    '--putnambench-root', join(root, 'missing-fixture')], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /--experiment-dir already exists/);
+  assert.match(run.stderr, /Choose a fresh experiment ID and store launch inputs outside/);
+  assert.doesNotMatch(run.stderr, /ENOENT/);
+  assert.equal(await readFile(sentinel, 'utf8'), 'previous attempt');
+});
+
 for (const late of [false, true]) test(`benchmark CLI handles SIGTERM ${late ? 'during aggregate output' : 'during failed observer startup'}`, async t => {
   const root = await mkdtemp(join(tmpdir(), 'swarm-cli-stop-'));
   t.after(() => rm(root, { recursive: true, force: true }));

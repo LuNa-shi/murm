@@ -1,6 +1,6 @@
 # EXP-20261116-02: Whole-Workspace Lean collaboration, one-hour maximum
 
-Status: REGISTERED
+Status: BLOCKED — Agent image contract ownership rejected before model work
 Approved Issue: [#127 follow-up implementation, experiment and merge decision](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716), retaining [#122 behavioral acceptance](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896946332).
 Implementation PR: [#128](https://github.com/LuNa-shi/SwarmEnv/pull/128).
 Repeat after EXP-20261116-01 was rejected before Bot/model startup because the operator pre-created its private evidence directory.
@@ -50,16 +50,18 @@ Stop normally at trusted Mission acceptance or the one-hour deadline and perform
 
 ## Results
 
-Not started at registration. Results will include actual durations, every Bot's activity, project build/import/merge evidence, authoritative Mission result, usage unknowns and physical cleanup.
+Runtime `dfc0c87`, clean launch `4221231`. Initialization began at 04:05:56.488 UTC; the project ran from 04:07:11.037 to 04:08:13.905 UTC, 62,868 ms, before operator stop after independent observers detected repeated startup rejection. Core 1 created six Bots that failed before readiness; a seventh Bot on Core 2 closed during operator stop. All seven are CLOSED. There were zero Tasks, Executions, Materials, ordinary/final checks and model requests. `protocol_valid=false`, `solved=false`; no research progress is claimed. Cleanup took 368 ms with no errors, and independent provider GET checks confirmed all seven scoped sandbox IDs returned HTTP 404.
 
 ## Analysis
 
-Pending actual run. The local multi-file probes establish implementation behavior only. The run must independently demonstrate useful autonomous collaboration under the reviewed code.
+The image build used a tar context that preserved UID 1000 ownership on trusted Bot contract files and ancestors. Their hashes and readability matched, but the worker correctly requires UID 0 and immutable/traversable ancestors. The actual worker `/start` call reproduced HTTP 400 before starting the model process. A root-run content-hash probe and a guest CLI help probe did not test this ownership gate. The generic report class `lean_checker_error` accompanied `INVALID_CONTRACT`; no Lean checker actually ran. Repeated replacement attempted the same deterministic startup error, so startup policy also needs an early fatal contract-error boundary.
 
 ## Next steps
 
-Complete final verification, run within the approved allowance, reconstruct actual behavior with experiment-analysis and independent observers, then merge PR #128 only if review and experiment acceptance pass. Record any remaining limitations in the Issue/PR.
+Apply the [owner-requested startup workflow hardening](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6907134029): explicit root-owned image COPY, actual worker and quota probes without model calls, early output-directory diagnosis and fatal startup contract-error handling. Preserve this attempt, review the changes, then register a fresh one-hour maximum repeat before merge.
 
 ## Evidence and limitations
 
 Real isolated tests demonstrated import order, unreferenced-file errors, missing/cyclic imports, full-Mathlib multi-file compilation, and final rejection of imported `sorry`. These are deterministic probes, not natural-model evidence. Earlier EXP-08 remains bound to its original single-file checker and shorter limits.
+
+The repository analyzer exited successfully with zero Executions and incomplete local execution evidence, as expected for a pre-model failure. Independent Bot and system observations plus exact provider cleanup confirmations remain under the ignored run analysis directory. No natural multi-file cooperation was exercised.
