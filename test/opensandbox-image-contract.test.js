@@ -14,6 +14,8 @@ test('OpenSandbox image carries the direct Pi model catalog without NuRouter', a
   assert.match(dockerfile, /chmod 0555 \/opt\/swarmenv\/scripts\/swarm\.mjs/);
   assert.match(dockerfile, /mkdir -p \/workspace/);
   assert.match(dockerfile, /COPY --chown=0:0 src \/opt\/swarmenv\/src/);
+  assert.match(dockerfile, /chmod 0755 \/opt\/swarmenv\s/);
+  assert.match(dockerfile, /chmod -R u=rwX,go=rX \/opt\/swarmenv\/src\s/);
 });
 
 const agentImage = process.env.SWARMENV_TEST_AGENT_IMAGE;
@@ -37,7 +39,7 @@ test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contr
       method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
       body: JSON.stringify(body), signal: AbortSignal.timeout(5000),
     });
-    try {
+    async function verify() {
       const startDeadline = Date.now() + 5000;
       for (;;) {
         const healthy = await fetch(origin + '/health', { signal: AbortSignal.timeout(500) }).catch(() => null);
@@ -83,7 +85,8 @@ test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contr
         await delay(50);
       }
       assert.equal((await post('/stop', {})).status, 200);
-    } finally {
+    }
+    try { await verify(); } finally {
       worker.kill('SIGKILL');
     }
   `;

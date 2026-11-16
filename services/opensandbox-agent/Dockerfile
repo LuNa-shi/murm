@@ -29,7 +29,10 @@ COPY --chown=0:0 scripts/project-install.mjs scripts/project-processes.mjs /opt/
 COPY --chown=0:0 scripts/swarm.mjs /opt/swarmenv/scripts/swarm.mjs
 COPY --chown=0:0 src /opt/swarmenv/src
 COPY --chown=0:0 services/opensandbox-agent/pi-models.json /opt/swarmenv/pi-agent/models.json
-RUN chmod -R u=rwX,go=rX /opt/swarmenv/src/agent/bot-contract \
+# Git archives may mark source directories group-writable. Protect all
+# source files and the parent directories checked by the worker.
+RUN chmod 0755 /opt/swarmenv \
+  && chmod -R u=rwX,go=rX /opt/swarmenv/src \
   && chmod 0555 /opt/swarmenv/scripts/swarm.mjs \
   && ln -s /opt/swarmenv/scripts/swarm.mjs /usr/local/bin/swarm \
   && mkdir -p /workspace /opt/swarmenv/pi-agent
