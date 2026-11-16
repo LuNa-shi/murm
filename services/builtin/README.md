@@ -32,8 +32,10 @@ file a supported positive-duration research deployment.
 
 The generic host selects its service with `SWARMENV_SERVICE_ID`, database with
 `SWARMENV_SERVICE_DATABASE`, and advertised address with
-`SWARMENV_SERVICE_PUBLIC_URL`. Configure `SWARMENV_SERVICE_TOKEN` to authenticate
-that host. `/healthz`, `/readyz`, `/v1/manifest` and named `/v1/<operation>` routes
+`SWARMENV_SERVICE_PUBLIC_URL`. Configure `SWARMENV_SERVICE_PRINCIPALS` as a JSON array of credentials with
+`token`, `actor_ref`, `role` and optional allowed `operations`. The default empty
+array denies calls; the old `SWARMENV_SERVICE_TOKEN` variable does not configure
+this host. `/healthz`, `/readyz`, `/v1/manifest` and named `/v1/<operation>` routes
 are retained. Its legacy isolated mode requires configured dependency endpoints
 and fails unavailable dependencies instead of opening their databases. The
 explicit in-process benchmark compatibility option remains available for tests

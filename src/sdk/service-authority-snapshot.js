@@ -7,24 +7,35 @@ const capture = action => {
 };
 
 /** Built only in the Task coordinator; never accepted from an Agent payload. */
-export function captureServiceAuthority(tasks, envelope = null) {
-  // Do not call decorated Task getters here: their Material projections call
-  // Context again. This snapshot reads only the coordinator's own domain rows.
-  const taskRows = tasks.db.prepare(`SELECT t.task_id, m.mission_id, t.state, t.spec_version
-    FROM tasks t JOIN modern_task_records m ON m.task_id = t.task_id`).all();
-  const taskMap = Object.fromEntries(taskRows.map(task => [task.task_id, { ...task }]));
-  const executions = Object.fromEntries(taskRows.flatMap(({ task_id }) => tasks.listExecutions(task_id)
-    .map(e => [e.execution_id, { execution_id: e.execution_id, task_id: e.task_id, owner_ref: e.owner_ref,
-      state: e.state, spec_version: e.spec_version, state_version: e.state_version, fencing_version: e.fencing_version,
-      lease_expires_at: e.lease_expires_at, execution_deadline: e.execution_deadline,
-      handoff_deadline: e.handoff_deadline, handoff_reminder_sent_at: e.handoff_reminder_sent_at,
-      workspace_input: e.workspace_input }])));
+export function captureServiceAuthority(tasks, envelope = null, { missionId = null, taskIds = [], provenance = true, workspace = false } = {}) {
   const bot = envelope ? tasks.getBot(envelope.actor_ref) : null;
-  return { envelope, bot, tasks: taskMap, executions,
-    links: Object.fromEntries(taskRows.map(({ task_id }) => [task_id, tasks.listTaskMaterialIds(task_id)])),
-    scope: envelope ? capture(() => tasks.materialScope(envelope)) : null,
+  const scope = envelope ? capture(() => tasks.materialScope(envelope)) : null;
+  missionId = scope?.value?.mission_id ?? missionId;
+  const selectedTasks = [...new Set([envelope?.task_id, ...taskIds].filter(Boolean))];
+  const taskMap = Object.fromEntries(selectedTasks.map(id => {
+    const row = tasks.db.prepare(`SELECT t.task_id, m.mission_id, t.state, t.spec_version
+      FROM tasks t JOIN modern_task_records m ON m.task_id = t.task_id WHERE t.task_id = ?`).get(id);
+    return [id, row ?? null];
+  }));
+  const current = envelope?.execution_id ? tasks.getExecution(envelope.execution_id) : null;
+  const executions = current ? { [current.execution_id]: {
+    execution_id: current.execution_id, task_id: current.task_id, owner_ref: current.owner_ref,
+    state: current.state, spec_version: current.spec_version, state_version: current.state_version,
+    fencing_version: current.fencing_version, lease_expires_at: current.lease_expires_at,
+    execution_deadline: current.execution_deadline, handoff_deadline: current.handoff_deadline,
+    handoff_reminder_sent_at: current.handoff_reminder_sent_at,
+    ...(workspace ? { workspace_input: current.workspace_input } : {}),
+  } } : {};
+  // Historical provenance needs immutable identity only, never Workspace trees,
+  // contracts or live state. Unrelated Missions are excluded at the owner query.
+  const origins = provenance && missionId ? Object.fromEntries(tasks.db.prepare(`
+    SELECT e.execution_id, e.task_id, e.owner_ref FROM executions e
+    JOIN modern_task_records m ON m.task_id = e.task_id WHERE m.mission_id = ?`)
+    .all(missionId).map(row => [row.execution_id, { task_id: row.task_id, owner_ref: row.owner_ref, mission_id: missionId }])) : {};
+  return { envelope, bot, tasks: taskMap, executions, origins,
+    links: Object.fromEntries(selectedTasks.map(id => [id, tasks.listTaskMaterialIds(id)])), scope,
     write_scope: envelope ? capture(() => tasks.materialScope(envelope, { write: true })) : null,
-    mission_open: envelope ? capture(() => { const scope = tasks.materialScope(envelope); tasks.assertMissionResearchOpen(scope.mission_id); return scope.mission_id; }) : null,
+    mission_open: envelope ? capture(() => { const value = tasks.materialScope(envelope); tasks.assertMissionResearchOpen(value.mission_id); return value.mission_id; }) : null,
     correction_scope: envelope ? capture(() => tasks.assertMissionCoordination(envelope, 'unsupersede')) : null,
   };
 }
@@ -37,8 +48,8 @@ export class ServiceAuthoritySnapshot {
   listTaskMaterialIds(id) { return this.snapshot.links[id] ?? []; }
   hasTaskMaterial(taskId, materialId) { return this.listTaskMaterialIds(taskId).includes(materialId); }
   materialOriginMission(taskId, executionId, actorRef = null) {
-    const e = this.getExecution(executionId);
-    return e?.task_id === taskId && (!actorRef || e.owner_ref === actorRef) ? this.getTask(taskId)?.mission_id ?? null : null;
+    const origin = this.snapshot.origins?.[executionId];
+    return origin?.task_id === taskId && (!actorRef || origin.owner_ref === actorRef) ? origin.mission_id : null;
   }
   #scope(envelope, key) {
     if (stableStringify(envelope) !== stableStringify(this.snapshot.envelope)) {

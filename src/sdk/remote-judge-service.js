@@ -51,7 +51,7 @@ export class RemoteJudgeService {
       const execution = this.taskService.getExecution(call.envelope.execution_id);
       const envelope = { ...call.envelope, state_version: execution?.state_version ?? call.envelope.state_version };
       return { service: 'judge', call_id: input.call_id, generation: this.generation, phase: input.phase,
-        sequence: input.sequence, request_hash: input.requestHash, authority: captureServiceAuthority(this.taskService, envelope) };
+        sequence: input.sequence, request_hash: input.requestHash, authority: captureServiceAuthority(this.taskService, envelope, { provenance: false, workspace: true }) };
     });
     call.stages.add(key);
     // The coordinator stays synchronous through this short remote commit /
@@ -67,7 +67,7 @@ export class RemoteJudgeService {
   setDependencyEventSink(listener) { this.dependencyEventSink = listener; }
   dispatch(operation, input, envelope) {
     if (operation === 'get_check_result') return Promise.resolve(this.peer.dispatch('domain_command', {
-      method: 'dispatch', args: [operation, input, envelope], call_id: randomUUID(), authority: captureServiceAuthority(this.taskService, envelope),
+      method: 'dispatch', args: [operation, input, envelope], call_id: randomUUID(), authority: captureServiceAuthority(this.taskService, envelope, { provenance: false, workspace: true }),
     }).result);
     if (operation !== 'workspace_check') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Unsupported remote Judge operation');
     const work = this.#check(operation, input, envelope);
@@ -84,7 +84,7 @@ export class RemoteJudgeService {
       const snapshot = await this.readProjectRevision({ workspaceId: input.source.workspace_id, revision: input.source.revision });
       project = { ...snapshot, files: Object.fromEntries(Object.entries(snapshot.files).map(([path, bytes]) => [path, Buffer.from(bytes).toString('base64')])) };
     }
-    const authority = captureServiceAuthority(this.taskService, envelope);
+    const authority = captureServiceAuthority(this.taskService, envelope, { provenance: false, workspace: true });
     this.calls.set(call_id, { envelope, stages: new Set() });
     try {
       const { result } = await callCoordinatorPeer({ url: this.url, token: this.token, actorRef: 'service:coordinator',

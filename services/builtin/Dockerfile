@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install --no-install-recommends --yes ca-certificates curl git util-linux \
+  && apt-get install --no-install-recommends --yes ca-certificates git curl util-linux \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts

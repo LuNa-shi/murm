@@ -92,3 +92,38 @@ test('durable checker ownership reaps the unit and descendants after its client 
   });
   assert.match(events, /^populated 0$/m);
 });
+
+test('recovery fences a delayed dispatch before claiming its absent unit settled', {
+  skip: process.env.SWARMENV_TEST_SYSTEMD_CHECKER !== '1', timeout: 15000,
+}, async t => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { setTimeout: delay } = await import('node:timers/promises');
+  const { cleanupOwnedCheckers } = await import('../src/judge/checker-owner.js');
+  const root = await mkdtemp(join(tmpdir(), 'checker-late-dispatch-'));
+  const ownerFile = join(root, 'owned.ndjson');
+  const limits = createCheckerProcessLimits({ runtimeMs: 2000, ownerFile });
+  const child = spawn('/bin/sh', ['-c', 'kill -STOP $$; exec "$@"', 'delayed-checker',
+    limits.command, ...limits.argsFor('/usr/bin/sleep', ['2'])],
+  { detached: true, env: limits.environment, stdio: 'ignore' });
+  const closed = once(child, 'close');
+  t.after(async () => {
+    try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    await closed;
+    execFileSync('/usr/bin/systemctl', ['--user', 'stop', limits.unit], { env: limits.environment });
+    execFileSync('/usr/bin/systemctl', ['--user', 'unmask', '--runtime', limits.unit], { env: limits.environment });
+    await rm(root, { recursive: true, force: true });
+  });
+  const deadline = Date.now() + 2000;
+  while (!(await readFile(`/proc/${child.pid}/stat`, 'utf8')).split(') ')[1].startsWith('T ')) {
+    assert.ok(Date.now() < deadline, 'Dispatcher must reach the controlled pause'); await delay(10);
+  }
+  assert.equal((await cleanupOwnedCheckers(ownerFile)).settled, 1);
+  child.kill('SIGCONT');
+  assert.equal((await closed)[0], 125);
+  const state = execFileSync('/usr/bin/systemctl', ['--user', 'show', limits.unit, '-p', 'ActiveState', '--value'],
+    { env: limits.environment, encoding: 'utf8' }).trim();
+  assert.equal(state, 'inactive');
+  assert.equal((await cleanupOwnedCheckers(ownerFile)).settled, 0);
+});

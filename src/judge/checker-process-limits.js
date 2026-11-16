@@ -1,4 +1,4 @@
-import { recordCheckerOwnership } from './checker-owner.js';
+import { recordCheckerOwnership, checkerDispatchPaths } from './checker-owner.js';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
@@ -30,7 +30,7 @@ export function createCheckerProcessLimits({ runtimeMs, ownerFile = process.env.
   const limit = CHECKER_RESOURCE_PROFILE;
   const argsFor = (command, args) => {
     if (!isAbsolute(command)) throw new TypeError('Checker process must use an absolute executable path');
-    return [
+    const launchArgs = [
       '--user', '--wait', '--pipe', '--collect', '--quiet', '--expand-environment=no', `--unit=${unit}`,
       '--property=Type=exec', '--property=KillMode=control-group', '--property=SendSIGKILL=yes',
       `--property=MemoryMax=${limit.memory_bytes}`, `--property=MemorySwapMax=${limit.swap_bytes}`,
@@ -38,6 +38,12 @@ export function createCheckerProcessLimits({ runtimeMs, ownerFile = process.env.
       `--property=TimeoutStopSec=${limit.stop_grace_ms}ms`, `--property=RuntimeMaxSec=${Math.ceil(runtimeMs) + limit.stop_grace_ms}ms`,
       '--', command, ...args,
     ];
+    if (!ownerFile) return launchArgs;
+    const paths = checkerDispatchPaths(ownerFile, unit);
+    // flock's descriptor survives the shell exec and remains held by the real
+    // systemd client until it exits. No child PID handoff can lose this fence.
+    return ['--no-fork', paths.lock, '/bin/sh', '-c',
+      'if test -e "$1"; then exit 125; fi; shift; exec "$@"', 'checker-dispatch', paths.cancelled, launch, ...launchArgs];
   };
   let controlGroup = null;
   const inspect = async (timeout) => {
@@ -97,7 +103,7 @@ export function createCheckerProcessLimits({ runtimeMs, ownerFile = process.env.
       }
     }
   }
-  return { command: launch, argsFor, environment, unit, stop, waitForEmpty };
+  return { command: ownerFile ? '/usr/bin/flock' : launch, argsFor, environment, unit, stop, waitForEmpty };
 }
 
 /** Fail closed before dispatch if the host cannot enforce the fixed profile. */

@@ -11,6 +11,8 @@ import { DockerBotDisk } from '../src/runtime/docker-bot-disk.js';
 import { openSandboxMissionKey, openSandboxBotKey } from '../src/runtime/opensandbox-metadata.js';
 
 const exec = promisify(execFile);
+const agentImage = process.argv[2];
+assert.ok(agentImage, 'Pass the explicitly selected Lean worker image');
 const docker = (...args) => exec('docker', args, { timeout: 20_000 });
 const sandboxId = `disk-probe-${randomUUID()}`;
 const name = `sandbox-${sandboxId}`;
@@ -29,14 +31,14 @@ try {
   await docker('run', '--network', 'none', '--name', name, '--detach', '--memory', '2g', '--cpus', '2', '--pids-limit', '128',
     '--label', `opensandbox.io/id=${sandboxId}`, '--label', `mission_key=${openSandboxMissionKey(bot.mission_id)}`,
     '--label', `bot_key=${openSandboxBotKey(bot.bot_id)}`, '--label', `resource_key=${openSandboxBotKey(bot.resource_key)}`,
-    process.argv[2] ?? 'swarmenv/agent:issue122', '--token', 'diskprobe', '--require-project-quota');
+    agentImage, '--token', 'diskprobe', '--require-project-quota');
   const projectQuota = await new DockerBotDisk({ bytes: 96 * 1024 ** 2, inodes: 8192 }).isolate({ sandboxId, bot });
   const script = `
     set -eu
     r=/workspace/runtime/tmp
     lean --version >"$r/lean-version"
     jq -n -e true
-    python3 -c "import json"
+    python3 -c "import json; assert json.load(open('/opt/swarmenv/lean-environment.json'))['trusted_mission_verdict'] is False"
     rg --version
     cat >"$r/Small.lean" <<'LEAN'
 import Mathlib.Data.Nat.Basic
@@ -70,6 +72,7 @@ LEAN
     catch (error) { if (Date.now() >= finishDeadline) throw error; await delay(100); }
   }
   assert.equal((await request('/stop', {})).result.stopped, true);
+  assert.equal((await docker('exec', name, 'cat', '/workspace/runtime/tmp/full.exit')).stdout.trim(), '0', 'Full Mathlib diagnostic compilation must succeed');
   const measurements = await docker('exec', name, 'sh', '-c', 'cat /workspace/runtime/tmp/lean-version /workspace/runtime/tmp/full.exit /sys/fs/cgroup/memory.peak; du -sb /workspace; cat /workspace/runtime/tmp/full.stderr');
   console.log(measurements.stdout);
   console.log('Local Lean diagnostics used the real worker with 2 CPU / 2 GiB and a 96 MiB / 8192 inode project quota.');

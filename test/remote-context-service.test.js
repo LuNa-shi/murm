@@ -65,6 +65,12 @@ for (const loseResponse of [false, true]) test(`independent Context preserves re
     return makeEnvelope({ operationId: id, actorRef: 'bot:one', taskId: task.task_id, executionId: e.execution_id,
       specVersion: e.spec_version, stateVersion: e.state_version, fencingVersion: e.fencing_version });
   };
+  // Real public save admission can retain large initial Material manifests.
+  // Context authority must not serialize those unrelated Workspace bytes.
+  tasks.dispatch('save_workspace_revision', { workspace_ref: '/controlled/initial', workspace_revision: 1,
+    workspace_content_hash: 'controlled-content', workspace_input: { workspace_id: 'workspace:one', mission_id: 'mission:one',
+      revision: '0.1', git_commit: 'controlled-commit', content_hash: 'controlled-content',
+      material_inputs: [{ material_id: 'material:historical', content_hash: 'x'.repeat(1_100_000) }] } }, env('initial-workspace'));
   tasks.dispatch('start_execution', {}, env('start'));
   const input = { content: 'A verified public observation', evidence_state: 'observed' };
   if (loseResponse) {

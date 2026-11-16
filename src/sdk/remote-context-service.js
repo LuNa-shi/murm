@@ -46,7 +46,11 @@ export class RemoteContextService {
     const write = method === 'dispatch' && !CONTEXT_READ_OPERATIONS.has(args[0]);
     if (write) this.reconcile();
     const command = () => {
-      const value = { service: 'context', method, args, authority: captureServiceAuthority(this.taskService, envelope) };
+      const value = { service: 'context', method, args, authority: captureServiceAuthority(this.taskService, envelope, {
+        missionId: (method === 'dispatch' ? args[1] : args[0])?.mission_id ?? (method === 'dispatch' ? args[1] : args[0])?.missionId,
+        taskIds: [(method === 'dispatch' ? args[1] : args[0])?.task_id, (method === 'dispatch' ? args[1] : args[0])?.taskId],
+        provenance: method !== 'publicChangeToken',
+      }) };
       if (Buffer.byteLength(stableStringify(value)) > 1024 * 1024) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Context coordinator command exceeds its bounded peer payload');
       return value;
     };
