@@ -1,3 +1,4 @@
+import { assertServiceCommitSettled } from '../sdk/service-commit-gate.js';
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../protocol/envelope.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -185,6 +186,7 @@ export class ExecutionWorkspace {
         } else if (input.resolved) captured.conflicts = this.#resolveConflicts(current.conflicts, snapshot.files);
         this.db.exec('BEGIN IMMEDIATE');
         try {
+          assertServiceCommitSettled(this.db);
           const active = this.guard(identity, { newWork: operation === 'apply' });
           if (operation === 'apply') assertNewExecutionWork(active);
           this.db.prepare("UPDATE execution_workspace_requests SET phase = 'captured', captured_json = ?, updated_at = ? WHERE execution_id = ? AND request_id = ?")
@@ -257,6 +259,7 @@ export class ExecutionWorkspace {
       if (row.phase === 'captured') {
         this.db.exec('BEGIN IMMEDIATE');
         try {
+          assertServiceCommitSettled(this.db);
           this.guard(identity);
           this.db.prepare("UPDATE execution_workspace_requests SET phase = 'installing', updated_at = ? WHERE execution_id = ? AND request_id = ? AND phase = 'captured'")
             .run(new Date().toISOString(), row.execution_id, row.request_id);
@@ -281,6 +284,7 @@ export class ExecutionWorkspace {
       if (row.phase === 'installing') {
         this.db.exec('BEGIN IMMEDIATE');
         try {
+          assertServiceCommitSettled(this.db);
           const current = this.#state(this.guard(identity));
           const applied = [...current.applied_revisions, { revision: captured.source_revision, base_revision: captured.base_revision, request_id: row.request_id, content_hash: captured.content_hash, already_included: captured.already_included }];
           const updated = this.db.prepare(`UPDATE execution_workspace_state SET parents_json = ?, applied_json = ?, conflicts_json = ?, pending_apply = ?, version = version + 1, updated_at = ? WHERE execution_id = ? AND version = ?`)
@@ -335,6 +339,7 @@ export class ExecutionWorkspace {
         changed_paths: result.changed_files, conflicts: captured.conflicts };
       this.db.exec('BEGIN IMMEDIATE');
       transaction = true;
+      assertServiceCommitSettled(this.db);
       const updated = this.db.prepare(`UPDATE execution_workspace_state SET last_saved_revision = ?, manifest_json = ?, parents_json = ?, conflicts_json = ?, pending_apply = 0, version = version + 1, updated_at = ?
         WHERE execution_id = ? AND version = ?`).run(result.revision, json(captured.manifest), json([result.revision]), json(captured.conflicts), new Date().toISOString(), row.execution_id, captured.state_version);
       if (updated.changes !== 1) throw new SwarmEnvError(ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED, 'Saved revision must be reconciled with E lineage before another write');

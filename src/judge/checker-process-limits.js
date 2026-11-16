@@ -1,3 +1,4 @@
+import { recordCheckerOwnership } from './checker-owner.js';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
@@ -21,9 +22,10 @@ export const CHECKER_RESOURCE_PROFILE = Object.freeze({
 });
 
 /** The client process is a transport only. The unit owns all checker processes. */
-export function createCheckerProcessLimits({ runtimeMs }) {
+export function createCheckerProcessLimits({ runtimeMs, ownerFile = process.env.SWARMENV_CHECKER_OWNER_FILE }) {
   if (!Number.isFinite(runtimeMs) || runtimeMs <= 0 || runtimeMs > 2_147_483_647) throw new TypeError('Invalid checker resource deadline');
   const unit = `swarmenv-check-${randomUUID()}.service`;
+  recordCheckerOwnership(ownerFile, unit, 'allocated');
   const environment = Object.freeze({ XDG_RUNTIME_DIR: `/run/user/${process.getuid()}` });
   const limit = CHECKER_RESOURCE_PROFILE;
   const argsFor = (command, args) => {
@@ -71,6 +73,7 @@ export function createCheckerProcessLimits({ runtimeMs }) {
         if (!['inactive', 'failed'].includes(state.ActiveState) || !await empty()) {
           await exec(control, ['--user', 'stop', unit], { env: environment, timeout: remaining(), maxBuffer: 16_384 });
         } else if (clientSettled()) {
+          recordCheckerOwnership(ownerFile, unit, 'settled');
           return;
         }
       } catch (error) {

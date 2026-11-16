@@ -1,3 +1,4 @@
+import { assertServiceCommitSettled } from '../sdk/service-commit-gate.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -3697,6 +3698,7 @@ export class TaskService {
   #transaction(callback) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      assertServiceCommitSettled(this.db);
       const result = callback();
       this.db.exec('COMMIT');
       return result;

@@ -1,7 +1,6 @@
 # 00. Overview
 
-SwarmEnv runs one or more Bot lifecycles against a Mission through a small,
-task-scoped service surface. The system has four different responsibilities:
+SwarmEnv runs Bot lifecycles against a Mission through authenticated services. The components below divide process lifecycle, durable domain authority, public research evidence and discovery:
 
 ```text
 Agent Core / Pi session
@@ -12,15 +11,11 @@ Services Bridge + Capability Profile
         ├── Task Service       Mission, Task, Execution facts
         ├── Context Service    Material and consumption facts
         ├── Judge Service      checker execution and CheckResult facts
-        ├── Workspace/Runtime  private files, revisions, fencing, Sandbox
+        ├── Workspace/Runtime  public revisions, guest worktrees, fencing, Sandbox
         └── Catalog/Registry   manifests, tools, documentation and hashes
 ```
 
-The benchmark runner owns the outer run, Core lanes and finalization. The Agent-facing Bridge reads the current Workspace source and invokes Judge directly; the runner records the returned CheckResult. Task finish and fixed-input Mission acceptance are separate decisions.
-Runtime owns process/session lifecycle and physical cleanup. Domain Services
-own authoritative Task, Execution, Material and Judge state. The Agent chooses
-research actions through the exposed tools; the Runtime does not choose a
-mathematical route.
+The benchmark runner owns the outer run, Core slots and finalization. For a registered Bot, Bridge resolves Judge input from a saved numeric revision in the public Mission Workspace. File checks select a path; project checks export the complete revision. Unsaved guest edits are not checker input. Judge persists a CheckResult; the runner records its observation separately from the fenced response delivered to the Bot. Task finish, main merge and fixed-input Mission acceptance are separate decisions. Runtime owns process/session lifecycle and cleanup. Task, Context and Judge own their respective durable facts. Agents choose research actions; Runtime does not choose a mathematical route.
 
 ## The three boundaries a reader must keep separate
 
@@ -46,19 +41,21 @@ activity evidence, not proof of useful research.
 ## Normal flow
 
 ```text
-Bot reads capability profile and public Mission/Task/Material/Workspace state
-  → prefer suitable existing work; otherwise propose a bounded Task with task_create
-  → task_take in its own Core
-  → Runtime binds one Execution and private Workspace
-  → Agent reads/publishes/consumes Material and edits Workspace
-  → Agent may register a genuinely independent ordinary Task
-  → Agent submits a Workspace candidate through the registered Judge Service
-  → Judge checks and persists a CheckResult; the Bridge returns it synchronously and the runner records its projection
-  → Agent saves public revisions and may merge incremental work into main
+Bot starts unbound with an empty protected guest project
+  → reads capabilities and public Mission/Task/Material/Workspace state
+  → prefers suitable existing work; otherwise proposes a bounded Task
+  → task_take reserves one Execution in its Core
+  → Runtime pins public inputs, prepares the guest, activates E, grants access
+  → Agent reads/publishes/consumes Material and edits the guest project
+  → Agent explicitly saves a public revision
+  → Agent may check that fixed revision through Judge
+  → Judge persists the result; the runner records diagnostic evidence
+  → Agent may merge a fixed public revision into main under Runtime guards
   → Agent explicitly finishes done, incomplete, blocked or cancelled
-  → an authorized Bot may separately submit fixed main and selected Materials for Mission acceptance
-  → Runtime fences/releases this Execution
-  → Runtime stops the Bot; a fresh Bot may continue from public state
+  → an authorized Bot may separately submit fixed main and selected Materials
+    for trusted Mission acceptance
+  → Runtime confirms process/Sandbox isolation, then releases E and Core
+  → a fresh Bot may continue from public state
 ```
 
 The **flat Mission Task model** is the only runtime Task model described by this architecture. The benchmark CLI has no Task-model selector, and the Agent/SDK surface exposes Mission Tasks, relations, Materials and Execution progress without Root/Child structure operations. Bots use the read, write, edit and bash tools, with the typed `swarm` CLI routed through their authenticated Bridge to Task, Material, Judge and Workspace operations. They do not receive a second set of domain-native tools.

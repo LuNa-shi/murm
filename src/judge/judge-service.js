@@ -60,6 +60,7 @@ export class JudgeService {
     taskService = null,
     missionBudget,
     readProjectRevision = null,
+    lifecycleWrite = null,
   } = {}) {
     this.missionBudget = normalizeJudgeMissionBudget(missionBudget);
     this.activeChecks = new Set();
@@ -74,6 +75,7 @@ export class JudgeService {
     this.fixtureManifest = fixtureManifest;
     this.taskService = taskService;
     this.readProjectRevision = readProjectRevision;
+    this.lifecycleWrite = lifecycleWrite;
   }
 
   close() { this.db.close(); }
@@ -359,7 +361,9 @@ export class JudgeService {
       }
     };
     const begin = () => this.#beginRequest(normalized, requestHash, authority);
-    const request = separateLifecycle ? this.taskService.withServiceLifecycleWrite(begin) : begin();
+    const request = this.lifecycleWrite
+      ? await this.lifecycleWrite(begin, { phase: 'admission', requestHash, envelope: requestEnvelope })
+      : separateLifecycle ? this.taskService.withServiceLifecycleWrite(begin) : begin();
     if (!request.shouldCheck) return request.result;
     const work = this.#performWorkspaceCheck(normalized, requestHash, request.result, { operationId, actorRef,
       authority, publicInput, registered, missionId: request.missionId, project }).finally(() => {
@@ -388,7 +392,9 @@ export class JudgeService {
         return launch();
       };
       if (!publicInput && !registered) return guardedLaunch();
-      return this.taskService.withServiceLifecycleWrite(guardedLaunch);
+      return this.lifecycleWrite
+        ? this.lifecycleWrite(guardedLaunch, { phase, requestHash, checkResultId: requested.check_result_id })
+        : this.taskService.withServiceLifecycleWrite(guardedLaunch);
     };
     const preflight = await this.#runPreflight(normalized, assertCanStart, startProcess('preflight')).catch(error => {
       admissionFailure = executionRejection(error);

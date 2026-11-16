@@ -1,3 +1,4 @@
+import { assertServiceCommitSettled } from '../sdk/service-commit-gate.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -74,6 +75,7 @@ export class MissionSubmissionStore {
   #transaction(action) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      assertServiceCommitSettled(this.db);
       const result = action();
       this.db.exec('COMMIT');
       return result;

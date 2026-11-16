@@ -21,7 +21,7 @@ The final commit boundary is synchronous: write/fsync/rename the intent, conditi
 
 Request IDs are Workspace-scoped. Same-ID concurrent operations join one in-process promise. A per-request OS lock excludes another coordinator throughout checking; it receives retryable `WORKSPACE_BUSY`. Before checker execution, the request fingerprint, source and fixed main are persisted. If that process disappears before a result, a later owner aborts the old attempt with `WORKSPACE_REQUEST_ABORTED` rather than checking again or selecting a newer main. Changed input is rejected, and persisted success or definitive rejection is replayed without another checker attempt. An I/O failure after durable intent returns retryable `WORKSPACE_RESULT_UNKNOWN`; recovery decides the original request rather than recording a false rejection. If a live checker fails before commit, the initial caller and replay receive the same recorded canonical outcome. Failure to record that outcome returns retryable `WORKSPACE_RESULT_UNKNOWN`, which instructs the caller to query or retry the original ID. Revision numbers are allocation order; ancestry comes from Git parents. `get` omits the repository's private path. `candidateFileRef` remains only `(workspace_id, revision, path)`.
 
-Registered Bot merge admission is implemented below. The benchmark connects the independent final-tree checker through the Mission submission coordinator. The internal `materialize` initialization helper rejects repository descendants, symlink traversal and nonempty targets, stages a complete tree and renames it over a still-empty target under a target lock. Normal Bot apply uses the separate active-project installation path below; caller-selected host `target_dir` routes reject. Standalone Service authority and complete stage acceptance are not established by these Workspace integrations.
+Registered Bot merge admission is implemented below. The benchmark connects the independent final-tree checker through the Mission submission coordinator. The internal `materialize` initialization helper rejects repository descendants, symlink traversal and nonempty targets, stages a complete tree and renames it over a still-empty target under a target lock. Normal Bot apply uses the separate active-project installation path below; caller-selected host `target_dir` routes reject. The Task/Mission/Workspace coordinator remains the sole owner of public Git publication; independent Context/Judge peers do not open its database or repository. Their authority protocol is described in [Services](04-services.md).
 
 [MissionWorkspace](../../src/runtime/mission-workspace.js), [WorkspaceRepository](../../src/runtime/workspace-repository.js).
 
@@ -95,8 +95,10 @@ Focused CLI/Git tests cover disjoint contributions in the actual checked combine
 
 ## 1. What a Workspace represents
 
-Every `Runtime.startExecution` or `bindAgentExecution` prepares a private
-Workspace before starting the durable Execution. A Task need not expose file or
+The registered Bot starts in a protected Sandbox before take; after take Runtime materializes the selected immutable Mission revision into its guest project. Public continuity uses explicit save/apply/merge as described above.
+
+The compatibility `Runtime.startExecution` or `bindAgentExecution` path prepares a private
+WorkspaceManager support directory before starting the durable Execution. A Task need not expose file or
 Sandbox tools to its Agent for that support directory to exist: capability
 selection and materialization are separate decisions. Independent participants
 in the compatibility Task path receive independent writable directories. In
@@ -124,7 +126,7 @@ local owner, fence, file index and history. Neither one replaces the other.
 | `README.md`, `workspace-manifest.json`, `runtime-manifest.json` | Initial Task description, Task/input contract and Runtime/adapter manifest, respectively. |
 | `.pi/settings.json` | Runtime-installed Pi compaction/retry settings where the preparation path ensures the file. |
 
-A public Workspace view has `workspace_ref`, `execution_id`,
+A compatibility WorkspaceManager view has `workspace_ref`, `execution_id`,
 `fencing_version`, `workspace_revision`, `content_hash`, `git_commit`,
 `git_worktree`, parent Workspace/revision, Task and manifest fields,
 `workspace_contract`, `input_snapshot`, checkpoint reference/hash,
@@ -254,15 +256,7 @@ Judge uses its own configured fixture/checker and persists the resulting check;
 Task completion is separate. See [the direct submission contract](04-services.md#the-as-built-submission-route)
 and [ADR 0019](../adr/0019-direct-judge-workspace-submission.md).
 
-This boundary inherits the live-file behavior above. An optional revision
-checks the current metadata revision; it does not request bytes from that
-historical revision. Bridge uses the file-read default of 1,000,000 bytes and
-forwards its content/hash, without a separate full-file snapshot or truncation
-branch. Judge recomputes the supplied content's SHA-256 before checking, so a
-stale indexed hash or truncated source with a full-file hash fails request
-validation. Direct submission therefore does not remove the current
-metadata-index limitations or establish the phase-02 immutable shared-revision
-contract.
+The historical unregistered Bridge file route instead reads the current private Workspace with optional stale-value guards. Its revision check compares current metadata rather than exporting historical bytes. It retains the 1,000,000-byte read default and metadata-index limits; Judge recomputes content hashes and rejects inconsistent inputs. These are compatibility-route limits, not registered numeric-revision file/project limits. Neither route implicitly saves a revision or publishes Material.
 
 Sources: [Bridge source preparation](../../src/agent/services-bridge.js),
 [Runtime read boundary](../../src/runtime/runtime.js),
@@ -434,7 +428,7 @@ therefore an identity/Session replacement, not a Task handoff.
 
 ## 8. Sandbox provisioning and execution
 
-The benchmark uses `OpenSandboxManager` for every Agent Execution. Runtime creates one provider sandbox with the fixed worker entrypoint, authenticates the worker with a per-Execution token, copies bounded Workspace files into guest `/workspace`, and deletes the sandbox at release. `sandbox_exec` and `sandbox_job` are bound Runtime capabilities; they cannot address host paths or an unbound Execution. The worker event stream is sequence-based; retryable SSE failures switch to bounded history polling and replay deduplication. Controller restart reconciliation never revives an old Pi or shell: a sandbox whose worker token cannot be recovered is recorded as unrecoverable, quarantined/deleted, and replaced by a fresh Bot/Execution that resumes from public Workspace and Material state.
+Production benchmarks use OpenSandbox for registered Bots. Runtime creates each Bot sandbox before selection and keeps its worker credential out of Pi. Take associates that resource with E and prepares/grants the pinned project. Native Pi Bash runs as the non-root Bot user in `/workspace/project`; explicit save publishes files. Registered Bots cannot use root `sandbox_exec`. Trusted diagnostic/compatibility transport still supports bounded Execd commands/jobs. The worker event stream uses sequences, bounded polling and replay deduplication. Restart reconciliation cannot recover the credential or revive old private context; it deletes/quarantines the resource. Fresh Bots continue only from public state. Physical stop and provider deletion are distinct cleanup evidence.
 
 [OpenSandbox manager](../../src/runtime/opensandbox-manager.js), [OpenSandbox Agent adapter](../../src/agent/opensandbox-agent-adapter.js), and [Runtime Sandbox binding](../../src/runtime/runtime.js) define the provider boundary. The shipped image is the only trusted worker entrypoint; ordinary callers cannot provide a custom entrypoint.
 
@@ -506,3 +500,15 @@ corrections and the affected files before deciding whether they require revalida
 In a deployment with locked project checking, multiple Bots can save distinct Lean modules and integrate them through ordinary apply/save/merge. The complete fixed revision supplies imports; public main changes never alter a check already in flight. A project merge check compiles the actual combined tree, including unreferenced in-scope Lean modules, before the existing conditional main publication. It permits diagnostic warnings for unfinished work so auxiliary contributions can merge before the Mission theorem is complete. Final Mission verification still uses a frozen complete tree and the trusted theorem/proof check. An unmerged saved revision can be checked in the same way without advancing main. [Services](04-services.md#locked-lake-project-preparation-and-compilation) defines module roots, scope and failure classification.
 
 A project merge receipt retains `checked_paths` alongside its count and tree identity. When a Task requires a checked delivery on main, Task Service verifies each required path appears in this compilation coverage; mere existence of a README or ignored configuration file in the tree cannot satisfy checked Lean delivery. There is one active merge check per Runtime/Core, separate from the ordinary Judge admission pool and the single final Mission checker. With four Cores this is not a global two-process compilation limit. Each compiler still has its fixed resource bound. For a three-minute merge check, the CLI can wait with `--timeout-ms 210000`; after response loss, replay the original source/request ID to recover its durable operation.
+
+## Sandbox initial tools and optional Lean image
+
+The fixed worker image installs Bash, Git, curl, jq, Python 3 (with the `python` alias), and ripgrep. These executables are available to native Pi Bash under the existing non-root Bot UID and filesystem controls. They do not grant host mounts, provider credentials or additional Bridge authority. Image-contract tests run the actual worker and Bot command path; host availability alone is insufficient.
+
+`services/opensandbox-agent/lean/Dockerfile` is an optional layer over that worker image. The operator builds it with `node scripts/build-agent-lean-image.mjs AGENT_IMAGE LEAN_ROOT LEAN_PROJECT OUTPUT_IMAGE`. The helper verifies Lean 4.33.1 and its exact reviewed commit, the reviewed Mathlib revision, and each dependency's Git revision against `lake-manifest.json`; missing prebuilt artifacts fail before building. Explicit named build contexts provide only compiler `bin`/`lib` and the eight dependencies' prebuilt Lean library directories. The benchmark source checkout, solutions, private state and credentials are not copied. This validates selected revisions and availability; it does not attest reproducibility of operator-supplied compiled artifacts.
+
+Root-owned, nonwritable compiler/dependency files live under `/opt/swarmenv/lean` and `/opt/swarmenv/lean-deps`. `/usr/local/bin/lean` supplies those library paths plus the current project directory and invokes the compiler; it does not fetch or rebuild dependencies. `lake` is available as the toolchain executable, but an arbitrary Lake project's offline dependency configuration is not automatically repaired. The immutable `/opt/swarmenv/lean-environment.json` records compiler/dependency identities and the base image ID. The system addendum tells Bots to detect Lean availability, use prebuilt dependencies for local diagnostics, and treat public Judge results as the authoritative check path.
+
+The operator selects the resulting image in the existing OpenSandbox configuration; there is no automatic image pull/build during Bot startup. The image retains ordinary worker identity/preflight checks, BotDisk limits, cgroup limits, networking and cleanup. Shared immutable Docker layers cost host storage once; each container still incurs its own process memory and writable-layer overhead. The local prototype's compiler/libraries occupied approximately 9.31 GB. A network-disabled actual-worker probe with 2 CPUs and 2 GiB memory compiled both a selected Mathlib module and a full `import Mathlib` example, denied dependency writes, and recorded a 1,996,509,184-byte cgroup memory peak and 5,926 writable project bytes. This bounded diagnostic establishes feasibility, not headroom for every proof or a research success rate. Larger local jobs can exhaust the unchanged Bot allowance; Judge retains its independently bounded trusted environment.
+
+After any worker, prompt or dependency change, rebuild the image, rerun the actual worker contract and local Lean probe, and pin its image identity in the deployment. Local compilation never supplies Mission acceptance, which still rechecks the selected public tree and original theorem in the locked checker.

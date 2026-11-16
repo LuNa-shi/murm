@@ -4,7 +4,7 @@
 
 The normal runner initializes a zero-Task Mission and its public Workspace. Final acceptance uses `createMissionCoordination` and the durable SQLite `MissionSubmissionStore`; the old caller-verdict JSON helper is no longer executable. A registered Bot calls `swarm mission submit --materials M1,M2` (or explicit `[]` for a files-only submission). Bridge supplies its durable Mission, Workspace, Bot, optional current Task/E and fence, and stable transport request ID. It rejects caller-supplied checker, acceptance, revision and identity. The Task-owned `mission_submit` grant must have been explicitly configured at trusted Bot registration. A bound submitter must also be before soft closeout. The service, rather than the Bot, selects current main and the configured checker.
 
-The persisted Mission record contains its `goal`, `acceptance_conditions`, `created_by` and timestamps (`src/storage/schema.js` and `TaskService.#createMission`). Initial Materials are separate Context/Task facts; model, timebox, checker and budget parameters are supplied by the benchmark/runtime configuration and/or Task contracts, not persisted as `missions.initial_material` or `missions.resource_scope` columns. Mission is not a permanent manager Agent.
+The persisted Mission contains `goal`, `acceptance_conditions`, `merge_required_check`, creator and timestamps. Initial Materials remain separate Context/Task facts. Model, timebox, final-checker and budget configuration come from runtime composition; Mission is not a complete deployment snapshot. Public main and final-submission state have separate Workspace/submission records. Mission is not a permanent manager Agent.
 
 The current flat implementation has no shared Mission Task special case. A Mission may start with zero Tasks while Bots read public state and propose independent Tasks. Mission itself is never taken; each ordinary Task is exclusively owned through `task_take` and ends through `task_finish`.
 
@@ -58,11 +58,7 @@ Historical attempts without a recorded preview retain an unknown comparison.
 
 ## Material and completion
 
-Task Service and Context Service keep the responsibility and evidence layers
-separate. A child/ordinary Task can publish a Response or Experience Material;
-the receiving Task may read it, consume it, link it, accept it, reject it, or
-defer a decision. Publication or consumption alone does not prove downstream
-usefulness.
+Task and Context keep responsibility and evidence separate. A Bot can publish immutable Material with producer provenance, link it to a Task, record consumption, or use dispute/supersede operations to correct public evidence. The current contract requires neither historical Response/Experience categories nor parent/child Tasks. Publication, linking and consumption record activity and provenance, not downstream usefulness.
 
 Task completion, consumer acceptance, Workspace artifact PASS and Mission completion are
 four different facts. A report must state which one was observed.
@@ -165,7 +161,7 @@ A definite checker FAIL releases only this submission's freeze and is reused for
 Machine final checks additionally reserve a separate persistent Mission budget when the submission freeze is admitted. Defaults are four total attempts and one active checker adapter, including cancellation or timeout tails. Cached scientific outcomes do not reserve capacity. A changed submission snapshot and a reattempt after retryable infrastructure failure both use fresh capacity. A busy slot does not consume a scientific retry. The sole effective submission freeze is still enforced even when configuration permits more than one checker adapter for settling tails. Restart retains unresolved machine reservations. Manual review does not reserve machine process capacity.
 
 
-`stop` fences new submission admission and cancels pending work, then waits for actual input reads, checker processes, cleanup and audit writes. Reporting deadlines do not settle these underlying promises. The benchmark joins this work under its one cleanup grace; if still pending it reports invalid cleanup and defers database close. Store-owned databases close only after real idle; injected connections remain owned by the runner. Reconciliation retries pending thaw/stop callbacks and expires orphaned checks without rerunning or charging them. The production coordinator shares the Task database while Context owns a separate database. Context mutations and the coordinator's snapshot revalidation serialize through the Task-owned writer window and synchronous service APIs. Independently hosted HTTP Services do not implement this atomic lifecycle boundary and reject affected writes.
+`stop` fences new submission admission and cancels pending work, then waits for actual input reads, checker processes, cleanup and audit writes. Reporting deadlines do not settle these underlying promises. The benchmark joins this work under its one cleanup grace; if still pending it reports invalid cleanup and defers database close. Store-owned databases close only after real idle; injected connections remain owned by the runner. Reconciliation retries pending thaw/stop callbacks and expires orphaned checks without rerunning or charging them. The production coordinator shares the Task database while Context owns a separate database. Context mutations and the coordinator's snapshot revalidation serialize through the Task-owned writer boundary. The independent peer composition additionally persists a gate before issuing an HTTP write and releases it only after an exact terminal receipt; unresolved transport outcomes block competing coordinator writes. Legacy standalone HTTP Services without this protocol reject affected writes.
 
 ### Manual Mission acceptance
 

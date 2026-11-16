@@ -9,7 +9,7 @@
     },
     {
       "path": "src/agent/bot-contract/system.txt",
-      "sha256": "304c03fb6c5e7e5e53980adf1b2977ae57f7d51215cf6412733f9b8d71ddff90"
+      "sha256": "41f7d17b175e475d92bd20fe2709d1d360fceb76b3eaad94a429ffabd3cdfd20"
     },
     {
       "path": "src/agent/bot-contract/plan-task.md",
@@ -57,7 +57,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "da9f5e92653b7f87bb4a125f62bcc860984430e9b542594bcfc8c3ceaf2af487"
+      "sha256": "3522a298790ff717c79b183e55a85789b57204e14b913d881d3ef093ecebd852"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -105,7 +105,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "66c9b21d1272a24c917084051728d0ca39a704bd54f95b358992c4896f396a99"
+      "sha256": "9253d9ef9e2743ab9f5a51f40ca79291ccd5a18445e785d21cf081b2bad75875"
     },
     {
       "path": "src/task/task-types.js",
@@ -128,7 +128,7 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 664,
+      "line": 665,
       "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
     },
     {
@@ -175,12 +175,12 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 432,
+      "line": 433,
       "expression": "const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 744,
+      "line": 745,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
     },
     {
@@ -320,25 +320,25 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1756,
+      "line": 1757,
       "field": "guidance",
       "sha256": "2331ed3898810daacce352f5433d670aae5a8e9127527d6f6dbdd13c314fa95e"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1872,
+      "line": 1873,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 2084,
+      "line": 2085,
       "field": "action",
       "sha256": "ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 2177,
+      "line": 2178,
       "field": "guidance",
       "sha256": "0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b"
     }
@@ -346,7 +346,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "d763dc80cbad61f726b6a6d4970ac6a9ba0b74107638b0d95a9b3fdca0bcd962"
+      "sha256": "1b7fe46c41701b9ef99d1b82b6237056e78f22f087bcf258c5244a11c414c5f2"
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
@@ -354,7 +354,7 @@
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "bd6f56f2efae5281e698eb172a4d27d72484537be1bc7c4b6e7db8290f48fb1c"
+      "sha256": "aba2800e06dbc5f7c0697de940eeae7e0b85050677dd04ffe0b7345980920719"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
@@ -370,7 +370,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "8b7ff6cfdd29a9603e6ae3fbd393b18d4b6c72e83a0a4d27a10ee0991e921c9b"
+      "sha256": "0156106e5fb156a054c47271e5d49dedb9654c95d64faa0ef4c54bf41a409f4c"
     }
   ]
 }

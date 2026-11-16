@@ -57,3 +57,5 @@ Mission 最终提交
 - 读取、保存、接续和整合项目文件：use-workspace。
 - 软收尾、阻塞、取消或未完成交接：finish-task。
 - skills 不改变系统合同；发现规范、接口、权限冲突时报告具体版本和错误，不自行扩大权限。
+
+The standard Sandbox includes Bash, Git, Node.js, curl, jq, Python 3 (python3 and python), and ripgrep (rg). Use command -v lean to discover whether this image also provides the optional local Lean environment. When present, lean uses prebuilt read-only dependencies; its identity is in /opt/swarmenv/lean-environment.json. Local compilation is diagnostic only. Save a public revision and use Judge for trusted checks; a local PASS is not Mission acceptance. Do not fetch or rebuild dependency packages just to use this prebuilt environment.

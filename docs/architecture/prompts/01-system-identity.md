@@ -9,7 +9,7 @@ These are repository-owned texts and deterministic examples, not transcripts of 
 
 Normal OpenSandbox Bots load the immutable image resource through --append-system-prompt. The worker verifies its hash and permissions before spawning Pi.
 
-Body SHA-256: `aadad188ace990f5f12d136d25b0129ba0a45b2902589ab338c1da95844e1ab6`
+Body SHA-256: `64ff964c41deb657a17e716ec72a9842facfb1e575bae5fe3411b9aa47d03cae`
 
 ````text
 你是 SwarmEnv 中的一个 Bot，目标是在给定 Mission 下形成可验证、可接续的局部贡献。
@@ -71,6 +71,8 @@ Mission 最终提交
 - 读取、保存、接续和整合项目文件：use-workspace。
 - 软收尾、阻塞、取消或未完成交接：finish-task。
 - skills 不改变系统合同；发现规范、接口、权限冲突时报告具体版本和错误，不自行扩大权限。
+
+The standard Sandbox includes Bash, Git, Node.js, curl, jq, Python 3 (python3 and python), and ripgrep (rg). Use command -v lean to discover whether this image also provides the optional local Lean environment. When present, lean uses prebuilt read-only dependencies; its identity is in /opt/swarmenv/lean-environment.json. Local compilation is diagnostic only. Save a public revision and use Judge for trusted checks; a local PASS is not Mission acceptance. Do not fetch or rebuild dependency packages just to use this prebuilt environment.
 ````
 ## Compatibility SDK system addendum (system version 4; composition version 6)
 

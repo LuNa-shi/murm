@@ -64,3 +64,31 @@ test('a bounded pending stop neither releases ownership nor prevents later confi
   await cleanup;
   assert.equal(confirmed, true);
 });
+
+test('durable checker ownership reaps the unit and descendants after its client process dies', {
+  skip: process.env.SWARMENV_TEST_SYSTEMD_CHECKER !== '1', timeout: 15000,
+}, async t => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { cleanupOwnedCheckers } = await import('../src/judge/checker-owner.js');
+  const root = await mkdtemp(join(tmpdir(), 'checker-owner-'));
+  const ownerFile = join(root, 'owned.ndjson');
+  const limits = createCheckerProcessLimits({ runtimeMs: 10000, ownerFile });
+  const child = spawn(limits.command, limits.argsFor('/bin/sh', ['-c',
+    'sleep 30 & read -r group </proc/self/cgroup; printf "%s\\n" "${group#0::}"; wait',
+  ]), { env: limits.environment, stdio: ['ignore', 'pipe', 'pipe'] });
+  child.stderr.resume();
+  const closed = once(child, 'close');
+  t.after(async () => { await cleanupOwnedCheckers(ownerFile); await rm(root, { recursive: true, force: true }); });
+  const [chunk] = await once(child.stdout, 'data');
+  const group = `/sys/fs/cgroup${chunk.toString().trim()}`;
+  child.kill('SIGKILL');
+  assert.equal((await cleanupOwnedCheckers(ownerFile)).settled, 1);
+  await closed;
+  assert.equal((await cleanupOwnedCheckers(ownerFile)).settled, 0);
+  const events = await readFile(`${group}/cgroup.events`, 'utf8').catch(error => {
+    if (error.code === 'ENOENT') return 'populated 0'; throw error;
+  });
+  assert.match(events, /^populated 0$/m);
+});

@@ -9,18 +9,21 @@ This chapter separates persisted facts from live-process state, and provides eve
 | Task Service | Mission, Bot/Core occupancy and provider identity, Task contract/state, Execution/fence/lease, Task relationships, admission counters, replay keys, Material links, notification and receipt state | Runtime Core occupancy, callback subscriptions and scheduling loop |
 | Context Service | Immutable Material content/provenance/hash/version and explicit consumption edges | No semantic proof of whether the Agent used or understood the text |
 | Judge Service | Workspace artifact request/checker/input binding, CheckResult and result class, checker health/preflight attempts, applied-result bookkeeping | The currently executing checker subprocess and pending asynchronous call |
-| Workspace Manager | File content plus `.swarm/workspace.json`, revision/checkpoint metadata; local Git commits/refs are separate filesystem history | Live process working memory and unsaved shell edits |
+| MissionWorkspace | Public Mission Git repository, immutable numeric revisions, main, merge/freeze receipts and index | Unsaved guest edits and live checker work |
+| Compatibility Workspace Manager | File content plus `.swarm/workspace.json`, revision/checkpoint metadata; local Git commits/refs are separate filesystem history | Live process working memory and unsaved shell edits |
 | Observation Store | Experiment registry, ordered events, operator payload, redacted Agent payload and payload hash | SSE connections, event-emitter subscriptions, server caches and client projection |
 | Registry/Bridge | Manifest/profile hashes can be recorded in run metadata; source/bundle files define defaults | Registered adapters, readiness cache, Bridge token, current binding, deferred lifecycle callback |
-| Sandbox | Workspace files can be saved by Runtime checkpoint/progress | Container/process state, background job handles; cleanup and saving are separate steps |
+| Sandbox | Registered Bots publish files through explicit public save; compatibility paths retain checkpoint/progress | Container/process state, background job handles; cleanup and saving are separate steps |
 
-The production benchmark uses `project.sqlite` for Task/Mission coordination and observations, `context.sqlite` for Material state, `judge.sqlite` for Judge state, and private `model-budget.sqlite` for model admission and settlement. Services own their own connections and schema. Synchronous Context mutations and Judge admission/launch run through a narrow Task-owned writer window: Task holds its SQLite writer lock while the service validates current authority and commits its own record. The services exchange facts through APIs, never by reading one another's database. This orders lifecycle revocation against each service commit without claiming distributed transactions or all-store crash atomicity. Each service retains its own idempotent receipts; interrupted multi-step work is reconciled by its named operation. Independently hosted HTTP Context/Judge writes without the equivalent local authority composition fail closed. Historical single-connection fixtures remain supported as diagnostic composition.
+Production uses `project.sqlite` for Task/Mission/Workspace coordination, `context.sqlite` for Material state, `judge.sqlite` for diagnostic checking and `model-budget.sqlite` for model admission. The formal CLI injects a separate persistent observation database; only the library fallback colocates observations with Task. Each service owns its connection/schema. Independent peers exchange explicit HTTP commands and receipts. The Task-owned durable gate orders revocation against Context commit and actual Judge spawn; unknown outcomes remain fenced until exact reconciliation. Resource-unit ownership survives Judge crashes independently of the in-memory checker promise. The in-process and historical single-connection compositions remain supported compatibility paths. See [Services](04-services.md#independent-contextjudge-deployment) for order, bounds and cleanup.
+
+The Task-owned `service_commit_gate` holds one unresolved exact command and digest; `service_commit_events` retains notification delivery work. Context owns `context_peer_receipts` for terminal gate outcomes. Judge owns `judge_peer_phases` for one-shot phase/generation receipts. The private `judge-checker-resources.ndjson` ledger names only allocated/settled systemd resources and is fsynced before launch. These are recovery records, not new research entities.
 
 ## How to interpret the tables
 
 | Table(s) | Meaning and important fields |
 |---|---|
-| `missions` | Mission columns are `mission_id`, `goal`, `acceptance_conditions_json`, `created_by`, `created_at`, `updated_at`. Initial Materials/resource budgets are not Mission columns. |
+| `missions` | Mission columns are `mission_id`, `goal`, `acceptance_conditions_json`, `merge_required_check_json`, `created_by`, `created_at`, `updated_at`. Initial Materials/resource budgets are not Mission columns. |
 | `tasks` + `modern_task_records` | Durable Task row plus `modern_task_records` Mission ID, short summary, timebox and registration hash. Responsibility keys live on `tasks`; feedback lives in notifications/receipts. Modern record projection combines these facts. A Mission may begin with zero Tasks; each Task is explicitly created and taken, with no implicit shared-Mission Task. |
 | `bots` | One Bot run: Mission/Core, state/version, unique optional Execution, selection deadline, resource key, provider/Sandbox IDs, exit request/reason, optional Runtime stop terminal state, and lifecycle timestamps. A partial unique index reserves each Mission/Core until CLOSED. The trusted registration grant is stored in `coordination_permissions_json`; Pi/worker tokens are not stored here. |
 | `executions` | One authorization interval: Task/spec/state/fence, owner/Core, lease/deadline, Workspace/checkpoint, Workspace source/check references, input snapshot/Materials, and terminal reason. Only the unregistered compatibility path can retain this Execution across a Session restart. |
@@ -60,6 +63,42 @@ Durable state can outlive a Session, but runtime recovery still has to validate 
 
 The SQL below is the complete exported create-schema text, including checks, keys and indexes. It is schema text, not an export of a user database. The `tasks` interpolation is expanded. Constructors also migrate older databases as described above. Shared `operations` declarations intentionally appear in several owners because the services can share a SQLite connection.
 
+### Task-owned independent service commit gates
+
+Source: [src/storage/service-peer-schema.js](../../src/storage/service-peer-schema.js); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+
+```sql
+CREATE TABLE IF NOT EXISTS service_commit_gate (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  gate_id TEXT NOT NULL UNIQUE, digest TEXT NOT NULL,
+  command_json TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS service_commit_events (
+  gate_id TEXT PRIMARY KEY, events_json TEXT NOT NULL, delivered INTEGER NOT NULL DEFAULT 0
+);
+```
+
+### Context peer receipts
+
+Source: [src/storage/service-peer-schema.js](../../src/storage/service-peer-schema.js); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+
+```sql
+CREATE TABLE IF NOT EXISTS context_peer_receipts (
+  gate_id TEXT PRIMARY KEY, digest TEXT NOT NULL, receipt_json TEXT NOT NULL
+);
+```
+
+### Judge peer launch phases
+
+Source: [src/storage/service-peer-schema.js](../../src/storage/service-peer-schema.js); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+
+```sql
+CREATE TABLE IF NOT EXISTS judge_peer_phases (
+  gate_id TEXT PRIMARY KEY, digest TEXT NOT NULL, generation TEXT NOT NULL,
+  call_id TEXT NOT NULL, phase TEXT NOT NULL, receipt_json TEXT
+);
+```
+
 ### Model budget gateway
 
 Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `8fafd8f05506fe04b747e5c7716206ea5441f88651a2841515fa0f8d4c1925de`.
@@ -90,7 +129,7 @@ CREATE TABLE IF NOT EXISTS responses_budget_policies (
 
 ### Mission submission coordinator
 
-Source: [src/runtime/mission-submission.js](../../src/runtime/mission-submission.js); source SHA-256: `5894fbac687e7a325947858266300b6a327cd25d6adb6ad61d0dd88b1a8a5697`.
+Source: [src/runtime/mission-submission.js](../../src/runtime/mission-submission.js); source SHA-256: `70cb8935240b1fa25cc8c8f85f672041a68c10c17f29180661a8cd0c7f648101`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_final_check_policies (
@@ -142,7 +181,7 @@ CREATE TABLE IF NOT EXISTS mission_manual_reviews (
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `7818911a2378f1830ad37af602595f85462f024a91f6d694a6969589e6770598`.
+Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `f606866f975c9be79d8283846c36c3de33d76a0fa870a0892f7ea4e849b4c4e1`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -861,7 +900,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `66c9b21d1272a24c917084051728d0ca39a704bd54f95b358992c4896f396a99`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `9253d9ef9e2743ab9f5a51f40ca79291ccd5a18445e785d21cf081b2bad75875`.
 
 #### executions_active_core
 

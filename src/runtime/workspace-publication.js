@@ -1,3 +1,4 @@
+import { assertServiceCommitSettled } from '../sdk/service-commit-gate.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 /** Keep lifecycle writers outside the synchronous Git publication boundary. */
@@ -9,6 +10,7 @@ export function publishWorkspace(db, publish) {
   }
   let published = false;
   try {
+    assertServiceCommitSettled(db);
     publish();
     published = true;
     db.exec('COMMIT');

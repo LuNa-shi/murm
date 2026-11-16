@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { TaskService } from '../src/task/task-service.js';
+import { makeEnvelope } from '../src/protocol/envelope.js';
+import { ServiceCommitGate } from '../src/sdk/service-commit-gate.js';
+
+test('an unresolved service commit fences lifecycle writes across coordinator restart until its exact durable receipt', t => {
+  const root = mkdtempSync(join(tmpdir(), 'service-commit-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const path = join(root, 'task.sqlite');
+  let tasks = new TaskService(path);
+  tasks.createMission({ mission_id: 'mission:test', goal: 'Investigate one question' }, makeEnvelope({ actorRef: 'operator:test' }));
+  const command = { service: 'context', operation: 'publish_material', operation_id: 'publication:one' };
+  const gate = new ServiceCommitGate(tasks);
+  const admission = gate.acquire(command);
+  const create = () => tasks.createMission({ mission_id: 'mission:next', goal: 'Later work' }, makeEnvelope({ actorRef: 'operator:test' }));
+  assert.throws(create, { code: 'SERVICE_NOT_READY' });
+  tasks.close();
+  tasks = new TaskService(path);
+  t.after(() => tasks.close());
+  const recovered = new ServiceCommitGate(tasks);
+  assert.deepEqual(recovered.pending(), admission);
+  assert.throws(create, { code: 'SERVICE_NOT_READY' });
+  assert.throws(() => recovered.settle({ ...admission, digest: 'wrong' }, { terminal: true }), { code: 'CONFLICT' });
+  assert.throws(() => recovered.settle(admission, { terminal: false }), { code: 'SERVICE_NOT_READY' });
+  recovered.settle(admission, { terminal: true, result: { material_id: 'material:one' } });
+  assert.equal(create().mission.mission_id, 'mission:next');
+});

@@ -14,7 +14,7 @@ Read the Mission and relevant public Tasks, Materials, and Workspace files withi
 ````
 ## Registered Bot discovery: complete synthetic example
 
-Body SHA-256: `325f1e33ad0aaf86a076123dca0ea9341e046683a268992d09f582f5ff442efc`
+Body SHA-256: `076bcb68767268b8de3f87551ac58a189c934df0edf0aa7914e84ce6b4e5f731`
 
 ````text
 你已在全新的 sandbox/Pi Session 启动，尚无 Execution。通过 swarm CLI 读取相关公开工作，在预算内优先选择合适的已有 Task。下方只是一页当前可领 Task。若无合适项且 Mission 仍开放、选工仍有额度，查询 swarm mission submission view，从当前 main 和公开成果定位一个具体缺口，提出可验证的局部 Task 再 take。
@@ -22,7 +22,7 @@ Body SHA-256: `325f1e33ad0aaf86a076123dca0ea9341e046683a268992d09f582f5ff442efc`
 {
   "protocol_version": "swarm-bot-v1-draft.2",
   "observed_at": "2026-11-14T00:00:00.000Z",
-  "system_prompt_sha256": "aadad188ace990f5f12d136d25b0129ba0a45b2902589ab338c1da95844e1ab6",
+  "system_prompt_sha256": "64ff964c41deb657a17e716ec72a9842facfb1e575bae5fe3411b9aa47d03cae",
   "mission": {
     "mission_id": "<MISSION_ID>",
     "goal": "<MISSION_GOAL>",

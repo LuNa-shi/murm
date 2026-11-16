@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "a20cee6ddaabf29ff3909031ee031b529e313147",
-  "reviewed_date": "2026-11-15",
+  "runtime_baseline": "755c72e57cf33ac68d63ed79078b9d7bf8e68bb2",
+  "reviewed_date": "2026-11-16",
   "scope_roots": [
     "src",
     "scripts",
@@ -144,6 +144,16 @@
       "role": "UID-restricted Landlock policy inherited by Pi and its descendants"
     },
     {
+      "path": "scripts/build-agent-lean-image.mjs",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Prebuilt optional Lean diagnostic image and immutable tool environment"
+    },
+    {
       "path": "scripts/check-architecture.mjs",
       "category": "documentation tooling",
       "chapters": [
@@ -151,6 +161,16 @@
         "docs/architecture/12-code-coverage.md"
       ],
       "role": "Offline documentation gate and local-link/anchor verification"
+    },
+    {
+      "path": "scripts/context-service-peer.mjs",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
       "path": "scripts/generate-architecture-api.mjs",
@@ -178,6 +198,16 @@
         "docs/architecture/12-code-coverage.md"
       ],
       "role": "Offline exact prompt extraction, synthetic composition and drift check"
+    },
+    {
+      "path": "scripts/judge-service-peer.mjs",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
       "path": "scripts/lock-final-tree-checker.mjs",
@@ -217,6 +247,14 @@
       "role": "Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface"
     },
     {
+      "path": "scripts/preview-migration.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/09-known-boundaries.md"
+      ],
+      "role": "Read-only fresh-start migration preview and verified restore rehearsal"
+    },
+    {
       "path": "scripts/project-install.mjs",
       "category": "runtime and execution",
       "chapters": [
@@ -233,20 +271,21 @@
       "role": "Immutable same-UID process inspection before changing paused project paths"
     },
     {
-      "path": "scripts/preview-migration.mjs",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/09-known-boundaries.md"
-      ],
-      "role": "Read-only fresh-start migration preview and verified restore rehearsal"
-    },
-    {
       "path": "scripts/prune-private-audit.mjs",
       "category": "observation and analysis",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
       ],
       "role": "Operator deletion task for expired managed private audit directories"
+    },
+    {
+      "path": "scripts/review-mission.mjs",
+      "category": "Mission and Task",
+      "chapters": [
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Owner-local CLI for an exact fixed manual Mission review receipt"
     },
     {
       "path": "scripts/run-putnambench-benchmark.mjs",
@@ -335,6 +374,16 @@
       "role": "Four-process isolated service deployment with independent persistent volumes"
     },
     {
+      "path": "services/builtin/judge-peer-entrypoint.sh",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
+    },
+    {
       "path": "services/mathlib-search/Dockerfile",
       "category": "provider deployment and instructions",
       "chapters": [
@@ -397,6 +446,26 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "OpenSandbox agent image recipe containing the worker, Pi package and native shell tools"
+    },
+    {
+      "path": "services/opensandbox-agent/lean/Dockerfile",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Prebuilt optional Lean diagnostic image and immutable tool environment"
+    },
+    {
+      "path": "services/opensandbox-agent/lean/lean",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Prebuilt optional Lean diagnostic image and immutable tool environment"
     },
     {
       "path": "services/opensandbox-agent/pi-models.json",
@@ -639,6 +708,15 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Check outcome/diagnostic classification and caller-safe result projections"
+    },
+    {
+      "path": "src/judge/checker-owner.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Durable checker resource ownership and confirmed systemd cleanup"
     },
     {
       "path": "src/judge/checker-process-limits.js",
@@ -952,24 +1030,6 @@
       "role": "Per-Core discovery/take supervisor, rescans, waiting and wake events"
     },
     {
-      "path": "src/runtime/mission-coordination.js",
-      "category": "Mission acceptance and checker",
-      "chapters": [
-        "docs/architecture/03-mission-task.md",
-        "docs/architecture/04-services.md"
-      ],
-      "role": "Trusted Task/Context/Mission acceptance assembly and observed input validation"
-    },
-    {
-      "path": "scripts/review-mission.mjs",
-      "category": "Mission and Task",
-      "chapters": [
-        "docs/architecture/03-mission-task.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Owner-local CLI for an exact fixed manual Mission review receipt"
-    },
-    {
       "path": "src/runtime/manual-mission-review.js",
       "category": "Mission and Task",
       "chapters": [
@@ -977,6 +1037,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Explicit bounded manual Mission checker and immutable operator decision ledger"
+    },
+    {
+      "path": "src/runtime/mission-coordination.js",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Trusted Task/Context/Mission acceptance assembly and observed input validation"
     },
     {
       "path": "src/runtime/mission-submission.js",
@@ -1116,6 +1185,36 @@
       "role": "Built-in registered manifests and local/remote provider composition"
     },
     {
+      "path": "src/sdk/context-service-peer.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
+    },
+    {
+      "path": "src/sdk/coordinator-peer-client.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
+    },
+    {
+      "path": "src/sdk/coordinator-peer-host.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
+    },
+    {
       "path": "src/sdk/http-domain-proxy.js",
       "category": "service and Agent integration",
       "chapters": [
@@ -1123,6 +1222,26 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Bounded HTTP proxy for synchronous cross-domain service dependencies in isolated hosts"
+    },
+    {
+      "path": "src/sdk/independent-services.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
+    },
+    {
+      "path": "src/sdk/judge-service-peer.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
       "path": "src/sdk/local-service-double.js",
@@ -1135,6 +1254,36 @@
       "role": "Deterministic SDK/service test double; not production domain authority"
     },
     {
+      "path": "src/sdk/peer-process-lifetime.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
+    },
+    {
+      "path": "src/sdk/remote-context-service.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
+    },
+    {
+      "path": "src/sdk/remote-judge-service.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
+    },
+    {
       "path": "src/sdk/service-adapter.js",
       "category": "services and contracts",
       "chapters": [
@@ -1143,6 +1292,16 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "In-process and HTTP adapters, readiness, timeout and transport errors"
+    },
+    {
+      "path": "src/sdk/service-authority-snapshot.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
       "path": "src/sdk/service-bundle.js",
@@ -1163,6 +1322,16 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Operation schemas/help, discoverability and retained compatibility catalog"
+    },
+    {
+      "path": "src/sdk/service-commit-gate.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
       "path": "src/sdk/service-host.js",
@@ -1253,6 +1422,15 @@
         "docs/architecture/04-services.md"
       ],
       "role": "Mission/Task/Execution/dependency/notification/operation SQL schema"
+    },
+    {
+      "path": "src/storage/service-peer-schema.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service gate, receipt and phase storage definitions"
     },
     {
       "path": "src/task/execution-budget.js",

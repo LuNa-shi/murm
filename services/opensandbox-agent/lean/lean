@@ -1,0 +1,10 @@
+#!/bin/sh
+# The worker deliberately does not forward arbitrary image environment values.
+# Reconstruct this immutable diagnostic environment on every invocation.
+set -eu
+LEAN_PATH="${PWD}"
+for dependency in /opt/swarmenv/lean-deps/*; do
+  LEAN_PATH="${LEAN_PATH}:${dependency}"
+done
+export LEAN_PATH
+exec /opt/swarmenv/lean/bin/lean "$@"
