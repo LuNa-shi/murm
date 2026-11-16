@@ -489,7 +489,7 @@ function scheduleTurn(core, prompt, timeoutMs) {
   // A bound Execution owns its Session continuation. The periodic repair
   // loop must not open a second prompt during the short interval between two
   // continuation turns.
-  if (core.turnInFlight || core.boundTurnPromise || Date.now() < core.nextTurnAt) return false;
+  if (core.stateRef?.startupFailure || core.turnInFlight || core.boundTurnPromise || Date.now() < core.nextTurnAt) return false;
   core.turnStartedAt = Date.now();
   core.turnPromise = runTurn(core, prompt, timeoutMs);
   // Install a rejection handler at creation time. Cleanup may stop the Pi
@@ -631,7 +631,17 @@ export async function ensureAgentSession(core) {
     return core.session ?? null;
   } catch (error) {
     core.sessionStartFailures = (core.sessionStartFailures ?? 0) + 1;
-    if (!core.stopping) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_session_error' });
+    const state = core.stateRef;
+    const startupContractRejected = core.startConfig.options.requireThirdPartySandbox === true &&
+      error.code === ERROR_CODES.BOT_STARTUP_CONTRACT;
+    if (startupContractRejected && discoveryOpen(core)) {
+      state.startupFailure = { core_id: `core-${core.index}`, code: error.code, class: 'bot_startup_contract' };
+      state.requestIdentityWake?.('bot_startup_contract');
+    }
+    if (!core.stopping) core.errors.push({
+      code: error.code ?? error.name,
+      class: startupContractRejected ? 'bot_startup_contract' : safeDiagnostic(error.message) ?? 'agent_session_error',
+    });
     core.sessionCleanupPending = Boolean(core.session);
     try {
       await core.session?.stop?.();
@@ -672,7 +682,7 @@ function selectionView(candidates) {
 
 function discoveryOpen(core) {
   const state = core.stateRef;
-  return !core.stopping && !state?.stopping && !state?.signal?.aborted &&
+  return !core.stopping && !state?.stopping && !state?.startupFailure && !state?.signal?.aborted &&
     Date.now() < (state?.runDeadlineAt ?? Infinity) &&
     !(state?.mission && core.runtime.taskService.isMissionStopped(state.mission.mission_id));
 }
@@ -808,12 +818,13 @@ export async function releaseTerminalExecution(core) {
   await core.bridge.releaseTake({ result: { execution } });
 }
 
-function sanitizedCheck(result, material) {
+export function sanitizedCheck(result, material) {
   const evidence = result.evidence ?? {};
   const processEvidence = result.process_evidence ?? {};
   const checkerProcessStatus = result.checker_process_status ?? evidence.checker_process_status ?? 'unknown';
   const resultClass = result.result_class ?? evidence.result_class ?? 'unassessed';
-  const mathematicalOutcome = evidence.mathematical_outcome ?? (resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed');
+  const mathematicalOutcome = result.mathematical_outcome ?? evidence.mathematical_outcome ??
+    (resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed');
   return {
     workspace_source_id: material.material_id,
     material_hash: material.content_hash,
@@ -846,7 +857,7 @@ function sanitizedCheck(result, material) {
       error_code: evidence.error_code ?? processEvidence.error_code ?? null,
     },
     check_result_id: result.check_result_id,
-    diagnostic_class: evidence.forbidden_placeholder === true
+    diagnostic_class: evidence.forbidden_placeholder === true || result.diagnostic_code === 'forbidden_placeholder'
       ? 'forbidden_placeholder'
       : safeDiagnostic(evidence.diagnostic),
   };
@@ -1224,7 +1235,8 @@ export function projectReport(state, startedAt, deadline) {
   const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
   const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
   const checkCount = cores.reduce((count, core) => count + core.checks.length, 0);
-  const madeProgress = workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || checkCount > 0;
+  const legacyCheckObserved = cores.some(core => core.checks.some(check => check.workspace_input?.check_mode !== 'lean-project'));
+  const madeProgress = workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || legacyCheckObserved;
   const parallelism = state.parallelism.snapshot({ endedAt });
   const checkerPreflights = state.judgeService.listCheckerPreflights().map((row) => ({
     preflight_key: row.preflight_key,
@@ -1548,6 +1560,9 @@ async function createProjectState(problem, config, options) {
   assertInitializing();
   const finalTreeChecker = options.finalTreeChecker ?? finalTreeDeployment?.adapter ?? null;
   const lockedSourceRunner = finalTreeDeployment?.adapter.runSourceDiagnostic.bind(finalTreeDeployment.adapter);
+  const projectChecker = finalTreeDeployment?.adapter.projectChecks
+    ? finalTreeDeployment.adapter.checkProject.bind(finalTreeDeployment.adapter) : null;
+  const sourceCheckerTimeoutMs = Math.min(options.checkerTimeoutMs ?? 120_000, finalTreeDeployment?.adapter.timeoutMs ?? Infinity);
   let sandboxObservationStore = null;
   const sandboxConfig = options.sandbox ?? {};
   const timeBoundedModel = modelBudget == null && timedBenchmark;
@@ -1645,18 +1660,30 @@ async function createProjectState(problem, config, options) {
     const taskService = new TaskService(database, { contextService, logger: taskLogger });
     contextService.taskService = taskService;
     const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
+    if (projectChecker) fixture.environment_ref = `${fixture.environment_ref}:lean-project:sha256:${finalTreeDeployment.evidence.artifact_lock_sha256}`;
+    const workspaceMergeChecker = projectChecker ? {
+      identity: { checker_ref: fixture.checker_ref, checker_version: fixture.checker_version, environment_ref: fixture.environment_ref },
+      timeoutMs: sourceCheckerTimeoutMs,
+      async check(plan) {
+        const result = await projectChecker(plan);
+        if (result.checked_tree !== plan.tree) return { verdict: 'ERROR', diagnostic: 'Project check result does not identify the combined Workspace tree' };
+        return { ...result, check_mode: 'lean-project', check_result_id: `projectcheck:${randomUUID()}` };
+      },
+    } : null;
     judgeService = new JudgeService(join(projectDir, 'judge.sqlite'), {
       missionBudget: judgeMissionBudget,
       taskService,
       logger: judgeLogger,
       maxInfrastructureRetries: options.maxInfrastructureRetries,
       fixtureManifest: fixture,
+      readProjectRevision: projectChecker ? reference => missionWorkspace.exportRevision(reference) : null,
       checker: options.checker ?? new LeanChecker({
         workRoot: join(projectDir, 'judge-work'),
         logger: checkerLogger,
         command: options.leanCommand ?? 'lake',
-        timeoutMs: options.checkerTimeoutMs ?? 120_000,
+        timeoutMs: sourceCheckerTimeoutMs,
         runner: lockedSourceRunner,
+        projectChecker,
       }),
     });
     taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
@@ -1685,6 +1712,7 @@ async function createProjectState(problem, config, options) {
     const mission = taskService.createMission({
       mission_id: `mission:${problem.id}:${runId}`,
       goal: `Solve ${problem.id} through independent, shared Task work.`,
+      ...(workspaceMergeChecker ? { merge_required_check: workspaceMergeChecker.identity } : {}),
       acceptance_conditions: {
         project: problem.id,
         source_hash: problem.source_hash,
@@ -1869,6 +1897,8 @@ async function createProjectState(problem, config, options) {
         missionWorkspace,
         missionWorkspaceId: publicWorkspace.workspace_id,
         missionSubmissionStore,
+        workspaceProjectCheck: Boolean(projectChecker),
+        workspaceMergeChecker,
         coordinationPermissions: options.coordinationPermissions ?? config.mission_coordination_permissions ?? [],
         agentAdapter: adapter,
         runtimeCapabilities,
@@ -2492,28 +2522,32 @@ async function createProjectState(problem, config, options) {
             core.stateRef?.requestIdentityWake?.();
           } else if (operation === 'workspace_check') {
             const check = result?.check_result ?? result?.checkResult ?? result ?? {};
+            const projectCheck = check.workspace_input?.check_mode === 'lean-project';
+            if (projectCheck && core.checks.some(prior => prior.check_result_id === check.check_result_id)) return;
             const candidateMaterial = {
-              material_id: payload?.workspace_source_id ?? check.workspace_source_id ?? null,
-              content_hash: check.content_hash ?? null,
+              material_id: check.workspace_source_id ?? payload?.workspace_source_id ?? null,
+              content_hash: check.workspace_input?.content_hash ?? check.content_hash ?? null,
             };
-            core.checks.push({
-              ...sanitizedCheck(check, candidateMaterial),
-              source_path: payload?.path ?? null,
-            });
-            if (check.evidence?.forbidden_placeholder === true || check.diagnostic_class === 'forbidden_placeholder' || check.diagnostic_code === 'checker_request_rejected') {
+            const observedCheck = sanitizedCheck(check, candidateMaterial);
+            const sourcePath = check.workspace_input?.path ?? payload?.path ?? null;
+            const projectEvidence = projectCheck ? { task_id: taskId, execution_id: executionId, workspace_input: check.workspace_input, build: check.build } : {};
+            core.checks.push({ ...observedCheck, source_path: sourcePath, ...projectEvidence });
+            if (!projectCheck && observedCheck.diagnostic_class === 'forbidden_placeholder') {
               core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: check.material_hash ?? null });
             }
             core.observe({
               source: 'judge-service', kind: 'workspace_checked', visibility: 'operator',
               taskId, executionId, coreId: `core-${core.index}`,
               payload: {
-                candidate_path: payload?.path ?? result?.path ?? null,
-                workspace_source_id: payload?.workspace_source_id ?? result?.workspace_source_id ?? null,
+                candidate_path: sourcePath,
+                workspace_source_id: candidateMaterial.material_id,
                 check_result_id: check.check_result_id ?? result?.check_result_id ?? null,
                 verdict: check.verdict ?? result?.verdict ?? null,
+                ...(projectCheck ? { result_class: check.result_class, diagnostic_code: check.diagnostic_code,
+                  workspace_input: check.workspace_input, build: check.build } : {}),
               },
             });
-            core.parallelism.recordWorkUnit({
+            if (!projectCheck) core.parallelism.recordWorkUnit({
               task_id: taskId,
               execution_id: executionId,
               core: core.index,
@@ -2997,14 +3031,14 @@ async function executeBenchmarkProject(state, problem, config, options) {
         });
     }, options.executionTimeoutSweepMs ?? 10_000);
     try {
-      while (!state.signal?.aborted && Date.now() < Math.min(deadline, state.missionCloseoutDeadline ?? deadline)) {
+      while (!state.startupFailure && !state.signal?.aborted && Date.now() < Math.min(deadline, state.missionCloseoutDeadline ?? deadline)) {
         // Acceptance may precede wake wiring. Nothing can start after PASS;
         // if no activated Execution needs closeout, proceed directly to stop.
         if (acceptedAndClosed()) break;
         if (!state.identityWakeRequested) {
           await Promise.race([sleep(Math.max(0, Math.min(options.pollMs ?? 5_000, Math.min(deadline, state.missionCloseoutDeadline ?? deadline) - Date.now()))), identityWake]);
         }
-        if (state.signal?.aborted) break;
+        if (state.startupFailure || state.signal?.aborted) break;
         const reconcileReason = state.identityWakeRequested ? 'event' : 'poll';
         state.identityWakeRequested = false;
         identityWake = new Promise((resolve) => { resolveIdentityWake = resolve; });
@@ -3075,6 +3109,15 @@ async function executeBenchmarkProject(state, problem, config, options) {
     report.run.protocol_valid = false;
     report.audit.invalid_reasons.push('cleanup_pending');
   }
+  if (state.startupFailure) {
+    report.run.startup_failure = state.startupFailure;
+    report.run.protocol_valid = false;
+    report.run.stop_reason = 'bot_startup_contract';
+    report.run.deadline_reached = false;
+    report.run.ended_early = true;
+    report.audit.invalid = true;
+    report.audit.invalid_reasons.push('bot_startup_contract');
+  }
   if (state.operatorStopped) {
     report.run.protocol_valid = false;
     report.run.stop_reason = 'operator_stop';
@@ -3090,7 +3133,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
     taskId: null,
     payload: { solved: report.run.solved, protocol_valid: report.run.protocol_valid, made_progress: report.run.made_progress },
   });
-  state.observationStore.finishExperiment(state.runId, { status: report.run.solved && !state.operatorStopped ? 'SUCCEEDED' : 'FINISHED' });
+  state.observationStore.finishExperiment(state.runId, { status: report.run.solved && !state.operatorStopped && !state.startupFailure ? 'SUCCEEDED' : 'FINISHED' });
   await writeFile(join(state.reportProjectDir, 'report.json'), JSON.stringify(report, null, 2));
   return report;
 }

@@ -100,6 +100,21 @@ function processStdout(chunk) {
   }
 }
 
+function startupContractError(message) {
+  return Object.assign(new Error(message), { code: 'BOT_STARTUP_CONTRACT' });
+}
+
+async function readPinnedStartupPath(operation, path) {
+  try {
+    return await operation(path);
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+      throw startupContractError('Pinned Bot startup resource is missing from the image');
+    }
+    throw error;
+  }
+}
+
 async function startAgent(input) {
   if (everStarted || project.closing) throw new Error('worker Bot cannot start another Agent');
   if (!Array.isArray(input.args) || !input.args.every((value) => typeof value === 'string')) throw new Error('worker args must be a string array');
@@ -110,34 +125,37 @@ async function startAgent(input) {
   let projectQuota = null;
   if (quotaRequired) {
     const { bytes, inodes } = input.project_quota ?? {};
-    if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(inodes) || bytes <= 0 || inodes <= 0) throw new Error('Bot workspace quota is required');
+    if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(inodes) || bytes <= 0 || inodes <= 0) throw startupContractError('Bot workspace quota is required');
     const filesystem = await statfs('/workspace', { bigint: true });
     const mounts = (await readFile('/proc/self/mountinfo', 'utf8')).trim().split('\n');
     const mount = mounts.findLast(row => row.split(' ')[4] === '/workspace')?.split(' ');
     if (mounts.some(row => row.split(' ')[4]?.startsWith('/workspace/')) || filesystem.type !== 0x01021994n || filesystem.blocks * filesystem.bsize !== BigInt(bytes) ||
         filesystem.files !== BigInt(inodes) || !mount?.[5]?.split(',').includes('nodev') ||
-        !mount[5].split(',').includes('nosuid') || (await readdir('/workspace')).length) throw new Error('Bot workspace quota is absent or mismatched');
+        !mount[5].split(',').includes('nosuid') || (await readdir('/workspace')).length) throw startupContractError('Bot workspace quota is absent or mismatched');
     const probe = spawnSync('setpriv', [...unprivileged, filesystemPolicy, '/usr/bin/true'], { cwd: '/', timeout: 2_000 });
-    if (probe.status !== 0) throw new Error('Bot filesystem policy could not be enforced');
+    if (probe.error?.code === 'ENOENT' || (Number.isInteger(probe.status) && probe.status !== 0)) {
+      throw startupContractError('Bot filesystem policy could not be enforced');
+    }
+    if (probe.status !== 0) throw new Error('Bot filesystem policy probe did not complete');
     if (project.closing) throw new Error('Bot stopped during filesystem validation');
     await project.initialize();
     initialized = true;
     projectQuota = { bytes, inodes };
-  } else if (input.project_quota) throw new Error('Worker must start in quota enforcement mode');
+  } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
   const expectedNames = ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
   if (input.contract_version !== 'swarm-bot-v1-draft.2' || !Array.isArray(input.resources) || input.resources.length !== 5 ||
-      new Set(input.resources.map(resource => resource.path)).size !== 5 ||
-      !expectedNames.every(name => input.resources.some(resource => resource.path === `/opt/swarmenv/src/agent/bot-contract/${name}`))) throw new Error('complete versioned Bot contract resources are required');
+      new Set(input.resources.map(resource => resource?.path)).size !== 5 ||
+      !expectedNames.every(name => input.resources.some(resource => resource?.path === `/opt/swarmenv/src/agent/bot-contract/${name}`))) throw startupContractError('complete versioned Bot contract resources are required');
   for (const resource of input.resources) {
-    if (!/^\/opt\/swarmenv\/src\/agent\/bot-contract\/(system\.txt|(?:plan-task|use-material|use-workspace|finish-task)\.md)$/.test(resource.path ?? '')) throw new Error('unsupported Bot contract resource');
-    const info = await lstat(resource.path);
-    if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022) || !(info.mode & 0o004) || await realpath(resource.path) !== resource.path) throw new Error('Bot contract resource must be immutable to the Bot');
+    if (!/^\/opt\/swarmenv\/src\/agent\/bot-contract\/(system\.txt|(?:plan-task|use-material|use-workspace|finish-task)\.md)$/.test(resource.path ?? '')) throw startupContractError('unsupported Bot contract resource');
+    const info = await readPinnedStartupPath(lstat, resource.path);
+    if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022) || !(info.mode & 0o004) || await readPinnedStartupPath(realpath, resource.path) !== resource.path) throw startupContractError('Bot contract resource must be immutable to the Bot');
     for (let parent = dirname(resource.path); parent !== '/'; parent = dirname(parent)) {
-      const directory = await lstat(parent);
-      if (!directory.isDirectory() || directory.uid !== 0 || (directory.mode & 0o022) || !(directory.mode & 0o001)) throw new Error('Bot contract parent must be protected and traversable');
+      const directory = await readPinnedStartupPath(lstat, parent);
+      if (!directory.isDirectory() || directory.uid !== 0 || (directory.mode & 0o022) || !(directory.mode & 0o001)) throw startupContractError('Bot contract parent must be protected and traversable');
     }
-    const sha256 = createHash('sha256').update(await readFile(resource.path)).digest('hex');
-    if (sha256 !== resource.sha256) throw new Error('Bot contract resource does not match the pinned version');
+    const sha256 = createHash('sha256').update(await readPinnedStartupPath(readFile, resource.path)).digest('hex');
+    if (sha256 !== resource.sha256) throw startupContractError('Bot contract resource does not match the pinned version');
   }
   if (project.closing) throw new Error('Bot stopped during resource validation');
   for (const path of ['home', 'tmp', 'pi-agent', 'pi-session']) {
@@ -154,11 +172,11 @@ async function startAgent(input) {
   delete suppliedEnv.SWARMENV_WORKER_TOKEN;
   const agentEnvironment = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', ...suppliedEnv,
     HOME: join(RUNTIME_DIR, 'home'), TMPDIR: join(RUNTIME_DIR, 'tmp'), PI_CODING_AGENT_DIR: join(RUNTIME_DIR, 'pi-agent') };
-  const catalog = await readFile(catalogPath);
+  const catalog = await readPinnedStartupPath(readFile, catalogPath);
   let modelCatalogResource = null;
   if (input.model_catalog_resource) {
     const sha256 = createHash('sha256').update(catalog).digest('hex');
-    if (input.model_catalog_resource.path !== catalogPath || input.model_catalog_resource.sha256 !== sha256) throw new Error('Pi model catalog does not match the host selection gate');
+    if (input.model_catalog_resource.path !== catalogPath || input.model_catalog_resource.sha256 !== sha256) throw startupContractError('Pi model catalog does not match the host selection gate');
     modelCatalogResource = { path: catalogPath, sha256 };
   }
   await writeFile(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), catalog, { mode: 0o600 });
@@ -328,7 +346,7 @@ const server = createServer(async (request, response) => {
     }
     send(response, 404, { ok: false, error: 'unknown worker route' });
   } catch (error) {
-    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT'].includes(error.code) ? { code: error.code } : {}),
+    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT', 'BOT_STARTUP_CONTRACT'].includes(error.code) ? { code: error.code } : {}),
       ...(['dirty', 'active_writer'].includes(error.applyBlocker) ? { apply_blocker: error.applyBlocker } : {}) });
   }
 });

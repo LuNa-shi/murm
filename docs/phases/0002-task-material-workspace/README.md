@@ -87,3 +87,5 @@ v1 的 Workspace 与 Task/Mission 位于同一协调进程和一致性域；Cont
 用户决定与采纳版本记录在 #122/PR；本目录是可审阅的版本化附件。任何合同修订同步相关模块、Prompt、Validation 和 Migration；实现 PR 再据实际行为更新 Architecture。本次修订设计与对应文档，不改变运行代码，也不启动付费实验；文档 PR 的合入按用户已给出的授权执行。
 
 [固定实现对账与验证边界](10-implementation-reconciliation.md)记录 `9172e04` 的修复与分层证据。它与 [原始缺口审计](09-implementation-audit.md) 分属不同版本，均不改变 Issue 批准的 01–08 设计。
+
+[Workspace 项目检查调查](11-workspace-judge-research.md)整理固定版 Lean/Lake 的多文件构建能力、局部验证和接入边界。[后续实施决定](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716)已批准在独立 PR 中实现整个 Workspace 的项目检查，经过审核与一小时上限实验验证后合入；具体补充合同见 [Workspace](05-workspace.md#lean-项目检查的补充要求)。研究调查本身不代表运行实现或实验验收已经通过。

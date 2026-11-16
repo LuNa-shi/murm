@@ -1900,7 +1900,7 @@ export class TaskService {
     const linkedIds = new Set(completionLinks.map((link) => link.material_id));
     const unlinked = [...new Set(requestedMaterialIds)].filter((id) => !linkedIds.has(id));
     if (unlinked.length > 0) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.complete can reference only linked Materials', { unlinked_material_ids: unlinked });
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task finish can reference only linked Materials. Use swarm task link before citing them.', { unlinked_material_ids: unlinked });
     }
     const requestedCheckResultId = payload.check_result_id ?? null;
     if (requestedCheckResultId) {
@@ -3574,6 +3574,12 @@ export class TaskService {
       if (proof?.verdict !== 'PASS' || proof.checked_tree !== metadata.git_tree || !matches(proof.checker) ||
           proof.policy?.task?.spec_version !== task.spec_version) {
         throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Declared final-tree delivery check did not pass');
+      }
+      if (proof.check_mode === 'lean-project') {
+        const checkedPaths = new Set(Array.isArray(proof.checked_paths) ? proof.checked_paths : []);
+        if (delivery.paths.some(path => !checkedPaths.has(path))) {
+          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Final-tree project check did not cover all declared Workspace delivery files');
+        }
       }
       check = { ...delivery.check, check_result_id: proof.check_result_id, checked_tree: proof.checked_tree };
     } else if (delivery.check) {

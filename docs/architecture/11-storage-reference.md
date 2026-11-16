@@ -861,7 +861,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `757e79582f18374278cdde3596374b760583254a8d3090078f59c9b3f995d72d`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `66c9b21d1272a24c917084051728d0ca39a704bd54f95b358992c4896f396a99`.
 
 #### executions_active_core
 

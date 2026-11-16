@@ -101,6 +101,7 @@ function selected(configuration) {
     comparatorLibraryRoots: configuration.comparatorLibraryRoots, exporterPath: configuration.exporterPath,
     bubblewrap: configuration.bubblewrap ?? '/usr/bin/bwrap', localModules: configuration.localModules ?? [],
     timeoutMs: configuration.timeoutMs ?? 120_000,
+    ...(configuration.projectChecks === undefined ? {} : { projectChecks: configuration.projectChecks }),
   };
 }
 
@@ -222,5 +223,5 @@ export async function createLockedFinalTreeVerifier({ configuration, problem }) 
     ...deployment, identity, targetPath: problem.problem_file, declarationName: problem.id,
     fixtureSource: problem.source, fixtureSha256: problem.source_hash,
   });
-  return { adapter, evidence: { artifact_lock_sha256: sha256, identity, sources: FINAL_TREE_SOURCE_PINS, dependency_pins: manifest.dependencyPins, resources } };
+  return { adapter, evidence: { artifact_lock_sha256: sha256, identity, sources: FINAL_TREE_SOURCE_PINS, dependency_pins: manifest.dependencyPins, timeout_ms: adapter.timeoutMs, project_checks: adapter.projectChecks, resources } };
 }

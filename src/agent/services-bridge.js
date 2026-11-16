@@ -845,6 +845,10 @@ export class ServicesBridge {
             const source = bot
               ? await this.runtime.readWorkspaceCheckSource(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: currentExecution?.fencing_version })
               : await this.runtime.readWorkspaceFile(this.executionId, { path: payload.path, maxBytes: payload.max_bytes });
+            if (source.check_mode === 'lean-project') {
+              assertIdentity(true);
+              return this.#invokeRegistered(capability, { source, request_key: payload.request_key ?? bridgeOperationId }, bridgeOperationId);
+            }
             if (typeof payload.path !== 'string' || payload.path.length === 0 || payload.path.startsWith('/') || payload.path.split('/').includes('..')) {
               throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_check.path must stay within the Execution Workspace');
             }
@@ -887,6 +891,19 @@ export class ServicesBridge {
         let result = operation === 'task_create' && this.taskCreateMutex
           ? await this.taskCreateMutex.run(invoke)
           : await invoke();
+        // Judge can settle an admitted check after the Bot closes. Observe the
+        // receipt under its original binding before fencing the tool response.
+        if (bot && operation === 'workspace_check' && this.onWorkUnit &&
+            (result?.workspace_input ?? result?.evidence?.workspace_input)?.check_mode === 'lean-project' &&
+            result.target_task_id === currentExecution?.task_id && result.execution_id === currentExecution?.execution_id &&
+            result.check_result_id && ['RECEIVED', 'APPLIED'].includes(result.status)) {
+          try {
+            await this.onWorkUnit({ operation, taskId: result.target_task_id, executionId: result.execution_id,
+              payload, result: agentCheckResult(result) });
+          } catch (error) {
+            this.logger?.append({ event: 'bridge.observation_failed', operation, code: error?.code ?? 'OBSERVATION_ERROR' });
+          }
+        }
         assertIdentity();
         if (bot && ['workspace_check', 'get_check_result'].includes(operation) && result) {
           const target = this.taskService.getTask(result.target_task_id);

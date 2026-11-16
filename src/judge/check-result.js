@@ -135,7 +135,8 @@ export function agentCheckResult(result) {
     'toolchain_version_verified', 'checker_ref_verified', 'checker_version_verified', 'checker_identity_verified', 'health_fingerprint',
     'infrastructure_attempt_count', 'retry_exhausted'].map(key => [key, result[key]])),
     ...result.process_evidence, diagnostic: result.diagnostic_excerpt,
-    diagnostic_location: result.diagnostic_location, checker_started: result.checker_started, workspace_input: result.workspace_input };
+    diagnostic_location: result.diagnostic_location, checker_started: result.checker_started, workspace_input: result.workspace_input,
+    ...(result.build ? { checked_paths: result.build.checked_paths, checked_count: result.build.checked_count, build_warnings: result.build.warnings } : {}) };
   const safeEvidence = boundedEvidence(evidence);
   const storedClass = result.result_class ?? evidence.result_class;
   const storedProcessStatus = result.checker_process_status ?? evidence.checker_process_status;
@@ -159,8 +160,13 @@ export function agentCheckResult(result) {
     workspace_source_id: result.workspace_source_id ?? null,
     target_task_id: result.target_task_id ?? null,
     execution_id: result.execution_id ?? null,
-    workspace_input: evidence.workspace_input ? Object.fromEntries(['workspace_id', 'revision', 'path', 'git_commit', 'git_tree', 'tree_content_hash', 'content_hash']
+    workspace_input: evidence.workspace_input ? Object.fromEntries(['workspace_id', 'revision', 'path', 'git_commit', 'git_tree', 'tree_content_hash', 'content_hash', 'check_mode']
       .filter(key => typeof evidence.workspace_input[key] === 'string').map(key => [key, evidence.workspace_input[key]])) : null,
+    ...(evidence.workspace_input?.check_mode === 'lean-project' ? { build: {
+      checked_count: evidence.checked_count ?? evidence.checked_paths?.length ?? 0,
+      checked_paths: (evidence.checked_paths ?? []).slice(0, 100),
+      warnings: (evidence.build_warnings ?? []).map(warning => boundedAgent(redactDiagnostic(warning))),
+    } } : {}),
     status: result.status ?? null,
     verdict: result.verdict ?? null,
     judge_operation_status: result.judge_operation_status ?? 'persisted',
@@ -170,7 +176,7 @@ export function agentCheckResult(result) {
     checker_process_status: checkerProcessStatus,
     checker_started: evidence.checker_started ?? ['started', 'completed', 'timeout', 'crashed'].includes(checkerProcessStatus),
     result_class: resultClass,
-    mathematical_outcome: mathematicalOutcome,
+    mathematical_outcome: evidence.workspace_input?.check_mode === 'lean-project' ? 'unassessed' : mathematicalOutcome,
     retryable: result.retryable ?? Boolean(evidence.retryable),
     diagnostic_code: result.diagnostic_code ?? evidence.diagnostic_code ?? null,
     diagnostic_excerpt: diagnosticExcerpt,
@@ -196,6 +202,7 @@ export function agentCheckResult(result) {
 }
 
 export function diagnosticCodeFor({ verdict, evidence = {}, checkerProcessStatus = null, resultClass = null } = {}) {
+  if (evidence.forbidden_placeholder === true) return 'forbidden_placeholder';
   if (text(evidence.diagnostic_code)) return text(evidence.diagnostic_code);
   const diagnostic = diagnosticText(evidence);
   if (resultClass === 'PASS' || verdict === 'PASS') return 'checker_pass';
@@ -255,7 +262,7 @@ export function normalizeCheckerResult(result = {}) {
   const retryable = result.retryable !== undefined
     ? Boolean(result.retryable)
     : resultClass === 'infrastructure_failure';
-  const mathematicalOutcome = resultClass === 'PASS'
+  const mathematicalOutcome = evidence.workspace_input?.check_mode === 'lean-project' ? 'unassessed' : resultClass === 'PASS'
     ? 'PASS'
     : resultClass === 'source_failure'
       ? 'FAIL'

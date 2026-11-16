@@ -184,7 +184,7 @@ test('Checker result contract distinguishes source failure from a checker that n
 
   const rejected = await new LeanChecker({ runner: async () => ({ exit_code: 0, checker_started: true }) }).check({ workspace_source: workspace_source('theorem rejected : True := by sorry'), targetTask, workspace, fixtureManifest });
   assert.equal(rejected.result_class, 'request_failure');
-  assert.equal(rejected.diagnostic_code, 'checker_request_rejected');
+  assert.equal(rejected.diagnostic_code, 'forbidden_placeholder');
   assert.equal(rejected.mathematical_outcome, 'unassessed');
 });
 

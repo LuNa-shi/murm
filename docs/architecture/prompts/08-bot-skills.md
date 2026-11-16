@@ -95,9 +95,9 @@ swarm material consume --material-ids '["M1"]' --action integration --impact "Us
 ````
 ## use-workspace (draft.2)
 
-Guest path: /opt/swarmenv/src/agent/bot-contract/use-workspace.md; file SHA-256: 154dbfc01f30eb9951ed26b863d1b42f7dee855b028d94407e80c3f3f0d894c5
+Guest path: /opt/swarmenv/src/agent/bot-contract/use-workspace.md; file SHA-256: f99d28205bb396f550ec0edc9ba21552eb27b135dbcb24ac4e7b9dedaa4038ac
 
-Body SHA-256: `154dbfc01f30eb9951ed26b863d1b42f7dee855b028d94407e80c3f3f0d894c5`
+Body SHA-256: `f99d28205bb396f550ec0edc9ba21552eb27b135dbcb24ac4e7b9dedaa4038ac`
 
 ````text
 ---
@@ -123,12 +123,14 @@ Workspace 在 sandbox 外由 Runtime 管理 Git。你只修改当前 E 的 /work
 
 Mission 验证期间 main merge 会冻结。查询现有 submission，不用其他接口绕过；save/apply 本身不改变被验收快照。
 
+Lean 项目检查先看 `swarm judge check --help`。配置启用项目检查时，save 后用 `swarm judge check --revision R` 检查整个固定版本；模块文件放在锁定题目所在源码目录下，按 Lean 模块名相互 import，无需复制证明正文。需要给 Task 的指定文件提交检查回执时加 `--path P`：仍编译同一项目，并将回执绑定到该文件。核对实际覆盖文件与警告；编译成功不等于 Mission 已证明，部分证明的占位符只能作为诊断状态保留，最终提交仍须通过独立验收。没有启用项目检查的部署仍要求 `--path`，不要假定它能读取相邻模块。
+
 ````
 ## finish-task (draft.2)
 
-Guest path: /opt/swarmenv/src/agent/bot-contract/finish-task.md; file SHA-256: 1d867fb07abe19af6bcb7e64d480d121eca92f29cc4f41bfc862ede80773e593
+Guest path: /opt/swarmenv/src/agent/bot-contract/finish-task.md; file SHA-256: cc3748aa4502013072a030fa84fe13f8cfaa82d6e1ea642661a5b6eeaeeb32a4
 
-Body SHA-256: `1d867fb07abe19af6bcb7e64d480d121eca92f29cc4f41bfc862ede80773e593`
+Body SHA-256: `cc3748aa4502013072a030fa84fe13f8cfaa82d6e1ea642661a5b6eeaeeb32a4`
 
 ````text
 ---
@@ -142,7 +144,7 @@ description: 软收尾、正常完成、动态阻塞、责任撤回或未完成�
 
 1. 判断哪些实际成果值得保留，明确验证、未验证、失败和未知。没有有用新成果也能如实退出。
 2. 有文件成果时先 workspace save，取得 revision 与 changed paths，再通过公开读取确认可用。多文件成果保留同一 revision；只在本地跑过测试不等于已交付代码。
-3. 有研究说明或交接内容时 publish Material，引用确切 revision/path、已完成部分、失败路线、未决问题、正在运行的服务操作 ID 和建议下一步。核对正文/附件可读，来源自动绑定。
+3. 有研究说明或交接内容时 publish Material，引用确切 revision/path、已完成部分、失败路线、未决问题、正在运行的服务操作 ID 和建议下一步。核对正文/附件可读。发布自动记录生产 Task 和 Execution。若要在 done 请求的 `--material-ids` 中明确引用材料，提前在正常执行阶段把它关联到 Task。
 4. 选择真实 outcome：done 需合同满足；incomplete 表示还未完成；blocked --wait-for T2 表示明确动态前置；cancelled 表示责任撤回，存在替代项时附 --replacement T3。不能放宽完成条件制造 done。
 5. 发布/保存失败可在有效 E 和有限重试额度内处理；仍失败时如实记录哪些内容未持久化，不能声明共享交付或编造空材料。失败不改变已经确认的责任状态：有必要前置仍用 blocked --wait-for；责任已撤回用 cancelled；未完成且没有新前置才用 incomplete。不能因上传失败丢掉等待关系，让尚不具备条件的 Task 再次 ready。
 6. 用稳定 request ID 调用 task finish。受理后 E closing，不再 save/publish。Runtime 撤权并停止全部进程，确认停止后才解除 owner/释放 Core。
@@ -152,5 +154,16 @@ description: 软收尾、正常完成、动态阻塞、责任撤回或未完成�
 已被具体服务持久接受的长操作按其合同继续。交接保留可查询 ID、输入版本和未知状态；finish 不表示所有外部副作用回滚。
 
 CLI 可能在响应完整返回前断开；最终结果由外部持久记录确定，不要求当前 Bot 在结束后查询或补交。尚未 take 且无未决 take 的 Bot 应使用 bot exit，不伪造 Task finish。
+
+
+例如，当前 Task ID 是 `T1`，可用下面的命令发布并交付一条实际结论：
+
+```sh
+swarm material publish --title '边界情况检查' --content '记录实际检查结论和依据' --request-id publish-t1
+swarm task link --task-id T1 --material-id M1 --role experience --request-id link-m1
+swarm task finish --outcome done --material-ids '["M1"]' --request-id finish-t1
+```
+
+用实际 Task ID 替换 `T1`，用发布回执中的 `material.material_id` 替换 `M1`，并写入实际研究内容。若经检查的 Workspace revision 和其他证据已满足合同，可以提供 `--workspace-revision` 与合同要求的 `--check-result-id`，省略可选的 `--material-ids` 列表。合同仍要求完成所有规定的交付。
 
 ````

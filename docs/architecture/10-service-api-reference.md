@@ -30,18 +30,18 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `4620e6dda652d7c8dbc27accd93175435e3e93f7f7da4e72d1f028db472818eb` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `951de6a9e5ef0bdfee80f36263b508783256c55f5834b28ed1485e3385983e7b` |
 | [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `528c5679002a17c048332291f2c5a51a4c7c9160467379dc1198cc604e667a6d` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `5be1832ad5b7e08437ded98d21f98445874a683c7127b97305b8ca370e3421b6` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `bdfe183785007d3516dc7e6e459799d4ecfc4d03dd4d13ade5930332db5e287a` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `b80c43ffd54f7f0b2c829df37e1bf1c1ad71d833f5fd98844c414f8e343c2ef7` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `c26e5b1047fb77a779564462962131fbe7af4437edacbedf1e1096f19183bf22` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `28ac5b6024b36ae5fd09361946877ff6f24baf08e3230e93a8ba3680e8926758` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `da9f5e92653b7f87bb4a125f62bcc860984430e9b542594bcfc8c3ceaf2af487` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
-| [src/errors.js](../../src/errors.js) | `61c7bbf151fca86773254984cc62e5f5ff6451c7ef2246640c613ce15b4c7d64` |
+| [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 
 ### Exact tool exposure for the built-in benchmark
 
@@ -2682,24 +2682,23 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "dbdedb7d993339af4cf4d9063eab814a81dc373440d4cbf3addfd39856d84b4e"
+  "manifest_hash": "34476ca30e7dfd2fa5ee3d63e04d69a4b2acdee2ca9fd13a4667543105a7a497"
 }
 ```
 
 #### judge.judge_workspace_check
 
-Check a Workspace file reference against the configured checker and return a durable CheckResult.
+Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path.
 
 ```json
 {
   "name": "judge_workspace_check",
   "operation": "workspace_check",
-  "description": "Check a Workspace file reference against the configured checker and return a durable CheckResult.",
+  "description": "Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path.",
   "input_schema": {
     "type": "object",
     "required": [
-      "revision",
-      "path"
+      "revision"
     ],
     "properties": {
       "workspace_id": {
@@ -2744,9 +2743,9 @@ Check a Workspace file reference against the configured checker and return a dur
   "requires_binding": false,
   "scope": "execution-write",
   "help": {
-    "when": "Check a Workspace file reference against the configured checker and return a durable CheckResult.",
+    "when": "Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path.",
     "ref": "service://judge/workspace_check",
-    "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Check a Workspace file reference against the configured checker and return a durable CheckResult.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Workspace source checking and structured CheckResults.\nUse when: Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/workspace_check",
@@ -3843,6 +3842,7 @@ Registry matches are resolved first by capability name or operation and must be 
   "PROCESS_EXITED": "PROCESS_EXITED",
   "RPC_ERROR": "RPC_ERROR",
   "START_FAILED": "START_FAILED",
+  "BOT_STARTUP_CONTRACT": "BOT_STARTUP_CONTRACT",
   "WORKSPACE_BUSY": "WORKSPACE_BUSY",
   "WORKSPACE_RECONCILIATION_REQUIRED": "WORKSPACE_RECONCILIATION_REQUIRED",
   "WORKSPACE_REQUEST_ABORTED": "WORKSPACE_REQUEST_ABORTED",

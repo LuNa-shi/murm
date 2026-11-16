@@ -22,14 +22,16 @@ function resultFromRow(row) {
   if (!row) return null;
   const resultClass = storedResultClass({ verdict: row.verdict, resultClass: row.result_class, checkerProcessStatus: row.checker_process_status });
   const checkerProcessStatus = storedCheckerProcessStatus({ verdict: row.verdict, resultClass: row.result_class, checkerProcessStatus: row.checker_process_status });
+  const evidence = parse(row.evidence_json);
   return {
     ...row,
     result_class: resultClass,
     checker_process_status: checkerProcessStatus,
     process_status: checkerProcessStatus,
-    mathematical_outcome: resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed',
+    mathematical_outcome: evidence?.workspace_input?.check_mode === 'lean-project' ? 'unassessed'
+      : resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed',
     retryable: Boolean(row.retryable),
-    evidence: parse(row.evidence_json),
+    evidence,
   };
 }
 
@@ -57,6 +59,7 @@ export class JudgeService {
     fixtureManifest = null,
     taskService = null,
     missionBudget,
+    readProjectRevision = null,
   } = {}) {
     this.missionBudget = normalizeJudgeMissionBudget(missionBudget);
     this.activeChecks = new Set();
@@ -70,6 +73,7 @@ export class JudgeService {
     this.dependencyEventSink = dependencyEventSink;
     this.fixtureManifest = fixtureManifest;
     this.taskService = taskService;
+    this.readProjectRevision = readProjectRevision;
   }
 
   close() { this.db.close(); }
@@ -158,8 +162,8 @@ export class JudgeService {
 
   /**
    * Agent-facing Judge operation. The Bridge supplies the authenticated
-   * Execution envelope and an internal source descriptor after reading the
-   * private Workspace. No Task Service submission relay is involved.
+   * Execution envelope and a trusted source descriptor or public project
+   * reference. No Task Service submission relay is involved.
    */
   async checkWorkspaceSource(payload = {}, envelope = makeEnvelope({
     operationId: randomUUID(),
@@ -183,7 +187,13 @@ export class JudgeService {
     if (!envelope.task_id || !envelope.execution_id) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace_check requires a bound Task and Execution');
     }
-    const source = payload.source ?? payload.workspace_source ?? null;
+    const requestedSource = payload.source ?? payload.workspace_source ?? null;
+    const project = requestedSource?.check_mode === 'lean-project'
+      ? await this.#readProject(requestedSource, envelope) : null;
+    if (this.readProjectRevision && !project && this.taskService?.getBot(envelope.actor_ref)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Registered Bot checks require a trusted public project revision');
+    }
+    const source = project?.source ?? requestedSource;
     if (!source || typeof source.content !== 'string') {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_check requires a Workspace source');
     }
@@ -191,8 +201,10 @@ export class JudgeService {
       ? {
         workspace_id: required(source.workspace_id, 'source.workspace_id'),
         revision: required(String(source.revision), 'source.revision'),
-        path: required(source.path, 'source.path'),
-        ...(source.git_commit ? { git_commit: source.git_commit, git_tree: source.git_tree, tree_content_hash: source.tree_content_hash, content_hash: contentHash(source.content) } : {}),
+        ...(project && source.path === undefined ? {} : { path: required(source.path, 'source.path') }),
+        ...(source.git_commit ? { git_commit: source.git_commit, git_tree: source.git_tree, tree_content_hash: source.tree_content_hash,
+          ...(source.path === undefined ? {} : { content_hash: contentHash(source.content) }) } : {}),
+        ...(project ? { check_mode: 'lean-project' } : {}),
       }
       : null;
     const sourceHash = contentHash(source.content);
@@ -248,7 +260,7 @@ export class JudgeService {
       workspace_revision: source.workspace_revision ?? source.revision ?? null,
     };
     const sourceId = workspaceSourceRef
-      ? `workspace:${workspaceSourceRef.workspace_id}:${workspaceSourceRef.revision}:${workspaceSourceRef.path}`
+      ? `workspace:${workspaceSourceRef.workspace_id}:${workspaceSourceRef.revision}:${project ? 'lean-project:' : ''}${workspaceSourceRef.path ?? ''}`
       : `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${sourceHash}`;
     const result = await this.#checkWorkspaceSourceRequest({
       fixture_manifest: fixtureManifest,
@@ -284,11 +296,45 @@ export class JudgeService {
         ...(workspaceSourceRef ? { workspace_id: workspaceSourceRef.workspace_id, path: workspaceSourceRef.path, revision: workspaceSourceRef.revision } : {}),
       },
       fixture_manifest: fixtureManifest,
-    }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref, envelope });
+    }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref, envelope, project });
     return envelope.actor_ref?.startsWith('agent:') ? agentCheckResult(result) : result;
   }
 
-  async #checkWorkspaceSourceRequest(input, { operationId = randomUUID(), actorRef = 'judge:lean', envelope: requestEnvelope } = {}) {
+  async #readProject(reference, envelope) {
+    if (!this.readProjectRevision || !this.checker.projectChecker) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'A trusted Lean project checker is not configured');
+    }
+    const allowed = new Set(['workspace_id', 'revision', 'path', 'check_mode']);
+    if (Object.keys(reference).some(key => !allowed.has(key)) || !/^\d+\.\d+$/.test(reference.revision ?? '') ||
+        (reference.path !== undefined && (typeof reference.path !== 'string' || !reference.path.endsWith('.lean')))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Lean project check requires one fixed revision and an optional Lean source path');
+    }
+    const execution = this.taskService?.getExecution(envelope.execution_id);
+    const task = this.taskService?.getTask(envelope.task_id);
+    if (!execution || !task || execution.owner_ref !== envelope.actor_ref || execution.task_id !== task.task_id ||
+        !this.taskService.getBot(envelope.actor_ref) || execution.workspace_input?.workspace_id !== reference.workspace_id) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Project check requires the bound Bot and its public Workspace');
+    }
+    const snapshot = await this.readProjectRevision({ workspaceId: reference.workspace_id, revision: reference.revision });
+    if (!snapshot || snapshot.mission_id !== task.mission_id || snapshot.workspace_id !== reference.workspace_id ||
+        snapshot.revision !== reference.revision || !snapshot.git_tree || !snapshot.git_commit || !snapshot.content_hash) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Project snapshot does not match the bound Mission and revision');
+    }
+    if (snapshot.conflicts?.length) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Project revision has unresolved Workspace conflicts');
+    const path = reference.path;
+    if (path !== undefined && !Object.hasOwn(snapshot.files, path)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge file is unavailable at the fixed public revision');
+    }
+    const bytes = path === undefined ? Buffer.alloc(0) : Buffer.from(snapshot.files[path]);
+    const content = bytes.toString('utf8');
+    if (!Buffer.from(content).equals(bytes) || bytes.includes(0)) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Lean project receipt requires a complete UTF-8 file');
+    }
+    return { files: snapshot.files, source: { ...reference, content, git_commit: snapshot.git_commit, git_tree: snapshot.git_tree,
+      tree_content_hash: snapshot.content_hash } };
+  }
+
+  async #checkWorkspaceSourceRequest(input, { operationId = randomUUID(), actorRef = 'judge:lean', envelope: requestEnvelope, project = null } = {}) {
     this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: operationId, target_task_id: input?.target_task_id, workspace_source_id: input?.workspace_source_id });
     const normalized = this.#validateRequest(input);
     // E state versions can advance while the same immutable check is running
@@ -316,7 +362,7 @@ export class JudgeService {
     const request = separateLifecycle ? this.taskService.withServiceLifecycleWrite(begin) : begin();
     if (!request.shouldCheck) return request.result;
     const work = this.#performWorkspaceCheck(normalized, requestHash, request.result, { operationId, actorRef,
-      authority, publicInput, registered, missionId: request.missionId }).finally(() => {
+      authority, publicInput, registered, missionId: request.missionId, project }).finally(() => {
       if (request.missionId) this.db.prepare(`UPDATE judge_mission_check_admissions SET settled_at = ?
         WHERE mission_id = ? AND check_result_id = ? AND settled_at IS NULL`)
         .run(now(), request.missionId, request.result.check_result_id);
@@ -326,7 +372,7 @@ export class JudgeService {
     finally { this.activeChecks.delete(work); }
   }
 
-  async #performWorkspaceCheck(normalized, requestHash, requested, { operationId, actorRef, authority, publicInput, registered, missionId }) {
+  async #performWorkspaceCheck(normalized, requestHash, requested, { operationId, actorRef, authority, publicInput, registered, missionId, project }) {
     let admissionFailure = null;
     const assertCanStart = () => authority({ newWork: true });
     const startProcess = phase => launch => {
@@ -372,12 +418,16 @@ export class JudgeService {
         // A preflight can finish after the soft/hard boundary. Do not launch
         // a new scientific calculation merely because preflight was admitted.
         authority({ newWork: true });
-        checked = await this.checker.check({ workspace_source: normalized.workspace_source, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest, assertCanStart, startProcess: startProcess('source') });
+        const launch = startProcess('source');
+        checked = project
+          ? await this.checker.checkProject({ files: project.files, tree: project.source.git_tree, path: project.source.path,
+            content: project.source.content, startProcess: launch })
+          : await this.checker.check({ workspace_source: normalized.workspace_source, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest, assertCanStart, startProcess: launch });
       } catch (error) {
         admissionFailure = executionRejection(error);
         checked = admissionFailure ?? { verdict: 'ERROR', evidence: { diagnostic: error.message, error: error.name, checker_started: false } };
       }
-      if (!admissionFailure && typeof normalized.workspace_source.content === 'string' && /\b(?:sorry|admit|axiom)\b/i.test(normalized.workspace_source.content)) {
+      if (!admissionFailure && !project && typeof normalized.workspace_source.content === 'string' && /\b(?:sorry|admit|axiom)\b/i.test(normalized.workspace_source.content)) {
         checked = {
           ...(checked ?? {}),
           verdict: 'ERROR',
@@ -564,7 +614,7 @@ export class JudgeService {
       // new request.  This also closes the cross-Core duplicate path where
       // each Agent invents a different request key for the same Material.
       const publicInput = normalized.workspace_source.file_ref?.git_commit ? normalized.workspace_source.file_ref : null;
-      const sourceClause = publicInput ? `AND workspace_source_id = ?
+      const sourceClause = publicInput ? `AND workspace_source_id = ? AND execution_id = ?
         AND json_extract(evidence_json, '$.workspace_input.git_commit') = ?
         AND json_extract(evidence_json, '$.workspace_input.git_tree') = ?` : `AND json_extract(evidence_json, '$.workspace_input.git_commit') IS NULL`;
       const equivalent = this.db.prepare(`SELECT * FROM check_results
@@ -579,7 +629,7 @@ export class JudgeService {
         normalized.checker_ref,
         normalized.checker_version,
         normalized.environment_ref,
-        ...(publicInput ? [normalized.workspace_source_id, publicInput.git_commit, publicInput.git_tree] : []),
+        ...(publicInput ? [normalized.workspace_source_id, normalized.execution_id, publicInput.git_commit, publicInput.git_tree] : []),
       );
       if (equivalent) {
         const existingResult = resultFromRow(equivalent);

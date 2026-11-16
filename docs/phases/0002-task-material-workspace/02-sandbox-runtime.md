@@ -39,6 +39,10 @@ sandbox 是不可信执行边界。必须假设 Bot 会运行任意 Bash、启�
 
 ### 3.1 创建前的描述与审计
 
+[后续启动决定](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6907134029)要求可重复的默认准备流程。部署配置、校验锁和启动验证材料放在独立准备目录；正式实验目录由运行器原子创建，已有目录应尽早报出明确冲突，不能覆盖、自动清空或在新实验中复用旧证据。镜像构建须显式固定受信文件及其父目录的 root 所有权和权限，不依赖构建上下文的宿主 UID。仅核对内容哈希不足以证明镜像可启动。
+
+本地 Docker 部署的标准预检须用实际待运行镜像完成 worker 契约握手、Bot UID 下的 Pi/CLI 可用性与磁盘隔离探针，过程不调用模型。Provider API 存活检查、受信镜像启动检查和实际模型请求分别记录。首个真实 Bot 仍须通过完整启动合同；确定性的 worker 启动契约错误（`BOT_STARTUP_CONTRACT`）应停止本项目并清理已创建资源，不能通过连续补位重复同一错误。可恢复的 provider/网络故障以及正常选工/寿命到期仍按原有边界处理，不取消开放 Mission 的持续工作循环。
+
 创建 Bot 时先固定 Mission/Core/Bot、sandbox 镜像 digest、Pi/CLI/extension 及实际启用的模型路由版本、服务 endpoint、网络和选工预算。此时没有 Task/E，也不伪造占位 E。
 
 take 时再固定 Task 合同与等待关系版本、E、初始 Workspace revision/commit、Material ID/内容版本和执行额度。最初输入保留审计；后续显式 apply/save 的变化另行记录，不能把最初输入悄悄改成“最新版本”。
