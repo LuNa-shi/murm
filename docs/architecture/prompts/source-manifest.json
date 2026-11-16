@@ -41,7 +41,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "6b5fd60520a15adec48944192ed83bc1d70f175c8a27cd05f4ae91918af7cbe3"
+      "sha256": "b80c43ffd54f7f0b2c829df37e1bf1c1ad71d833f5fd98844c414f8e343c2ef7"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -57,7 +57,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "cd7c89d9941d721753ea9adfd9f0c02751e613b501908be95e033a31a031c3c6"
+      "sha256": "da9f5e92653b7f87bb4a125f62bcc860984430e9b542594bcfc8c3ceaf2af487"
     },
     {
       "path": "src/runtime/runtime.js",
