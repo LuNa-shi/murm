@@ -222,5 +222,5 @@ export async function createLockedFinalTreeVerifier({ configuration, problem }) 
     ...deployment, identity, targetPath: problem.problem_file, declarationName: problem.id,
     fixtureSource: problem.source, fixtureSha256: problem.source_hash,
   });
-  return { adapter, evidence: { artifact_lock_sha256: sha256, identity, sources: FINAL_TREE_SOURCE_PINS, dependency_pins: manifest.dependencyPins, resources } };
+  return { adapter, evidence: { artifact_lock_sha256: sha256, identity, sources: FINAL_TREE_SOURCE_PINS, dependency_pins: manifest.dependencyPins, timeout_ms: adapter.timeoutMs, resources } };
 }

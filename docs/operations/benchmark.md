@@ -27,3 +27,37 @@ node scripts/run-putnambench-benchmark.mjs \
 ~~~
 
 In the stacked cleanup branch, the benchmark runner uses Mission-scoped Tasks exclusively: `--task-model` and `--normal-flow` are no longer accepted. Check every option against the actual script and approved Issue before use; the example's model-independent placeholders, Core count and problem are not defaults for future research. Use the [experiment workflow](../workflows/experiment.md) for reporting. Built-in and Mathlib service deployment references: [built-in services](../../services/builtin/README.md) and [Mathlib Search](../../services/mathlib-search/README.md).
+
+For a one-hour single-project run with a 30-minute Bot lifetime, six minutes for
+selection and three minutes for each ordinary Lean diagnostic process, use
+these options together.
+
+~~~sh
+--timebox-ms 3600000 --bot-max-ms 1800000 --selection-timeout-ms 360000 \
+--execution-timeout-ms 1800000 --checker-timeout-ms 180000
+~~~
+
+Keep the CLI's default nine-minute turn settling wait for this profile so a
+single discovery turn can use its six-minute window. This wait also gives a
+long diagnostic call time to return. The separate model request limit still
+applies.
+
+Set `final_tree_checker.timeoutMs` to `300000` in the trusted deployment to give
+final acceptance five minutes. The timeout is part of the artifact lock. From
+the repository root, run the artifact lock tool with the checker configuration
+object and the same approved source checkout paths.
+
+~~~sh
+node scripts/lock-final-tree-checker.mjs <checker-config.json> <approved-source-checkouts.json> <new-lock.json>
+~~~
+
+Point `final_tree_checker.artifactLock` at the new local lock. Startup verifies that the
+lock matches the host configuration and artifacts. A shorter locked timeout also
+caps the source process budget.
+
+`--timeout-ms` on a `swarm` command controls client waiting. An ordinary check
+can include both a preflight and a Lean process. To allow both three-minute
+phases plus 30 seconds of margin, set `swarm judge check ... --timeout-ms 390000`.
+If a response is lost, query the original check by request key or repeat the
+exact same request with its original ID. Mission submission returns a pending receipt while the verifier
+runs. Query the original submission for its final result.

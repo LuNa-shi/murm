@@ -1900,7 +1900,7 @@ export class TaskService {
     const linkedIds = new Set(completionLinks.map((link) => link.material_id));
     const unlinked = [...new Set(requestedMaterialIds)].filter((id) => !linkedIds.has(id));
     if (unlinked.length > 0) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.complete can reference only linked Materials', { unlinked_material_ids: unlinked });
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task finish can reference only linked Materials. Use swarm task link before citing them.', { unlinked_material_ids: unlinked });
     }
     const requestedCheckResultId = payload.check_result_id ?? null;
     if (requestedCheckResultId) {

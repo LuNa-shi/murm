@@ -34,7 +34,8 @@ Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is
 | `--bot-max-ms` | Defaults to run timebox; timer-safe integer of at least 2 ms; total Bot lifetime including startup/discovery/preparation |
 | `--selection-timeout-ms` | Defaults to min(300000, Bot maximum); timer-safe integer of at least 2 ms, clamped to Bot/run deadline |
 | `--execution-timeout-ms` | Defaults to Bot maximum; timer-safe integer of at least 2 ms; active Execution cap intersects Task/Bot/run limits |
-| `--turn-timeout-ms` | `540000`; per-turn settling bound, not the overall project deadline |
+| `--turn-timeout-ms` | `540000`; per-turn settling bound, separate from the overall project deadline |
+| `--checker-timeout-ms` | `120000`; timer-safe positive integer for each Lean source diagnostic process, subject to the locked checker timeout |
 | `--task-model` | Rejected; the benchmark has one flat Mission Task model |
 | `--normal-flow` | Rejected; the flat Mission Task contract is always used |
 | `--provider` | `PI_PROVIDER`, then `NUROUTER_PI_PROVIDER`, otherwise `gpt_proxy`; empty values are rejected |
@@ -113,7 +114,7 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `heartbeatMs`, `watchdogIntervalMs`, `executionTimeoutSweepMs` | Each `10000`; independent timers |
 | `watchdogTimeoutMs` | Runtime default `120000`; productivity/recovery interpretation in [02](02-execution.md) |
 | `cleanupGraceMs` | `30000`; one absolute grace shared by all Core, Controller, identity and background joins; must be finite and positive |
-| `checker`, `leanCommand`, `checkerTimeoutMs` | Inject checker or use LeanChecker, command `lake`, timeout `120000` |
+| `checker`, `leanCommand`, `checkerTimeoutMs` | Inject checker or use LeanChecker, command `lake`, timeout `120000` capped by the locked deployment when in use |
 | `maxInfrastructureRetries` | Forwarded to JudgeService; see exact Judge defaults in [04](04-services.md) |
 | `command`, `account`, `group`, `extensionPath` | Override command and routing; runner command defaults to `pi`. Top-level `extensionPath` applies to the local compatibility adapter; registered OpenSandbox Bots reject custom Service-tool extensions and use four native tools |
 | `agentAdapterFactory` | Caller-supplied compatibility adapter factory when an OpenSandbox manager is not selected; used for controlled tests, not an extra Agent-selection process |
@@ -216,7 +217,9 @@ Worker startup claims the single start slot before awaiting resource reads. All 
 
 ## Final-tree acceptance configuration
 
-A positive-duration Putnam run requires `final_tree_checker` in its trusted host configuration. It contains the fixed checker identity, toolchain/library/exporter paths and `artifactLock`; the loader verifies full mounted artifacts, pinned sources, isolated Lean version and actual cgroup limits before provider creation or model startup. The lock-generating tool takes the trusted build configuration and source checkout paths, verifies the fixed source revisions, and stores only the local deployment lock at the requested local path. A changed verifier, harness, dependency or executable requires regenerating and validating the lock. The final environment identity includes its digest. The diagnostic source checker keeps its separate fixture configuration. Programmatic controlled tests may inject a final-tree adapter explicitly; the CLI does not accept arbitrary code adapters.
+A positive-duration Putnam run requires `final_tree_checker` in its trusted host configuration. It contains the fixed checker identity, toolchain/library/exporter paths and `artifactLock`; the loader verifies full mounted artifacts, pinned sources, isolated Lean version and actual cgroup limits before provider creation or model startup. The lock-generating tool takes the trusted build configuration and source checkout paths, verifies the fixed source revisions, and stores only the local deployment lock at the requested local path. A changed verifier, harness, dependency or executable requires regenerating and validating the lock. The final environment identity includes its digest. The diagnostic source checker keeps its separate fixture configuration. Programmatic controlled tests may inject a final-tree adapter explicitly. The CLI accepts the locked deployment.
+
+The trusted `final_tree_checker.timeoutMs` field defaults to 120,000 ms and participates in the artifact lock. Renew the lock after changing it. Mission coordination takes the verifier timeout and clips it to the remaining Mission deadline. The source diagnostic process bound is the smaller of `checkerTimeoutMs` and the locked timeout when using the locked adapter. The launch manifest and aggregate protocol record the resolved source and final bounds as `source_checker_timeout_ms` and `final_tree_checker_timeout_ms`; the project report includes the effective source process bound under `judge_check_budget.process_timeout_ms` and the verified final-tree bound under `run.final_tree_checker.timeout_ms`.
 
 `mission_coordination_permissions` is an explicit allowlist from `unsupersede`, `task_cancel`, `task_dependency_replace`, `mission_submit`; omitted means no grants. Runtime freezes the list at Bot registration. The research Bot cannot change it. The runner always stops new research after trusted Mission acceptance; an older stop-on-solved flag cannot override the accepted Mission lifecycle. `maxInfrastructureRetries` caps final acceptance infrastructure retries and defaults to zero; exact scientific outcomes reuse their original result. Per-Bot, selection, E and run timeboxes continue to bound work independently.
 

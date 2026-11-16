@@ -21,7 +21,8 @@ for (const late of [false, true]) test(`benchmark CLI handles SIGTERM ${late ? '
   git('add', 'input.lean');
   git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'Pin fixture');
   const config = join(root, 'config.json');
-  await writeFile(config, JSON.stringify({ putnambench_commit: git('rev-parse', 'HEAD'), problems:
+  await writeFile(config, JSON.stringify({ putnambench_commit: git('rev-parse', 'HEAD'),
+    ...(late ? {} : { final_tree_checker: { timeoutMs: 300000 } }), problems:
     Array.from({ length: 12 }, (_, index) => ({ id: `fixture_${index}`, problem_file: 'input.lean' })) }));
   let child, healthChecks = 0;
   const server = createServer((request, response) => {
@@ -56,7 +57,8 @@ syncBuiltinESMExports();`);
     signalArguments.push('--import', inject);
   }
   child = spawn(process.execPath, [...signalArguments, runner, '--problems', config, '--putnambench-root', fixture,
-    ...(late ? ['--initial-bot-stagger-ms', '1200'] : ['--problem', 'fixture_0']),
+    ...(late ? ['--initial-bot-stagger-ms', '1200'] : ['--problem', 'fixture_0',
+      '--bot-max-ms', '1800000', '--selection-timeout-ms', '360000', '--checker-timeout-ms', '180000']),
     '--experiment-root', root, '--experiment-dir', experiment, '--report-dir', reports, '--observability-metadata', observer],
   { env: { PATH: process.env.PATH, PI_GPT_PROXY_BASE_URL: 'http://127.0.0.1:1/v1', PI_GPT_PROXY_API_KEY: 'local-fixture' } });
   t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
@@ -79,6 +81,12 @@ syncBuiltinESMExports();`);
     assert.equal(metadata.stop_signal, undefined);
   } else {
     assert.match(stderr, /stop_requested/);
+    for (const protocol of [aggregate.protocol, metadata.protocol]) {
+      assert.equal(protocol.bot_max_ms, 1800000);
+      assert.equal(protocol.selection_timeout_ms, 360000);
+      assert.equal(protocol.source_checker_timeout_ms, 180000);
+      assert.equal(protocol.final_tree_checker_timeout_ms, 300000);
+    }
     assert.equal(aggregate.projects[0].stop_reason, 'operator_stop');
     assert.deepEqual(aggregate.projects[0].invalid_reasons, ['operator_stop']);
     assert.equal(metadata.status, 'operator_stopped');
@@ -103,6 +111,16 @@ test('benchmark CLI rejects invalid stagger timers before loading deployment or 
       '--putnambench-root', '/missing/fixture', '--initial-bot-stagger-ms', value], { encoding: 'utf8' });
     assert.notEqual(result.status, 0, value);
     assert.match(result.stderr, /--initial-bot-stagger-ms must be a nonnegative timer-safe integer/, value);
+    assert.doesNotMatch(result.stderr, /ENOENT|observability daemon|stop_requested/);
+  }
+});
+
+test('benchmark CLI rejects an invalid source check timer before loading deployment', () => {
+  for (const value of ['0', '1.5', '2147483648']) {
+    const result = spawnSync(process.execPath, [runner, '--problems', '/missing/config.json',
+      '--putnambench-root', '/missing/fixture', '--checker-timeout-ms', value], { encoding: 'utf8' });
+    assert.notEqual(result.status, 0, value);
+    assert.match(result.stderr, /--checker-timeout-ms must be a timer-safe positive integer/, value);
     assert.doesNotMatch(result.stderr, /ENOENT|observability daemon|stop_requested/);
   }
 });

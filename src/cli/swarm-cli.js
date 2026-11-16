@@ -30,7 +30,14 @@ Follow next_cursor even after an empty page, then view Task details before propo
     propose: TASK_PROPOSAL_HELP,
     create: TASK_PROPOSAL_HELP,
     take: 'Take an eligible Task by its positional ID. Example: swarm task take T1 --request-id take-t1 (replace T1 with the returned task_id). The result includes the Execution and pinned inputs. If the response is unknown, reuse the same request ID with the same Task.',
-    finish: 'Finish the current Task with outcome done, incomplete, blocked, or cancelled. For a declared Workspace delivery, provide --workspace-revision and any required --check-result-id.',
+    link: `Link a published Material to a Task. Provide --task-id, --material-id and --role (input, response, handoff, or experience).
+To cite your own published Material when finishing, link it to your current Task with --role experience.
+Example: swarm task link --task-id T1 --material-id M1 --role experience --request-id link-m1
+Replace T1 and M1 with the current task_id and the published material_id. Response and handoff links require the producing Execution. A response targets a different receiving Task.`,
+    finish: `Finish the current Task with outcome done, incomplete, blocked, or cancelled. For a declared Workspace delivery, provide --workspace-revision and any required --check-result-id.
+Publication records who produced a Material. To explicitly cite that Material in a done result, first create a Task link with swarm task link.
+Example after linking: swarm task finish --outcome done --material-ids '["M1"]' --request-id finish-t1
+Use a quoted JSON array of actual Material IDs. Omit this optional list when your checked Workspace revision and other evidence already satisfy the Task's completion contract. Required deliverables still apply.`,
     cancel: 'Cancel an unowned Task. Required: <task-id> --expected-spec-version --expected-state-version --reason. Optional --replacement. Requires a Mission coordination grant.',
     'dependency-replace': 'Repair a cancelled prerequisite of an unowned blocked Task. Required: <task-id> --from-task-id --to-task-id --expected-spec-version --expected-state-version --reason. Requires a Mission coordination grant.',
     feedback: 'Record feedback for the current Task. Use --input or --stdin for the feedback contract.',
@@ -41,7 +48,7 @@ Follow next_cursor even after an empty page, then view Task details before propo
     get: 'Read one Material. Required: <material-id> (or --material-id).',
     view: 'Read one immutable Material including provenance and corrections. Required: <material-id>.',
     search: 'Search Materials. Input: --query and explicit scope filters.',
-    publish: 'Publish immutable Material. The service binds producer Task/Execution from the trusted request context.',
+    publish: 'Publish immutable Material with --content and optional --title and --summary. The result includes material.material_id. The service records the producing Task and Execution. Use swarm task link to associate it with a Task for an explicit finish reference.',
     dispute: 'Question a Material. Required: <material-id> --reason --claim; claim identifies the affected claim or section.',
     supersede: 'Replace a whole Material. Required: <old-id> --with <new-id> --expected-version <observed relation_version> --reason.',
     unsupersede: 'Revoke only the matching replacement. Required: <old-id> --with <new-id> --expected-version <observed relation_version> --reason. Preserves history.',
@@ -65,18 +72,20 @@ Replace M1 with an actual Material ID. After an unknown response, reuse the same
   },
   mission: {
     view: 'Read the current Mission goal and acceptance conditions through the trusted Bot binding.',
-    submit: 'Submit current main plus an explicit Material selection using --materials M1,M2 (or --materials [] for files only). Requires a Mission coordination grant. Checker/configuration and main are fixed by the service; query submission view after response loss.',
+    submit: 'Submit current main plus an explicit Material selection using --materials M1,M2 (or --materials [] for files only). Requires a Mission coordination grant. The service fixes the checker, configuration and main. Use a stable --request-id, then use swarm mission submission view with that ID to follow the accepted submission or recover a lost response.',
     status: 'Read Mission submission state and immutable snapshots.',
     finish: 'Record the result of a durable Mission submission.',
   },
   judge: {
-    check: 'Check a saved public Workspace file with --revision and --path. Save first; the checker reads that fixed revision, not unsaved local edits. Use --request-id for response recovery.',
+    check: `Check a saved public Workspace file with --revision and --path. Save first. This diagnostic checks the selected file in the configured Lean environment. Other files in the saved revision are not loaded as local import modules. Final Mission acceptance checks a fixed tree separately.
+--timeout-ms controls how long the CLI waits for HTTP. The service controls the checker's execution limit. For a 3-minute source check with preflight already ready, use --timeout-ms 210000 to allow extra response time.
+Use a stable --request-id. After a lost response, use swarm judge result --request-key with the original ID, or repeat the same request with the same ID.`,
     result: 'Read one CheckResult. Use --check-result-id or --request-key; request-key lookup survives a lost submit response.',
   },
 });
 
 function usage(scope = 'top', commandName = null) {
-  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|take|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
+  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|take|link|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
   if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest through the Bot Bridge. No network is required for --help.';
   if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${DEFAULT_REQUEST_TIMEOUT_MS})\n  --help                     Show this command help`;
   return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Task and Material IDs and file paths use the documented positional arguments.\nBot identity always comes from the protected Bridge binding.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;

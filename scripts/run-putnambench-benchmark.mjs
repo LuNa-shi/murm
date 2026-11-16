@@ -181,6 +181,7 @@ function optionsFromArgs(argv) {
       '--selection-timeout-ms': 'selectionTimeoutMs',
       '--execution-timeout-ms': 'executionTimeoutMs',
       '--turn-timeout-ms': 'turnTimeoutMs',
+      '--checker-timeout-ms': 'checkerTimeoutMs',
       '--observability-port': 'observabilityPort',
       '--observability-host': 'observabilityHost',
       '--observability-advertise-host': 'observabilityAdvertiseHost',
@@ -191,7 +192,7 @@ function optionsFromArgs(argv) {
     if (key === '--parallel-mode') throw new Error('--parallel-mode has been retired; omit it to use four independent Core loops');
     if (!fields[key]) throw new Error(`unknown option: ${arg}`);
     const value = inline ?? argv[++index];
-    options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'botMaxMs', 'initialBotStaggerMs', 'selectionTimeoutMs', 'executionTimeoutMs', 'turnTimeoutMs', 'observabilityPort'].includes(fields[key])
+    options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'botMaxMs', 'initialBotStaggerMs', 'selectionTimeoutMs', 'executionTimeoutMs', 'turnTimeoutMs', 'checkerTimeoutMs', 'observabilityPort'].includes(fields[key])
       ? Number(value)
       : value;
   }
@@ -210,6 +211,7 @@ function usage() {
     '    --bot-max-ms 600000 --selection-timeout-ms 120000',
     '    --initial-bot-stagger-ms 60000',
     '    --execution-timeout-ms 600000',
+    '    --checker-timeout-ms 180000',
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
     '    --report-dir reports/putnambench-runs/run-<id>',
@@ -219,6 +221,8 @@ function usage() {
     '',
     'Use --problem <id> to run one configured project as a pilot.',
     'Initial Bots start 60000 ms apart by default; replacement Bots do not repeat this stagger.',
+    'The source diagnostic timeout defaults to 120000 ms and is capped by the locked checker timeout.',
+    'Set the final-tree timeout in the trusted final_tree_checker configuration and regenerate its artifact lock.',
     '',
   ].join('\n');
 }
@@ -244,6 +248,9 @@ options.selectionTimeoutMs ??= Math.min(300_000, options.botMaxMs);
 options.executionTimeoutMs ??= options.botMaxMs;
 for (const [field, flag] of [['botMaxMs', '--bot-max-ms'], ['selectionTimeoutMs', '--selection-timeout-ms'], ['executionTimeoutMs', '--execution-timeout-ms']]) {
   if (!Number.isInteger(options[field]) || options[field] < 2 || options[field] > 2_147_483_647) throw new Error(`${flag} must be a timer-safe integer of at least 2 milliseconds`);
+}
+if (options.checkerTimeoutMs !== undefined && (!Number.isInteger(options.checkerTimeoutMs) || options.checkerTimeoutMs < 1 || options.checkerTimeoutMs > 2_147_483_647)) {
+  throw new Error('--checker-timeout-ms must be a timer-safe positive integer');
 }
 if (!options.provider) throw new Error('PI_PROVIDER is required; set it in .env or the environment');
 if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the environment');
@@ -294,6 +301,8 @@ const repositoryStatus = (await execFileAsync('git', ['-C', process.cwd(), 'stat
 options.repositoryCommit = repositoryCommit;
 options.repositoryWorktreeDirty = repositoryStatus.length > 0;
 const metadataPath = resolve(options.experimentDir, 'metadata', 'experiment.json');
+const finalTreeTimeoutMs = config.final_tree_checker ? config.final_tree_checker.timeoutMs ?? 120_000 : null;
+const sourceCheckerTimeoutMs = Math.min(options.checkerTimeoutMs ?? 120_000, finalTreeTimeoutMs ?? Infinity);
 const metadata = {
   schema_version: 1,
   experiment_id: resolve(options.experimentDir).split('/').at(-1),
@@ -319,6 +328,8 @@ const metadata = {
     initial_bot_stagger_ms: options.initialBotStaggerMs,
     selection_timeout_ms: options.selectionTimeoutMs,
     execution_timeout_ms: options.executionTimeoutMs,
+    source_checker_timeout_ms: sourceCheckerTimeoutMs,
+    final_tree_checker_timeout_ms: finalTreeTimeoutMs,
     task_model: 'flat',
     workspace_model: 'mission_workspace_public_revisions',
     candidate_model: 'workspace_file_ref',
@@ -381,6 +392,8 @@ try {
       initial_bot_stagger_ms: options.initialBotStaggerMs,
       selection_timeout_ms: options.selectionTimeoutMs,
       execution_timeout_ms: options.executionTimeoutMs,
+      source_checker_timeout_ms: sourceCheckerTimeoutMs,
+      final_tree_checker_timeout_ms: finalTreeTimeoutMs,
       experiment_dir: resolve(options.experimentDir),
       report_dir: resolve(options.reportDir),
       repository_commit: repositoryCommit,

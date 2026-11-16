@@ -1655,7 +1655,7 @@ async function createProjectState(problem, config, options) {
         workRoot: join(projectDir, 'judge-work'),
         logger: checkerLogger,
         command: options.leanCommand ?? 'lake',
-        timeoutMs: options.checkerTimeoutMs ?? 120_000,
+        timeoutMs: Math.min(options.checkerTimeoutMs ?? 120_000, finalTreeDeployment?.adapter.timeoutMs ?? Infinity),
         runner: lockedSourceRunner,
       }),
     });

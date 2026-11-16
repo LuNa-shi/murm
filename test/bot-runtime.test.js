@@ -1925,6 +1925,35 @@ test('declared Workspace delivery verifies a published revision before accepting
   assert.equal((await runtime.missionWorkspace.get({ workspaceId: saved.workspace_id })).main_revision, merged.main_revision);
 });
 
+test('Bot CLI publishes, explicitly links, and cites a Material when finishing', async t => {
+  const { command, service, execution, runtime } = await workspaceFixture(t);
+  const { material } = await command('material', 'publish', '--title', 'Boundary case check',
+    '--content', 'The boundary case follows from the empty intersection.', '--request-id', 'publish-t1');
+  assert.equal(material.producer_task_id, execution.task_id);
+  const finish = requestId => command('task', 'finish', '--outcome', 'done',
+    '--material-ids', JSON.stringify([material.material_id]), '--request-id', requestId);
+
+  await assert.rejects(finish('finish-unlinked'), error => {
+    const { code, message, details } = JSON.parse(error.stderr);
+    assert.equal(code, 'INVALID_CONTRACT');
+    assert.match(message, /task finish.*swarm task link/);
+    assert.deepEqual(details.unlinked_material_ids, [material.material_id]);
+    return true;
+  });
+  assert.equal(service.getExecution(execution.execution_id).state, 'RUNNING');
+
+  const { link } = await command('task', 'link', '--task-id', execution.task_id, '--material-id', material.material_id,
+    '--role', 'experience', '--request-id', 'link-m1');
+  assert.equal(link.material_id, material.material_id);
+  assert.equal(link.task_id, execution.task_id);
+  await finish('finish-t1');
+  const receipt = service.getExecutionFinish(execution.execution_id);
+  assert.equal(receipt.outcome, 'done');
+  assert.deepEqual(receipt.payload.material_ids, [material.material_id]);
+  await runtime.waitForExecutionRelease(execution.execution_id, { timeoutMs: 1_000 });
+  assert.equal(service.getTask(execution.task_id).state, 'DONE');
+});
+
 test('Workspace provenance records explicit uses and exposes affected revisions in history', async t => {
   const { guest, command, dispatch, bridge, context } = await workspaceFixture(t);
   const materialId = 'material:workspace-use';
