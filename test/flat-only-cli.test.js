@@ -60,7 +60,8 @@ syncBuiltinESMExports();`);
     ...(late ? ['--initial-bot-stagger-ms', '1200'] : ['--problem', 'fixture_0',
       '--bot-max-ms', '1800000', '--selection-timeout-ms', '360000', '--checker-timeout-ms', '180000']),
     '--experiment-root', root, '--experiment-dir', experiment, '--report-dir', reports, '--observability-metadata', observer],
-  { env: { PATH: process.env.PATH, PI_GPT_PROXY_BASE_URL: 'http://127.0.0.1:1/v1', PI_GPT_PROXY_API_KEY: 'local-fixture' } });
+  { env: { PATH: process.env.PATH, PI_PROVIDER: 'gpt_proxy', PI_MODEL: 'local-fixture',
+    PI_GPT_PROXY_BASE_URL: 'http://127.0.0.1:1/v1', PI_GPT_PROXY_API_KEY: 'local-fixture' } });
   t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
   let stderr = '';
   child.stderr.on('data', chunk => { stderr += chunk; });
