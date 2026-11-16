@@ -843,6 +843,7 @@ async function workspaceFixture(t, options = {}) {
   if (options.createMissionSubmissionStore) f.runtime.missionSubmissionStore = options.createMissionSubmissionStore({ ...f, context });
   const bridge = new ServicesBridge({ taskService: f.service, contextService: context, runtime: f.runtime, coreId: 'core-1',
     registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace, missionSubmissionStore: f.runtime.missionSubmissionStore, judgeService: options.createJudgeService?.(f.service, f.runtime) ?? options.judgeService }),
+    onWorkUnit: options.onWorkUnit,
     onTake: result => f.runtime.bindAgentExecution(result.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }) });
   await bridge.start();
   t.after(() => bridge.stop());
@@ -1384,18 +1385,22 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   const { LeanChecker } = await import('../src/judge/lean-adapter.js');
   const checkerIdentity = { checker_ref: 'lean', checker_version: 'test', environment_ref: 'test-project' };
   const builds = [];
+  const observed = [];
+  let holdBuild;
+  let judge;
   const createJudgeService = (service, runtime) => {
     const checker = new LeanChecker({ projectChecker: async ({ files, tree, startProcess }) => {
       if (Object.hasOwn(files, 'Outside.lean')) return { verdict: 'FAIL', diagnostic: 'Lean source is outside the project source directory' };
-      return startProcess(() => {
+      return startProcess(async () => {
         builds.push({ files, tree });
+        await holdBuild?.();
         return { verdict: 'PASS', checked_tree: tree, checked_paths: ['Helper.lean', 'Proof.lean'],
           warnings: ['Helper.lean: provisional proof'] };
       });
     } });
     checker.preflight = async () => ({ status: 'healthy', checker_process_status: 'completed',
       evidence: { input_binding_verified: true, toolchain_version_verified: true, checker_version_verified: true } });
-    const judge = new JudgeService(service.db, { taskService: service, checker,
+    judge = new JudgeService(service.db, { taskService: service, checker,
       readProjectRevision: reference => runtime.missionWorkspace.exportRevision(reference), fixtureManifest: {
         fixture_id: 'project-source', putnambench_commit: 'a'.repeat(40), problem_file: 'input.txt',
         problem_file_hash: 'b'.repeat(64), lean_toolchain: 'leanprover/lean4:v4.33.1', mathlib_version: 'test', ...checkerIdentity,
@@ -1403,9 +1408,12 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
     service.setCheckResultReader(id => judge.getCheckResult(id));
     return judge;
   };
-  const { command, dispatch, guest, bridge } = await workspaceFixture(t, { createJudgeService,
+  const { command, dispatch, guest, bridge, execution } = await workspaceFixture(t, { createJudgeService,
     runtimeOptions: { workspaceProjectCheck: true },
     completionContract: { workspace_delivery: { paths: ['Proof.lean'], check: checkerIdentity } },
+    onWorkUnit: ({ operation, taskId, executionId, result }) => {
+      if (operation === 'workspace_check') observed.push({ taskId, executionId, result });
+    },
   });
   guest.files['Proof.lean'] = Buffer.from('import Helper\ntheorem proof : True := helper');
   guest.files['Helper.lean'] = Buffer.from('theorem helper : True := True.intro');
@@ -1419,8 +1427,10 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   assert.equal(project.workspace_input.path, undefined);
   assert.deepEqual(project.build, { checked_count: 2, checked_paths: ['Helper.lean', 'Proof.lean'],
     warnings: ['Helper.lean: provisional proof'] });
+  assert.deepEqual(observed, [{ taskId: execution.task_id, executionId: execution.execution_id, result: project }]);
   assert.equal(String(builds[0].files['Helper.lean']), 'theorem helper : True := True.intro');
   assert.deepEqual(await command('judge', 'result', '--request-key', 'project-check'), project);
+  assert.equal(observed.length, 1);
   const finish = checkId => command('task', 'finish', '--outcome', 'done', '--workspace-revision', saved.revision, '--check-result-id', checkId);
   await assert.rejects(finish(project.check_result_id), /did not pass for this delivery/);
   await assert.rejects(bridge.call({ operation: 'workspace_check', payload: { revision: saved.revision, files: {} } }), { code: 'INVALID_CONTRACT' });
@@ -1438,6 +1448,7 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
     const result = await command('judge', 'check', '--revision', revision, '--path', path);
     assert.equal(result.result_class, 'request_failure');
     assert.equal(result.diagnostic_code, diagnosticCode);
+    assert.deepEqual(observed.at(-1), { taskId: execution.task_id, executionId: execution.execution_id, result });
     assert.equal(sanitizedCheck(result, {}).diagnostic_class === 'forbidden_placeholder', forbidden);
   };
   await observedFailure('lakefile.lean', partial.revision, 'project_path_uncovered');
@@ -1447,7 +1458,25 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   const invalidRoot = await dispatch('save', 'project-invalid-layout');
   await observedFailure('Proof.lean', invalidRoot.revision, 'project_input_invalid');
   assert.notEqual(sanitizedCheck({ diagnostic_code: 'checker_request_rejected' }, {}).diagnostic_class, 'forbidden_placeholder');
-  assert.equal((await finish(scoped.check_result_id)).workspace_delivery.check.checked_tree, saved.git_tree);
+
+  const started = Promise.withResolvers();
+  const settle = Promise.withResolvers();
+  holdBuild = () => { started.resolve(); return settle.promise; };
+  const fencedResponse = assert.rejects(bridge.call({ operation: 'workspace_check', operation_id: 'late-project-check',
+    payload: { revision: saved.revision, path: 'Helper.lean' } }), { code: 'NOT_ALLOWED', message: 'Bridge is stopping' });
+  await started.promise;
+  let stopping;
+  try {
+    assert.equal((await finish(scoped.check_result_id)).workspace_delivery.check.checked_tree, saved.git_tree);
+    stopping = bridge.stop();
+  } finally { settle.resolve(); }
+  await fencedResponse;
+  await stopping;
+  const late = judge.getByRequestKey('late-project-check');
+  assert.equal(late.status, 'RECEIVED');
+  assert.equal(observed.at(-1).result.check_result_id, late.check_result_id);
+  assert.equal(observed.at(-1).executionId, execution.execution_id);
+  assert.equal(observed.at(-1).result.workspace_input.git_tree, saved.git_tree);
 });
 
 const mergeCheckerIdentity = { checker_ref: 'controlled-tree', checker_version: '1', environment_ref: 'network-disabled-test' };

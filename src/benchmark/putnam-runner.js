@@ -1235,7 +1235,8 @@ export function projectReport(state, startedAt, deadline) {
   const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
   const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
   const checkCount = cores.reduce((count, core) => count + core.checks.length, 0);
-  const madeProgress = workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || checkCount > 0;
+  const legacyCheckObserved = cores.some(core => core.checks.some(check => check.workspace_input?.check_mode !== 'lean-project'));
+  const madeProgress = workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || legacyCheckObserved;
   const parallelism = state.parallelism.snapshot({ endedAt });
   const checkerPreflights = state.judgeService.listCheckerPreflights().map((row) => ({
     preflight_key: row.preflight_key,
@@ -2521,31 +2522,32 @@ async function createProjectState(problem, config, options) {
             core.stateRef?.requestIdentityWake?.();
           } else if (operation === 'workspace_check') {
             const check = result?.check_result ?? result?.checkResult ?? result ?? {};
+            const projectCheck = check.workspace_input?.check_mode === 'lean-project';
+            if (projectCheck && core.checks.some(prior => prior.check_result_id === check.check_result_id)) return;
             const candidateMaterial = {
-              material_id: payload?.workspace_source_id ?? check.workspace_source_id ?? null,
-              content_hash: check.content_hash ?? null,
+              material_id: check.workspace_source_id ?? payload?.workspace_source_id ?? null,
+              content_hash: check.workspace_input?.content_hash ?? check.content_hash ?? null,
             };
             const observedCheck = sanitizedCheck(check, candidateMaterial);
-            core.checks.push({
-              ...observedCheck,
-              source_path: payload?.path ?? null,
-              ...(check.build ? { workspace_input: check.workspace_input, build: check.build } : {}),
-            });
-            if (observedCheck.diagnostic_class === 'forbidden_placeholder') {
+            const sourcePath = check.workspace_input?.path ?? payload?.path ?? null;
+            const projectEvidence = projectCheck ? { task_id: taskId, execution_id: executionId, workspace_input: check.workspace_input, build: check.build } : {};
+            core.checks.push({ ...observedCheck, source_path: sourcePath, ...projectEvidence });
+            if (!projectCheck && observedCheck.diagnostic_class === 'forbidden_placeholder') {
               core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: check.material_hash ?? null });
             }
             core.observe({
               source: 'judge-service', kind: 'workspace_checked', visibility: 'operator',
               taskId, executionId, coreId: `core-${core.index}`,
               payload: {
-                candidate_path: payload?.path ?? result?.path ?? null,
-                workspace_source_id: payload?.workspace_source_id ?? result?.workspace_source_id ?? null,
+                candidate_path: sourcePath,
+                workspace_source_id: candidateMaterial.material_id,
                 check_result_id: check.check_result_id ?? result?.check_result_id ?? null,
                 verdict: check.verdict ?? result?.verdict ?? null,
-                ...(check.build ? { workspace_input: check.workspace_input, build: check.build } : {}),
+                ...(projectCheck ? { result_class: check.result_class, diagnostic_code: check.diagnostic_code,
+                  workspace_input: check.workspace_input, build: check.build } : {}),
               },
             });
-            core.parallelism.recordWorkUnit({
+            if (!projectCheck) core.parallelism.recordWorkUnit({
               task_id: taskId,
               execution_id: executionId,
               core: core.index,
