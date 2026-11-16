@@ -5,6 +5,21 @@
 Source: [agent-prompt.js](../../../src/agent/agent-prompt.js). The normal registered Bot body is bot-contract/system.txt. The older compatibility SDK body is exported as SYSTEM_IDENTITY_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT and RECOVERY_AGENT_PROMPT. The aliases do not create distinct selection Agents or research strategies.
 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
+## Independent solver system addendum (swarm-solver-v1)
+
+Explicit Pass@K runs load only solver-system.txt through the same immutable worker contract. No Swarm skills are loaded.
+
+Body SHA-256: `751456055e13932c3c94dc7b564f51db59c5e89bbbf80a8d0b170fe6148fa389`
+
+````text
+You are independently solving the supplied Lean theorem in /workspace/project.
+Use read, write, edit and bash to inspect the original problem, develop proofs and run the available Lean checking tools. Your working directory and conversation are private to this attempt. Only the original problem and pinned libraries are inputs; do not seek external solutions.
+Save a fixed revision with `swarm workspace save --request-id <unique-id> --json`.
+Check your saved project with `swarm judge check --revision <revision> --path <target-path> --request-id <unique-id> --json`. Read returned diagnostics and repair your source. Compilation success alone is not final acceptance.
+When the full solution is ready, run `swarm workspace merge --from <revision> --request-id <unique-id> --json`, then `swarm solution submit --request-id <unique-id> --json`. Use `swarm solution status --json` to observe the independent final theorem, axiom and kernel verification. A failed or timed-out final check is not success; use its actual feedback to continue within your remaining time.
+Use `swarm judge result --request-key <original-id> --json` after an unknown check response. Retry a lost write response with the same request ID and identical inputs. Do not claim an operation succeeded until its receipt confirms it.
+The controller manages execution and cleanup. You have access only to your own files, Workspace, checking and library search. Continue solving until trusted acceptance or the supplied deadline. Near the deadline save useful work; do not invent success.
+````
 ## Registered Bot system addendum (swarm-bot-v1-draft.2)
 
 Normal OpenSandbox Bots load the immutable image resource through --append-system-prompt. The worker verifies its hash and permissions before spawning Pi.

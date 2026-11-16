@@ -5,11 +5,15 @@
   "sources": [
     {
       "path": "src/agent/bot-contract.js",
-      "sha256": "61cc7f5f7ef39f71b2c2317742c3f74cb6d8a47888308cbc37415c91a8a15c02"
+      "sha256": "8b95888f76146b891df23c4f9e2734af92ee2afa572a475e9f68eb462234945d"
     },
     {
       "path": "src/agent/bot-contract/system.txt",
       "sha256": "304c03fb6c5e7e5e53980adf1b2977ae57f7d51215cf6412733f9b8d71ddff90"
+    },
+    {
+      "path": "src/agent/bot-contract/solver-system.txt",
+      "sha256": "8ebb2275155bf6a64f6700659e4a6b487e42771f371182bcfaedcede353a1a11"
     },
     {
       "path": "src/agent/bot-contract/plan-task.md",
@@ -41,7 +45,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "b80c43ffd54f7f0b2c829df37e1bf1c1ad71d833f5fd98844c414f8e343c2ef7"
+      "sha256": "87073a340338c492b099745fbbaf171167936e96b18d7ca366705d3169bbb52b"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -53,15 +57,15 @@
     },
     {
       "path": "src/agent/opensandbox-agent-adapter.js",
-      "sha256": "29ce2f3c4c28168bf9f9ebf6c9e0e294a59ae2025cb734cd37fcc751fa528fa6"
+      "sha256": "42ac45231228b74c94f41baa0e07bb62a0734ed002fa77d52252cfc6552193ec"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "da9f5e92653b7f87bb4a125f62bcc860984430e9b542594bcfc8c3ceaf2af487"
+      "sha256": "13de59f1807c4541ce366f0d746cc6f8d8c1eed403d6eec142c0445ec6ac454d"
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "bf849971cb4a5e03daf7ed464d244598f9417f448afe3ca85e1b924fa236c735"
+      "sha256": "89b9ce80c31ee6afa43eb3adf4dc79f775d454d1f00f35ffe001b701f54214eb"
     },
     {
       "path": "src/runtime/identity-task-loop.js",
@@ -128,31 +132,31 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 664,
+      "line": 669,
       "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #notificationText",
-      "line": 2527,
+      "line": 2528,
       "sha256": "91d762ef38719a12b9cfab2a135e6db814d9ef0d90609916d1e34374c39c9369"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #recoveryPrompt",
-      "line": 3158,
+      "line": 3159,
       "sha256": "9ba0d06fb75945a5e5e3fd4a5768df5c449818e7f6abbc0b5879feb6941cf61b"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "        const prompt = ",
-      "line": 1787,
+      "line": 1788,
       "sha256": "7324112e1ed5f71238d9bf5ac227047ab65eb0e32c8e609355b9959928503c2f"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "              await active.session.prompt(\n                ",
-      "line": 2991,
+      "line": 2992,
       "sha256": "aa531fc52ff79a137d3465b431a874606d420f627f5d4723998fb1ab0bc8dec6"
     },
     {
@@ -165,7 +169,7 @@
   "prompt_send_sites": [
     {
       "path": "src/agent/opensandbox-agent-adapter.js",
-      "line": 373,
+      "line": 377,
       "expression": "await session.prompt(agentPrompt, { timeoutMs: 30_000 });"
     },
     {
@@ -175,74 +179,74 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 432,
+      "line": 437,
       "expression": "const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 744,
+      "line": 767,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1792,
+      "line": 1793,
       "expression": "active.promptChain = active.promptChain.catch(() => undefined).then(() => active.session.prompt?.(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' }));"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2513,
+      "line": 2514,
       "expression": "await session.prompt(dynamic.prompt, { timeoutMs: 30_000 });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2578,
-      "expression": "await active.session.prompt?.(this.taskService.getBot(active.execution.owner_ref) ? buildBotNotification(notification) : this.#notificationText(notification), {"
+      "line": 2579,
+      "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(this.#getExecution(active.execution.execution_id)) : this.taskService.getBot(active.execution.owner_ref) ? buildBotNotification(notification) : this.#notificationText(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2963,
-      "expression": "await active.session.prompt?.(buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
+      "line": 2964,
+      "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(current) : buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2991,
+      "line": 2992,
       "expression": "await active.session.prompt("
     }
   ],
   "fixed_instruction_fields": [
     {
       "path": "src/agent/services-bridge.js",
-      "line": 106,
+      "line": 111,
       "field": "action",
       "sha256": "a5e4874eff88bd459015734cb36e2d7e5cbb7a9312337c2df58750686d29a4f3"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 107,
+      "line": 112,
       "field": "hint",
       "sha256": "78b0d192a0cf7b1c85211b38fdcc05b704665f974c6108666838d664cfa210c7"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 137,
+      "line": 142,
       "field": "action",
       "sha256": "db7537154d8f0502c90a002ac7beb7277abf6956a1eb41f091912c0ee5ddd35a"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 138,
+      "line": 143,
       "field": "hint",
       "sha256": "673e95051277d00105789af93b179d303c03fa05c6f4059045488ca6619bbdbd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 644,
+      "line": 664,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 651,
+      "line": 671,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -346,7 +350,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "d763dc80cbad61f726b6a6d4970ac6a9ba0b74107638b0d95a9b3fdca0bcd962"
+      "sha256": "c50cdc77843d5041d9421e6e4dbb97d8355c9a7ce6dc6afe49d8e15e45f4d0e4"
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
@@ -354,7 +358,7 @@
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "bd6f56f2efae5281e698eb172a4d27d72484537be1bc7c4b6e7db8290f48fb1c"
+      "sha256": "9464677e7e7deeeb6d97999f6563f2443c7872bf8913e99f9af8c218eb6f851e"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
@@ -370,7 +374,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "8b7ff6cfdd29a9603e6ae3fbd393b18d4b6c72e83a0a4d27a10ee0991e921c9b"
+      "sha256": "3814949fd879777eb0d912a5a80f239f994bc241d9a65495e24917c4b34bcc0c"
     }
   ]
 }

@@ -217,6 +217,14 @@
       "role": "Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface"
     },
     {
+      "path": "scripts/preview-migration.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/09-known-boundaries.md"
+      ],
+      "role": "Read-only fresh-start migration preview and verified restore rehearsal"
+    },
+    {
       "path": "scripts/project-install.mjs",
       "category": "runtime and execution",
       "chapters": [
@@ -233,20 +241,21 @@
       "role": "Immutable same-UID process inspection before changing paused project paths"
     },
     {
-      "path": "scripts/preview-migration.mjs",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/09-known-boundaries.md"
-      ],
-      "role": "Read-only fresh-start migration preview and verified restore rehearsal"
-    },
-    {
       "path": "scripts/prune-private-audit.mjs",
       "category": "observation and analysis",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
       ],
       "role": "Operator deletion task for expired managed private audit directories"
+    },
+    {
+      "path": "scripts/review-mission.mjs",
+      "category": "Mission and Task",
+      "chapters": [
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Owner-local CLI for an exact fixed manual Mission review receipt"
     },
     {
       "path": "scripts/run-putnambench-benchmark.mjs",
@@ -448,6 +457,15 @@
       "role": "Versioned registered Bot contract, immutable skill resources and dynamic message composition"
     },
     {
+      "path": "src/agent/bot-contract/solver-system.txt",
+      "category": "agent prompts and tools",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Immutable independent solver system addendum without collaboration skills"
+    },
+    {
       "path": "src/agent/bot-contract/system.txt",
       "category": "Agent and prompts",
       "chapters": [
@@ -581,6 +599,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Core/turn intervals, readiness samples, utilization and work-unit projections"
+    },
+    {
+      "path": "src/benchmark/pass-k.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Compose K independent one-Core Mission runs with a fixed observation window and trusted acceptance aggregation"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
@@ -952,24 +979,6 @@
       "role": "Per-Core discovery/take supervisor, rescans, waiting and wake events"
     },
     {
-      "path": "src/runtime/mission-coordination.js",
-      "category": "Mission acceptance and checker",
-      "chapters": [
-        "docs/architecture/03-mission-task.md",
-        "docs/architecture/04-services.md"
-      ],
-      "role": "Trusted Task/Context/Mission acceptance assembly and observed input validation"
-    },
-    {
-      "path": "scripts/review-mission.mjs",
-      "category": "Mission and Task",
-      "chapters": [
-        "docs/architecture/03-mission-task.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Owner-local CLI for an exact fixed manual Mission review receipt"
-    },
-    {
       "path": "src/runtime/manual-mission-review.js",
       "category": "Mission and Task",
       "chapters": [
@@ -977,6 +986,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Explicit bounded manual Mission checker and immutable operator decision ledger"
+    },
+    {
+      "path": "src/runtime/mission-coordination.js",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Trusted Task/Context/Mission acceptance assembly and observed input validation"
     },
     {
       "path": "src/runtime/mission-submission.js",

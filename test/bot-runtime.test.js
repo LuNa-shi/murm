@@ -2144,3 +2144,34 @@ test('Task main project checks require build coverage of every declared delivery
     });
   }
 });
+
+test('solver control binds a real Task and Execution while its Bot credential cannot take or finish', async t => {
+  const { service, runtime, startSession } = await fixture(t, { agentMode: 'solver' });
+  const context = new ContextService(service.db, { taskService: service });
+  const task = service.createTask({ mission_id: 'mission:bots', summary: 'Solve the entire original problem independently', expected_output: 'Verified solution', acceptance_conditions: ['Original theorem verified'], workspace: { enabled: true } }, makeEnvelope({ actorRef: 'operator:passk' })).task;
+  let session;
+  const bridge = new ServicesBridge({ agentMode: 'solver', taskService: service, contextService: context, runtime, coreId: 'core-1',
+    registry: createBuiltinServiceRegistry({ taskService: service, contextService: context }),
+    onTake: async take => {
+      const bound = await runtime.bindAgentExecution(take.execution.execution_id, session, { sendInitialPrompt: false });
+      take.execution = bound.execution;
+    },
+  });
+  await bridge.start();
+  t.after(() => bridge.stop());
+  const started = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: 60_000,
+    startSession: async options => { bridge.startBotIdentity(options.bot.bot_id); return startSession(options); },
+  });
+  session = started.session;
+  const take = { operation: 'task_take', operation_id: 'solver-control-take', payload: { task_id: task.task_id } };
+  await assert.rejects(bridge.call(take), error => error.code === 'NOT_ALLOWED');
+  const result = await bridge.controlCall(take);
+  assert.equal(service.getExecution(result.execution.execution_id).state, 'RUNNING');
+  assert.equal(service.getBot(started.bot.bot_id).execution_id, result.execution.execution_id);
+  assert.equal(service.getExecution(result.execution.execution_id).owner_ref, started.bot.bot_id);
+  const finish = { operation: 'task_finish', operation_id: 'solver-control-finish', payload: { outcome: 'incomplete', summary: 'Diagnostic complete without a proof' } };
+  await assert.rejects(bridge.call(finish), error => error.code === 'NOT_ALLOWED');
+  await bridge.controlCall(finish);
+  assert.equal(service.getBot(started.bot.bot_id).state, 'CLOSED');
+  assert.equal(session.closed, true);
+});

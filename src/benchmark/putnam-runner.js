@@ -27,7 +27,7 @@ import { verifyBenchmarkFixtureCheckout, readBenchmarkFixture, verifyBenchmarkRu
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
-import { BOT_SYSTEM_PROMPT, BOT_CONTINUATION_MESSAGE, buildBotContinuationMessage, BOT_TOOL_NAMES, buildBotStartupMessage, botServiceDirectory } from '../agent/bot-contract.js';
+import { agentContract, buildSolverContinuationMessage, SOLVER_CONTINUATION_MESSAGE, BOT_SYSTEM_PROMPT, BOT_CONTINUATION_MESSAGE, buildBotContinuationMessage, BOT_TOOL_NAMES, buildBotStartupMessage, botServiceDirectory } from '../agent/bot-contract.js';
 import { AGENT_ROLES } from '../agent/capability-profile.js';
 import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builtin-registry.js';
 import { createHttpJsonAdapter, createInProcessAdapter } from '../sdk/service-adapter.js';
@@ -62,6 +62,11 @@ class SerialTaskCreateAdmission {
   }
 }
 function assertCurrentParallelConfiguration(options) {
+  if (options.agentMode !== undefined && !['swarm', 'solver'].includes(options.agentMode)) throw new TypeError('Unknown agent mode');
+  if (options.agentMode === 'solver') {
+    if (options.cores !== 1 || !Number.isSafeInteger(options.attemptIndex) || options.attemptIndex < 1) throw new TypeError('Solver attempts require one Core and an explicit attemptIndex');
+    return;
+  }
   if (Object.hasOwn(options, 'parallelMode')) throw new TypeError('parallelMode has been retired; omit it to use four independent Core loops');
   if (options.cores !== undefined && options.cores !== 4) throw new TypeError('Benchmark projects require four independent Core loops');
   const stagger = options.initialBotStaggerMs ?? 0;
@@ -427,7 +432,7 @@ export async function runTurn(core, prompt, timeoutMs) {
       const bot = core.runtime.taskService.getBot(execution.owner_ref);
       if (bot && (bot.state !== 'ACTIVE' || bot.execution_id !== boundExecutionId)) return;
       core.runtime.taskService.assertBotDeadline(execution.owner_ref);
-      prompt = buildBotContinuationMessage(execution, { ordinary: prompt });
+      prompt = core.startConfig?.options.agentMode === 'solver' ? buildSolverContinuationMessage(execution, prompt) : buildBotContinuationMessage(execution, { ordinary: prompt });
     }
     const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });
     if (response?.data?.disposition !== 'handled') {
@@ -695,7 +700,25 @@ function discoveryOpen(core) {
  * already-created take from this same identity and never asks another
  * process to choose on its behalf.
  */
+async function takeSolverTask(core) {
+  if (!discoveryOpen(core) || core.taskId || core.executionId || core.solverAttemptStarted) return { take_deferred: true };
+  // One start per predetermined sample; a failed trajectory must not become a fresh sample.
+  core.solverAttemptStarted = true;
+  const session = await ensureAgentSession(core);
+  if (!session || !discoveryOpen(core)) return { no_work: true };
+  const taskId = core.stateRef.initialTaskIds[0];
+  const take = await core.bridge.controlCall({ operation: 'task_take', operation_id: `solver-take:${core.botId}`, payload: { task_id: taskId } });
+  const prompt = `${SOLVER_CONTINUATION_MESSAGE}\n${JSON.stringify({ problem: core.stateRef.problem.id, target_path: core.stateRef.problem.problem_file, project_path: '/workspace/project', deadline: new Date(core.stateRef.runDeadlineAt).toISOString() })}`;
+  scheduleTurn(core, prompt, core.startConfig.options.turnTimeoutMs ?? 540_000);
+  return take;
+}
+
+function continuation(core) {
+  return core.startConfig?.options.agentMode === 'solver' ? SOLVER_CONTINUATION_MESSAGE : buildBotContinuationMessage(core.runtime.taskService.getExecution(core.executionId));
+}
+
 export async function takeTaskWithAgent(core, candidates) {
+  if (core.startConfig?.options.agentMode === 'solver') return takeSolverTask(core);
   // An active Execution owns the identity. Never open a parallel discovery
   // turn or ask the model to take a second responsibility.
   if (!discoveryOpen(core) || core.taskId || core.executionId) return { take_deferred: true };
@@ -1263,7 +1286,7 @@ export function projectReport(state, startedAt, deadline) {
     schema_version: 1,
     protocol: {
       project_isolation: true,
-      core_count: 4,
+      core_count: state.cores.length,
       initial_bot_stagger_ms: state.initialBotStaggerMs ?? 0,
       project_parallelism: state.projectParallelism ?? 1,
       repository_commit: state.repositoryCommit,
@@ -1277,7 +1300,7 @@ export function projectReport(state, startedAt, deadline) {
       workspace_id: state.workspaceId,
       workspace_main_revision: '0.1',
       candidate_model: 'workspace_file_ref',
-      initial_task_count: 0,
+      initial_task_count: state.initialTaskIds.length,
       proposed_task_count: proposedTaskCount,
       bot_max_ms: state.botMaxMs,
       selection_timeout_ms: state.selectionTimeoutMs,
@@ -1364,6 +1387,8 @@ export function projectReport(state, startedAt, deadline) {
         candidate_check_count: checkCount,
       },
       solved: state.missionSubmissionStore.isAccepted(state.missionId),
+      accepted_at: state.solvedAt === null ? null : new Date(state.solvedAt).toISOString(),
+      attempt_index: state.attemptIndex ?? null,
       solved_by_core: state.solvedBy,
       solved_at_ms: state.solvedAt === null ? null : state.solvedAt - startedAt,
       sandbox: state.sandboxManager?.snapshot() ?? null,
@@ -1514,12 +1539,16 @@ async function createProjectState(problem, config, options) {
   }
   const normalFlow = true; // The Mission Task contract always uses typed normal-flow lifecycle.
   const runId = options.runId ?? randomUUID();
+  const solver = options.agentMode === 'solver';
+  const coreCount = solver ? 1 : 4;
+  const artifactKey = solver ? `${problem.id}-attempt-${options.attemptIndex}` : problem.id;
+  const contract = agentContract(solver ? 'solver' : 'swarm');
   const startedAt = options.startedAt ?? Date.now();
   const experimentRoot = resolve(options.experimentDir ?? options.reportDir);
   const reportRoot = resolve(options.reportDir ?? join(experimentRoot, 'reports'));
-  const projectDir = join(experimentRoot, 'state', 'projects', problem.id);
-  const reportProjectDir = join(reportRoot, problem.id);
-  const workspaceRoot = join(experimentRoot, 'workspaces', 'projects', problem.id);
+  const projectDir = join(experimentRoot, 'state', 'projects', artifactKey);
+  const reportProjectDir = join(reportRoot, artifactKey);
+  const workspaceRoot = join(experimentRoot, 'workspaces', 'projects', artifactKey);
   const missionWorkspaceRoot = join(projectDir, 'mission-workspace');
   const missionWorkspace = new MissionWorkspace({ rootDir: missionWorkspaceRoot });
   let missionSubmissionStore = null;
@@ -1611,7 +1640,7 @@ async function createProjectState(problem, config, options) {
   await sandboxManager.preflight({ timeoutMs: sandboxConfig.preflightTimeoutMs ?? 20_000 })
     .catch(error => { assertInitializing(); throw error; });
   assertInitializing();
-  const logRoot = join(experimentRoot, 'logs', 'projects', problem.id);
+  const logRoot = join(experimentRoot, 'logs', 'projects', artifactKey);
   await Promise.all([
     mkdir(projectDir, { recursive: true }),
     mkdir(reportProjectDir, { recursive: true }),
@@ -1711,7 +1740,7 @@ async function createProjectState(problem, config, options) {
     observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
     const mission = taskService.createMission({
       mission_id: `mission:${problem.id}:${runId}`,
-      goal: `Solve ${problem.id} through independent, shared Task work.`,
+      goal: solver ? `Solve ${problem.id} independently.` : `Solve ${problem.id} through independent, shared Task work.`,
       ...(workspaceMergeChecker ? { merge_required_check: workspaceMergeChecker.identity } : {}),
       acceptance_conditions: {
         project: problem.id,
@@ -1819,7 +1848,7 @@ async function createProjectState(problem, config, options) {
     const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore });
     const router = new ServicesRouter({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore, registry: routerRegistry, logger: routerLogger });
     const owner = sdk(router, { actorRef: 'owner:benchmark' });
-    // Every initial Task is proposed by a Bot after the zero-Task Mission starts.
+    // Swarm starts empty; Pass@K seeds one complete responsibility through Task Service.
     observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: {
       problem_id: problem.id,
       task_model: 'flat',
@@ -1829,7 +1858,15 @@ async function createProjectState(problem, config, options) {
     } });
     observationStore.append({ experimentId: runId, source: 'runtime', kind: 'mission_started_zero_tasks', payload: { mission_id: mission.mission_id, workspace_id: publicWorkspace.workspace_id } });
     const initialTasks = [];
-    observationStore.registerExperiment({ experimentId: runId, status: 'RUNNING', metadata: { initial_task_count: 0, proposed_task_count: 0, workspace_id: publicWorkspace.workspace_id } });
+    if (solver) initialTasks.push(taskService.createTask({
+      mission_id: mission.mission_id, summary: `Independently solve the complete original theorem ${problem.id}`,
+      goal: mission.goal, expected_output: 'Complete Lean proof accepted by the fixed final verifier',
+      acceptance_conditions: ['The original theorem passes the fixed theorem, axiom and kernel verification'],
+      workspace: { enabled: true }, base_revision: publicWorkspace.main_revision,
+      timebox_ms: options.timeboxMs ?? 3_600_000,
+    }, makeEnvelope({ actorRef: 'owner:passk', operationId: `solver-task:${runId}` })).task);
+
+    observationStore.registerExperiment({ experimentId: runId, status: 'RUNNING', metadata: { initial_task_count: initialTasks.length, proposed_task_count: 0, workspace_id: publicWorkspace.workspace_id } });
     observationStore.append({
       experimentId: runId,
       source: 'runtime',
@@ -1837,13 +1874,13 @@ async function createProjectState(problem, config, options) {
       taskId: null,
       payload: {
         problem_id: problem.id,
-        core_count: 4,
+        core_count: coreCount,
         initial_bot_stagger_ms: options.initialBotStaggerMs ?? 0,
         timebox_ms: options.timeboxMs ?? 60 * 60_000,
         task_model: 'flat',
         mission_id: mission?.mission_id ?? null,
         workspace_id: publicWorkspace.workspace_id,
-        initial_task_count: 0,
+        initial_task_count: initialTasks.length,
         proposed_task_count: 0,
         normal_flow: normalFlow,
       },
@@ -1864,13 +1901,14 @@ async function createProjectState(problem, config, options) {
         isStopping: () => projectState?.stopping === true });
       await modelAccess.start();
     }
-    const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt });
-      for (let index = 1; index <= 4; index += 1) {
+    const parallelism = new CoreParallelismTracker({ coreCount, startedAt });
+      for (let index = 1; index <= coreCount; index += 1) {
       const coreDir = join(workspaceRoot, `core-${index}`);
       await mkdir(coreDir, { recursive: true });
       assertInitializing();
       const childEnv = { ...process.env };
       const adapter = new OpenSandboxAgentAdapter({
+          agentMode: solver ? 'solver' : 'swarm',
           sandboxManager,
           modelAccess,
           networkIsolation,
@@ -1884,13 +1922,14 @@ async function createProjectState(problem, config, options) {
           env: childEnv,
           agentEnvironment: sandboxConfig.agentEnvironment ?? {},
           secretEnv: sandboxConfig.secretEnvironment ?? {},
-          systemPrompt: BOT_SYSTEM_PROMPT,
+          systemPrompt: contract.systemPrompt,
         });
       // All reusable slots must be able to resume an Execution created by any
       // other slot. The physical Workspace is execution-owned and unique, but
       // its Runtime root is project-wide rather than core-private.
       const workspaceManager = new WorkspaceManager({ rootDir: workspaceRoot });
       const runtime = new Runtime({
+        agentMode: solver ? 'solver' : 'swarm',
         taskService,
         contextService,
         workspaceManager,
@@ -1913,7 +1952,7 @@ async function createProjectState(problem, config, options) {
         // Keep transient provider/session failures on the same durable
         // Execution. Fencing after one retry lets a recovered identity start a
         // second Task and invalidates a bounded formal run.
-        maxRecoveryAttempts: options.maxRecoveryAttempts ?? 5,
+        maxRecoveryAttempts: solver ? 0 : options.maxRecoveryAttempts ?? 5,
         // Execution, Task, Bot and Mission limits intersect. Bot lifetime starts
         // before discovery and cannot reset when take becomes active.
         executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
@@ -2038,6 +2077,7 @@ async function createProjectState(problem, config, options) {
         payload: { state: 'IDLE', reason: 'core_ready' },
       });
       const bridge = new ServicesBridge({
+        agentMode: solver ? 'solver' : 'swarm',
         taskService,
         contextService,
         runtime,
@@ -2052,7 +2092,7 @@ async function createProjectState(problem, config, options) {
         // and prevents the retired Selection role from becoming a second Agent.
         role: AGENT_ROLES.BOUND,
         taskCreateMutex,
-        agentPrompt: BOT_SYSTEM_PROMPT,
+        agentPrompt: contract.systemPrompt,
         // OpenSandbox workers cannot reach the controller's loopback address.
         // Deployments that expose the bridge to a provider network must bind it
         // explicitly and advertise a reachable host with `{port}`.
@@ -2111,7 +2151,7 @@ async function createProjectState(problem, config, options) {
             // another initial prompt from inside task_take would race the
             // in-flight RPC and violate the single-turn ordering contract.
             sendInitialPrompt: false,
-            agentPrompt: BOT_SYSTEM_PROMPT,
+            agentPrompt: contract.systemPrompt,
           });
           // Publish a usable receipt only after Runtime binding succeeds.
           take.execution = bound.execution;
@@ -2136,7 +2176,7 @@ async function createProjectState(problem, config, options) {
               latency.condition_to_resumed_turn_ms = Math.max(0, firstTurnAt - eligibilityAt);
             }
           }
-          if (boundSession && core.runtime.hasActiveExecution(take.execution.execution_id)) {
+          if (!solver && boundSession && core.runtime.hasActiveExecution(take.execution.execution_id)) {
             core.turnInFlight = true;
             let boundTurnPromise;
             boundTurnPromise = (async () => {
@@ -2591,6 +2631,8 @@ async function createProjectState(problem, config, options) {
       config,
       provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER ?? null,
       model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL ?? null,
+      agentMode: solver ? 'solver' : 'swarm',
+      attemptIndex: options.attemptIndex ?? null,
       timeboxMs: options.timeboxMs ?? 60 * 60_000,
       initialBotStaggerMs: options.initialBotStaggerMs ?? 0,
       signal: options.signal,
@@ -2797,7 +2839,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
   // successful take. Keep that ownership deadline at least as long as the
   // durable Runtime deadline; a turn timeout is only the per-prompt bound.
   const executionTimeoutMs = state.executionTimeoutMs;
-  const basePrompt = core => buildBotContinuationMessage(core.runtime.taskService.getExecution(core.executionId));
+  const basePrompt = continuation;
   state.identityLoopEvents = state.identityLoopEvents ?? [];
   state.identityLoops = state.cores.map((core) => {
     const loop = new IdentityTaskLoop({
@@ -3049,10 +3091,15 @@ async function executeBenchmarkProject(state, problem, config, options) {
             beginMissionCloseout(state, accepted.submissions.find(row => row.state === 'accepted'));
           }
           const remaining = Math.min(deadline, state.missionCloseoutDeadline) - Date.now();
+          if (state.agentMode === 'solver') {
+            for (const core of state.cores) if (core.executionId && state.taskService.getExecution(core.executionId)?.state === 'RUNNING') {
+              await core.bridge.controlCall({ operation: 'task_finish', operation_id: `solver-finish:${core.executionId}`, payload: { outcome: 'done', summary: 'Fixed solution accepted by the trusted final verifier' } });
+            }
+          }
           const active = state.cores.filter(core => core.executionId && state.taskService.getExecution(core.executionId)?.state === 'RUNNING');
           if (!active.length || remaining <= 0) break;
           for (const core of active) if (!core.turnInFlight && !core.recoveryInFlight) {
-            scheduleTurn(core, buildBotContinuationMessage(state.taskService.getExecution(core.executionId)), Math.min(turnTimeoutMs, remaining));
+            scheduleTurn(core, continuation(core), Math.min(turnTimeoutMs, remaining));
           }
           continue;
         }
@@ -3138,13 +3185,13 @@ async function executeBenchmarkProject(state, problem, config, options) {
   return report;
 }
 
-async function writeUnavailableProjectReport(problem, options, error, { operatorStopped = false } = {}) {
-  const parallelism = new CoreParallelismTracker({ coreCount: 4, startedAt: 0 }).snapshot({ endedAt: 0 });
+export async function writeUnavailableProjectReport(problem, options, error, { operatorStopped = false } = {}) {
+  const parallelism = new CoreParallelismTracker({ coreCount: options.agentMode === 'solver' ? 1 : 4, startedAt: 0 }).snapshot({ endedAt: 0 });
   const report = {
     schema_version: 1,
     protocol: {
       project_isolation: true,
-      core_count: 4,
+      core_count: options.agentMode === 'solver' ? 1 : 4,
       initial_bot_stagger_ms: options.initialBotStaggerMs ?? 0,
       project_parallelism: options.projectParallelism ?? 1,
       task_model: 'flat',
@@ -3170,7 +3217,7 @@ async function writeUnavailableProjectReport(problem, options, error, { operator
     error: { code: operatorStopped ? 'BENCHMARK_OPERATOR_STOPPED' : error.code ?? error.name, class: operatorStopped ? 'operator_stop' : safeDiagnostic(error.message) ?? 'project_runner_error' },
   };
   validateBenchmarkReport(report);
-  const projectDir = join(resolve(options.reportDir ?? options.experimentDir), problem.id);
+  const projectDir = join(resolve(options.reportDir ?? options.experimentDir), options.agentMode === 'solver' ? `${problem.id}-attempt-${options.attemptIndex}` : problem.id);
   await mkdir(projectDir, { recursive: true });
   await writeFile(join(projectDir, 'report.json'), JSON.stringify(report, null, 2));
   return report;
