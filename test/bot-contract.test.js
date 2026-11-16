@@ -157,3 +157,48 @@ test('runner rejects old parallel treatment labels and inconsistent Core counts'
   }
   await assert.rejects(runBenchmarkProject({}, {}, { cores: 2 }), /require four independent Core loops/);
 });
+
+test('report distinguishes budget expiry before activation from missing or shared Workspaces', () => {
+  const service = new TaskService();
+  try {
+    const mission = service.createMission({ mission_id: 'M-budget-report', goal: 'Check preparation deadline reporting' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+    const taken = Array.from({ length: 2 }, (_, index) => {
+      const task = service.createTask({ mission_id: mission.mission_id, summary: `Inspect deadline case ${index}`, expected_output: 'Evidence', acceptance_conditions: ['Record result'] }, makeEnvelope({ actorRef: `bot:${index}` })).task;
+      return service.takeTask(task.task_id, { owner_ref: `bot:${index}`, core_id: `core-${index}`, take_key: `take:${index}` });
+    });
+    const state = { taskService: service, missionId: mission.mission_id, initialTaskIds: [],
+      observationStore: { listEvents: () => ({ events: [] }) },
+      cores: taken.map(({ task, execution }, index) => ({ index, taskId: task.task_id, executionId: execution.execution_id,
+        prompt: 'Controlled diagnostic prompt',
+        takeHistory: [{ task_id: task.task_id, execution_id: execution.execution_id }], sessionHistory: [],
+        turnDurationsMs: [], checks: [], errors: [], cheatingFlags: [], latencySamples: [], toolEvents: [], workspaceWrites: [],
+        toolErrors: [], materialReads: [], materialConsumptions: [] })),
+      contextService: { readMaterials: () => [], listMaterialConsumptions: () => [] },
+      judgeService: { listCheckerPreflights: () => [], getMissionCheckBudget: () => null }, capabilityRegistry: { listServices: () => [] },
+      parallelism: { snapshot: () => ({}) }, allowedAgentToolNames: ['read', 'write', 'edit', 'bash'],
+      publicWorkspace: { mission_id: mission.mission_id, metadata: { input_snapshot_hash: 'input' } },
+      inputMaterialHash: 'input', problem: { id: 'controlled', source_hash: 'input' }, fixtureManifest: {},
+      readinessSamples: [], schedulerEvents: [], solvedAt: null, missionSubmissionStore: { isAccepted: () => false, getFinalCheckBudget: () => null },
+    };
+    const set = (index, { state = 'FAILED', reason = 'bot-lifetime-budget', started = null, workspace = null } = {}) => {
+      service.db.prepare('UPDATE executions SET state = ?, terminal_reason = ?, started_at = ?, workspace_ref = ? WHERE execution_id = ?')
+        .run(state, reason, started, workspace, taken[index].execution.execution_id);
+    };
+    set(0, { started: new Date().toISOString(), workspace: '/controlled/first' });
+    set(1);
+    const report = () => projectReport(state, Date.now() - 1000, Date.now());
+    assert.equal(report().audit.invalid, false, 'a durable budget stop before activation needs no Workspace');
+    for (const reason of ['benchmark_deadline_cleanup', 'execution-timebox']) {
+      set(1, { reason });
+      assert.equal(report().audit.invalid, false);
+    }
+    for (const changed of [{ started: new Date().toISOString() }, { state: 'RUNNING' }, { reason: 'unknown-stop' }]) {
+      set(1, changed);
+      assert.ok(report().audit.invalid_reasons.includes('workspace_boundary_violation'));
+    }
+    set(1, { workspace: '/controlled/first' });
+    assert.ok(report().audit.invalid_reasons.includes('workspace_boundary_violation'), 'budget stops cannot share a materialized Workspace');
+    set(1, { workspace: '/controlled/second' });
+    assert.equal(report().audit.invalid, false);
+  } finally { service.close(); }
+});

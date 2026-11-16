@@ -8,7 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261116-14` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · REGISTERED; one-hour observation** | `d79ace7` | [Q20 root-only one-hour](EXP-20261116-14-q20-subtree-1h.md) |
+| `EXP-20261116-14` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · COMPLETED; unsolved, audit misclassification diagnosed** | `d79ace7` | [Q20 root-only one-hour](EXP-20261116-14-q20-subtree-1h.md) |
 | `EXP-20261116-13` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · COMPLETED; unsolved, protocol valid** | `d79ace7` | [Q20 root-only health](EXP-20261116-13-q20-subtree-health-15m.md) |
 | `EXP-20261116-12` | [Issue #133](https://github.com/LuNa-shi/SwarmEnv/issues/133) | **FLT10 Q20 · HELD BEFORE LAUNCH; actual-target positive control pending** | `7f1f089` | [Q20 observation](EXP-20261116-12-flt-q20-after-q10-1h.md) |
 | `EXP-20261116-11` | [Issue #133](https://github.com/LuNa-shi/SwarmEnv/issues/133) | **FLT10 Q10 repair, 4 Core · PASS; accepted in 9m18s including deployment** | `7f1f089` | [Q10 repair observation](EXP-20261116-11-flt-q10-repair-1h.md) |

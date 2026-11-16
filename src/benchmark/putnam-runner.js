@@ -105,8 +105,13 @@ function flatHandoffReminderMs(options) {
 // FAILED. r15: a rejected workspace_revision on task_take invalidated the
 // whole run as a workspace boundary violation.
 export function isPreparationFailure(execution) {
-  return ['FAILED', 'FENCED'].includes(execution?.state)
-    && ['task_take_bind_failed', 'startup_prepare_failed', 'bind_prepare_failed', 'startup_failed'].includes(execution.terminal_reason);
+  if (!['FAILED', 'FENCED'].includes(execution?.state)) return false;
+  if (['task_take_bind_failed', 'startup_prepare_failed', 'bind_prepare_failed', 'startup_failed'].includes(execution.terminal_reason)) return true;
+  // A deadline may stop a taken Execution while its Workspace is still being
+  // prepared. Only a durable, never-started budget stop gets this exception;
+  // a previously activated Execution must retain its Workspace reference.
+  return execution.state === 'FAILED' && execution.started_at === null
+    && ['bot-lifetime-budget', 'execution-timebox', 'benchmark_deadline_cleanup'].includes(execution.terminal_reason);
 }
 
 function sha256(value) {

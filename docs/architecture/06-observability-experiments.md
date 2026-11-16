@@ -127,6 +127,19 @@ Sources: [Workspace provider](../../src/observability/workspace-provider.js), [r
 
 The runner finalizes its report from Task/Execution/Material/check data, Core accounting, cleanup evidence and protocol checks. Important meanings are:
 
+The Workspace audit reads every taken Execution from Task Service after cleanup.
+Each materialized Workspace reference must be unique. A missing Execution or a
+missing reference invalidates the report, except for the known preparation
+failures and a durable `FAILED` budget stop before activation. The latter requires
+`started_at` to be explicitly null and the terminal reason to be
+`bot-lifetime-budget`, `execution-timebox` or `benchmark_deadline_cleanup`.
+A deadline can expire while Workspace creation or binding is still pending;
+that path legitimately has no materialized reference. Once activation has been
+recorded, those budget reasons do not excuse a missing reference. Duplicate
+references remain invalid even for preparation failures. This read-only report
+classification does not change admission, timers, cleanup or Agent visibility,
+and does not rewrite reports produced by older revisions.
+
 | Report field/family | Current implementation meaning and limit |
 |---|---|
 | `solved` | The Mission submission coordinator has a persisted accepted submission for the fixed public main and input manifest. This scientific outcome is independent of protocol validity or ordinary source diagnostics; pending cleanup still invalidates the run evidence. See [04](04-services.md). |

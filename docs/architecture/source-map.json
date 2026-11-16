@@ -1023,6 +1023,7 @@
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/00-overview.md",
+        "docs/architecture/06-observability-experiments.md",
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Project composition, Agent take loop, Judge orchestration, stop and reports"
